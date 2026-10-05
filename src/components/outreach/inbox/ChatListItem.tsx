@@ -10,12 +10,17 @@
  *   d'origine, en texte neutre).
  * - Actions (étiquette, suppression) dans un menu : toujours visible au doigt,
  *   au survol ou au focus clavier à la souris (D-03, D-12).
+ *
+ * Design simplifié (lot Suite, docs/design/06-simplicite.md) : l'étiquette et
+ * l'intention s'écrivent en texte discret, sans pastille ; « À répondre » passe
+ * en orange (un candidat attend, règle 7) et le gras dit seul les non-lus, sans
+ * pastille chiffrée (le nombre reste lu). Le logo LinkedIn ne se pose plus sur
+ * chaque visage : seul un autre canal se signale.
  */
 
 import React, { useState, useEffect } from 'react';
 import { AlarmClock, Archive, Briefcase, Hourglass, MoreHorizontal, Reply, Trash2 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -195,10 +200,8 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
                 {unread && (
                   <span
                     aria-hidden="true"
-                    className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold tabular-nums text-brand-foreground ring-2 ring-background"
-                  >
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
+                    className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-warning ring-2 ring-background"
+                  />
                 )}
               </span>
             </Button>
@@ -230,7 +233,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
     );
   } else if (statusInfo?.kind === 'reply') {
     state = (
-      <span className="inline-flex shrink-0 items-center gap-1 font-medium text-brand">
+      <span className="inline-flex shrink-0 items-center gap-1 font-medium text-warning">
         <Reply className="h-3 w-3" aria-hidden="true" />À répondre
       </span>
     );
@@ -243,16 +246,17 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
     );
   }
 
-  // L'étiquette posée à la main l'emporte sur l'intention lue par l'IA. Faute
-  // de place, elle se tronque avant le nom (shrink-[3]).
-  const tag = categoryInfo ? (
-    <Badge variant={categoryInfo.tone} className="min-w-0 shrink-[3] px-1.5 py-0 text-2xs">
-      <span className="truncate">{categoryInfo.label}</span>
-    </Badge>
-  ) : intentMeta ? (
-    <Badge variant={intentMeta.tone} className="min-w-0 shrink-[3] px-1.5 py-0 text-2xs" title={intent?.summary || undefined}>
-      <span className="truncate">{intentMeta.label}</span>
-    </Badge>
+  // L'étiquette posée à la main l'emporte sur l'intention lue par l'IA : un
+  // texte discret, sans pastille ni couleur. Faute de place, elle se tronque
+  // avant le nom (shrink-[3]).
+  const tagLabel = categoryInfo?.label ?? intentMeta?.label ?? null;
+  const tag = tagLabel ? (
+    <span
+      className="min-w-0 shrink-[3] truncate text-xs text-muted-foreground"
+      title={!categoryInfo ? intent?.summary || undefined : undefined}
+    >
+      {tagLabel}
+    </span>
   ) : null;
 
   // Troisième ligne : l'état, puis la mission ; à défaut de mission, la boîte d'origine.
@@ -292,7 +296,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       >
         {isSelected && <span aria-hidden="true" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-brand" />}
 
-        {/* Avatar et pastille du canal */}
+        {/* Avatar ; la pastille du canal seulement hors LinkedIn, le canal courant */}
         <span className="relative shrink-0">
           <Avatar className="h-10 w-10">
             <AvatarImage src={avatar} alt="" />
@@ -300,12 +304,14 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               {getInitials(displayName)}
             </AvatarFallback>
           </Avatar>
-          <span
-            aria-hidden="true"
-            className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
-          >
-            <ChannelIcon channel={channel} size="xs" />
-          </span>
+          {channel !== 'linkedin' && (
+            <span
+              aria-hidden="true"
+              className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
+            >
+              <ChannelIcon channel={channel} size="xs" />
+            </span>
+          )}
         </span>
 
         <span className="min-w-0 flex-1">
@@ -327,15 +333,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             )}
           </span>
 
-          {/* Aperçu (brouillon en cours, dernier message, sinon le titre du profil) et non-lus */}
+          {/* Aperçu (brouillon en cours, dernier message, sinon le titre du profil) ; les non-lus, en gras et lus à voix haute */}
           <span className="mt-0.5 flex min-w-0 items-center gap-2">
             {previewLine}
-            {unread && (
-              <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold tabular-nums text-brand-foreground">
-                <span aria-hidden="true">{unreadCount > 99 ? '99+' : unreadCount}</span>
-                <span className="sr-only">{unreadLabel}</span>
-              </span>
-            )}
+            {unread && <span className="sr-only">{unreadLabel}</span>}
           </span>
 
           {/* Repères : état, puis mission (ou boîte d'origine) */}
