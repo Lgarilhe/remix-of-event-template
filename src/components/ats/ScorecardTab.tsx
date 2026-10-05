@@ -1064,7 +1064,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     };
 
     const coachingPanel = showCoaching ? (
-      <div className="order-first w-full min-w-0 lg:order-none lg:sticky lg:top-4 lg:w-80 lg:shrink-0">
+      <div className="order-first w-full min-w-0 [@container(min-width:64rem)]:sticky [@container(min-width:64rem)]:top-4 [@container(min-width:64rem)]:order-none [@container(min-width:64rem)]:w-80 [@container(min-width:64rem)]:shrink-0">
         <LiveCoachingPanel
           candidateId={candidate.candidateId}
           candidateName={candidate.name}
@@ -1089,7 +1089,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     ) : null;
 
     return (
-      <div ref={rootRef} className="min-w-0 max-w-full space-y-4">
+      // Conteneur de taille en ligne : la grille se place selon la largeur de son cadre (tiroir candidat, page plein écran)
+      // et non selon celle de la fenêtre, sinon elle se chevauche dans un tiroir étroit sur grand écran.
+      <div ref={rootRef} className="min-w-0 max-w-full space-y-4 [container-type:inline-size]">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={closeEditor} className={cn('-ml-2', touch)}>
             <ChevronLeft aria-hidden="true" />
@@ -1101,7 +1103,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         {/* En-tête : moyenne, progression, actions */}
         <section
           aria-label="Synthèse de la grille"
-          className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 xl:flex-row xl:items-center xl:justify-between"
+          className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 [@container(min-width:56rem)]:flex-row [@container(min-width:56rem)]:items-center [@container(min-width:56rem)]:justify-between"
         >
           <div className="flex min-w-0 items-start gap-4">
             <div className="shrink-0">
@@ -1137,7 +1139,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 [@container(min-width:56rem)]:border-t-0 [@container(min-width:56rem)]:pt-0">
             {!showCoaching && (
               <Button variant="outline" size="sm" onClick={openCoaching} className={touch}>
                 <Mic aria-hidden="true" />
@@ -1163,9 +1165,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           </div>
         </section>
 
-        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start">
-          {/* Liste des critères (ordinateur) */}
-          <nav aria-label="Critères" className="hidden w-44 shrink-0 lg:sticky lg:top-4 lg:block">
+        <div className="flex min-w-0 flex-wrap items-start gap-4">
+          {/* Liste des critères (cadre large) */}
+          <nav aria-label="Critères" className="hidden w-44 shrink-0 [@container(min-width:48rem)]:sticky [@container(min-width:48rem)]:top-4 [@container(min-width:48rem)]:block">
             <p className="eyebrow mb-2 px-2">Critères ({total})</p>
             <ol className="space-y-0.5">
               {criteria.map((c, idx) => {
@@ -1206,8 +1208,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           </nav>
 
           <div className="min-w-0 flex-1 space-y-3">
-            {/* Liste des critères (téléphone et tablette) */}
-            <nav aria-label="Critères" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden">
+            {/* Liste des critères (cadre étroit : tiroir, téléphone, tablette) */}
+            <nav aria-label="Critères" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [@container(min-width:48rem)]:hidden">
               {criteria.map((c, idx) => {
                 const r = activeEval.ratings[c.id];
                 const current = idx === criterionIdx;

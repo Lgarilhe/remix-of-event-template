@@ -132,14 +132,16 @@ const LINKEDIN_HEALTH: Record<LinkedInHealth, { label: string; tone: StatusTone 
  * En-tête repliable d'une carte d'outil. Revue design (F-15, F-24) : titre de
  * niveau 4 sous « Outils reliés », bouton du kit avec aria-expanded (posé par
  * CollapsibleTrigger), logo dans une tuile qui ne se comprime pas.
+ * Design simplifié : carte à plat, le logo part du bord du titre de la rubrique
+ * (le fond du survol déborde de 8 px de chaque côté).
  */
 const IntegrationHeader = ({ config, open, status }: { config: IntegrationConfig; open: boolean; status: ReactNode }) => (
-  <h4>
+  <h4 className="-mx-2">
     <CollapsibleTrigger asChild>
       <Button
         type="button"
         variant="ghost"
-        className="h-auto w-full justify-start gap-3 whitespace-normal rounded-xl p-4 text-left font-normal active:scale-100"
+        className="h-auto w-full justify-start gap-3 whitespace-normal rounded-lg px-2 py-3 text-left font-normal active:scale-100"
       >
         <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-muted">
           <img src={config.logoSrc} alt="" className="h-7 w-7 object-contain" />
@@ -251,7 +253,7 @@ const LinkedInHostedAuthCard = ({
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <IntegrationHeader config={config} open={expanded} status={status} />
 
-        <CollapsibleContent className="space-y-4 px-4 pb-4">
+        <CollapsibleContent className="space-y-4 pb-4 pt-2">
           {/* Connected accounts list */}
           {loadingAccounts && linkedInAccounts.length === 0 ? (
             <div className="space-y-2">
@@ -461,7 +463,7 @@ const IntegrationCard = ({
             : <StatusText tone="muted">Non configuré</StatusText>}
         />
 
-        <CollapsibleContent className="space-y-4 px-4 pb-4">
+        <CollapsibleContent className="space-y-4 pb-4 pt-2">
           {config.fields.map(field => {
             const fieldId = `${fieldIdPrefix}-${field.key}`;
             return (

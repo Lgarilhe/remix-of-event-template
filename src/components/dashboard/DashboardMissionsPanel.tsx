@@ -29,7 +29,7 @@ import { MissionCompanyLogo } from './MissionCompanyLogo';
 import { plural } from '@/lib/plural';
 
 export interface InterviewingPeople {
-  people: Array<{ name: string; src?: string | null }>;
+  people: Array<{ name: string; src?: string | null; candidateId?: string | null }>;
   total: number;
 }
 

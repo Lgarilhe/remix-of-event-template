@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -177,7 +178,8 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: resolvedModel,
-        max_tokens: 1024,
+        max_tokens: withThinkingHeadroom(resolvedModel, 1024),
+        ...gen5Params(resolvedModel),
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userContent }],
       }),
@@ -192,7 +194,7 @@ Deno.serve(async (req) => {
     }
 
     const aiResult = await response.json();
-    const content = aiResult.content?.[0]?.text || "";
+    const content = textFromContent(aiResult.content);
     let ops;
     try {
       const cleanJson = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
