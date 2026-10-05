@@ -204,7 +204,9 @@ test.describe('Garde « rendez-vous pris » du moteur', () => {
     test('@critical option active : un rendez-vous du même profile_id dans l’organisation arrête la séquence avant tout appel (ni IA ni LinkedIn), inscription « completed »', async () => {
       const { org, accountId } = await trackedSendingOrg('E2E meeting profil');
       // Témoin : même organisation, second compte, séquence IA sans rendez-vous :
-      // prouve que l'étape appelle bien l'IA quand la garde ne l'arrête pas.
+      // prouve que l'étape part quand la garde ne l'arrête pas. Lot 5a-2 : le
+      // moteur ne rédige plus à l'envoi, le témoin porte donc une retouche
+      // validée à l'inscription (texte relu) et part tel quel.
       const member = await addMember(org.orgId, 'member', 'meeting');
       orgsToDelete[orgsToDelete.length - 1].extra.push(member);
       const controlAccount = await seedLinkedInAccount(org.orgId, member.userId, `acc_${rand()}`, 'OK');
@@ -214,7 +216,10 @@ test.describe('Garde « rendez-vous pris » du moteur', () => {
       const stopped = await meetingSequence(org, org.owner.userId, [`Bonjour {{prenom}} ${stopMarker}`], { aiFirstStep: true });
       const control = await meetingSequence(org, member.userId, [`Bonjour {{prenom}} ${controlMarker}`], { aiFirstStep: true });
       const target = await enroll(org, stopped.sequenceId, org.owner.userId, accountId);
-      const witness = await enroll(org, control.sequenceId, member.userId, controlAccount);
+      const witnessText = `Bonjour Camille, message relu ${controlMarker}`;
+      const witness = await enroll(org, control.sequenceId, member.userId, controlAccount, {
+        tracking_data: { message_overrides: { [control.steps[0].id]: { message: witnessText, isEdited: true } } },
+      });
       // Rendez-vous réservé après l'inscription, même profil, même organisation.
       await insertMeeting(org.orgId, org.owner.userId, { candidate_profile_id: target.profileId });
 
@@ -234,7 +239,8 @@ test.describe('Garde « rendez-vous pris » du moteur', () => {
 
       expect(await mockCalls(accountId), 'aucun appel LinkedIn depuis le compte de l’inscription arrêtée').toEqual([]);
       expect(await aiCallsWith(stopMarker), 'aucun appel IA pour l’étape arrêtée').toEqual([]);
-      expect((await aiCallsWith(controlMarker)).length, 'témoin : la même étape sans rendez-vous appelle l’IA').toBeGreaterThan(0);
+      expect(await sentTexts(controlAccount), 'témoin : la même étape sans rendez-vous part, telle que relue').toEqual([witnessText]);
+      expect(await aiCallsWith(controlMarker), 'témoin : aucun appel IA à l’envoi (lot 5a-2)').toEqual([]);
     });
   });
 

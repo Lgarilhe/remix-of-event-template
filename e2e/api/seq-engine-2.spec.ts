@@ -1008,18 +1008,13 @@ test.describe('Moteur engine-2 : quotas', () => {
 // ═══ IA et budget du cycle ══════════════════════════════════════════════════
 
 test.describe('Moteur engine-2 : IA indisponible et budget du cycle', () => {
-  // ia-indisponible
-  test("ia-indisponible : génération IA refusée (crédits IA épuisés), report à 30 min sans texte puis échec après 3 essais, hors auto-pause, le modèle brut ne part jamais", async () => {
+  // ia-indisponible (lot 5a-2 : la rédaction à l'envoi n'existe plus)
+  test("ia-indisponible : étape IA sans relecture reportée d'une heure avec la raison, jamais en échec même après 3 essais, hors auto-pause, aucun appel au modèle ; un aperçu validé part tel quel", async () => {
     const { org, users, accounts } = await orgWithAccounts('E2E IA indisponible', 2);
     const [accA, accB] = accounts;
-    // Solde IA lu et nul : le garde de crédits refuse avant l'appel au modèle.
-    const { error: balErr } = await admin().from('ai_credit_balances').upsert({
-      organization_id: org.orgId, plan_credits: 0, topup_credits: 0, credits_remaining: 0, credits_total: 0,
-      period_start: new Date(Date.now() - DAY).toISOString(), period_end: new Date(Date.now() + 30 * DAY).toISOString(),
-    }, { onConflict: 'organization_id' });
-    expect(balErr).toBeNull();
+    const marker = `MQIA${rand()}${rand()}`;
     const seq = await insertSequence(org, users[0].userId, [
-      { action_type: 'message', message_template: 'Modèle brut {{prenom}}', use_ai_personalization: true },
+      { action_type: 'message', message_template: `Modèle brut {{prenom}} ${marker}`, use_ai_personalization: true },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
     ]);
     const firstTry = await enroll(org, seq.sequenceId, users[0].userId, accA);
@@ -1053,24 +1048,31 @@ test.describe('Moteur engine-2 : IA indisponible et budget du cycle', () => {
 
     const r1 = await execRow(xFirst);
     expect(r1.status).toBe('scheduled');
-    expect(r1.retry_count).toBe(1);
-    expect(r1.final_message, 'contenu d’avant le verrou (aucun texte)').toBeNull();
-    expect(r1.error_message).toBe('Crédits IA épuisés : nouvel essai 1/3 dans 30 min');
+    expect(r1.retry_count ?? 0, 'ni essai compté').toBe(0);
+    expect(r1.final_message, 'aucun texte inventé').toBeNull();
+    expect(r1.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
     const at1 = new Date(r1.scheduled_at).getTime();
-    expect(at1).toBeGreaterThanOrEqual(before + 30 * MIN - 1_000);
-    expect(at1).toBeLessThanOrEqual(after + 30 * MIN + 1_000);
+    expect(at1).toBeGreaterThanOrEqual(before + 60 * MIN - 1_000);
+    expect(at1).toBeLessThanOrEqual(after + 60 * MIN + 1_000);
 
     for (const x of xLast) {
       const row = await execRow(x);
-      expect(row.status).toBe('failed');
-      expect(row.error_message).toBe("Crédits IA épuisés : message non envoyé après plusieurs essais. Relancez l'étape plus tard.");
+      expect(row.status, 'jamais en échec : reportée').toBe('scheduled');
+      expect(row.retry_count, 'compteur d’essais inchangé').toBe(3);
+      expect(row.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
       expect(row.final_message).toBeNull();
     }
-    expect(Number((res.results as Record<string, number>).ai_unavailable)).toBeGreaterThanOrEqual(5);
-    expect(await sequenceActive(seq.sequenceId), 'IA indisponible : hors auto-pause').toBe(true);
-    for (const e of [firstTry, ...lastTries]) expect((await enrollmentFull(e.enrollmentId)).status).toBe('active');
+    expect(Number((res.results as Record<string, number>).ai_unavailable ?? 0), 'aucune rédaction tentée').toBe(0);
+    expect(Number((res.results as Record<string, number>).skipped)).toBeGreaterThanOrEqual(6);
+    expect(await sequenceActive(seq.sequenceId), 'hors auto-pause').toBe(true);
+    for (const e of [firstTry, ...lastTries]) {
+      const enr = await enrollmentFull(e.enrollmentId);
+      expect(enr.status).toBe('active');
+    }
     expect(await postsOf(accA), 'le modèle brut ne part jamais').toEqual([]);
     expect(await postsOf(accB)).toEqual([]);
+    const aiCalls = (await mockCalls()).filter((c) => c.method === 'POST' && c.path === '/v1/messages' && JSON.stringify(c.body).includes(marker));
+    expect(aiCalls, 'aucun appel au modèle').toEqual([]);
     expect((await execRow(xOv)).status, 'aperçu validé : aucune rédaction IA nécessaire').toBe('sent');
     expect(await sentTexts(accOv)).toEqual(['Aperçu validé pour ce candidat']);
   });
@@ -1111,30 +1113,30 @@ test.describe('Moteur engine-2 : IA indisponible et budget du cycle', () => {
     }
   });
 
-  // budget-cycle (rédaction IA)
-  test("budget-cycle : une étape rédigée par l'IA n'est pas verrouillée sans 30 s restantes, un envoi simple l'est encore avec 20 s", async () => {
+  // budget-cycle (rédaction IA) — lot 5a-2 : une étape IA non relue ne
+  // demande plus de budget de rédaction, elle est reportée avant tout verrou.
+  test("budget-cycle : une étape rédigée par l'IA sans relecture est reportée d'une heure avant tout verrou, les envois simples du cycle partent", async () => {
     const { org, users, accounts } = await orgWithAccounts('E2E Budget IA', 3);
     const [acc1, acc2, acc3] = accounts;
     const plain = await insertSequence(org, users[0].userId, [{ action_type: 'message', message_template: 'Bonjour' }]);
     const ai = await insertSequence(org, users[0].userId, [{ action_type: 'message', message_template: 'Modèle {{prenom}}', use_ai_personalization: true }]);
-    // Premier envoi lent (12 s) : il reste ensuite entre 20 et 30 s au cycle.
-    await mock(acc1, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/', delay_ms: 12_000, body: { object: 'ChatList', items: [], cursor: null } }] });
     const e1 = await enroll(org, plain.sequenceId, users[0].userId, acc1);
     const e2 = await enroll(org, ai.sequenceId, users[1].userId, acc2);
     const e3 = await enroll(org, plain.sequenceId, users[2].userId, acc3);
-    const due2 = minutesFromNow(-2);
     const x1 = await schedule(org, e1.enrollmentId, plain.steps[0], { scheduled_at: minutesFromNow(-3) });
-    const x2 = await schedule(org, e2.enrollmentId, ai.steps[0], { scheduled_at: due2 });
+    const x2 = await schedule(org, e2.enrollmentId, ai.steps[0], { scheduled_at: minutesFromNow(-2) });
     const x3 = await schedule(org, e3.enrollmentId, plain.steps[0], { scheduled_at: minutesFromNow(-1) });
+    const before = Date.now();
     await cycle();
 
     expect((await execRow(x1)).status).toBe('sent');
     const r2 = await execRow(x2);
-    expect(r2.status, "rédaction IA : pas de verrou sans 30 s").toBe('scheduled');
-    expect(new Date(r2.scheduled_at).getTime(), 'date inchangée').toBe(new Date(due2).getTime());
+    expect(r2.status, 'message IA non relu : jamais verrouillé').toBe('scheduled');
+    expect(new Date(r2.scheduled_at).getTime(), 'reporté d’une heure').toBeGreaterThanOrEqual(before + 60 * MIN - 1_000);
+    expect(r2.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
     expect(r2.final_message).toBeNull();
     expect(await postsOf(acc2)).toEqual([]);
-    expect((await execRow(x3)).status, 'envoi simple : verrouillé avec 20 s').toBe('sent');
+    expect((await execRow(x3)).status, 'envoi simple : parti').toBe('sent');
   });
 });
 

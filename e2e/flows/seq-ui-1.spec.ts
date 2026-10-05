@@ -836,6 +836,10 @@ test.describe('Préparation d\'inscription', () => {
     await expect(dialog.getByText(edited)).toBeVisible();
     expect(aiCalls.length).toBe(4);
 
+    // Lot 5a-2 : les deux messages IA de chaque candidat sont générés (4 appels) ;
+    // reste la case de relecture, obligatoire quel que soit le nombre de candidats.
+    await expect(dialog.getByRole('button', { name: 'Inscrire 2 candidats' })).toBeDisabled();
+    await dialog.getByRole('checkbox', { name: "J'ai relu les messages rédigés par l'IA" }).check();
     await dialog.getByRole('button', { name: 'Inscrire 2 candidats' }).click();
     await expect(toast(page, '2 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
 
@@ -1040,7 +1044,10 @@ test.describe('Préparation d\'inscription', () => {
       ],
     });
     const people = ['Alice', 'Bruno', 'Chloe', 'David', 'Emma'].map((first) => makeProfile(first, 'Redaction'));
-    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], {
+      profiles: people,
+      aiMessage: (body) => ({ subject: '', message: `Message IA pour ${(body.profile as { name?: string } | undefined)?.name}` }),
+    });
     await searchProfiles(page, missionId, people);
     const dialog = await openEnrollPreview(page, people, seq.name);
 
@@ -1051,7 +1058,14 @@ test.describe('Préparation d\'inscription', () => {
     await expect(firstMessage).not.toContainText('Relance Alice');
     await expect(dialog.getByText('Aucun message écrit', { exact: false })).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true })).toBeDisabled();
-    await dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' }).check();
+    // Lot 5a-2 : dès 5 candidats, une seule case pour les destinataires et la
+    // relecture, grisée tant qu'un message IA reste à générer.
+    const box = dialog.getByRole('checkbox', { name: "Je confirme les destinataires et j'ai relu les messages rédigés par l'IA" });
+    await expect(box).toBeDisabled();
+    await expect(dialog.getByText("Générez et relisez les messages rédigés par l'IA avant d'inscrire : 5 candidats sur 5 n'en ont pas encore.")).toBeVisible();
+    await dialog.getByRole('button', { name: 'Générer tous les aperçus' }).click();
+    await expect(dialog.getByText(/Générez et relisez les messages rédigés par l'IA avant d'inscrire/)).toHaveCount(0, { timeout: 20_000 });
+    await box.check();
     await expect(dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true })).toBeEnabled();
   });
 
