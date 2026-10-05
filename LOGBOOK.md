@@ -32,6 +32,31 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — SHIP — Design simplifié, lot Suite 2 : la messagerie
+
+**Contexte** : deuxième écran du lot « Suite » de `docs/design/06-simplicite.md`, après le Pipeline global (#286). La messagerie avait déjà sa revue (lot 6a), mais gardait des pastilles colorées sur chaque ligne (étiquette, intention, non-lus, logo LinkedIn sur chaque visage), « À répondre » en couleur de marque, un bouton « Actualiser », des comptes « (0) » dans les filtres, cinq boutons de mise en forme dans le composeur et un cadre pointillé autour du panneau vide.
+**Décision / Fait** :
+- Colonne des conversations : titre de page à 28 px ; plus d'« Actualiser » (la liste se relit déjà toutes les 30 s, `useMessagesInbox`), ni dans l'en-tête ni dans l'état vide ; bascule « Toutes / À répondre / En attente » de la page mission (`SegmentedControl` quiet) ; filtres sans compte.
+- Lignes : étiquette posée à la main ou intention lue par l'IA en texte discret, sans pastille ni couleur ; « À répondre » en orange (un candidat attend) ; les non-lus en gras, sans pastille chiffrée, le nombre restant lu par les lecteurs d'écran ; liste repliée : un point orange. Le logo LinkedIn ne se pose plus sur chaque visage : seul un autre canal se signale.
+- Conversation : l'état de l'inscription s'écrit en mots à côté du nom (`EnrollmentStatusBadge`, nouvelle option `plain`, même libellé que la pastille) ; « Inscrire dans une séquence » en bouton discret ; le panneau « Sélectionnez une conversation » sans cadre.
+- Composeur : la mise en forme tient dans son menu à toutes les tailles, raccourcis rappelés et toujours actifs ; le nombre de suggestions en texte neutre ; « Envoyer » reste le seul bouton plein. Suggestions rapides de 44 px au doigt.
+**Raison** : règles 1, 2, 3, 7 et 8 du design simplifié. Mesures du banc, neuf conversations simulées (réponses LinkedIn et IA remplacées, quatre analyses et une étiquette posées le temps des mesures puis retirées), ordinateur 1 440 px : liste, 25 puis 24 contrôles, textes colorés 6 puis 3 (les seuls « À répondre »), cadres 1 puis 0 ; conversation ouverte, 49 puis 44 contrôles, textes colorés 7 puis 2. Sur téléphone, conversation ouverte : textes colorés 2 puis 0. Dix logos LinkedIn et trois pastilles de non-lus en moins sur la liste.
+**Impact** : `src/components/outreach/inbox/` (`ChatListSidebar`, `ChatListItem`, `MessageView`, `MessageComposer`, `SmartReplies`), `MessagesInbox.tsx` (plus de comptes de statut passés à la liste), `SequenceBadges.tsx` (option `plain`, rendu par défaut inchangé). Aucune lecture ni écriture ne change. Tests : `tests/ux/messagerie-simplicite.test.mjs` (8 tests, nouveau, rendu statique des lignes), `tests/ux/lot6a-messagerie.test.mjs` mis à jour (D-04 : étiquettes en texte ; D-13 : mise en forme dans un menu).
+**Recette `qa.md`** (banc local, base inchangée avant et après) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Liste prête en 2,6 s (9 conversations) ; onglets À répondre 6, En attente 3 ; recherche « Sarah » : 1 ; menu Filtres (Statut, Étiquette, Boîte LinkedIn) sans compte ; conversation ouverte, suggestion insérée dans le composeur, menu « Mise en forme » à 5 outils, « Inscrire dans une séquence » ouvre son dialogue ; aucun envoi | PASS |
+| Claire | Aucun terme technique ni nom de fournisseur, liste et conversation ; un seul bouton plein : « Envoyer » | PASS |
+| Théo | Messagerie vide : l'état vide seul, sans « Actualiser » ni zéro ; lecture en échec : erreur avec « Réessayer » ; nom très long avec emoji et texte de droite à gauche : aucun débordement (liste, en-tête) | PASS |
+| Sophie | Téléphone 390 px tactile : aucun contrôle sous 44 px (liste, conversation), menu « Mise en forme » à 44 px | PASS |
+**Reste à faire** :
+- [ ] Paramètres (Suite 3), après #260 et #262.
+- [ ] Bulles envoyées en aplat sombre : à revoir avec le propriétaire, hors des huit règles.
+- [ ] Le banc visuel (`scripts/design/capture.mjs`) ne simule pas de conversation : la messagerie y reste vide.
+**Refs** : docs/design/06-simplicite.md (lot Suite), #286.
+
+---
+
 ## 2026-10-05 — SHIP — Design simplifié, lot Suite 1 : le Pipeline global
 
 **Contexte** : premier écran du lot « Suite » de `docs/design/06-simplicite.md` (Pipeline global, messagerie, Paramètres, mêmes règles, sans maquette). Le /pipeline gardait l'ancien langage : six tuiles de chiffres au-dessus de toutes les vues, quatre menus de filtres et « Avec rappel », colonnes et cartes encadrées, note en pastille colorée par niveau, statut de séquence en pastille, tableau à huit colonnes, chronologie et analyse en cartes.
