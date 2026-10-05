@@ -383,6 +383,7 @@ OutreachSearchContext       — legacy global search (mostly replaced by useLink
 - La messagerie ne marque lues que les notifications de la conversation ouverte (`metadata->>chat_id`, `Inbox.tsx`).
 - Épingles de missions : `job_favorites`, index unique `(user_id, job_id)`, une seule policy `own_rows_all` ; le front n'écrit jamais `organization_id` (absent en prod).
 - Plafond de missions : `useQuotaGate` compte les missions non terminées ni archivées (`sourcing_projects` n'a pas `archived_at`).
+- Entretiens (« Entretiens aujourd'hui », « Comptes rendus à faire ») : `useTodoInterviews` lit `qualification_sessions` (animateur, sinon créateur) et se rafraîchit toutes les 5 minutes ; `splitInterviews` écarte `completed` et `cancelled`. `calendly-webhook` pose `cancelled` sur `invitee.canceled` (séances `scheduled` ou `in_progress` seulement, filtre par organisation de la séance). Un déplacement met à jour la même séance (événement, invité, heures, lien, statut gardé) via `old_invitee` de l'`invitee.created` ; l'`invitee.canceled` `rescheduled: true` qui l'accompagne est ignoré, dans l'un ou l'autre ordre. Limite connue : `setup-calendly-webhook` recrée un abonnement qui n'a pas les deux événements, mais ne vérifie pas la clé de signature d'un abonnement complet (créé sans clé avant ce correctif, il est rejeté en 401) : le supprimer côté Calendly puis rappeler la fonction. Le calendrier, le tableau de bord (`DashboardTodayPanel`) et `useAutoTaskSuggestions` ne filtrent pas encore `cancelled`. Ces trois fonctions Calendly sont retirées au lot I3 (`docs/refonte-mission/complement-equipe-marketplace-integrations.md`, section 3.5).
 
 ### Edge Functions (supabase/functions/)
 ```
@@ -443,7 +444,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `UNIPILE_V2_API_KEY` + `UNIPILE_V2_WEBHOOK_TOKEN` | `_shared/unipile-v2.ts` (importé par unipile-webhook, unipile-manage-webhooks) — API v2 activée seulement si la clé est posée |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
 | `AIRCALL_WEBHOOK_TOKEN` | aircall-webhook |
-| `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook |
+| `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook (vérifie la signature), setup-calendly-webhook (la pose sur l'abonnement, refus s'il manque) |
 | `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, unipile-accounts, sequence-webhooks-handler, `_shared/unipile-v2.ts` |
 | `SEQUENCE_WEBHOOK_SECRET` | sequence-webhooks-handler |
 | `PROCESS_SEQUENCES_SECRET` | auth des crons : process-sequences, process-email-queue, process-inmail-queue, process-scheduled-actions, process-agent-tasks, process-enrichment-queue, agent-daily-digest, refresh-pedigree-by-funding-stage, resolve-pedigree-directory, capture-candidate-photos |
