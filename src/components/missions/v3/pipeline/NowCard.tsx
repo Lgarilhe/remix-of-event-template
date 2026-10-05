@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
 import { IconTile } from '@/components/ui/IconTile';
+import { texturedCard } from '@/components/layout/texturedCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMissionNow } from '@/hooks/useMissionNow';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -31,6 +32,8 @@ import { ThenLine } from './ThenLine';
 
 /** Bande douce, sans filet : la carte se distingue du fond sans second cadre (design simplifié, règle 3). */
 const CARD = 'rounded-xl bg-muted/50 px-4 py-3.5 sm:px-5';
+/** Carte de l'action à faire : texturée (bleue, chaude quand quelque chose bloque), même gabarit que la bande. */
+const ACTION_CARD = 'rounded-xl px-4 py-3.5 sm:px-5';
 /** Bouton grisé sans quitter l'ordre de tabulation : le focus reste dessus pendant l'écriture. */
 const SOFT_DISABLED = 'aria-disabled:pointer-events-none aria-disabled:opacity-50';
 /** Cible de 44 px sur téléphone. */
@@ -67,13 +70,12 @@ function CardLoading() {
   );
 }
 
-/** Icône de la pastille : celle qui bouge annonce une personne qui attend (réponse, entretien sans nouvelles). */
+/** Icône de la pastille : celle qui bouge annonce une personne qui attend (réponse, entretien sans nouvelles). Le ton dit l'urgence par la couleur de la carte, pas par la pastille. */
 function RankTile({ rank }: { rank: RankId }) {
   const STATIC: Partial<Record<RankId, LucideIcon>> = { '0': AlertTriangle, '7': Send, '8': ListChecks, '8b': Search, '10': Search, '11': FileText };
-  const warning = rank === '0' || rank === '3' || rank === '6';
   const Icon = STATIC[rank];
   return (
-    <IconTile tone={warning ? 'warning' : 'default'} size="md" aria-hidden="true" icon={Icon}>
+    <IconTile tone="default" size="md" aria-hidden="true" icon={Icon}>
       {rank === '3' ? <TypingIcon className="size-5" /> : rank === '6' ? <HourglassIcon className="size-5" /> : null}
     </IconTile>
   );
@@ -155,7 +157,7 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
       {state === 'loading' && <CardLoading />}
 
       {state === 'action' && main && (
-        <Collapsible open={whyOpen} onOpenChange={setWhyOpen} className={CARD}>
+        <Collapsible open={whyOpen} onOpenChange={setWhyOpen} className={texturedCard(main.rank === '0' ? 'warm' : 'teal', ACTION_CARD)}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <RankTile rank={main.rank} />

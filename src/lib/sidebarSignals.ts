@@ -267,6 +267,12 @@ function interviewBounds(row: { event_start_at: string | null; event_end_at: str
   return { start, end };
 }
 
+/** Lien de visio (http ou https) d'un lieu d'entretien, sinon null (bureau, téléphone, vide). */
+export function joinUrlOf(location: string | null | undefined): string | null {
+  const loc = location?.trim() ?? '';
+  return /^https?:\/\//i.test(loc) ? loc : null;
+}
+
 /** Lien de visio (http ou https) et maintenant entre début moins 15 minutes et la fin. */
 export function canJoin(
   row: { event_location: string | null; event_start_at: string | null; event_end_at: string | null },
@@ -281,8 +287,8 @@ export function canJoin(
 }
 
 /**
- * Deux listes disjointes, entretiens non rendus (status différent de
- * 'completed') :
+ * Deux listes disjointes, entretiens ni rendus ni annulés (status différent de
+ * 'completed' et de 'cancelled', que pose calendly-webhook) :
  * - today : début le jour local, fin pas encore passée, par heure croissante ;
  * - debriefs : fin passée, du plus récent au plus ancien.
  */
@@ -296,7 +302,7 @@ export function splitInterviews<T extends { event_start_at: string | null; event
   const today: Array<{ row: T; start: number }> = [];
   const debriefs: Array<{ row: T; start: number }> = [];
   for (const row of rows) {
-    if (row.status === 'completed') continue;
+    if (row.status === 'completed' || row.status === 'cancelled') continue;
     const b = interviewBounds(row);
     if (!b) continue;
     if (b.end <= t) debriefs.push({ row, start: b.start });
@@ -318,4 +324,125 @@ export function isSameLocalDay(iso: string | null, now: Date): boolean {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return false;
   return startOfLocalDay(d) === startOfLocalDay(now);
+}
+
+// ─── Événements à venir ──────────────────────────────────────────────────────
+
+/** Jours à venir lus pour la zone « Événements à venir » (aujourd'hui compris). */
+export const UPCOMING_DAYS = 3;
+
+/** Lignes affichées au plus dans la zone ; le reste est derrière « Tout afficher ». */
+export const UPCOMING_DISPLAY_LIMIT = 4;
+
+/** L'alerte part à l'heure du début (aucune avance), et reste proposée 10 minutes. */
+export const ALERT_LEAD_MS = 0;
+export const ALERT_GRACE_MS = 10 * 60_000;
+
+type UpcomingRow = { event_start_at: string | null; event_end_at: string | null; status: string };
+
+/** Entretien rendu ou annulé : ni listé, ni signalé. */
+const isClosedStatus = (status: string) => status === 'completed' || status === 'cancelled';
+
+/**
+ * Entretiens non rendus dont la fin n'est pas passée, par début croissant :
+ * un entretien en cours reste en tête de liste jusqu'à sa fin. `limit` au plus.
+ */
+export function upcomingInterviews<T extends UpcomingRow>(rows: readonly T[], now: Date, limit?: number): T[] {
+  const t = now.getTime();
+  const kept: Array<{ row: T; start: number }> = [];
+  for (const row of rows) {
+    if (isClosedStatus(row.status)) continue;
+    const b = interviewBounds(row);
+    if (!b || b.end <= t) continue;
+    kept.push({ row, start: b.start });
+  }
+  kept.sort((a, b) => a.start - b.start);
+  const rowsOut = kept.map((x) => x.row);
+  return limit === undefined ? rowsOut : rowsOut.slice(0, limit);
+}
+
+/** Vrai de 15 minutes avant le début jusqu'à la fin : la ligne propose ses actions. */
+export function isInterviewActive(row: Pick<UpcomingRow, 'event_start_at' | 'event_end_at'>, now: Date): boolean {
+  const b = interviewBounds(row);
+  if (!b) return false;
+  const t = now.getTime();
+  return t >= b.start - JOIN_LEAD_MS && t <= b.end;
+}
+
+/**
+ * Heure d'une ligne de la zone : « En cours », « Dans 8 min » (moins d'une
+ * heure), « 17:00 » (même jour), « Demain 14:30 », « lun. 14:30 » (moins de
+ * 7 jours), sinon « 12 oct. 14:30 ».
+ */
+export function formatUpcomingTime(iso: string, now: Date): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const diff = d.getTime() - now.getTime();
+  if (diff <= 0) return 'En cours';
+  if (diff < 60 * 60_000) return `Dans ${Math.max(1, Math.ceil(diff / 60_000))} min`;
+  const clock = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const days = Math.round((startOfLocalDay(d) - startOfLocalDay(now)) / 86_400_000);
+  if (days <= 0) return clock;
+  if (days === 1) return `Demain ${clock}`;
+  if (days < 7) return `${d.toLocaleDateString('fr-FR', { weekday: 'short' })} ${clock}`;
+  return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} ${clock}`;
+}
+
+export interface InterviewLinks {
+  /** Page de l'entretien (notes, verdict) : toujours disponible. */
+  qualification: string;
+  /** Fiche du candidat dans le pipeline ; null si l'entretien n'est pas rattaché à un candidat. */
+  candidate: string | null;
+  /** Grille d'entretien en plein écran. */
+  scorecard: string | null;
+  /** Grille avec l'assistant d'entretien ouvert (enregistrement, transcription, coaching). */
+  coaching: string | null;
+}
+
+/**
+ * Adresses d'un entretien. La mission suit dans l'adresse quand elle est
+ * connue : un candidat présent dans deux missions garde le poste et la grille
+ * de celle de l'entretien (comme ScorecardTab).
+ */
+export function interviewLinks(row: {
+  id: string;
+  candidate_profile_id: string | null;
+  project_id: string | null;
+}): InterviewLinks {
+  const qualification = `/qualification/${row.id}`;
+  const candidateId = row.candidate_profile_id;
+  if (!candidateId) return { qualification, candidate: null, scorecard: null, coaching: null };
+  const id = encodeURIComponent(candidateId);
+  const mission = row.project_id ? `mission=${encodeURIComponent(row.project_id)}` : '';
+  const scorecard = `/pipeline/scorecard/${id}${mission ? `?${mission}` : ''}`;
+  return {
+    qualification,
+    candidate: `/pipeline?candidate=${id}`,
+    scorecard,
+    coaching: `${scorecard}${mission ? '&' : '?'}coaching=1`,
+  };
+}
+
+/** Clé d'une alerte : l'entretien et son heure, un entretien déplacé est signalé de nouveau. */
+export function interviewAlertKey(row: { id: string; event_start_at: string | null }): string {
+  return `${row.id}@${row.event_start_at ?? ''}`;
+}
+
+/**
+ * Entretiens à signaler maintenant : début atteint, pas fini, moins de
+ * 10 minutes depuis le début, jamais signalés (`alerted`, clés d'alerte).
+ */
+export function dueInterviewAlerts<T extends UpcomingRow & { id: string }>(
+  rows: readonly T[],
+  now: Date,
+  alerted: ReadonlySet<string>,
+): T[] {
+  const t = now.getTime();
+  return rows.filter((row) => {
+    if (isClosedStatus(row.status)) return false;
+    const b = interviewBounds(row);
+    if (!b) return false;
+    if (t < b.start - ALERT_LEAD_MS || t >= Math.min(b.end, b.start + ALERT_GRACE_MS)) return false;
+    return !alerted.has(interviewAlertKey(row));
+  });
 }
