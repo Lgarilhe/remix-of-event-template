@@ -307,8 +307,8 @@ function scoringModelParams(model: string): Record<string, unknown> {
 function thinkingHeadroom(model: string): number {
   return isGen5Model(model) ? 2000 : 0;
 }
-function responseText(data: any): string {
-  const block = (data?.content ?? []).find((b: any) => b?.type === "text");
+function responseText(data: { content?: Array<{ type?: string; text?: string }> } | null | undefined): string {
+  const block = (data?.content ?? []).find((b) => b?.type === "text");
   return block?.text || "";
 }
 
