@@ -36,10 +36,15 @@ test('BULLE-2 : ouvre le tiroir par openAgent, rond, fixé en bas à droite', ()
   assert.match(launcher, /aria-label="Ouvrir l'assistant"/);
 });
 
-test('BULLE-2b : étoile animée du kit, pas une icône fixe', () => {
-  assert.match(launcher, /import \{ SparkleIcon \} from '@\/components\/ui\/animated-icons'/);
-  assert.match(launcher, /<SparkleIcon \/>/);
+test('BULLE-2b : accent de la marque, étoiles pleines qui scintillent', () => {
+  assert.match(launcher, /bg-brand /);
+  assert.match(launcher, /text-brand-foreground/);
+  assert.doesNotMatch(launcher, /variant="primary"/);
+  assert.match(launcher, /animate-twinkle/);
+  assert.match(launcher, /fill="currentColor"/);
   assert.doesNotMatch(launcher, /from 'lucide-react'/);
+  // La classe du bouton impose 16 px aux icônes : la taille se règle sur le parent.
+  assert.match(launcher, /\[&_svg\]:size-8/);
 });
 
 test('BULLE-3 : masquée sur /agents et /inbox', () => {
