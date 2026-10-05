@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — INSIGHT — Spike S1 : le CDN d'images sert la sortie réseau de la base
+
+**Contexte** : le propriétaire a donné son accord pour S1 (télécharger une vingtaine de vraies photos pour savoir si le CDN répond à un centre de données). Le proxy du poste de développement refuse le CDN et le domaine Supabase, donc l'essai est parti de la base de production par `pg_net`.
+**Décision / Fait** : 25 adresses valides tirées au hasard (20 petites, 5 grandes), tirées et lancées en SQL sans que la session lise une adresse, sans cookie ni `Referer`, plage d'octets 0-4095. 25 réponses sur 25 en 206, 24 JPEG et 1 PNG. Petites : 1,4 à 41 ko (médiane 5,3 ko) ; grandes : 25 à 131 ko et un PNG de 846 ko. Chemin identique pour 64 des 71 candidats relus avec des adresses différentes. Lignes de réponse de l'essai supprimées ensuite.
+**Raison** : la copie côté serveur du lot P dépend de cette réponse ; sans elle, le plan B (image du prestataire de messagerie) s'imposait.
+**Impact** : `docs/design/07-photos-lot-p.md` (S1, risques, porte d'activation de P-4). Aucun code, aucune fonction déployée, aucune donnée conservée.
+**Reste à faire** :
+- [ ] Confirmer depuis une fonction au premier lot de P-4 (la sortie réseau de la base n'est pas celle des fonctions).
+- [ ] Les côtés réels en pixels ne sont pas mesurés : la garde lira les octets de tête.
+**Refs** : docs/design/07-photos-lot-p.md (P-0, S1).
+
+---
+
 ## 2026-10-05 — SHIP — P-0b, garder les adresses de photo fraîches (sur la branche, pas encore sur main)
 
 **Contexte** : première étape du lot P, demandée par le propriétaire (« Oui lance »). Les adresses de photo LinkedIn expirent après quelques semaines et une recherche qui retrouvait une personne connue n'écrivait pas son adresse fraîche.

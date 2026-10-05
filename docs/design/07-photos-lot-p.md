@@ -231,7 +231,13 @@ Ordre : P-0, P-0b, P-1, P-2, P-3a, P-3b, P-4, P-5, P-6, P-7. Le premier visage c
 Dans chaque sous-lot : migration, puis fonction, puis front. La migration (`deploy-migrations.yml`) et Vercel partent ensemble au push sur `main` sans ordre : un front qui lit `photo_path` ne se fusionne qu'après le succès du workflow de migrations de P-2, sinon toutes les listes de candidats échouent (colonne inconnue). Taille indicative entre parenthèses.
 
 P-0, mesures, spikes, décisions (petit, aucun code livré).
-- S1 : télécharger quelques adresses encore valides depuis une fonction Supabase, sans cookie ni `Referer`, et relever statut, type, taille en octets et en pixels, et la stabilité du chemin (`source_key`). Un échantillon de 20 adresses suffit, rien n'est stocké. Il télécharge de vraies photos de candidats sur le domaine d'images de LinkedIn : il demande l'accord du propriétaire. À lancer avant le 22 octobre, tant qu'il reste des adresses valides.
+- S1 : télécharger quelques adresses encore valides depuis une fonction Supabase, sans cookie ni `Referer`, et relever statut, type, taille en octets et en pixels, et la stabilité du chemin (`source_key`). Un échantillon de 20 adresses suffit, rien n'est stocké. Il télécharge de vraies photos de candidats sur le domaine d'images de LinkedIn : il demande l'accord du propriétaire.
+  - Fait le 5 octobre 2026, avec l'accord du propriétaire. Le proxy du poste de développement refuse le CDN, donc les requêtes sont parties de la base de production (`pg_net`, sortie réseau de Supabase), tirées et lancées entièrement en SQL : aucune adresse n'a été lue par la session, et seules les lignes de réponse de l'essai ont été supprimées ensuite (3 à 8 octets de texte chacune, plage d'octets limitée à 0-4095).
+  - Résultat : 25 adresses valides tirées au hasard (20 petites, 5 grandes, toutes sur `media.licdn.com`), sans cookie ni `Referer`, `Accept: image/*`, agent utilisateur par défaut des fonctions Supabase. 25 réponses sur 25 en 206, aucun refus, aucun délai dépassé, 24 JPEG et 1 PNG, `cache-control: public, max-age=86400`.
+  - Poids des petites : 1,4 à 41 ko, médiane 5,3 ko, aucune au-dessus de 40 Kio. Dix portent `shrink_100_100` dans leur chemin (1,4 à 5,5 ko), deux `shrink_400_400` (33 à 38 ko), huit n'annoncent aucune taille (3 à 41 ko). Les grandes pèsent 25 à 131 ko, plus un PNG de 846 ko, ce qui est proche de la limite de 1 Mio de la garde de téléchargement.
+  - Chemin (`source_key`) : pour les 71 candidats lus plusieurs fois avec des adresses différentes, le chemin est resté le même pour 64 (90 %) et a changé pour 7, ce qui correspond à une photo changée. Un seul hôte.
+  - Limites : la sortie réseau de la base n'est pas celle des fonctions (autre adresse IP possible) ; les pixels réels ne sont pas mesurés (la taille n'est connue que par le chemin, quand il l'annonce) ; ni redirection ni rafale testées. Le premier lot du worker (P-4) sert de contrôle sur le vrai chemin, avec le plan B si une réponse 403 arrive.
+  - Conséquence sur le format : la taille d'une petite image ne se déduit pas du chemin. La garde lit donc les octets de tête (JPEG, PNG) pour les côtés, sans bibliothèque, avant de décider entre « telle quelle » et réduction.
 - Plan B si S1 échoue (le CDN refuse un centre de données) : la copie côté serveur ne marche pas. Repli : l'image binaire servie par le prestataire de messagerie (`get_attendee_picture`, 17 candidats), ou l'adresse lue par le moteur de séquences. Il faut alors revoir le lot avec le propriétaire.
 - S2 : une bibliothèque de réduction d'image qui tient dans les fonctions (256 Mo, 2 s de processeur par requête, sans `sharp`) en moins de 300 ms ; mesurer le temps de processeur de l'appel entier. Sinon le repli de R5.
 - S3 : `createSignedUrls` pour 200 chemins sous la policy par dossier (latence, limite de lot).
@@ -268,8 +274,8 @@ P-3b, purge, export (moyen).
 
 P-4, worker et planification (grand).
 - Ordre : migration de la fonction `invoke_process_candidate_photos` et du cron, fonction `process-candidate-photos` (déployée automatiquement au push, vidange de la boîte et balayage actifs dès le départ), puis activation de `candidate_photos_enabled` sur un petit lot. Mise à jour de `CLAUDE.md` : 71 fonctions, tables, secret, interrupteur.
-- Porte d'activation de la copie : P-3a livré ; `/privacy` mis à jour (4.6) ; réponses du juriste aux questions 1, 2, 4 et 5, ou décision écrite du propriétaire d'assumer le risque ; S1 réussi.
-- Vérification : tests Node de `policy.mjs` (hôte, redirection, taille, type, dimensions, flux plafonné, lecture de `e=`), essai sur quelques lignes, comptage des états, aucun appel Unipile dans les journaux, durée par exécution sous 60 s, une ligne supprimée voit son objet retiré même quand `candidate_photos_enabled` vaut `off`.
+- Porte d'activation de la copie : P-3a livré ; `/privacy` mis à jour (4.6) ; réponses du juriste aux questions 1, 2, 4 et 5, ou décision écrite du propriétaire d'assumer le risque ; S1 réussi (fait le 5 octobre depuis la sortie réseau de la base, à confirmer depuis une fonction au premier lot).
+- Vérification : tests Node de `policy.mjs` (hôte, redirection, taille, type, dimensions, flux plafonné, lecture de `e=`), essai sur quelques lignes (contrôle du statut renvoyé par le CDN à une fonction : un 403 déclenche le plan B), comptage des états, aucun appel Unipile dans les journaux, durée par exécution sous 60 s, une ligne supprimée voit son objet retiré même quand `candidate_photos_enabled` vaut `off`.
 
 P-5, rattrapage (petit).
 - `enqueue_candidate_photo_backfill(p_limit)` réservée à `service_role`, `INSERT … SELECT DISTINCT ON (organization_id, candidate_id)` lu dans la vue pour les personnes hors « jamais ouvert » ayant une adresse non expirée, `source = 'backfill'`. La lecture ciblée de profil dépend de la décision D2.
@@ -313,7 +319,7 @@ Chaque ligne est une question avec son effet. Les choix purement techniques (for
 
 ## 9. Risques
 
-- Le CDN peut refuser une adresse IP de centre de données sans `Referer` ni cookie. Aucun exemple réel n'existe dans le dépôt. S1 tranche avant tout code ; sans repli viable, le lot change.
+- Le CDN peut refuser une adresse IP de centre de données sans `Referer` ni cookie. S1 (5 octobre) a obtenu 25 réponses sur 25 depuis la sortie réseau de la base de production ; reste à le confirmer depuis une fonction au premier lot de P-4. Sans repli viable en cas de refus, le lot change.
 - Les adresses expirent en quelques semaines et 27 % le sont déjà à la notation. Un worker qui tarde ou une file qui s'accumule perd des photos. La file se surveille par comptage d'états.
 - Une réduction d'image peut dépasser 2 s de processeur par requête. Repli : la petite image telle quelle, ou refus.
 - Le déclencheur s'ajoute à une table déjà chargée en déclencheurs (`stage_sync_from_legacy`, `stage_write_guard`, `updated_at`, ingestion). Son surcoût se mesure sur une base locale de 2 000 lignes avant la mise en ligne.
@@ -359,8 +365,8 @@ Gouvernance
 
 ## 11. Ce qui n'a pas été vérifié
 
-- Que l'expiration `e=` rende bien l'image inaccessible (déduit du paramètre, aucun appel au CDN n'a été fait) ; la taille réelle des images en octets et en pixels ; la stabilité du chemin d'une adresse d'une lecture à l'autre. Le chiffre de 20 jours est la validité restante à la création de la ligne, pas la durée de vie d'une signature.
-- Que le CDN réponde à une adresse de centre de données (spike S1).
+- Que l'expiration `e=` rende bien l'image inaccessible (déduit du paramètre, aucun appel au CDN n'a été fait) ; les côtés réels des images en pixels (S1 a mesuré les octets, pas les pixels) ; la stabilité du chemin d'une adresse à plus long terme (90 % de chemins identiques sur 71 candidats, S1). Le chiffre de 20 jours est la validité restante à la création de la ligne, pas la durée de vie d'une signature.
+- Que le CDN réponde à l'adresse IP des fonctions Supabase : S1 l'a vérifié pour la sortie réseau de la base, pas pour le runtime des fonctions.
 - Une bibliothèque de réduction d'image dans les fonctions (spike S2) ; la limite de taille d'un lot de `createSignedUrls` (spike S3).
 - Que `GET /chat_attendees/{id}/picture` accepte l'identifiant du candidat (spike S4).
 - Le coût du déclencheur sur la table en charge et de la jointure dans la vue : mesures à faire en P-1 et en P-2 (celui des mises à jour de P-0b est mesuré, voir P-0b).
