@@ -15,7 +15,7 @@ import { Mail, Phone, Pencil, Loader2, Check, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { HEADER_ACTION_BORDER } from '@/components/outreach/result-card/headerActions';
+import { HEADER_ACTION_CLASS } from '@/components/outreach/result-card/headerActions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -122,7 +122,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
           type="button"
           variant="outline"
           size="sm"
-          className={cn('shrink-0 max-sm:min-h-11', HEADER_ACTION_BORDER)}
+          className={cn('shrink-0 max-sm:min-h-11', HEADER_ACTION_CLASS)}
           title="Ajouter ou modifier l'e-mail et le téléphone à la main"
         >
           <Pencil aria-hidden="true" />

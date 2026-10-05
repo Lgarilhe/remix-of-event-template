@@ -37,7 +37,7 @@ import { toast } from 'sonner';
 import { scoreReasons } from '@/components/missions/v3/panels/candidateAdapters';
 import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
 import { cn } from '@/lib/utils';
-import { HEADER_ACTION_BORDER } from './headerActions';
+import { HEADER_ACTION_CLASS } from './headerActions';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
@@ -1128,7 +1128,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={pipelineMeta.onCreatePortalLink}
-                    className={cn('ml-auto', HEADER_ACTION_BORDER)}
+                    className={cn('ml-auto', HEADER_ACTION_CLASS)}
                     title="Générer un lien à partager au client"
                   >
                     <Link2 aria-hidden="true" />
@@ -1178,7 +1178,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   accountId={accountId}
                   selectedJob={selectedJob ?? undefined}
                   onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
-                  className={pipelineMeta ? HEADER_ACTION_BORDER : undefined}
+                  className={pipelineMeta ? HEADER_ACTION_CLASS : undefined}
                 />
               )}
 
@@ -1217,7 +1217,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   profile={profile}
                   compact
                   mode="button-only"
-                  className={pipelineMeta ? HEADER_ACTION_BORDER : ''}
+                  className={pipelineMeta ? HEADER_ACTION_CLASS : ''}
                 />
               )}
 
