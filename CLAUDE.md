@@ -566,6 +566,7 @@ await settleCredits(adminClient, {
 - `claude-haiku-4-5-20251001` — for fast/cheap tasks
 - Resolve via `getAnthropicModelId()` from `_shared/ai-config.ts`
 - **NEVER hardcode deprecated IDs** like `claude-sonnet-4-20250514`
+- Génération 5 (`claude-sonnet-5-5`, `claude-opus-5-5`) : température refusée (400), réflexion active par défaut, premier bloc de la réponse = `thinking`. Lire le bloc `type: "text"` (jamais `content[0]`), régler `output_config: { effort }`, laisser de la marge sur `max_tokens`. Modèle par défaut seulement pour `scoring` et `brief_analysis` (`autoDefault`) : ne jamais le poser sur une action partagée avec un appelant qui lit `content[0].text` (c'est le cas de `filter_generation`, utilisée par `nl-filter-edit`).
 
 ### DSN format for Unipile
 - `resolveUnipileCredentials()` returns dsn WITH `https://` prefix
