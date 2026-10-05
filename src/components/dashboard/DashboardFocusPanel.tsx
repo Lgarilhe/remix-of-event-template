@@ -5,7 +5,9 @@
  * docs/design/06-simplicite.md) : compte LinkedIn à reconnecter, réponses à
  * lire, candidats qui attendent votre réponse, candidats qui n'avancent plus.
  * Chaque ligne : une pastille d'icône (qui bouge quand quelque chose attend),
- * une phrase, les visages des personnes concernées, et le lien où l'on agit.
+ * une phrase, les visages des personnes concernées, et un bouton discret où l'on agit.
+ * Les lignes sont posées sur une carte ; la panne LinkedIn, qui arrête les envois,
+ * a son propre bandeau teinté et son bouton plein.
  *
  * Un compteur inconnu (number | null) ne disparaît pas : sa ligne dit
  * « Chargement » ou « Indisponible », jamais un zéro inventé.
@@ -15,6 +17,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { IconTile } from '@/components/ui/IconTile';
 import { AvatarStack } from '@/components/ui/person-avatar';
 import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
@@ -65,9 +68,9 @@ const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people,
       </div>
       {(people?.length || action) && (
         <div className="flex items-center gap-4">
-          {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} />}
+          {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} ringClassName="ring-card" />}
           {action && (
-            <Button asChild variant="link" size="sm" className="min-h-11 min-w-11 px-0 font-semibold md:min-h-0 md:min-w-0">
+            <Button asChild variant="secondary" size="sm" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0">
               <Link to={action.href}>{action.label}</Link>
             </Button>
           )}
@@ -75,6 +78,20 @@ const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people,
       )}
     </div>
   </li>
+);
+
+/** Bandeau de la panne LinkedIn : les envois sont arrêtés, c'est la seule alerte qui colore un fond. */
+const LinkedinBanner: React.FC = () => (
+  <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-danger/30 bg-danger-muted px-5 py-4">
+    <IconTile icon={Unplug} tone="destructive" size="lg" className="bg-danger/20" />
+    <div className="min-w-0 flex-1">
+      <p className="text-md font-medium text-foreground">Compte LinkedIn à reconnecter</p>
+      <p className="text-sm text-foreground-secondary">Les envois sont en pause jusqu'à la reconnexion.</p>
+    </div>
+    <Button asChild variant="primary" className="min-h-11 md:min-h-0">
+      <Link to="/settings/account/connections">Reconnecter</Link>
+    </Button>
+  </div>
 );
 
 /** Ligne d'un compteur inconnu : jamais de chiffre, l'état de la lecture. */
@@ -100,25 +117,13 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
     return (
       <div className="space-y-3 py-4" role="status" aria-label="Chargement">
         {[0, 1].map((i) => (
-          <Skeleton key={i} className="h-14 rounded-lg" />
+          <Skeleton key={i} className="h-14 rounded-xl" />
         ))}
       </div>
     );
   }
 
   const rows: React.ReactNode[] = [];
-
-  if (linkedinIssue) {
-    rows.push(
-      <SignalRow
-        key="linkedin"
-        tile={<IconTile icon={Unplug} tone="destructive" size="lg" />}
-        title="Compte LinkedIn à reconnecter"
-        description="Les envois sont en pause jusqu'à la reconnexion."
-        action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
-      />,
-    );
-  }
 
   // La bulle qui écrit va à la première ligne de conversation, pas aux deux.
   let typingUsed = false;
@@ -188,6 +193,15 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
     );
   }
 
-  if (rows.length === 0) return null;
-  return <ul className="divide-y divide-border border-b border-border">{rows}</ul>;
+  if (rows.length === 0 && !linkedinIssue) return null;
+  return (
+    <div className="space-y-3 pt-3">
+      {linkedinIssue && <LinkedinBanner />}
+      {rows.length > 0 && (
+        <Card>
+          <ul className="divide-y divide-border px-5">{rows}</ul>
+        </Card>
+      )}
+    </div>
+  );
 };

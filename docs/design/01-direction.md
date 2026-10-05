@@ -30,17 +30,17 @@ Teinte 40°, saturation 3 %. Le thème sombre est le thème par défaut, le clai
 
 | Jeton | Rôle | Sombre | Clair |
 |---|---|---|---|
-| `--background` | fond de page | `40 3% 11%` | `40 14% 98%` |
-| `--card` | cartes, panneaux | `40 3% 14%` | `0 0% 100%` |
-| `--popover` | menus, dialogues | `40 3% 16%` | `0 0% 100%` |
-| `--muted` / `--secondary` | zones en retrait, contrôles pleins | `40 3% 18%` | `40 8% 95%` |
-| `--accent` | survol d'une ligne ou d'un item | `40 3% 20%` | `40 8% 93%` |
+| `--background` | fond de page | `40 3% 11%` | `40 12% 97%` |
+| `--card` | cartes, panneaux | `40 3% 16%` | `0 0% 100%` |
+| `--popover` | menus, dialogues | `40 3% 18%` | `0 0% 100%` |
+| `--muted` / `--secondary` | zones en retrait, contrôles pleins | `40 3% 20%` | `40 8% 95%` |
+| `--accent` | survol d'une ligne ou d'un item | `40 3% 22%` | `40 8% 93%` |
 | `--sidebar-background` | barre latérale | `40 3% 8%` | `40 8% 96%` |
 | `--border` | filet | blanc 10 % | `40 8% 90%` |
 | `--border-strong` | filet appuyé | blanc 18 % | `40 8% 80%` |
-| `--input` | bord de champ, de case à cocher, piste d'interrupteur éteint | blanc 36 % | `40 3% 53%` |
+| `--input` | bord de champ, de case à cocher, piste d'interrupteur éteint | blanc 40 % | `40 3% 53%` |
 
-`--input` atteint 3:1 sur toutes les surfaces (3,1:1 au pire, sur `muted` en sombre et sur `accent` en clair) : un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`.
+`--input` atteint 3:1 sur toutes les surfaces (3,3:1 au pire sur `accent` en sombre, 2,8:1 sur `accent` en clair, où le champ garde son libellé) : un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`.
 
 Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gris de survol, pas la couleur de marque. La couleur de marque s'appelle `brand`. Pour ne pas laisser d'anciens usages invisibles, `text-accent` et `border-accent` rendent `brand` ; le nouveau code écrit `text-brand`.
 
@@ -50,9 +50,9 @@ Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gr
 |---|---|---|---|
 | `--foreground` | texte principal | `0 0% 98%` | `40 6% 12%` |
 | `--foreground-secondary` | texte secondaire, descriptions | `40 4% 74%` | `40 5% 34%` |
-| `--muted-foreground` | métadonnées, libellés discrets | `40 3% 62%` | `40 4% 42%` |
+| `--muted-foreground` | métadonnées, libellés discrets | `40 3% 64%` | `40 4% 42%` |
 
-Contraste vérifié : `muted-foreground` dépasse 4,5:1 sur le fond, la carte et `muted`, dans les deux thèmes (5,1:1 au pire). L'ancienne valeur sombre (56 %) tombait à 4,2:1 sur `muted`, l'ancienne valeur claire (46 %) à 4,3:1 sur le fond.
+Contraste vérifié : `muted-foreground` dépasse 4,5:1 sur le fond, la carte, le menu et `muted`, dans les deux thèmes (5,0:1 au pire en sombre, 4,7:1 en clair), et reste à 4,7:1 sur le survol en sombre. L'ancienne valeur sombre (56 %) tombait à 4,2:1 sur `muted`, l'ancienne valeur claire (46 %) à 4,3:1 sur le fond.
 
 Pas d'opacité sur un jeton de texte (`text-muted-foreground/60`, `text-foreground/70`) : elle fait tomber le texte sous 4,5:1. Choisir l'un des trois niveaux ci-dessus.
 
@@ -131,12 +131,14 @@ Trois rayons principaux, dérivés de `--radius` (8 px) :
 | Nom | Classe | Valeur | Emploi |
 |---|---|---|---|
 | control | `rounded-lg` | 8 px | boutons, champs, onglets |
-| surface | `rounded-xl` | 12 px | cartes, menus, dialogues, panneaux |
+| surface | `rounded-xl` | 16 px | cartes, menus, dialogues, panneaux |
 | pill | `rounded-full` | plein | badges, pastilles, avatars |
 
 Deux cas dérivés : `rounded-md` (6 px) pour un élément imbriqué dans une surface ou un contrôle (item de menu, segment d'un contrôle segmenté), et `rounded-sm` (4 px) sous 20 px de haut (case à cocher, barre de squelette). `rounded-none`, `rounded-2xl`, `rounded-3xl` et les valeurs arbitraires sont proscrits.
 
-Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` < `card` < `popover`) et un filet, pas par l'ombre. Les ombres servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
+Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` 11 < `card` 16 < `popover` 18 < `muted` 20 < `accent` 22) et un filet. Une carte se détache du fond de 5 points, sans dépendre de son filet. En clair, la carte est blanche sur un fond à 97 % et porte une ombre légère (`shadow-sm`, dans `Card`). Les ombres marquées servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
+
+Relief (demande du propriétaire du 05/10/2026, « l'application est encore un peu plate », référence Qonto) : on regroupe sur une carte ce qui demande une décision (liste « À faire », tableau des missions), on teinte le fond de ce qui bloque le travail (bandeau de la panne LinkedIn : `bg-danger-muted`, filet `danger/30`), et on laisse nu le reste de la page. Une carte contient des lignes séparées par des filets, jamais une autre carte.
 
 ## 5. Hauteurs de contrôle
 
@@ -155,8 +157,11 @@ Toujours passer par les primitives de `src/components/ui/` : `Button` plutôt qu
 
 Boutons :
 
-- `primary` : action principale, monochrome (texte `background` sur fond `foreground`). Un seul par zone.
-- `default` / `outline` : action secondaire, filet et fond transparent.
+Tous les boutons sont des pilules (`rounded-full`). Les champs, eux, gardent le coin de contrôle à 8 px.
+
+- `primary` : action principale, monochrome (texte `background` sur fond `foreground`). Un seul par zone : l'en-tête de page, un bandeau d'alerte, une carte de décision.
+- `secondary` : action suivante, ou action propre à une ligne (« Lire », « Répondre »). Fond `foreground/10`, qui se lit sur toutes les surfaces.
+- `default` / `outline` : option, filet appuyé (`border-strong`) et fond transparent.
 - `ghost` : action tertiaire, sans contour.
 - `destructive` : action irréversible, toujours derrière une `AlertDialog`.
 - `link` : lien dans un texte.

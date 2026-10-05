@@ -198,8 +198,9 @@ test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp retiré'
   // Seul un compte en erreur demande d'agir sur l'accueil ; relier un premier
   // compte reste dans les premiers pas de la barre latérale.
   assert.match(dashboardPage, /linkedinIssue=\{connections\.linkedin\.status === 'error'\}/);
-  assert.match(dashboardTodo, /title="Compte LinkedIn à reconnecter"/);
-  assert.match(dashboardTodo, /action=\{\{ label: 'Reconnecter', href: '\/settings\/account\/connections' \}\}/);
+  // Un bandeau teinté à part, avec le seul bouton plein de la section (les envois sont arrêtés).
+  assert.match(dashboardTodo, />Compte LinkedIn à reconnecter</);
+  assert.match(dashboardTodo, /<Button asChild variant="primary"[^>]*>\s*<Link to="\/settings\/account\/connections">Reconnecter<\/Link>/);
 });
 
 test('R6 — Mon compte LinkedIn : état partagé, formulaire qui ne se rouvre plus seul', () => {

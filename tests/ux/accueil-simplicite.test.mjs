@@ -191,8 +191,9 @@ test('téléphone : titre entier, chiffres sans coupure, visages alignés sur le
   const row = focus({ pendingResponses: 4, pendingPeople: people('Emma Durand', 'Paul Blanc', 'Romain Blanc') });
   assert.equal((row.match(/-ml-1\.5/g) || []).length, 3, 'deux visages et « +1 »');
   assert.doesNotMatch(row, /-ml-2\b/);
-  // Visages et lien dans la colonne du texte : sur téléphone, ils passent sous la phrase, alignés sur elle.
-  assert.match(row, /^<ul [^>]*><li class="flex items-start gap-3\.5 py-4 sm:items-center">/);
+  // Visages et bouton dans la colonne du texte : sur téléphone, ils passent sous la phrase, alignés sur elle.
+  // Les lignes sont posées sur une carte (relief, 01-direction.md § 4).
+  assert.match(row, /^<div class="[^"]*"><div class="rounded-xl border border-border bg-card [^"]*"><ul [^>]*><li class="flex items-start gap-3\.5 py-4 sm:items-center">/);
 
   const missions = render(kit.DashboardMissionsPanel, { projects: [project('m1', '2026-10-01T09:00:00Z')] });
   const line = missions.match(/<span class="([^"]*)">140 sourcés/);
