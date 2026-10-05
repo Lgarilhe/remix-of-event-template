@@ -142,7 +142,7 @@ export function looksThin(text: string, minChars = 600): boolean {
 }
 
 // Blocs qui suivent la fiche sur une page d'offre : leurs intitulés et compétences ne sont pas ceux du poste.
-const TRAILING_SECTION_RE = /^(offres? (d'emploi )?similaires|autres offres|d[ée]couvrez (aussi|d'autres)|similar jobs|you (may|might) also like)\b.*$/im;
+const TRAILING_SECTION_RE = /^(offres? (d'emploi )?(similaires|recommand[ée]es|qui pourraient)|(autres|jobs?|postes?) (offres|jobs?|postes?|similaires)|ces offres|d[ée]couvrez (aussi|d'autres)|pourraient (aussi )?vous (int[ée]resser|plaire)|similar (jobs|roles|positions)|recommended jobs|you (may|might) also like)\b.*$/im;
 
 /** Coupe le texte avant « Offres similaires » et ses voisins, sans jamais amputer le début d'une fiche. */
 export function trimTrailingSections(text: string): string {
@@ -150,25 +150,77 @@ export function trimTrailingSections(text: string): string {
   return m && m.index >= 600 ? text.slice(0, m.index).trim() : text;
 }
 
+const safeDecode = (s: string): string => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
+/** Un bloc d'autres offres doit commencer à plus de 1500 caractères de son titre, sinon le titre est laissé. */
+const BLOCK_TITLE_WINDOW = 1500;
+
+/**
+ * Début des offres suggérées d'une page d'offre Welcome to the Jungle : le premier lien vers
+ * une autre offre (/companies/<société>/jobs/<offre>), reculé jusqu'au titre du bloc s'il est
+ * proche. Le lien d'une offre vers elle-même (postuler, partager) n'en est pas un.
+ */
+function otherJobsStartInHtml(html: string, jobRef: string | undefined): number {
+  if (!jobRef) return -1;
+  const re = /<a\b[^>]*\bhref=["'][^"']*?\/companies\/[^/"'?#]+\/jobs\/([^/"'?#]+)/gi;
+  for (const m of html.matchAll(re)) {
+    if (safeDecode(m[1]) === jobRef) continue;
+    const title = [...html.slice(0, m.index).matchAll(/<h[1-6]\b/gi)].at(-1);
+    return title && m.index - title.index < BLOCK_TITLE_WINDOW ? title.index : m.index;
+  }
+  return -1;
+}
+
+function otherJobsStartInMarkdown(md: string, jobRef: string | undefined): number {
+  if (!jobRef) return -1;
+  const re = /\]\([^)\s]*?\/companies\/[^/)\s?#]+\/jobs\/([^/)\s?#]+)/g;
+  for (const m of md.matchAll(re)) {
+    if (safeDecode(m[1]) === jobRef) continue;
+    const lineStart = md.lastIndexOf("\n", m.index) + 1;
+    const title = [...md.slice(0, lineStart).matchAll(/^#{1,6}\s.*$/gm)].at(-1);
+    return title && lineStart - title.index < BLOCK_TITLE_WINDOW ? title.index : lineStart;
+  }
+  return -1;
+}
+
+/** Texte rendu, coupé avant les offres suggérées ; sans coupe utile (fiche réduite à rien), le texte entier. */
+function withoutOtherJobs(full: string, cutText: (() => string) | null): string {
+  const kept = trimTrailingSections(full);
+  const cut = cutText ? trimTrailingSections(cutText()) : "";
+  return cut.length >= 600 ? cut : kept;
+}
+
 /**
  * Texte visible d'une page d'offre : le contenu de <main> (titre, tags, résumé, descriptif,
- * profil, entretiens), sinon la page entière. Le JobPosting de certains sites n'en porte
- * que le descriptif.
+ * profil, entretiens), sinon la page entière, sans les offres suggérées (jobRef : l'offre lue).
+ * Le JobPosting de certains sites n'en porte que le descriptif.
  */
-export function jobPageText(html: string): string {
+export function jobPageText(html: string, jobRef?: string): string {
+  const render = (h: string, keepHeader: boolean): string => {
+    const start = otherJobsStartInHtml(h, jobRef);
+    return withoutOtherJobs(htmlToText(h, { keepHeader }), start >= 0 ? () => htmlToText(h.slice(0, start), { keepHeader }) : null);
+  };
   const open = /<main\b[^>]*>/i.exec(html ?? "");
-  let text = "";
   if (open) {
     const end = [...html.matchAll(/<\/main\s*>/gi)].at(-1)?.index;
-    text = htmlToText(html.slice(open.index + open[0].length, end !== undefined && end > open.index ? end : undefined), { keepHeader: true });
+    const main = render(html.slice(open.index + open[0].length, end !== undefined && end > open.index ? end : undefined), true);
+    if (main.length >= 300) return main;
   }
-  return trimTrailingSections(text.length >= 300 ? text : htmlToText(html));
+  return render(html ?? "", false);
 }
 
 /** Même chose pour un rendu Markdown de la page entière : on repart du premier titre, après les menus. */
-export function jobMarkdownText(md: string): string {
+export function jobMarkdownText(md: string, jobRef?: string): string {
   const heading = /^#\s/m.exec(md ?? "");
-  return trimTrailingSections(markdownToText(heading ? md.slice(heading.index) : md));
+  const body = heading ? md.slice(heading.index) : md ?? "";
+  const start = otherJobsStartInMarkdown(body, jobRef);
+  return withoutOtherJobs(markdownToText(body), start >= 0 ? () => markdownToText(body.slice(0, start)) : null);
 }
 
 export interface PageLink {

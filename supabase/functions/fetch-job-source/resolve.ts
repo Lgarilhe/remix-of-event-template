@@ -42,6 +42,8 @@ const MIN_PAGE_TEXT_CHARS = 800;
 
 export const MSG_LINKEDIN = "LinkedIn ne permet pas de lire une offre depuis son adresse. Collez le texte de la fiche.";
 export const MSG_UNREADABLE = "Cette page n'a pas pu être lue (accès refusé ou contenu absent). Collez le texte de la fiche.";
+export const MSG_WTTJ_ADDRESS =
+  "Cette adresse Welcome to the Jungle n'a pas pu être lue. Utilisez l'adresse d'une offre, ou celle de la page emplois d'une société (…/companies/<société>/jobs).";
 
 const JOB_TEXT_RE = /(missions?|profil|exp[ée]rience|responsabilit|vos t[âa]ches|requirements|qualifications|responsibilities|about the role)/i;
 
@@ -135,16 +137,16 @@ const FULLER_RATIO = 1.25;
  * champs (titre, société, lieu, contrat, salaire) et on remplace la description par le texte
  * de la page, lu directement, sinon rendu par Firecrawl. Sans mieux, le JobPosting reste.
  */
-async function completeFromPage(url: URL, job: SourceJob, html: string, deps: Deps): Promise<Resolved> {
+async function completeFromPage(url: URL, job: SourceJob, html: string, deps: Deps, jobRef?: string): Promise<Resolved> {
   const known = job.description?.length ?? 0;
-  const text = jobPageText(html);
+  const text = jobPageText(html, jobRef);
   if (text.length >= MIN_PAGE_TEXT_CHARS && !looksThin(text) && text.length > known * FULLER_RATIO) {
     return { kind: "job", job: { ...job, description: capDescription(text) }, reader: "direct_text" };
   }
   if (await deps.allowFirecrawl()) {
     try {
       // Page entière : le contenu principal seul peut perdre le bloc de tags au-dessus du descriptif.
-      const rendered = jobMarkdownText((await deps.scrape(url.toString(), false)).markdown);
+      const rendered = jobMarkdownText((await deps.scrape(url.toString(), false)).markdown, jobRef);
       if (!looksThin(rendered, 400) && rendered.length > known * FULLER_RATIO) {
         return { kind: "job", job: { ...job, description: capDescription(rendered) }, reader: "firecrawl" };
       }
@@ -168,7 +170,7 @@ async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved |
     const ld = extractJsonLdJobs(html, url.toString());
     const withText = ld.filter((j) => (j.description?.length ?? 0) >= MIN_DESCRIPTION_CHARS);
     if (c.kind !== "company" && withText.length === 1) {
-      return c.source === "wttj" ? completeFromPage(url, withText[0], html, deps) : { kind: "job", job: withText[0], reader: "json_ld" };
+      return c.source === "wttj" ? completeFromPage(url, withText[0], html, deps, c.jobRef) : { kind: "job", job: withText[0], reader: "json_ld" };
     }
     if (c.kind !== "job" && ld.length >= 2) return companyResult(c, url, withoutDescriptions(ld), "json_ld");
     if (c.kind !== "job") {
@@ -176,7 +178,7 @@ async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved |
       if (list.length) return companyResult(c, url, list, "direct_text");
     }
     if (c.kind !== "company") {
-      const text = htmlToText(html);
+      const text = c.source === "wttj" ? jobPageText(html, c.jobRef) : htmlToText(html);
       if (text.length >= MIN_PAGE_TEXT_CHARS && !looksThin(text) && (c.kind === "job" || JOB_TEXT_RE.test(text))) {
         return jobFromText(c, url, pageTitle(html), text, "direct_text");
       }
@@ -192,7 +194,7 @@ async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved |
       if (list.length) return companyResult(c, url, list, "firecrawl");
     }
     if (c.kind !== "company") {
-      const text = markdownToText(page.markdown);
+      const text = c.source === "wttj" ? jobMarkdownText(page.markdown, c.jobRef) : markdownToText(page.markdown);
       if (!looksThin(text, 400)) return jobFromText(c, url, firstMarkdownHeading(page.markdown), text, "firecrawl");
     }
   } catch (e) {
@@ -228,7 +230,11 @@ export async function resolveUrl(url: URL, deps: Deps, expectJob: boolean): Prom
     chars: result?.kind === "job" ? result.job.description?.length : undefined,
   });
 
-  if (!result) return { kind: "unreadable", message: MSG_UNREADABLE };
+  if (!result) {
+    // Recherche ou page d'accueil du site : l'adresse attendue est celle d'une offre ou d'une société.
+    const unknownWttj = c.source === "generic" && /(^|\.)welcometothejungle\.com$/.test(url.hostname);
+    return { kind: "unreadable", message: unknownWttj ? MSG_WTTJ_ADDRESS : MSG_UNREADABLE };
+  }
   if (expectJob && result.kind === "company") return { kind: "unreadable", message: MSG_UNREADABLE };
   return result;
 }

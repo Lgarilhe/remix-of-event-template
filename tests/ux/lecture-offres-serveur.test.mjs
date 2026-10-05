@@ -522,6 +522,63 @@ test('texte de page d\'offre : contenu principal avec son en-tête, sans menu ni
   assert.match(k.htmlToText('<header>Titre</header><p>Fiche</p>', { keepHeader: true }), /Titre/);
 });
 
+// Offres suggérées d'autres sociétés sous un titre que le lecteur ne connaît pas : c'est leurs liens qui les trahissent.
+const WTTJ_WITH_SUGGESTIONS = `<html><head>${wttjLd(`<p>${LONG(320)}</p>`)}</head><body>
+<main>
+<header><h1>Expert Sécurité Opérationnelle</h1><a href="/fr/companies/numspot/jobs/expert-securite_courbevoie/apply">Postuler</a>
+<h2>Compétences et expertises</h2><ul><li>SOC</li><li>SIEM</li></ul></header>
+<section><h2>Descriptif du poste</h2><p>${LONG(700)}</p></section>
+<section><h2>Profil recherché</h2><p>Cinq ans d'expérience en sécurité opérationnelle.</p></section>
+<section><h2>Déroulement des entretiens</h2><p>Un échange RH et un entretien technique.</p></section>
+<section><h2>Ils recrutent aussi</h2><ul>
+<li><a href="https://www.welcometothejungle.com/fr/companies/autre-societe/jobs/devops-senior_paris"><h3>DevOps Senior</h3><p>Autre Société, Paris, kubernetes terraform</p></a></li>
+<li><a href="/fr/companies/encore/jobs/data-engineer_lyon"><h3>Data Engineer</h3></a></li></ul></section>
+</main></body></html>`;
+
+test('flux : Welcome to the Jungle, les offres suggérées d\'autres sociétés ne s\'ajoutent pas à la fiche', async () => {
+  const net = fakeNet({ pages: { [WTTJ_JOB]: WTTJ_WITH_SUGGESTIONS } });
+  const r = await resolve(net, WTTJ_JOB);
+  assert.equal(r.reader, 'direct_text');
+  for (const part of ['Compétences et expertises', 'Profil recherché', 'Déroulement des entretiens', 'entretien technique']) {
+    assert.match(r.job.description, new RegExp(part), `« ${part} » gardé`);
+  }
+  assert.doesNotMatch(r.job.description, /DevOps Senior|Data Engineer|Ils recrutent aussi|kubernetes/i, 'ni offres voisines, ni leur titre de bloc');
+  assert.match(r.job.description, /entretien technique/, 'le lien « postuler » de l\'offre elle-même ne coupe rien');
+
+  // Un lien vers une autre offre tout en haut (fil d'Ariane) ne doit pas vider la fiche : le texte entier est gardé.
+  const breadcrumb = WTTJ_WITH_SUGGESTIONS.replace('<main>', '<main><p>Vous êtes ici : accueil, emplois, sécurité.</p><a href="/fr/companies/numspot/jobs/autre-offre_paris">Autre offre</a>');
+  const kept = await resolve(fakeNet({ pages: { [WTTJ_JOB]: breadcrumb } }), WTTJ_JOB);
+  assert.match(kept.job.description, /Déroulement des entretiens/);
+});
+
+test('flux : Welcome to the Jungle, le rendu Firecrawl est coupé avant les liens vers d\'autres offres', async () => {
+  const shell = `<html><head>${wttjLd(`<p>${LONG(320)}</p>`)}</head><body><div id="__next"></div></body></html>`;
+  const md = [
+    '# Expert Sécurité Opérationnelle',
+    '[Postuler](https://www.welcometothejungle.com/fr/companies/numspot/jobs/expert-securite_courbevoie/apply)',
+    '## Profil recherché', LONG(700),
+    '## Déroulement des entretiens', 'Un échange RH et un entretien technique.',
+    '## Ils recrutent aussi',
+    '[DevOps Senior\n\nParis](https://www.welcometothejungle.com/fr/companies/autre-societe/jobs/devops-senior_paris)',
+  ].join('\n\n');
+  const net = fakeNet({ pages: { [WTTJ_JOB]: shell }, rendered: { [WTTJ_JOB]: { markdown: md, links: [] } } });
+  const r = await resolve(net, WTTJ_JOB);
+  assert.equal(r.reader, 'firecrawl');
+  assert.match(r.job.description, /Déroulement des entretiens/);
+  assert.doesNotMatch(r.job.description, /DevOps Senior|Ils recrutent aussi/);
+});
+
+test('flux : une adresse Welcome to the Jungle que le lecteur ne reconnaît pas dit quelle adresse utiliser', async () => {
+  const search = 'https://www.welcometothejungle.com/fr/jobs?query=product';
+  const net = fakeNet({ firecrawl: false });
+  const r = await resolve(net, search);
+  assert.equal(r.kind, 'unreadable');
+  assert.equal(r.message, k.MSG_WTTJ_ADDRESS);
+  assert.match(r.message, /companies\/<société>\/jobs/);
+  // Ailleurs, le message général reste.
+  assert.equal((await resolve(fakeNet({ firecrawl: false }), 'https://example.com/')).message, k.MSG_UNREADABLE);
+});
+
 test('flux : un JobPosting réduit à un résumé ne suffit pas, la page est lue plus loin', async () => {
   // La description de JSON_LD_PAGE fait une quarantaine de caractères : un résumé, pas une fiche.
   const md = `# Expert Sécurité Opérationnelle\n\n${LONG(1500)}`;
