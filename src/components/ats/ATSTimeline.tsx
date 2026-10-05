@@ -10,6 +10,7 @@ import { fr } from 'date-fns/locale';
 import { Bell, Briefcase, GitBranch, Send, StickyNote } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
 
@@ -106,6 +107,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
 
                   <div className="relative rounded-lg border border-border bg-card p-3 transition-colors duration-150 hover:border-border-strong">
                     <div className="flex items-start justify-between gap-3">
+                      <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={32} />
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <h3 className="min-w-0 text-sm font-medium text-foreground">

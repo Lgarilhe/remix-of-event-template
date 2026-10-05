@@ -59,6 +59,8 @@ export interface ATSCandidate {
     salary_analysis?: any;
   } | null;
   linkedinProfileData?: any;
+  /** Photo LinkedIn enregistrée (lignes de mission) ; absente, ce sont les initiales (PersonAvatar). */
+  pictureUrl?: string | null;
   /**
    * Lot 0c-4 : champs de la vue mission_candidate_rows (lignes de mission).
    * Mission du candidat (uuid, jamais « project:… »), nom de la mission.
@@ -178,8 +180,11 @@ const GC_TIME = 60 * 60 * 1000;
  * anciens du groupe). La colonne vient de l'étape générale (atsColumnOf,
  * plan 0c section 6.5), jamais de status ni d'un repli sur pipeline_stage,
  * sauf pour les quatre colonnes d'entretien.
+ *
+ * La photo seule est extraite côté base (`linkedin_profile_data->>…`) : jamais le profil entier.
  */
-const MCR_DISPLAY_COLUMNS = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, general_stage, process_step_id, stage_entered_at, score, recommendation, job_id, project_id, mission_name, tags, updated_at, created_at, scoring_details, contacted_at, replied_at, first_interview_at, hired_at, rejected_from_stage, is_unopened, group_ids';
+// Chaîne typée string : sinon l'analyse du select par le client typé dépasse la profondeur permise (TS2589).
+const MCR_DISPLAY_COLUMNS: string = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, general_stage, process_step_id, stage_entered_at, score, recommendation, job_id, project_id, mission_name, tags, updated_at, created_at, scoring_details, contacted_at, replied_at, first_interview_at, hired_at, rejected_from_stage, is_unopened, group_ids, picture:linkedin_profile_data->>profile_picture_url, picture_large:linkedin_profile_data->>profile_picture_url_large';
 
 /** Ligne de la vue, telle que lue par le /pipeline. */
 export interface MissionRow {
@@ -209,6 +214,9 @@ export interface MissionRow {
   rejected_from_stage: string | null;
   is_unopened: boolean | null;
   group_ids: string[] | null;
+  /** Adresse de la photo LinkedIn enregistrée (petite, puis grande). */
+  picture?: string | null;
+  picture_large?: string | null;
 }
 
 // Toutes les lignes de mission visibles (RLS de l'appelant), jamais ouverts compris.
@@ -276,6 +284,7 @@ export function candidateOfMissionRow(r: MissionRow, stepNames?: ReadonlyMap<str
     tags: r.tags || [],
     scoringDetails: (r.scoring_details as ATSCandidate['scoringDetails']) || null,
     linkedinProfileData: null,
+    pictureUrl: r.picture || r.picture_large || null,
     projectId: r.project_id,
     missionName: r.mission_name,
     generalStage: isGeneralStage(r.general_stage) ? r.general_stage : null,
