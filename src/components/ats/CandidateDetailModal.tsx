@@ -456,12 +456,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         stageOptions: stageOptions ?? ATS_STAGES.map(s => ({ key: s.key, label: s.label })),
         onStageChange: (newStage) => onStageChange(candidate.id, newStage),
         score: candidate.score,
-        onScoreClick: () => {
-          // Switch sur l'onglet Évaluation (handled par CardExpandedContent
-          // via defaultValue, pas de programmatic switch ici — on pourrait
-          // exposer un setActiveTab plus tard si besoin).
-          toast.info("Voir l'onglet Évaluation");
-        },
+        // Pas de onScoreClick : la note de l'en-tête ouvre elle-même l'onglet Évaluation.
         tags: candidate.tags || [],
         onTagsChange: (tags) => onTagsChange?.(candidate.id, tags),
         onCreatePortalLink: handleCreatePortalLink,

@@ -27,7 +27,8 @@ const RING_SIZE = 32;
 const RING_RADIUS = 13;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
-export function ScorePill({ score, title }: { score: number | null; title?: string | null }) {
+/** `size` agrandit l'anneau (la fiche du candidat en montre un de 56 px) ; le trait et le nombre suivent. */
+export function ScorePill({ score, title, size = RING_SIZE }: { score: number | null; title?: string | null; size?: number }) {
   if (score === null) return null;
   const rounded = Math.round(score);
   const share = Math.max(0, Math.min(100, rounded)) / 100;
@@ -35,10 +36,10 @@ export function ScorePill({ score, title }: { score: number | null; title?: stri
     <span
       title={title ?? undefined}
       aria-label={`Note ${rounded}`}
-      className="relative inline-flex shrink-0 items-center justify-center text-xs font-semibold tabular-nums text-foreground"
-      style={{ width: RING_SIZE, height: RING_SIZE }}
+      className={cn('relative inline-flex shrink-0 items-center justify-center font-semibold tabular-nums text-foreground', size >= 48 ? 'text-lg' : 'text-xs')}
+      style={{ width: size, height: size }}
     >
-      <svg viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} className="absolute inset-0 -rotate-90" aria-hidden="true">
+      <svg viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
         <circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_RADIUS} fill="none" strokeWidth={2.5} className="stroke-foreground/15" />
         <circle
           cx={RING_SIZE / 2}
