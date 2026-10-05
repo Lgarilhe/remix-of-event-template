@@ -299,6 +299,9 @@
     --backdrop-b: 226 66% 34%;
     --backdrop-c: 205 60% 28%;
     --backdrop-grain: 0.16;
+    /* Position du curseur de -1 à 1, posée par PageBackdrop (option follow) ; 0 au repos. */
+    --konekt-mx: 0;
+    --konekt-my: 0;
     --backdrop-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1.6 0 0 0 -.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     position: absolute;
     inset: 0 0 auto 0;
@@ -357,6 +360,33 @@
     background: radial-gradient(closest-side, hsl(var(--backdrop-c) / 0.5), transparent);
     animation-name: konektBackdropC;
     animation-duration: 37s;
+  }
+  /* Option contained : fondu aussi sur les côtés (conteneur à marges). Sans prise en charge de
+     mask-composite, le fondu du haut reste seul et les côtés restent nets. */
+  .konekt-backdrop--contained {
+    -webkit-mask-image:
+      linear-gradient(to bottom, #000 0%, #000 28%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to bottom, #000 0%, #000 28%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
+    mask-composite: intersect;
+  }
+  /* Option follow : les taches se penchent vers le curseur. La propriété `translate` se compose
+     avec l'animation `transform` sans la gêner ; --konekt-mx et --konekt-my (de -1 à 1) sont posées
+     par PageBackdrop. Le fond (c) bouge le plus, comme un plan plus proche. */
+  .konekt-backdrop--follow .konekt-backdrop__blob {
+    transition: translate 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .konekt-backdrop--follow .konekt-backdrop__blob--a {
+    translate: calc(var(--konekt-mx) * 6%) calc(var(--konekt-my) * 8%);
+  }
+  .konekt-backdrop--follow .konekt-backdrop__blob--b {
+    translate: calc(var(--konekt-mx) * 9%) calc(var(--konekt-my) * 8%);
+  }
+  .konekt-backdrop--follow .konekt-backdrop__blob--c {
+    translate: calc(var(--konekt-mx) * 13%) calc(var(--konekt-my) * 10%);
   }
   @keyframes konektBackdropA {
     from { transform: translate3d(0, 0, 0) scale(1); }

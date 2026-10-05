@@ -130,7 +130,7 @@ export default function SourcingSearches() {
         description="Sourcez des candidats librement, sans créer de mission"
       />
 
-      <PageBackdrop />
+      <PageBackdrop follow />
 
       <motion.div
         initial={reduceMotion ? false : { opacity: 0, y: 12 }}

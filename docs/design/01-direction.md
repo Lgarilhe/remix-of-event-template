@@ -18,7 +18,7 @@ Ce que l'on prend des tendances 2026 :
 Ce que l'on écarte :
 
 - Le « liquid glass » et les surfaces en verre dépoli : illisibles sur les listes denses, coûteux à l'affichage, et contraires au calme recherché.
-- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne. Seules exceptions : le fond de l'accueil et de la recherche hors mission, et les cartes texturées (§ 7).
+- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne. Seules exceptions : le fond de l'accueil, de la recherche et du héros du sourcing, et les cartes texturées (§ 7).
 - Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture. Même exception pour ces écrans et ces cartes.
 - Les emoji servant d'icône, et l'étincelle ✨ pour dire « IA ».
 
@@ -187,11 +187,13 @@ Retour d'appui : un bouton descend d'un pixel ou passe à 98 % de sa taille pend
 
 Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026), icônes qui attendent et fond de l'accueil (§ Fond animé). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
 
-Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto AI) : `PageBackdrop` (`src/components/layout/PageBackdrop.tsx`, styles `.konekt-backdrop` de `src/index.css`) pose sur l'accueil (`/dashboard`, par `PageLayout backdrop`) et sur la recherche hors mission (`/sourcing`) trois taches de dégradé bleu-vert et bleu qui dérivent en 23, 29 et 37 s, un grain SVG fixe, le tout fondu vers le fond de page sur 28 rem. Règles à tenir si on le retouche :
+Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto AI) : `PageBackdrop` (`src/components/layout/PageBackdrop.tsx`, styles `.konekt-backdrop` de `src/index.css`) pose sur l'accueil (`/dashboard`, par `PageLayout backdrop`), sur la recherche hors mission (`/sourcing`) et sur le héros et le plan du sourcing d'une mission (`LinkedInSearch`, nouvelle page mission : onglet Sourcing et `/sourcing/:id`, un seul fond posé à la racine, jamais sur les résultats, tableau dense aux cellules opaques) trois taches de dégradé bleu-vert et bleu qui dérivent en 23, 29 et 37 s, un grain SVG fixe, le tout fondu vers le fond de page sur 28 rem. Règles à tenir si on le retouche :
 
 - Transform seul, jamais de `filter: blur` ni d'animation de couleur : le fond ne doit pas coûter de repeinture.
 - Décoratif : `aria-hidden`, aucun clic. Avec le mouvement réduit, les taches restent à leur place de départ (règle globale de `src/index.css`).
 - Le texte gris garde 4,5:1 sous les taches, en sombre comme en clair, de 390 à 1440 px de large et à toute phase de l'animation. Pour y arriver, la page qui porte le fond règle `--muted-foreground` un cran plus lisible (classe `.konekt-on-backdrop`, plus clair en sombre, plus foncé en clair). Les jetons globaux ne changent pas. Mesure faite le 05/10/2026 : 4,5 à 5,0 sur l'accueil, 5,6 et plus sur la recherche. Si on pousse les couleurs ou les opacités, refaire cette mesure avant de livrer.
+- La souris (option `follow`, recherche hors mission, héros et plan du sourcing, pas l'accueil) : les taches se penchent vers le curseur par la propriété `translate`, qui se compose avec la dérive sans la gêner et n'éclaircit rien. Souris seulement : rien au toucher, rien avec le mouvement réduit. Mesure faite le 05/10/2026 avec la souris aux quatre coins de la fenêtre et au centre, à trois phases de la dérive, de 390 à 1440 px : 5,5 au pire.
+- Option `contained` : dans un conteneur à marges (le sourcing), les bords se fondent aussi sur les côtés.
 - Pas d'autre écran sans décision du propriétaire.
 
 Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Trois usages, pas d'autre sans décision du propriétaire :

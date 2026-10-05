@@ -44,6 +44,7 @@ const { outputFiles } = await build({
   stdin: {
     contents: [
       "export { PageLayout } from './src/components/layout/PageLayout';",
+      "export { PageBackdrop } from './src/components/layout/PageBackdrop';",
       "export { texturedCard } from './src/components/layout/texturedCard';",
       "export { DashboardFocusPanel } from './src/components/dashboard/DashboardFocusPanel';",
       "export { DashboardMissionsPanel } from './src/components/dashboard/DashboardMissionsPanel';",
@@ -107,7 +108,7 @@ test('fond : thème clair dessiné à part, texte gris réglé pour la page qui 
   assert.match(css, /\.light \.konekt-on-backdrop \{[^}]*--muted-foreground:/);
 });
 
-test('fond : seuls l\'accueil et la recherche hors mission l\'utilisent', () => {
+test('fond : seuls l\'accueil, la recherche hors mission et le héros du sourcing l\'utilisent', () => {
   const walk = (dir) =>
     readdirSync(dir).flatMap((name) => {
       const abs = join(dir, name);
@@ -117,10 +118,15 @@ test('fond : seuls l\'accueil et la recherche hors mission l\'utilisent', () => 
   const users = walk(join(ROOT, 'src'))
     .map((abs) => relative(ROOT, abs).split('\\').join('/'))
     .filter((rel) => /<PageBackdrop\b|<PageLayout\b[^>]*\bbackdrop\b/.test(read(rel)));
-  assert.deepEqual(users.sort(), ['src/components/layout/PageLayout.tsx', 'src/pages/Dashboard.tsx', 'src/pages/SourcingSearches.tsx']);
+  assert.deepEqual(users.sort(), [
+    'src/components/layout/PageLayout.tsx',
+    'src/components/outreach/LinkedInSearch.tsx',
+    'src/pages/Dashboard.tsx',
+    'src/pages/SourcingSearches.tsx',
+  ]);
   assert.match(read('src/pages/Dashboard.tsx'), /<PageLayout maxWidth="md" backdrop>/);
   const search = read('src/pages/SourcingSearches.tsx');
-  assert.match(search, /<PageBackdrop \/>/);
+  assert.match(search, /<PageBackdrop follow \/>/, 'la souris fait pencher les taches sur la recherche');
   assert.match(search, /className="konekt-on-backdrop relative flex w-full/);
 });
 
@@ -195,4 +201,39 @@ test('cartes texturées : seuls la carte « Maintenant », le bandeau LinkedIn e
     'src/components/dashboard/DashboardMissionsPanel.tsx',
     'src/components/missions/v3/pipeline/NowCard.tsx',
   ]);
+});
+
+// ─── Souris et écrans de sourcing ───────────────────────────────────────────
+
+test('fond : la souris incline les taches par `translate`, sans éclaircir ni repeindre', () => {
+  const html = kit.renderToStaticMarkup(kit.createElement(kit.PageBackdrop, { follow: true, contained: true }));
+  assert.match(html, /^<div aria-hidden="true" class="konekt-backdrop konekt-backdrop--follow konekt-backdrop--contained">/);
+  assert.doesNotMatch(kit.renderToStaticMarkup(kit.createElement(kit.PageBackdrop)), /--follow|--contained/, 'défaut inchangé');
+
+  const followCss = css.slice(css.indexOf('.konekt-backdrop--follow .konekt-backdrop__blob {'), css.indexOf('@keyframes konektBackdropA'));
+  assert.match(followCss, /translate: calc\(var\(--konekt-mx\) \* /);
+  assert.match(css, /\.konekt-backdrop \{[^}]*--konekt-mx: 0;[^}]*--konekt-my: 0;/, 'déclarées par défaut : 0 au repos, le composant les écrase');
+  assert.doesNotMatch(followCss, /transform:|filter|opacity|blur\(/, '`translate` se compose avec l\'animation, rien d\'autre ne bouge');
+  assert.match(css, /\.konekt-backdrop--contained \{[^}]*mask-composite: intersect/);
+});
+
+test('fond : le suivi de souris ignore le toucher et le mouvement réduit, et se défait au démontage', () => {
+  const src = read('src/components/layout/PageBackdrop.tsx');
+  assert.match(src, /matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\) return;/);
+  assert.match(src, /e\.pointerType !== 'mouse'\) return;/);
+  assert.match(src, /addEventListener\('pointermove', onMove, \{ passive: true \}\)/);
+  assert.match(src, /removeEventListener\('pointermove', onMove\)/);
+  assert.match(src, /cancelAnimationFrame\(frame\)/);
+  assert.match(src, /requestAnimationFrame\(apply\)/, 'une écriture par image, pas par événement');
+});
+
+test('sourcing : fond au héros et au plan de la nouvelle page mission seulement, jamais sur les résultats', () => {
+  const src = read('src/components/outreach/LinkedInSearch.tsx');
+  assert.match(src, /const showBackdrop = isV3 && !!activeProject && \(flowMode === 'hero' \|\| flowMode === 'plan'\);/);
+  assert.match(src, /\{showBackdrop && <PageBackdrop follow contained \/>\}/);
+  assert.equal((src.match(/<PageBackdrop\b/g) || []).length, 1, 'un seul fond, posé une fois : pas de remise à zéro entre le héros et le plan');
+  assert.match(src, /showBackdrop && 'relative konekt-on-backdrop'/);
+  // L'accueil garde un fond fixe sous la souris : seul le sourcing et la recherche suivent le curseur.
+  assert.match(read('src/components/layout/PageLayout.tsx'), /\{backdrop && <PageBackdrop \/>\}/);
+  assert.match(read('src/components/outreach/search/SourcingFlow.tsx'), /<div className="flex-1 px-4 py-6 min-h-\[420px\] relative">/, 'le plan passe au-dessus du fond');
 });
