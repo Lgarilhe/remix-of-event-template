@@ -86,10 +86,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const { openAgent } = useAgent();
   const { organizationId } = useOrganization();
-  // Compte d'envoi du candidat (séquences, InMails), sinon le compte relié de la personne : l'onglet Messages s'ouvre aussi pour un candidat contacté à la main.
   const myLinkedInAccountId = useMyLinkedInAccountId();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
+  // Compte d'envoi du candidat (séquences, InMails), sinon le compte relié de la
+  // personne : l'onglet Messages et le bouton Séquence existent aussi pour un
+  // candidat contacté à la main.
+  const accountId = fullProfile.accountId || myLinkedInAccountId || undefined;
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
 
@@ -392,7 +395,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       icon: MessageSquare,
       content: (
         <CardMessageThread
-          accountId={fullProfile.accountId || myLinkedInAccountId || undefined}
+          accountId={accountId}
           profileId={candidate.candidateId}
           profileName={candidate.name}
           projectId={missionIdOfJob(candidate.jobId)}
@@ -443,7 +446,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
-    reminders, loading, activeRemindersCount, openAgent, organizationId, myLinkedInAccountId,
+    reminders, loading, activeRemindersCount, openAgent, organizationId, accountId,
   ]);
 
   return (
@@ -452,7 +455,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
       selectedJob={null}
-      accountId={fullProfile.accountId || undefined}
+      accountId={accountId}
       airtableMatch={fullProfile.airtableMatch}
       pipelineMeta={{
         stage: candidate.stage,
