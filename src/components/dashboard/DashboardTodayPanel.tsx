@@ -46,6 +46,8 @@ interface DashboardTodayPanelProps {
   remindersToday: Reminder[];
   /** Client d'une mission, par id (« project:… » ou nu), pour les initiales d'une tâche de mission. */
   missionClientOf?: (jobId: string) => string | null;
+  /** Logo du client enregistré dans le brief, par id de mission ; sans logo, les initiales. */
+  missionLogoOf?: (jobId: string) => string | null;
   isLoading?: boolean;
   /** Message technique si une lecture (tâches, envois) a échoué. */
   error?: string | null;
@@ -94,6 +96,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
   scheduledMessages,
   remindersToday,
   missionClientOf,
+  missionLogoOf,
   isLoading,
   error,
   onRetry,
@@ -191,7 +194,8 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
     }
     if (r.job_id || r.job_title) {
       const client = r.job_id ? missionClientOf?.(r.job_id) ?? null : null;
-      return <MissionCompanyLogo company={client || r.job_title} size={36} />;
+      const logo = r.job_id ? missionLogoOf?.(r.job_id) ?? null : null;
+      return <MissionCompanyLogo company={client || r.job_title} logoUrl={logo} size={36} />;
     }
     return <IconTile icon={ListChecks} size="md" />;
   };

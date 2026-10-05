@@ -32,11 +32,32 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
-## 2026-10-06 — REFACTOR — Visages des candidats dans le /pipeline global
+## 2026-10-05 — SHIP — Design simplifié, lot T : la page Tâches comme la maquette
+
+**Contexte** : troisième écran du design simplifié (`docs/design/06-simplicite.md`), après l'accueil. La page Tâches suit la maquette « Konekt simplifié » : sept contrôles de filtre, une liste encadrée, des dates en rouge sur chaque ligne et une corbeille par ligne. Sur le banc, huit suggestions passaient avant les tâches : sur téléphone, la première tâche arrivait à 1 408 px du haut de la page.
+**Décision / Fait** : un seul bouton plein (« Nouvelle tâche », plus d'« Actualiser ») ; Mes tâches / Équipe et En cours / Toutes, puis un seul menu « Filtres » (catégorie, mission, origine), comme la messagerie. Listes sans cadre ; « En retard » en rouge sous le réveil qui sonne, les dates des lignes sans couleur. Chaque ligne montre le visage du candidat (photo enregistrée, sinon initiales), sinon le logo du client de la mission enregistré depuis #261 (sinon ses initiales), avec un seul lien : la fiche du candidat, sinon la mission (adresse sans `project:`, l'ancien lien de mission était cassé). La mission s'écrit avec son client ; le nom du candidat n'est pas répété s'il est déjà dans le titre. La corbeille apparaît au survol, au clavier, et reste visible sur un écran tactile. Les suggestions passent sous la liste, avec le visage du candidat, trois au plus et les autres à la demande ; « Créer la tâche » devient un lien. Sous-titre sans zéro. La liste se relit au retour sur l'onglet (`refetchOnWindowFocus`), faute de bouton « Actualiser ».
+**Raison** : règles 2, 3, 4, 5, 7 et 8 du design simplifié. Mesures du banc, mêmes données : 45 contrôles avant, 28 après (corbeilles comprises) ; première tâche à 802 px puis 215 px sur ordinateur, à 1 408 px puis 387 px sur téléphone ; page de 1 169 px puis 908 px sur ordinateur.
+**Impact** : `src/pages/Tasks.tsx`, `src/components/tasks/TaskList.tsx` (nouveau : sections, lignes, suggestions, sans lecture), `TasksFiltersBar.tsx`, `useAllReminders.ts` ; les tâches de mission de l'accueil prennent aussi le logo du client (`Dashboard.tsx`, `DashboardTodayPanel.tsx`) ; test `tests/ux/taches-simplicite.test.mjs` (13 tests, job Build de la CI).
+**Recette `qa.md`** :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lien de ligne vers la fiche, case cochée puis décochée sur place, filtre choisi puis effacé, vue Toutes, suggestions dépliées, confirmation de suppression ; page prête en 2,2 s | PASS |
+| Claire | Aucun terme technique ni nom de fournisseur ; « Nouvelle tâche » en haut sans défiler ; suppression par fenêtre de confirmation en français | PASS |
+| Théo | Compte vide : état vide, aucun zéro, aucune section vide ; lecture en échec : erreur avec « Réessayer » ; titre très long, emoji et texte de droite à gauche sans débordement | PASS |
+| Sophie | Écran tactile 390 px : 38 contrôles, aucun sous 44 px, aucun débordement ; options du menu Filtres à 44 px ; fenêtre de suppression dans l'écran | PASS |
+**Reste à faire** :
+- [ ] Les suggestions créées ne portent ni mission ni client (l'insertion n'écrit pas `job_id`) : la ligne montre le candidat seul.
+- [ ] Bandeau d'essai (hors page Tâches) : « Choisir un plan » (20 px) et « Fermer le bandeau » (36 px) restent sous 44 px sur téléphone.
+- [x] Les gardes `lot0c-lectures` (0c-1, jouée par la CI) et `lot12-sourcing` (S-7), cassées sur `main` par le commit 2148cfab (/sourcing refait) : alignées sur la nouvelle page par la PR #264.
+**Refs** : docs/design/06-simplicite.md (lot T), maquette « Konekt simplifié ».
+
+---
+
+## 2026-10-05 — REFACTOR — Visages des candidats dans le /pipeline global
 
 **Contexte** : après les photos de la page mission, le propriétaire demande les visages dans la partie Pipeline. Le /pipeline global (kanban, tableau, chronologie) n'affichait aucun visage : sa lecture de `mission_candidate_rows` ne portait pas la photo.
 **Décision / Fait** : `MCR_DISPLAY_COLUMNS` extrait la photo côté base (`picture`, `picture_large`), `candidateOfMissionRow` la range dans `ATSCandidate.pictureUrl`, et la carte du kanban (28 px), le tableau et la chronologie (32 px) la passent à `PersonAvatar` ; sans photo ou avec un lien expiré, les initiales. Un candidat de séquence ou d'InMail sans ligne de mission n'a pas de photo.
-**Raison** : même règle 4 du design simplifié. Mesure sur la base de production le 06/10/2026 (comptages seuls) : 2 375 lignes, 1 551 avec une photo enregistrée (65 %), profil de 9 ko en moyenne, donc la lecture avec la liste reste bon marché. Les candidats sans photo enregistrée gardent leurs initiales tant que le lot P n'a pas rattrapé les profils.
+**Raison** : même règle 4 du design simplifié. Mesure sur la base de production le 05/10/2026 (comptages seuls) : 2 375 lignes, 1 551 avec une photo enregistrée (65 %), profil de 9 ko en moyenne, donc la lecture avec la liste reste bon marché. Les candidats sans photo enregistrée gardent leurs initiales tant que le lot P n'a pas rattrapé les profils.
 **Impact** : `useATSData.ts`, `ATSCandidateCard.tsx`, `ATSTable.tsx`, `ATSTimeline.tsx` ; test statique `tests/c1/lot0c4-pipeline.test.mjs` (regex des colonnes adaptée à la chaîne typée `string`, TS2589) ; scénario e2e « les visages » de `e2e/flows/stage-0c-lectures.spec.ts` (photo, initiales, lien expiré, carte attrapée par sa photo, tableau, chronologie).
 **Reste à faire** :
 - [ ] Lot P : copie privée des photos, rattrapage des profils sans photo, effacement RGPD, purge, export.
