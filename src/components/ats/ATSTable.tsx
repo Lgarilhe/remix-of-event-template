@@ -3,6 +3,9 @@
  * chaque ligne est un bouton qui ouvre la fiche (la ligne entière reste
  * cliquable à la souris), le tri annonce son sens (aria-sort et chevron), la
  * dernière action a le format des cartes, le score passe par `ScoreBadge`.
+ * Les lignes sont paginées : le tri porte sur toute la liste, seules les lignes
+ * de la page courante sont rendues (avatar, infobulles et badges de chaque
+ * ligne ralentissent l'écran quand la liste est longue).
  */
 import React, { useState, useMemo } from 'react';
 import { Bell, Briefcase, ChevronDown, ChevronUp, ChevronsUpDown, GitBranch, Mail, Send, StickyNote } from 'lucide-react';
@@ -20,6 +23,8 @@ import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
+import { ATSPagination } from '@/components/ats/ATSPagination';
+import { PAGE_SIZE, usePagination } from '@/hooks/usePagination';
 import {
   ATS_SOURCE_LABELS,
   ATS_STAGES,
@@ -33,6 +38,8 @@ interface ATSTableProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
+  /** Valeur dont le changement ramène à la première page (les filtres de la page). */
+  resetKey?: unknown;
 }
 
 type SortKey = 'name' | 'stage' | 'source' | 'jobTitle' | 'lastActivity' | 'createdAt';
@@ -55,13 +62,18 @@ const stageRank = (stage: string) => {
 /** Bouton du kit rendu comme un texte de cellule (nom, poste). */
 const TEXT_BUTTON = 'h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-0 text-left underline-offset-2';
 
-export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick }) => {
+export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick, resetKey }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const { containerRef, currentPage, pageCount, firstRow, lastRow, goToPage, resetPage } = usePagination(
+    candidates.length,
+    resetKey,
+  );
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDirection('desc'); }
+    resetPage();
   };
 
   const sortedCandidates = useMemo(() => {
@@ -108,10 +120,15 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
     );
   };
 
+  const pageCandidates = useMemo(
+    () => sortedCandidates.slice(firstRow, firstRow + PAGE_SIZE),
+    [sortedCandidates, firstRow],
+  );
+
   const now = new Date();
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div ref={containerRef} className="overflow-hidden rounded-xl border border-border bg-card">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -128,7 +145,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedCandidates.map(candidate => {
+          {pageCandidates.map(candidate => {
             const stagnant = stagnantDays(candidate, now);
             const activity = candidate.lastActivity || candidate.createdAt;
             const SourceIcon = SOURCE_ICONS[candidate.source];
@@ -263,6 +280,15 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           })}
         </TableBody>
       </Table>
+      <ATSPagination
+        total={candidates.length}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        firstRow={firstRow}
+        lastRow={lastRow}
+        onPageChange={goToPage}
+        className="border-t border-border"
+      />
     </div>
   );
 };
