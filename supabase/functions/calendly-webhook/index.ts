@@ -56,11 +56,27 @@ function calendlyIdFromUri(uri: unknown): string | null {
   return uri.split('/').filter(Boolean).pop() ?? null;
 }
 
+type CalendlyEvent = {
+  uri?: string | null;
+  start_time?: string;
+  end_time?: string;
+  location?: { join_url?: string; location?: string; type?: string } | null;
+};
+
+/** Champs lus par l'annulation et le déplacement dans la charge utile d'un invité Calendly. */
+type CalendlyInviteePayload = {
+  uri?: string;
+  event?: string | CalendlyEvent;
+  scheduled_event?: CalendlyEvent;
+  rescheduled?: boolean;
+  old_invitee?: string | null;
+};
+
 /**
  * Événement planifié d'une charge utile. Calendly envoie `scheduled_event`
  * (objet) et `event` (URI en texte) ; une forme ancienne met l'objet dans `event`.
  */
-function scheduledEventOf(payload: any): { uri: string | null; start_time?: string; end_time?: string; location?: any } {
+function scheduledEventOf(payload: CalendlyInviteePayload | undefined): CalendlyEvent {
   const obj = payload?.scheduled_event ?? (payload?.event && typeof payload.event === 'object' ? payload.event : null);
   const uri = obj?.uri ?? (typeof payload?.event === 'string' ? payload.event : null);
   return { ...(obj ?? {}), uri };
@@ -99,7 +115,7 @@ async function updateOpenSessions(rows: SessionRef[], patch: Record<string, unkn
  * vient de la séance trouvée, et l'identifiant d'invité (unique chez
  * Calendly) ne désigne que la réservation annulée.
  */
-async function handleInviteeCanceled(payload: any): Promise<Response> {
+async function handleInviteeCanceled(payload: CalendlyInviteePayload | undefined): Promise<Response> {
   // Un déplacement envoie aussi invitee.canceled (rescheduled: true) : la séance
   // est déplacée par l'invitee.created qui l'accompagne (old_invitee), jamais annulée.
   if (payload?.rescheduled === true) {
@@ -148,7 +164,7 @@ async function handleInviteeCanceled(payload: any): Promise<Response> {
  * déjà le nouvel invité, rien à refaire. `handled` faux : aucune séance liée,
  * le parcours normal crée la séance.
  */
-async function moveRescheduledSession(payload: any): Promise<{ handled: boolean; updated: number }> {
+async function moveRescheduledSession(payload: CalendlyInviteePayload | undefined): Promise<{ handled: boolean; updated: number }> {
   const oldInviteeId = calendlyIdFromUri(payload?.old_invitee);
   if (!oldInviteeId) return { handled: false, updated: 0 };
   const newInviteeId = calendlyIdFromUri(payload?.uri);
