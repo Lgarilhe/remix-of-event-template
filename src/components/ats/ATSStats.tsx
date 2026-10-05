@@ -1,8 +1,11 @@
 /**
  * Indicateurs du pipeline global, en tuiles neutres sans survol (revue design
- * E-24) : rien ne s'y clique. Sous 1280 px, les trois comptes seulement, sur
- * deux colonnes au téléphone et trois ensuite, pour que chaque libellé (« Contactés
- * au total ») reste lisible en entier (E-21).
+ * E-24) : rien ne s'y clique. Deux colonnes au téléphone et trois ensuite,
+ * pour que chaque libellé (« Contactés au total ») reste lisible en entier (E-21).
+ *
+ * Design simplifié (lot Suite) : affichés dans l'onglet Analyse seulement, en
+ * tuiles sans cadre (fond doux, comme le Bilan de la page mission) ; une tuile
+ * à zéro ne s'affiche pas.
  *
  * Lot 0c-4 : les tuiles comptent des cumuls « au total » (plan 0c, section
  * 4.1), sur l'étape générale et les jalons, mêmes définitions que les ever_*
@@ -30,6 +33,9 @@ const HIRED_STAGES = ['hired'];
 
 const percent = (value: number) => `${value}\u00a0%`;
 
+/** Tuile sans cadre : fond doux, comme les chiffres du Bilan de la page mission. */
+const TILE = 'rounded-xl border-0 bg-muted/60';
+
 export const ATSStats: React.FC<ATSStatsProps> = ({ candidates }) => {
   const stats = React.useMemo(() => {
     const total = candidates.length;
@@ -44,13 +50,13 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates }) => {
   }, [candidates]);
 
   return (
-    <StatGrid cols={{ base: 2, sm: 3, xl: 6 }} className="mb-4">
-      <StatTile label="Candidats" value={stats.total} />
-      <StatTile label={CUMULATIVE_LABEL.ever_contacted} value={stats.contacted} />
-      <StatTile label={CUMULATIVE_LABEL.ever_replied} value={stats.replied} className="hidden xl:flex" />
-      <StatTile label="Taux de réponse" value={percent(stats.responseRate)} className="hidden xl:flex" />
-      <StatTile label={CUMULATIVE_LABEL.ever_interviewed} value={stats.interviewed} />
-      <StatTile label={CUMULATIVE_LABEL.ever_hired} value={stats.hired} className="hidden xl:flex" />
+    <StatGrid cols={{ base: 2, sm: 3, xl: 6 }}>
+      <StatTile label="Candidats" value={stats.total} className={TILE} />
+      {stats.contacted > 0 && <StatTile label={CUMULATIVE_LABEL.ever_contacted} value={stats.contacted} className={TILE} />}
+      {stats.replied > 0 && <StatTile label={CUMULATIVE_LABEL.ever_replied} value={stats.replied} className={TILE} />}
+      {stats.replied > 0 && <StatTile label="Taux de réponse" value={percent(stats.responseRate)} className={TILE} />}
+      {stats.interviewed > 0 && <StatTile label={CUMULATIVE_LABEL.ever_interviewed} value={stats.interviewed} className={TILE} />}
+      {stats.hired > 0 && <StatTile label={CUMULATIVE_LABEL.ever_hired} value={stats.hired} className={TILE} />}
     </StatGrid>
   );
 };

@@ -7,14 +7,18 @@
  * passages). Barres monochromes à 3:1 au moins, valeur écrite à côté ;
  * l'accent (warning) ne signale que l'écart au délai de l'étape. Définitions
  * en infobulle, jugements avec leur barème.
+ *
+ * Design simplifié (lot Suite) : les chiffres du pipeline (ATSStats) passent
+ * au-dessus, une seule fois ; ici, la santé du pipeline en trois chiffres sans
+ * cadre, puis des sections séparées par un filet fin, sans carte. Une étape ou
+ * un passage sans candidat ne s'affiche pas, la gravité d'un goulot s'écrit en
+ * couleur sans pastille.
  */
 import React, { useMemo } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { Section, StatGrid, StatTile } from '@/components/layout';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InfoHint } from '@/components/ui/info-hint';
-import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, countPeople, daysInStage } from '@/hooks/useATSData';
+import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysInStage } from '@/hooks/useATSData';
 import { atsColumnTitle } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
@@ -61,6 +65,46 @@ const Bar: React.FC<{ value: number }> = ({ value }) => (
 const velocityOf = (avgDays: number) => (avgDays <= 5 ? 'Rapide' : avgDays <= 10 ? 'Modéré' : 'Lent');
 const fluidityOf = (stagnant: number) =>
   stagnant === 0 ? 'Excellente' : stagnant < 3 ? 'Bonne' : stagnant < 8 ? 'Moyenne' : 'Faible';
+
+/** Une section sans carte : un filet fin au-dessus, le titre, sa définition, le contenu. */
+const Block: React.FC<{ title: string; subtitle?: string; definition: React.ReactNode; children: React.ReactNode }> = ({
+  title,
+  subtitle,
+  definition,
+  children,
+}) => {
+  const headingId = React.useId();
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-4 border-t border-border pt-6">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id={headingId} className="text-base font-semibold text-foreground">{title}</h2>
+          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+        </div>
+        <div className="shrink-0">{definition}</div>
+      </header>
+      {children}
+    </section>
+  );
+};
+
+/** Un chiffre de la santé du pipeline : fond doux sans bordure, comme le Bilan de la page mission. */
+const Figure: React.FC<{ label: string; value: string; note: string; definition: React.ReactNode; tone?: 'warning' }> = ({
+  label,
+  value,
+  note,
+  definition,
+  tone,
+}) => (
+  <div className="flex flex-col gap-1 rounded-xl bg-muted/60 px-4 py-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      {definition}
+    </div>
+    <p className={cn('text-2xl font-semibold tabular-nums', tone === 'warning' ? 'text-warning' : 'text-foreground')}>{value}</p>
+    <p className="text-sm text-foreground-secondary">{note}</p>
+  </div>
+);
 
 export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
   const { stageMetrics, bottlenecks, funnelSteps, kpis } = useMemo(() => {
@@ -134,9 +178,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       };
     });
 
-    // KPI summary
-    // Personnes distinctes, comme le tableau de bord : un candidat présent dans deux missions compte pour un.
-    const totalActive = countPeople(candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu'));
+    // Santé du pipeline
     const totalWon = candidates.filter(c => c.stage === 'Gagné').length;
     const totalLost = candidates.filter(c => c.stage === 'Perdu').length;
     const totalEnded = totalWon + totalLost;
@@ -144,65 +186,76 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
     const totalStagnant = metrics.reduce((sum, m) => sum + m.stagnantCount, 0);
     // Moyenne sur les candidats engagés : À trier et Retenu, sans délai, ne tirent pas le rythme.
     const engaged = metrics.filter(m => m.guideTime !== null);
+    const engagedCount = engaged.reduce((sum, m) => sum + m.count, 0);
     const overallAvgDays = engaged.length > 0
-      ? Math.round(engaged.reduce((sum, m) => sum + m.avgDays * m.count, 0) / Math.max(engaged.reduce((sum, m) => sum + m.count, 0), 1))
+      ? Math.round(engaged.reduce((sum, m) => sum + m.avgDays * m.count, 0) / Math.max(engagedCount, 1))
       : 0;
 
     return {
       stageMetrics: metrics,
       bottlenecks,
       funnelSteps,
-      kpis: { totalActive, totalWon, totalEnded, winRate, totalStagnant, overallAvgDays },
+      kpis: { totalWon, totalEnded, winRate, totalStagnant, overallAvgDays, engagedCount },
     };
   }, [candidates]);
 
   const maxCount = Math.max(...stageMetrics.map(m => m.count), 1);
+  // Pas de zéro affiché : une étape sans candidat, un passage sans candidat au départ ne s'affichent pas.
+  const shownStages = stageMetrics.filter(m => m.count > 0);
+  const shownSteps = funnelSteps.filter(step => step.fromCount > 0);
+
+  // Pas de zéro : un chiffre sans candidat engagé, sans candidat bloqué ou sans sortie ne s'affiche pas.
+  const hasFigures = kpis.engagedCount > 0 || kpis.totalEnded > 0;
 
   return (
-    <div className="space-y-4">
-      <StatGrid cols={{ base: 1, sm: 2, xl: 4 }}>
-        <StatTile
-          label="Candidats actifs"
-          value={kpis.totalActive}
-          trailing={<Definition label="Candidats actifs">Personnes ni embauchées ni écartées, comptées une fois même présentes dans deux missions. {plural(kpis.totalWon, 'embauché')} en ce moment.</Definition>}
-        />
-        <StatTile
-          label="Taux de réussite"
-          value={percent(kpis.winRate)}
-          trailing={
-            <Definition label="Taux de réussite">
-              Part des candidats embauchés parmi ceux qui ont quitté le pipeline, embauchés ou écartés ({kpis.totalEnded} à ce jour).
-            </Definition>
-          }
-        />
-        <StatTile
-          label="Jours dans l'étape"
-          value={days(kpis.overallAvgDays)}
-          trailing={
-            <Definition label="Jours dans l'étape">
-              Moyenne, sur les candidats engagés (de Contacté à Offre), du nombre de jours écoulés depuis leur entrée dans leur étape actuelle.
-            </Definition>
-          }
-        />
-        <StatTile
-          label="Sans mouvement"
-          value={kpis.totalStagnant}
-          variant="warning"
-          accent={kpis.totalStagnant > 0}
-          trailing={
-            <Definition label="Sans mouvement">
-              Candidats restés dans leur étape plus longtemps que le délai de cette étape (de 3 à 10 jours selon l'étape). Les étapes À trier, Retenu, Embauché et Écarté n'ont pas de délai.
-            </Definition>
-          }
-        />
-      </StatGrid>
+    <div className="space-y-8">
+      {hasFigures && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {kpis.engagedCount > 0 && (
+            <Figure
+              label="Jours dans l'étape"
+              value={days(kpis.overallAvgDays)}
+              note={`Rythme ${velocityOf(kpis.overallAvgDays).toLowerCase()}`}
+              definition={
+                <Definition label="Jours dans l'étape">
+                  {"Moyenne, sur les candidats engagés (de Contacté à Offre), du nombre de jours écoulés depuis leur entrée dans leur étape actuelle. Rythme\u00a0: rapide jusqu'à 5 jours, modéré de 6 à 10 jours, lent au-delà."}
+                </Definition>
+              }
+            />
+          )}
+          {kpis.totalStagnant > 0 && (
+            <Figure
+              label="Sans mouvement"
+              value={String(kpis.totalStagnant)}
+              note={`Fluidité ${fluidityOf(kpis.totalStagnant).toLowerCase()}`}
+              tone="warning"
+              definition={
+                <Definition label="Sans mouvement">
+                  {"Candidats restés dans leur étape plus longtemps que le délai de cette étape (de 3 à 10 jours selon l'étape). Les étapes À trier, Retenu, Embauché et Écarté n'ont pas de délai. Fluidité\u00a0: excellente à zéro, bonne à 1 ou 2, moyenne de 3 à 7, faible à partir de 8."}
+                </Definition>
+              }
+            />
+          )}
+          {kpis.totalEnded > 0 && (
+            <Figure
+              label="Taux de réussite"
+              value={percent(kpis.winRate)}
+              note={`${plural(kpis.totalWon, 'embauché')} parmi ${plural(kpis.totalEnded, 'candidat sorti', 'candidats sortis')} du pipeline`}
+              definition={
+                <Definition label="Taux de réussite">
+                  Part des candidats embauchés parmi ceux qui ont quitté le pipeline, embauchés ou écartés.
+                </Definition>
+              }
+            />
+          )}
+        </div>
+      )}
 
       {bottlenecks.length > 0 && (
-        <Section
-          headingLevel={2}
+        <Block
           title="Goulots d'étranglement"
           subtitle={plural(bottlenecks.length, 'étape')}
-          action={
+          definition={
             <Definition label="Goulots d'étranglement">
               {"Étapes où des candidats dépassent le délai prévu dans l'étape. Critique\u00a0: 5 candidats ou plus sans mouvement, ou une moyenne au-delà du double du délai de l'étape."}
             </Definition>
@@ -210,139 +263,110 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
         >
           <ul className="divide-y divide-border">
             {bottlenecks.map(b => (
-              <li key={b.stage} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
+              <li key={b.stage} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 first:pt-0">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">{b.stage}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {plural(b.count, 'candidat')} sans mouvement depuis plus de {days(b.guideTime)}, {days(b.avgDays)} en moyenne dans l'étape
                   </p>
                 </div>
-                <Badge variant={b.severity === 'critical' ? 'danger' : 'warning'} className="shrink-0">
+                <span className={cn('shrink-0 text-sm font-medium', b.severity === 'critical' ? 'text-danger' : 'text-warning')}>
                   {b.severity === 'critical' ? 'Critique' : 'À surveiller'}
-                </Badge>
+                </span>
               </li>
             ))}
           </ul>
-        </Section>
+        </Block>
       )}
 
-      <Section
-        headingLevel={2}
-        title="Répartition par étape"
-        subtitle="Candidats actifs"
-        action={
-          <Definition label="Répartition par étape">
-            Nombre de candidats actifs dans chaque étape. À droite, les jours passés en moyenne dans l'étape, comparés au délai de l'étape.
-          </Definition>
-        }
-      >
-        <ul className="space-y-3 p-4">
-          {stageMetrics.map(metric => {
-            const isOverGuide = metric.guideTime !== null && metric.avgDays > metric.guideTime;
-            return (
-              <li
-                key={metric.key}
-                className="grid grid-cols-[6.5rem_minmax(0,1fr)_2rem] items-center gap-x-3 gap-y-1 sm:grid-cols-[7.5rem_minmax(0,1fr)_2.5rem_minmax(0,16rem)]"
-              >
-                <span className="truncate text-xs font-medium text-foreground">{metric.label}</span>
-                <Bar value={(metric.count / maxCount) * 100} />
-                <span className="text-right text-sm font-semibold tabular-nums text-foreground">
-                  {metric.count}
-                  <span className="sr-only"> candidat{metric.count > 1 ? 's' : ''}</span>
-                </span>
-                <span className={cn('col-span-3 text-xs sm:col-span-1', isOverGuide ? 'font-medium text-warning' : 'text-muted-foreground')}>
-                  {metric.guideTime === null
-                    ? (metric.count === 0 ? "Pas de délai pour cette étape" : `${days(metric.avgDays)} en moyenne, pas de délai pour cette étape`)
-                    : metric.count === 0
-                      ? `Délai de l'étape\u00a0: ${days(metric.guideTime)}`
+      {shownStages.length > 0 && (
+        <Block
+          title="Répartition par étape"
+          subtitle="Candidats actifs"
+          definition={
+            <Definition label="Répartition par étape">
+              Nombre de candidats actifs dans chaque étape. À droite, les jours passés en moyenne dans l'étape, comparés au délai de l'étape.
+            </Definition>
+          }
+        >
+          <ul className="space-y-3">
+            {shownStages.map(metric => {
+              const isOverGuide = metric.guideTime !== null && metric.avgDays > metric.guideTime;
+              return (
+                <li
+                  key={metric.key}
+                  className="grid grid-cols-[6.5rem_minmax(0,1fr)_2rem] items-center gap-x-3 gap-y-1 sm:grid-cols-[7.5rem_minmax(0,1fr)_2.5rem_minmax(0,16rem)]"
+                >
+                  <span className="truncate text-sm text-foreground">{metric.label}</span>
+                  <Bar value={(metric.count / maxCount) * 100} />
+                  <span className="text-right text-sm font-semibold tabular-nums text-foreground">
+                    {metric.count}
+                    <span className="sr-only"> candidat{metric.count > 1 ? 's' : ''}</span>
+                  </span>
+                  <span className={cn('col-span-3 text-xs sm:col-span-1', isOverGuide ? 'font-medium text-warning' : 'text-muted-foreground')}>
+                    {metric.guideTime === null
+                      ? `${days(metric.avgDays)} en moyenne, pas de délai pour cette étape`
                       : `${days(metric.avgDays)} en moyenne, ${isOverGuide ? 'au-delà du' : 'pour un'} délai de ${days(metric.guideTime)}`}
-                  {metric.stagnantCount > 0 && `, ${metric.stagnantCount} sans mouvement`}
+                    {metric.stagnantCount > 0 && `, ${metric.stagnantCount} sans mouvement`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Block>
+      )}
+
+      {shownSteps.length > 0 && (
+        <Block
+          title="Progression d'une étape à la suivante"
+          subtitle="D'après l'étape actuelle"
+          definition={
+            <Definition label="Progression d'une étape à la suivante">
+              Parmi les candidats arrivés à une étape, la part de ceux qui ont atteint au moins la suivante. Calculée d'après l'étape actuelle de chaque candidat, et non d'après l'historique de ses passages ; les candidats écartés sont exclus.
+            </Definition>
+          }
+        >
+          <ul className="space-y-3">
+            {shownSteps.map((step) => (
+              <li
+                key={step.from}
+                className="grid grid-cols-[minmax(0,1fr)_3rem] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[15rem_minmax(0,1fr)_3rem_5rem]"
+              >
+                <span className="col-span-2 flex min-w-0 items-center gap-1.5 text-sm text-foreground sm:col-span-1">
+                  <span className="truncate">{step.from}</span>
+                  <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="sr-only">vers</span>
+                  <span className="truncate">{step.to}</span>
+                </span>
+                <Bar value={step.rate} />
+                <span className="text-right text-sm font-semibold tabular-nums text-foreground">{percent(step.rate)}</span>
+                <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block">
+                  {step.toCount} sur {step.fromCount}
                 </span>
               </li>
-            );
-          })}
-        </ul>
-      </Section>
-
-      <Section
-        headingLevel={2}
-        title="Progression d'une étape à la suivante"
-        subtitle="D'après l'étape actuelle"
-        action={
-          <Definition label="Progression d'une étape à la suivante">
-            Parmi les candidats arrivés à une étape, la part de ceux qui ont atteint au moins la suivante. Calculée d'après l'étape actuelle de chaque candidat, et non d'après l'historique de ses passages ; les candidats écartés sont exclus.
-          </Definition>
-        }
-      >
-        <ul className="space-y-3 p-4">
-          {funnelSteps.map((step) => (
-            <li
-              key={step.from}
-              className="grid grid-cols-[minmax(0,1fr)_3rem] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[15rem_minmax(0,1fr)_3rem_5rem]"
-            >
-              <span className="col-span-2 flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground sm:col-span-1">
-                <span className="truncate">{step.from}</span>
-                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className="sr-only">vers</span>
-                <span className="truncate">{step.to}</span>
-              </span>
-              <Bar value={step.rate} />
-              <span className="text-right text-sm font-semibold tabular-nums text-foreground">{percent(step.rate)}</span>
-              <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block">
-                {step.toCount} sur {step.fromCount}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section headingLevel={2} title="Santé du pipeline">
-        <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
-          <div className="rounded-lg border border-border p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-muted-foreground">Rythme</p>
-              <Definition label="Rythme">
-                {"D'après les jours passés dans l'étape, en moyenne\u00a0: rapide jusqu'à 5 jours, modéré de 6 à 10 jours, lent au-delà."}
-              </Definition>
-            </div>
-            <p className="mt-1 text-xl font-semibold text-foreground">{velocityOf(kpis.overallAvgDays)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{days(kpis.overallAvgDays)} en moyenne dans l'étape</p>
-          </div>
-          <div className="rounded-lg border border-border p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-muted-foreground">Fluidité</p>
-              <Definition label="Fluidité">
-                {"D'après le nombre de candidats sans mouvement\u00a0: excellente à zéro, bonne à 1 ou 2, moyenne de 3 à 7, faible à partir de 8."}
-              </Definition>
-            </div>
-            <p className="mt-1 text-xl font-semibold text-foreground">{fluidityOf(kpis.totalStagnant)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {plural(kpis.totalStagnant, 'candidat')} sans mouvement
-            </p>
-          </div>
-        </div>
-      </Section>
+            ))}
+          </ul>
+        </Block>
+      )}
     </div>
   );
 };
 
 /** Squelette de l'analyse : quatre indicateurs, puis deux sections à barres. */
 export const ATSPipelineAnalyticsSkeleton: React.FC = () => (
-  <div className="space-y-4" role="status" aria-label="Chargement de l'analyse">
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4">
-          <Skeleton className="h-4 w-32 rounded-sm" />
+  <div className="space-y-8" role="status" aria-label="Chargement de l'analyse">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="flex flex-col gap-1.5 rounded-xl bg-muted/60 p-4">
+          <Skeleton className="h-4 w-24 rounded-sm" />
           <Skeleton className="h-8 w-12" />
         </div>
       ))}
     </div>
     {[0, 1].map((section) => (
-      <div key={section} className="rounded-xl border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
-          <Skeleton className="h-4 w-44 rounded-sm" />
-        </div>
-        <div className="space-y-3 p-4">
+      <div key={section} className="border-t border-border pt-6">
+        <Skeleton className="h-4 w-44 rounded-sm" />
+        <div className="mt-4 space-y-3">
           {[0, 1, 2, 3, 4].map((row) => (
             <div key={row} className="flex items-center gap-3">
               <Skeleton className="h-3 w-24 rounded-sm" />

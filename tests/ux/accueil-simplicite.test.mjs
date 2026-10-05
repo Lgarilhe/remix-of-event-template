@@ -217,7 +217,7 @@ test('téléphone : titre entier, chiffres sans coupure, visages alignés sur le
 
 test('page d\'accueil : deux sections, plus de canaux, de semaine, d\'activité ni de réordonnancement', () => {
   const page = read('src/pages/Dashboard.tsx');
-  assert.match(page, /<PageLayout maxWidth="md">/);
+  assert.match(page, /<PageLayout maxWidth="md"( backdrop)?>/);
   assert.match(page, /<h2 id="dashboard-todo"[^>]*>\s*À faire\s*<\/h2>/);
   assert.match(page, /<Link to="\/tasks">Toutes les tâches<\/Link>/);
   assert.match(page, /<DashboardMissionsPanel/);
@@ -244,7 +244,9 @@ test('journée : tâches en retard sous le réveil, visage ou initiales de missi
   assert.match(src, /<AlarmIcon \/>[\s\S]*?\{plural\(lateTasks\.length, 'tâche'\)\} en retard/);
   assert.match(src, /const taskPhotos = useCandidateAvatarsByCandidateId\(taskCandidateIds\);/);
   assert.match(src, /<CandidateAvatar name=\{r\.candidate_name \|\| 'Candidat'\} avatarUrl=\{r\.candidate_id \? taskPhotos\.get\(r\.candidate_id\) \?\? null : null\}/);
-  assert.match(src, /<MissionCompanyLogo company=\{client \|\| r\.job_title\} size=\{36\} \/>/);
+  // Logo du client enregistré dans le brief (#261), sinon ses initiales.
+  assert.match(src, /<MissionCompanyLogo company=\{client \|\| r\.job_title\} logoUrl=\{logo\} size=\{36\} \/>/);
+  assert.match(read('src/pages/Dashboard.tsx'), /new Map\(projects\.map\(\(p\) => \[p\.id, p\.jd_client_logo \?\? null\]\)\)[\s\S]*missionLogoOf=\{missionLogoOf\}/);
   // Règle des hooks : aucun appel après le premier retour anticipé.
   const firstReturn = src.indexOf('if (loading) {');
   assert.ok(firstReturn > 0);

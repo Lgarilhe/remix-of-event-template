@@ -79,7 +79,7 @@ test('PageHeader : titre de page à 28 px, sous-titre à 15 px', () => {
   assert.match(src, /<p className="max-w-2xl text-md text-muted-foreground">/);
 });
 
-test('visage : photo, sinon initiales, et un lien en échec repasse aux initiales', () => {
+test('visage : copie privée, sinon photo LinkedIn, sinon initiales ; un lien en échec passe au suivant', () => {
   assert.equal(kit.initialsOf('Julie Bonnet'), 'JB');
   assert.equal(kit.initialsOf('  marie  claire dupont '), 'MD');
   assert.equal(kit.initialsOf('Madonna'), 'M');
@@ -95,8 +95,14 @@ test('visage : photo, sinon initiales, et un lien en échec repasse aux initiale
   assert.match(initials, />JB</);
 
   const src = read('src/components/ui/person-avatar.tsx');
-  assert.match(src, /onError=\{\(\) => setFailedSrc\(src\)\}/);
-  assert.match(src, /if \(src && src !== failedSrc\)/, 'un autre lien est retenté');
+  // Lot P : la copie privée (candidateId) passe avant le lien LinkedIn ; chaque lien en échec est mémorisé.
+  assert.match(src, /const copy = useCandidatePhoto\(candidateId\);/);
+  assert.match(src, /const shown = \[copy, src\]\.find\(\(url\): url is string => !!url && !failed\.includes\(url\)\) \?\? null;/);
+  assert.match(src, /onError=\{\(\) => setFailed\(\(list\) => \(list\.includes\(shown\) \? list : \[\.\.\.list\.slice\(-3\), shown\]\)\)\}/);
+  assert.match(src, /if \(shown\) \{/, 'un autre lien est retenté');
+  // Sans fournisseur de copies (rendu statique), le rendu reste celui du lien LinkedIn.
+  const withId = render(kit.PersonAvatar, { name: 'Julie Bonnet', src: 'https://example.test/julie.jpg', candidateId: 'c1' });
+  assert.match(withId, /<img [^>]*src="https:\/\/example\.test\/julie\.jpg"/);
   for (const rel of ['src/components/dashboard/CandidateAvatar.tsx', 'src/components/candidates/shared/CandidateAvatar.tsx']) {
     const avatar = read(rel);
     assert.match(avatar, /<PersonAvatar/, `${rel} passe par PersonAvatar`);

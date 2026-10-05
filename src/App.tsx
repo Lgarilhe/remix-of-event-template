@@ -10,6 +10,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
+import { CandidatePhotosProvider } from "@/components/CandidatePhotosProvider";
 import { AgentDrawer } from "@/components/agent";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
@@ -212,7 +213,9 @@ const App = () => {
     <TooltipProvider>
       <LinkedInAccountsProvider>
         <AgentProvider>
-          <AppContent />
+          <CandidatePhotosProvider>
+            <AppContent />
+          </CandidatePhotosProvider>
         </AgentProvider>
       </LinkedInAccountsProvider>
     </TooltipProvider>
