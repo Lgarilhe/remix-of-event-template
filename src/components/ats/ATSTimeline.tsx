@@ -107,7 +107,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
 
                   <div className="relative rounded-lg border border-border bg-card p-3 transition-colors duration-150 hover:border-border-strong">
                     <div className="flex items-start justify-between gap-3">
-                      <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={32} />
+                      <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={32} />
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <h3 className="min-w-0 text-sm font-medium text-foreground">

@@ -1751,6 +1751,53 @@ export type Database = {
           },
         ]
       }
+      candidate_photos: {
+        Row: {
+          attempts: number
+          candidate_id: string
+          captured_at: string | null
+          checked_at: string
+          created_at: string
+          last_error: string | null
+          organization_id: string
+          source_url_hash: string | null
+          status: string
+          storage_path: string | null
+        }
+        Insert: {
+          attempts?: number
+          candidate_id: string
+          captured_at?: string | null
+          checked_at?: string
+          created_at?: string
+          last_error?: string | null
+          organization_id: string
+          source_url_hash?: string | null
+          status: string
+          storage_path?: string | null
+        }
+        Update: {
+          attempts?: number
+          candidate_id?: string
+          captured_at?: string | null
+          checked_at?: string
+          created_at?: string
+          last_error?: string | null
+          organization_id?: string
+          source_url_hash?: string | null
+          status?: string
+          storage_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_photos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_portal_tokens: {
         Row: {
           candidate_id: string
@@ -6584,6 +6631,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_candidate_photos: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          candidate_id: string
+          linkedin_profile_url: string
+          organization_id: string
+          picture_url: string
+        }[]
+      }
       cleanup_linkedin_action_log: { Args: never; Returns: undefined }
       cleanup_old_webhook_events: { Args: never; Returns: number }
       cleanup_rate_limit_log: { Args: never; Returns: undefined }
@@ -6966,6 +7023,7 @@ export type Database = {
         Args: { p_field: string; p_increment?: number; p_sequence_id: string }
         Returns: undefined
       }
+      invoke_capture_candidate_photos: { Args: never; Returns: undefined }
       invoke_process_email_queue: { Args: never; Returns: undefined }
       invoke_process_enrichment_queue: { Args: never; Returns: undefined }
       invoke_process_inmail_queue: { Args: never; Returns: undefined }
@@ -7014,6 +7072,14 @@ export type Database = {
       jcs_stage_write_mode: { Args: never; Returns: string }
       job_details_is_described: { Args: { jd: Json }; Returns: boolean }
       linkedin_url_slug: { Args: { p_url: string }; Returns: string }
+      list_candidate_photo_orphans: {
+        Args: { p_limit?: number }
+        Returns: {
+          candidate_id: string
+          organization_id: string
+          storage_path: string
+        }[]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string

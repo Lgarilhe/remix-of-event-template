@@ -129,7 +129,7 @@ export function CandidatePanelHeader({
   return (
     <>
       <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-background py-3 pl-5 pr-3">
-        <PersonAvatar name={name} src={pictureUrl} size={40} className="mt-0.5" />
+        <PersonAvatar name={name} src={pictureUrl} candidateId={row.candidateId} size={40} className="mt-0.5" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex items-center gap-0.5">
             <h2

@@ -2,9 +2,10 @@
  * PersonAvatar : le visage d'une personne, sinon ses initiales
  * (docs/design/01-direction.md, § 6).
  *
- * - La photo vient de LinkedIn (profile_picture_url) ou de sa copie Konekt.
- * - Pas de photo, lien expiré ou image cassée : initiales sur fond neutre,
- *   jamais un trou. Un nouveau lien est retenté.
+ * - Avec `candidateId`, la copie privée de la photo passe d'abord (lot P,
+ *   src/lib/candidatePhotos.ts), puis le lien LinkedIn (`src`), puis les initiales.
+ * - Pas de photo, lien expiré ou image cassée : la source suivante, sinon les
+ *   initiales sur fond neutre, jamais un trou. Un nouveau lien est retenté.
  * - Décoratif par défaut, le nom étant écrit à côté ; `alt` le rend lisible.
  * - Rond pour une personne, carré pour une organisation (MissionCompanyLogo).
  *
@@ -15,12 +16,15 @@
 
 import * as React from 'react';
 import { initialsOf } from '@/lib/initials';
+import { useCandidatePhoto } from '@/lib/candidatePhotos';
 import { cn } from '@/lib/utils';
 
 export interface PersonAvatarProps {
   name?: string | null;
-  /** Adresse de la photo ; absente, ce sont les initiales. */
+  /** Adresse de la photo LinkedIn ; absente, ce sont les initiales. */
   src?: string | null;
+  /** Identifiant du candidat : sa copie privée, si elle existe, passe avant `src`. */
+  candidateId?: string | null;
   /** Côté en px (32 par défaut). */
   size?: number;
   /** Nom accessible ; sans lui, l'avatar est décoratif. */
@@ -31,18 +35,21 @@ export interface PersonAvatarProps {
 export const PersonAvatar = React.memo(function PersonAvatar({
   name,
   src,
+  candidateId,
   size = 32,
   alt,
   className,
 }: PersonAvatarProps) {
-  // Le lien en échec est mémorisé : un autre lien est retenté sans effet de bord.
-  const [failedSrc, setFailedSrc] = React.useState<string | null>(null);
+  const copy = useCandidatePhoto(candidateId);
+  // Les liens en échec sont mémorisés : la source suivante est essayée, un nouveau lien est retenté.
+  const [failed, setFailed] = React.useState<readonly string[]>([]);
+  const shown = [copy, src].find((url): url is string => !!url && !failed.includes(url)) ?? null;
   const style = { width: size, height: size };
 
-  if (src && src !== failedSrc) {
+  if (shown) {
     return (
       <img
-        src={src}
+        src={shown}
         alt={alt ?? ''}
         aria-hidden={alt ? undefined : true}
         loading="lazy"
@@ -50,7 +57,7 @@ export const PersonAvatar = React.memo(function PersonAvatar({
         referrerPolicy="no-referrer"
         // Pas de glisser natif de l'image : un léger mouvement sur la photo d'une ligne ou d'une carte ne l'arrache pas au clic.
         draggable={false}
-        onError={() => setFailedSrc(src)}
+        onError={() => setFailed((list) => (list.includes(shown) ? list : [...list.slice(-3), shown]))}
         style={style}
         className={cn('shrink-0 rounded-full bg-muted object-cover ring-1 ring-border', className)}
       />
@@ -73,7 +80,7 @@ export const PersonAvatar = React.memo(function PersonAvatar({
 });
 
 export interface AvatarStackProps {
-  people: Array<{ name?: string | null; src?: string | null }>;
+  people: Array<{ name?: string | null; src?: string | null; candidateId?: string | null }>;
   /** Nombre total de personnes, si la liste n'en donne qu'une partie. */
   total?: number;
   /** Visages montrés avant « +N » (3 par défaut). */
@@ -103,6 +110,7 @@ export function AvatarStack({ people, total, max = 3, size = 30, className }: Av
           key={`${person.name ?? ''}-${index}`}
           name={person.name}
           src={person.src}
+          candidateId={person.candidateId}
           size={size}
           className={cn('ring-2 ring-background', index > 0 && '-ml-1.5')}
         />
