@@ -17,7 +17,7 @@
  * pendant que l'user lit le chat, le bandeau apparaît automatiquement.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Check, X, AlertTriangle, Loader2, Pencil, ShieldAlert } from 'lucide-react';
+import { Check, X, AlertTriangle, Loader2, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { businessDaysCutoff } from '@/lib/businessDays';
@@ -163,6 +163,57 @@ const TOOL_LABEL: Record<string, string> = {
   start_background_scoring: 'Évaluer les candidats d’une mission en arrière-plan',
 };
 
+// ─── Aperçu du message ─────────────────────────────────────────────────────
+// Pour les envois (LinkedIn, e-mail), la card montre ce qui va partir : à qui,
+// l'objet et le texte complet, lu dans params (le dry-run n'en garde que 120
+// caractères). Sans texte exploitable, on retombe sur le résumé du dry-run.
+interface MessagePreview {
+  title: string;
+  recipient: string | null;
+  subject: string | null;
+  body: string;
+}
+
+function asText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function messagePreviewFor(row: ToolExecutionRow): MessagePreview | null {
+  const { params } = row;
+  const details = row.dry_run_result?.details;
+
+  if (row.tool_name === 'send_linkedin_message') {
+    const body = asText(params.text);
+    if (!body) return null;
+    const isInmail = params.is_inmail === true;
+    return {
+      title: isInmail
+        ? 'Envoyer un InMail'
+        : params.chat_id
+        ? 'Répondre dans la conversation'
+        : TOOL_LABEL.send_linkedin_message,
+      recipient: asText(details?.recipient_label) ?? asText(params.recipient_name),
+      subject: isInmail ? asText(params.subject) : null,
+      body,
+    };
+  }
+
+  if (row.tool_name === 'send_email') {
+    const body = asText(params.body);
+    if (!body) return null;
+    const name = asText(params.recipient_name);
+    const to = asText(params.to_email);
+    return {
+      title: TOOL_LABEL.send_email,
+      recipient: name && to ? `${name} (${to})` : name ?? to,
+      subject: asText(params.subject),
+      body,
+    };
+  }
+
+  return null;
+}
+
 // ─── Editable fields configuration ─────────────────────────────────────────
 // On limite l'édition aux champs textuels/numériques/booléens où l'user peut
 // pertinemment raffiner ce que Claude a proposé. Les UUIDs (candidate_id,
@@ -222,12 +273,23 @@ function fieldTypeFor(key: string, value: unknown, toolName?: string): FieldType
   return 'json';
 }
 
+// Libellés français des champs les plus courants ; les autres passent par humanLabel.
+const FIELD_LABEL: Record<string, string> = {
+  text: 'Message',
+  body: 'Message',
+  message: 'Message',
+  subject: 'Objet',
+  recipient_name: 'Destinataire',
+  to_email: 'Adresse e-mail',
+  is_inmail: 'Envoyer en InMail',
+  reason: 'Motif',
+  new_status: 'Nouveau statut',
+};
+
 function humanLabel(key: string): string {
-  // candidate_id → "Candidate Id", max_actions_per_day → "Max Actions Per Day"
-  return key
-    .split('_')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(' ');
+  // max_actions_per_day → "Max actions per day"
+  const words = key.split('_').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 interface EditableParamFieldProps {
@@ -240,20 +302,11 @@ interface EditableParamFieldProps {
 
 const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, toolName, onChange }) => {
   const type = fieldTypeFor(field, value, toolName);
-  const label = humanLabel(field);
+  const label = FIELD_LABEL[field] ?? humanLabel(field);
 
-  if (type === 'readonly') {
-    return (
-      <div className="flex flex-col gap-1">
-        <Label className="text-xs font-medium text-muted-foreground">
-          {label} <span className="font-normal">(lecture seule)</span>
-        </Label>
-        <div className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded-md break-all">
-          {value === null || value === undefined || value === '' ? 'vide' : String(value)}
-        </div>
-      </div>
-    );
-  }
+  // Identifiants techniques : conservés dans les params à l'enregistrement,
+  // mais rien à lire ni à modifier pour la personne.
+  if (type === 'readonly') return null;
 
   if (type === 'boolean') {
     return (
@@ -291,7 +344,7 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, t
           value={String(value ?? '')}
           onChange={(e) => onChange(e.target.value)}
           rows={Math.min(8, Math.max(3, Math.ceil(String(value ?? '').length / 60)))}
-          className="text-xs font-mono leading-snug"
+          className="text-sm leading-snug"
         />
       </div>
     );
@@ -502,176 +555,207 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
   if (!conversationId || pending.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 px-4 py-3 border-b border-border bg-muted/30">
-      {pending.map((row) => {
-        const summary = row.dry_run_result?.summary || "Action proposée par l'assistant";
-        const warning = row.dry_run_result?.warning;
-        const label = TOOL_LABEL[row.tool_name] || "Action de l'assistant";
-        const loading = actionLoading[row.id];
-        const isEditing = editingId === row.id;
-        const isSensitive = isSensitiveAction(row.tool_name, row.params);
-        const targetLabel = targetLabelForTool(row.tool_name, row.dry_run_result?.details);
-        // Edit mode bypasses the sensitive dialog (the user has already re-read
-        // and patched the params — confirmation implicit).
-        const approveNeedsDialog = isSensitive && !isEditing;
-        const firstStepPreview = row.tool_name === 'enroll_in_sequence'
-          ? readFirstStepPreview(row.dry_run_result?.details)
-          : null;
+    // Plafonné et défilant : un long message ou plusieurs propositions ne
+    // doivent jamais repousser la conversation hors de l'écran. Le padding vit
+    // sur le wrapper interne : sur le conteneur défilant, il laisserait un
+    // écart sous les boutons collés en bas.
+    <div
+      role="region"
+      aria-label="Actions à valider"
+      className="max-h-[55vh] shrink-0 overflow-y-auto border-b border-border bg-muted/30"
+    >
+      <div className="flex flex-col gap-2 px-4 pb-3 pt-3">
+        {pending.map((row) => {
+          const summary = row.dry_run_result?.summary || "Action proposée par l'assistant";
+          const warning = row.dry_run_result?.warning;
+          const preview = messagePreviewFor(row);
+          const title = preview?.title ?? (TOOL_LABEL[row.tool_name] || "Action de l'assistant");
+          const loading = actionLoading[row.id];
+          const isEditing = editingId === row.id;
+          const isSensitive = isSensitiveAction(row.tool_name, row.params);
+          // Edit mode bypasses the sensitive dialog (the user has already re-read
+          // and patched the params, confirmation implicite).
+          const approveNeedsDialog = isSensitive && !isEditing;
+          const firstStepPreview = row.tool_name === 'enroll_in_sequence'
+            ? readFirstStepPreview(row.dry_run_result?.details)
+            : null;
 
-        return (
-          <div
-            key={row.id}
-            className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="eyebrow">Action proposée</span>
-                  <span className="text-2xs text-muted-foreground">· {label}</span>
-                </div>
-                <p className="text-sm text-foreground leading-snug">{summary}</p>
-                {warning && (
-                  <div className="mt-1.5 flex items-start gap-1.5 text-xs text-warning">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-                    <span>{warning}</span>
+          return (
+            <div
+              key={row.id}
+              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3.5"
+            >
+              <div className="min-w-0">
+                <p className="eyebrow">À valider</p>
+                <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground">{title}</p>
+              </div>
+
+              {preview ? (
+                !isEditing && (
+                  <div className="flex flex-col gap-2">
+                    <dl className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
+                      {preview.recipient && (
+                        <>
+                          <dt className="text-muted-foreground">À</dt>
+                          <dd className="break-words font-medium text-foreground">{preview.recipient}</dd>
+                        </>
+                      )}
+                      {preview.subject && (
+                        <>
+                          <dt className="text-muted-foreground">Objet</dt>
+                          <dd className="break-words font-medium text-foreground">{preview.subject}</dd>
+                        </>
+                      )}
+                    </dl>
+                    <div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm leading-relaxed text-foreground">
+                      {preview.body}
+                    </div>
                   </div>
+                )
+              ) : (
+                <p className="text-sm leading-snug text-foreground">{summary}</p>
+              )}
+
+              {/* Visible aussi en mode Modifier : les champs dont il dépend y sont en lecture seule. */}
+              {row.tool_name === 'enroll_in_sequence' && firstStepPreview && (
+                <EnrollFirstMessagePreview
+                  preview={firstStepPreview}
+                  fallbackName={String(row.dry_run_result?.details?.candidate ?? 'ce candidat')}
+                />
+              )}
+
+              {warning && (
+                <div className="flex items-start gap-2 rounded-lg bg-warning-muted px-2.5 py-2 text-xs leading-snug text-foreground">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                  <span>{warning}</span>
+                </div>
+              )}
+
+              {isEditing && (
+                <div className="flex flex-col gap-2.5 border-t border-border pt-3">
+                  <p className="text-xs font-medium text-foreground">Modifier avant d'approuver</p>
+                  {Object.entries(editedParams).map(([field, value]) => (
+                    <EditableParamField
+                      key={field}
+                      field={field}
+                      value={value}
+                      toolName={row.tool_name}
+                      onChange={(newValue) => setEditedParams((prev) => ({ ...prev, [field]: newValue }))}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Collée au bas du bandeau : si le contenu dépasse la hauteur
+                  autorisée, les boutons restent atteignables sans défiler. */}
+              <div className="sticky bottom-0 z-10 -mx-3.5 -mb-3.5 flex flex-wrap items-center gap-2 rounded-b-xl border-t border-border bg-card px-3.5 py-3">
+                {!isEditing ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleAction(row.id, 'reject')}
+                      disabled={loading != null}
+                    >
+                      {loading === 'reject' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <X aria-hidden="true" />}
+                      Rejeter
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => startEditing(row)}
+                      disabled={loading != null}
+                    >
+                      <Pencil aria-hidden="true" />
+                      Modifier
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      className="ml-auto"
+                      onClick={() => {
+                        if (approveNeedsDialog) {
+                          setConfirmDialogId(row.id);
+                        } else {
+                          handleAction(row.id, 'approve');
+                        }
+                      }}
+                      disabled={loading != null}
+                    >
+                      {loading === 'approve' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                      Approuver
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="ghost" onClick={cancelEditing} disabled={loading != null}>
+                      <X aria-hidden="true" />
+                      Annuler
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      className="ml-auto"
+                      onClick={() => handleSaveAndApprove(row.id)}
+                      disabled={loading != null}
+                    >
+                      {loading === 'save' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                      Enregistrer et approuver
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
+          );
+        })}
 
-            {/* Visible aussi en mode Modifier : les champs dont il dépend y sont en lecture seule. */}
-            {row.tool_name === 'enroll_in_sequence' && firstStepPreview && (
-              <EnrollFirstMessagePreview
-                preview={firstStepPreview}
-                fallbackName={String(row.dry_run_result?.details?.candidate ?? 'ce candidat')}
-              />
-            )}
-
-            {isEditing && (
-              <div className="mt-2 pt-2 border-t border-border flex flex-col gap-2.5">
-                <p className="text-xs font-medium text-foreground">Modifier les réglages avant d'exécuter</p>
-                {Object.entries(editedParams).map(([field, value]) => (
-                  <EditableParamField
-                    key={field}
-                    field={field}
-                    value={value}
-                    toolName={row.tool_name}
-                    onChange={(newValue) => setEditedParams((prev) => ({ ...prev, [field]: newValue }))}
-                  />
-                ))}
-              </div>
-            )}
-
-            {isSensitive && !isEditing && (
-              <div className="mt-1 flex items-start gap-2 rounded-lg bg-warning-muted p-2">
-                <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-warning" aria-hidden="true" />
-                <p className="text-xs leading-snug text-foreground">
-                  <span className="font-semibold text-warning">Action sensible :</span> une confirmation
-                  vous sera demandée au moment d'approuver, pour vérifier la cible (<strong>{targetLabel}</strong>).
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 pt-1">
-              {!isEditing ? (
-                <>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => handleAction(row.id, 'reject')}
-                    disabled={loading != null}
-                  >
-                    {loading === 'reject' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <X aria-hidden="true" />}
-                    Rejeter
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => startEditing(row)}
-                    disabled={loading != null}
-                  >
-                    <Pencil aria-hidden="true" />
-                    Modifier
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="primary"
-                    onClick={() => {
-                      if (approveNeedsDialog) {
-                        setConfirmDialogId(row.id);
-                      } else {
-                        handleAction(row.id, 'approve');
-                      }
-                    }}
-                    disabled={loading != null}
-                  >
-                    {loading === 'approve' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
-                    Approuver
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button size="xs" variant="outline" onClick={cancelEditing} disabled={loading != null}>
-                    <X aria-hidden="true" />
-                    Annuler
-                  </Button>
-                  <Button size="xs" variant="primary" onClick={() => handleSaveAndApprove(row.id)} disabled={loading != null}>
-                    {loading === 'save' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
-                    Enregistrer et approuver
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Dialog de confirmation pour les actions sensibles (Clarif.3 v2) */}
-      <AlertDialog open={confirmDialogId !== null} onOpenChange={(open) => !open && setConfirmDialogId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer cette action sensible</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div>
-                {confirmDialogId && (() => {
-                  const row = pending.find((p) => p.id === confirmDialogId);
-                  if (!row) return null;
-                  const target = targetLabelForTool(row.tool_name, row.dry_run_result?.details);
-                  return (
-                    <>
-                      <p className="mb-2">
-                        Vous allez effectuer cette action sur <strong>{target}</strong>.
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {row.dry_run_result?.summary || row.tool_name}
-                      </p>
-                      {row.dry_run_result?.warning && (
-                        <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
-                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                          {row.dry_run_result.warning}
+        {/* Dialog de confirmation pour les actions sensibles (Clarif.3 v2) */}
+        <AlertDialog open={confirmDialogId !== null} onOpenChange={(open) => !open && setConfirmDialogId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmer cette action sensible</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div>
+                  {confirmDialogId && (() => {
+                    const row = pending.find((p) => p.id === confirmDialogId);
+                    if (!row) return null;
+                    const target = targetLabelForTool(row.tool_name, row.dry_run_result?.details);
+                    return (
+                      <>
+                        <p className="mb-2">
+                          Vous allez effectuer cette action sur <strong>{target}</strong>.
                         </p>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (confirmDialogId) {
-                  handleAction(confirmDialogId, 'approve');
-                  setConfirmDialogId(null);
-                }
-              }}
-            >
-              Approuver l'action
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                        <p className="text-xs text-muted-foreground">
+                          {row.dry_run_result?.summary || row.tool_name}
+                        </p>
+                        {row.dry_run_result?.warning && (
+                          <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            {row.dry_run_result.warning}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmDialogId) {
+                    handleAction(confirmDialogId, 'approve');
+                    setConfirmDialogId(null);
+                  }
+                }}
+              >
+                Approuver l'action
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </div>
   );
 };

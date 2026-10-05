@@ -14,6 +14,8 @@ interface ATSDroppableColumnProps {
   stages: { key: string; label: string }[];
   candidates: ATSCandidate[];
   isOver: boolean;
+  /** Une carte est en train d'être glissée : une colonne vide montre sa zone de dépôt. */
+  dragActive?: boolean;
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
   onMove: (candidateId: string, stageKey: string) => void;
@@ -26,8 +28,12 @@ const INITIAL_VISIBLE = 10;
 const LOAD_MORE_COUNT = 10;
 
 /**
- * Colonne d'une étape. Survolée pendant un glisser, elle prend le fond `muted`
- * et un filet d'accent, sans grossir ni projeter d'ombre (revue design E-23).
+ * Colonne d'une étape, au style du kanban de la page mission (design simplifié,
+ * lot Suite) : fond de carte sans bordure, en-tête discret, effectif écrit
+ * seulement s'il n'est pas nul (le nom accessible garde le nombre). Une colonne
+ * vide n'affiche rien au repos ; pendant un glisser, sa zone de dépôt. Survolée
+ * pendant un glisser, elle prend un fond doux et un filet d'accent, sans grossir
+ * ni projeter d'ombre (revue design E-23).
  */
 export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   id,
@@ -35,6 +41,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   stages,
   candidates,
   isOver,
+  dragActive = false,
   onCandidateClick,
   onJobClick,
   onMove,
@@ -58,30 +65,27 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       ref={setNodeRef}
       aria-label={`Colonne ${stage.label}, ${plural(candidates.length, 'candidat')}`}
       className={cn(
-        'flex w-[280px] shrink-0 flex-col rounded-xl border transition-colors duration-150',
-        isOver ? 'border-brand bg-muted' : 'border-border bg-card',
+        'flex w-[280px] shrink-0 flex-col gap-2 rounded-xl p-2.5 transition-colors duration-150',
+        isOver ? 'bg-muted/60 ring-1 ring-inset ring-brand/50' : 'bg-card',
       )}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-        <h2 className="truncate text-sm font-semibold text-foreground">
-          {stage.label}
-        </h2>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {candidates.length}
-          <span className="sr-only"> candidat{candidates.length > 1 ? 's' : ''}</span>
-        </span>
+      <header className="flex items-baseline justify-between gap-2 px-0.5 text-xs text-muted-foreground">
+        <h2 className="truncate font-semibold">{stage.label}</h2>
+        {candidates.length > 0 && <span className="shrink-0 tabular-nums" aria-hidden="true">{candidates.length}</span>}
       </header>
 
-      <ul className="flex-1 space-y-2 p-2 md:max-h-[600px] md:overflow-y-auto">
+      <ul className="-mx-1 flex-1 space-y-2 px-1 md:max-h-[600px] md:overflow-y-auto">
         {visibleCandidates.length === 0 ? (
-          <li
-            className={cn(
-              'rounded-lg border border-dashed px-3 py-6 text-center text-xs',
-              isOver ? 'border-brand text-foreground' : 'border-border text-muted-foreground',
-            )}
-          >
-            {isOver ? 'Déposer ici' : 'Aucun candidat'}
-          </li>
+          dragActive && (
+            <li
+              className={cn(
+                'rounded-lg border border-dashed px-3 py-6 text-center text-xs',
+                isOver ? 'border-brand text-foreground' : 'border-border text-muted-foreground',
+              )}
+            >
+              Déposer ici
+            </li>
+          )
         ) : (
           visibleCandidates.map((candidate) => (
             <li key={candidate.id}>
@@ -102,7 +106,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       </ul>
 
       {(remaining > 0 || canCollapse) && (
-        <footer className="flex gap-1.5 border-t border-border p-2">
+        <footer className="flex gap-1.5">
           {remaining > 0 && (
             <Button
               type="button"

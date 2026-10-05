@@ -237,6 +237,23 @@ test('B6-6 — entretiens : aujourd’hui et comptes rendus disjoints', () => {
   assert.equal(todayIds.filter((id) => debriefIds.includes(id)).length, 0, 'aucune ligne dans les deux listes');
 });
 
+test('B6-6 — entretien annulé (calendly-webhook) : ni dans aujourd’hui, ni dans les comptes rendus', () => {
+  const now = new Date(2026, 8, 23, 11);
+  const iv = (id, h1, h2, status) => ({
+    id, status,
+    event_start_at: new Date(2026, 8, 23, h1).toISOString(),
+    event_end_at: new Date(2026, 8, 23, h2).toISOString(),
+  });
+  const r = splitInterviews([
+    iv('annulePasse', 9, 10, 'cancelled'),
+    iv('annuleAVenir', 15, 16, 'cancelled'),
+    iv('aVenir', 15, 16, 'scheduled'),
+    iv('entame', 12, 13, 'in_progress'),
+  ], now);
+  assert.deepEqual(r.today.map((x) => x.id), ['entame', 'aVenir']);
+  assert.deepEqual(r.debriefs, []);
+});
+
 test('B6-7 — heures courtes', () => {
   const now = new Date(2026, 8, 23, 15, 0);
   assert.equal(formatShortTime(new Date(2026, 8, 23, 8, 12).toISOString(), now), '08:12');

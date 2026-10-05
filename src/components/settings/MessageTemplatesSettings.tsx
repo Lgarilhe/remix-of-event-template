@@ -16,7 +16,6 @@ import React, { useId, useState } from 'react';
 import { useMessageTemplates, type MessageTemplate, type CreateTemplateInput } from '@/hooks/useMessageTemplates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -175,9 +174,10 @@ const TemplatesSection: React.FC = () => {
           <ErrorBox title="Impossible de charger vos modèles." onRetry={() => { void refetch(); }} />
         )}
 
-        {/* État vide : suggestions de modèles pré-remplis */}
+        {/* État vide : suggestions de modèles pré-remplis. Design simplifié : sans encadré,
+            chaque suggestion est une ligne discrète (bouton ghost), plus de tuiles bordées. */}
         {!isLoading && !isError && templates.length === 0 && (
-          <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
+          <div className="space-y-3">
             <div>
               <h4 className="text-sm font-semibold text-foreground">Commencer avec des modèles suggérés</h4>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -185,15 +185,15 @@ const TemplatesSection: React.FC = () => {
                 Vous pourrez les modifier ensuite.
               </p>
             </div>
-            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            <ul className="grid grid-cols-1 gap-1 md:grid-cols-2 md:gap-x-6">
               {SUGGESTED_TEMPLATES.map((tpl) => (
-                <li key={tpl.shortcut}>
+                <li key={tpl.shortcut} className="-mx-2">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => handleCreateSuggested(tpl)}
                     aria-label={`Ajouter le modèle ${tpl.name}`}
-                    className="h-auto w-full items-start justify-start gap-2 whitespace-normal p-3 text-left font-normal"
+                    className="h-auto w-full items-start justify-start gap-2 whitespace-normal px-2 py-2 text-left font-normal"
                   >
                     <Plus className="mt-0.5 text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0 flex-1">
@@ -214,9 +214,9 @@ const TemplatesSection: React.FC = () => {
 
         {/* Liste des modèles existants */}
         {!isLoading && !isError && templates.length > 0 && (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border">
             {templates.map((tpl) => (
-              <li key={tpl.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
+              <li key={tpl.id} className="flex items-start gap-3 py-3">
                 {/* Émoji choisi par la personne : son contenu, décoratif (comme dans la messagerie). */}
                 {tpl.emoji && (
                   <span className="shrink-0 text-lg leading-none" aria-hidden="true">{tpl.emoji}</span>
@@ -225,7 +225,7 @@ const TemplatesSection: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-sm font-semibold text-foreground">{tpl.name}</h4>
                     {tpl.shortcut && <kbd className={KBD}>{tpl.shortcut}</kbd>}
-                    {tpl.category && <Badge variant="muted">{tpl.category}</Badge>}
+                    {tpl.category && <span className="text-xs text-muted-foreground">{tpl.category}</span>}
                     {tpl.usage_count > 0 && (
                       <span className="text-xs text-muted-foreground">
                         Utilisé {plural(tpl.usage_count, 'fois', 'fois')}

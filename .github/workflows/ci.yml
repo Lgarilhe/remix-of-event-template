@@ -122,6 +122,14 @@ jobs:
       # des deux panneaux empaqueté avec esbuild.
       - name: Accueil du design simplifié
         run: node --test tests/ux/accueil-simplicite.test.mjs
+      # Design simplifié, lot T : la page Tâches (lignes avec visage ou logo,
+      # « En retard » sous le réveil, filtres dans un menu, suggestions sous la liste).
+      - name: Tâches du design simplifié
+        run: node --test tests/ux/taches-simplicite.test.mjs
+      # Design simplifié, lot P : copie privée des photos (règles de la copie,
+      # réserve d'écran, gardes sur la migration, la tâche et les écrans branchés).
+      - name: Copie privée des photos (design simplifié)
+        run: node --test tests/c1/photos-copie-privee.test.mjs
       - name: Vite production build
         run: npx vite build
 

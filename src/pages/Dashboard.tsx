@@ -119,13 +119,13 @@ export default function Dashboard() {
   }, [pendingList, stagnantList, interviewingByMission]);
   const photoKeys = useMemo(() => Array.from(new Set(shown.flat().map(photoKeyOf).filter(Boolean))), [shown]);
   const photos = useCandidateAvatars(photoKeys);
-  const personOf = (c: ATSCandidate): FocusPerson => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null });
+  const personOf = (c: ATSCandidate): FocusPerson => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null, candidateId: c.candidateId });
 
   const interviewing = useMemo(() => {
     const out: Record<string, InterviewingPeople> = {};
     for (const [projectId, list] of interviewingByMission) {
       out[projectId] = {
-        people: firstPeople(list).map((c) => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null })),
+        people: firstPeople(list).map((c) => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null, candidateId: c.candidateId })),
         total: countPeople(list),
       };
     }
@@ -145,9 +145,13 @@ export default function Dashboard() {
     [projects],
   );
 
-  // Client d'une mission, pour les initiales d'une tâche sans candidat.
+  // Client d'une mission, pour les initiales d'une tâche sans candidat, et son logo enregistré.
   const missionClientOf = useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p.jd_client || p.client_name || null]));
+    return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
+  }, [projects]);
+  const missionLogoOf = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p.jd_client_logo ?? null]));
     return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
   }, [projects]);
 
@@ -164,7 +168,7 @@ export default function Dashboard() {
   };
 
   return (
-    <PageLayout maxWidth="md">
+    <PageLayout maxWidth="md" backdrop>
       <SEOHead
         title="Tableau de bord | Konekt"
         description="Votre point de départ : ce qui demande votre attention aujourd'hui."
@@ -201,6 +205,7 @@ export default function Dashboard() {
             scheduledMessages={scheduledMessages}
             remindersToday={remindersToday}
             missionClientOf={missionClientOf}
+            missionLogoOf={missionLogoOf}
             isLoading={messagesLoading || remindersLoading}
             error={todayError}
             onRetry={retryToday}

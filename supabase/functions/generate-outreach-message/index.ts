@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { detectSequenceViolations } from "../_shared/sequence-send-rules.ts";
 
@@ -1186,7 +1187,8 @@ Réponds UNIQUEMENT en JSON valide:
           },
           body: JSON.stringify({
             model: _resolvedAnthropicModel,
-            max_tokens: 2048,
+            max_tokens: withThinkingHeadroom(_resolvedAnthropicModel, 2048),
+            ...gen5Params(_resolvedAnthropicModel),
             system: [
               { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
               ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
@@ -1200,7 +1202,7 @@ Réponds UNIQUEMENT en JSON valide:
           const data = await response.json();
           _totalTokensIn += data.usage?.input_tokens || 0;
           _totalTokensOut += data.usage?.output_tokens || 0;
-          let content = data.content?.[0]?.text || "";
+          let content = textFromContent(data.content);
           content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           return { ok: true, content };
         }

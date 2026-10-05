@@ -6,6 +6,7 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
 import { GoShortcuts } from '@/components/layout/GoShortcuts';
+import { AssistantLauncher } from '@/components/agent/AssistantLauncher';
 import { Spinner } from '@/components/ui/spinner';
 import { LowCreditBanner } from '@/components/ai/LowCreditBanner';
 import { TrialBanner } from '@/components/billing/TrialBanner';
@@ -75,6 +76,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* G puis une lettre (G D, G M…) : navigation au clavier dans l'application */}
       <GoShortcuts />
+
+      {/* Bulle ronde de l'assistant, en bas à droite (Ctrl K ouvre le même tiroir) */}
+      <AssistantLauncher />
     </SidebarProvider>
   );
 };

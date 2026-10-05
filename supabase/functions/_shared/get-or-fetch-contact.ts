@@ -348,7 +348,8 @@ export interface GdprErasureResult {
  * ses InMails programmés sont annulés, l'adresse rejoint suppressed_emails
  * (reason 'unsubscribe'), puis nom, titre, adresse, téléphone et textes
  * envoyés sont effacés des lignes de séquence. Ses liens conversation–mission
- * sont supprimés et ses résumés de réponse effacés (lot 0b). Le succès n'est
+ * sont supprimés et ses résumés de réponse effacés (lot 0b). Ses copies privées
+ * de photo sont supprimées et marquées pour ne plus être reprises (lot P). Le succès n'est
  * renvoyé qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
  */
 export async function recordGdprErasure(
@@ -621,6 +622,55 @@ export async function recordGdprErasure(
     if (orgId) bySlug = bySlug.eq('organization_id', orgId);
     const { error } = await bySlug;
     if (error) return fail('suppression des liens de conversation', error);
+  }
+
+  // 10. Copies privées des photos (design simplifié, lot P), dans le périmètre :
+  //     fichiers supprimés, lignes candidate_photos passées « erased ». Le
+  //     marqueur vaut aussi pour un candidat dont la photo n'était pas encore
+  //     copiée : sa fiche du pipeline garde son lien LinkedIn, et un effacement
+  //     limité à l'organisation ne laisse aucune trace au registre pour un
+  //     candidat jamais inscrit ; sans marqueur, capture-candidate-photos le
+  //     copierait de nouveau.
+  for (let i = 0; i < knownIds.length; i += 100) {
+    const batch = knownIds.slice(i, i + 100);
+    let photosQuery = supabase
+      .from('candidate_photos')
+      .select('organization_id, candidate_id, storage_path')
+      .in('candidate_id', batch);
+    if (orgId) photosQuery = photosQuery.eq('organization_id', orgId);
+    const { data: photos, error: photosError } = await photosQuery;
+    if (photosError) return fail('lecture des photos', photosError);
+    let rowsQuery = supabase
+      .from('job_candidate_status')
+      .select('organization_id, candidate_id')
+      .in('candidate_id', batch)
+      .limit(5000);
+    if (orgId) rowsQuery = rowsQuery.eq('organization_id', orgId);
+    const { data: rows, error: rowsError } = await rowsQuery;
+    if (rowsError) return fail('lecture des photos', rowsError);
+
+    type PhotoKey = { organization_id: string | null; candidate_id: string | null; storage_path?: string | null };
+    const paths = ((photos ?? []) as PhotoKey[])
+      .map((p) => p.storage_path)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    if (paths.length > 0) {
+      const { error } = await supabase.storage.from('candidate-photos').remove(paths);
+      if (error) return fail('suppression des photos', error);
+    }
+    const pairs = new Map<string, { organization_id: string; candidate_id: string }>();
+    for (const r of [...((photos ?? []) as PhotoKey[]), ...((rows ?? []) as PhotoKey[])]) {
+      if (r.organization_id && r.candidate_id) {
+        pairs.set(`${r.organization_id}|${r.candidate_id}`, { organization_id: r.organization_id, candidate_id: r.candidate_id });
+      }
+    }
+    if (pairs.size > 0) {
+      const now = new Date().toISOString();
+      const { error } = await supabase.from('candidate_photos').upsert(
+        [...pairs.values()].map((p) => ({ ...p, status: 'erased', storage_path: null, captured_at: null, last_error: null, checked_at: now })),
+        { onConflict: 'organization_id,candidate_id' },
+      );
+      if (error) return fail('marquage des photos effacées', error);
+    }
   }
 
   return { ...result, success: true };
