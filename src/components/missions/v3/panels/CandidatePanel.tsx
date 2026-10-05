@@ -44,6 +44,7 @@ import {
 import {
   buildEnrichedProfile,
   candidateDisplayName,
+  candidatePictureUrl,
   neighborRowIds,
   positionLine,
   rowPosition,
@@ -231,6 +232,7 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
   const pipelineProfile = useMemo(() => atsCandidateToProfile(candidate), [candidate]);
   const reasons = useMemo(() => scoreReasons(row.scoringDetails), [row.scoringDetails]);
   const name = candidateDisplayName(row, profileData);
+  const pictureUrl = candidatePictureUrl(row, profileData);
   const position = positionLine(enriched, row.headline);
   const location = enriched?.location ?? null;
   const accountId = fullProfile.accountId || selectedAccount || undefined;
@@ -394,6 +396,7 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
         row={row}
         steps={stepRefs}
         name={name}
+        pictureUrl={pictureUrl}
         position={position}
         location={location}
         reasons={reasons}

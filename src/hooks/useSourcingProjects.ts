@@ -39,6 +39,9 @@ export interface SourcingProject {
    */
   jd_title?: string | null;
   jd_client?: string | null;
+  /** Logo du client enregistré dans le brief, et date de la dernière recherche infructueuse. */
+  jd_client_logo?: string | null;
+  jd_client_logo_checked?: string | null;
   jd_location?: string | null;
   hunt_mode: boolean;
   hunt_bounty_percent: number | null;
@@ -54,6 +57,7 @@ export interface CreateProjectInput {
   job_id?: string;
   job_title?: string;
   client_name?: string;
+  job_details?: Record<string, any>;
   filters_snapshot?: Record<string, any>;
 }
 
@@ -91,7 +95,7 @@ export interface SourcingProjectsOptions {
 // compris) dépasse la profondeur admise par TypeScript ; le résultat est
 // relu comme SourcingProject[].
 const PROJECT_LIST_COLUMNS: string =
-  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_location:job_details->>location';
+  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_client_logo:job_details->client->>logo_url, jd_client_logo_checked:job_details->client->>logo_checked_at, jd_location:job_details->>location';
 
 export const useSourcingProjects = (
   kind: 'mission' | 'search' = 'mission',

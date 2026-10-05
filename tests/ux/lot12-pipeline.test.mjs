@@ -395,6 +395,17 @@ test('listes sur mission_candidate_rows, jamais ouverts exclus', () => {
   assert.match(src, /\['project-candidates', projectId, 'v3-board'\]/);
 });
 
+test('visages : liste, kanban et fiche passent la photo enregistrée à PersonAvatar', () => {
+  for (const rel of [
+    'src/components/missions/v3/pipeline/CandidateListRow.tsx',
+    'src/components/missions/v3/pipeline/MissionBoard.tsx',
+    'src/components/missions/v3/panels/CandidatePanelHeader.tsx',
+  ]) {
+    const src = stripComments(read(rel));
+    assert.match(src, /<PersonAvatar [^>]*src=\{(row\.)?pictureUrl\}/, `${rel} : la photo n'est pas passée à PersonAvatar`);
+  }
+});
+
 test('gestes : setCandidateStages sur rowWriteIds, puis invalidateStageReaders', () => {
   const src = stripComments(read('src/hooks/useMissionStageActions.ts'));
   assert.match(src, /setCandidateStages\(ids, request\.target, request\.fromStages\)/);

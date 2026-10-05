@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Briefcase, GraduationCap, Zap, ThumbsUp,
-  MessageSquare, Newspaper, CalendarDays, Building2, Loader2,
+  MessageSquare, Newspaper, Loader2,
 } from 'lucide-react';
 import { CardMessageThread } from './CardMessageThread';
 import { ProfileData } from './types';
@@ -54,6 +54,8 @@ interface CardExpandedContentProps {
   hideStandardTabs?: boolean;
   /** Tab à activer par défaut à l'ouverture (clé d'un extraTab ou tab standard). */
   initialTab?: string;
+  /** Masque l'onglet Posts (pas encore branché) : la nouvelle page mission le retire. */
+  hidePosts?: boolean;
 }
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
@@ -80,6 +82,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   extraTabs,
   hideStandardTabs,
   initialTab,
+  hidePosts = false,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
@@ -109,7 +112,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
     { value: 'skills', icon: Zap, label: 'Compétences', shortLabel: 'Skills' },
     { value: 'messages', icon: MessageSquare, label: 'Messages', shortLabel: 'Msg' },
     { value: 'posts', icon: Newspaper, label: 'Posts', shortLabel: 'Posts' },
-  ];
+  ].filter((tab) => !(hidePosts && tab.value === 'posts'));
 
   return (
     <div className="overflow-hidden">
@@ -148,108 +151,91 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
           </TabsList>
         </div>
 
-        {/* Experience Tab */}
-        <TabsContent value="experience" className="mt-0 px-0 py-4">
+        {/* Experience Tab : une ligne par poste, séparées par des filets (docs/design/06-simplicite.md, règle 3) */}
+        <TabsContent value="experience" className="mt-0 px-0 py-2">
           {workExperience.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3">
+            <ul className="divide-y divide-border">
               {workExperience.map((exp: any, index: number) => {
                 const isCurrent = !exp.end;
                 const tenure = getTenureLabel(exp.start, exp.end);
                 return (
-                  <div
-                    key={index}
-                    className={`relative p-3 sm:p-4 border transition-colors ${
-                      isCurrent
-                       ? 'bg-accent/5 border-border rounded-lg'
-                       : 'bg-background border-border hover:border-border rounded-lg'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2.5 sm:gap-3">
-                      {exp.logo ? (
-                        <img
-                          src={exp.logo}
-                          alt={exp.company || ''}
-                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5"
-                         style={{ borderRadius: '0.5rem' }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
-                        />
-                      ) : null}
-                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 border ${
-                        isCurrent ? 'bg-foreground text-background border-border rounded-lg' : 'bg-muted/60 border-border rounded-lg'
-                      } ${exp.logo ? 'hidden' : ''}`}>
-                        <Briefcase className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-semibold leading-tight text-foreground">{exp.role}</p>
-                          {isCurrent && (
-                            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground-secondary">
-                              En poste
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
-                          <Building2 className="w-3 h-3 shrink-0" />
-                          {exp.company}
-                        </p>
-                        {(exp.start?.year || exp.end?.year) && (
-                          <div className="flex items-center gap-2 mt-1 text-xs sm:text-xs text-muted-foreground/60">
-                            <CalendarDays className="w-3 h-3 shrink-0" />
-                            <span>{exp.start?.year || '?'} → {exp.end?.year || 'Présent'}</span>
-                            {tenure && <span className="text-muted-foreground/40">• {tenure}</span>}
-                          </div>
-                        )}
-                        {exp.description && (
-                          <div className="text-xs text-muted-foreground/70 mt-2 leading-relaxed whitespace-pre-line">{exp.description}</div>
-                        )}
-                      </div>
+                  <li key={index} className="flex items-start gap-3 py-4 first:pt-2">
+                    {exp.logo ? (
+                      <img
+                        src={exp.logo}
+                        alt={exp.company || ''}
+                        className="mt-0.5 h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
+                      />
+                    ) : null}
+                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary ${exp.logo ? 'hidden' : ''}`}>
+                      <Briefcase className="h-4 w-4" aria-hidden="true" />
                     </div>
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-md font-semibold leading-tight text-foreground">{exp.role}</p>
+                        {isCurrent && (
+                          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground-secondary">
+                            En poste
+                          </span>
+                        )}
+                      </div>
+                      {exp.company && <p className="mt-0.5 text-sm text-foreground-secondary">{exp.company}</p>}
+                      {(exp.start?.year || exp.end?.year) && (
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {exp.start?.year || '?'} → {exp.end?.year || 'Présent'}
+                          {tenure && <span> · {tenure}</span>}
+                        </p>
+                      )}
+                      {exp.description && (
+                        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">{exp.description}</p>
+                      )}
+                    </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           ) : (
             <EmptyState icon={Briefcase} text="Aucune expérience disponible" />
           )}
         </TabsContent>
 
         {/* Education Tab */}
-        <TabsContent value="education" className="mt-0 px-0 py-4">
+        <TabsContent value="education" className="mt-0 px-0 py-2">
           {education.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3">
+            <ul className="divide-y divide-border">
               {education.map((edu: any, index: number) => {
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
-                <div key={index} className="p-3 sm:p-4 border border-border bg-background rounded-lg transition-colors">
-                  <div className="flex items-start gap-2.5 sm:gap-3">
+                  <li key={index} className="flex items-start gap-3 py-4 first:pt-2">
                     {schoolLogo ? (
                       <img
                         src={schoolLogo}
                         alt={edu.school || ''}
-                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5 rounded-lg"
+                        className="mt-0.5 h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border border-border rounded-lg ${schoolLogo ? 'hidden' : ''}`}>
-                      <GraduationCap className="w-4 h-4 text-foreground" />
+                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary ${schoolLogo ? 'hidden' : ''}`}>
+                      <GraduationCap className="h-4 w-4" aria-hidden="true" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-foreground text-sm">{edu.school}</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                        {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-md font-semibold leading-tight text-foreground">{edu.school}</p>
+                      {(edu.degree || edu.field_of_study) && (
+                        <p className="mt-0.5 text-sm text-foreground-secondary">
+                          {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
+                        </p>
+                      )}
                       {(edu.start?.year || edu.end?.year) && (
-                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground/60">
-                          <CalendarDays className="w-3 h-3" />
-                          <span>{edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}</span>
-                        </div>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}
+                        </p>
                       )}
                     </div>
-                  </div>
-                </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           ) : (
             <EmptyState icon={GraduationCap} text="Aucune formation disponible" />
           )}
@@ -355,7 +341,7 @@ const SkillsWithEndorse: React.FC<{
         return (
           <span
             key={index}
-              className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-border font-medium hover:border-border transition-colors inline-flex items-center gap-1.5 rounded-md"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
           >
             {skill.name || skill}
             {skill.endorsement_count != null && (

@@ -32,6 +32,31 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-06 — REFACTOR — Visages des candidats dans le /pipeline global
+
+**Contexte** : après les photos de la page mission, le propriétaire demande les visages dans la partie Pipeline. Le /pipeline global (kanban, tableau, chronologie) n'affichait aucun visage : sa lecture de `mission_candidate_rows` ne portait pas la photo.
+**Décision / Fait** : `MCR_DISPLAY_COLUMNS` extrait la photo côté base (`picture`, `picture_large`), `candidateOfMissionRow` la range dans `ATSCandidate.pictureUrl`, et la carte du kanban (28 px), le tableau et la chronologie (32 px) la passent à `PersonAvatar` ; sans photo ou avec un lien expiré, les initiales. Un candidat de séquence ou d'InMail sans ligne de mission n'a pas de photo.
+**Raison** : même règle 4 du design simplifié. Mesure sur la base de production le 06/10/2026 (comptages seuls) : 2 375 lignes, 1 551 avec une photo enregistrée (65 %), profil de 9 ko en moyenne, donc la lecture avec la liste reste bon marché. Les candidats sans photo enregistrée gardent leurs initiales tant que le lot P n'a pas rattrapé les profils.
+**Impact** : `useATSData.ts`, `ATSCandidateCard.tsx`, `ATSTable.tsx`, `ATSTimeline.tsx` ; test statique `tests/c1/lot0c4-pipeline.test.mjs` (regex des colonnes adaptée à la chaîne typée `string`, TS2589) ; scénario e2e « les visages » de `e2e/flows/stage-0c-lectures.spec.ts` (photo, initiales, lien expiré, carte attrapée par sa photo, tableau, chronologie).
+**Reste à faire** :
+- [ ] Lot P : copie privée des photos, rattrapage des profils sans photo, effacement RGPD, purge, export.
+**Refs** : docs/design/06-simplicite.md (lot P).
+
+---
+
+## 2026-10-05 — REFACTOR — Refonte mission, photos des candidats sur la page mission
+
+**Contexte** : retour du propriétaire après le lot M : des pastilles avec la photo des gens, plus lisibles que des initiales. `PersonAvatar` savait déjà afficher une photo ; la page mission ne lui passait que le nom (le Sourcing, la liste des missions et l'accueil passaient déjà la photo).
+**Décision / Fait** : la liste de Pipeline, la section À trier, le kanban et l'en-tête de la fiche affichent la photo LinkedIn déjà enregistrée dans `linkedin_profile_data`, sinon les initiales (aussi pour un lien expiré ou une image qui ne charge pas). `MISSION_ROW_LIGHT_COLUMNS` extrait la photo côté base (`picture`, `picture_large`), jamais le profil entier ; `MissionCandidateRow.pictureUrl` en dérive. Kanban : carte en deux rangées (visage, nom et anneau, puis l'action sur toute la largeur), colonnes de 190 à 224 px, pastille sur le fond de la page pour ne pas se fondre dans la carte. Fiche : photo de la ligne, sinon du profil déjà chargé par la fiche (`candidatePictureUrl`) ; nom sur deux lignes, « N sur M » sous le nom sur téléphone. `PersonAvatar` : `draggable={false}`, comme les autres images du dépôt.
+**Raison** : règle 4 de `docs/design/06-simplicite.md` (chaque ligne montre de qui elle parle) ; aucune nouvelle donnée stockée.
+**Impact** : `v3/types.ts`, `v3/pipeline/{CandidateListRow,MissionBoard}.tsx`, `v3/panels/CandidatePanelHeader.tsx` ; tests `tests/ux/lot12-mission-beta.test.mjs`, `lot12-pipeline.test.mjs`, scénario e2e « Visages » de `e2e/flows/mission-v3.spec.ts` (photo, repli sur la grande photo, sans photo, lien expiré). Mesure sur la base locale : 2000 lignes de 25 ko de profil, lecture du kanban 17 ms avec ou sans la photo.
+**Reste à faire** :
+- [ ] Lot P : copie privée des photos (les adresses LinkedIn expirent ; sans copie, les initiales reviennent avec le temps), effacement RGPD, purge, export.
+- [ ] Visage dans la carte « Maintenant » (le candidat qui attend) et vrais logos dans le menu des missions.
+**Refs** : docs/design/06-simplicite.md (lot P).
+
+---
+
 ## 2026-10-05 — REFACTOR — Refonte mission, en-tête de mission et liste des missions allégés
 
 **Contexte** : fin du lot M du design simplifié (`docs/design/06-simplicite.md`) après le Pipeline, le Cadrage et le Sourcing (en ligne sur main depuis ef4d33b). Même méthode : un agent par écran, trois relectures indépendantes (règles de design, non-régression, accessibilité), correction, puis vérification complète.

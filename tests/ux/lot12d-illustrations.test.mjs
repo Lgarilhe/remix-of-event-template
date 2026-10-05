@@ -24,10 +24,10 @@ const drawings = (() => {
 })();
 const imports = [...component.matchAll(/^import (\w+) from '@\/assets\/illustrations\/([\w-]+)\.webp';$/gm)].map((m) => ({ id: m[1], file: m[2] }));
 
-test('Illustrations : dix dessins, en calques WebP légers', () => {
+test('Illustrations : onze dessins, en calques WebP légers', () => {
   assert.deepEqual(
     [...drawings].sort(),
-    ['brief', 'cafe', 'connexion', 'conversation', 'dossier', 'envoi', 'orientation', 'recherche', 'taches', 'valide'],
+    ['brief', 'cafe', 'connexion', 'conversation', 'dossier', 'envoi', 'orientation', 'recherche', 'taches', 'tri', 'valide'],
   );
   assert.ok(imports.length >= 20, `trop peu de calques importés (${imports.length})`);
   for (const { id, file } of imports) {

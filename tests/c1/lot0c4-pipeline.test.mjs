@@ -65,15 +65,26 @@ test('0c-4 : le /pipeline lit mission_candidate_rows, sans l\'ancien rangement p
     assert.doesNotMatch(code(PAGE), new RegExp(`\\b${gone}\\b`), `${PAGE} : ${gone}`);
   }
   // Colonnes lues : celles que l'écran affiche, plus project_id, stage_entered_at, mission_name, group_ids.
-  const cols = src.match(/const MCR_DISPLAY_COLUMNS = '([^']+)';/)[1].split(',').map((c) => c.trim());
+  const cols = src.match(/const MCR_DISPLAY_COLUMNS(?:: string)? = '([^']+)';/)[1].split(',').map((c) => c.trim());
   for (const col of ['project_id', 'stage_entered_at', 'mission_name', 'group_ids', 'general_stage', 'process_step_id', 'is_unopened',
     'contacted_at', 'replied_at', 'first_interview_at', 'hired_at', 'rejected_from_stage']) {
     assert.ok(cols.includes(col), `colonne ${col} lue`);
   }
+  // La photo du visage : extraite côté base, jamais le profil LinkedIn entier.
+  assert.ok(cols.includes('picture:linkedin_profile_data->>profile_picture_url'), 'photo lue');
+  assert.ok(cols.includes('picture_large:linkedin_profile_data->>profile_picture_url_large'), 'grande photo lue');
+  assert.ok(!cols.some((c) => /^linkedin_profile_data$/.test(c)), 'jamais le profil entier');
   // Une lecture en échec remonte, toutes les lignes sont paginées.
   const fetchRows = functionBody(src, 'async function fetchMissionRows(');
   assert.match(fetchRows, /if \(pageError\) throw new Error/);
   assert.match(fetchRows, /\.range\(from, from \+ PAGE_SIZE - 1\)/);
+});
+
+test('visages : la carte, le tableau et la frise du /pipeline passent la photo du candidat à PersonAvatar', () => {
+  assert.match(code(HOOK), /pictureUrl: r\.picture \|\| r\.picture_large \|\| null/);
+  for (const rel of [CARD, TABLE, TIMELINE]) {
+    assert.match(code(rel), /<PersonAvatar [^>]*src=\{candidate\.pictureUrl\}/, `${rel} : la photo n'est pas passée à PersonAvatar`);
+  }
 });
 
 test('0c-4 : existingIds est bâti sur toutes les lignes de la vue, avant le filtre is_unopened (E4)', () => {

@@ -53,6 +53,14 @@ interface LinkedInSearchProps {
    * rendu actuel, inchangé (ancienne page mission, /sourcing/:id).
    */
   layout?: 'default' | 'mission-v3';
+  /**
+   * Recherche créée depuis /sourcing : la phrase déjà saisie est lancée une
+   * fois, dès que le brief synthétique et le compte sont prêts (layout
+   * mission-v3 seulement).
+   */
+  initialPhrase?: string;
+  /** Ouvre la fenêtre des filtres à l'arrivée, sans passer par le prompt (layout mission-v3 seulement). */
+  startWithFilters?: boolean;
 }
 
 type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
@@ -175,6 +183,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   searchSource: initialSearchSource = 'linkedin',
   onOpenSearchAgent,
   layout = 'default',
+  initialPhrase,
+  startWithFilters,
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
   const queryClient = useQueryClient();
@@ -1203,6 +1213,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [applyPhrase, search.selectedJob, activeProject?.name]);
 
+  // « Configurer les filtres » depuis /sourcing : on saute le prompt et la
+  // fenêtre des filtres s'ouvre, prête à lancer la recherche.
+  const startFiltersDoneRef = useRef(false);
+  useEffect(() => {
+    if (!isV3 || !startWithFilters || startFiltersDoneRef.current) return;
+    if (!activeProject || flowInitProjectRef.current !== activeProject.id || flowMode !== 'hero') return;
+    startFiltersDoneRef.current = true;
+    setFlowMode('results');
+    setFiltersOpen(true);
+  }, [isV3, startWithFilters, activeProject, flowMode]);
+
+  // Phrase venue de /sourcing : lancée une seule fois, comme un clic sur
+  // « Générer les filtres et chercher » (l'écran de plan s'affiche).
+  const initialPhraseDoneRef = useRef(false);
+  useEffect(() => {
+    if (!isV3 || !initialPhrase?.trim() || initialPhraseDoneRef.current) return;
+    if (flowMode !== 'hero' || !search.selectedJob || search.loading) return;
+    if (!selectedAccount && searchSource !== 'database') return;
+    initialPhraseDoneRef.current = true;
+    void launchFlow(initialPhrase.trim());
+  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow]);
+
   // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
   // aucune recherche : recherche directe, sans repasser par la génération IA
   // (un appel IA de 5 à 15 s évité). Le passage hero → results se fait par
@@ -1392,7 +1424,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         />
       )}
       {activeProject && flowMode === 'plan' && (
-        <SearchPlan query={flowQuery} stage={planStage} chips={planChips} />
+        <SearchPlan query={flowQuery} stage={planStage} chips={planChips} withBrief={activeProject.kind !== 'search'} />
       )}
       {isV3 && flowMode === 'results' && (
         <SourcingTopBar

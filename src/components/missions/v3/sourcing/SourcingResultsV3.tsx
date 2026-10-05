@@ -21,6 +21,7 @@ import { Check, Loader2, Mail, Maximize2, Search, Sparkles, Undo2, X } from 'luc
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { IconTile } from '@/components/ui/IconTile';
+import { Illustration } from '@/components/ui/illustration';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
@@ -644,7 +645,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                       {headline}
                     </td>
                     <td className="pr-3 text-right align-middle">
-                      <ScorePill score={row.note} />
+                      {row.note !== null && row.note > 0 ? <ScorePill score={row.note} /> : null}
                     </td>
                     {tab === 'retained' ? (
                       <td className="pr-2 align-middle">
@@ -715,7 +716,13 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
           )}
           <span role="status" className="sr-only">{loadAnnouncement}</span>
 
-          {groups[tab].length === 0 && (
+          {groups[tab].length === 0 && tab === 'to_sort' && !(hasSearched && results.length === 0) && (
+            <div className="flex flex-col items-center gap-3 px-2 py-8 text-center">
+              <Illustration name="tri" size="lg" />
+              <p className="text-sm text-muted-foreground">Aucun profil à trier.</p>
+            </div>
+          )}
+          {groups[tab].length === 0 && !(tab === 'to_sort' && !(hasSearched && results.length === 0)) && (
             <p className="px-2 py-5 text-sm text-muted-foreground">
               {tab === 'to_sort'
                 ? hasSearched && results.length === 0

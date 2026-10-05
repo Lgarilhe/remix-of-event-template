@@ -27,7 +27,9 @@ import { useSidebarOffline } from '@/hooks/sidebar/useSidebarOffline';
 import { useSourcingProject, type SourcingProject } from '@/hooks/useSourcingProjects';
 import { MissionV3Context } from './MissionV3Context';
 import type { MissionV3ContextValue, MissionWorkspaceV3Props } from './types';
+import { useClientLogoBackfill } from '@/hooks/useClientLogoBackfill';
 import { MissionShell } from './shell/MissionShell';
+import { missionClientName } from './shell/missionClient';
 import { missionScreenTarget } from './shell/missionScreens';
 import { ORG_TYPE_MISSING_REASON } from './shell/missionStatus';
 import { ViewportFrame } from './shell/ViewportFrame';
@@ -149,6 +151,18 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
   const { orgType, organizationId, isLoading: orgLoading } = useOrganization();
   const { offline } = useSidebarOffline();
   const [visibleRowIds, setVisibleRowIdsState] = useState<readonly string[]>([]);
+
+  // Logo du client : enregistré côté serveur s'il manque.
+  const logoCandidates = useMemo(
+    () => [{
+      id: project.id,
+      clientName: missionClientName(project),
+      logoUrl: project.job_details?.client?.logo_url ?? null,
+      logoCheckedAt: project.job_details?.client?.logo_checked_at ?? null,
+    }],
+    [project],
+  );
+  useClientLogoBackfill(logoCandidates);
 
   const { pathname, search, state } = routerLocation;
 

@@ -280,7 +280,11 @@ export function chipsFromUpdate(u: Partial<LinkedInFiltersState>): PlanChip[] {
   return chips;
 }
 
-interface SearchPlanProps { query: string; stage: PlanStage; chips: PlanChip[] }
+interface SearchPlanProps {
+  query: string; stage: PlanStage; chips: PlanChip[];
+  /** Faux pour une recherche hors mission : pas de brief à analyser. */
+  withBrief?: boolean;
+}
 
 const StepIcon: React.FC<{ state: 'wait' | 'active' | 'done' }> = ({ state }) => (
   <span className={cn(
@@ -293,9 +297,9 @@ const StepIcon: React.FC<{ state: 'wait' | 'active' | 'done' }> = ({ state }) =>
   </span>
 );
 
-export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) => {
+export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips, withBrief = true }) => {
   const steps: { title: string; state: 'wait' | 'active' | 'done'; meta?: string }[] = [
-    { title: 'Analyse de la demande + brief mission', state: 'done' },
+    { title: withBrief ? 'Analyse de la demande + brief mission' : 'Analyse de la demande', state: 'done' },
     { title: 'Extraction des filtres', state: stage === 'analyze' ? 'active' : 'done', meta: stage !== 'analyze' ? `${chips.length} filtres, modifiables juste après` : undefined },
     { title: 'Recherche des profils', state: stage === 'search' ? 'active' : 'wait' },
   ];
