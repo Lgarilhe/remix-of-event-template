@@ -419,16 +419,107 @@ test('flux : Welcome to the Jungle, page société vide sans rendu, puis avec Fi
   assert.equal(without.calls.scrape.length, 0, 'plafond atteint ou clé absente : Firecrawl n\'est pas appelé');
 });
 
-test('flux : une offre Welcome to the Jungle avec données JobPosting se lit sans Firecrawl', async () => {
+test('flux : une offre Welcome to the Jungle avec JobPosting seul garde ce JobPosting si rien de plus complet ne se lit', async () => {
   const withLongDescription = JSON_LD_PAGE.replace(
     /"description":"[^"]*"/,
     `"description":${JSON.stringify(`<p>${LONG(1200)}</p>`)}`,
   );
-  const net = fakeNet({ pages: { [WTTJ_JOB]: withLongDescription } });
-  const r = await resolve(net, WTTJ_JOB);
+  // Firecrawl tenté (le JobPosting du site n'a que le descriptif) mais en échec : le JobPosting reste.
+  const failing = fakeNet({ pages: { [WTTJ_JOB]: withLongDescription } });
+  const r = await resolve(failing, WTTJ_JOB);
   assert.deepEqual([r.kind, r.reader, r.job.title, r.job.company], ['job', 'json_ld', 'Expert Sécurité Opérationnelle', 'Numspot']);
   assert.ok(r.job.description.length >= 1000);
+  assert.equal(failing.calls.scrape.length, 1);
+
+  // Clé absente ou plafond atteint : aucun appel facturé.
+  const noKey = fakeNet({ pages: { [WTTJ_JOB]: withLongDescription }, firecrawl: false });
+  assert.equal((await resolve(noKey, WTTJ_JOB)).reader, 'json_ld');
+  assert.equal(noKey.calls.scrape.length, 0);
+});
+
+// Page d'offre Welcome to the Jungle : le JobPosting n'a que le descriptif, la page porte le reste.
+const wttjLd = (description) => `<script type="application/ld+json">${JSON.stringify({
+  '@type': 'JobPosting',
+  title: 'Expert Sécurité Opérationnelle',
+  description,
+  employmentType: 'FULL_TIME',
+  hiringOrganization: { name: 'Numspot' },
+  jobLocation: { address: { addressLocality: 'Courbevoie' } },
+})}</script>`;
+const WTTJ_FULL_PAGE = `<html><head>${wttjLd(`<p>${LONG(320)}</p>`)}</head><body>
+<nav>Menu Emploi Entreprises Connexion</nav>
+<main>
+<header><h1>Expert Sécurité Opérationnelle</h1><ul><li>CDI</li><li>Courbevoie</li></ul>
+<h2>Compétences et expertises</h2><ul><li>SOC</li><li>SIEM</li><li>Kubernetes</li></ul></header>
+<section><h2>Résumé du poste</h2><p>Rattaché au RSSI, vous pilotez la détection et la réponse aux incidents.</p></section>
+<section><h2>Descriptif du poste</h2><p>${LONG(700)}</p></section>
+<section><h2>Profil recherché</h2><p>Cinq ans d'expérience en sécurité opérationnelle.</p></section>
+<section><h2>Déroulement des entretiens</h2><p>Un échange RH, un entretien technique, une rencontre avec le RSSI.</p></section>
+<section><h2>Offres similaires</h2><p>Ingénieur Cloud Senior, Paris</p></section>
+</main>
+<footer>Mentions légales</footer></body></html>`;
+
+test('flux : Welcome to the Jungle, la fiche reprend résumé, compétences, profil et entretiens de la page, pas seulement le JobPosting', async () => {
+  const net = fakeNet({ pages: { [WTTJ_JOB]: WTTJ_FULL_PAGE } });
+  const r = await resolve(net, WTTJ_JOB);
+  assert.deepEqual(
+    [r.kind, r.reader, r.job.title, r.job.company, r.job.location, r.job.contract],
+    ['job', 'direct_text', 'Expert Sécurité Opérationnelle', 'Numspot', 'Courbevoie', 'Temps plein'],
+    'champs du JobPosting conservés',
+  );
+  for (const part of ['Compétences et expertises', 'SIEM', 'Résumé du poste', 'Profil recherché', 'Déroulement des entretiens', 'RSSI']) {
+    assert.match(r.job.description, new RegExp(part), `« ${part} » dans la fiche`);
+  }
+  assert.doesNotMatch(r.job.description, /Offres similaires|Ingénieur Cloud|Mentions légales|Menu Emploi/, 'ni offres voisines, ni menu, ni pied de page');
+  assert.equal(net.calls.scrape.length, 0, 'la page lue directement suffit : rien de facturé');
+});
+
+test('flux : Welcome to the Jungle, page vide en lecture directe, la fiche vient du rendu Firecrawl de la page entière', async () => {
+  const shell = `<html><head>${wttjLd(`<p>${LONG(320)}</p>`)}</head><body><div id="__next"></div></body></html>`;
+  const md = [
+    '[Menu](https://www.welcometothejungle.com/fr)',
+    '# Expert Sécurité Opérationnelle',
+    '## Compétences et expertises', 'SOC · SIEM · Kubernetes',
+    '## Profil recherché', LONG(500),
+    '## Déroulement des entretiens', LONG(300),
+    '## Offres similaires', 'Ingénieur Cloud Senior',
+  ].join('\n\n');
+  const net = fakeNet({ pages: { [WTTJ_JOB]: shell }, rendered: { [WTTJ_JOB]: { markdown: md, links: [] } } });
+  const r = await resolve(net, WTTJ_JOB);
+  assert.deepEqual([r.kind, r.reader, r.job.title, r.job.company], ['job', 'firecrawl', 'Expert Sécurité Opérationnelle', 'Numspot']);
+  assert.deepEqual(net.calls.scrape, [[WTTJ_JOB, false]], 'page entière : le contenu principal seul peut perdre les tags');
+  assert.match(r.job.description, /Compétences et expertises/);
+  assert.match(r.job.description, /Déroulement des entretiens/);
+  assert.doesNotMatch(r.job.description, /Menu|Ingénieur Cloud|^#/m, 'repart du premier titre, coupe avant les offres similaires');
+
+  // Rendu plus court que le JobPosting : le JobPosting reste.
+  const poor = fakeNet({ pages: { [WTTJ_JOB]: shell }, rendered: { [WTTJ_JOB]: { markdown: '# Titre\n\nTrop court', links: [] } } });
+  assert.equal((await resolve(poor, WTTJ_JOB)).reader, 'json_ld');
+});
+
+test('flux : un site quelconque dont le JobPosting suffit n\'est pas relu, même si sa page est plus longue', async () => {
+  const page = 'https://carrieres.numspot.com/offres/securite';
+  const html = `<html><head>${wttjLd(`<p>${LONG(900)}</p>`)}</head><body><main>${`<p>${LONG(3000)}</p>`}</main></body></html>`;
+  const net = fakeNet({ pages: { [page]: html } });
+  const r = await resolve(net, page);
+  assert.equal(r.reader, 'json_ld');
+  assert.ok(r.job.description.length < 1000, 'description du JobPosting, pas le texte de la page');
   assert.equal(net.calls.scrape.length, 0);
+});
+
+test('texte de page d\'offre : contenu principal avec son en-tête, sans menu ni pied, coupé avant les offres similaires', () => {
+  const text = k.jobPageText(WTTJ_FULL_PAGE);
+  assert.match(text, /^Expert Sécurité Opérationnelle/, 'l\'en-tête <header> de <main> est gardé');
+  assert.match(text, /SIEM/);
+  assert.doesNotMatch(text, /Menu Emploi|Mentions légales|Offres similaires/);
+  // Sans <main> : la page entière, comme avant.
+  assert.match(k.jobPageText(`<html><body><h1>Titre</h1><p>${LONG(400)}</p></body></html>`), /^Titre/);
+  // « Offres similaires » en tête de texte : jamais de fiche amputée de son début.
+  assert.equal(k.trimTrailingSections('Offres similaires\nUne offre'), 'Offres similaires\nUne offre');
+  assert.equal(k.trimTrailingSections(`${LONG(700)}\nOffres similaires\nUne offre`), LONG(700));
+  // L'en-tête reste retiré hors de <main>.
+  assert.doesNotMatch(k.htmlToText('<header>Menu</header><p>Fiche</p>'), /Menu/);
+  assert.match(k.htmlToText('<header>Titre</header><p>Fiche</p>', { keepHeader: true }), /Titre/);
 });
 
 test('flux : un JobPosting réduit à un résumé ne suffit pas, la page est lue plus loin', async () => {

@@ -96,13 +96,17 @@ export function normalizeWhitespace(s: string): string {
     .trim();
 }
 
+const STRIP_BLOCKS = /<(script|style|noscript|svg|nav|footer|header|form)\b[\s\S]*?<\/\1>/gi;
+// Dans le contenu principal d'une page, l'en-tête de l'offre (titre, tags) est souvent un <header> : on le garde.
+const STRIP_BLOCKS_KEEP_HEADER = /<(script|style|noscript|svg|nav|footer|form)\b[\s\S]*?<\/\1>/gi;
+
 /** HTML en texte brut : paragraphes et listes conservés, le reste retiré. */
-export function htmlToText(input: string): string {
+export function htmlToText(input: string, options: { keepHeader?: boolean } = {}): string {
   let html = input ?? "";
   // Greenhouse renvoie du HTML encodé en entités (&lt;p&gt;…) : on le décode d'abord.
   if (!/<[a-z!/]/i.test(html) && /&lt;\/?[a-z]/i.test(html)) html = decodeEntities(html);
   const text = html
-    .replace(/<(script|style|noscript|svg|nav|footer|header|form)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(options.keepHeader ? STRIP_BLOCKS_KEEP_HEADER : STRIP_BLOCKS, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<\s*br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|section|article|tr|h[1-6]|ul|ol|table|blockquote)>/gi, "\n\n")
@@ -135,6 +139,36 @@ export function looksThin(text: string, minChars = 600): boolean {
   const t = (text ?? "").trim();
   if (t.length < minChars) return true;
   return /cookie|consentement|accepter (tout|les)/i.test(t.slice(0, 500)) && t.length < 2500;
+}
+
+// Blocs qui suivent la fiche sur une page d'offre : leurs intitulés et compétences ne sont pas ceux du poste.
+const TRAILING_SECTION_RE = /^(offres? (d'emploi )?similaires|autres offres|d[ée]couvrez (aussi|d'autres)|similar jobs|you (may|might) also like)\b.*$/im;
+
+/** Coupe le texte avant « Offres similaires » et ses voisins, sans jamais amputer le début d'une fiche. */
+export function trimTrailingSections(text: string): string {
+  const m = TRAILING_SECTION_RE.exec(text);
+  return m && m.index >= 600 ? text.slice(0, m.index).trim() : text;
+}
+
+/**
+ * Texte visible d'une page d'offre : le contenu de <main> (titre, tags, résumé, descriptif,
+ * profil, entretiens), sinon la page entière. Le JobPosting de certains sites n'en porte
+ * que le descriptif.
+ */
+export function jobPageText(html: string): string {
+  const open = /<main\b[^>]*>/i.exec(html ?? "");
+  let text = "";
+  if (open) {
+    const end = [...html.matchAll(/<\/main\s*>/gi)].at(-1)?.index;
+    text = htmlToText(html.slice(open.index + open[0].length, end !== undefined && end > open.index ? end : undefined), { keepHeader: true });
+  }
+  return trimTrailingSections(text.length >= 300 ? text : htmlToText(html));
+}
+
+/** Même chose pour un rendu Markdown de la page entière : on repart du premier titre, après les menus. */
+export function jobMarkdownText(md: string): string {
+  const heading = /^#\s/m.exec(md ?? "");
+  return trimTrailingSections(markdownToText(heading ? md.slice(heading.index) : md));
 }
 
 export interface PageLink {

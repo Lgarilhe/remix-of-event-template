@@ -8,7 +8,7 @@
 
 import {
   atsApiUrls, capDescription, classifyUrl, companyFromHost, decodeEntities, extractHtmlLinks,
-  extractJsonLdJobs, firstMarkdownHeading, genericJobLinks, htmlToText, looksThin, markdownToText,
+  extractJsonLdJobs, firstMarkdownHeading, genericJobLinks, htmlToText, jobMarkdownText, jobPageText, looksThin, markdownToText,
   parseAshbyList, parseGreenhouseJob, parseGreenhouseList, parseLeverList, parseLeverPosting,
   parseRecruiteeList, smartCapitalize, withoutDescriptions, wttjJobsFromLinks, MAX_LIST_JOBS,
   type Classified, type PageLink, type SourceJob,
@@ -126,6 +126,35 @@ function jobFromText(c: Classified, url: URL, title: string | undefined, text: s
   };
 }
 
+/** Une page plus fournie d'un quart au moins que le JobPosting : la fiche entière, pas son seul descriptif. */
+const FULLER_RATIO = 1.25;
+
+/**
+ * Le JobPosting de Welcome to the Jungle ne porte que le descriptif du poste : résumé,
+ * compétences, profil recherché et déroulement des entretiens n'y sont pas. On garde ses
+ * champs (titre, société, lieu, contrat, salaire) et on remplace la description par le texte
+ * de la page, lu directement, sinon rendu par Firecrawl. Sans mieux, le JobPosting reste.
+ */
+async function completeFromPage(url: URL, job: SourceJob, html: string, deps: Deps): Promise<Resolved> {
+  const known = job.description?.length ?? 0;
+  const text = jobPageText(html);
+  if (text.length >= MIN_PAGE_TEXT_CHARS && !looksThin(text) && text.length > known * FULLER_RATIO) {
+    return { kind: "job", job: { ...job, description: capDescription(text) }, reader: "direct_text" };
+  }
+  if (await deps.allowFirecrawl()) {
+    try {
+      // Page entière : le contenu principal seul peut perdre le bloc de tags au-dessus du descriptif.
+      const rendered = jobMarkdownText((await deps.scrape(url.toString(), false)).markdown);
+      if (!looksThin(rendered, 400) && rendered.length > known * FULLER_RATIO) {
+        return { kind: "job", job: { ...job, description: capDescription(rendered) }, reader: "firecrawl" };
+      }
+    } catch (e) {
+      console.warn("[fetch-job-source] Firecrawl impossible:", e instanceof Error ? e.message : e);
+    }
+  }
+  return { kind: "job", job, reader: "json_ld" };
+}
+
 async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved | null> {
   // Niveau 2 : lecture directe.
   let html = "";
@@ -138,7 +167,9 @@ async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved |
   if (html) {
     const ld = extractJsonLdJobs(html, url.toString());
     const withText = ld.filter((j) => (j.description?.length ?? 0) >= MIN_DESCRIPTION_CHARS);
-    if (c.kind !== "company" && withText.length === 1) return { kind: "job", job: withText[0], reader: "json_ld" };
+    if (c.kind !== "company" && withText.length === 1) {
+      return c.source === "wttj" ? completeFromPage(url, withText[0], html, deps) : { kind: "job", job: withText[0], reader: "json_ld" };
+    }
     if (c.kind !== "job" && ld.length >= 2) return companyResult(c, url, withoutDescriptions(ld), "json_ld");
     if (c.kind !== "job") {
       const list = listFromLinks(c, url, extractHtmlLinks(html, url.toString()));
@@ -194,6 +225,7 @@ export async function resolveUrl(url: URL, deps: Deps, expectJob: boolean): Prom
     kind: result?.kind ?? "unreadable",
     reader: result && result.kind !== "unreadable" ? result.reader : "none",
     jobs: result?.kind === "company" ? result.jobs.length : undefined,
+    chars: result?.kind === "job" ? result.job.description?.length : undefined,
   });
 
   if (!result) return { kind: "unreadable", message: MSG_UNREADABLE };
