@@ -36,6 +36,10 @@ export interface SequenceStepPreview {
   ifFalseGotoStep?: string | null;
   /** Étape suivante explicite (next_step_id), chaînage suivi par le moteur. */
   nextStepId?: string | null;
+  /** Version d'un test A/B (variant_group), null hors test. */
+  variantGroup?: string | null;
+  /** Fin de séquence après cette étape (ends_sequence). */
+  endsSequence?: boolean | null;
 }
 
 /** Vrai si la séquence a des embranchements : un seul chemin sera suivi par candidat. */
@@ -110,7 +114,7 @@ export function otherBranchStepIds(steps: readonly SequenceStepPreview[], stepId
 
 /** Texte affiché quand la génération IA d'un aperçu a échoué. */
 export const PREVIEW_GENERATION_FAILED_MESSAGE =
-  "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le. Sinon, l'IA Konekt le rédigera au moment de l'envoi.";
+  "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le.";
 
 export interface GeneratedMessage {
   subject: string;
@@ -170,13 +174,17 @@ interface UseEnrollmentPreviewOptions {
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
 /**
- * Étape dont le message part : un canal fermé (e-mail, WhatsApp, D2) est sauté
- * par le moteur, ni aperçu ni génération facturée pour lui.
+ * Étape dont le message part : un modèle écrit, ou une étape à message
+ * rédigée par l'IA pour chaque candidat, même sans modèle (le moteur la
+ * rédige et l'envoie : aiWillGenerate de process-sequences). Jamais une
+ * invitation sans note : le moteur ne rédige pas de note. Un canal fermé
+ * (e-mail, WhatsApp, D2) est sauté par le moteur, ni aperçu ni génération
+ * facturée pour lui.
  */
-function hasMessage(step: SequenceStepPreview): boolean {
-  return MESSAGE_ACTION_TYPES.includes(step.actionType)
-    && !isClosedChannelStep(step.actionType)
-    && !!step.messageTemplate?.trim();
+export function hasMessage(step: Pick<SequenceStepPreview, 'actionType' | 'messageTemplate' | 'useAiPersonalization'>): boolean {
+  if (!MESSAGE_ACTION_TYPES.includes(step.actionType) || isClosedChannelStep(step.actionType)) return false;
+  if (step.messageTemplate?.trim()) return true;
+  return !!step.useAiPersonalization && step.actionType !== 'connection_request';
 }
 
 /**
@@ -1070,6 +1078,8 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     estimatedCredits,
     /** Coût estimé d'un message personnalisé par l'IA, en crédits. */
     creditsPerMessage,
+    /** Prénom de l'expéditeur, pour resolveVariables (aperçu du premier message, lot 5a). */
+    senderName,
     candidateAnalysis,
     getPreview,
     generateForCandidateById,

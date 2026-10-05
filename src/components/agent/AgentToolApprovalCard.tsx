@@ -21,6 +21,7 @@ import { Check, X, AlertTriangle, Loader2, Pencil, ShieldAlert } from 'lucide-re
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { businessDaysCutoff } from '@/lib/businessDays';
+import { EnrollFirstMessagePreview, readFirstStepPreview } from './EnrollFirstMessagePreview';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -182,6 +183,15 @@ const READONLY_FIELDS = new Set([
   'linkedin_url',
 ]);
 
+// Champs en lecture seule pour un outil : ceux avec lesquels la carte a
+// construit l'aperçu qu'elle montre. « Enregistrer et approuver » ne rejoue
+// pas dryRun : les modifier enverrait un texte jamais montré.
+const READONLY_FIELDS_BY_TOOL: Record<string, ReadonlySet<string>> = {
+  // Lot 5a : premier message construit avec ce nom et la ligne de la mission
+  // retrouvée par ce profil.
+  enroll_in_sequence: new Set(['profile_name', 'profile_url']),
+};
+
 // Champs typés comme textarea (multilignes)
 const TEXTAREA_FIELDS = new Set([
   'text',
@@ -196,8 +206,8 @@ const TEXTAREA_FIELDS = new Set([
 
 type FieldType = 'string' | 'textarea' | 'number' | 'boolean' | 'json' | 'readonly';
 
-function fieldTypeFor(key: string, value: unknown): FieldType {
-  if (READONLY_FIELDS.has(key)) return 'readonly';
+function fieldTypeFor(key: string, value: unknown, toolName?: string): FieldType {
+  if (READONLY_FIELDS.has(key) || (toolName && READONLY_FIELDS_BY_TOOL[toolName]?.has(key))) return 'readonly';
   if (typeof value === 'boolean') return 'boolean';
   if (typeof value === 'number') return 'number';
   if (typeof value === 'string') {
@@ -222,11 +232,13 @@ function humanLabel(key: string): string {
 interface EditableParamFieldProps {
   field: string;
   value: unknown;
+  /** Outil de la ligne, pour ses champs en lecture seule. */
+  toolName: string;
   onChange: (newValue: unknown) => void;
 }
 
-const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, onChange }) => {
-  const type = fieldTypeFor(field, value);
+const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, toolName, onChange }) => {
+  const type = fieldTypeFor(field, value, toolName);
   const label = humanLabel(field);
 
   if (type === 'readonly') {
@@ -442,7 +454,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           toast.error("Vos modifications n'ont pas pu être enregistrées. Réessayez.");
           return;
         }
-        // 2. Approve via the existing edge fn (re-runs dryRun → execute with the new params)
+        // 2. Approve via the existing edge fn : verifyAccess puis execute avec
+        // les nouveaux paramètres, sans nouveau dryRun (l'aperçu montré reste
+        // celui de la proposition : ses champs sont en lecture seule).
         const { data, error } = await invokeEdgeFunction<{ success: boolean; error?: string; data?: Record<string, unknown> }>(
           'agent-tool-action',
           { execution_id: executionId, action: 'approve' },
@@ -499,6 +513,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
         // Edit mode bypasses the sensitive dialog (the user has already re-read
         // and patched the params — confirmation implicit).
         const approveNeedsDialog = isSensitive && !isEditing;
+        const firstStepPreview = row.tool_name === 'enroll_in_sequence'
+          ? readFirstStepPreview(row.dry_run_result?.details)
+          : null;
 
         return (
           <div
@@ -521,6 +538,14 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
               </div>
             </div>
 
+            {/* Visible aussi en mode Modifier : les champs dont il dépend y sont en lecture seule. */}
+            {row.tool_name === 'enroll_in_sequence' && firstStepPreview && (
+              <EnrollFirstMessagePreview
+                preview={firstStepPreview}
+                fallbackName={String(row.dry_run_result?.details?.candidate ?? 'ce candidat')}
+              />
+            )}
+
             {isEditing && (
               <div className="mt-2 pt-2 border-t border-border flex flex-col gap-2.5">
                 <p className="text-xs font-medium text-foreground">Modifier les réglages avant d'exécuter</p>
@@ -529,6 +554,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                     key={field}
                     field={field}
                     value={value}
+                    toolName={row.tool_name}
                     onChange={(newValue) => setEditedParams((prev) => ({ ...prev, [field]: newValue }))}
                   />
                 ))}

@@ -379,7 +379,8 @@ test('SEQ-043 / SEQ-044 — « inscrire », jamais « enrôler », dans les libe
     'src/components/assistant-ui/tool-uis.tsx': "enroll_in_sequence: 'Inscription en séquence',",
     'src/components/agent/AgentToolApprovalCard.tsx': "enroll_in_sequence: 'Inscrire dans une séquence',",
     'src/components/settings/AgentActionsSettings.tsx': "enroll_in_sequence: 'Inscrire dans une séquence',",
-    'src/components/settings/AgentPoliciesSettings.tsx': "{ name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: true },",
+    // Lot 5a : inscription jamais automatique (NEVER_AUTO_TOOLS), libellé inchangé.
+    'src/components/settings/AgentPoliciesSettings.tsx': "{ name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: false,",
   };
   for (const [rel, expected] of Object.entries(files)) {
     const src = read(rel);

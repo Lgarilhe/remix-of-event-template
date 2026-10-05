@@ -196,7 +196,8 @@ test('SEQ-127 — vérification des contacts récents en échec : blocage et « 
     assert.match(source, /if \(!cancelled\) setDuplicateCheckFailed\(true\);/, name);
     assert.match(source, /\{DUPLICATE_CHECK_FAILED_MESSAGE\}/, name);
     assert.match(source, /setDuplicateCheckAttempt\(a => a \+ 1\)/, `${name} : bouton « Réessayer »`);
-    assert.match(source, /duplicatesUnchecked \|\| !!sendingAccount\.blockReason\}/, `${name} : inscription désactivée tant que la vérification n'a pas abouti`);
+    // Lot 5a : la case des destinataires (dès 5 candidats) s'ajoute à la condition.
+    assert.match(source, /duplicatesUnchecked \|\| !!sendingAccount\.blockReason \|\| recipients\.blocked\}/, `${name} : inscription désactivée tant que la vérification n'a pas abouti`);
   }
   assert.equal(helpers.DUPLICATE_CHECK_FAILED_MESSAGE, "Impossible de vérifier les contacts récents de votre organisation. Réessayez avant d'inscrire.");
 });
@@ -263,7 +264,8 @@ test('SEQ-130 — bilan de l’aperçu : titre et icône selon le résultat, toa
 // ---------------------------------------------------------------- SEQ-131
 test('SEQ-131 — génération en échec : texte juste, « Réessayer » et « Modifier » affichés', () => {
   assert.doesNotMatch(previewHookSrc, /sera utilisé tel quel/);
-  assert.equal(previewHook.PREVIEW_GENERATION_FAILED_MESSAGE, "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le. Sinon, l'IA Konekt le rédigera au moment de l'envoi.");
+  // Lot 5a : plus aucune promesse d'une rédaction par l'IA au moment de l'envoi.
+  assert.equal(previewHook.PREVIEW_GENERATION_FAILED_MESSAGE, "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le.");
   const card = slice(previewModal, 'function MessageStepCard(', 'function SummaryMode(');
   assert.match(card, /const hasContent = !!\(preview\?\.isGenerated \|\| preview\?\.isEdited \|\| preview\?\.error\);/);
   assert.match(card, /\{hasContent && !preview\?\.isGenerating && \(/, 'boutons visibles aussi en cas d’échec');
