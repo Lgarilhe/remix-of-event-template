@@ -7,7 +7,7 @@
  * Chaque ligne : une pastille d'icône (qui bouge quand quelque chose attend),
  * une phrase, les visages des personnes concernées, et un bouton discret où l'on agit.
  * Les lignes sont posées sur une carte ; la panne LinkedIn, qui arrête les envois,
- * a son propre bandeau teinté et son bouton plein.
+ * a son propre bandeau texturé (texturedCard) et son bouton plein.
  *
  * Un compteur inconnu (number | null) ne disparaît pas : sa ligne dit
  * « Chargement » ou « Indisponible », jamais un zéro inventé.
@@ -22,6 +22,7 @@ import { IconTile } from '@/components/ui/IconTile';
 import { AvatarStack } from '@/components/ui/person-avatar';
 import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
 import { Skeleton } from '@/components/ui/skeleton';
+import { texturedCard } from '@/components/layout/texturedCard';
 import { plural } from '@/lib/plural';
 
 export interface FocusPerson {
@@ -55,44 +56,40 @@ interface SignalRowProps {
   people?: FocusPerson[];
   total?: number;
   action?: { label: string; href: string };
+  /** Bandeau texturé chaud (blocage) à la place d'une ligne de liste : l'accueil en porte un seul à la fois. */
+  texture?: 'warm';
 }
 
 // Sur téléphone, les visages et le lien passent sous la phrase, alignés sur elle.
-const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people, total, action }) => (
-  <li className="flex items-start gap-3.5 py-4 sm:items-center">
-    {tile}
-    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-2">
-      <div className="min-w-0">
-        <p className="text-md font-medium text-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      {(people?.length || action) && (
-        <div className="flex items-center gap-4">
-          {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} ringClassName="ring-card" />}
-          {action && (
-            <Button asChild variant="secondary" size="sm" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0">
-              <Link to={action.href}>{action.label}</Link>
-            </Button>
-          )}
+const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people, total, action, texture }) => {
+  const Root = texture ? 'div' : 'li';
+  return (
+    <Root className={texture ? texturedCard(texture, 'flex items-start gap-3.5 rounded-xl px-4 py-4 sm:items-center sm:px-5') : 'flex items-start gap-3.5 py-4 sm:items-center'}>
+      {tile}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-md font-medium text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-      )}
-    </div>
-  </li>
-);
-
-/** Bandeau de la panne LinkedIn : les envois sont arrêtés, c'est la seule alerte qui colore un fond. */
-const LinkedinBanner: React.FC = () => (
-  <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-danger/30 bg-danger-muted px-5 py-4">
-    <IconTile icon={Unplug} tone="destructive" size="lg" className="bg-danger/20" />
-    <div className="min-w-0 flex-1">
-      <p className="text-md font-medium text-foreground">Compte LinkedIn à reconnecter</p>
-      <p className="text-sm text-foreground-secondary">Les envois sont en pause jusqu'à la reconnexion.</p>
-    </div>
-    <Button asChild variant="primary" className="min-h-11 md:min-h-0">
-      <Link to="/settings/account/connections">Reconnecter</Link>
-    </Button>
-  </div>
-);
+        {(people?.length || action) && (
+          <div className="flex items-center gap-4">
+            {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} ringClassName="ring-card" />}
+            {action && (
+              <Button
+                asChild
+                variant={texture ? 'primary' : 'secondary'}
+                size="sm"
+                className={texture ? 'min-h-11 md:min-h-0' : 'min-h-11 min-w-11 md:min-h-0 md:min-w-0'}
+              >
+                <Link to={action.href}>{action.label}</Link>
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </Root>
+  );
+};
 
 /** Ligne d'un compteur inconnu : jamais de chiffre, l'état de la lecture. */
 const UnknownRow: React.FC<{ title: string; unavailable: boolean }> = ({ title, unavailable }) => (
@@ -124,6 +121,17 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
   }
 
   const rows: React.ReactNode[] = [];
+
+  // Un blocage des envois est la chose à faire avant toutes les autres : bandeau texturé, au-dessus de la liste.
+  const linkedinBanner = linkedinIssue ? (
+    <SignalRow
+      tile={<IconTile icon={Unplug} tone="default" size="lg" />}
+      title="Compte LinkedIn à reconnecter"
+      description="Les envois sont en pause jusqu'à la reconnexion."
+      action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
+      texture="warm"
+    />
+  ) : null;
 
   // La bulle qui écrit va à la première ligne de conversation, pas aux deux.
   let typingUsed = false;
@@ -193,10 +201,10 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
     );
   }
 
-  if (rows.length === 0 && !linkedinIssue) return null;
+  if (rows.length === 0 && !linkedinBanner) return null;
   return (
     <div className="space-y-3 pt-3">
-      {linkedinIssue && <LinkedinBanner />}
+      {linkedinBanner}
       {rows.length > 0 && (
         <Card>
           <ul className="divide-y divide-border px-5">{rows}</ul>

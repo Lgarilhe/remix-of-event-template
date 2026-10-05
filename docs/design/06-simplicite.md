@@ -43,7 +43,7 @@ Elles valent pour chaque écran repris. La maquette « Konekt simplifié » (can
 | T · Tâches | Visage ou logo par tâche, réveil sur « En retard », filtres dans un seul menu, corbeille au survol, suggestions sous la liste (trois au plus) | PR #263 |
 | M · Page mission | En-tête avec logo, visages, note en anneau, avancement en cinq crans, bandeau « à trier », point qui pulse ; cadrage avec pastilles de section et anneau d'avancement. Avec la session de la refonte mission | Pipeline, Cadrage, Sourcing, en-tête de mission et liste des missions livrés le 04/10/2026 (carte « Maintenant » allégée, puces sur une rangée, liste avec visages et anneau de note, boutons discrets ; Cadrage sans cartes avec bandeau d'état en une ligne ; Sourcing en puces sans cadre et tableau réduit) ; en-tête avec logo du client et statut sans cadre ; liste des missions avec logo, visages en entretien et sans zéro. Reste l'état vide de /missions (`EmptyMissionState`, ancien langage) |
 | P · Photos | Copie privée des photos LinkedIn : capture (recherche, notation, messagerie, extension, assistant), effacement RGPD, purge, export, rattrapage des candidats sans photo | affichage livré pour la page mission le 05/10/2026 (liste du Pipeline, À trier, kanban, fiche) et pour le /pipeline global le 05/10/2026 (kanban, tableau, chronologie). Copie privée en revue (05/10/2026) : copie de la photo enregistrée sur la ligne du candidat, quelle que soit son origine, toutes les deux minutes ; effacement RGPD, copies supprimées avec la ligne (purge comprise), export. Les visages lus en base (page mission, /pipeline, accueil, liste des missions, Tâches, agenda, scorecard) montrent la copie, sinon le lien LinkedIn, sinon les initiales. Rattrapage des candidats sans photo enregistrée : plus tard, avec l'accord du propriétaire |
-| Suite | Pipeline global, messagerie, Paramètres, mêmes règles | à faire |
+| Suite | Pipeline global, messagerie, Paramètres, mêmes règles | Pipeline global en revue (05/10/2026) : phrase chiffrée sous le titre, recherche et un seul menu « Filtres », bascule d'affichage de la page mission, colonnes et cartes du kanban de mission, note en anneau (`ScoreRing`), tableau à six colonnes, chronologie et analyse sans cadre, pagination sous un filet, chiffres dans l'Analyse seulement, aucun zéro, cibles de 44 px au doigt. Messagerie et Paramètres à faire |
 
 ## Relief
 
@@ -57,11 +57,11 @@ Ce qui change, dans cet ordre de portée :
 - Rayon des surfaces : `rounded-xl` vaut 16 px au lieu de 12 (`tailwind.config.ts`). Aucune classe ne change dans le code.
 - `Button` : pilule, `secondary` en fond teinté, `outline` et `default` à filet appuyé. Deux surcharges de coin à 8 px retirées (`InvitationsPanel`).
 - `Card` : ombre légère (`shadow-sm`), visible surtout en clair.
-- Accueil : lignes « À faire », journée et tableau des missions sur des cartes ; panne LinkedIn en bandeau teinté avec bouton plein ; « Lire », « Répondre », « Voir » en boutons `secondary`. `AvatarStack` prend `ringClassName` pour que l'anneau des visages suive la surface.
+- Accueil : lignes « À faire », journée et tableau des missions sur des cartes ; panne LinkedIn en bandeau texturé (carte chaude du § 7 de `01-direction.md`) avec bouton plein ; « Lire », « Répondre », « Voir » en boutons `secondary`. `AvatarStack` prend `ringClassName` pour que l'anneau des visages suive la surface.
 
 Pas encore repris, à faire au fil des lots suivants : liste des missions, Pipeline, messagerie, Paramètres, page mission (écrans de la session « refonte mission », livrés sans cartes le 04/10/2026).
 
 ## Points ouverts
 
-- Couleur de l'anneau de note, au lot M. La maquette le peint en couleur de marque pour tous les niveaux. Le barème actuel (`ScoreBadge`, `src/lib/scoreScale.ts`) colore par niveau, et son orange (score moyen) concurrence la règle 7.
+- Couleur de l'anneau de note : couleur de marque pour tous les niveaux, comme la maquette (page mission au lot M, `ScoreRing` du kit pour le Pipeline global au lot Suite). `ScoreBadge` (`src/lib/scoreScale.ts`), coloré par niveau, reste sur la scorecard, la qualification, le portail client, la préparation d'envoi, l'assistant et la fiche de mission du /pipeline ; son orange (score moyen) concurrence la règle 7.
 - `text-3xs` et `text-2xs` valent tous deux 12 px : à fondre dans `text-xs` au fil des lots.
