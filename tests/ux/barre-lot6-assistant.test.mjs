@@ -2,7 +2,8 @@
  * Barre latérale, lot 6 : onglet Assistant et renommage « Assistant » (C4).
  *
  * Invariants épinglés, par inspection de source :
- *   - la bulle flottante est retirée, Ctrl K reste (A2, §5.3) ;
+ *   - Ctrl K reste dans le tiroir ; la bulle flottante, retirée par A2 (§5.3), est
+ *     revenue le 05/10/2026 dans son propre composant (tests/ux/assistant-bulle.test.mjs) ;
  *   - AgentContext expose startNewConversation, qui relance le panneau par le
  *     nonce comme openConversation ; le compteur non lu de la bulle disparaît ;
  *   - l'effet du nonce du panneau vide le poste choisi sur un fil neuf ;
@@ -62,7 +63,7 @@ const recent = read('src/hooks/sidebar/useAssistantRecent.ts');
 const palette = read('src/components/layout/NavigationPalette.tsx');
 const mutations = read('supabase/functions/_shared/agent-tools-mutations.ts');
 
-test('B6A-1 : bulle retirée, Ctrl K gardé', () => {
+test('B6A-1 : le tiroir ne porte pas la bulle, Ctrl K gardé', () => {
   assert.doesNotMatch(drawer, /AgentFAB/);
   assert.doesNotMatch(drawer, /HIDDEN_FAB_ROUTES/);
   assert.doesNotMatch(drawer, /Ouvrir l'agent IA/);

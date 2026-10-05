@@ -377,7 +377,7 @@ OutreachSearchContext       — legacy global search (mostly replaced by useLink
 ```
 
 ### Barre latérale (lots 5 et 6, 2026-09)
-`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Marketplace, Paramètres, Aide), menu de l'avatar. Plus de cloche ni de bulle flottante de l'assistant (Ctrl K reste).
+`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Marketplace, Paramètres, Aide), menu de l'avatar. Plus de cloche. La bulle ronde de l'assistant est revenue le 2026-10-05 (`src/components/agent/AssistantLauncher.tsx`, montée par `AppLayout`, masquée sur /agents et /inbox, `openAgent()`) ; Ctrl K reste.
 - Composants dans `src/components/sidebar/**`, hooks dans `src/hooks/sidebar/**`, clés React Query sous `['sidebar', …]`, un seul canal temps réel (`useSidebarRealtime`).
 - Un seul chiffre coloré : À traiter = panne LinkedIn + réponses de candidats non lues (3 jours ouvrés) + mes validations + notifications « action » non lues (`src/lib/sidebarSignals.ts`, `todoCount` : `null` si une source n'a rien renvoyé, jamais 0 inventé).
 - La messagerie ne marque lues que les notifications de la conversation ouverte (`metadata->>chat_id`, `Inbox.tsx`).
