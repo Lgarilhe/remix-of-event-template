@@ -7,8 +7,8 @@
  * de la page courante sont rendues (avatar, infobulles et badges de chaque
  * ligne ralentissent l'écran quand la liste est longue).
  */
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Bell, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, GitBranch, Mail, Send, StickyNote } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Bell, Briefcase, ChevronDown, ChevronUp, ChevronsUpDown, GitBranch, Mail, Send, StickyNote } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -23,6 +23,8 @@ import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
+import { ATSPagination } from '@/components/ats/ATSPagination';
+import { PAGE_SIZE, usePagination } from '@/hooks/usePagination';
 import {
   ATS_SOURCE_LABELS,
   ATS_STAGES,
@@ -39,8 +41,6 @@ interface ATSTableProps {
   /** Valeur dont le changement ramène à la première page (les filtres de la page). */
   resetKey?: unknown;
 }
-
-const PAGE_SIZE = 25;
 
 type SortKey = 'name' | 'stage' | 'source' | 'jobTitle' | 'lastActivity' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
@@ -65,15 +65,15 @@ const TEXT_BUTTON = 'h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-
 export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick, resetKey }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [page, setPage] = useState(1);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { setPage(1); }, [resetKey]);
+  const { containerRef, currentPage, pageCount, firstRow, lastRow, goToPage, resetPage } = usePagination(
+    candidates.length,
+    resetKey,
+  );
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDirection('desc'); }
-    setPage(1);
+    resetPage();
   };
 
   const sortedCandidates = useMemo(() => {
@@ -120,22 +120,10 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
     );
   };
 
-  const total = sortedCandidates.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  // Une liste qui rétrécit (filtre, candidat sorti de l'étape) ne laisse jamais une page vide.
-  const currentPage = Math.min(page, pageCount);
-  const firstRow = (currentPage - 1) * PAGE_SIZE;
   const pageCandidates = useMemo(
     () => sortedCandidates.slice(firstRow, firstRow + PAGE_SIZE),
     [sortedCandidates, firstRow],
   );
-
-  const goToPage = (next: number) => {
-    setPage(Math.min(Math.max(next, 1), pageCount));
-    // Le bouton est sous les lignes : on remonte en haut du tableau si besoin.
-    const container = containerRef.current;
-    if (container && container.getBoundingClientRect().top < 0) container.scrollIntoView({ block: 'start' });
-  };
 
   const now = new Date();
 
@@ -292,41 +280,15 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           })}
         </TableBody>
       </Table>
-      {total > PAGE_SIZE && (
-        <nav
-          aria-label="Pagination du tableau"
-          className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2"
-        >
-          <p className="text-xs text-muted-foreground" aria-live="polite">
-            {firstRow + 1} à {Math.min(firstRow + PAGE_SIZE, total)} sur {total}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="gap-1 [&_svg]:size-3.5"
-            >
-              <ChevronLeft aria-hidden="true" />
-              Précédent
-            </Button>
-            <span className="text-xs text-muted-foreground">Page {currentPage} sur {pageCount}</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === pageCount}
-              className="gap-1 [&_svg]:size-3.5"
-            >
-              Suivant
-              <ChevronRight aria-hidden="true" />
-            </Button>
-          </div>
-        </nav>
-      )}
+      <ATSPagination
+        total={candidates.length}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        firstRow={firstRow}
+        lastRow={lastRow}
+        onPageChange={goToPage}
+        className="border-t border-border"
+      />
     </div>
   );
 };
