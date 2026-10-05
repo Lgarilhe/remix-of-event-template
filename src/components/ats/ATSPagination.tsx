@@ -2,7 +2,7 @@
  * Barre de pagination des vues « Tableau » et « Chronologie » du pipeline
  * global : compteur à gauche, Précédent / Suivant à droite. Absente quand tout
  * tient sur une page. L'appelant ajoute la bordure selon l'endroit où elle se
- * pose (`className`).
+ * pose (`className`). Boutons discrets, de 44 px au doigt (design simplifié).
  */
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -43,11 +43,11 @@ export const ATSPagination: React.FC<ATSPaginationProps> = ({
       <div className="flex items-center gap-2">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="xs"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="gap-1 [&_svg]:size-3.5"
+          className="gap-1 max-md:h-11 [&_svg]:size-3.5"
         >
           <ChevronLeft aria-hidden="true" />
           Précédent
@@ -55,11 +55,11 @@ export const ATSPagination: React.FC<ATSPaginationProps> = ({
         <span className="text-xs text-muted-foreground">Page {currentPage} sur {pageCount}</span>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="xs"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === pageCount}
-          className="gap-1 [&_svg]:size-3.5"
+          className="gap-1 max-md:h-11 [&_svg]:size-3.5"
         >
           Suivant
           <ChevronRight aria-hidden="true" />
