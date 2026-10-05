@@ -55,6 +55,7 @@ import { cn } from '@/lib/utils';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { UnifiedProject, toUnifiedProjects } from '@/types/projects';
+import { useClientLogoBackfill } from '@/hooks/useClientLogoBackfill';
 import { useMissionStageCounts, type MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { useMissionAttention } from '@/hooks/useMissionAttention';
 import { useMissionActionSnoozes } from '@/hooks/useMissionActionSnoozes';
@@ -333,6 +334,7 @@ const MissionRow: React.FC<MissionRowProps> = ({
               Une mission terminée est atténuée par la couleur de son texte. */}
           <MissionCompanyLogo
             company={project.clientName || project.name}
+            logoUrl={project.clientLogoUrl}
             size={archived ? 32 : 40}
           />
           <div className="min-w-0 flex-1">
@@ -583,6 +585,17 @@ export const ProjectsListV2: React.FC = () => {
     () => toUnifiedProjects(sourcingProjects),
     [sourcingProjects],
   );
+  // Logo du client : enregistré côté serveur pour les missions qui n'en ont pas.
+  const logoCandidates = useMemo(
+    () => unifiedProjects.map((p) => ({
+      id: p.sourcingProject.id,
+      clientName: p.clientName,
+      logoUrl: p.clientLogoUrl,
+      logoCheckedAt: p.sourcingProject.jd_client_logo_checked ?? null,
+    })),
+    [unifiedProjects],
+  );
+  useClientLogoBackfill(logoCandidates);
 
   const spIds = useMemo(
     () => unifiedProjects.map(p => p.sourcingProject?.id).filter((id): id is string => !!id),

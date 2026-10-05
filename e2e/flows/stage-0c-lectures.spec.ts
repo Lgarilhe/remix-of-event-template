@@ -307,6 +307,68 @@ test.describe('Lot 0c-4 : /pipeline', () => {
   });
 });
 
+test.describe('Design simplifié : /pipeline', () => {
+  test('les visages : photo enregistrée sur la carte, le tableau et la chronologie ; initiales sans photo ou lien expiré ; une carte attrapée par sa photo se déplace', async ({ browser }) => {
+    const ws = await workspace('E2E pipeline visages');
+    const portrait = 'https://media.licdn.com/e2e-pipeline/portrait.png';
+    const expired = 'https://media.licdn.com/e2e-pipeline/expire.png';
+    const seed = async (name: string, stage: CandidateStage, picture: string | null) => {
+      const { id } = await seedCandidateRow({
+        orgId: ws.org.orgId,
+        createdBy: ws.org.owner.userId,
+        candidateId: `ACoAA0V${rand()}`,
+        missionId: ws.missionId,
+        stage,
+        extra: { candidate_name: name, linkedin_profile_data: picture ? { profile_picture_url: picture } : {} },
+      });
+      return id;
+    };
+    const paulId = await seed('Paul Portrait', 'retained', portrait);
+    await seed('Sans Photo', 'contacted', null);
+    await seed('Lien Expire', 'replied', expired);
+
+    const page = await openAs(browser, ws);
+    // Un pixel pour la photo valide, un refus pour le lien expiré : les initiales reviennent.
+    const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.context().route('https://media.licdn.com/e2e-pipeline/*', (route) =>
+      route.request().url() === expired
+        ? route.fulfill({ status: 404, body: '' })
+        : route.fulfill({ status: 200, contentType: 'image/png', body: pixel }),
+    );
+    await openGlobalPipeline(page, 'Paul Portrait');
+
+    // Kanban : la photo chargée, sinon les initiales.
+    const card = (name: string) => page.locator('[data-card-id]').filter({ hasText: name });
+    const face = card('Paul Portrait').locator(`img[src="${portrait}"]`);
+    await expect(face).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => face.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect(card('Sans Photo').locator('img')).toHaveCount(0);
+    await expect(card('Sans Photo').getByText('SP', { exact: true })).toBeVisible();
+    await expect(card('Lien Expire').getByText('LE', { exact: true }), 'lien expiré : les initiales').toBeVisible({ timeout: 15_000 });
+    await expect(card('Lien Expire').locator('img')).toHaveCount(0);
+
+    // Une carte attrapée par sa photo se déplace (une image dans une carte déplaçable).
+    const from = (await face.boundingBox())!;
+    const to = (await column(page, 'Contacté').boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12, { steps: 4 });
+    await page.mouse.move(to.x + to.width / 2, to.y + Math.min(120, to.height / 2), { steps: 15 });
+    await page.mouse.up();
+    await expect.poll(async () => (await stageOf(paulId)).stage, { timeout: 15_000 }).toBe('contacted');
+
+    // Tableau et chronologie : le même visage devant le nom.
+    const views = page.getByRole('group', { name: 'Affichage du pipeline' });
+    await views.getByRole('button', { name: 'Tableau', exact: true }).click();
+    const row = page.getByRole('row').filter({ hasText: 'Paul Portrait' });
+    await expect(row.locator(`img[src="${portrait}"]`)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('row').filter({ hasText: 'Sans Photo' }).getByText('SP', { exact: true })).toBeVisible();
+    await views.getByRole('button', { name: 'Chronologie', exact: true }).click();
+    await expect(page.locator('li').filter({ hasText: 'Paul Portrait' }).locator(`img[src="${portrait}"]`)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('li').filter({ hasText: 'Sans Photo' }).getByText('SP', { exact: true })).toBeVisible();
+  });
+});
+
 // ═══ Fiche : grille IA ══════════════════════════════════════════════════════
 
 test.describe('Lot 0c-4 : fiche candidat', () => {

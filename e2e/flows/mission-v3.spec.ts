@@ -690,6 +690,72 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(tabs(page).getByRole('link', { name: 'Sourcing', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
+  test('Visages : la photo enregistrée sur la liste, À trier, le kanban et la fiche ; sans photo ou lien expiré, les initiales', async ({ browser }) => {
+    const ws = await workspace('E2E V3 visages');
+    const portrait = 'https://media.licdn.com/e2e-v3/portrait.png';
+    const expired = 'https://media.licdn.com/e2e-v3/expire.png';
+    const paul = await candidate(ws, 'Paul Portrait', 'retained', { extra: { linkedin_profile_data: { profile_picture_url: portrait } } });
+    await candidate(ws, 'Sans Photo', 'contacted');
+    await candidate(ws, 'Lien Expire', 'replied', { extra: { linkedin_profile_data: { profile_picture_url: expired } } });
+    // Seule la grande photo est enregistrée : elle sert de repli.
+    await candidate(ws, 'Tri Portrait', 'to_sort', {
+      extra: { score: 70, status: 'new', linkedin_profile_data: { profile_picture_url_large: portrait } },
+    });
+
+    const page = await openAs(browser, ws, { beta: true });
+    // Un pixel pour la photo valide, un refus pour le lien expiré : l'image ne charge pas, les initiales reviennent.
+    const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.context().route('https://media.licdn.com/e2e-v3/*', (route) =>
+      route.request().url() === expired
+        ? route.fulfill({ status: 404, body: '' })
+        : route.fulfill({ status: 200, contentType: 'image/png', body: pixel }),
+    );
+    const loaded = (img: ReturnType<Page['locator']>) => img.evaluate((el) => (el as HTMLImageElement).naturalWidth);
+
+    await openPipeline(page, ws, 'Paul Portrait');
+    const rowOf = (name: string) => listRows(page).filter({ hasText: name });
+
+    // Liste : la photo chargée, sans les initiales ; sans photo ou lien expiré, les initiales.
+    const face = rowOf('Paul Portrait').locator(`img[src="${portrait}"]`);
+    await expect(face).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => loaded(face), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect(rowOf('Paul Portrait').getByText('PP', { exact: true })).toHaveCount(0);
+    await expect(rowOf('Sans Photo').locator('img')).toHaveCount(0);
+    await expect(rowOf('Sans Photo').getByText('SP', { exact: true })).toBeVisible();
+    await expect(rowOf('Lien Expire').getByText('LE', { exact: true }), 'lien expiré : les initiales').toBeVisible({ timeout: 15_000 });
+    await expect(rowOf('Lien Expire').locator('img')).toHaveCount(0);
+
+    // À trier : la grande photo sert de repli.
+    await openToSort(page, 1);
+    await expect(page.getByTestId('to-sort-list').locator(`img[src="${portrait}"]`)).toBeVisible({ timeout: 15_000 });
+
+    // Fiche : le visage devant le nom.
+    await rowOf('Paul Portrait').getByText('Paul Portrait', { exact: true }).click();
+    await expect(panel(page)).toHaveAttribute('data-panel', 'fiche', { timeout: 15_000 });
+    await expect(panel(page).locator(`img[src="${portrait}"]`)).toBeVisible({ timeout: 30_000 });
+    await page.keyboard.press('Escape');
+    await expect(panel(page)).toHaveCount(0);
+
+    // Kanban : le visage sur la carte, les initiales sinon.
+    await page.getByRole('group', { name: 'Affichage' }).getByRole('button', { name: 'Par étape', exact: true }).click();
+    const board = page.getByTestId('mission-board');
+    await expect(board).toBeVisible({ timeout: 30_000 });
+    const card = (name: string) => board.getByTestId('board-card').filter({ hasText: name });
+    await expect(card('Paul Portrait').locator(`img[src="${portrait}"]`)).toBeVisible({ timeout: 30_000 });
+    await expect(card('Sans Photo').getByText('SP', { exact: true })).toBeVisible();
+
+    // Une carte attrapée par sa photo se déplace aussi (une image dans une carte déplaçable).
+    const photo = card('Paul Portrait').locator('img');
+    const from = (await photo.boundingBox())!;
+    const to = (await board.locator('[aria-label^="Contactés,"]').boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12, { steps: 4 });
+    await page.mouse.move(to.x + to.width / 2, to.y + Math.min(80, to.height / 2), { steps: 15 });
+    await page.mouse.up();
+    await expect.poll(async () => (await candidateRowState(paul.rowId)).general_stage, { timeout: 15_000 }).toBe('contacted');
+  });
+
   // ═══ 8 : anciennes adresses ══════════════════════════════════════════════
 
   test('interrupteur allumé : les anciennes adresses ?tab= mènent au bon écran', async ({ browser }) => {

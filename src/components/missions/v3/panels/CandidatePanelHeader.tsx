@@ -8,6 +8,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +36,8 @@ export interface CandidatePanelHeaderProps {
   row: MissionCandidateRow;
   steps: readonly MissionStepRef[];
   name: string;
+  /** Photo de la ligne ou du profil chargé ; absente, ce sont les initiales. */
+  pictureUrl: string | null;
   position: string | null;
   location: string | null;
   reasons: ScoreReasons | null;
@@ -72,6 +75,7 @@ export function CandidatePanelHeader({
   row,
   steps,
   name,
+  pictureUrl,
   position,
   location,
   reasons,
@@ -124,79 +128,88 @@ export function CandidatePanelHeader({
 
   return (
     <>
-      <div className="sticky top-0 z-10 flex flex-col gap-0.5 border-b border-border bg-background py-3 pl-5 pr-3">
-        <div className="flex items-center gap-0.5">
-          <h2
-            id={titleId}
-            tabIndex={-1}
-            title={name}
-            className="min-w-0 flex-1 truncate text-lg font-semibold leading-tight text-foreground outline-none"
-          >
-            {name}
-          </h2>
-          {rank && (
-            <span className="mr-1.5 whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-              {rank.index} sur {rank.total}
-            </span>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Candidat précédent"
-            title="Candidat précédent (flèche haut)"
-            className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
-            disabled={!onPrevious}
-            onClick={() => onPrevious?.()}
-          >
-            <ChevronUp className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Candidat suivant"
-            title="Candidat suivant (flèche bas)"
-            className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
-            disabled={!onNext}
-            onClick={() => onNext?.()}
-          >
-            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Fermer le panneau"
-            title="Fermer (Échap)"
-            className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
-        {position && (
-          <p title={position} className="truncate text-sm text-foreground-secondary">
-            {position}
-          </p>
-        )}
-        {(meta || row.linkedinUrl) && (
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
-            {meta && <span>{meta}</span>}
-            {row.linkedinUrl && (
-              <a
-                href={row.linkedinUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-sm underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Profil LinkedIn
-                <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                <span className="sr-only">(nouvel onglet)</span>
-              </a>
+      <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-background py-3 pl-5 pr-3">
+        <PersonAvatar name={name} src={pictureUrl} size={40} className="mt-0.5" />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-center gap-0.5">
+            <h2
+              id={titleId}
+              tabIndex={-1}
+              title={name}
+              className="min-w-0 flex-1 break-words text-lg font-semibold leading-tight text-foreground outline-none line-clamp-2"
+            >
+              {name}
+            </h2>
+            {rank && (
+              <span className="mr-1.5 whitespace-nowrap text-xs tabular-nums text-muted-foreground max-sm:hidden">
+                {rank.index} sur {rank.total}
+              </span>
             )}
-          </p>
-        )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Candidat précédent"
+              title="Candidat précédent (flèche haut)"
+              className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+              disabled={!onPrevious}
+              onClick={() => onPrevious?.()}
+            >
+              <ChevronUp className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Candidat suivant"
+              title="Candidat suivant (flèche bas)"
+              className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+              disabled={!onNext}
+              onClick={() => onNext?.()}
+            >
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Fermer le panneau"
+              title="Fermer (Échap)"
+              className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+          {position && (
+            <p title={position} className="truncate text-sm text-foreground-secondary">
+              {position}
+            </p>
+          )}
+          {(meta || row.linkedinUrl || rank) && (
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
+              {meta && <span>{meta}</span>}
+              {/* Sur téléphone, « N sur M » quitte la rangée du nom pour lui laisser la place. */}
+              {rank && (
+                <span className="sm:hidden">
+                  {rank.index} sur {rank.total}
+                </span>
+              )}
+              {row.linkedinUrl && (
+                <a
+                  href={row.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-sm underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Profil LinkedIn
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  <span className="sr-only">(nouvel onglet)</span>
+                </a>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
       <section aria-label="Étape du candidat" className="flex flex-col gap-3 px-5 py-4">

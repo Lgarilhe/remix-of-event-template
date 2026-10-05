@@ -48,6 +48,8 @@ export const PersonAvatar = React.memo(function PersonAvatar({
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
+        // Pas de glisser natif de l'image : un léger mouvement sur la photo d'une ligne ou d'une carte ne l'arrache pas au clic.
+        draggable={false}
         onError={() => setFailedSrc(src)}
         style={style}
         className={cn('shrink-0 rounded-full bg-muted object-cover ring-1 ring-border', className)}

@@ -274,6 +274,19 @@ test('lot12 : colonnes légères sans profil lourd, colonnes de la fiche avec', 
   assert.equal(v3.PIPELINE_PAGE_SIZE, 50);
 });
 
+test('photos : l\'adresse vient de la colonne extraite, la grande photo en repli, jamais devinée', () => {
+  const url = (over) => v3.toMissionCandidateRow(rawRow(over)).pictureUrl;
+  assert.equal(url({ picture: 'https://media.example/a.png', picture_large: 'https://media.example/b.png' }), 'https://media.example/a.png');
+  assert.equal(url({ picture: null, picture_large: 'https://media.example/b.png' }), 'https://media.example/b.png');
+  assert.equal(url({ picture: '', picture_large: '' }), null);
+  assert.equal(url({}), null, 'sans photo enregistrée : les initiales');
+  const light = v3.MISSION_ROW_LIGHT_COLUMNS.split(',');
+  assert.ok(light.includes('picture:linkedin_profile_data->>profile_picture_url'));
+  assert.ok(light.includes('picture_large:linkedin_profile_data->>profile_picture_url_large'));
+  assert.ok(!light.some((column) => /^linkedin_profile_data(,|$)/.test(column)), 'la photo seule, jamais le profil entier');
+  assert.match(v3.MISSION_ROW_DETAIL_COLUMNS, /,picture:linkedin_profile_data->>profile_picture_url,/, 'la fiche a aussi la photo');
+});
+
 test('lot12 : un geste écrit tout le groupe, sans doublon', () => {
   assert.deepEqual(v3.rowWriteIds([{ id: 'a', groupIds: ['a', 'b'] }, { id: 'c', groupIds: [] }, { id: 'b', groupIds: ['b', 'a'] }]),
     ['a', 'b', 'c']);

@@ -3,6 +3,7 @@ import linkedinLogo from '@/assets/linkedin-logo.svg';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { Separator } from '@/components/ui/separator';
@@ -26,13 +27,14 @@ import { EnrichContactButton } from './EnrichContactButton';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Loader2, Mail, Phone,
   Target, PenLine, Archive, X, Link2,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Check,
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
+import { scoreReasons } from '@/components/missions/v3/panels/candidateAdapters';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
@@ -238,6 +240,20 @@ interface ProfileDetailSheetProps {
    *  Permet d'ouvrir la modale directement sur "evaluation" depuis un
    *  deep-link (ex: CTA "Préparer l'entretien" du calendar). */
   initialTab?: string;
+  /** Nouvelle page mission (Sourcing) : les décisions de tri se prennent depuis la
+   *  fiche, dans les mots de la page (Retenir, Écarter, Remettre à trier). Une
+   *  action absente n'est pas proposée. Sans cette prop, la fiche garde ses
+   *  actions d'origine (Retenir vers une mission, Archiver). */
+  decisions?: {
+    /** Où en est le profil dans la mission (« À trier », « Retenu »…). */
+    stageLabel?: string;
+    onRetain?: () => Promise<void> | void;
+    onDismiss?: () => Promise<void> | void;
+    onRestore?: () => Promise<void> | void;
+  };
+  /** Nouvelle page mission : la fiche s'affiche dans le panneau de droite de la
+   *  coquille (PanelHost), comme celle du Pipeline, au lieu d'une fenêtre latérale. */
+  asPanel?: { titleId: string; onClose: () => void };
 }
 
 export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
@@ -264,8 +280,60 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   pipelineMeta,
   hideStandardTabs,
   initialTab,
+  decisions,
+  asPanel,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
+  // Décision en cours : les boutons attendent la fin de l'écriture, pas de double clic.
+  const [deciding, setDeciding] = useState(false);
+  const decide = useCallback(async (action: (() => Promise<void> | void) | undefined) => {
+    if (!action || deciding) return;
+    setDeciding(true);
+    try {
+      await action();
+    } finally {
+      setDeciding(false);
+    }
+  }, [deciding]);
+
+  // Panneau : flèches haut et bas depuis n'importe où dans la page (la fenêtre
+  // latérale, elle, les lit sur son propre contenu, plus bas).
+  const neighbors = useRef({ prev: onNavigatePrev, next: onNavigateNext });
+  neighbors.current = { prev: onNavigatePrev, next: onNavigateNext };
+  const panelRootRef = useRef<HTMLDivElement>(null);
+  const isPanel = !!asPanel;
+  useEffect(() => {
+    if (!isPanel) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]')) return;
+      const panel = panelRootRef.current?.closest('[data-testid="mission-panel"]') ?? panelRootRef.current;
+      const inPanel = target instanceof Node && !!panel?.contains(target);
+      if (!inPanel && target !== document.body) return;
+      const go = event.key === 'ArrowUp' ? neighbors.current.prev : neighbors.current.next;
+      if (!go) return;
+      event.preventDefault();
+      go();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isPanel]);
+
+  // Flèches haut et bas : candidat voisin, comme dans la fiche du Pipeline,
+  // sauf dans un champ, un menu ou une liste.
+  const handleArrowKeys = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], [role="menu"], [role="listbox"], [role="combobox"]')) return;
+    const go = e.key === 'ArrowUp' ? onNavigatePrev : onNavigateNext;
+    if (!go) return;
+    e.preventDefault();
+    go();
+  }, [onNavigatePrev, onNavigateNext]);
 
   // Swipe gesture for mobile navigation
   const touchStartX = useRef<number | null>(null);
@@ -614,41 +682,292 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     historyData.candidate
   );
 
-  return (
-    <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[600px] p-0 flex flex-col overflow-hidden border-l border-border bg-background" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          {/* ─── NAV BAR ─── */}
-          {(onNavigatePrev || onNavigateNext) && (
-            <div className="flex items-center justify-between px-3 sm:px-5 py-2 bg-background border-b border-border shrink-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onNavigatePrev}
-                disabled={!onNavigatePrev}
-                className="h-7 gap-1 text-xs rounded-lg px-2 text-muted-foreground hover:text-foreground"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Préc.
-              </Button>
-              {currentIndex != null && totalCount != null && (
-                <span className="text-xs text-muted-foreground tabular-nums font-medium">
-                  {currentIndex + 1} / {totalCount}
-                </span>
+  const messageModal = selectedJob ? (
+    <OutreachMessageModal
+      open={showMessageModal}
+      onOpenChange={setShowMessageModal}
+      profile={profile}
+      job={selectedJob}
+      selectedAccount={accountId}
+      calendlyLink={activeProject?.calendly_link}
+      projectId={missionIdOfJob(activeProject?.id)}
+      candidateHistory={historyData ? {
+        shortlists: historyData.shortlists,
+        placements: historyData.placements,
+        notes: historyData.notes,
+        appointments: historyData.appointments,
+      } : undefined}
+      onMessageSent={() => {
+        // « Contacté » est posé par le serveur à l'envoi (lot 0b) : plus
+        // d'écriture du pipeline depuis le navigateur.
+        onMessageSent?.();
+        onProfileTreated?.();
+      }}
+    />
+  ) : null;
+
+  // ─── PANNEAU DE DROITE (nouvelle page mission) ───
+  // Même structure que la fiche du Pipeline : en-tête collant (visage, nom,
+  // place dans la liste, flèches, croix), l'étape et les gestes, la raison de la
+  // note, puis les onglets.
+  if (asPanel) {
+    const reasons = jobScore
+      ? scoreReasons({ ...(jobScore.scoring_details ?? {}), summary: jobScore.summary })
+      : null;
+    const position = displayProfile.headline || [currentRole, currentCompany].filter(Boolean).join(', ') || null;
+    const note = jobScore && jobScore.match_score > 0 ? `Note ${Math.round(jobScore.match_score)}` : null;
+    const meta = [displayProfile.location, totalExperience, note].filter(Boolean).join(' · ');
+    const rank = currentIndex != null && totalCount != null ? `${currentIndex + 1} sur ${totalCount}` : null;
+    const canScore = !!selectedJob && !!onScoreProfile && (!jobScore || isDegradedScore(jobScore));
+    const showDecisionRow = !!decisions && (decisions.onRetain || decisions.onRestore);
+
+    return (
+      <>
+        <div ref={panelRootRef} className="flex min-h-full min-w-0 flex-col">
+          <header className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-background py-3 pl-5 pr-3">
+            <PersonAvatar name={fullName} src={displayProfile.profile_picture_url} size={40} className="mt-0.5" />
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex items-center gap-0.5">
+                <h2
+                  id={asPanel.titleId}
+                  tabIndex={-1}
+                  title={fullName}
+                  className="min-w-0 flex-1 break-words text-lg font-semibold leading-tight text-foreground outline-none line-clamp-2"
+                >
+                  {fullName || 'Profil LinkedIn'}
+                </h2>
+                {rank && (
+                  <span className="mr-1.5 whitespace-nowrap text-xs tabular-nums text-muted-foreground max-sm:hidden">{rank}</span>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Candidat précédent"
+                  title="Candidat précédent (flèche haut)"
+                  className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+                  disabled={!onNavigatePrev}
+                  onClick={() => onNavigatePrev?.()}
+                >
+                  <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Candidat suivant"
+                  title="Candidat suivant (flèche bas)"
+                  className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+                  disabled={!onNavigateNext}
+                  onClick={() => onNavigateNext?.()}
+                >
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Fermer le panneau"
+                  title="Fermer (Échap)"
+                  className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+                  onClick={asPanel.onClose}
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
+              {position && (
+                <p title={position} className="truncate text-sm text-foreground-secondary">{position}</p>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onNavigateNext}
-                disabled={!onNavigateNext}
-                className="h-7 gap-1 text-xs rounded-lg px-2 text-muted-foreground hover:text-foreground"
-              >
-                Suiv.
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Button>
+              {(meta || profileUrl || rank) && (
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
+                  {meta && <span>{meta}</span>}
+                  {rank && <span className="sm:hidden">{rank}</span>}
+                  {profileUrl && (
+                    <a
+                      href={profileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-sm underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Profil LinkedIn
+                      <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                      <span className="sr-only">(nouvel onglet)</span>
+                    </a>
+                  )}
+                </p>
+              )}
+            </div>
+          </header>
+
+          <section aria-label="Étape du candidat" className="flex flex-col gap-3 px-5 py-4">
+            {decisions?.stageLabel && (
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 pt-1 text-md font-semibold text-foreground">{decisions.stageLabel}</p>
+                {decisions.onDismiss && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={deciding}
+                    onClick={() => void decide(decisions.onDismiss)}
+                    className="-mr-2.5 shrink-0 text-danger hover:bg-danger-muted hover:text-danger"
+                  >
+                    Écarter
+                  </Button>
+                )}
+              </div>
+            )}
+            {showDecisionRow && (
+              <div className="flex flex-wrap items-center gap-2">
+                {decisions?.onRetain && (
+                  <Button type="button" variant="outline" disabled={deciding} onClick={() => void decide(decisions.onRetain)}>
+                    Retenir
+                  </Button>
+                )}
+                {decisions?.onRestore && (
+                  <Button type="button" variant="outline" disabled={deciding} onClick={() => void decide(decisions.onRestore)}>
+                    Remettre à trier
+                  </Button>
+                )}
+              </div>
+            )}
+            <div className="-mx-2.5 flex flex-wrap items-center gap-1">
+              {canScore && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleScore}
+                  loading={isScoring}
+                  className="shrink-0 text-foreground-secondary hover:text-foreground"
+                >
+                  {!isScoring && <Target aria-hidden="true" />}
+                  {jobScore ? 'Relancer la note' : 'Noter'}
+                </Button>
+              )}
+              {accountId && jobScore?.recommendation !== 'skip' && (
+                <SequenceEnrollButton
+                  selectedProfiles={[profile]}
+                  accountId={accountId}
+                  selectedJob={selectedJob ?? undefined}
+                  onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
+                  quiet
+                />
+              )}
+              {selectedJob && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowMessageModal(true)}
+                  className="shrink-0 text-foreground-secondary hover:text-foreground"
+                >
+                  <PenLine aria-hidden="true" />
+                  Message
+                </Button>
+              )}
+              {profileUrl && <EnrichContactButton profile={profile} compact mode="button-only" quiet />}
+            </div>
+            {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {contactInfo.emails.map((email) => (
+                  <ContactChip key={email} icon={Mail} value={email} title="Cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(email); toast.success('Adresse e-mail copiée.'); }} />
+                ))}
+                {contactInfo.phones.map((phone) => (
+                  <ContactChip key={phone} icon={Phone} value={phone} title="Cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(phone); toast.success('Numéro copié.'); }} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {jobScore && (
+            <section aria-label="Pourquoi cette note" className="border-t border-border px-5 py-4 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-foreground">Pourquoi cette note</p>
+                {isDeepScoring ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                    Analyse complète en cours
+                  </span>
+                ) : jobScore.scoringDepth === 'deep' ? (
+                  <span className="text-xs text-muted-foreground" title="Évalué sur le profil complet (parcours détaillé, À propos…)">Évaluation complète</span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <span title="Évalué sur les données de la liste de recherche">Évaluation rapide</span>
+                    {accountId && onDeepScore && (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="xs"
+                        onClick={runDeepScore}
+                        disabled={isEnriching}
+                        title={isEnriching ? 'Chargement du profil en cours' : 'Ré-évaluer sur le profil complet (peut consommer 1 visite de profil LinkedIn)'}
+                        className="h-auto p-0 text-xs font-normal text-brand"
+                      >
+                        Analyse complète
+                      </Button>
+                    )}
+                  </span>
+                )}
+              </div>
+              {reasons?.summary && <p className="mt-1 text-muted-foreground">{reasons.summary}</p>}
+              {reasons && (reasons.strengths.length > 0 || reasons.concerns.length > 0) && (
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {reasons.strengths.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-success">Points forts</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                        {reasons.strengths.map((item, i) => <li key={i}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {reasons.concerns.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-warning">Réserves</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                        {reasons.concerns.map((item, i) => <li key={i}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {isEnriching && (
+            <div className="mx-5 mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Chargement du profil complet
             </div>
           )}
 
+          <div className="min-w-0 px-4 pb-4 sm:px-5">
+            <CardExpandedContent
+              profile={displayProfile}
+              profileData={profileData}
+              selectedJob={selectedJob}
+              jobScore={jobScore}
+              accountId={accountId}
+              projectId={missionIdOfJob(activeProject?.id)}
+              candidateStatus={candidateStatus}
+              airtableMatch={airtableMatch}
+              historyData={null}
+              historyLoading={false}
+              onClose={() => asPanel.onClose()}
+              hidePosts
+              onOpenMessage={() => setShowMessageModal(true)}
+              onMessageSent={onMessageSent}
+              onProfileTreated={onProfileTreated}
+            />
+          </div>
+        </div>
+        {messageModal}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[600px] p-0 flex flex-col overflow-hidden border-l border-border bg-background" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onKeyDown={handleArrowKeys}>
           {/* ─── SWIPE HINT ─── */}
           {showSwipeHint && (
             <div className="sm:hidden flex items-center justify-center gap-3 py-1.5 bg-primary/10 text-primary text-xs font-medium animate-fade-in shrink-0">
@@ -659,47 +978,88 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           )}
 
           {/* ─── HEADER ─── */}
-          <SheetHeader className="shrink-0 space-y-0 border-b border-border bg-background px-4 pb-3 pt-4 text-left sm:px-5">
-            <div className="flex items-center gap-2 pr-8">
-              <SheetTitle className="min-w-0 truncate text-lg font-semibold leading-tight text-foreground">
-                {fullName || 'Profil LinkedIn'}
-              </SheetTitle>
-              {profileUrl && (
-                <a
-                  href={profileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Ouvrir le profil LinkedIn"
-                  title="Ouvrir le profil LinkedIn"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <img src={linkedinLogo} alt="" className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </div>
-            <p className="mt-1 line-clamp-2 text-sm leading-snug text-foreground-secondary">
-              {displayProfile.headline || currentRole || 'Profil LinkedIn'}
-            </p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {currentCompany && (
-                <span className="flex items-center gap-1.5">
-                  <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
-                  <span className="max-w-[160px] truncate sm:max-w-none">{currentCompany}</span>
-                  {currentJobTenure && <span className="hidden sm:inline">· {currentJobTenure}</span>}
-                </span>
-              )}
-              {displayProfile.location && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  <span className="max-w-[140px] truncate sm:max-w-none">{displayProfile.location}</span>
-                </span>
-              )}
-              {totalExperience && (
-                <span className="flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  {totalExperience}
-                </span>
-              )}
+          <SheetHeader className="shrink-0 space-y-0 border-b border-border bg-background py-4 pl-4 pr-3 text-left sm:pl-5">
+            <div className="flex items-start gap-3">
+              <PersonAvatar name={fullName} src={displayProfile.profile_picture_url} size={40} className="mt-0.5" />
+              <div className="min-w-0 flex-1">
+                {/* Rangée du nom : la place dans la liste et les flèches, à gauche de la croix de la fenêtre (pr-10). */}
+                <div className="flex items-center gap-0.5 pr-10">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <SheetTitle className="min-w-0 break-words text-lg font-semibold leading-tight line-clamp-2 text-foreground">
+                      {fullName || 'Profil LinkedIn'}
+                    </SheetTitle>
+                    {profileUrl && (
+                      <a
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Ouvrir le profil LinkedIn"
+                        title="Ouvrir le profil LinkedIn"
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <img src={linkedinLogo} alt="" className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+                  {(onNavigatePrev || onNavigateNext) && (
+                    <>
+                      {currentIndex != null && totalCount != null && (
+                        <span className="mr-1.5 whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                          {currentIndex + 1} sur {totalCount}
+                        </span>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Candidat précédent"
+                        title="Candidat précédent (flèche haut)"
+                        className="shrink-0 max-sm:min-h-11 max-sm:min-w-11"
+                        disabled={!onNavigatePrev}
+                        onClick={onNavigatePrev}
+                      >
+                        <ChevronUp aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Candidat suivant"
+                        title="Candidat suivant (flèche bas)"
+                        className="shrink-0 max-sm:min-h-11 max-sm:min-w-11"
+                        disabled={!onNavigateNext}
+                        onClick={onNavigateNext}
+                      >
+                        <ChevronDown aria-hidden="true" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm leading-snug text-foreground-secondary">
+                  {displayProfile.headline || currentRole || 'Profil LinkedIn'}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                  {currentCompany && (
+                    <span className="flex items-center gap-1.5">
+                      <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
+                      <span className="max-w-[160px] truncate sm:max-w-none">{currentCompany}</span>
+                      {currentJobTenure && <span className="hidden sm:inline">· {currentJobTenure}</span>}
+                    </span>
+                  )}
+                  {displayProfile.location && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <span className="max-w-[140px] truncate sm:max-w-none">{displayProfile.location}</span>
+                    </span>
+                  )}
+                  {totalExperience && (
+                    <span className="flex items-center gap-1">
+                      <TrendingUp className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      {totalExperience}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Statuts et note */}
@@ -1018,30 +1378,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         </SheetContent>
       </Sheet>
 
-      {/* Outreach message modal */}
-      {selectedJob && (
-        <OutreachMessageModal
-          open={showMessageModal}
-          onOpenChange={setShowMessageModal}
-          profile={profile}
-          job={selectedJob}
-          selectedAccount={accountId}
-          calendlyLink={activeProject?.calendly_link}
-          projectId={missionIdOfJob(activeProject?.id)}
-          candidateHistory={historyData ? {
-            shortlists: historyData.shortlists,
-            placements: historyData.placements,
-            notes: historyData.notes,
-            appointments: historyData.appointments,
-          } : undefined}
-          onMessageSent={() => {
-            // « Contacté » est posé par le serveur à l'envoi (lot 0b) : plus
-            // d'écriture du pipeline depuis le navigateur.
-            onMessageSent?.();
-            onProfileTreated?.();
-          }}
-        />
-      )}
+      {messageModal}
     </>
   );
 };
