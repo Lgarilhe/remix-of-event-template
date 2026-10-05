@@ -158,7 +158,7 @@ const safeDecode = (s: string): string => {
   }
 };
 
-/** Un bloc d'autres offres doit commencer à plus de 1500 caractères de son titre, sinon le titre est laissé. */
+/** Distance au-delà de laquelle un titre précédant le premier lien d'une autre offre est celui d'une autre section : il reste. */
 const BLOCK_TITLE_WINDOW = 1500;
 
 /**
