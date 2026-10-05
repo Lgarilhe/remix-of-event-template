@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,13 +34,15 @@ export default function SourcingSearch() {
   const jd = (project?.job_details || {}) as JobDetails;
   const jdTitle = (jd.title || '').trim();
 
-  // Phrase saisie sur /sourcing : gardée à l'arrivée, puis retirée de l'historique
-  // du navigateur pour qu'un rechargement ne relance pas (et ne facture) rien.
-  const [initialPhrase] = useState<string | undefined>(
-    () => (location.state as { phrase?: string } | null)?.phrase,
-  );
+  // Départ choisi sur /sourcing (phrase à lancer, ou filtres à ouvrir) : gardé
+  // à l'arrivée, puis retiré de l'historique du navigateur pour qu'un
+  // rechargement ne relance pas (et ne facture) rien.
+  const [start] = useState(() => {
+    const s = (location.state as { phrase?: string; filters?: boolean } | null) ?? {};
+    return { phrase: s.phrase, filters: !!s.filters };
+  });
   useEffect(() => {
-    if (initialPhrase) navigate(location.pathname, { replace: true, state: null });
+    if (start.phrase || start.filters) navigate(location.pathname, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -137,34 +138,18 @@ export default function SourcingSearch() {
 
       <div className="py-4 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2 mb-2 text-muted-foreground"
-            onClick={() => navigate('/sourcing')}
-          >
-            <ArrowLeft aria-hidden="true" />
-            Recherches
-          </Button>
-
-          <PageHeader
-            className="mb-4"
-            title={project.name}
-            subtitle="Recherche hors mission. Candidats, filtres et statuts sont conservés si vous la transformez en mission."
-            actions={
-              <>
-                <Button variant="outline" onClick={openTransform}>
-                  <Briefcase aria-hidden="true" />
-                  Transformer en mission
-                </Button>
-              </>
-            }
-          />
-
-          <div className="mb-4 max-w-xl">
-            <label htmlFor="search-job-title" className="mb-1 block text-xs font-medium text-foreground">
-              Intitulé du poste
-            </label>
+          {/* Barre compacte : retour, intitulé modifiable sur place, transformation. */}
+          <div className="mb-3 flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-muted-foreground"
+              onClick={() => navigate('/sourcing')}
+              aria-label="Retour aux recherches"
+              title="Retour aux recherches"
+            >
+              <ArrowLeft aria-hidden="true" />
+            </Button>
             <Input
               id="search-job-title"
               value={title}
@@ -173,16 +158,21 @@ export default function SourcingSearch() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') e.currentTarget.blur();
               }}
-              placeholder="Ex : Développeur React senior"
+              placeholder="Intitulé du poste, ex : Développeur React senior"
+              aria-label="Intitulé du poste recherché (sert au scoring IA)"
+              title="Sert au scoring IA"
+              className="h-9 min-w-0 flex-1 border-transparent bg-transparent px-2 text-lg font-semibold tracking-tight shadow-none hover:border-border focus-visible:border-input"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Il sert au scoring IA. Sans intitulé, la recherche utilise son nom.
-            </p>
+            <Button variant="outline" className="shrink-0" onClick={openTransform}>
+              <Briefcase aria-hidden="true" />
+              <span className="hidden sm:inline">Transformer en mission</span>
+              <span className="sm:hidden">Mission</span>
+            </Button>
           </div>
 
           {/* Le même Sourcing que dans une mission : prompt, reprise d'une recherche, filtres, résultats. */}
           <SectionErrorBoundary fallbackTitle="Erreur dans la recherche">
-            <MissionSourcing project={project} layout="mission-v3" initialPhrase={initialPhrase} />
+            <MissionSourcing project={project} layout="mission-v3" initialPhrase={start.phrase} startWithFilters={start.filters} />
           </SectionErrorBoundary>
         </div>
       </div>

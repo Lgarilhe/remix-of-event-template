@@ -45,6 +45,15 @@ const titleFromPhrase = (phrase: string) => {
   return clause.slice(0, 80);
 };
 
+// Nom d'une recherche créée sans phrase : « Recherche du 6 juillet, 14h32 ».
+// L'utilisateur le remplace par un intitulé dans la barre de la recherche.
+const buildSearchName = () => {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(now);
+  const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(now).replace(':', 'h');
+  return `Recherche du ${date}, ${time}`;
+};
+
 export default function SourcingSearches() {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
@@ -79,6 +88,20 @@ export default function SourcingSearches() {
       // Le temps de l'animation de sortie, au minimum.
       await new Promise((r) => setTimeout(r, reduceMotion ? 0 : 260));
       navigate(`/sourcing/${created.id}`, { state: { phrase } });
+    } catch {
+      // toast d'erreur déjà géré par le hook
+      setLaunching(false);
+    }
+  };
+
+  // Chemin direct : une recherche vide, avec la fenêtre des filtres ouverte.
+  const launchWithFilters = async () => {
+    if (launching) return;
+    setLaunching(true);
+    try {
+      const created = await createProject({ name: buildSearchName(), kind: 'search' });
+      await new Promise((r) => setTimeout(r, reduceMotion ? 0 : 260));
+      navigate(`/sourcing/${created.id}`, { state: { filters: true } });
     } catch {
       // toast d'erreur déjà géré par le hook
       setLaunching(false);
@@ -203,6 +226,19 @@ export default function SourcingSearches() {
             </button>
           ))}
         </div>
+
+        <p className="mt-6 text-center text-xs text-[var(--k-text-muted)]">
+          ou{' '}
+          <button
+            type="button"
+            disabled={launching}
+            onClick={() => void launchWithFilters()}
+            className="font-medium text-[var(--k-text-2)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 hover:text-[var(--k-text)] disabled:opacity-60"
+          >
+            configurer les filtres manuellement
+          </button>
+          , sans passer par le prompt
+        </p>
 
         {isLoading ? (
           <div className="mt-8 w-full max-w-[640px] space-y-1.5" aria-busy="true" aria-label="Chargement des recherches">

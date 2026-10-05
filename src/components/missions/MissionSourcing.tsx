@@ -20,9 +20,11 @@ interface MissionSourcingProps {
   layout?: 'default' | 'mission-v3';
   /** Phrase déjà saisie (recherche créée depuis /sourcing), lancée à l'ouverture. */
   initialPhrase?: string;
+  /** Recherche créée depuis /sourcing avec « Configurer les filtres » : ouvre la fenêtre des filtres. */
+  startWithFilters?: boolean;
 }
 
-export const MissionSourcing = ({ project, layout = 'default', initialPhrase }: MissionSourcingProps) => {
+export const MissionSourcing = ({ project, layout = 'default', initialPhrase, startWithFilters }: MissionSourcingProps) => {
   const isV3 = layout === 'mission-v3';
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
 
@@ -143,7 +145,7 @@ export const MissionSourcing = ({ project, layout = 'default', initialPhrase }: 
           activeProject={project}
           searchSource="linkedin"
           onOpenSearchAgent={handleOpenSearchAgent}
-          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase } : {})}
+          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase, startWithFilters } : {})}
         />
       </OutreachSearchProvider>
     </div>

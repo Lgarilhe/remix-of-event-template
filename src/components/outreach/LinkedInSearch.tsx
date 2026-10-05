@@ -58,6 +58,8 @@ interface LinkedInSearchProps {
    * mission-v3 seulement).
    */
   initialPhrase?: string;
+  /** Ouvre la fenêtre des filtres à l'arrivée, sans passer par le prompt (layout mission-v3 seulement). */
+  startWithFilters?: boolean;
 }
 
 type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
@@ -181,6 +183,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onOpenSearchAgent,
   layout = 'default',
   initialPhrase,
+  startWithFilters,
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
   const queryClient = useQueryClient();
@@ -1209,6 +1212,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [applyPhrase, search.selectedJob, activeProject?.name]);
 
+  // « Configurer les filtres » depuis /sourcing : on saute le prompt et la
+  // fenêtre des filtres s'ouvre, prête à lancer la recherche.
+  const startFiltersDoneRef = useRef(false);
+  useEffect(() => {
+    if (!isV3 || !startWithFilters || startFiltersDoneRef.current) return;
+    if (!activeProject || flowInitProjectRef.current !== activeProject.id || flowMode !== 'hero') return;
+    startFiltersDoneRef.current = true;
+    setFlowMode('results');
+    setFiltersOpen(true);
+  }, [isV3, startWithFilters, activeProject, flowMode]);
+
   // Phrase venue de /sourcing : lancée une seule fois, comme un clic sur
   // « Générer les filtres et chercher » (l'écran de plan s'affiche).
   const initialPhraseDoneRef = useRef(false);
@@ -1409,7 +1423,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         />
       )}
       {activeProject && flowMode === 'plan' && (
-        <SearchPlan query={flowQuery} stage={planStage} chips={planChips} />
+        <SearchPlan query={flowQuery} stage={planStage} chips={planChips} withBrief={activeProject.kind !== 'search'} />
       )}
       {isV3 && flowMode === 'results' && (
         <SourcingTopBar
