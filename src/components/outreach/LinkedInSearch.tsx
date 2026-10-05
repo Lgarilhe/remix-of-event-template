@@ -52,6 +52,12 @@ interface LinkedInSearchProps {
    * rendu actuel, inchangé (ancienne page mission, /sourcing/:id).
    */
   layout?: 'default' | 'mission-v3';
+  /**
+   * Recherche créée depuis /sourcing : la phrase déjà saisie est lancée une
+   * fois, dès que le brief synthétique et le compte sont prêts (layout
+   * mission-v3 seulement).
+   */
+  initialPhrase?: string;
 }
 
 type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
@@ -174,6 +180,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   searchSource: initialSearchSource = 'linkedin',
   onOpenSearchAgent,
   layout = 'default',
+  initialPhrase,
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
   const queryClient = useQueryClient();
@@ -1201,6 +1208,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       flowBusyRef.current = false;
     }
   }, [applyPhrase, search.selectedJob, activeProject?.name]);
+
+  // Phrase venue de /sourcing : lancée une seule fois, comme un clic sur
+  // « Générer les filtres et chercher » (l'écran de plan s'affiche).
+  const initialPhraseDoneRef = useRef(false);
+  useEffect(() => {
+    if (!isV3 || !initialPhrase?.trim() || initialPhraseDoneRef.current) return;
+    if (flowMode !== 'hero' || !search.selectedJob || search.loading) return;
+    if (!selectedAccount && searchSource !== 'database') return;
+    initialPhraseDoneRef.current = true;
+    void launchFlow(initialPhrase.trim());
+  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow]);
 
   // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
   // aucune recherche : recherche directe, sans repasser par la génération IA

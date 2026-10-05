@@ -53,6 +53,7 @@ export interface CreateProjectInput {
   job_id?: string;
   job_title?: string;
   client_name?: string;
+  job_details?: Record<string, any>;
   filters_snapshot?: Record<string, any>;
 }
 

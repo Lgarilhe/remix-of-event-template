@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
@@ -28,11 +28,22 @@ import type { JobDetails } from '@/types/jobDetails';
 export default function SourcingSearch() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: project, isLoading } = useSourcingProject(id);
   const { updateProject, isUpdating } = useSourcingProjects('search');
 
   const jd = (project?.job_details || {}) as JobDetails;
   const jdTitle = (jd.title || '').trim();
+
+  // Phrase saisie sur /sourcing : gardée à l'arrivée, puis retirée de l'historique
+  // du navigateur pour qu'un rechargement ne relance pas (et ne facture) rien.
+  const [initialPhrase] = useState<string | undefined>(
+    () => (location.state as { phrase?: string } | null)?.phrase,
+  );
+  useEffect(() => {
+    if (initialPhrase) navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [title, setTitle] = useState('');
   const [transformOpen, setTransformOpen] = useState(false);
@@ -171,7 +182,7 @@ export default function SourcingSearch() {
 
           {/* Le même Sourcing que dans une mission : prompt, reprise d'une recherche, filtres, résultats. */}
           <SectionErrorBoundary fallbackTitle="Erreur dans la recherche">
-            <MissionSourcing project={project} layout="mission-v3" />
+            <MissionSourcing project={project} layout="mission-v3" initialPhrase={initialPhrase} />
           </SectionErrorBoundary>
         </div>
       </div>
