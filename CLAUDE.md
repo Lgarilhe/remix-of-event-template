@@ -640,6 +640,7 @@ Le micro seul n'entend pas le candidat quand on porte un casque : sa voix ne pas
 - La clé temporaire (`deepgram-temp-key`) est demandée avant la création de la séance et de l'introduction : un démarrage qui échoue ne laisse plus de séance vide ni d'introduction facturée.
 - « Relancer le partage » et « Changer le partage » remplacent la source du candidat sans arrêter le micro.
 - Garde statique et comportement : `tests/ux/live-capture-audio.test.mjs`.
+- Cadence des suggestions (`src/lib/liveCoachCadence.ts`, garde `tests/ux/live-coach-cadence.test.mjs`) : une analyse seulement avec au moins 120 caractères de texte neuf ET 25 s depuis la précédente (la pause de la voix ne déclenche plus rien seule) ; un sujet suivant reste affiché au moins 45 s, une nouvelle suggestion attend l'analyse suivante ; 3 points à creuser au plus à l'écran, les plus récents. L'analyse finale à l'arrêt reste libre.
 
 ### Destructive actions — ALWAYS use AlertDialog
 ```typescript

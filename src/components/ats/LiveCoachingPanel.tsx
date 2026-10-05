@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { mergeDigDeeper, shouldAnalyze, shouldShowTopic } from '@/lib/liveCoachCadence';
 import {
   DisplayAudioError, captureDisplayAudio, displayAudioSupported, readCaptureMode, recorderOptions, storeCaptureMode,
   transcriptionUrl, turnPiece,
@@ -252,6 +253,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [digDeeper, setDigDeeper] = useState<DigDeeperItem[]>([]);
   const digDeeperRef = useRef<DigDeeperItem[]>([]);
   const [nextTopic, setNextTopic] = useState<NextTopicItem | null>(null);
+  // Sujet affiché et instant d'affichage : un sujet reste lisible avant d'être remplacé.
+  const nextTopicRef = useRef<NextTopicItem | null>(null);
+  const topicShownAtRef = useRef(0);
   const [criteriaStatus, setCriteriaStatus] = useState<Record<string, CriterionUpdate>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -294,8 +298,6 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const onRecordingChangeRef = useRef(onRecordingChange);
   onRecordingChangeRef.current = onRecordingChange;
 
-  const COACH_INTERVAL_MS = 12000;
-
   // Démontage : minuteur, micro et transcription s'arrêtent.
   useEffect(() => {
     return () => {
@@ -326,6 +328,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     }
     if (Object.keys(autoScores).length > 0) onAutoScoresRef.current(autoScores);
   }, [criteriaStatus]);
+
+  // Affiche un sujet et note l'instant : il reste lisible avant d'être remplacé (liveCoachCadence).
+  const showTopic = useCallback((topic: NextTopicItem) => {
+    nextTopicRef.current = topic;
+    topicShownAtRef.current = Date.now();
+    setNextTopic(topic);
+  }, []);
 
   const analyzeWithCoach = useCallback(async (params: {
     sessionId: string;
@@ -365,12 +374,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         });
       }
 
-      // Nouveaux points à creuser, sans doublon ; les anciens restent jusqu'à leur retrait.
+      // Nouveaux points à creuser, sans doublon ; les plus récents seuls restent à l'écran.
       if (d.dig_deeper?.length) {
         setDigDeeper((prev) => {
-          const existingSignals = new Set(prev.map((item) => item.signal));
-          const newItems = d.dig_deeper.filter((item) => !existingSignals.has(item.signal));
-          const next = [...prev, ...newItems];
+          const next = mergeDigDeeper(prev, d.dig_deeper);
           digDeeperRef.current = next;
           return next;
         });
@@ -390,13 +397,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         if (introLockedRef.current && params.fullTranscript.length > 200) {
           introLockedRef.current = false;
         }
-        if (!introLockedRef.current) {
-          setNextTopic((prev) => {
-            if (!prev) return d.next_topic;
-            const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
-            if (normalize(prev.topic) === normalize(d.next_topic.topic)) return prev;
-            return d.next_topic;
-          });
+        // Un sujet déjà affiché garde sa place tant que son délai de lecture n'est pas écoulé.
+        if (!introLockedRef.current && shouldShowTopic(nextTopicRef.current, d.next_topic, topicShownAtRef.current, Date.now())) {
+          showTopic(d.next_topic);
         }
       }
     } catch (err) {
@@ -404,7 +407,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedModel]);
+  }, [selectedModel, showTopic]);
 
   // Fin du partage de l'audio (onglet fermé, bouton « Arrêter le partage » du navigateur).
   const onMeetingEnded = useCallback(() => {
@@ -478,7 +481,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         criteria: criteria.map((c) => c.label),
       }).then(({ data }) => {
         if (data?.intro) {
-          setNextTopic({
+          showTopic({
             topic: 'Introduction',
             transition: data.intro,
             why: `Accroche personnalisée pour ${candidateName}`,
@@ -554,13 +557,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               // Le texte en cours d'une autre source n'est pas effacé par cette phrase finale.
               if (interimSourceRef.current === kind) setInterimText('');
 
-              // Analyse toutes les 12 s, ou dès qu'assez de texte s'est accumulé (plus de 80 caractères).
+              // Analyse quand assez de texte neuf s'est accumulé et que le délai minimal est écoulé.
               const now = Date.now();
-              const pendingLen = pendingFinalTextRef.current.trim().length;
-              if (
-                pendingLen > 0 &&
-                (now - lastCoachCallRef.current > COACH_INTERVAL_MS || pendingLen > 80)
-              ) {
+              if (shouldAnalyze({ now, lastCallAt: lastCoachCallRef.current, pendingChars: pendingFinalTextRef.current.trim().length })) {
                 lastCoachCallRef.current = now;
                 const chunkForCoach = pendingFinalTextRef.current.trim();
                 pendingFinalTextRef.current = '';
@@ -582,8 +581,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           }
 
           if (data.type === 'UtteranceEnd') {
-            if (pendingFinalTextRef.current.trim()) {
-              const now = Date.now();
+            // Une pause de la voix tombe au bon moment, mais obéit aux mêmes règles que le reste.
+            const now = Date.now();
+            if (shouldAnalyze({ now, lastCallAt: lastCoachCallRef.current, pendingChars: pendingFinalTextRef.current.trim().length })) {
               lastCoachCallRef.current = now;
               const chunkForCoach = pendingFinalTextRef.current.trim();
               pendingFinalTextRef.current = '';
@@ -654,7 +654,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     }
   }, [
     starting, candidateId, candidateName, candidateHeadline, candidateProfileSummary, jobId, jobTitle, scorecardId,
-    criteria, jobContext, analyzeWithCoach, meetingSupported, captureMode, onMeetingEnded,
+    criteria, jobContext, analyzeWithCoach, meetingSupported, captureMode, onMeetingEnded, showTopic,
   ]);
 
   // Relance le partage de l'audio (onglet fermé, partage arrêté, mauvais onglet choisi) sans
