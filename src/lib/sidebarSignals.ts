@@ -287,8 +287,8 @@ export function canJoin(
 }
 
 /**
- * Deux listes disjointes, entretiens non rendus (status différent de
- * 'completed') :
+ * Deux listes disjointes, entretiens ni rendus ni annulés (status différent de
+ * 'completed' et de 'cancelled', que pose calendly-webhook) :
  * - today : début le jour local, fin pas encore passée, par heure croissante ;
  * - debriefs : fin passée, du plus récent au plus ancien.
  */
@@ -302,7 +302,7 @@ export function splitInterviews<T extends { event_start_at: string | null; event
   const today: Array<{ row: T; start: number }> = [];
   const debriefs: Array<{ row: T; start: number }> = [];
   for (const row of rows) {
-    if (row.status === 'completed') continue;
+    if (row.status === 'completed' || row.status === 'cancelled') continue;
     const b = interviewBounds(row);
     if (!b) continue;
     if (b.end <= t) debriefs.push({ row, start: b.start });
