@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
@@ -142,30 +143,33 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 }}
               >
                 <TableCell className="px-3 py-2.5">
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <Button
-                        type="button"
-                        variant="link"
-                        onClick={() => onCandidateClick(candidate)}
-                        className={cn(TEXT_BUTTON, 'text-foreground')}
-                      >
-                        <span className="truncate">{candidate.name}</span>
-                      </Button>
-                      {candidate.hasReminder && (
-                        <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
-                      )}
-                      {(candidate.notesCount || 0) > 0 && (
-                        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
-                          <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
-                          {candidate.notesCount}
-                          <span className="sr-only"> note{(candidate.notesCount || 0) > 1 ? 's' : ''}</span>
-                        </span>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={32} />
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="link"
+                          onClick={() => onCandidateClick(candidate)}
+                          className={cn(TEXT_BUTTON, 'text-foreground')}
+                        >
+                          <span className="truncate">{candidate.name}</span>
+                        </Button>
+                        {candidate.hasReminder && (
+                          <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
+                        )}
+                        {(candidate.notesCount || 0) > 0 && (
+                          <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
+                            <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+                            {candidate.notesCount}
+                            <span className="sr-only"> note{(candidate.notesCount || 0) > 1 ? 's' : ''}</span>
+                          </span>
+                        )}
+                      </div>
+                      {candidate.headline && (
+                        <p className="max-w-[260px] truncate text-xs text-muted-foreground">{candidate.headline}</p>
                       )}
                     </div>
-                    {candidate.headline && (
-                      <p className="max-w-[260px] truncate text-xs text-muted-foreground">{candidate.headline}</p>
-                    )}
                   </div>
                 </TableCell>
                 <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-foreground">

@@ -20,6 +20,7 @@ import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/
 import { ArrowRightLeft, Bell, Briefcase, GitBranch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -182,6 +183,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
     return (
       <div className="w-[264px] rounded-lg border border-border-strong bg-card p-3 shadow-lg">
         <div className="flex items-center gap-2">
+          <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={28} />
           <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{candidate.name}</p>
           <ScoreBadge score={candidate.score} className="shrink-0" />
         </div>
@@ -221,6 +223,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         />
       )}
       <div className="flex items-center gap-2">
+        <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={28} />
         <h3 className="min-w-0 flex-1 text-sm font-medium text-foreground">
           <Button
             ref={drag?.setActivatorNodeRef}
