@@ -60,7 +60,8 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
             <Button
               variant="outline"
               size="xs"
-              className="max-w-52 bg-background font-normal"
+              // Au doigt, 44 px de haut : la zone s'élargit dans la marge de la bande.
+              className="relative max-w-52 bg-background font-normal after:absolute after:inset-x-0 after:-inset-y-2"
               onClick={() => onPick(s.text)}
               title={s.text}
               aria-label={`Insérer la suggestion : ${s.text}`}
@@ -71,7 +72,7 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
         ))}
       </ul>
       {onSeeMore && suggestions.length > 3 && (
-        <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={onSeeMore}>
+        <Button variant="ghost" size="xs" className="relative shrink-0 text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-2" onClick={onSeeMore}>
           Toutes les suggestions
           <ChevronRight aria-hidden="true" />
         </Button>

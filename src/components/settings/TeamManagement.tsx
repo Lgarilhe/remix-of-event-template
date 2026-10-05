@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
-import { badgeVariants } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -214,11 +213,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   return (
     <Card>
-      {/* Revue design (F-01) : titre en casse de phrase, nombre de membres en texte discret à droite. */}
+      {/* Revue design (F-01) : titre en casse de phrase, nombre de membres en texte discret à droite.
+          Design simplifié : « Membres », la rubrique s'appelle déjà « Équipe ». */}
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Équipe
+          Membres
         </CardTitle>
         {!isLoading && (
           <span className="text-xs text-muted-foreground">{plural(members.length, 'membre')}</span>
@@ -226,7 +226,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
-          <div className="space-y-3 px-4 pb-4">
+          <div className="space-y-3 py-3">
             <p role="status" className="sr-only">Chargement de l’équipe…</p>
             {[0, 1, 2].map((i) => (
               <div key={i} className="flex items-center gap-3" aria-hidden="true">
@@ -253,13 +253,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
               return (
                 <div key={member.id}>
-                  {/* Collapsed row. Revue design (F-16) : sous sm, rôle et retrait passent sous l'identité. */}
-                  <div
-                    className={cn(
-                      'flex flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:gap-3',
-                      isExpanded && 'bg-muted',
-                    )}
-                  >
+                  {/* Collapsed row. Revue design (F-16) : sous sm, rôle et retrait passent sous l'identité.
+                      Design simplifié : liste à plat, la ligne part du bord du titre ; ouverte, le chevron
+                      et le panneau suffisent, sans fond. */}
+                  <div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3">
                     <Button
                       type="button"
                       variant="ghost"
@@ -278,9 +275,11 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-1.5">
                           <span className="truncate text-sm font-medium text-foreground">{memberName}</span>
-                          <span className={cn(badgeVariants({ variant: 'outline' }), 'py-0')}>
-                            {roleLabels[member.role] || member.role}
-                          </span>
+                          {/* Design simplifié : le rôle en texte, sans pastille. Quand le sélecteur de la
+                              ligne l'affiche déjà, il n'est pas répété. */}
+                          {!canManage && (
+                            <span className="text-xs text-muted-foreground">{roleLabels[member.role] || member.role}</span>
+                          )}
                         </span>
                         {/* Pas d'e-mail en double quand le nom affiché est déjà l'e-mail */}
                         {memberEmail && memberEmail !== memberName && (

@@ -73,16 +73,21 @@ export function SequenceActionLabel({ type, className }: { type: string | null |
 export function EnrollmentStatusBadge({
   status,
   pauseReason,
+  plain = false,
   className,
 }: {
   status: string | null | undefined;
   pauseReason?: string | null;
+  /** En texte, sans pastille ni couleur (design simplifié) ; même libellé. */
+  plain?: boolean;
   className?: string;
 }) {
   const meta = enrollmentStatusMeta(status);
+  const label = status === 'paused' ? pausedLabel(pauseReason) : meta.label;
+  if (plain) return <span className={className}>{label}</span>;
   return (
     <Badge variant={meta.tone} className={className}>
-      {status === 'paused' ? pausedLabel(pauseReason) : meta.label}
+      {label}
     </Badge>
   );
 }
