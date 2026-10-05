@@ -2,31 +2,30 @@ import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
-/** Carte à trois lignes : nom et score, poste, signal daté (voir `ATSCandidateCard`). */
+/**
+ * Carte à trois lignes : visage, nom et anneau de note, poste, signal daté (voir
+ * `ATSCandidateCard`). Même fond que les cartes et les colonnes (design simplifié, lot Suite).
+ */
 const SkeletonCard: React.FC = () => (
-  <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+  <div className="space-y-2 rounded-lg border border-border bg-muted p-2.5">
     <div className="flex items-center gap-2">
-      <Skeleton className="h-4 flex-1 rounded-sm" />
-      <Skeleton className="h-5 w-8 rounded-full" />
+      <Skeleton className="h-7 w-7 rounded-full bg-background" />
+      <Skeleton className="h-4 flex-1 rounded-sm bg-background" />
+      <Skeleton className="h-8 w-8 rounded-full bg-background" />
     </div>
-    <Skeleton className="h-3 w-2/3 rounded-sm" />
-    <Skeleton className="h-3 w-1/2 rounded-sm" />
+    <Skeleton className="h-3 w-2/3 rounded-sm bg-background" />
+    <Skeleton className="h-3 w-1/2 rounded-sm bg-background" />
   </div>
 );
 
+/** Colonne sans bordure ni filet sous l'en-tête ; une colonne vide reste vide. */
 const SkeletonColumn: React.FC<{ cardCount: number }> = ({ cardCount }) => (
-  <div className="flex w-[280px] shrink-0 flex-col rounded-xl border border-border bg-card">
-    <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-      <Skeleton className="h-4 w-24 rounded-sm" />
-      <Skeleton className="h-3 w-4 rounded-sm" />
+  <div className="flex w-[280px] shrink-0 flex-col gap-2 rounded-xl bg-card p-2.5">
+    <div className="flex items-center justify-between px-0.5">
+      <Skeleton className="h-3 w-20 rounded-sm" />
+      {cardCount > 0 && <Skeleton className="h-3 w-3 rounded-sm" />}
     </div>
-    <div className="space-y-2 p-2">
-      {cardCount === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-6" />
-      ) : (
-        Array.from({ length: cardCount }).map((_, i) => <SkeletonCard key={i} />)
-      )}
-    </div>
+    {Array.from({ length: cardCount }).map((_, i) => <SkeletonCard key={i} />)}
   </div>
 );
 

@@ -32,6 +32,66 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — SHIP — Design simplifié, lot Suite 2 : la messagerie
+
+**Contexte** : deuxième écran du lot « Suite » de `docs/design/06-simplicite.md`, après le Pipeline global (#286). La messagerie avait déjà sa revue (lot 6a), mais gardait des pastilles colorées sur chaque ligne (étiquette, intention, non-lus, logo LinkedIn sur chaque visage), « À répondre » en couleur de marque, un bouton « Actualiser », des comptes « (0) » dans les filtres, cinq boutons de mise en forme dans le composeur et un cadre pointillé autour du panneau vide.
+**Décision / Fait** :
+- Colonne des conversations : titre de page à 28 px ; plus d'« Actualiser » (la liste se relit déjà toutes les 30 s, `useMessagesInbox`), ni dans l'en-tête ni dans l'état vide ; bascule « Toutes / À répondre / En attente » de la page mission (`SegmentedControl` quiet) ; filtres sans compte.
+- Lignes : étiquette posée à la main ou intention lue par l'IA en texte discret, sans pastille ni couleur ; « À répondre » en orange (un candidat attend) ; les non-lus en gras, sans pastille chiffrée, le nombre restant lu par les lecteurs d'écran ; liste repliée : un point orange. Le logo LinkedIn ne se pose plus sur chaque visage : seul un autre canal se signale.
+- Conversation : l'état de l'inscription s'écrit en mots à côté du nom (`EnrollmentStatusBadge`, nouvelle option `plain`, même libellé que la pastille) ; « Inscrire dans une séquence » en bouton discret ; le panneau « Sélectionnez une conversation » sans cadre.
+- Composeur : la mise en forme tient dans son menu à toutes les tailles, raccourcis rappelés et toujours actifs ; le nombre de suggestions en texte neutre ; « Envoyer » reste le seul bouton plein. Suggestions rapides de 44 px au doigt.
+**Raison** : règles 1, 2, 3, 7 et 8 du design simplifié. Mesures du banc, neuf conversations simulées (réponses LinkedIn et IA remplacées, quatre analyses et une étiquette posées le temps des mesures puis retirées), ordinateur 1 440 px : liste, 25 puis 24 contrôles, textes colorés 6 puis 3 (les seuls « À répondre »), cadres 1 puis 0 ; conversation ouverte, 49 puis 44 contrôles, textes colorés 7 puis 2. Sur téléphone, conversation ouverte : textes colorés 2 puis 0. Dix logos LinkedIn et trois pastilles de non-lus en moins sur la liste.
+**Impact** : `src/components/outreach/inbox/` (`ChatListSidebar`, `ChatListItem`, `MessageView`, `MessageComposer`, `SmartReplies`), `MessagesInbox.tsx` (plus de comptes de statut passés à la liste), `SequenceBadges.tsx` (option `plain`, rendu par défaut inchangé). Aucune lecture ni écriture ne change. Tests : `tests/ux/messagerie-simplicite.test.mjs` (8 tests, nouveau, rendu statique des lignes), `tests/ux/lot6a-messagerie.test.mjs` mis à jour (D-04 : étiquettes en texte ; D-13 : mise en forme dans un menu).
+**Recette `qa.md`** (banc local, base inchangée avant et après) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Liste prête en 2,6 s (9 conversations) ; onglets À répondre 6, En attente 3 ; recherche « Sarah » : 1 ; menu Filtres (Statut, Étiquette, Boîte LinkedIn) sans compte ; conversation ouverte, suggestion insérée dans le composeur, menu « Mise en forme » à 5 outils, « Inscrire dans une séquence » ouvre son dialogue ; aucun envoi | PASS |
+| Claire | Aucun terme technique ni nom de fournisseur, liste et conversation ; un seul bouton plein : « Envoyer » | PASS |
+| Théo | Messagerie vide : l'état vide seul, sans « Actualiser » ni zéro ; lecture en échec : erreur avec « Réessayer » ; nom très long avec emoji et texte de droite à gauche : aucun débordement (liste, en-tête) | PASS |
+| Sophie | Téléphone 390 px tactile : aucun contrôle sous 44 px (liste, conversation), menu « Mise en forme » à 44 px | PASS |
+**Reste à faire** :
+- [ ] Paramètres (Suite 3), après #260 et #262.
+- [ ] Bulles envoyées en aplat sombre : à revoir avec le propriétaire, hors des huit règles.
+- [ ] Le banc visuel (`scripts/design/capture.mjs`) ne simule pas de conversation : la messagerie y reste vide.
+**Refs** : docs/design/06-simplicite.md (lot Suite), #286.
+
+---
+
+## 2026-10-05 — SHIP — Design simplifié, lot Suite 1 : le Pipeline global
+
+**Contexte** : premier écran du lot « Suite » de `docs/design/06-simplicite.md` (Pipeline global, messagerie, Paramètres, mêmes règles, sans maquette). Le /pipeline gardait l'ancien langage : six tuiles de chiffres au-dessus de toutes les vues, quatre menus de filtres et « Avec rappel », colonnes et cartes encadrées, note en pastille colorée par niveau, statut de séquence en pastille, tableau à huit colonnes, chronologie et analyse en cartes.
+**Décision / Fait** :
+- En-tête : une phrase chiffrée (« 28 candidats dans 4 missions ») et « Rappels » en bouton discret. Plus d'« Actualiser » : la liste se relit au retour sur l'onglet (`refetchOnWindowFocus` de `useATSData`).
+- Une rangée : la recherche, un seul menu « Filtres » (étape ; source s'il y en a plusieurs ; mission ; étiquettes ; « Avec rappel »), puis la bascule d'affichage de la page mission (`SegmentedControl`, nouvelle variante `quiet`, icônes seules sur téléphone). Sans candidat, ni filtres ni bascule.
+- Colonnes au style du kanban de la page mission : fond de carte sans bordure, effectif écrit seulement s'il n'est pas nul, colonne vide muette sauf pendant un glisser (« Déposer ici »). Cartes : visage, nom, note en anneau (`ScoreRing`, nouveau, même rendu que la page mission), mission en texte, signal en texte (statut de séquence lu dans `sequenceLabels`), orange seulement pour un candidat bloqué.
+- Tableau sans cadre, six colonnes au lieu de huit : la provenance passe sous la mission (« Séquence Approche Lead, en cours », « InMail »), la note en anneau, les liens au survol.
+- Chronologie : lignes sans cadre ni pastille, une ligne de texte (étape, étape d'entretien, mission, séquence).
+- Les chiffres passent dans l'onglet Analyse, sur fond doux, sections séparées par un filet. Aucun chiffre à zéro : « Jours dans l'étape » attend un candidat engagé, « Sans mouvement » un candidat bloqué, « Taux de réussite » une sortie. Goulots « Critique » en rouge, « À surveiller » en orange, écrits en texte.
+- Au doigt, chaque contrôle a 44 px : en-têtes triables, noms et missions du tableau, liens de profil et d'e-mail, mission de la chronologie.
+- Pagination du tableau et de la chronologie (#278, #282, arrivées sur `main` pendant le lot) : barre sans cadre sous un filet, Précédent et Suivant en boutons discrets de 44 px au doigt.
+**Raison** : règles 1 à 8 du design simplifié. Mesures du banc contre `main` (pagination comprise), mêmes données, ordinateur 1 440 px :
+| Vue | Contrôles | Cadres | Textes colorés | Zéros | Hauteur |
+|---|---|---|---|---|---|
+| Colonnes | 123 → 119 | 48 → 28 (les cartes) | 40 → 8 | 4 → 0 | 999 → 900 px |
+| Tableau | 93 → 88 | 7 → 0 | 38 → 6 | 0 → 0 | 2 022 → 1 758 px |
+| Chronologie | 63 → 59 | 32 → 0 | 0 → 0 | 0 → 0 | 3 084 → 2 591 px |
+| Analyse | 20 → 13 | 16 → 0 | 5 → 5 | 3 → 0 | 1 553 → 1 318 px |
+Sur téléphone (390 px), la page passe de 2 013 à 1 614 px en colonnes, de 2 370 à 1 968 px en tableau, de 4 566 à 3 861 px en chronologie, de 2 855 à 2 302 px en analyse.
+**Impact** : `src/pages/ATS.tsx` ; `src/components/ats/` : `ATSFilters`, `ATSStats`, `ATSDroppableColumn`, `ATSKanban`, `ATSKanbanSkeleton`, `ATSCandidateCard`, `ATSTable`, `ATSTableSkeleton`, `ATSTimeline`, `ATSPagination`, `ATSPipelineAnalytics`, `ATSStatsSkeleton.tsx` supprimé ; kit : `src/components/ui/score-ring.tsx` (nouveau), `segmented-control.tsx` (variante `quiet` et `iconsOnlyOnPhone`, rendu par défaut inchangé). Aucune lecture ni aucun calcul de chiffre ne change. Tests : `tests/ux/pipeline-simplicite.test.mjs` (11 tests, nouveau), `tests/ux/lot7a-pipeline.test.mjs` mis à jour (anneau, menu « Filtres », six colonnes).
+**Recette `qa.md`** (banc local) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Colonnes prêtes en 2,5 s ; Tableau (six colonnes, `?view=table`, 25 lignes puis « 26 à 28 sur 28 »), Chronologie, Analyse, retour aux Colonnes au clavier ; menu « Filtres » (Étape, Mission, Rappel) : À trier, 28 puis 5 cartes, puis filtres effacés ; recherche « Inès » : 1 carte ; Rappels, fiche et « Déplacer vers… » (10 étapes) s'ouvrent ; aucune écriture en base | PASS |
+| Claire | Aucun terme technique ni nom de fournisseur sur les quatre vues ; « Rappels » visible sans défiler | PASS |
+| Théo | Compte vide : l'état vide seul, sans filtres, bascule ni zéro ; lecture en échec : erreur avec « Réessayer » ; nom très long avec emoji et texte de droite à gauche : aucun débordement (colonnes, tableau, chronologie) | PASS |
+| Sophie | Téléphone 390 px tactile : aucun contrôle sous 44 px sur les quatre vues, zone élargie comprise, aucun débordement ; options du menu « Filtres » de 44 à 62 px, menu dans l'écran | PASS |
+**Reste à faire** :
+- [ ] Messagerie (Suite 2), puis Paramètres (Suite 3, après #260 et #262).
+- [ ] `ScoreBadge`, coloré par niveau, reste hors du Pipeline (fiche de mission du /pipeline, scorecard, qualification, portail client, préparation d'envoi, assistant) : à passer à l'anneau au fil des lots.
+**Refs** : docs/design/06-simplicite.md (lot Suite).
+
+---
+
 ## 2026-10-05 — SHIP — Design simplifié, lot P : copie privée des photos des candidats
 
 **Contexte** : les visages des candidats viennent du lien de photo LinkedIn enregistré sur leur ligne du pipeline (`linkedin_profile_data`). LinkedIn signe ces liens et les fait expirer : quelques semaines après la recherche, le visage redevient des initiales. Décision du propriétaire (« Copie privée ») : Konekt garde une petite copie, supprimée avec le candidat.
@@ -51,8 +111,8 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Reste à faire** :
 - [ ] Rattrapage, par LinkedIn, des candidats sans photo enregistrée ou au lien déjà expiré : plus tard, avec l'accord du propriétaire.
 - [ ] Effacement RGPD des profils (`linkedin_profile_data`) et des CV : lot à part.
-- [ ] Après fusion : suivre la première heure de la tâche (journal de la fonction, nombre de copies `stored` et `expired`).
-**Refs** : docs/design/06-simplicite.md (lot P).
+- [x] Première heure suivie après la fusion, en lecture seule : 114 copies `stored`, 670 `expired` (liens LinkedIn déjà échus), 433 candidats sans lien de photo, 1 photo trop lourde, aucune copie en échec ni en attente ; 32 passages, dont 6 où l'appel de pg_net a expiré à 5 s, sans effet sur les copies.
+**Refs** : #271, docs/design/06-simplicite.md (lot P).
 
 ---
 
@@ -62,7 +122,7 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Décision / Fait** : entrée `verify_jwt = false` ajoutée, comme pour toutes les fonctions (l'authentification se fait dans la fonction, `requireAuth`). Garde dans `tests/c1/c1-fonctions.test.mjs` : chaque dossier de `supabase/functions/` a son entrée, `verify_jwt = false` sauf `submit-application` (neutralisée au lot C1, exception documentée).
 **Impact** : `supabase/config.toml`, `tests/c1/c1-fonctions.test.mjs`. Le déploiement automatique ne se déclenche que sur `supabase/functions/**` : après fusion, redéployer la fonction à la main (workflow « Deploy Supabase Edge Functions », cible `resolve-client-logo`).
 **Reste à faire** :
-- [ ] Redéployer `resolve-client-logo` après fusion.
+- [x] Redéployer `resolve-client-logo` après fusion : fait le 05/10/2026 à 13:32 UTC par le déploiement de #270.
 **Refs** : #261.
 
 ---
