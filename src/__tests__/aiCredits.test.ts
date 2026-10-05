@@ -107,9 +107,9 @@ describe('resolveModel', () => {
     expect(model).toBe('claude-sonnet-4-6');
   });
 
-  it('action.autoDefault is honored when no user/org override (scoring → Haiku)', () => {
+  it('action.autoDefault is honored when no user/org override (scoring → Sonnet 5.5)', () => {
     const model = resolveModel('default', null, null, 'scoring');
-    expect(model).toBe('claude-haiku-4-5');
+    expect(model).toBe('claude-sonnet-5-5');
   });
 
   it('orgDefault still wins over autoDefault', () => {
@@ -131,8 +131,14 @@ describe('resolveModel', () => {
 // ─── MODEL_CATALOG ──────────────────────────────────────────────────────────
 
 describe('MODEL_CATALOG', () => {
-  it('has all 4 models', () => {
-    expect(Object.keys(MODEL_CATALOG).length).toBe(4);
+  it('has all 6 models', () => {
+    expect(Object.keys(MODEL_CATALOG).length).toBe(6);
+  });
+
+  it('nouvelle génération : moins chère que la précédente, plus chère que Haiku', () => {
+    expect(MODEL_CATALOG['claude-sonnet-5-5'].multiplier).toBeLessThan(MODEL_CATALOG['claude-sonnet-4-6'].multiplier);
+    expect(MODEL_CATALOG['claude-opus-5-5'].multiplier).toBeLessThan(MODEL_CATALOG['claude-opus-4-6'].multiplier);
+    expect(MODEL_CATALOG['claude-sonnet-5-5'].multiplier).toBeGreaterThan(MODEL_CATALOG['claude-haiku-4-5'].multiplier);
   });
 
   it('all models have required fields', () => {
