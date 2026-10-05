@@ -295,7 +295,7 @@ export default function ATS() {
       case 'table':
         return <ATSTable candidates={filteredCandidates} onCandidateClick={handleCandidateClick} onJobClick={handleJobClick} resetKey={filters} />;
       case 'timeline':
-        return <ATSTimeline candidates={filteredCandidates} onCandidateClick={handleCandidateClick} onJobClick={handleJobClick} />;
+        return <ATSTimeline candidates={filteredCandidates} onCandidateClick={handleCandidateClick} onJobClick={handleJobClick} resetKey={filters} />;
       case 'analytics':
         return <ATSPipelineAnalytics candidates={filteredCandidates} />;
       default:

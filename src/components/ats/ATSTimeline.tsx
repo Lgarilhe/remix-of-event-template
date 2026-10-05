@@ -3,6 +3,8 @@
  * candidats groupés par date de dernière action. Hors « Aujourd'hui », chaque
  * ligne porte la date courte et l'heure (« 12 sept. à 14:32 »). Le nom est un
  * bouton qui ouvre la fiche ; le poste, un bouton qui ouvre le poste.
+ * Les lignes sont paginées dans l'ordre affiché : un groupe qui dépasse la page
+ * continue sur la suivante, son titre gardant l'effectif du groupe entier.
  */
 import React, { useMemo } from 'react';
 import { format, isThisMonth, isThisWeek, isThisYear, isToday, isYesterday, parseISO } from 'date-fns';
@@ -12,17 +14,26 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ATSPagination } from '@/components/ats/ATSPagination';
+import { PAGE_SIZE, usePagination } from '@/hooks/usePagination';
 import { ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
 
 interface ATSTimelineProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
+  /** Valeur dont le changement ramène à la première page (les filtres de la page). */
+  resetKey?: unknown;
 }
 
 interface TimelineGroup {
   label: string;
   candidates: ATSCandidate[];
+}
+
+interface TimelinePageGroup extends TimelineGroup {
+  /** Effectif du groupe entier, pas seulement de sa part sur la page. */
+  total: number;
 }
 
 const SOURCE_ICONS: Record<ATSCandidate['source'], React.ElementType> = {
@@ -43,7 +54,9 @@ function activityTimeLabel(date: Date): string {
   return format(date, isThisYear(date) ? "d MMM 'à' HH:mm" : "d MMM yyyy 'à' HH:mm", { locale: fr });
 }
 
-export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick, onJobClick }) => {
+export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick, onJobClick, resetKey }) => {
+  const { containerRef, currentPage, pageCount, firstRow, lastRow, goToPage } = usePagination(candidates.length, resetKey);
+
   const timelineGroups = useMemo(() => {
     const groups: TimelineGroup[] = [];
     const today: ATSCandidate[] = [];
@@ -77,16 +90,29 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
     return groups;
   }, [candidates]);
 
+  // Les groupes se suivent dans l'ordre affiché : la page est la tranche [firstRow, firstRow + PAGE_SIZE) de leur mise bout à bout.
+  const pageGroups = useMemo(() => {
+    const result: TimelinePageGroup[] = [];
+    let offset = 0;
+    for (const group of timelineGroups) {
+      const from = Math.max(firstRow - offset, 0);
+      const to = Math.min(firstRow + PAGE_SIZE - offset, group.candidates.length);
+      if (to > from) result.push({ label: group.label, total: group.candidates.length, candidates: group.candidates.slice(from, to) });
+      offset += group.candidates.length;
+    }
+    return result;
+  }, [timelineGroups, firstRow]);
+
   return (
-    <div className="space-y-6">
-      {timelineGroups.map(group => (
+    <div ref={containerRef} className="space-y-6">
+      {pageGroups.map(group => (
         <section key={group.label}>
           <div className="mb-3 flex items-center gap-3">
             <h2 className="text-sm font-semibold text-foreground">
               {group.label}
               <span className="ml-2 text-xs font-normal tabular-nums text-muted-foreground">
-                {group.candidates.length}
-                <span className="sr-only"> candidat{group.candidates.length > 1 ? 's' : ''}</span>
+                {group.total}
+                <span className="sr-only"> candidat{group.total > 1 ? 's' : ''}</span>
               </span>
             </h2>
             <div className="h-px flex-1 bg-border" />
@@ -182,6 +208,15 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
           </ol>
         </section>
       ))}
+      <ATSPagination
+        total={candidates.length}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        firstRow={firstRow}
+        lastRow={lastRow}
+        onPageChange={goToPage}
+        className="rounded-lg border border-border bg-card"
+      />
     </div>
   );
 };
