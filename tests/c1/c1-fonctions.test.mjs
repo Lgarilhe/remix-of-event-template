@@ -503,3 +503,26 @@ test('R1 étape 2 : types.ts ne décrit plus les colonnes ni le cache retirés',
   assert.deepEqual([...new Set(types.match(legacyAll) ?? [])], []);
   assert.ok(types.includes('organization_integrations_public: {'), 'la vue reste typée');
 });
+
+// ─── Passerelle : chaque fonction déclare son verify_jwt ────────────────────
+// supabase/config.toml : la passerelle ne valide que les jetons HS256, alors que
+// les sessions du projet signent en ES256 ; l'authentification se fait dans la
+// fonction (_shared/require-auth.ts). Une fonction sans entrée est déployée avec
+// verify_jwt = true et refuse tous les appels du navigateur (cas de
+// resolve-client-logo, arrivée sans entrée avec #261). Seule exception voulue :
+// submit-application, neutralisée au lot C1 (R2).
+test('Passerelle : chaque fonction a son entrée, verify_jwt = false sauf submit-application', () => {
+  const config = read('supabase/config.toml');
+  const functions = readdirSync(join(ROOT, 'supabase/functions')).filter(
+    (name) => !name.startsWith('_') && statSync(join(ROOT, 'supabase/functions', name)).isDirectory(),
+  );
+  assert.ok(functions.length > 50, 'liste des fonctions introuvable');
+  const settingOf = (name) => {
+    const m = config.match(new RegExp(`^\\[functions\\.${name}\\]\\nverify_jwt = (true|false)$`, 'm'));
+    return m ? m[1] : null;
+  };
+  const missing = functions.filter((name) => settingOf(name) === null);
+  assert.deepEqual(missing, [], `fonctions sans entrée dans config.toml : ${missing.join(', ')}`);
+  const verified = functions.filter((name) => settingOf(name) === 'true');
+  assert.deepEqual(verified, ['submit-application'], `verify_jwt = true inattendu : ${verified.join(', ')}`);
+});

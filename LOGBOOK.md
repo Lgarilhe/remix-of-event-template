@@ -32,6 +32,17 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — BUG — Logos des clients : la fonction n'avait pas d'entrée dans config.toml
+
+**Contexte** : `resolve-client-logo` (#261) est arrivée sans entrée `[functions.resolve-client-logo]` dans `supabase/config.toml`. Le déploiement lit cette configuration : sans entrée, la fonction part avec `verify_jwt = true`, et la passerelle refuse les jetons ES256 des sessions. Les appels de `useClientLogoBackfill` échouaient donc sans bruit (l'erreur est avalée), et les logos des clients ne s'enregistraient probablement pas en production.
+**Décision / Fait** : entrée `verify_jwt = false` ajoutée, comme pour toutes les fonctions (l'authentification se fait dans la fonction, `requireAuth`). Garde dans `tests/c1/c1-fonctions.test.mjs` : chaque dossier de `supabase/functions/` a son entrée, `verify_jwt = false` sauf `submit-application` (neutralisée au lot C1, exception documentée).
+**Impact** : `supabase/config.toml`, `tests/c1/c1-fonctions.test.mjs`. Le déploiement automatique ne se déclenche que sur `supabase/functions/**` : après fusion, redéployer la fonction à la main (workflow « Deploy Supabase Edge Functions », cible `resolve-client-logo`).
+**Reste à faire** :
+- [ ] Redéployer `resolve-client-logo` après fusion.
+**Refs** : #261.
+
+---
+
 ## 2026-10-05 — SHIP — Design simplifié, lot T : la page Tâches comme la maquette
 
 **Contexte** : troisième écran du design simplifié (`docs/design/06-simplicite.md`), après l'accueil. La page Tâches suit la maquette « Konekt simplifié » : sept contrôles de filtre, une liste encadrée, des dates en rouge sur chaque ligne et une corbeille par ligne. Sur le banc, huit suggestions passaient avant les tâches : sur téléphone, la première tâche arrivait à 1 408 px du haut de la page.
