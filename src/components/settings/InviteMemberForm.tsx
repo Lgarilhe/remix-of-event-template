@@ -38,8 +38,9 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
     }
   };
 
+  // Sans invitation au-dessus (rien n'est rendu), le formulaire ouvre le bloc : ni filet ni marge.
   return (
-    <form onSubmit={handleSubmit} className="mt-4 space-y-2 border-t border-border pt-4">
+    <form onSubmit={handleSubmit} className="mt-4 space-y-2 border-t border-border pt-4 first:mt-0 first:border-t-0 first:pt-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1 space-y-1">
           <label htmlFor="invite-email" className="text-xs text-muted-foreground">E-mail</label>
@@ -81,7 +82,7 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
       {seatsExhausted && (
         <p className="text-xs text-muted-foreground">
           {isFree ? 'Choisissez un plan pour inviter votre équipe.' : seatLimitMessage}{' '}
-          <Link to={isFree ? '/pricing' : '/settings/org/billing'} className="font-medium text-foreground underline underline-offset-2 hover:no-underline">
+          <Link to={isFree ? '/pricing' : '/settings/org/billing'} className="relative font-medium text-foreground underline underline-offset-2 hover:no-underline after:absolute after:-inset-y-3.5 after:inset-x-0">
             {isFree ? 'Voir les plans' : 'Ajouter un siège'}
           </Link>
         </p>
