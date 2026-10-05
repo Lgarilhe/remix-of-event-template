@@ -93,6 +93,7 @@ const enrollModal = read('src/components/outreach/SequenceEnrollModal.tsx');
 const bulkInMail = read('src/components/outreach/BulkInMailModal.tsx');
 const approvalCard = read('src/components/agent/AgentToolApprovalCard.tsx');
 const firstMessageCard = read('src/components/agent/EnrollFirstMessagePreview.tsx');
+const firstStepPreviewSrc = read('src/components/agent/firstStepPreview.ts');
 const journal = read('src/components/settings/AgentActionsSettings.tsx');
 const activityLog = read('src/components/outreach/SequenceActivityLog.tsx');
 const firstMessagePathSrc = read('src/components/outreach/enrollment-preview/firstMessagePath.ts');
@@ -239,7 +240,7 @@ test('5a — carte d’approbation : premier message entier, sans troncature', (
   assert.match(block, /t\.missing\.map/);
   assert.match(block, /Objet : /);
   // Lecture de details.first_step_preview, rendue pour enroll_in_sequence seulement.
-  assert.match(firstMessageCard, /const raw = details\?\.first_step_preview;/);
+  assert.match(firstStepPreviewSrc, /const raw = details\?\.first_step_preview;/);
   // Visible aussi en mode Modifier, dont les champs de l'aperçu sont en lecture seule.
   assert.match(approvalCard, /\{row\.tool_name === 'enroll_in_sequence' && firstStepPreview && \(/);
   assert.match(approvalCard, /enroll_in_sequence: new Set\(\['profile_name', 'profile_url'\]\),/);
@@ -258,7 +259,8 @@ test('5a — aperçu serveur : libellés et données absentes en français', () 
 });
 
 test('5a — Journal : une inscription proposée montre son premier message avant « Approuver »', () => {
-  assert.match(journal, /import \{ EnrollFirstMessagePreview, readFirstStepPreview \} from '@\/components\/agent\/EnrollFirstMessagePreview';/);
+  assert.match(journal, /import \{ EnrollFirstMessagePreview \} from '@\/components\/agent\/EnrollFirstMessagePreview';/);
+  assert.match(journal, /import \{ readFirstStepPreview \} from '@\/components\/agent\/firstStepPreview';/);
   const row = between(journal, 'function ActionRow(', '\n}\n');
   assert.match(row, /action\.tool_name === 'enroll_in_sequence' && action\.status === 'proposed'\s*\? readFirstStepPreview\(action\.dry_run_result\?\.details\)/);
   assert.ok(row.indexOf('<EnrollFirstMessagePreview') > 0, 'aperçu rendu dans la ligne');

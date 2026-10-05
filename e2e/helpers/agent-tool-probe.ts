@@ -13,7 +13,7 @@
 // Entrée (stdin, JSON) : { tool, params, userId, organizationId, userBearer? }
 // Sortie (stdout) : une ligne « __PROBE__{...} », le résultat de handleProposedToolCall.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
-import { handleProposedToolCall } from '../../supabase/functions/_shared/agent-tools.ts';
+import { handleProposedToolCall, type ToolContext } from '../../supabase/functions/_shared/agent-tools.ts';
 import { registerMutatingTools } from '../../supabase/functions/_shared/agent-tools-mutations.ts';
 
 const MOCK = Deno.env.get('VENDOR_MOCK_URL') ?? 'http://127.0.0.1:54340';
@@ -46,8 +46,8 @@ const result = await handleProposedToolCall(input.tool, input.params, {
   organizationId: input.organizationId,
   conversationId: null,
   messageId: null,
-  // deno-lint-ignore no-explicit-any
-  adminClient: adminClient as any,
+  // Même client que le chat ; seule la version importée diffère.
+  adminClient: adminClient as unknown as ToolContext['adminClient'],
   userBearer: input.userBearer ?? null,
 });
 console.log(`__PROBE__${JSON.stringify(result)}`);
