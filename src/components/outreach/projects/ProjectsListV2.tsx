@@ -333,6 +333,7 @@ const MissionRow: React.FC<MissionRowProps> = ({
               Une mission terminée est atténuée par la couleur de son texte. */}
           <MissionCompanyLogo
             company={project.clientName || project.name}
+            logoUrl={project.sourcingProject.job_details?.client?.logo_url}
             size={archived ? 32 : 40}
           />
           <div className="min-w-0 flex-1">
