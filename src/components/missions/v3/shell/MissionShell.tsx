@@ -19,6 +19,7 @@ import { MissionHeader } from './MissionHeader';
 import { MissionStateBanner } from './MissionStateBanner';
 import { MissionTabs } from './MissionTabs';
 import { PanelHost } from './PanelHost';
+import { SourcingPanelSlotProvider, useSourcingPanelSlot } from './sourcingPanelSlot';
 import { SourcingScreen } from './SourcingScreen';
 import { PANEL_FULLSCREEN_QUERY, useMediaQuery } from './useMediaQuery';
 import { ViewportFrame } from './ViewportFrame';
@@ -39,7 +40,16 @@ function useInert(refs: readonly RefObject<HTMLElement>[], inert: boolean): void
 }
 
 export function MissionShell() {
+  return (
+    <SourcingPanelSlotProvider>
+      <MissionShellFrame />
+    </SourcingPanelSlotProvider>
+  );
+}
+
+function MissionShellFrame() {
   const { location } = useMissionV3();
+  const sourcingPanelOpen = !!useSourcingPanelSlot()?.open;
   const reduceMotion = useReducedMotion();
   const screen = location.screen;
   const fullscreenPanel = useMediaQuery(PANEL_FULLSCREEN_QUERY);
@@ -51,7 +61,7 @@ export function MissionShell() {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [screen]);
 
-  useInert([topRef, scrollRef], fullscreenPanel && location.panel !== null);
+  useInert([topRef, scrollRef], fullscreenPanel && (location.panel !== null || sourcingPanelOpen));
 
   return (
     <ViewportFrame data-testid="mission-v3" className="relative flex w-full max-w-full flex-col overflow-hidden bg-background">

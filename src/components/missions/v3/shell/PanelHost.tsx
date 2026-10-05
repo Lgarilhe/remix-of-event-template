@@ -15,6 +15,7 @@ import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { useMissionV3 } from '../MissionV3Context';
 import { CandidatePanel } from '../panels/CandidatePanel';
 import { ContactPanel } from '../panels/ContactPanel';
+import { useSourcingPanelSlot } from './sourcingPanelSlot';
 import { PANEL_FULLSCREEN_QUERY, useMediaQuery } from './useMediaQuery';
 
 const FOCUSABLE =
@@ -77,14 +78,19 @@ function focusTitle(aside: HTMLElement, titleId: string): () => void {
 export function PanelHost() {
   const { location, closePanel } = useMissionV3();
   const reduceMotion = useReducedMotion();
-  const titleId = useId();
+  const sourcing = useSourcingPanelSlot();
+  const ownTitleId = useId();
+  // Fiche d'un profil du Sourcing : même panneau, titre et fermeture fournis par le Sourcing.
+  const sourcingOpen = !!sourcing?.open;
+  const titleId = sourcing?.titleId ?? ownTitleId;
   const asideRef = useRef<HTMLElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
 
   const panel = location.panel;
   const rowId = panel === 'fiche' ? location.candidateRowId : null;
-  const isOpen = panel !== null;
+  const isOpen = panel !== null || sourcingOpen;
+  const onEscape = sourcingOpen && panel === null ? sourcing?.onClose ?? null : closePanel;
   const modal = useMediaQuery(PANEL_FULLSCREEN_QUERY);
 
   // Ouverture, changement de panneau ou de candidat : focus sur le titre.
@@ -118,11 +124,11 @@ export function PanelHost() {
       if (isEditable(event.target)) return;
       if (document.querySelector(OPEN_LAYER_SELECTOR)) return;
       event.preventDefault();
-      closePanel();
+      onEscape?.();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, closePanel]);
+  }, [isOpen, onEscape]);
 
   // Fenêtre modale (sous lg) : Tab et Maj+Tab restent dans le panneau.
   useEffect(() => {
@@ -157,7 +163,7 @@ export function PanelHost() {
 
   return (
     <motion.aside
-      key={panel}
+      key={panel ?? 'sourcing'}
       ref={asideRef}
       tabIndex={-1}
       data-testid="mission-panel"
@@ -173,8 +179,10 @@ export function PanelHost() {
         'lg:static lg:inset-auto lg:z-auto lg:w-[440px] lg:shrink-0 lg:border-l lg:border-border'
       }
     >
-      <SectionErrorBoundary key={rowId ?? panel} fallbackTitle="Ce panneau n'a pas pu s'afficher">
-        {panel === 'fiche' && rowId ? (
+      <SectionErrorBoundary key={rowId ?? panel ?? 'sourcing'} fallbackTitle="Ce panneau n'a pas pu s'afficher">
+        {panel === null ? (
+          <div ref={sourcing?.setElement} className="flex min-h-full min-w-0 flex-col" />
+        ) : panel === 'fiche' && rowId ? (
           <CandidatePanel key={rowId} rowId={rowId} titleId={titleId} onClose={closePanel} />
         ) : (
           <ContactPanel titleId={titleId} onClose={closePanel} />

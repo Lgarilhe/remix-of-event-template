@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
@@ -34,7 +35,8 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
-import { sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
+import { retainedStageLabel, sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
+import { useSourcingPanelSlot } from '@/components/missions/v3/shell/sourcingPanelSlot';
 
 interface SearchResultsPanelProps {
   // Results
@@ -493,16 +495,58 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       if (neighbor) setDetailProfile(neighbor);
       else setDetailOpen(false);
     };
-    const group = sourcingGroupOf(treatedCandidates.get(current.id));
+    const status = treatedCandidates.get(current.id);
+    const group = sourcingGroupOf(status);
     if (group === 'rejected') {
-      return onRestoreProfile ? { onRestore: () => then(() => restoreV3(current.id)) } : {};
+      return { stageLabel: 'Écarté', ...(onRestoreProfile ? { onRestore: () => then(() => restoreV3(current.id)) } : {}) };
     }
-    if (group !== 'to_sort') return {};
+    if (group !== 'to_sort') return { stageLabel: retainedStageLabel(status) };
     return {
+      stageLabel: 'À trier',
       onRetain: onRetainProfiles && activeProject ? () => then(() => onRetainProfiles([current])) : undefined,
       onDismiss: onDismissProfiles && selectedJob ? () => then(() => onDismissProfiles([current])) : undefined,
     };
   }, [isV3, detailProfile, navList, treatedCandidates, onRestoreProfile, restoreV3, onRetainProfiles, onDismissProfiles, activeProject, selectedJob]);
+
+  // Nouvelle page : la fiche s'ouvre dans le panneau de droite de la coquille.
+  const slot = useSourcingPanelSlot();
+  const panelSlot = isV3 ? slot : null;
+  const claimPanel = panelSlot?.claim;
+  useEffect(() => {
+    if (!claimPanel || !detailOpen) return;
+    return claimPanel(() => setDetailOpen(false));
+  }, [claimPanel, detailOpen]);
+
+  const detailSheet = (
+    <ProfileDetailSheet
+        profile={detailProfile}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        selectedJob={selectedJob}
+        jobScore={detailProfile ? jobScores[detailProfile.id] : undefined}
+        accountId={selectedAccount || undefined}
+        activeProject={activeProject}
+        candidateStatus={detailProfile ? (treatedCandidates.get(detailProfile.id) ? {
+          status: treatedCandidates.get(detailProfile.id)!.status,
+          score: treatedCandidates.get(detailProfile.id)!.score,
+          recommendation: treatedCandidates.get(detailProfile.id)!.recommendation,
+          updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
+        } : null) : null}
+        airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
+        onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
+        onDeepScore={onDeepScoreProfile}
+        onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
+        onMessageSent={onMessageSent}
+        onSequenceEnroll={onSequenceEnrollSuccess}
+        onProfileTreated={detailProfile ? () => onProfileTreated(detailProfile.id) : undefined}
+        onNavigatePrev={navigatePrev}
+        onNavigateNext={navigateNext}
+        currentIndex={detailIndex >= 0 ? detailIndex : undefined}
+        totalCount={navList.length}
+        decisions={detailDecisions}
+        asPanel={panelSlot ? { titleId: panelSlot.titleId, onClose: () => setDetailOpen(false) } : undefined}
+    />
+  );
 
   return (
     <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
@@ -1365,34 +1409,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       </div>
       </>)}
 
-      {/* Profile Detail Sheet */}
-      <ProfileDetailSheet
-        profile={detailProfile}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        selectedJob={selectedJob}
-        jobScore={detailProfile ? jobScores[detailProfile.id] : undefined}
-        accountId={selectedAccount || undefined}
-        activeProject={activeProject}
-        candidateStatus={detailProfile ? (treatedCandidates.get(detailProfile.id) ? {
-          status: treatedCandidates.get(detailProfile.id)!.status,
-          score: treatedCandidates.get(detailProfile.id)!.score,
-          recommendation: treatedCandidates.get(detailProfile.id)!.recommendation,
-          updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
-        } : null) : null}
-        airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
-        onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
-        onDeepScore={onDeepScoreProfile}
-        onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
-        onMessageSent={onMessageSent}
-        onSequenceEnroll={onSequenceEnrollSuccess}
-        onProfileTreated={detailProfile ? () => onProfileTreated(detailProfile.id) : undefined}
-        onNavigatePrev={navigatePrev}
-        onNavigateNext={navigateNext}
-        currentIndex={detailIndex >= 0 ? detailIndex : undefined}
-        totalCount={navList.length}
-        decisions={detailDecisions}
-      />
+      {/* Fiche du profil : panneau de droite de la coquille (nouvelle page), sinon fenêtre latérale */}
+      {panelSlot ? (panelSlot.element && detailOpen ? createPortal(detailSheet, panelSlot.element) : null) : detailSheet}
 
       {/* Bulk InMail Modal */}
       {selectedAccount && (

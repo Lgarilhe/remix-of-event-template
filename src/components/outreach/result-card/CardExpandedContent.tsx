@@ -54,6 +54,8 @@ interface CardExpandedContentProps {
   hideStandardTabs?: boolean;
   /** Tab à activer par défaut à l'ouverture (clé d'un extraTab ou tab standard). */
   initialTab?: string;
+  /** Masque l'onglet Posts (pas encore branché) : la nouvelle page mission le retire. */
+  hidePosts?: boolean;
 }
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
@@ -80,6 +82,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   extraTabs,
   hideStandardTabs,
   initialTab,
+  hidePosts = false,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
@@ -109,7 +112,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
     { value: 'skills', icon: Zap, label: 'Compétences', shortLabel: 'Skills' },
     { value: 'messages', icon: MessageSquare, label: 'Messages', shortLabel: 'Msg' },
     { value: 'posts', icon: Newspaper, label: 'Posts', shortLabel: 'Posts' },
-  ];
+  ].filter((tab) => !(hidePosts && tab.value === 'posts'));
 
   return (
     <div className="overflow-hidden">
