@@ -278,6 +278,23 @@ candidate_photos           : copie privée de la photo LinkedIn d'un candidat (d
                              export-org-data. Écran : PersonAvatar avec `candidateId` montre la copie (adresse signée une
                              heure, lue par lots, src/lib/candidatePhotos.ts et CandidatePhotosProvider), sinon le lien
                              LinkedIn, sinon les initiales.
+candidate_evaluations      : grille d'entretien (« scorecard » dans le code). Refonte scorecard et assistant en direct, lot 1
+                             (05/10/2026) : .project_id (mission) et .process_step_id (étape d'entretien de cette mission), tous deux
+                             ON DELETE SET NULL ; .candidate_id est l'identifiant du profil (job_candidate_status.candidate_id), jamais
+                             l'id d'une ligne (les avis du portail client portaient l'id de la ligne jusqu'au lot 1, repris par la
+                             migration). Lecture : toute l'organisation. Écriture : l'auteur seul (policies RESTRICTIVE
+                             evaluations_author_*, created_by imposé à l'insertion ; les permissives par organisation, héritées de la
+                             base neuve comme de la prod, laissaient tout membre modifier ou supprimer la grille d'un collègue).
+                             Mission, étape : celles de l'organisation de la ligne, l'étape celle de la mission (mission_same_org_*).
+call_coaching_sessions     : séance de l'assistant d'entretien en direct (live-coach, generate-call-report). Lot 1 : .project_id,
+                             .process_step_id, .evaluation_id (grille alimentée, remplace à terme .scorecard_id, texte sans clé
+                             étrangère), .qualification_session_id (événement d'origine), .candidate_consent_at (instant du serveur
+                             au premier enregistrement, immuable ensuite), .transcript_expires_at (création + 90 jours, NOT NULL) et
+                             .transcript_purged_at. Un utilisateur connecté ne fixe ni l'expiration ni la purge (déclencheur
+                             call_coaching_sessions_retention_guard, SECURITY INVOKER, current_user authenticated ou anon) ; la clé de
+                             service et les contextes sans jeton écrivent librement (purge au lot 6). Droits d'écriture comme
+                             candidate_evaluations (coaching_author_*, mission_same_org_*), lecture par l'organisation. generate-call-report
+                             refuse une séance qui n'est pas celle de l'appelant (SEC-023), avant l'appel au modèle.
 ```
 RPC (SECURITY DEFINER, authenticated) : `get_subscription_state(org)` (plan effectif, essai, sièges, limites ;
 expire un essai échu à la lecture), `get_org_contact_usage(org)` (contacts inclus utilisés / forfait),
@@ -286,7 +303,7 @@ Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`
 `get_sequence_enrollment_counts(p_sequence_ids)` (SECURITY INVOKER, compte par séquence, statut et raison de pause, borné par la RLS),
 `find_recent_org_contacts(p_org, p_values, p_slugs, p_since)` (SECURITY DEFINER, anti-doublon sur toute l'organisation de l'appelant, collaborateur compris, colonnes minimales),
 `save_sequence_steps` (refus HINT STEP_HAS_HISTORY pour une étape déjà envoyée, SEQUENCE_NOT_OWNER pour la séquence d'autrui côté collaborateur).
-`client_portal_candidates(token)` (lot C1 : seule lecture des candidats du portail client, retenus et au-delà de l'organisation du lien ; service_role seulement, appelée par client-portal-data). Tout lien de portail expire (90 jours par défaut, `expires_at` NOT NULL).
+`client_portal_candidates(token)` (lot C1 : seule lecture des candidats du portail client, retenus et au-delà de l'organisation du lien ; service_role seulement, appelée par client-portal-data). `client_portal_candidate_profile_id(token, row_id)` (refonte scorecard, lot 1 : identifiant du profil d'une ligne visible, par `client_portal_candidates`, service_role seulement ; sert à écrire l'avis du client sous l'identifiant du profil, jamais renvoyé au navigateur car il désigne un candidat que le portail peut anonymiser). Tout lien de portail expire (90 jours par défaut, `expires_at` NOT NULL).
 `get_org_member_emails(org)` (e-mails de auth.users des membres ; appelant owner/admin/member de l'org, jamais collaborator ni anon) :
 `profiles` n'a pas de colonne `email` ni `avatar_url`, ne jamais les demander.
 `set_candidate_stage(p_id, p_stage, p_source, p_organization_id, p_process_step_id, p_legacy_stage)` (lot 0a, SECURITY INVOKER) :
@@ -603,7 +620,7 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
-Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`, puis pour les écrivains du lot 0b `candidate_stage_writers_audit.sql`, et pour les lectures du lot 0c `candidate_stage_readers_audit.sql`, puis pour la carte Maintenant (lot 3) `mission_attention_audit.sql` et `mission_action_snoozes_audit.sql`, et pour la copie privée des photos (design simplifié, lot P) `candidate_photos_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`, puis pour les écrivains du lot 0b `candidate_stage_writers_audit.sql`, et pour les lectures du lot 0c `candidate_stage_readers_audit.sql`, puis pour la carte Maintenant (lot 3) `mission_attention_audit.sql` et `mission_action_snoozes_audit.sql`, et pour la copie privée des photos (design simplifié, lot P) `candidate_photos_audit.sql`, puis pour les grilles et les séances en direct (refonte scorecard, lot 1) `scorecard_live_lot1_audit.sql` (`client_portal_audit.sql` couvre aussi `client_portal_candidate_profile_id`). `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 Dans un audit, ne jamais appeler sous `SET ROLE anon` ou `authenticated` une fonction refusée à ce rôle : dans l'image Postgres locale (17.6.1.106), supautils ajoute un indice au refus et le serveur tombe (signal 11, e2e du 24 au 26/09). Contrôler le droit avec `has_function_privilege`, et le refus réel par l'API (`curl …/rest/v1/rpc/<fonction>` avec la clé anon, voir `e2e.yml`).
 
 ### Règles posées par le lot C1 (réparations des fuites, 2026-09)

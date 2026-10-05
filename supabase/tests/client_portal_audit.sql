@@ -3,7 +3,8 @@
 -- À exécuter DANS UNE TRANSACTION puis ROLLBACK, sur une base locale
 -- reconstruite (jamais en prod) :
 --   BEGIN; \i supabase/tests/client_portal_audit.sql; ROLLBACK;
--- Vérifie les blocs R4-a et R4-b de 20260927233806_c1_reparations_fuites.sql :
+-- Vérifie les blocs R4-a et R4-b de 20260927233806_c1_reparations_fuites.sql,
+-- et le bloc 6 de 20261005155516_scorecard_live_lot1_rattachement.sql :
 --  * client_portal_candidates(token) ne renvoie que les candidats retenus
 --    ou au-delà des missions du lien, jamais « À trier », seulement
 --    contactés ni écartés, et traduit l'étape dans le vocabulaire du
@@ -13,7 +14,10 @@
 --    rattachée à la mission du lien n'apparaît jamais ;
 --  * expires_at est obligatoire, 90 jours par défaut ;
 --  * seul service_role exécute la fonction ; anon ne lit ni les liens ni
---    les candidats en direct (le portail passe par l'edge function).
+--    les candidats en direct (le portail passe par l'edge function) ;
+--  * client_portal_candidate_profile_id (refonte scorecard, lot 1) rend
+--    l'identifiant du profil d'une ligne visible du lien, jamais celui d'une
+--    ligne exclue, et rien pour un lien échu, inconnu ou d'une autre mission.
 -- Aucun appel sous SET ROLE anon ou authenticated d'une fonction refusée à
 -- ce rôle (plantage de l'image locale, voir CLAUDE.md) : les droits sont
 -- contrôlés par has_function_privilege, le refus réel par l'API dans
@@ -225,8 +229,35 @@ BEGIN
     failures := failures || format('[12. %s ligne(s) d''une autre organisation au portail de O1] ', n);
   END IF;
 
+  -- 13. Identifiant du profil d'une ligne visible (avis du client, lot 1 de la
+  --     refonte scorecard) : celui de la ligne visible du lien, rien pour une
+  --     ligne écartée, un lien échu, inconnu, d'une autre mission, ou sans ligne.
+  SELECT public.client_portal_candidate_profile_id('audit-portal-p1', r_short) INTO got;
+  IF got IS DISTINCT FROM 'R-short' THEN
+    failures := failures || format('[13. profil de la ligne visible : %s, attendu R-short] ', coalesce(got, 'NULL'));
+  END IF;
+  SELECT public.client_portal_candidate_profile_id('audit-portal-p1', x_dism) INTO got;
+  IF got IS NOT NULL THEN failures := failures || format('[13. profil d''une ligne écartée rendu : %s] ', got); END IF;
+  SELECT public.client_portal_candidate_profile_id('audit-portal-exp', r_short) INTO got;
+  IF got IS NOT NULL THEN failures := failures || format('[13. profil rendu sur un lien échu : %s] ', got); END IF;
+  SELECT public.client_portal_candidate_profile_id('audit-portal-inconnu', r_short) INTO got;
+  IF got IS NOT NULL THEN failures := failures || format('[13. profil rendu sur un lien inconnu : %s] ', got); END IF;
+  SELECT public.client_portal_candidate_profile_id('audit-portal-cross', r_short) INTO got;
+  IF got IS NOT NULL THEN failures := failures || format('[13. profil rendu sur le lien d''une autre mission : %s] ', got); END IF;
+  SELECT public.client_portal_candidate_profile_id('audit-portal-p1', NULL) INTO got;
+  IF got IS NOT NULL THEN failures := failures || format('[13. profil rendu sans ligne : %s] ', got); END IF;
+  SELECT public.client_portal_candidate_profile_id(NULL, r_short) INTO got;
+  IF got IS NOT NULL THEN failures := failures || format('[13. profil rendu sans jeton : %s] ', got); END IF;
+  IF has_function_privilege('anon', 'public.client_portal_candidate_profile_id(text, uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.client_portal_candidate_profile_id(text, uuid)', 'EXECUTE') THEN
+    failures := failures || '[13. anon ou authenticated exécute client_portal_candidate_profile_id] ';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.client_portal_candidate_profile_id(text, uuid)', 'EXECUTE') THEN
+    failures := failures || '[13. service_role n''exécute pas client_portal_candidate_profile_id] ';
+  END IF;
+
   IF failures <> '' THEN
     RAISE EXCEPTION 'client_portal_audit : %', failures;
   END IF;
-  RAISE NOTICE 'client_portal_audit : 12 contrôles passés';
+  RAISE NOTICE 'client_portal_audit : 13 contrôles passés';
 END $$;
