@@ -18,8 +18,8 @@ Ce que l'on prend des tendances 2026 :
 Ce que l'on écarte :
 
 - Le « liquid glass » et les surfaces en verre dépoli : illisibles sur les listes denses, coûteux à l'affichage, et contraires au calme recherché.
-- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne. Seule exception : le fond de l'accueil et de la recherche hors mission (§ 7).
-- Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture. Même exception pour ces deux écrans.
+- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne. Seules exceptions : le fond de l'accueil et de la recherche hors mission, et les cartes texturées (§ 7).
+- Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture. Même exception pour ces écrans et ces cartes.
 - Les emoji servant d'icône, et l'étincelle ✨ pour dire « IA ».
 
 ## 2. Couleur
@@ -193,6 +193,14 @@ Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto
 - Décoratif : `aria-hidden`, aucun clic. Avec le mouvement réduit, les taches restent à leur place de départ (règle globale de `src/index.css`).
 - Le texte gris garde 4,5:1 sous les taches, en sombre comme en clair, de 390 à 1440 px de large et à toute phase de l'animation. Pour y arriver, la page qui porte le fond règle `--muted-foreground` un cran plus lisible (classe `.konekt-on-backdrop`, plus clair en sombre, plus foncé en clair). Les jetons globaux ne changent pas. Mesure faite le 05/10/2026 : 4,5 à 5,0 sur l'accueil, 5,6 et plus sur la recherche. Si on pousse les couleurs ou les opacités, refaire cette mesure avant de livrer.
 - Pas d'autre écran sans décision du propriétaire.
+
+Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Trois usages, pas d'autre sans décision du propriétaire :
+
+- La carte « Maintenant » du Pipeline d'une mission (`NowCard.tsx`), seulement quand il y a une action : bleue, chaude pour le rang 0 (blocage). Les états « chargement », « rien à faire » et « tout est reporté » gardent la bande grise.
+- Le bandeau « Compte LinkedIn à reconnecter » en tête de « À faire » (`DashboardFocusPanel`), chaud, placé au-dessus de la liste.
+- La zone « Aucune mission active » de l'accueil (`DashboardMissionsPanel`, option `highlightEmpty`), bleue, seulement quand rien ne bloque : un seul emplacement texturé à la fois, le blocage LinkedIn passe avant.
+
+La carte porte ses propres couleurs de texte, claires dans les deux thèmes : en thème clair, c'est une île sombre. Le contenu s'écrit avec les classes habituelles, le bouton plein de la carte est blanc. Le survol d'un bouton discret y assombrit au lieu d'éclaircir, car un survol blanc translucide faisait tomber le contraste à 4,3:1. Mesure faite le 05/10/2026 sur les vrais composants, carte repliée, dépliée et bouton survolé : 6,0:1 au pire sur la carte « Maintenant », 7,9:1 sur l'accueil. Une teinte plus claire se mesure avant livraison.
 
 Icônes qui attendent (design simplifié, demande du propriétaire du 04/10/2026) : `src/components/ui/animated-icons.tsx`. Une icône ne bouge que si quelque chose attend l'utilisateur, et chaque boucle finit sur la pose fixe de l'icône, celle qui reste quand le mouvement est réduit.
 

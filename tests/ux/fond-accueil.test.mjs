@@ -4,9 +4,13 @@
  *  - PageLayout ne change pas sans l'option `backdrop` ;
  *  - le fond est décoratif (aria-hidden, sans clic), ne s'anime que par transform,
  *    et le mouvement réduit reste coupé globalement ;
- *  - seuls l'accueil et la recherche hors mission l'utilisent.
+ *  - seuls l'accueil et la recherche hors mission l'utilisent ;
+ *  - cartes texturées (même décision) : fixes, sans changement du rendu par défaut des composants,
+ *    et un seul emplacement texturé à la fois sur l'accueil (le blocage LinkedIn passe avant la
+ *    zone « Aucune mission active »).
  *
- * Rendu statique de PageLayout empaqueté par esbuild (alias @/ résolus par tsconfig.app.json).
+ * Rendu statique de PageLayout et des panneaux de l'accueil empaquetés par esbuild (alias @/ résolus
+ * par tsconfig.app.json), lecture des compteurs et client de la base remplacés par des modules vides.
  * Lancer : node --test tests/ux/fond-accueil.test.mjs
  */
 import test from 'node:test';
@@ -19,10 +23,31 @@ import { build } from 'esbuild';
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
+const stubs = {
+  name: 'stubs',
+  setup(b) {
+    b.onResolve({ filter: /(hooks\/useMissionStageCounts|integrations\/supabase\/client)$/ }, (args) => ({
+      path: args.path,
+      namespace: 'stub',
+    }));
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+      contents: [
+        'export const supabase = {};',
+        'export const useMissionStageCounts = () => ({ data: undefined });',
+      ].join('\n'),
+      loader: 'js',
+    }));
+  },
+};
+
 const { outputFiles } = await build({
   stdin: {
     contents: [
       "export { PageLayout } from './src/components/layout/PageLayout';",
+      "export { texturedCard } from './src/components/layout/texturedCard';",
+      "export { DashboardFocusPanel } from './src/components/dashboard/DashboardFocusPanel';",
+      "export { DashboardMissionsPanel } from './src/components/dashboard/DashboardMissionsPanel';",
+      "export { MemoryRouter } from 'react-router-dom';",
       "export { createElement } from 'react';",
       "export { renderToStaticMarkup } from 'react-dom/server.browser';",
     ].join('\n'),
@@ -37,9 +62,14 @@ const { outputFiles } = await build({
   loader: { '.webp': 'empty' },
   tsconfig: join(ROOT, 'tsconfig.app.json'),
   define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [stubs],
 });
 const kit = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 const page = (props) => kit.renderToStaticMarkup(kit.createElement(kit.PageLayout, props, 'contenu'));
+const render = (component, props) =>
+  kit.renderToStaticMarkup(kit.createElement(kit.MemoryRouter, null, kit.createElement(component, props)));
+const focus = (props) =>
+  render(kit.DashboardFocusPanel, { unreadMessages: 0, pendingResponses: 0, stagnantCandidates: 0, ...props });
 
 const css = read('src/index.css');
 // Bloc du fond : de `.konekt-backdrop {` jusqu'à la fin de `.konekt-on-backdrop`.
@@ -92,4 +122,77 @@ test('fond : seuls l\'accueil et la recherche hors mission l\'utilisent', () => 
   const search = read('src/pages/SourcingSearches.tsx');
   assert.match(search, /<PageBackdrop \/>/);
   assert.match(search, /className="konekt-on-backdrop relative flex w-full/);
+});
+
+// ─── Cartes texturées ───────────────────────────────────────────────────────
+
+const cardCss = css.slice(css.indexOf('.konekt-card-tex {'), css.indexOf('.konekt-card-tex--warm'));
+
+test('carte texturée : fixe, texte clair dans les deux thèmes, survol qui assombrit', () => {
+  assert.match(cardCss, /\.konekt-card-tex \{[^}]*--foreground: 0 0% 98%/);
+  assert.match(cardCss, /--muted-foreground: 0 0% 88%/);
+  assert.match(cardCss, /--accent: 0 0% 0% \/ 22%/, 'un survol blanc translucide faisait tomber le contraste sous 4,5:1');
+  assert.match(cardCss, /--accent-foreground: 0 0% 98%/);
+  assert.doesNotMatch(cardCss, /animation|@keyframes|blur\(/, 'la carte est fixe : le fond de page porte déjà le mouvement');
+  assert.match(css, /\.konekt-card-tex--teal \{/);
+  assert.match(css, /\.konekt-card-tex--warm \{/);
+  assert.equal(kit.texturedCard('teal', 'x'), 'konekt-card-tex konekt-card-tex--teal x');
+  assert.equal(kit.texturedCard('warm'), 'konekt-card-tex konekt-card-tex--warm');
+});
+
+test('accueil : le blocage LinkedIn est un bandeau texturé chaud au-dessus de la liste', () => {
+  const html = focus({ linkedinIssue: true });
+  assert.match(html, /^<div class="konekt-card-tex konekt-card-tex--warm /);
+  assert.match(html, />Compte LinkedIn à reconnecter</);
+  assert.match(html, /href="\/settings\/account\/connections">Reconnecter</);
+  assert.doesNotMatch(html, /<ul|<li/, 'seul, le bandeau n\'ouvre pas de liste vide');
+
+  const both = focus({ linkedinIssue: true, unreadMessages: 2 });
+  assert.ok(both.indexOf('konekt-card-tex--warm') < both.indexOf('<ul '), 'le bandeau précède la liste');
+  assert.match(both, /<ul class="[^"]*\bmt-3\b[^"]*"><li class="flex items-start gap-3\.5 py-4 sm:items-center">/);
+  assert.equal((both.match(/konekt-card-tex/g) || []).length, 2, 'un seul bandeau (classe de base et teinte), aucune ligne texturée');
+
+  // Sans blocage, aucune texture : le rendu des lignes est celui d'avant.
+  assert.doesNotMatch(focus({ unreadMessages: 2 }), /konekt-card-tex/);
+});
+
+test('accueil : « Aucune mission active » ne se texture que si rien ne bloque', () => {
+  const props = { projects: [] };
+  const plain = render(kit.DashboardMissionsPanel, props);
+  assert.doesNotMatch(plain, /konekt-card-tex/, 'rendu par défaut inchangé');
+  assert.match(plain, /<a class="[^"]*\bmin-h-11\b[^"]*\bmd:min-h-0\b[^"]*" href="\/missions\?create=brief">/);
+
+  const lit = render(kit.DashboardMissionsPanel, { ...props, highlightEmpty: true });
+  assert.match(lit, /konekt-card-tex konekt-card-tex--teal/);
+  assert.match(lit, />Aucune mission active</);
+  assert.match(lit, /<a class="[^"]*\bbg-primary\b[^"]*" href="\/missions\?create=brief">/, 'bouton plein sur la carte');
+
+  const dash = read('src/pages/Dashboard.tsx');
+  assert.match(dash, /highlightEmpty=\{!connections\.isLoading && connections\.linkedin\.status !== 'error'\}/);
+});
+
+test('carte « Maintenant » : texturée seulement quand il y a une action, chaude pour un blocage', () => {
+  const src = read('src/components/missions/v3/pipeline/NowCard.tsx');
+  assert.match(src, /className=\{texturedCard\(main\.rank === '0' \? 'warm' : 'teal', ACTION_CARD\)\}/);
+  assert.equal((src.match(/texturedCard\(/g) || []).length, 1, 'une seule carte texturée');
+  // Chargement, « rien à faire » et « tout est reporté » gardent la bande grise.
+  assert.match(src, /\{\(state === 'clear' \|\| state === 'all_snoozed'\) && \(\s*<div className=\{CARD\}>/);
+  assert.match(src, /<div className=\{cn\(CARD, 'flex flex-col gap-3 sm:flex-row sm:items-center'\)\} aria-busy="true"/);
+});
+
+test('cartes texturées : seuls la carte « Maintenant », le bandeau LinkedIn et la zone sans mission les utilisent', () => {
+  const walk = (dir) =>
+    readdirSync(dir).flatMap((name) => {
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) return walk(abs);
+      return /\.tsx?$/.test(name) ? [abs] : [];
+    });
+  const users = walk(join(ROOT, 'src'))
+    .map((abs) => relative(ROOT, abs).split('\\').join('/'))
+    .filter((rel) => /\btexturedCard\(/.test(read(rel)) && !rel.endsWith('layout/texturedCard.ts'));
+  assert.deepEqual(users.sort(), [
+    'src/components/dashboard/DashboardFocusPanel.tsx',
+    'src/components/dashboard/DashboardMissionsPanel.tsx',
+    'src/components/missions/v3/pipeline/NowCard.tsx',
+  ]);
 });

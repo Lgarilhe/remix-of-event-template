@@ -219,6 +219,7 @@ export default function Dashboard() {
           isLoading={projectsLoading}
           error={projectsError ? (projectsError as { message?: string }).message ?? 'Erreur' : null}
           onRetry={() => void refetchProjects()}
+          highlightEmpty={!connections.isLoading && connections.linkedin.status !== 'error'}
         />
       </div>
     </PageLayout>

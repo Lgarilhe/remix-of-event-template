@@ -19,6 +19,7 @@ import React, { useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Briefcase, Plus } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/layout';
+import { texturedCard } from '@/components/layout/texturedCard';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AvatarStack } from '@/components/ui/person-avatar';
@@ -41,6 +42,8 @@ interface DashboardMissionsPanelProps {
   /** Message technique si la lecture des missions a échoué. */
   error?: string | null;
   onRetry?: () => void;
+  /** Zone « Aucune mission active » texturée : seulement quand rien d'autre ne bloque l'accueil (un seul emplacement texturé à la fois). */
+  highlightEmpty?: boolean;
 }
 
 // Colonnes à partir de 768 px : mission, en entretien, puis les trois cumuls.
@@ -101,6 +104,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
   isLoading,
   error,
   onRetry,
+  highlightEmpty = false,
 }) => {
   const active = useMemo(() => projects.filter((p) => p.status === 'active'), [projects]);
   const { data: counts } = useMissionStageCounts(active.map((p) => p.id));
@@ -145,13 +149,13 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
         />
       ) : activeProjects.length === 0 ? (
         <EmptyState
-          variant="compact"
-          className="border-0"
+          variant={highlightEmpty ? 'default' : 'compact'}
+          className={highlightEmpty ? texturedCard('teal', 'border-0 py-10') : 'border-0'}
           icon={Briefcase}
           title="Aucune mission active"
           description="Créez une mission pour commencer à sourcer."
           action={
-            <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+            <Button asChild variant={highlightEmpty ? 'primary' : 'outline'} size="sm" className="min-h-11 md:min-h-0">
               <Link to="/missions?create=brief">
                 <Plus aria-hidden="true" />
                 Créer une mission
