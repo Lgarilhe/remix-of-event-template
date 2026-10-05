@@ -12,6 +12,8 @@
  *    finished InMails with no activity for > 24 months — never active or
  *    paused enrollments, never pending InMails
  * 5. Conversation–mission links (lot 0b) with no event for > 24 months
+ * 6. Qualification sessions (agenda Outlook, Calendly) whose event ended
+ *    more than 24 months ago, with the knowledge chunks derived from them
  *
  * Lignes candidat (1 et 3) : sélection et suppression par la fonction SQL
  * rgpd_purge_candidate_rows (lot 0c-2), sur l'étape générale : 24 mois sans
@@ -70,6 +72,7 @@ Deno.serve(async (req) => {
       sequence_enrollments_purged: 0,
       inmails_purged: 0,
       conversation_links_purged: 0,
+      qualification_sessions_purged: 0,
       knowledge_chunks_purged: 0,
       errors: [] as string[],
     };
@@ -322,6 +325,71 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       stats.errors.push(`conversation links purge: ${e}`);
+    }
+
+    // ── 6. Séances de qualification après 24 mois (agenda Outlook) ───
+    // Une séance porte le nom, le titre et l'adresse du candidat, et les notes
+    // de l'entretien. Âge : fin de l'événement, sinon début, sinon création.
+    // Les extraits de connaissance tirés de la séance partent avec elle (par
+    // organisation, comme à l'étape 1) ; en « compte seulement », ils ne sont
+    // pas comptés. Le même filtre d'âge est rejoué à la suppression, pour
+    // garder une séance touchée entre la lecture et la suppression.
+    const SESSION_AGE_FILTER =
+      `event_end_at.lt."${cutoff24mIso}",` +
+      `and(event_end_at.is.null,event_start_at.lt."${cutoff24mIso}"),` +
+      `and(event_end_at.is.null,event_start_at.is.null,created_at.lt."${cutoff24mIso}")`;
+    try {
+      const { data: oldSessions, error: sessionsError } = await adminClient
+        .from("qualification_sessions")
+        .select("id, organization_id")
+        .or(SESSION_AGE_FILTER)
+        .limit(500);
+      if (sessionsError) {
+        stats.errors.push(`qualification sessions query: ${sessionsError.message}`);
+      } else {
+        const rows = (oldSessions ?? []) as Array<{ id: string; organization_id: string | null }>;
+        const ids = rows.map((r) => r.id);
+        if (dryRun) stats.qualification_sessions_purged = ids.length;
+        for (let i = 0; !dryRun && i < ids.length; i += 100) {
+          const idsByOrg = new Map<string, string[]>();
+          for (const r of rows.slice(i, i + 100)) {
+            if (r.organization_id) idsByOrg.set(r.organization_id, [...(idsByOrg.get(r.organization_id) ?? []), r.id]);
+          }
+          let chunksFailed = false;
+          for (const [orgId, sessionIds] of idsByOrg) {
+            const { data: deletedChunks, error: chunksError } = await adminClient
+              .from("knowledge_chunks")
+              .delete()
+              .eq("organization_id", orgId)
+              .eq("source_table", "qualification_sessions")
+              .in("source_id", sessionIds)
+              .select("id");
+            if (chunksError) {
+              stats.errors.push(`delete session chunks: ${chunksError.message}`);
+              chunksFailed = true;
+              break;
+            }
+            stats.knowledge_chunks_purged += (deletedChunks ?? []).length;
+          }
+          if (chunksFailed) break;
+          const { data: deleted, error: deleteError } = await adminClient
+            .from("qualification_sessions")
+            .delete()
+            .in("id", ids.slice(i, i + 100))
+            .or(SESSION_AGE_FILTER)
+            .select("id");
+          if (deleteError) {
+            stats.errors.push(`delete qualification sessions: ${deleteError.message}`);
+            break;
+          }
+          stats.qualification_sessions_purged += (deleted ?? []).length;
+        }
+        if (stats.qualification_sessions_purged > 0) {
+          console.log(`[rgpd-purge] (${mode}) ${stats.qualification_sessions_purged} qualification sessions (> 24 months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`qualification sessions purge: ${e}`);
     }
 
     // ── Summary ─────────────────────────────────────────────────────

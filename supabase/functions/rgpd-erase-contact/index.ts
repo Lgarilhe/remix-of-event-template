@@ -268,6 +268,7 @@ Deno.serve(async (req) => {
       stopped_enrollments: result.stoppedEnrollments,
       anonymized_enrollments: result.anonymizedEnrollments,
       cancelled_inmails: result.cancelledInmails,
+      deleted_sessions: result.deletedSessions,
       email_suppressed: result.emailSuppressed,
     });
   } catch (err) {

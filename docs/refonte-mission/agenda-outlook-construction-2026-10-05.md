@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS public.member_calendar_accounts (
   account_id text NOT NULL,                 -- acc_... côté service de connexion v2
   email_address text,
   status text NOT NULL DEFAULT 'running',   -- reflet de l'état du compte
-  write_enabled boolean NOT NULL DEFAULT false,
   last_synced_at timestamptz,
   last_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -69,6 +68,8 @@ CREATE UNIQUE INDEX ... ON public.qualification_sessions (calendar_account_id, e
   WHERE calendar_account_id IS NOT NULL AND external_event_id IS NOT NULL;
 CREATE INDEX ... ON public.qualification_sessions (organization_id, event_start_at);
 ```
+
+Écrite dans la demande A (`20261005222437_agenda_outlook_base.sql`) avec deux écarts de l'esquisse : pas de colonne `write_enabled` (l'agenda n'est que lu, la colonne viendra avec l'écriture) et des bornes de longueur sur `account_id`, `email_address`, `status` et `last_error`. La tâche planifiée n'y est pas : elle vient avec la demande B.
 
 Accès de `member_calendar_accounts`, sur le patron de la migration des photos (`20261005121536_photos_candidats_copie_privee.sql`) : RLS active, `REVOKE ALL` à `PUBLIC`, `anon` et `authenticated`, puis `GRANT SELECT` à `authenticated` et `ALL` à `service_role`. Une policy de lecture : la personne lit sa ligne, un propriétaire ou administrateur lit celles de l'organisation (`get_org_role`, comme `member_linkedin_accounts`). Le navigateur n'écrit jamais : tout passe par les fonctions. Déclencheur `update_updated_at_column` comme les autres tables.
 

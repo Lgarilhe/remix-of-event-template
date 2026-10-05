@@ -47,6 +47,10 @@ jobs:
       # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
       - name: Lot 0b regression tests (écrivains)
         run: node --test tests/c1/lot0b-ecrivains.test.mjs
+      # Agenda Outlook (lot I3), demande A : table member_calendar_accounts,
+      # colonnes d'agenda des séances, effacement, purge et export RGPD.
+      - name: Agenda Outlook, base de données et RGPD
+        run: node --test tests/c1/agenda-base.test.mjs
       # Refonte mission, lot 0c : lectures (vue mission_candidate_rows,
       # get_mission_stage_counts, libellés « au total », outils de
       # l'assistant, purge RGPD en compte seulement), un bloc par sous-lot.
@@ -130,6 +134,10 @@ jobs:
       # réserve d'écran, gardes sur la migration, la tâche et les écrans branchés).
       - name: Copie privée des photos (design simplifié)
         run: node --test tests/c1/photos-copie-privee.test.mjs
+      # Agenda Outlook (lot I3), demande A : l'effacement RGPD d'un candidat
+      # supprime ses séances de qualification et leurs extraits de connaissance.
+      - name: Agenda Outlook, effacement des séances
+        run: node --test tests/ux/agenda-rgpd-seances.test.mjs
       - name: Vite production build
         run: npx vite build
 

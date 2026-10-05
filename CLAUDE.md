@@ -278,6 +278,21 @@ candidate_photos           : copie privée de la photo LinkedIn d'un candidat (d
                              export-org-data. Écran : PersonAvatar avec `candidateId` montre la copie (adresse signée une
                              heure, lue par lots, src/lib/candidatePhotos.ts et CandidatePhotosProvider), sinon le lien
                              LinkedIn, sinon les initiales.
+member_calendar_accounts   : agenda relié par un membre (agenda Outlook, lot I3, demande A ; Google plus tard). Une ligne par
+                             compte du service de connexion (unique par organisation et `account_id`) et par personne et
+                             fournisseur : provider (outlook, google), email_address, status (reflet de l'état du compte),
+                             last_synced_at, last_error. Lue par la personne tant qu'elle est membre, et par les propriétaires
+                             et administrateurs de l'organisation (une policy SELECT) ; écrite par les fonctions serveur
+                             seulement (clé de service). Supprimée avec l'organisation, exportée par export-org-data (sans
+                             `account_id`). Aucune fonction ne la lit encore (demandes B et C du plan).
+qualification_sessions     : séances d'entretien. Colonnes d'agenda (lot I3, demande A) : .source (manual, agenda, invitation,
+                             booking ; les séances Calendly existantes sont passées à booking) ; .calendar_account_id (agenda
+                             d'origine, ON DELETE SET NULL : un agenda retiré laisse la séance) ; .external_event_id. Index
+                             unique partiel (calendar_account_id, external_event_id) : un événement ne crée qu'une séance.
+                             RGPD : étape 11 de recordGdprErasure (séances du candidat, trouvées par identifiant, adresse du
+                             profil et invitee_email, supprimées avec leurs extraits knowledge_chunks), purge à 24 mois (étape 6
+                             de rgpd-purge, en compte seulement par défaut), export-org-data. Plan :
+                             docs/refonte-mission/agenda-outlook-construction-2026-10-05.md.
 ```
 RPC (SECURITY DEFINER, authenticated) : `get_subscription_state(org)` (plan effectif, essai, sièges, limites ;
 expire un essai échu à la lecture), `get_org_contact_usage(org)` (contacts inclus utilisés / forfait),
@@ -604,7 +619,7 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
-Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`, puis pour les écrivains du lot 0b `candidate_stage_writers_audit.sql`, et pour les lectures du lot 0c `candidate_stage_readers_audit.sql`, puis pour la carte Maintenant (lot 3) `mission_attention_audit.sql` et `mission_action_snoozes_audit.sql`, et pour la copie privée des photos (design simplifié, lot P) `candidate_photos_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`, puis pour les écrivains du lot 0b `candidate_stage_writers_audit.sql`, et pour les lectures du lot 0c `candidate_stage_readers_audit.sql`, puis pour la carte Maintenant (lot 3) `mission_attention_audit.sql` et `mission_action_snoozes_audit.sql`, et pour la copie privée des photos (design simplifié, lot P) `candidate_photos_audit.sql`, et pour l'agenda Outlook (lot I3, demande A) `calendar_accounts_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 Dans un audit, ne jamais appeler sous `SET ROLE anon` ou `authenticated` une fonction refusée à ce rôle : dans l'image Postgres locale (17.6.1.106), supautils ajoute un indice au refus et le serveur tombe (signal 11, e2e du 24 au 26/09). Contrôler le droit avec `has_function_privilege`, et le refus réel par l'API (`curl …/rest/v1/rpc/<fonction>` avec la clé anon, voir `e2e.yml`).
 
 ### Règles posées par le lot C1 (réparations des fuites, 2026-09)
