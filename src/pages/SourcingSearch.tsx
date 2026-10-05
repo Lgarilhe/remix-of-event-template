@@ -3,11 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
-import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
-import { useAgent } from '@/contexts/AgentContext';
-import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
-import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/layout/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -18,21 +16,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Briefcase, Sparkles } from 'lucide-react';
-import { PromptSearchHero } from '@/components/sourcing/PromptSearchHero';
+import { ArrowLeft, Briefcase, Search } from 'lucide-react';
+import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
+import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import type { JobDetails } from '@/types/jobDetails';
 
 // Workspace d'une recherche autonome (kind='search') : le même moteur de
-// recherche que dans les missions (LinkedInSearch + activeProject), sans
-// brief. La cible se définit via le champ « Que cherches-tu ? » →
+// recherche que dans les missions (MissionSourcing, disposition mission-v3), sans
+// brief. La cible se définit via le champ « Intitulé du poste » →
 // job_details.title (requis pour le scoring IA, pas pour chercher).
 export default function SourcingSearch() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: project, isLoading } = useSourcingProject(id);
   const { updateProject, isUpdating } = useSourcingProjects('search');
-  const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
-  const { openContextualAgent } = useAgent();
 
   const jd = (project?.job_details || {}) as JobDetails;
   const jdTitle = (jd.title || '').trim();
@@ -41,23 +38,12 @@ export default function SourcingSearch() {
   const [transformOpen, setTransformOpen] = useState(false);
   const [missionName, setMissionName] = useState('');
 
-  // Hero « prompt IA » : affiché tant qu'aucun filtre n'existe, ré-ouvrable
-  // via le bouton ✨, fermable via « Configurer manuellement ».
-  const snapshotKeys = Object.keys((project?.filters_snapshot || {}) as Record<string, unknown>);
-  const hasFilters = snapshotKeys.length > 0;
-  const [heroOverride, setHeroOverride] = useState<'open' | 'closed' | null>(null);
-  const showHero = heroOverride === 'open' || (heroOverride !== 'closed' && !hasFilters);
-
-  // Hydrate le champ intitulé au chargement ET quand l'IA l'extrait du prompt
-  // (l'user est le seul autre éditeur — pas de conflit de frappe).
+  // Hydrate le champ intitulé au chargement et quand il change côté serveur
+  // (l'user est le seul éditeur : pas de conflit de frappe).
   useEffect(() => {
     if (project?.id) setTitle(jdTitle);
   }, [project?.id, jdTitle]);
 
-  // Changement de recherche (navigation) → l'état du hero repart du réel
-  useEffect(() => {
-    setHeroOverride(null);
-  }, [project?.id]);
 
   // Une recherche déjà transformée (ou un deep-link vers une mission) vit
   // dans le workspace mission.
@@ -105,41 +91,31 @@ export default function SourcingSearch() {
     }
   };
 
-  const handleOpenSearchAgent = useCallback(() => {
-    if (!project) return;
-    const jobTitle = ((project.job_details as JobDetails | undefined)?.title || project.name || '').trim();
-    const linkedInAccount = accounts.find(a => a.id === selectedAccount);
-    openContextualAgent({
-      mode: 'sourcing',
-      briefContext: (project.job_details || {}) as Record<string, unknown>,
-      initialMessage: `Aide-moi à trouver des candidats pour "${jobTitle}".\n\n=== ACCÈS ===\n${
-        linkedInAccount
-          ? `Compte LinkedIn : ${linkedInAccount.name || linkedInAccount.identifier} (${linkedInAccount.status})`
-          : 'Pas de compte LinkedIn connecté'
-      }`,
-      job: undefined,
-      projectId: project.id,
-      accountId: selectedAccount || undefined,
-    });
-  }, [project, accounts, selectedAccount, openContextualAgent]);
-
-  if (isLoading || accountsLoading) {
+  if (isLoading) {
     return (
-      <div className="py-6 px-3 sm:px-6 lg:px-8">
-        <BrutalLoader variant="default" rows={3} messages={['Chargement de la recherche…']} />
+      <div className="py-6 px-3 sm:px-6 lg:px-8" aria-busy="true" aria-label="Chargement de la recherche">
+        <Skeleton className="mb-2 h-6 w-64 max-w-full" />
+        <Skeleton className="mb-6 h-4 w-96 max-w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div className="py-16 px-6 text-center">
-        <p className="font-display font-bold text-foreground">Recherche introuvable</p>
-        <p className="text-sm text-muted-foreground mt-1">Elle a peut-être été supprimée.</p>
-        <Button variant="outline" className="mt-4 gap-1.5" onClick={() => navigate('/sourcing')}>
-          <ArrowLeft className="w-4 h-4" />
-          Retour aux recherches
-        </Button>
+      <div className="py-6 px-3 sm:px-6 lg:px-8">
+        <EmptyState
+          icon={Search}
+          headingLevel={2}
+          title="Recherche introuvable"
+          description="Elle a peut-être été supprimée."
+          action={
+            <Button variant="outline" onClick={() => navigate('/sourcing')}>
+              <ArrowLeft aria-hidden="true" />
+              Retour aux recherches
+            </Button>
+          }
+        />
       </div>
     );
   }
@@ -150,69 +126,53 @@ export default function SourcingSearch() {
 
       <div className="py-4 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 p-0 shrink-0"
-              onClick={() => navigate('/sourcing')}
-              aria-label="Retour aux recherches"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div className="flex-1 min-w-[220px]">
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={commitTitle}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur();
-                }}
-                placeholder="Intitulé du poste (ex : Développeur React senior)"
-                className="h-9 font-medium"
-                aria-label="Intitulé du poste recherché"
-              />
-            </div>
-            {!showHero && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 gap-1.5 shrink-0"
-                onClick={() => setHeroOverride('open')}
-                title="Décrire la cible en langage naturel — l'IA génère les filtres"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Prompt IA
-              </Button>
-            )}
-            <Button variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" onClick={openTransform}>
-              <Briefcase className="w-3.5 h-3.5" />
-              Transformer en mission
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3 ml-11">
-            L'intitulé sert au scoring IA — il se remplit tout seul quand tu passes par le prompt.
-          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 mb-2 text-muted-foreground"
+            onClick={() => navigate('/sourcing')}
+          >
+            <ArrowLeft aria-hidden="true" />
+            Recherches
+          </Button>
 
-          {showHero ? (
-            <PromptSearchHero
-              project={project}
-              hasExistingFilters={hasFilters}
-              onGenerated={() => setHeroOverride('closed')}
-              onSkip={() => setHeroOverride('closed')}
+          <PageHeader
+            className="mb-4"
+            title={project.name}
+            subtitle="Recherche hors mission. Candidats, filtres et statuts sont conservés si vous la transformez en mission."
+            actions={
+              <>
+                <Button variant="outline" onClick={openTransform}>
+                  <Briefcase aria-hidden="true" />
+                  Transformer en mission
+                </Button>
+              </>
+            }
+          />
+
+          <div className="mb-4 max-w-xl">
+            <label htmlFor="search-job-title" className="mb-1 block text-xs font-medium text-foreground">
+              Intitulé du poste
+            </label>
+            <Input
+              id="search-job-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              placeholder="Ex : Développeur React senior"
             />
-          ) : (
-            <OutreachSearchProvider>
-              <LinkedInSearch
-                accounts={accounts}
-                selectedAccount={selectedAccount}
-                onAccountChange={setSelectedAccount}
-                activeProject={project}
-                searchSource="linkedin"
-                onOpenSearchAgent={handleOpenSearchAgent}
-              />
-            </OutreachSearchProvider>
-          )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Il sert au scoring IA. Sans intitulé, la recherche utilise son nom.
+            </p>
+          </div>
+
+          {/* Le même Sourcing que dans une mission : prompt, reprise d'une recherche, filtres, résultats. */}
+          <SectionErrorBoundary fallbackTitle="Erreur dans la recherche">
+            <MissionSourcing project={project} layout="mission-v3" />
+          </SectionErrorBoundary>
         </div>
       </div>
 

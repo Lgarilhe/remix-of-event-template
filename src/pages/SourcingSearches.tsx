@@ -1,9 +1,31 @@
-import { useState } from 'react';
+/**
+ * Recherche (/sourcing) : liste des recherches hors mission, au langage de la
+ * liste des missions (ProjectsListV2, docs/design/01-direction.md) : en-tête
+ * commun, champ de recherche, tableau d'une ligne par recherche, actions en
+ * menu, états vide et chargement communs.
+ *
+ * Les trois chiffres sont des cumuls depuis le début (lot 0c-1) : ils portent
+ * « au total », jamais le nom d'une étape.
+ */
+
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { timeAgo } from '@/lib/relativeTime';
+import { plural } from '@/lib/plural';
 import { Button } from '@/components/ui/button';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/layout/EmptyState';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +36,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Search, Plus, Trash2, ArrowRight, Users, Star, Send } from 'lucide-react';
 
 // Nom auto d'une nouvelle recherche : « Recherche du 6 juillet, 14h32 ».
 // Remplacé par l'intitulé dès que l'user remplit « Que cherches-tu ? ».
@@ -25,10 +46,23 @@ const buildSearchName = () => {
   return `Recherche du ${date}, ${time}`;
 };
 
-const formatDate = (iso: string) =>
-  new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso));
+// ── Colonnes de chiffres (cumuls) ──
 
-const SearchCard = ({
+const COUNT_COLUMNS: ReadonlyArray<{ label: string; of: (s: SourcingProject) => number }> = [
+  { label: 'Sourcés', of: (s) => s.stats_total_found },
+  { label: 'Retenus au total', of: (s) => s.stats_shortlisted },
+  { label: 'Contactés au total', of: (s) => s.stats_messaged },
+];
+
+const CountCell = ({ value }: { value: number }) => (
+  <span className={value > 0 ? 'tabular-nums text-foreground' : 'tabular-nums text-muted-foreground'}>
+    {value.toLocaleString('fr-FR')}
+  </span>
+);
+
+// ── Ligne de recherche ──
+
+const SearchRow = ({
   search,
   onOpen,
   onDelete,
@@ -37,62 +71,79 @@ const SearchCard = ({
   onOpen: () => void;
   onDelete: () => void;
 }) => {
-  const stats = [
-    { icon: Users, value: search.stats_total_found, label: 'profils' },
-    // Cumuls depuis le début (lot 0c-1) : d'où « au total ».
-    { icon: Star, value: search.stats_shortlisted, label: search.stats_shortlisted > 1 ? 'retenus au total' : 'retenu au total' },
-    { icon: Send, value: search.stats_messaged, label: search.stats_messaged > 1 ? 'contactés au total' : 'contacté au total' },
-  ].filter(s => s.value > 0);
+  const launched = search.stats_total_found > 0;
 
   return (
-    <div className="interactive-card group relative rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
-      <button
-        onClick={onOpen}
-        className="text-left focus:outline-none"
-        aria-label={`Ouvrir la recherche ${search.name}`}
-      >
-        <span className="absolute inset-0 rounded-xl" aria-hidden="true" />
-        <p className="font-display font-bold text-foreground leading-snug line-clamp-2">{search.name}</p>
-        <p className="text-xs text-muted-foreground mt-1">Modifiée le {formatDate(search.updated_at)}</p>
-      </button>
-
-      <div className="flex items-center gap-1.5 flex-wrap min-h-6">
-        {stats.length > 0 ? (
-          stats.map(({ icon: Icon, value, label }) => (
-            <span
-              key={label}
-              className="inline-flex items-center gap-1 h-6 px-2 rounded-full bg-muted text-[11.5px] font-medium text-foreground"
-            >
-              <Icon className="w-3 h-3" />
-              <span className="tabular-nums font-bold">{value}</span> {label}
-            </span>
-          ))
-        ) : (
-          <span className="text-[11.5px] text-muted-foreground">Aucune recherche lancée</span>
-        )}
-      </div>
-
-      <div className="relative z-10 flex items-center justify-between gap-2 pt-1 border-t border-border/60">
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={onOpen}>
-          Reprendre <ArrowRight className="w-3 h-3" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-          onClick={onDelete}
-          aria-label="Supprimer la recherche"
+    <tr
+      data-testid="search-row"
+      onClick={onOpen}
+      className="group h-[60px] cursor-pointer border-b border-border/50 transition-colors duration-150 hover:bg-muted/40"
+    >
+      <td className="min-w-0 py-2 pl-3 pr-3 sm:pl-2">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          className="block min-w-0 max-w-full truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={search.name}
         >
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    </div>
+          {search.name}
+        </button>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {launched ? plural(search.stats_total_found, 'profil sourcé', 'profils sourcés') : 'Aucune recherche lancée'}
+        </p>
+      </td>
+      {COUNT_COLUMNS.map(({ label, of }) => (
+        <td key={label} className="hidden py-2 pr-3 text-right text-sm md:table-cell">
+          <CountCell value={of(search)} />
+        </td>
+      ))}
+      <td className="hidden py-2 pr-3 text-right text-xs tabular-nums text-muted-foreground lg:table-cell">
+        {timeAgo(search.updated_at) ?? ''}
+      </td>
+      <td className="py-2 pr-2 text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Actions pour ${search.name}`}
+              title="Plus d'actions"
+            >
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={onDelete} className="text-danger focus:text-danger">
+              <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Supprimer
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </td>
+    </tr>
   );
 };
+
+const LoadingRows = () => (
+  <div aria-busy="true" aria-label="Chargement des recherches">
+    {[0, 1, 2, 3].map((i) => (
+      <div key={i} className="flex h-[60px] items-center gap-4 border-b border-border/50 px-2">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-4 w-56 max-w-full" />
+          <Skeleton className="mt-1.5 h-3 w-32 max-w-full" />
+        </div>
+        <Skeleton className="hidden h-4 w-40 md:block" />
+      </div>
+    ))}
+  </div>
+);
+
+// ── Page ──
 
 export default function SourcingSearches() {
   const navigate = useNavigate();
   const { projects: searches, isLoading, createProject, deleteProject, isCreating, isDeleting } = useSourcingProjects('search');
+  const [query, setQuery] = useState('');
   const [toDelete, setToDelete] = useState<SourcingProject | null>(null);
 
   const handleCreate = async () => {
@@ -115,6 +166,27 @@ export default function SourcingSearches() {
     }
   };
 
+  // Plus récente d'abord, sur la dernière modification.
+  const sorted = useMemo(() => {
+    const time = (s: SourcingProject) => {
+      const t = new Date(s.updated_at).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    return [...searches].sort((a, b) => time(b) - time(a));
+  }, [searches]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? sorted.filter((s) => s.name.toLowerCase().includes(q)) : sorted;
+  }, [sorted, query]);
+
+  const createButton = (
+    <Button variant="primary" onClick={handleCreate} disabled={isCreating}>
+      <Plus aria-hidden="true" />
+      Nouvelle recherche
+    </Button>
+  );
+
   return (
     <div className="w-full max-w-full bg-background">
       <SEOHead
@@ -124,48 +196,86 @@ export default function SourcingSearches() {
 
       <div className="py-6 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">Sourcing</p>
-              <h1 className="font-display text-2xl font-bold text-foreground tracking-tight">Recherche</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Source des candidats librement — transforme la recherche en mission quand elle devient sérieuse.
-              </p>
-            </div>
-            <Button onClick={handleCreate} disabled={isCreating} className="gap-1.5 shrink-0">
-              <Plus className="w-4 h-4" />
-              Nouvelle recherche
-            </Button>
-          </div>
+          <div className="mx-auto w-full max-w-[1200px]">
+            <PageHeader
+              title="Recherche"
+              subtitle={
+                !isLoading && searches.length > 0
+                  ? `${plural(searches.length, 'recherche')} hors mission. Transformez-en une en mission quand elle devient sérieuse.`
+                  : 'Sourcez des candidats librement, puis transformez la recherche en mission quand elle devient sérieuse.'
+              }
+              actions={searches.length > 0 || isLoading ? createButton : undefined}
+            />
 
-          {isLoading ? (
-            <BrutalLoader variant="default" rows={3} messages={['Chargement des recherches…']} />
-          ) : searches.length === 0 ? (
-            <div className="konekt-fade-up flex flex-col items-center justify-center py-16 text-center rounded-xl border border-dashed border-border">
-              <div className="w-14 h-14 rounded-xl bg-foreground text-background flex items-center justify-center mb-4">
-                <Search className="w-7 h-7" />
-              </div>
-              <p className="font-display font-bold text-foreground">Aucune recherche pour l'instant</p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                Lance une recherche LinkedIn sans créer de mission : filtres, scoring IA et shortlist fonctionnent pareil.
-              </p>
-              <Button onClick={handleCreate} disabled={isCreating} className="gap-1.5 mt-4">
-                <Plus className="w-4 h-4" />
-                Démarrer une recherche
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {searches.map(search => (
-                <SearchCard
-                  key={search.id}
-                  search={search}
-                  onOpen={() => navigate(`/sourcing/${search.id}`)}
-                  onDelete={() => setToDelete(search)}
-                />
-              ))}
-            </div>
-          )}
+            {isLoading ? (
+              <LoadingRows />
+            ) : searches.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                headingLevel={2}
+                title="Aucune recherche pour l'instant"
+                description="Lancez une recherche LinkedIn sans créer de mission : filtres, scoring IA et shortlist fonctionnent pareil."
+                action={
+                  <Button variant="primary" onClick={handleCreate} disabled={isCreating}>
+                    <Plus aria-hidden="true" />
+                    Démarrer une recherche
+                  </Button>
+                }
+              />
+            ) : (
+              <>
+                <div className="relative mb-6 max-w-md">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    placeholder="Rechercher une recherche"
+                    aria-label="Rechercher parmi les recherches"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                {filtered.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+                    <p className="text-sm text-foreground">Aucune recherche trouvée.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Essayez avec d'autres mots-clés ou effacez le champ.</p>
+                  </div>
+                ) : (
+                  <div className="-mx-3 overflow-x-auto sm:mx-0">
+                    <table className="w-full table-fixed border-collapse text-sm">
+                      <caption className="sr-only">Recherches hors mission</caption>
+                      <colgroup>
+                        <col />
+                        {COUNT_COLUMNS.map(({ label }) => <col key={label} className="hidden w-32 md:table-column" />)}
+                        <col className="hidden w-24 lg:table-column" />
+                        <col className="w-12" />
+                      </colgroup>
+                      <thead>
+                        <tr className="h-[34px] border-b border-border text-left text-xs text-muted-foreground">
+                          <th scope="col" className="pl-3 pr-3 font-normal sm:pl-2">Recherche</th>
+                          {COUNT_COLUMNS.map(({ label }) => (
+                            <th key={label} scope="col" className="hidden pr-3 text-right font-normal md:table-cell">{label}</th>
+                          ))}
+                          <th scope="col" className="hidden pr-3 text-right font-normal lg:table-cell">Activité</th>
+                          <th scope="col" className="pr-2 text-right font-normal"><span className="sr-only">Actions</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((search) => (
+                          <SearchRow
+                            key={search.id}
+                            search={search}
+                            onOpen={() => navigate(`/sourcing/${search.id}`)}
+                            onDelete={() => setToDelete(search)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 

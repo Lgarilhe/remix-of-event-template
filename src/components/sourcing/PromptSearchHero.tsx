@@ -48,7 +48,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
   const handleGenerate = async () => {
     const trimmed = prompt.trim();
     if (trimmed.length < 10) {
-      toast.error('Décris un peu plus ta cible (poste, compétences, localisation…)');
+      toast.error('Décrivez un peu plus votre cible (poste, compétences, localisation…)');
       return;
     }
     setGenerating(true);
@@ -73,7 +73,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
 
       if (error || !data?.success || !data.filters) {
         toast.error('La génération a échoué', {
-          description: data?.error || error?.message || 'Réessaie dans quelques secondes.',
+          description: data?.error || error?.message || 'Réessayez dans quelques secondes.',
         });
         return;
       }
@@ -96,11 +96,11 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
       });
 
       toast.success('Filtres générés', {
-        description: 'Vérifie les filtres appliqués et lance la recherche.',
+        description: 'Vérifiez les filtres appliqués et lancez la recherche.',
       });
       onGenerated();
     } catch {
-      toast.error('La génération a échoué', { description: 'Réessaie dans quelques secondes.' });
+      toast.error('La génération a échoué', { description: 'Réessayez dans quelques secondes.' });
     } finally {
       setGenerating(false);
     }
@@ -114,15 +114,13 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
       className="w-full max-w-2xl mx-auto py-8 sm:py-14"
     >
       <div className="rounded-xl border border-border bg-card p-5 sm:p-8">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
-          Recherche assistée par IA
-        </p>
-        <h2 className="font-display text-xl sm:text-2xl font-bold text-foreground tracking-tight mb-1">
-          Décris qui tu cherches
+        <p className="eyebrow mb-1.5">Recherche assistée par IA</p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground mb-1">
+          Décrivez qui vous cherchez
         </h2>
         <p className="text-sm text-muted-foreground mb-4">
           Poste, compétences, expérience, localisation, type d'entreprise… en langage naturel.
-          L'IA construit les filtres LinkedIn pour toi.
+          L'IA construit les filtres LinkedIn pour vous.
         </p>
 
         <Textarea
@@ -157,21 +155,21 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
         )}
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-5">
-          <Button onClick={handleGenerate} disabled={generating} className="gap-1.5">
+          <Button variant="primary" onClick={handleGenerate} disabled={generating}>
             {generating ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                L'IA analyse ta demande…
+                <Loader2 className="animate-spin" aria-hidden="true" />
+                L'IA analyse votre demande…
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
+                <Sparkles aria-hidden="true" />
                 Générer la recherche
               </>
             )}
           </Button>
-          <Button variant="ghost" onClick={onSkip} disabled={generating} className="gap-1.5 text-muted-foreground">
-            <SlidersHorizontal className="w-4 h-4" />
+          <Button variant="ghost" onClick={onSkip} disabled={generating} className="text-muted-foreground">
+            <SlidersHorizontal aria-hidden="true" />
             Configurer les filtres manuellement
           </Button>
         </div>
