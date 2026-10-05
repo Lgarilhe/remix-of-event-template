@@ -329,6 +329,26 @@ jobs:
             cat snoozes_anon.json; exit 1
           fi
 
+      # Lot P, étape P-0b : rafraîchissement des adresses de photo des candidats
+      # (refresh_candidate_pictures). Lignes de l'appelant seulement, profil existant
+      # seulement, aucune écriture quand l'adresse enregistrée est bonne.
+      - name: Audit du rafraîchissement des photos (lot P, P-0b)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/candidate_pictures_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o pictures_anon.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/refresh_candidate_pictures" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_job_ids":["x"],"p_items":[]}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' pictures_anon.json; then
+            echo "::error::appel anonyme de refresh_candidate_pictures : HTTP $code (401 et 42501 attendus)"
+            cat pictures_anon.json; exit 1
+          fi
+
       - name: Build front
         run: npm run build
         env:

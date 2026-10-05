@@ -1,12 +1,12 @@
 # 07 · Lot P, la copie privée des photos des candidats
 
-Plan du 6 octobre 2026, relu par deux relecteurs indépendants (exactitude contre le code, RGPD et produit) puis corrigé. Aucun code n'est écrit. Ce document dit quoi faire, dans quel ordre, comment vérifier chaque étape, et ce que le propriétaire doit trancher d'abord.
+Plan du 5 octobre 2026, relu par deux relecteurs indépendants (exactitude contre le code, RGPD et produit) puis corrigé. Aucun code n'est écrit. Ce document dit quoi faire, dans quel ordre, comment vérifier chaque étape, et ce que le propriétaire doit trancher d'abord.
 
 ## 1. Ce que la production a montré
 
 La décision de départ (`06-simplicite.md`) : les pastilles montrent les vraies photos des candidats, et Konekt en garde une petite copie privée, supprimée avec le candidat.
 
-Les comptages du 6 octobre 2026 sur la base de production (lecture seule, aucun nom ni aucune adresse lus) changent la forme du lot.
+Les comptages du 5 octobre 2026 sur la base de production (lecture seule, aucun nom ni aucune adresse lus) changent la forme du lot.
 
 Les adresses de photo expirent vite. LinkedIn signe chaque adresse avec une date d'expiration (paramètre `e=`). Sur 1 581 adresses stockées, 1 295 sont déjà expirées (82 %). Les 286 valides expirent toutes avant le 22 octobre 2026. À la création d'une ligne, il restait 20 jours de validité en médiane (de 7 à 112). Une copie ne peut donc pas partir « plus tard » des adresses déjà stockées : elle doit partir peu après la réception d'une adresse fraîche.
 
@@ -14,9 +14,9 @@ La plupart des candidats du Pipeline n'ont aucune adresse utilisable. Sur les 1 
 
 La copie sur sortie de « jamais ouvert » tombe souvent sur une adresse déjà morte. Sur 380 lignes du Pipeline qui ont une adresse, 103 (27 %) avaient une adresse déjà expirée à leur dernière écriture. Une ligne est notée 13 jours après sa création en médiane (322 heures) ; sur 624 lignes notées, 74 l'ont été le jour même.
 
-Les visages mis en ligne les 5 et 6 octobre s'affichent donc pour ces quelques dizaines de personnes et pour toute adresse fraîche à venir ; ailleurs ce sont des initiales. L'affichage fonctionne : les données manquent. Le lot P y répond par une copie prise à temps. Une première étape (P-0b) alimente déjà la copie en gardant les adresses fraîches.
+Les visages mis en ligne le 5 octobre s'affichent donc pour ces quelques dizaines de personnes et pour toute adresse fraîche à venir ; ailleurs ce sont des initiales. L'affichage fonctionne : les données manquent. Le lot P y répond par une copie prise à temps. Une première étape (P-0b) alimente déjà la copie en gardant les adresses fraîches.
 
-### Mesures du 6 octobre 2026
+### Mesures du 5 octobre 2026
 
 Les comptages « lignes » sont par (organisation, mission, candidat), comme la vue `mission_candidate_rows` ; les comptages « personnes » sont par (organisation, candidat), ce que la copie utilise.
 
@@ -209,7 +209,7 @@ Dans `src/pages/Privacy.tsx` : ajouter la photo de profil aux données traitées
 
 ## 5. Rattrapage des candidats sans photo
 
-Les mesures du 6 octobre fixent les limites :
+Les mesures du 5 octobre fixent les limites :
 
 | Voie | Candidats couverts | Coût LinkedIn | Avis |
 |---|---|---|---|
@@ -238,12 +238,15 @@ P-0, mesures, spikes, décisions (petit, aucun code livré).
 - S4 : `GET /chat_attendees/{id}/picture` accepte-t-il l'identifiant du candidat. Priorité basse.
 - Fin : décisions de la section 8 écrites ici.
 
-P-0b, garder les adresses fraîches (moyen, navigateur seul).
-- `batchDiscover` : une ligne existante dont l'adresse manque ou est expirée (paramètre `e=`) reçoit l'adresse fraîche, petite et grande. L'écriture est filtrée côté base et bornée à la page de résultats.
-- `ProfileDetailSheet.tsx` (518 à 521) : ne pas retirer les clés de photo quand le profil brut n'en porte pas (même règle que `keepStoredPictures`).
-- `EnrollmentPreviewModal.tsx` et `AddToProjectButton.tsx` : écrire le profil entier sérialisé qu'ils ont en main, jamais une photo seule. Une ligne dont `linkedin_profile_data` serait un profil mince devient éligible à la notation de fond (`process-agent-tasks` exige ce champ non nul) et consommerait des crédits sur un profil vide. `AddToProjectButton` gagne une prop et deux appelants (`CardActions.tsx`, `ProfileDetailSheet.tsx`).
-- Effets : ces `UPDATE` passent par `updated_at` et l'ingestion `pg_net` pour les lignes de la page. À mesurer sur une base locale avant la mise en ligne. L'entrée N12 de la liste blanche de `tests/c1/lot0b-ecrivains.test.mjs` (« jamais de mise à jour d'une ligne existante ») et son commentaire changent.
-- Vérification : étendre `tests/ux/photos-candidats.test.mjs` ; critère de réussite : la part des lignes du Pipeline qui ont une adresse non expirée (3 % aujourd'hui).
+P-0b, garder les adresses fraîches (livré le 5 octobre 2026 : une petite migration et le navigateur).
+- Une fonction de base, `refresh_candidate_pictures(p_job_ids, p_items)`, remplace l'adresse (petite et grande) dans `linkedin_profile_data` par fusion côté base. Un `UPDATE` du profil entier depuis le navigateur est écarté : il écraserait les champs qu'une autre page y a ajoutés. SECURITY INVOKER, `authenticated` et `service_role`, jamais `anon`. Lignes de l'appelant seulement (`created_by = auth.uid()`, comme la lecture du hook), profil déjà enregistré et de type objet seulement, 200 profils au plus.
+- Règle de remplacement (`candidate_picture_should_replace`) : la nouvelle adresse est en https sur `licdn.com`, 2 048 caractères au plus, sans espace, pas échue dans moins d'un jour ; l'adresse enregistrée manque ou échoit dans moins de 3 jours ; la nouvelle échoit après l'ancienne. Une adresse enregistrée encore bonne n'est jamais touchée : aucune écriture, donc ni `updated_at` ni ingestion.
+- `batchDiscover` envoie, avant son insertion, les adresses utilisables de la page (`src/lib/pictureUrl.ts`). Son insertion `ignoreDuplicates` ne change pas. La découverte enregistre aussi `profile_picture_url_large`. Un échec du rafraîchissement est journalisé et ne gêne pas la recherche.
+- `ProfileDetailSheet.tsx` : le profil visité reprend la photo de la recherche quand il n'en porte pas (même règle que `keepStoredPictures`).
+- `EnrollmentPreviewModal.tsx` et `AddToProjectButton.tsx` (prop `profile`, deux appelants) : une ligne créée porte le profil entier sérialisé (`serializeProfileForStorage`, exportée), jamais une photo seule. Une ligne dont `linkedin_profile_data` serait un profil mince deviendrait éligible à la notation de fond (`process-agent-tasks` exige ce champ non nul) et consommerait des crédits sur un profil vide.
+- Coût mesuré en local (200 lignes à adresse échue) : 224 ms côté base, 200 appels `pg_net` d'ingestion en file (21 ko en moyenne, 4,2 Mo en tout). L'ingestion ne lit pas la photo : les empreintes de `ingest-context` ne changent pas, donc aucun recalcul d'embedding, seulement les appels. Même ordre de grandeur qu'un lot de notes. Une page de recherche touche au plus ses lignes à adresse échue ; ce nombre baisse à chaque passage.
+- Vérification : `supabase/tests/candidate_pictures_audit.sql` (câblé dans `e2e.yml`, quatre mutations de la fonction détectées), `e2e/api/candidate-pictures.spec.ts` (appel par PostgREST, relecture par `mission_candidate_rows`), `tests/ux/photos-candidats.test.mjs` (huit tests de plus, en échec sur le code d'origine). Critère de réussite à relever après la mise en ligne : la part des lignes du Pipeline qui ont une adresse non expirée (3 % avant).
+- Reste hors P-0b : l'entrée N12 de la liste blanche de `tests/c1/lot0b-ecrivains.test.mjs` reste vraie (l'insertion ne met jamais à jour une ligne existante) ; son libellé renvoie à la fonction. Les lignes d'un collègue ne sont rafraîchies que par les recherches de ce collègue.
 - P-0b ne crée aucune copie : il ne dépend pas de la trace d'effacement.
 
 P-1, modèle de données (moyen, migration seule, invisible).
@@ -304,7 +307,7 @@ Chaque ligne est une question avec son effet. Les choix purement techniques (for
 | D7 | Messagerie, extension Chrome, Coresignal dans la première version ? | Non : ces sources couvrent peu de monde (17 conversations, 0 usage de l'extension, 22 collectes). | Non (P-7). |
 | D8 | Les membres d'équipe d'une autre organisation voient-ils la copie ? | Non : ils voient l'adresse LinkedIn tant qu'elle vit, puis les initiales (3 lignes en production, marketplace gelée). | Non. |
 | D9 | Seconde vague de lecteurs (fiche scorecard, calendrier, tâches, accueil) dans le lot ? | Non : lot séparé après P-6. | Non. |
-| D10 | Livrer P-0b maintenant, seul ? | Oui : il ne crée aucune copie et entretient les adresses fraîches (visibles environ trois semaines) ; il met à jour des lignes existantes, avec un coût d'ingestion à mesurer d'abord. | Oui. |
+| D10 | Livrer P-0b maintenant, seul ? | Oui, livré le 5 octobre 2026 : il ne crée aucune copie et entretient les adresses fraîches (visibles environ trois semaines) ; il met à jour des lignes existantes, coût d'ingestion mesuré (voir P-0b). | Oui. |
 | D11 | Traiter dans ce lot les trous d'effacement sans rapport avec la photo (`candidate_cvs` et ses fichiers, `knowledge_chunks`, notes, caches) ? | Non : lot R ; à signaler au juriste. | Non. |
 | D12 | Retirer l'adresse de la photo du résultat d'outil de l'assistant (qui part chez un fournisseur d'IA) ? | Oui : une ligne dans `agent-tools-reads.ts`. Non : elle y reste. | Oui, avec la question 12. |
 
@@ -360,7 +363,7 @@ Gouvernance
 - Que le CDN réponde à une adresse de centre de données (spike S1).
 - Une bibliothèque de réduction d'image dans les fonctions (spike S2) ; la limite de taille d'un lot de `createSignedUrls` (spike S3).
 - Que `GET /chat_attendees/{id}/picture` accepte l'identifiant du candidat (spike S4).
-- Le coût du déclencheur sur la table en charge, des mises à jour de P-0b et de la jointure dans la vue : mesures à faire avant P-0b, en P-1 et en P-2.
+- Le coût du déclencheur sur la table en charge et de la jointure dans la vue : mesures à faire en P-1 et en P-2 (celui des mises à jour de P-0b est mesuré, voir P-0b).
 - Les colonnes de `coresignal_profile_cache` pour retrouver une personne (à lire en P-3a).
 - La région des fichiers de Supabase, et ce que le contrat de sous-traitance dit du stockage de fichiers.
 - `add-to-shortlist` n'a qu'un appelant, `AddToPipelineModal` (monté par la messagerie) ; reste à savoir si la messagerie lui transmet une photo.

@@ -32,11 +32,25 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
-## 2026-10-06 — SPEC — Plan du lot P, copie privée des photos des candidats
+## 2026-10-05 — SHIP — P-0b, garder les adresses de photo fraîches (sur la branche, pas encore sur main)
+
+**Contexte** : première étape du lot P, demandée par le propriétaire (« Oui lance »). Les adresses de photo LinkedIn expirent après quelques semaines et une recherche qui retrouvait une personne connue n'écrivait pas son adresse fraîche.
+**Décision / Fait** : migration `20261005102025_photos_lot_p0b_rafraichir_adresses.sql` (`refresh_candidate_pictures`, `candidate_picture_expiry`, `candidate_picture_is_stale`, `candidate_picture_should_replace`) ; `batchDiscover` rafraîchit les adresses des profils de la page ; la découverte garde la grande photo ; la fiche garde la photo en enregistrant le profil visité ; « Retenir » et l'inscription en séquence créent leur ligne avec le profil entier. Fusion jsonb côté base, lignes de l'appelant, profil existant seulement, aucune écriture si l'adresse enregistrée est bonne.
+**Raison** : 82 % des adresses stockées sont expirées ; sans cette étape, le visage du Pipeline revient aux initiales. Un profil réduit à une photo aurait rendu la ligne éligible à la notation de fond, d'où le profil entier.
+**Impact** : `supabase/migrations`, `src/lib/pictureUrl.ts`, `src/hooks/useJobCandidateStatus.ts`, `useLinkedInSearchActions.ts`, `useLinkedInScoring.ts` (export), `ProfileDetailSheet.tsx`, `EnrollmentPreviewModal.tsx`, `AddToProjectButton.tsx`, `CardActions.tsx`, `types.ts`, audit SQL et `e2e.yml`, tests, `CLAUDE.md`, plan du lot P. Coût mesuré en local : 200 lignes en 224 ms, 200 appels d'ingestion en file, aucun recalcul d'embedding. Dates : les entrées et documents du lot P portaient à tort le 6 octobre, corrigés au 5.
+**Reste à faire** :
+- [ ] Accord du propriétaire pour pousser sur main (migration appliquée par le workflow, puis relever la part des lignes du Pipeline à adresse valide, 3 % avant).
+- [ ] Spike S1 (télécharger une vingtaine de vraies photos) : demande l'accord du propriétaire, à lancer avant le 22/10/2026.
+- [ ] Deux tests déjà en échec sur main (`0c-1 : recherches, résumé du matin et tableau de bord disent « au total »`, `S-7 : seule la nouvelle page passe la disposition « mission-v3 »`), venus du commit 2148cfa.
+**Refs** : docs/design/07-photos-lot-p.md (P-0b).
+
+---
+
+## 2026-10-05 — SPEC — Plan du lot P, copie privée des photos des candidats
 
 **Contexte** : le propriétaire demande de préparer le lot P (copie privée des photos LinkedIn, supprimée avec le candidat) après la mise en ligne des visages. Quatre enquêtes en lecture seule (captures, RGPD, stockage, modèle de données) et des comptages sur la production, puis relecture du plan par deux relecteurs.
 **Décision / Fait** : plan écrit dans `docs/design/07-photos-lot-p.md` : table `candidate_photos` par organisation et personne, bucket privé `candidate-photos`, liens signés d'une heure, déclencheur d'enfilage et worker de copie sans appel LinkedIn, effacement et purge branchés avant la première copie, sous-lots P-0 à P-7 (P-3 en deux parties). Aucun code livré. Deux relectures indépendantes ont corrigé le premier jet : trace d'effacement (ligne `erased`), course entre effacement et copie, verrou de réclamation, boîte d'envoi des suppressions de fichiers, droits par colonne, périmètre de la copie.
-**Raison** : les mesures du 06/10/2026 montrent que 82 % des adresses de photo stockées sont déjà expirées (durée médiane 20 jours entre la création d'une ligne et l'expiration), que 35 des 1 011 personnes du Pipeline ont une adresse valide et que 585 n'en ont aucune ; 27 % des adresses du Pipeline sont déjà expirées à la dernière écriture de la ligne. La copie doit donc se faire au moment où l'adresse est fraîche, et une première étape (P-0b) ferme les pertes d'adresse du navigateur. `rgpd-purge` n'est planifiée nulle part et l'effacement RGPD laisse l'adresse de la photo dans le profil de la ligne.
+**Raison** : les mesures du 05/10/2026 montrent que 82 % des adresses de photo stockées sont déjà expirées (durée médiane 20 jours entre la création d'une ligne et l'expiration), que 35 des 1 011 personnes du Pipeline ont une adresse valide et que 585 n'en ont aucune ; 27 % des adresses du Pipeline sont déjà expirées à la dernière écriture de la ligne. La copie doit donc se faire au moment où l'adresse est fraîche, et une première étape (P-0b) ferme les pertes d'adresse du navigateur. `rgpd-purge` n'est planifiée nulle part et l'effacement RGPD laisse l'adresse de la photo dans le profil de la ligne.
 **Impact** : `docs/design/07-photos-lot-p.md`, `docs/design/README.md`, `docs/design/06-simplicite.md`.
 **Reste à faire** :
 - [ ] Décisions D1 à D12 du plan (périmètre, durée, planification de `rgpd-purge`, lecture de profil LinkedIn, export des fichiers).
@@ -46,11 +60,11 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
-## 2026-10-06 — REFACTOR — Visages des candidats dans le /pipeline global
+## 2026-10-05 — REFACTOR — Visages des candidats dans le /pipeline global
 
 **Contexte** : après les photos de la page mission, le propriétaire demande les visages dans la partie Pipeline. Le /pipeline global (kanban, tableau, chronologie) n'affichait aucun visage : sa lecture de `mission_candidate_rows` ne portait pas la photo.
 **Décision / Fait** : `MCR_DISPLAY_COLUMNS` extrait la photo côté base (`picture`, `picture_large`), `candidateOfMissionRow` la range dans `ATSCandidate.pictureUrl`, et la carte du kanban (28 px), le tableau et la chronologie (32 px) la passent à `PersonAvatar` ; sans photo ou avec un lien expiré, les initiales. Un candidat de séquence ou d'InMail sans ligne de mission n'a pas de photo.
-**Raison** : même règle 4 du design simplifié. Mesure sur la base de production le 06/10/2026 (comptages seuls) : 2 375 lignes, 1 551 avec une photo enregistrée (65 %), profil de 9 ko en moyenne, donc la lecture avec la liste reste bon marché. Les candidats sans photo enregistrée gardent leurs initiales tant que le lot P n'a pas rattrapé les profils.
+**Raison** : même règle 4 du design simplifié. Mesure sur la base de production le 05/10/2026 (comptages seuls) : 2 375 lignes, 1 551 avec une photo enregistrée (65 %), profil de 9 ko en moyenne, donc la lecture avec la liste reste bon marché. Les candidats sans photo enregistrée gardent leurs initiales tant que le lot P n'a pas rattrapé les profils.
 **Impact** : `useATSData.ts`, `ATSCandidateCard.tsx`, `ATSTable.tsx`, `ATSTimeline.tsx` ; test statique `tests/c1/lot0c4-pipeline.test.mjs` (regex des colonnes adaptée à la chaîne typée `string`, TS2589) ; scénario e2e « les visages » de `e2e/flows/stage-0c-lectures.spec.ts` (photo, initiales, lien expiré, carte attrapée par sa photo, tableau, chronologie).
 **Reste à faire** :
 - [ ] Lot P : copie privée des photos, rattrapage des profils sans photo, effacement RGPD, purge, export.

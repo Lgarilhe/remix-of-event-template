@@ -515,9 +515,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         // Persist best-effort → les prochaines analyses ne re-visitent pas.
         // Écrasement volontaire : les données de visite sont strictement plus
         // riches que le blob mince éventuellement écrit par le scoring de masse.
+        // La photo de la recherche reste si la visite n'en rapporte pas (lot P, P-0b).
+        const persisted: Record<string, unknown> = { ...(resp.profile as Record<string, unknown>) };
+        for (const key of ['profile_picture_url', 'profile_picture_url_large'] as const) {
+          if (!persisted[key] && profile[key]) persisted[key] = profile[key];
+        }
         supabase
           .from('job_candidate_status')
-          .update({ linkedin_profile_data: resp.profile as any })
+          .update({ linkedin_profile_data: persisted as any })
           .eq('candidate_id', profile.id)
           .then(({ error }) => {
             if (error) console.warn('[ProfileDetail] persist full profile failed:', error);
@@ -840,6 +845,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   score={jobScore?.match_score}
                   recommendation={jobScore?.recommendation}
                   skipReason={jobScore?.missing_skills?.join(', ')}
+                  profile={profile}
                   jobId={selectedJob.id}
                   activeProject={activeProject}
                   compact

@@ -75,6 +75,7 @@ import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErr
 import { plural } from '@/lib/plural';
 import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
+import { serializeProfileForStorage } from '@/hooks/useLinkedInScoring';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
@@ -861,6 +862,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         candidate_name: profile.name || null,
         candidate_headline: profile.headline || null,
         linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
+        // Profil entier, photo comprise (lot P, P-0b) : jamais une photo seule.
+        linkedin_profile_data: serializeProfileForStorage(profile),
         created_by: userId,
         organization_id: organizationId, // requis par RLS org_members_all
       }));

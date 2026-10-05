@@ -624,7 +624,7 @@ const CANDIDATE_STAGE = 'src/lib/candidateStage.ts';
 const STAGE_WRITE_WHITELIST = [
   {
     id: 'N12',
-    why: 'batchDiscover : insertion « discovered » (étape À trier), ignoreDuplicates, jamais de mise à jour d\'une ligne existante',
+    why: 'batchDiscover : insertion « discovered » (étape À trier), ignoreDuplicates, jamais de mise à jour d\'une ligne existante (les adresses de photo passent par refresh_candidate_pictures, qui n\'écrit que linkedin_profile_data)',
     file: JCS_HOOK,
     match: (s) => s.op === 'upsert' && /ignoreDuplicates:\s*true/.test(s.chain) && s.keys.includes('status'),
     check: (s) => {

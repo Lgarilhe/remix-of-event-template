@@ -7144,6 +7144,10 @@ export type Database = {
           via: string
         }[]
       }
+      refresh_candidate_pictures: {
+        Args: { p_items: Json; p_job_ids: string[] }
+        Returns: number
+      }
       resolve_meeting_mission: {
         Args: { p_candidate: Json; p_organization_id: string }
         Returns: {

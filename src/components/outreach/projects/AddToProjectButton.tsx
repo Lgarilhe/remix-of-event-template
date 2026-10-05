@@ -20,6 +20,8 @@ import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProject
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import type { LinkedInProfile } from '@/components/outreach/types';
+import { serializeProfileForStorage } from '@/hooks/useLinkedInScoring';
 
 interface AddToProjectButtonProps {
   candidateId: string;
@@ -29,6 +31,8 @@ interface AddToProjectButtonProps {
   score?: number;
   recommendation?: string;
   skipReason?: string;
+  /** Profil de la recherche : enregistré en entier (photo comprise) avec la ligne créée. */
+  profile?: LinkedInProfile;
   jobId: string;
   activeProject?: SourcingProject | null;
   compact?: boolean;
@@ -45,6 +49,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
   score,
   recommendation,
   skipReason,
+  profile,
   jobId,
   activeProject,
   compact = false,
@@ -109,6 +114,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             candidate_name: candidateName,
             candidate_headline: candidateHeadline,
             linkedin_profile_url: linkedinProfileUrl,
+            ...(profile ? { linkedin_profile_data: serializeProfileForStorage(profile) } : {}),
             job_id: jobId,
             project_id: project.id,
             score,

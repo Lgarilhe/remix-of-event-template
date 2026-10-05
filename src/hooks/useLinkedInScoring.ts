@@ -601,7 +601,9 @@ function mapScoringResult(raw: any): JobMatchResult {
 }
 
 // Serialize profile for storage (keep essential data, skip huge fields)
-function serializeProfileForStorage(profile: LinkedInProfile): any {
+// Exportée : AddToProjectButton et EnrollmentPreviewModal écrivent le même profil
+// (photo comprise) à la création d'une ligne, jamais une photo seule (lot P, P-0b).
+export function serializeProfileForStorage(profile: LinkedInProfile): any {
   return {
     name: profile.name,
     first_name: profile.first_name,
