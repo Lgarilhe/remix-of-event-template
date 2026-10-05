@@ -172,6 +172,37 @@ class UnipileInputError extends Error {
  * (SEC-007). Les slugs LinkedIn %-encodés envoyés par le front sont décodés
  * puis ré-encodés à l'identique.
  */
+/**
+ * LinkedIn répond 422 « unable to process » à une requête booléenne dont les
+ * parenthèses ou les guillemets ne sont pas fermés (génération IA, troncature
+ * à 200 caractères). On rééquilibre avant l'envoi : guillemet orphelin retiré,
+ * « ) » sans « ( » retirée, « ( » restées ouvertes refermées en fin de chaîne.
+ */
+function balanceBooleanKeywords(input: string): string {
+  let s = input;
+  if ((s.match(/"/g) ?? []).length % 2 === 1) {
+    const i = s.lastIndexOf('"');
+    s = s.slice(0, i) + s.slice(i + 1);
+  }
+  let out = '';
+  let depth = 0;
+  let inQuote = false;
+  for (const ch of s) {
+    if (ch === '"') inQuote = !inQuote;
+    if (!inQuote) {
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        if (depth === 0) continue;
+        depth--;
+      }
+    }
+    out += ch;
+  }
+  // Retire un opérateur resté pendant avant de refermer (« … AND » / « … OR »)
+  out = out.replace(/\s+(AND|OR|NOT)\s*$/i, '');
+  return out + ')'.repeat(depth);
+}
+
 function unipileId(value: unknown, label: string): string {
   let s = typeof value === 'string' ? value : value == null ? '' : String(value);
   s = s.trim();
@@ -602,9 +633,9 @@ async function handleSearch(
         }
       }
       console.log(`[search] Keywords truncated: ${keywords.length} → ${truncated.length} chars`);
-      searchBody.keywords = truncated;
+      searchBody.keywords = balanceBooleanKeywords(truncated);
     } else {
-      searchBody.keywords = keywords;
+      searchBody.keywords = balanceBooleanKeywords(keywords);
     }
   }
 
@@ -703,7 +734,7 @@ async function handleSearch(
     // According to the API doc, company can be an array of objects with keywords, priority, scope
     // So we can add keyword-based companies to the company array
     const keywordCompanies = company_keywords.map(c => ({
-      keywords: c.keywords,
+      keywords: balanceBooleanKeywords(c.keywords),
       priority: c.priority,
       scope: c.scope,
     }));
@@ -803,7 +834,7 @@ async function handleSearch(
   // Note: if job_title already set `role`, append keyword-based roles
   if (role?.length && api === 'recruiter') {
     const keywordRoles = role.map(r => ({
-      keywords: r.keywords,
+      keywords: balanceBooleanKeywords(r.keywords),
       priority: r.priority || 'MUST_HAVE',
       scope: r.scope || 'CURRENT_OR_PAST',
     }));
