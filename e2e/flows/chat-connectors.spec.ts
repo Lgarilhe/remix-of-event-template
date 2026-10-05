@@ -37,8 +37,8 @@ test('Notion can be paused and re-enabled from the chat composer', async ({ asRo
   });
   await page.goto('/dashboard');
 
-  // La bulle flottante n'existe plus : l'onglet Assistant de la barre latérale
-  // ouvre le tiroir par « Nouvelle conversation ».
+  // Ce test passe par l'onglet Assistant de la barre latérale, qui ouvre le
+  // tiroir par « Nouvelle conversation ».
   await page.getByRole('tab', { name: 'Assistant' }).click();
   await page.getByRole('button', { name: 'Nouvelle conversation' }).first().click();
   const menuButton = page.getByRole('button', {

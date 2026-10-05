@@ -607,10 +607,16 @@ test('statut « Arrêtée par … le … » aussi dans la messagerie, le Pipelin
   const ats = read('src/hooks/useATSData.ts');
   assert.equal((ats.match(/completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop/g) || []).length, 2, 'inscriptions des lignes de mission et inscriptions seules');
   assert.equal((ats.match(/sequenceManualStop: readManualStop\(/g) || []).length, 2);
+  // Nom de l'auteur résolu une fois dans useATSData : la carte et le tableau
+  // (design simplifié, rendus sans requête) l'écrivent en texte.
+  assert.match(ats, /const memberName = useMemberName\(\);/);
+  assert.match(ats, /sequenceStoppedByName: memberName\(c\.sequenceManualStop\.by\)/);
+  assert.match(read('src/components/ats/ATSCandidateCard.tsx'), /signal\.status === 'completed' && candidate\.sequenceManualStop\s*\? manualStopLabel\(candidate\.sequenceManualStop, candidate\.sequenceStoppedByName\)/);
+  const table = read('src/components/ats/ATSTable.tsx');
+  assert.match(table, /const manualStop = candidate\.sequenceStatus === 'completed' \? candidate\.sequenceManualStop \?\? null : null;/);
+  assert.match(table, /manualStopLabel\(manualStop, candidate\.sequenceStoppedByName\)/);
   for (const rel of ['src/components/ats/ATSCandidateCard.tsx', 'src/components/ats/ATSTable.tsx']) {
-    const src = read(rel);
-    assert.match(src, /manualStop=\{candidate\.sequenceManualStop\}\s*stoppedByName=\{memberName\(candidate\.sequenceManualStop\?\.by\)\}/, rel);
-    assert.match(src, /const memberName = useMemberName\(\);/, rel);
+    assert.doesNotMatch(read(rel), /useMemberName/, rel);
   }
   const profile = read('src/hooks/useCandidateFullProfile.ts');
   assert.match(profile, /manualStop: readManualStopFromTracking\(e\.status, e\.tracking_data\),/);

@@ -2,14 +2,15 @@
  * Chantier design, lot 7a : pipeline global (/pipeline).
  *
  * Invariants épinglés :
- *   - un seul barème et un seul rendu du score, ScoreBadge (E-11, E-15) ;
+ *   - un seul barème et un seul rendu du score : l'anneau ScoreRing, comme la
+ *     page mission (E-11, E-15 ; design simplifié, lot Suite) ;
  *   - une seule table de stagnation, sans délai pour À trier ni Retenu, et un
  *     seul libellé, « Dans cette étape depuis 6 j », en texte warning (E-17,
  *     lot 0c-4 : le temps se compte depuis l'entrée dans l'étape) ;
  *   - la provenance d'un candidat écrite en mots, jamais « local » (E-18) ;
  *   - carte à trois lignes, sans badge de source ni statut brut ; statut de
- *     séquence traduit par le catalogue (E-19, E-43) ;
- *   - « Avec rappel » dans les filtres, « Rappels » dans l'en-tête (E-20) ;
+ *     séquence écrit en texte par le catalogue (E-19, E-43) ;
+ *   - « Avec rappel » dans le menu « Filtres », « Rappels » dans l'en-tête (E-20) ;
  *   - Rappels dans un panneau latéral, « Déplacer vers… » sur chaque carte (E-21) ;
  *   - glisser-déposer au clavier, annonces et consignes en français (E-22) ;
  *   - un seul toast pour un déplacement groupé en un seul geste, échecs et
@@ -60,6 +61,8 @@ const STUBS = [
   'export const missionIdOfJob = (id) => (id ? String(id).replace(/^project:/, "") : undefined);',
   // Lot 5b : arrêt manuel d'une inscription (« Arrêtée par … »), src/lib/sequenceLabels.ts.
   'export const readManualStop = () => null;',
+  // Lot 5b : nom de l'auteur d'un arrêt manuel, src/hooks/useTeamMembers.ts.
+  'export const useMemberName = () => () => null;',
 ].join('\n');
 
 const loadATSData = async () => {
@@ -121,10 +124,10 @@ const PERIMETER = [
   'src/components/ats/ATSStats.tsx',
   'src/components/ats/ATSFilters.tsx',
   'src/components/ats/ATSKanbanSkeleton.tsx',
-  'src/components/ats/ATSStatsSkeleton.tsx',
   'src/components/ats/ATSTableSkeleton.tsx',
   'src/components/ats/BulkActionsBar.tsx',
   'src/components/ats/RemindersSidebar.tsx',
+  'src/components/ui/score-ring.tsx',
 ];
 
 /** Littéraux de chaîne et textes JSX, sans commentaires ni chemins d'import. */
@@ -146,11 +149,16 @@ const DAY = 86_400_000;
 const NOW = new Date('2026-09-25T12:00:00Z');
 const ago = (ms) => new Date(NOW.getTime() - ms).toISOString();
 
-test('E-11, E-15 : un seul rendu du score, ScoreBadge, sans barème local', () => {
+test('E-11, E-15 : un seul rendu du score, l\'anneau ScoreRing, sans barème local', () => {
   for (const [name, src] of [['carte', CARD], ['tableau', TABLE]]) {
-    assert.match(src, /<ScoreBadge score=\{candidate\.score\}/, `${name} : ScoreBadge absent`);
-    assert.doesNotMatch(src, /score >= (70|40)/, `${name} : barème local`);
+    assert.match(src, /<ScoreRing score=\{candidate\.score\}/, `${name} : ScoreRing absent`);
+    assert.doesNotMatch(src, /ScoreBadge|score >= (70|40)/, `${name} : badge ou barème local`);
   }
+  // Une seule couleur pour tous les niveaux (règle 6 du design simplifié) ; sans note, rien.
+  const RING = read('src/components/ui/score-ring.tsx');
+  assert.match(RING, /className="stroke-brand"/);
+  assert.doesNotMatch(RING, /success|warning|danger|emerald|amber/);
+  assert.match(RING, /if \(score === null \|\| score === undefined \|\| !Number\.isFinite\(score\)\) return null;/);
 });
 
 test('E-17 : une seule table de stagnation, dans useATSData, sur l\'entrée dans l\'étape', () => {
@@ -204,7 +212,8 @@ test('E-18 : la provenance s’écrit en mots, jamais « local »', () => {
 });
 
 test('E-19, E-43 : carte à trois lignes, statut de séquence traduit', () => {
-  assert.match(CARD, /EnrollmentStatusBadge/);
+  assert.match(CARD, /enrollmentStatusLabel\(status\)/, 'statut de séquence lu dans le catalogue');
+  assert.doesNotMatch(CARD, /EnrollmentStatusBadge/, 'statut en texte, sans pastille');
   assert.doesNotMatch(CARD, /\{candidate\.sequenceStatus\}/, 'statut brut affiché');
   assert.doesNotMatch(CARD, /expertise|candidate\.tags/, 'plus d’expertise ni d’étiquettes sur la carte');
   assert.match(CARD, /'A répondu'/);
@@ -218,7 +227,10 @@ test('E-19, E-43 : carte à trois lignes, statut de séquence traduit', () => {
 
 test('E-20 : « Avec rappel » dans les filtres, « Rappels » dans l’en-tête', () => {
   assert.match(FILTERS, /Avec rappel/);
-  assert.match(FILTERS, /aria-pressed=\{filters\.hasReminder\}/);
+  assert.match(FILTERS, /checked=\{filters\.hasReminder\}/);
+  // Un seul menu « Filtres » (comme les Tâches) ; la recherche reste visible.
+  assert.equal((FILTERS.match(/<FilterPill\b/g) || []).length, 1, 'un seul menu de filtres');
+  assert.match(FILTERS, /<FilterPill label="Filtres"/);
   assert.doesNotMatch(FILTERS, /Bell|>\s*Rappels\s*</);
   assert.match(PAGE, /<Bell aria-hidden="true" \/>\s*Rappels/);
 });
@@ -243,7 +255,7 @@ test('E-22 : glisser-déposer au clavier, en français', () => {
 
 test('E-23 : survol sobre, un seul toast groupé, retour arrière sur échec', () => {
   assert.doesNotMatch(COLUMN, /scale-\[|shadow-lg|⬇️/);
-  assert.match(COLUMN, /'border-brand bg-muted'/);
+  assert.match(COLUMN, /'bg-muted\/60 ring-1 ring-inset ring-brand\/50'/);
   // Un seul geste pour le lot : pas de boucle, pas de toast par candidat.
   assert.match(PAGE, /await moveCandidates\(ids, newStage\)/);
   assert.match(BULK, /plural\(failed, 'échec'\)/);
@@ -329,8 +341,9 @@ test('E-25 : tableau accessible', () => {
   const headers = (TABLE.match(/sortHeader\('|<TableHead className/g) || []).length;
   const widths = read('src/components/ats/ATSTableSkeleton.tsx').match(/HEADER_WIDTHS = \[([^\]]*)\]/);
   const skeletonCols = widths ? widths[1].split(',').filter((w) => w.trim()).length : 0;
-  assert.equal(headers, 8, 'huit colonnes');
-  assert.equal(skeletonCols, 8, 'squelette à huit colonnes');
+  // Design simplifié (lot Suite) : six colonnes, la provenance passe sous la mission.
+  assert.equal(headers, 6, 'six colonnes');
+  assert.equal(skeletonCols, 6, 'squelette à six colonnes');
 });
 
 test('E-26 : chronologie datée hors « Aujourd’hui », état vide dû aux filtres', () => {

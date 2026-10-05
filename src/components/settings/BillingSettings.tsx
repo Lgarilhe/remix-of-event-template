@@ -7,12 +7,12 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { readCheckoutReturn, withoutCheckoutReturn } from '@/lib/checkoutReturn';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { CreditCard, ArrowUpRight, Calendar, Gauge, Download, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorBox } from '@/components/layout/ErrorBox';
 import { plural } from '@/lib/plural';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 /** Requêtes à rafraîchir au retour du paiement (le webhook met la base à jour). */
@@ -41,20 +41,25 @@ const formatLimit = (value: number | undefined) => {
   return value.toLocaleString('fr-FR');
 };
 
-const statusBadge = (state: SubscriptionState, isFree: boolean): { label: string; variant: BadgeProps['variant'] } => {
+/**
+ * État de l'abonnement, écrit en mots à côté du nom du plan. Design simplifié
+ * (règle 7) : plus de pastille ; l'orange seulement quand l'état demande d'agir
+ * (paiement en attente, résiliation programmée).
+ */
+const statusLabel = (state: SubscriptionState, isFree: boolean): { label: string; warning: boolean } => {
   if (state.status === 'trialing') {
     const days = state.trial_days_left ?? 0;
-    return { label: `Essai : ${plural(days, 'jour restant', 'jours restants')}`, variant: 'info' };
+    return { label: `Essai : ${plural(days, 'jour restant', 'jours restants')}`, warning: false };
   }
-  if (state.status === 'canceled') return { label: 'Résilié', variant: 'muted' };
+  if (state.status === 'canceled') return { label: 'Résilié', warning: false };
   if (state.status === 'past_due' || state.status === 'incomplete' || state.status === 'unpaid') {
-    return { label: 'Paiement en attente', variant: 'warning' };
+    return { label: 'Paiement en attente', warning: true };
   }
   if (state.cancel_at_period_end && state.current_period_end) {
-    return { label: `Résiliation programmée le ${formatDate(state.current_period_end)}`, variant: 'warning' };
+    return { label: `Résiliation programmée le ${formatDate(state.current_period_end)}`, warning: true };
   }
-  if (isFree) return { label: 'Gratuit', variant: 'secondary' };
-  return { label: 'Actif', variant: 'success' };
+  if (isFree) return { label: 'Gratuit', warning: false };
+  return { label: 'Actif', warning: false };
 };
 
 export const BillingSettings = () => {
@@ -151,7 +156,7 @@ export const BillingSettings = () => {
     );
   }
 
-  const badge = state ? statusBadge(state, isFree) : { label: 'Gratuit', variant: 'secondary' as const };
+  const status = state ? statusLabel(state, isFree) : { label: 'Gratuit', warning: false };
   const seatsOverLimit = !!state && state.has_stripe_subscription && state.seat_count > state.seats;
 
   const limitRows = state
@@ -209,7 +214,9 @@ export const BillingSettings = () => {
                 <p className="text-base font-semibold text-foreground">
                   {state?.plan_name || 'Gratuit'}
                 </p>
-                <Badge variant={badge.variant}>{badge.label}</Badge>
+                <span className={cn('text-sm', status.warning ? 'font-medium text-warning' : 'text-muted-foreground')}>
+                  {status.label}
+                </span>
               </div>
               <p className="text-sm text-muted-foreground mt-1">
                 {isTrialPaid
@@ -312,9 +319,10 @@ export const BillingSettings = () => {
           </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Design simplifié (règle 3) : les limites en texte, sans tuiles. */}
             <dl className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]">
               {limitRows.map((item) => (
-                <div key={item.label} className="rounded-lg bg-muted/50 p-3">
+                <div key={item.label}>
                   <dt className="text-xs text-muted-foreground">{item.label}</dt>
                   <dd className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">{item.value}</dd>
                 </div>

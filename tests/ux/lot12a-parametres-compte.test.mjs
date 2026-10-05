@@ -244,7 +244,7 @@ test('F-17 — ton : le libellé seul dans le champ, l’aide sous le champ', ()
   const tone = between(src.aiContext, '<Label htmlFor={ids.tone}', '<Label htmlFor={ids.specialty}');
   assert.match(tone, /<SelectItem key=\{opt\.value\} value=\{opt\.value\}>\{opt\.label\}<\/SelectItem>/);
   assert.doesNotMatch(tone, /<SelectItem[^>]*>\s*<div/, 'bloc de deux lignes dans une option');
-  assert.match(src.aiContext, /<SelectTrigger id=\{ids\.tone\} aria-describedby=\{ids\.toneHint\}>/);
+  assert.match(src.aiContext, /<SelectTrigger id=\{ids\.tone\} aria-describedby=\{ids\.toneHint\} className="max-md:h-11">/);
   assert.match(tone, /<p id=\{ids\.toneHint\}[^>]*>\{tone\.hint\}<\/p>/);
 });
 
@@ -253,7 +253,9 @@ test('F-18 — sous-surfaces arrondies dans les cartes, avatar rond', () => {
   for (const key of ['signatures', 'extension', 'linkedin']) {
     assert.doesNotMatch(src[key], /border-2|rounded-none/, `${FILES[key]} : surface carrée`);
   }
-  assert.match(src.signatures, /<li key=\{sig\.id\} className="[^"]*rounded-lg border border-border p-3"/);
+  // Design simplifié (règle 3) : les signatures en liste à plat, séparées par des filets fins.
+  assert.match(src.signatures, /<ul className="divide-y divide-border">\s*\{signatures\.map/);
+  assert.match(src.signatures, /<li key=\{sig\.id\} className="flex items-start justify-between gap-2 py-3">/);
   assert.match(src.extension, /<li key=\{token\.id\} className="[^"]*rounded-lg border border-border/);
   assert.match(between(src.linkedin, 'function AccountAvatar', 'type StateTone'), /rounded-full/);
 });

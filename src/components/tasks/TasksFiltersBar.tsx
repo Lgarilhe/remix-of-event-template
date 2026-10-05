@@ -1,16 +1,15 @@
 /**
  * TasksFiltersBar — barre de filtres de la page /tasks.
  *
- * - Périmètre (Mes tâches / Équipe) et affichage (Actives / Toutes) : pilotés
+ * - Périmètre (Mes tâches / Équipe) et affichage (En cours / Toutes) : pilotés
  *   par la page, hors TasksFilters, pour que « Effacer les filtres » ne les
  *   réinitialise pas.
- * - Catégorie, mission, origine (automatique ou manuelle) : FilterPill.
- *
- * Mêmes contrôles que la barre de l'agenda (SegmentedControl, FilterPill).
+ * - Catégorie, mission, origine (automatique ou manuelle) : un seul menu
+ *   « Filtres », comme la messagerie (design simplifié, lot T).
  */
 
 import React, { useMemo } from 'react';
-import { Briefcase, Filter, X, Zap } from 'lucide-react';
+import { ListFilter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FilterOption, FilterPill } from '@/components/ui/filter-pill';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -40,11 +39,9 @@ interface TasksFiltersBarProps {
   /** Périmètre : tâches de l'utilisateur ou de toute l'équipe */
   scope: TaskScope;
   onScopeChange: (scope: TaskScope) => void;
-  /** Tâches actives seulement, ou toutes (terminées comprises) */
+  /** Tâches en cours seulement, ou toutes (terminées comprises) */
   view: TasksView;
   onViewChange: (view: TasksView) => void;
-  /** null tant que la liste n'est pas lue (chargement, panne) : pas de « (0) » inventé. */
-  activeCount: number | null;
   /** Tous les reminders — sert à dériver les options uniques (missions) */
   allReminders: Reminder[];
 }
@@ -59,7 +56,6 @@ export const TasksFiltersBar: React.FC<TasksFiltersBarProps> = ({
   onScopeChange,
   view,
   onViewChange,
-  activeCount,
   allReminders,
 }) => {
   // Missions citées par les tâches
@@ -92,60 +88,73 @@ export const TasksFiltersBar: React.FC<TasksFiltersBarProps> = ({
         value={view}
         onValueChange={onViewChange}
         options={[
-          { value: 'active', label: activeCount === null ? 'Actives' : `Actives (${activeCount})` },
+          { value: 'active', label: 'En cours' },
           { value: 'all', label: 'Toutes' },
         ]}
       />
 
-      <FilterPill label="Catégorie" icon={Filter} count={filters.categories.length}>
-        {TASK_CATEGORIES.map((c) => (
-          <FilterOption
-            key={c.value}
-            checked={filters.categories.includes(c.value)}
-            onCheckedChange={(on) => onFiltersChange({ ...filters, categories: toggle(filters.categories, c.value, on) })}
-          >
-            {c.label}
-          </FilterOption>
-        ))}
-      </FilterPill>
-
-      {jobs.length > 0 && (
-        <FilterPill label="Mission" icon={Briefcase} count={filters.jobTitles.length} contentClassName="max-h-72 overflow-y-auto">
-          {jobs.map((job) => (
+      <FilterPill label="Filtres" icon={ListFilter} count={filterCount} contentClassName="w-64 max-h-[70vh] overflow-y-auto">
+        <div role="group" aria-labelledby="tasks-filter-category">
+          <p id="tasks-filter-category" className="eyebrow px-2 pb-1 pt-1.5">Catégorie</p>
+          {TASK_CATEGORIES.map((c) => (
             <FilterOption
-              key={job}
-              checked={filters.jobTitles.includes(job)}
-              onCheckedChange={(on) => onFiltersChange({ ...filters, jobTitles: toggle(filters.jobTitles, job, on) })}
+              key={c.value}
+              checked={filters.categories.includes(c.value)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, categories: toggle(filters.categories, c.value, on) })}
             >
-              {job}
+              {c.label}
             </FilterOption>
           ))}
-        </FilterPill>
-      )}
+        </div>
 
-      <FilterPill label="Origine" icon={Zap} count={filters.autoOnly !== null ? 1 : 0}>
-        <FilterOption
-          checked={filters.autoOnly === true}
-          onCheckedChange={(on) => onFiltersChange({ ...filters, autoOnly: on ? true : null })}
-          description="Créées depuis une suggestion"
-        >
-          Automatiques
-        </FilterOption>
-        <FilterOption
-          checked={filters.autoOnly === false}
-          onCheckedChange={(on) => onFiltersChange({ ...filters, autoOnly: on ? false : null })}
-          description="Créées à la main"
-        >
-          Manuelles
-        </FilterOption>
+        {jobs.length > 0 && (
+          <div role="group" aria-labelledby="tasks-filter-mission" className="mt-1 border-t border-border pt-1">
+            <p id="tasks-filter-mission" className="eyebrow px-2 pb-1 pt-1.5">Mission</p>
+            {jobs.map((job) => (
+              <FilterOption
+                key={job}
+                checked={filters.jobTitles.includes(job)}
+                onCheckedChange={(on) => onFiltersChange({ ...filters, jobTitles: toggle(filters.jobTitles, job, on) })}
+              >
+                {job}
+              </FilterOption>
+            ))}
+          </div>
+        )}
+
+        <div role="group" aria-labelledby="tasks-filter-origin" className="mt-1 border-t border-border pt-1">
+          <p id="tasks-filter-origin" className="eyebrow px-2 pb-1 pt-1.5">Origine</p>
+          <FilterOption
+            checked={filters.autoOnly === true}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, autoOnly: on ? true : null })}
+            description="Créées depuis une suggestion"
+          >
+            Automatiques
+          </FilterOption>
+          <FilterOption
+            checked={filters.autoOnly === false}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, autoOnly: on ? false : null })}
+            description="Créées à la main"
+          >
+            Manuelles
+          </FilterOption>
+        </div>
+
+        {filterCount > 0 && (
+          <div className="mt-1 border-t border-border pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start max-md:min-h-11"
+              onClick={() => onFiltersChange(DEFAULT_TASKS_FILTERS)}
+            >
+              <X aria-hidden="true" />
+              Effacer les filtres
+            </Button>
+          </div>
+        )}
       </FilterPill>
-
-      {filterCount > 0 && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => onFiltersChange(DEFAULT_TASKS_FILTERS)}>
-          <X aria-hidden="true" />
-          Effacer les filtres
-        </Button>
-      )}
     </div>
   );
 };

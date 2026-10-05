@@ -81,6 +81,7 @@ export function EnrollmentStatusBadge({
   pauseReason,
   manualStop: manualStopInfo,
   stoppedByName,
+  plain = false,
   className,
 }: {
   status: string | null | undefined;
@@ -89,13 +90,17 @@ export function EnrollmentStatusBadge({
   manualStop?: ManualStopInfo | null;
   /** Nom de l'auteur de l'arrêt manuel, s'il est connu. */
   stoppedByName?: string | null;
+  /** En texte, sans pastille ni couleur (design simplifié) ; même libellé. */
+  plain?: boolean;
   className?: string;
 }) {
   const meta = enrollmentStatusMeta(status);
   const manualStop = status === 'completed' ? manualStopInfo ?? null : null;
+  const label = manualStop ? manualStopLabel(manualStop, stoppedByName) : status === 'paused' ? pausedLabel(pauseReason) : meta.label;
+  if (plain) return <span className={className}>{label}</span>;
   return (
     <Badge variant={meta.tone} className={className}>
-      {manualStop ? manualStopLabel(manualStop, stoppedByName) : status === 'paused' ? pausedLabel(pauseReason) : meta.label}
+      {label}
     </Badge>
   );
 }

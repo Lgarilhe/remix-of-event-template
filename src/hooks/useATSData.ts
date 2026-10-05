@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +20,7 @@ import {
 import { atsColumnOf, atsColumnTitle, invalidateStageReaders } from '@/lib/stageDisplay';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { readManualStop, type ManualStopInfo } from '@/lib/sequenceLabels';
+import { useMemberName } from '@/hooks/useTeamMembers';
 
 // Types
 export interface ATSCandidate {
@@ -42,6 +43,8 @@ export interface ATSCandidate {
   sequenceStatus?: string;
   /** Arrêt manuel de l'inscription (lot 5b) : « Arrêtée par … le … ». */
   sequenceManualStop?: ManualStopInfo | null;
+  /** Nom de l'auteur de l'arrêt manuel, résolu ici pour que la carte et le tableau restent sans requête. */
+  sequenceStoppedByName?: string | null;
   connectionStatus?: string;
   lastActivity: string | null;
   createdAt: string;
@@ -864,8 +867,18 @@ export function useATSData() {
 
   const isFromCache = !loading && !isFetching && candidates.length > 0;
 
+  // « Arrêtée par Guillaume Martin le 29/09 » (lot 5b) : nom de l'auteur lu
+  // dans l'équipe, une fois pour toute la liste.
+  const memberName = useMemberName();
+  const namedCandidates = useMemo(
+    () => candidates.map((c) => (c.sequenceManualStop
+      ? { ...c, sequenceStoppedByName: memberName(c.sequenceManualStop.by) }
+      : c)),
+    [candidates, memberName],
+  );
+
   return {
-    candidates,
+    candidates: namedCandidates,
     loading,
     isFetching,
     isFromCache,
