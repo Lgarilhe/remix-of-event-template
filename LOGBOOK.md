@@ -153,22 +153,22 @@ Sur téléphone (390 px), la page passe de 2 013 à 1 614 px en colonnes, de 2 3
 **Raison** : la copie côté serveur du lot P dépend de cette réponse ; sans elle, le plan B (image du prestataire de messagerie) s'imposait.
 **Impact** : `docs/design/07-photos-lot-p.md` (S1, risques, porte d'activation de P-4). Aucun code, aucune fonction déployée, aucune donnée conservée.
 **Reste à faire** :
-- [ ] Confirmer depuis une fonction au premier lot de P-4 (la sortie réseau de la base n'est pas celle des fonctions).
+- [x] Confirmé depuis une fonction le soir même : `capture-candidate-photos` a copié 459 photos (13 h 46 à 22 h 08 UTC) ; 1 176 liens refusés en 403, ce sont les adresses périmées.
 - [ ] Les côtés réels en pixels ne sont pas mesurés : la garde lira les octets de tête.
 **Refs** : docs/design/07-photos-lot-p.md (P-0, S1).
 
 ---
 
-## 2026-10-05 — SHIP — P-0b, garder les adresses de photo fraîches (sur la branche, pas encore sur main)
+## 2026-10-05 — SHIP — P-0b, garder les adresses de photo fraîches
 
-**Contexte** : première étape du lot P, demandée par le propriétaire (« Oui lance »). Les adresses de photo LinkedIn expirent après quelques semaines et une recherche qui retrouvait une personne connue n'écrivait pas son adresse fraîche.
-**Décision / Fait** : migration `20261005102025_photos_lot_p0b_rafraichir_adresses.sql` (`refresh_candidate_pictures`, `candidate_picture_expiry`, `candidate_picture_is_stale`, `candidate_picture_should_replace`) ; `batchDiscover` rafraîchit les adresses des profils de la page ; la découverte garde la grande photo ; la fiche garde la photo en enregistrant le profil visité ; « Retenir » et l'inscription en séquence créent leur ligne avec le profil entier. Fusion jsonb côté base, lignes de l'appelant, profil existant seulement, aucune écriture si l'adresse enregistrée est bonne.
-**Raison** : 82 % des adresses stockées sont expirées ; sans cette étape, le visage du Pipeline revient aux initiales. Un profil réduit à une photo aurait rendu la ligne éligible à la notation de fond, d'où le profil entier.
-**Impact** : `supabase/migrations`, `src/lib/pictureUrl.ts`, `src/hooks/useJobCandidateStatus.ts`, `useLinkedInSearchActions.ts`, `useLinkedInScoring.ts` (export), `ProfileDetailSheet.tsx`, `EnrollmentPreviewModal.tsx`, `AddToProjectButton.tsx`, `CardActions.tsx`, `types.ts`, audit SQL et `e2e.yml`, tests, `CLAUDE.md`, plan du lot P. Coût mesuré en local : 200 lignes en 224 ms, 200 appels d'ingestion en file, aucun recalcul d'embedding. Dates : les entrées et documents du lot P portaient à tort le 6 octobre, corrigés au 5.
+**Contexte** : première étape du lot P, demandée par le propriétaire (« Oui lance »), livrée après la copie privée des photos d'une autre session (PR #271) qu'elle alimente. Les adresses de photo LinkedIn expirent après quelques semaines et une recherche qui retrouvait une personne connue n'écrivait pas son adresse fraîche.
+**Décision / Fait** : migration `20261005102025_photos_lot_p0b_rafraichir_adresses.sql` (`refresh_candidate_pictures`, `candidate_picture_expiry`, `candidate_picture_is_stale`, `candidate_picture_should_replace`) ; `batchDiscover` rafraîchit les adresses des profils de la page ; la découverte garde la grande photo ; la fiche garde la photo en enregistrant le profil visité ; « Retenir » et l'inscription en séquence créent leur ligne avec le profil entier (`src/lib/serializeProfile.ts`). Fusion jsonb côté base, lignes de l'appelant, profil existant seulement, aucune écriture si l'adresse enregistrée est bonne. Une ligne remplacée avance `updated_at`, exprès : `claim_candidate_photos` s'en sert pour relancer une copie expirée.
+**Raison** : 82 % des adresses stockées sont expirées ; la production le confirme (1 176 copies refusées en 403 le premier jour de la capture). Un profil réduit à une photo aurait rendu la ligne éligible à la notation de fond, d'où le profil entier.
+**Impact** : migration, `src/lib/pictureUrl.ts`, `src/lib/serializeProfile.ts`, `useJobCandidateStatus.ts`, `useLinkedInSearchActions.ts`, `useLinkedInScoring.ts`, `ProfileDetailSheet.tsx`, `EnrollmentPreviewModal.tsx`, `AddToProjectButton.tsx`, `CardActions.tsx`, `types.ts`, audit SQL et `e2e.yml`, `ci.yml`, tests, `CLAUDE.md`, plan du lot P. Coût mesuré en local : 200 lignes en 224 ms, 200 appels d'ingestion en file, aucun recalcul d'embedding.
+**QA** : relecture adverse en cinq angles (27 agents) : quatre constats retenus. Corrigés : poids des chunks de la messagerie et du Pipeline (sérialiseur sorti du hook de notation, +17 Ko gzip évités), test avec `esbuild` dans un job sans dépendances (fichier séparé, étape dans le job build), balise `@critical` absente de la spec API. Gardé tel quel et documenté : l'avance de `updated_at` (coût : « Dernière action », portail client, horloge de purge RGPD). Répétition de la migration et de l'audit en transaction sur le schéma de production, annulée proprement.
 **Reste à faire** :
-- [ ] Accord du propriétaire pour pousser sur main (migration appliquée par le workflow, puis relever la part des lignes du Pipeline à adresse valide, 3 % avant).
-- [ ] Spike S1 (télécharger une vingtaine de vraies photos) : demande l'accord du propriétaire, à lancer avant le 22/10/2026.
-- [ ] Deux tests déjà en échec sur main (`0c-1 : recherches, résumé du matin et tableau de bord disent « au total »`, `S-7 : seule la nouvelle page passe la disposition « mission-v3 »`), venus du commit 2148cfa.
+- [ ] Relever la part des lignes du Pipeline à adresse valide après quelques jours (3 % avant) et le nombre de copies « expirées » relancées.
+- [ ] Décider si le coût sur `updated_at` justifie une colonne dédiée lue par `claim_candidate_photos` (modifie la copie privée).
 **Refs** : docs/design/07-photos-lot-p.md (P-0b).
 
 ---

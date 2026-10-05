@@ -269,6 +269,21 @@ BEGIN
     failures := failures || format('[B10. journal des écritures directes : %s puis %s] ', log_before, log_after);
   END IF;
 
+  -- B13. Contrat avec la copie privée : une ligne dont l'adresse est remplacée voit updated_at
+  --      avancer (claim_candidate_photos relit les lignes changées depuis son dernier contrôle) ;
+  --      une ligne dont l'adresse est restée bonne (pic-3) n'a pas bougé (B4).
+  SELECT count(*) INTO n FROM public.job_candidate_status
+   WHERE candidate_id IN ('pic-1', 'pic-2', 'pic-6') AND created_by = u_a AND updated_at > old_ts;
+  IF n <> 3 THEN
+    failures := failures || format('[B13. %s ligne(s) remplacée(s) sur 3 ont avancé updated_at] ', n);
+  END IF;
+  SELECT count(*) INTO n FROM public.job_candidate_status
+   WHERE candidate_id IN ('pic-1', 'pic-2', 'pic-6') AND created_by = u_a AND updated_at > old_ts
+     AND public.candidate_picture_is_stale(linkedin_profile_data->>'profile_picture_url');
+  IF n <> 0 THEN
+    failures := failures || '[B13. une ligne avec updated_at avancé garde pourtant une adresse à remplacer] ';
+  END IF;
+
   -- B11. Rejouer le même lot ne change plus rien (idempotent, aucune écriture).
   PERFORM set_config('request.jwt.claims', claims_a, true);
   PERFORM set_config('request.jwt.claim.sub', u_a::text, true);

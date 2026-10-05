@@ -21,6 +21,16 @@
 -- touchée : pas de mise à jour inutile (elle passerait par updated_at et par
 -- l'ingestion pg_net).
 --
+-- Une ligne remplacée voit updated_at avancer (déclencheur
+-- update_job_candidate_status_updated_at, inchangé) : c'est voulu.
+-- claim_candidate_photos (20261005121536, copie privée des photos) relance une
+-- copie « expirée », « en échec » ou « ignorée » quand updated_at de la ligne
+-- dépasse son dernier contrôle, puis compare l'empreinte de l'adresse ; sans
+-- cette avance, une adresse rafraîchie ne serait jamais recopiée. Coût connu :
+-- « Dernière action » du /pipeline, « Mis à jour » du portail client et l'horloge
+-- d'inactivité de rgpd_purge_candidate_rows avancent pour une ligne dont seule la
+-- photo a changé. Le contrat est verrouillé par l'audit (contrôle B13).
+--
 -- Une ligne sans profil enregistré (linkedin_profile_data nul ou non objet)
 -- n'est jamais touchée : un profil réduit à une photo la rendrait éligible à
 -- la notation de fond (process-agent-tasks exige ce champ non nul) pour un

@@ -66,7 +66,8 @@ jobs:
       # de l'écran de la carte « Maintenant ».
       - name: Lot 3 regression tests (carte Maintenant)
         run: node --test tests/c1/lot3-*.test.mjs
-      # Photos des candidats : la notation garde la photo LinkedIn enregistrée.
+      # Photos des candidats : la notation garde la photo LinkedIn enregistrée,
+      # le rafraîchissement des adresses est branché (tests sans dépendance).
       - name: Photos des candidats (notation)
         run: node --test tests/ux/photos-candidats.test.mjs
 
@@ -130,6 +131,11 @@ jobs:
       # réserve d'écran, gardes sur la migration, la tâche et les écrans branchés).
       - name: Copie privée des photos (design simplifié)
         run: node --test tests/c1/photos-copie-privee.test.mjs
+      # Lot P, P-0b : règles pures des adresses de photo (échéance e=, adresses
+      # utilisables). Compilées par esbuild : ce fichier demande npm ci, d'où sa
+      # place ici et non dans agent-safety.
+      - name: Adresses de photo fraîches (P-0b)
+        run: node --test tests/ux/photos-adresses-fraiches.test.mjs
       - name: Vite production build
         run: npx vite build
 

@@ -43,86 +43,88 @@ async function memberClient(org: TestOrg) {
   });
 }
 
-test('une adresse échue est remplacée et le Pipeline rend la nouvelle photo', async () => {
-  const org = await createOrg('agency');
-  orgs.push(org);
-  const expired = at(Date.now() - 5 * DAY, 'old');
-  const fresh = at(Date.now() + 30 * DAY, 'new');
-  const { id, missionId } = await seedCandidateRow({
-    orgId: org.orgId,
-    createdBy: org.owner.userId,
-    candidateId: 'pic-api-1',
-    extra: { linkedin_profile_data: { name: 'Camille Martin', headline: 'Staff Engineer', profile_picture_url: expired } },
-  });
-  const jobId = `project:${missionId}`;
-  const client = await memberClient(org);
+test.describe('@critical Photos des candidats : rafraîchissement des adresses', () => {
+  test('une adresse échue est remplacée et le Pipeline rend la nouvelle photo', async () => {
+    const org = await createOrg('agency');
+    orgs.push(org);
+    const expired = at(Date.now() - 5 * DAY, 'old');
+    const fresh = at(Date.now() + 30 * DAY, 'new');
+    const { id, missionId } = await seedCandidateRow({
+      orgId: org.orgId,
+      createdBy: org.owner.userId,
+      candidateId: 'pic-api-1',
+      extra: { linkedin_profile_data: { name: 'Camille Martin', headline: 'Staff Engineer', profile_picture_url: expired } },
+    });
+    const jobId = `project:${missionId}`;
+    const client = await memberClient(org);
 
-  const view = async () => {
-    const { data, error } = await client
-      .from('mission_candidate_rows')
-      .select('id, general_stage, picture:linkedin_profile_data->>profile_picture_url, picture_large:linkedin_profile_data->>profile_picture_url_large')
-      .eq('project_id', missionId)
-      .eq('candidate_id', 'pic-api-1');
+    const view = async () => {
+      const { data, error } = await client
+        .from('mission_candidate_rows')
+        .select('id, general_stage, picture:linkedin_profile_data->>profile_picture_url, picture_large:linkedin_profile_data->>profile_picture_url_large')
+        .eq('project_id', missionId)
+        .eq('candidate_id', 'pic-api-1');
+      expect(error).toBeNull();
+      return data as unknown as Array<{ id: string; general_stage: string; picture: string | null; picture_large: string | null }>;
+    };
+
+    const before = await view();
+    expect(before).toHaveLength(1);
+    expect(before[0].picture).toBe(expired);
+
+    // A. remplacement
+    const first = await client.rpc('refresh_candidate_pictures', {
+      p_job_ids: [jobId, missionId],
+      p_items: [{ candidate_id: 'pic-api-1', picture: fresh, picture_large: fresh }],
+    });
+    expect(first.error).toBeNull();
+    expect(first.data).toBe(1);
+
+    const after = await view();
+    expect(after).toHaveLength(1);
+    expect(after[0].picture).toBe(fresh);
+    expect(after[0].picture_large).toBe(fresh);
+    expect(after[0].general_stage).toBe(before[0].general_stage);
+
+    // Le reste du profil est intact.
+    const { data: row } = await admin().from('job_candidate_status').select('linkedin_profile_data').eq('id', id).single();
+    expect((row?.linkedin_profile_data as Record<string, unknown>).name).toBe('Camille Martin');
+    expect((row?.linkedin_profile_data as Record<string, unknown>).headline).toBe('Staff Engineer');
+
+    // B. second passage : plus rien à écrire.
+    const second = await client.rpc('refresh_candidate_pictures', {
+      p_job_ids: [jobId, missionId],
+      p_items: [{ candidate_id: 'pic-api-1', picture: fresh, picture_large: fresh }],
+    });
+    expect(second.error).toBeNull();
+    expect(second.data).toBe(0);
+  });
+
+  test('un membre d\'une autre organisation ne touche pas la ligne', async () => {
+    const org = await createOrg('agency');
+    const other = await createOrg('agency');
+    orgs.push(org, other);
+    const expired = at(Date.now() - 5 * DAY, 'old');
+    const { missionId } = await seedCandidateRow({
+      orgId: org.orgId,
+      createdBy: org.owner.userId,
+      candidateId: 'pic-api-2',
+      extra: { linkedin_profile_data: { name: 'Camille Martin', profile_picture_url: expired } },
+    });
+    const intruder = await memberClient(other);
+    const { data, error } = await intruder.rpc('refresh_candidate_pictures', {
+      p_job_ids: [`project:${missionId}`, missionId],
+      p_items: [{ candidate_id: 'pic-api-2', picture: at(Date.now() + 30 * DAY, 'new'), picture_large: null }],
+    });
     expect(error).toBeNull();
-    return data as unknown as Array<{ id: string; general_stage: string; picture: string | null; picture_large: string | null }>;
-  };
-
-  const before = await view();
-  expect(before).toHaveLength(1);
-  expect(before[0].picture).toBe(expired);
-
-  // A. remplacement
-  const first = await client.rpc('refresh_candidate_pictures', {
-    p_job_ids: [jobId, missionId],
-    p_items: [{ candidate_id: 'pic-api-1', picture: fresh, picture_large: fresh }],
+    expect(data).toBe(0);
+    const { data: row } = await admin().from('job_candidate_status').select('linkedin_profile_data').eq('candidate_id', 'pic-api-2').single();
+    expect((row?.linkedin_profile_data as Record<string, unknown>).profile_picture_url).toBe(expired);
   });
-  expect(first.error).toBeNull();
-  expect(first.data).toBe(1);
 
-  const after = await view();
-  expect(after).toHaveLength(1);
-  expect(after[0].picture).toBe(fresh);
-  expect(after[0].picture_large).toBe(fresh);
-  expect(after[0].general_stage).toBe(before[0].general_stage);
-
-  // Le reste du profil est intact.
-  const { data: row } = await admin().from('job_candidate_status').select('linkedin_profile_data').eq('id', id).single();
-  expect((row?.linkedin_profile_data as Record<string, unknown>).name).toBe('Camille Martin');
-  expect((row?.linkedin_profile_data as Record<string, unknown>).headline).toBe('Staff Engineer');
-
-  // B. second passage : plus rien à écrire.
-  const second = await client.rpc('refresh_candidate_pictures', {
-    p_job_ids: [jobId, missionId],
-    p_items: [{ candidate_id: 'pic-api-1', picture: fresh, picture_large: fresh }],
+  test('l\'appel sans session est refusé', async () => {
+    const anon = createClient(E2E.supabaseUrl, E2E.anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { error } = await anon.rpc('refresh_candidate_pictures', { p_job_ids: ['x'], p_items: [] });
+    expect(error?.code).toBe('42501');
   });
-  expect(second.error).toBeNull();
-  expect(second.data).toBe(0);
-});
-
-test('un membre d\'une autre organisation ne touche pas la ligne', async () => {
-  const org = await createOrg('agency');
-  const other = await createOrg('agency');
-  orgs.push(org, other);
-  const expired = at(Date.now() - 5 * DAY, 'old');
-  const { missionId } = await seedCandidateRow({
-    orgId: org.orgId,
-    createdBy: org.owner.userId,
-    candidateId: 'pic-api-2',
-    extra: { linkedin_profile_data: { name: 'Camille Martin', profile_picture_url: expired } },
-  });
-  const intruder = await memberClient(other);
-  const { data, error } = await intruder.rpc('refresh_candidate_pictures', {
-    p_job_ids: [`project:${missionId}`, missionId],
-    p_items: [{ candidate_id: 'pic-api-2', picture: at(Date.now() + 30 * DAY, 'new'), picture_large: null }],
-  });
-  expect(error).toBeNull();
-  expect(data).toBe(0);
-  const { data: row } = await admin().from('job_candidate_status').select('linkedin_profile_data').eq('candidate_id', 'pic-api-2').single();
-  expect((row?.linkedin_profile_data as Record<string, unknown>).profile_picture_url).toBe(expired);
-});
-
-test('l\'appel sans session est refusé', async () => {
-  const anon = createClient(E2E.supabaseUrl, E2E.anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { error } = await anon.rpc('refresh_candidate_pictures', { p_job_ids: ['x'], p_items: [] });
-  expect(error?.code).toBe('42501');
 });

@@ -75,7 +75,7 @@ import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErr
 import { plural } from '@/lib/plural';
 import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
-import { serializeProfileForStorage } from '@/hooks/useLinkedInScoring';
+import { serializeProfileForStorage } from '@/lib/serializeProfile';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];

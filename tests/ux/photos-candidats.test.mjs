@@ -42,7 +42,7 @@ function callbackBody(src, name) {
 }
 
 test('la notation enregistre la photo du candidat', () => {
-  const body = fnBody(read('src/hooks/useLinkedInScoring.ts'), 'function serializeProfileForStorage(');
+  const body = fnBody(read('src/lib/serializeProfile.ts'), 'function serializeProfileForStorage(');
   assert.match(body, /profile_picture_url: profile\.profile_picture_url,/);
   assert.match(body, /profile_picture_url_large: profile\.profile_picture_url_large,/);
 });
@@ -73,79 +73,9 @@ test('une note sans photo garde celle déjà enregistrée', () => {
 });
 
 // ─── Lot P, P-0b : garder les adresses de photo fraîches ──────────────────
-
-import { build } from 'esbuild';
-
-async function loadTs(rel) {
-  const { outputFiles } = await build({
-    entryPoints: [join(ROOT, rel)],
-    bundle: true,
-    write: false,
-    format: 'esm',
-    platform: 'node',
-    logLevel: 'silent',
-    tsconfig: join(ROOT, 'tsconfig.app.json'),
-  });
-  return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
-}
-
-const NOW = Date.parse('2026-10-05T10:00:00Z');
-const at = (ms) => `https://media.licdn.com/dms/image/v2/D4E03AQ/profile-displayphoto-shrink_100_100/0/1?e=${Math.floor(ms / 1000)}&v=beta&t=sig`;
-const DAY = 24 * 60 * 60 * 1000;
-
-test('pictureExpiryMs lit e=, rien sans e= valide', async () => {
-  const P = await loadTs('src/lib/pictureUrl.ts');
-  assert.equal(P.pictureExpiryMs('https://media.licdn.com/x?e=1999999999&v=beta'), 1999999999000);
-  assert.equal(P.pictureExpiryMs('https://media.licdn.com/x?v=beta&e=1999999999'), 1999999999000);
-  assert.equal(P.pictureExpiryMs('https://media.licdn.com/x?v=beta'), null);
-  assert.equal(P.pictureExpiryMs('https://media.licdn.com/x?te=1999999999'), null);
-  assert.equal(P.pictureExpiryMs('https://media.licdn.com/x?e=abc'), null);
-  assert.equal(P.pictureExpiryMs(null), null);
-  assert.equal(P.pictureExpiryMs(undefined), null);
-});
-
-test('isUsablePictureUrl : mêmes règles que candidate_picture_should_replace pour la nouvelle adresse', async () => {
-  const P = await loadTs('src/lib/pictureUrl.ts');
-  assert.equal(P.isUsablePictureUrl(at(NOW + 30 * DAY), NOW), true);
-  assert.equal(P.isUsablePictureUrl('https://media.licdn.com/x?v=beta', NOW), true, 'sans échéance : acceptée');
-  assert.equal(P.isUsablePictureUrl(at(NOW + 12 * 60 * 60 * 1000), NOW), false, 'échoit dans moins d\'un jour');
-  assert.equal(P.isUsablePictureUrl(at(NOW - 5 * DAY), NOW), false, 'échue');
-  for (const bad of [
-    'http://media.licdn.com/x?e=1999999999',
-    'https://evil.example/x?e=1999999999',
-    'https://licdn.com.evil.example/x',
-    'https://evil.example/licdn.com/x',
-    'https://media.licdn.com@evil.example/x',
-    'https://media.licdn.com:8443/x',
-    'https://media.licdn.com/x y',
-    `https://media.licdn.com/${'a'.repeat(2100)}`,
-    '', null, undefined, 42, {},
-  ]) {
-    assert.equal(P.isUsablePictureUrl(bad, NOW), false, `refusée : ${String(bad).slice(0, 40)}`);
-  }
-});
-
-test('pictureRefreshItems : adresses utilisables seulement, un candidat une fois', async () => {
-  const P = await loadTs('src/lib/pictureUrl.ts');
-  const fresh = at(NOW + 30 * DAY);
-  const expired = at(NOW - 5 * DAY);
-  const items = P.pictureRefreshItems([
-    { id: 'a', linkedinProfileData: { profile_picture_url: fresh, profile_picture_url_large: fresh } },
-    { id: 'a', linkedinProfileData: { profile_picture_url: 'https://media.licdn.com/autre?v=1' } },
-    { id: 'b', linkedinProfileData: { profile_picture_url: expired, profile_picture_url_large: fresh } },
-    { id: 'c', linkedinProfileData: { profile_picture_url: expired } },
-    { id: 'd', linkedinProfileData: { name: 'sans photo' } },
-    { id: 'e', linkedinProfileData: null },
-    { id: 'f' },
-    { id: '', linkedinProfileData: { profile_picture_url: fresh } },
-  ], NOW);
-  assert.deepEqual(items, [
-    { candidate_id: 'a', picture: fresh, picture_large: fresh },
-    { candidate_id: 'b', picture: null, picture_large: fresh },
-  ]);
-  assert.deepEqual(P.pictureRefreshItems([], NOW), []);
-  assert.equal(P.PICTURE_REFRESH_BATCH, 200, 'le plafond de refresh_candidate_pictures');
-});
+// Les règles pures (échéance, adresses utilisables) sont dans
+// tests/ux/photos-adresses-fraiches.test.mjs : ce fichier-ci reste sans dépendance
+// (le job agent-safety de ci.yml n'installe rien).
 
 test('batchDiscover rafraîchit les adresses des personnes déjà connues, au mieux', () => {
   const src = read('src/hooks/useJobCandidateStatus.ts');
@@ -190,18 +120,22 @@ test('la fiche ne retire pas la photo en enregistrant le profil visité', () => 
 });
 
 test('une ligne créée par « Retenir » ou l\'inscription porte le profil entier, photo comprise, jamais une photo seule', () => {
+  // Un module à part : un import depuis le hook de notation ferait passer tout son arbre de
+  // dépendances dans les chunks de la messagerie et du Pipeline (+17 Ko gzip sur /inbox).
   const scoring = read('src/hooks/useLinkedInScoring.ts');
-  assert.match(scoring, /export function serializeProfileForStorage\(/);
+  assert.match(scoring, /import \{ serializeProfileForStorage \} from '@\/lib\/serializeProfile';/);
+  assert.doesNotMatch(scoring, /function serializeProfileForStorage\(/);
+  assert.match(read('src/lib/serializeProfile.ts'), /export function serializeProfileForStorage\(/);
 
   const button = read('src/components/outreach/projects/AddToProjectButton.tsx');
-  assert.match(button, /import \{ serializeProfileForStorage \} from '@\/hooks\/useLinkedInScoring';/);
+  assert.match(button, /import \{ serializeProfileForStorage \} from '@\/lib\/serializeProfile';/);
   assert.match(button, /\/\*\* Profil de la recherche : enregistré en entier \(photo comprise\) avec la ligne créée\. \*\/\n  profile\?: LinkedInProfile;/);
   assert.match(button, /\.\.\.\(profile \? \{ linkedin_profile_data: serializeProfileForStorage\(profile\) \} : \{\}\),/);
   // Jamais de profil réduit à la photo.
   assert.doesNotMatch(button, /linkedin_profile_data:\s*\{\s*profile_picture/);
 
   const modal = read('src/components/outreach/EnrollmentPreviewModal.tsx');
-  assert.match(modal, /import \{ serializeProfileForStorage \} from '@\/hooks\/useLinkedInScoring';/);
+  assert.match(modal, /import \{ serializeProfileForStorage \} from '@\/lib\/serializeProfile';/);
   assert.match(modal, /linkedin_profile_data: serializeProfileForStorage\(profile\),/);
   assert.doesNotMatch(modal, /linkedin_profile_data:\s*\{\s*profile_picture/);
 

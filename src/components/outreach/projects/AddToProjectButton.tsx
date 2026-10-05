@@ -21,7 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LinkedInProfile } from '@/components/outreach/types';
-import { serializeProfileForStorage } from '@/hooks/useLinkedInScoring';
+import { serializeProfileForStorage } from '@/lib/serializeProfile';
 
 interface AddToProjectButtonProps {
   candidateId: string;
