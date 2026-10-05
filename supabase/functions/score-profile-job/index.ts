@@ -288,6 +288,30 @@ const DELAY_BETWEEN_BATCHES_MS = 200;
 const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 const MAX_LLM_RETRIES = 2;
 
+// Modèles génération 5 (Sonnet 5.5, Opus 5.5) : la température est refusée (400),
+// la réflexion est active par défaut et le premier bloc de la réponse est un
+// bloc "thinking", pas le texte. On règle l'effort à la place, et on lit le bloc
+// texte au lieu de content[0].
+// Effort réglable sans redéploiement : secret Supabase SCORING_EFFORT (low, medium, high).
+function scoringEffort(): string {
+  const v = Deno.env.get("SCORING_EFFORT");
+  return v && ["low", "medium", "high"].includes(v) ? v : "low";
+}
+function isGen5Model(model: string): boolean {
+  return /^claude-(sonnet|opus)-5/.test(model);
+}
+function scoringModelParams(model: string): Record<string, unknown> {
+  return isGen5Model(model) ? { output_config: { effort: scoringEffort() } } : { temperature: 0.1 };
+}
+// Les tokens de réflexion comptent dans max_tokens : sans marge, un JSON de lot peut être tronqué.
+function thinkingHeadroom(model: string): number {
+  return isGen5Model(model) ? 2000 : 0;
+}
+function responseText(data: { content?: Array<{ type?: string; text?: string }> } | null | undefined): string {
+  const block = (data?.content ?? []).find((b) => b?.type === "text");
+  return block?.text || "";
+}
+
 /**
  * SYSTEM prompt — persona, méthode d'inférence, rubric, output schema.
  *
@@ -2095,8 +2119,8 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
             { type: "text", text: profileBlock },
           ],
         }],
-        max_tokens: 800,
-        temperature: 0.1,
+        max_tokens: 800 + thinkingHeadroom(modelOverride || CLAUDE_MODEL_DEFAULT),
+        ...scoringModelParams(modelOverride || CLAUDE_MODEL_DEFAULT),
       }),
     }, 45000); // Slightly longer timeout for richer analysis
 
@@ -2107,6 +2131,8 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
 
     const status = res.status;
     console.error(`[llm] Anthropic error (attempt ${attempt}): ${status}`);
+    // Un 400 est aussi renvoyé pour un paramètre refusé : on garde la cause, sinon elle passe pour des crédits épuisés.
+    if (status === 400) console.error(`[llm] 400 body: ${(await res.text()).slice(0, 300)}`);
 
     if (status === 429 && attempt < MAX_LLM_RETRIES) {
       lastError = new Error("RATE_LIMITED");
@@ -2118,7 +2144,7 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
 
   if (!data) throw lastError || new Error("LLM call failed after retries");
 
-  const rawContent = data.content?.[0]?.text || "";
+  const rawContent = responseText(data);
   if (data.usage) {
     const u = data.usage;
     console.log(`[llm] ${profile.name} tokens: in=${u.input_tokens || 0} out=${u.output_tokens || 0} cache_read=${u.cache_read_input_tokens || 0} cache_create=${u.cache_creation_input_tokens || 0}`);
@@ -2246,8 +2272,8 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
         // 250 tokens de l'ancien budget → réponses tronquées → profils sans
         // résultat ou batch entier non parsable (BATCH_PARSE_FAILED). C'est
         // un plafond, pas une cible : pas de surcoût si le modèle est concis.
-        max_tokens: inputs.length * 600 + 400,
-        temperature: 0.1,
+        max_tokens: inputs.length * 600 + 400 + thinkingHeadroom(modelOverride || CLAUDE_MODEL_DEFAULT),
+        ...scoringModelParams(modelOverride || CLAUDE_MODEL_DEFAULT),
       }),
     }, 90000); // Longer timeout for batch
 
@@ -2258,6 +2284,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
 
     const status = res.status;
     console.error(`[llm-batch] Anthropic error (attempt ${attempt}): ${status}`);
+    if (status === 400) console.error(`[llm-batch] 400 body: ${(await res.text()).slice(0, 300)}`);
     if (status === 429 && attempt < MAX_LLM_RETRIES) {
       lastError = new Error("RATE_LIMITED");
       continue;
@@ -2268,7 +2295,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
 
   if (!data) throw lastError || new Error("LLM batch call failed after retries");
 
-  const rawContent = data.content?.[0]?.text || "";
+  const rawContent = responseText(data);
   if (data.stop_reason === "max_tokens") {
     console.warn(`[llm-batch] Response truncated at max_tokens (${inputs.length} profiles) — tail profiles will fall back to individual scoring`);
   }
