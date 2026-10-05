@@ -185,17 +185,17 @@ test('S-6b : profils des groupes, recherche en cours et décisions de la mission
 
 // ---------------------------------------------------------------- interrupteur éteint
 
-test('S-7 : seule la nouvelle page passe la disposition « mission-v3 »', () => {
+test('S-7 : la nouvelle page mission et la page d\'une recherche passent la disposition « mission-v3 »', () => {
   assert.match(code('src/components/missions/v3/shell/SourcingScreen.tsx'), /<MissionSourcing project=\{project\} layout="mission-v3" \/>/);
   assert.match(code('src/components/missions/v2/MissionWorkspaceV2.tsx'), /<MissionSourcing project=\{project\} \/>/);
+  // Depuis 2148cfab, /sourcing/:id affiche le Sourcing de la mission, plus LinkedInSearch seul.
   const standalone = code('src/pages/SourcingSearch.tsx');
-  const call = standalone.slice(standalone.indexOf('<LinkedInSearch'), standalone.indexOf('/>', standalone.indexOf('<LinkedInSearch')));
-  assert.ok(call.length > 0, 'appel de LinkedInSearch introuvable');
-  assert.doesNotMatch(call, /layout|mission-v3/);
+  assert.match(standalone, /<MissionSourcing project=\{project\} layout="mission-v3"/);
+  assert.doesNotMatch(standalone, /<LinkedInSearch\b/);
 
   // Défauts : le rendu actuel.
-  assert.match(code('src/components/missions/MissionSourcing.tsx'), /\{ project, layout = 'default' \}/);
-  assert.match(code('src/components/outreach/LinkedInSearch.tsx'), /layout = 'default',\n\}\) => \{\n  const isV3 = layout === 'mission-v3' && !!activeProject;/);
+  assert.match(code('src/components/missions/MissionSourcing.tsx'), /\{ project, layout = 'default', initialPhrase, startWithFilters \}/);
+  assert.match(code('src/components/outreach/LinkedInSearch.tsx'), /layout = 'default',\n  initialPhrase,\n  startWithFilters,\n\}\) => \{\n  const isV3 = layout === 'mission-v3' && !!activeProject;/);
   const panel = code('src/components/outreach/search/SearchResultsPanel.tsx');
   assert.match(panel, /layout = 'default',/);
   assert.match(panel, /chipsDirty = false,/);
