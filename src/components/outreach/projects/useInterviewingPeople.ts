@@ -21,6 +21,8 @@ import { missionStageCountIds } from '@/hooks/useMissionStageCounts';
 export interface InterviewingPerson {
   name: string | null;
   src: string | null;
+  /** Identifiant du candidat : sa copie privée de photo passe avant `src` (PersonAvatar). */
+  candidateId: string | null;
 }
 
 /** Visages gardés par mission : ceux que la pile montre avant « +N ». */
@@ -64,7 +66,7 @@ export function groupInterviewingPeople(rows: unknown): Record<string, Interview
     const key = `${projectId}:${text(raw.candidate_id) ?? list.length}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    list.push({ name: text(raw.candidate_name), src: text(raw.picture) ?? text(raw.picture_large) });
+    list.push({ name: text(raw.candidate_name), src: text(raw.picture) ?? text(raw.picture_large), candidateId: text(raw.candidate_id) });
   }
   return out;
 }

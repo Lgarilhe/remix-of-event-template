@@ -24,6 +24,8 @@ import { plural } from '@/lib/plural';
 export interface FocusPerson {
   name: string;
   src?: string | null;
+  /** Identifiant du candidat : sa copie privée de photo passe avant `src`. */
+  candidateId?: string | null;
 }
 
 interface DashboardFocusPanelProps {
