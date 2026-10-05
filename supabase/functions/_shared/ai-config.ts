@@ -81,6 +81,34 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     supportsThinking: true,
     description: "Le plus intelligent",
   },
+  // Génération 5 : moins chers que leurs équivalents 4.6 et plus capables.
+  // Multiplicateur proportionnel au prix d'entrée (Sonnet 4.6 à 3 $ = 1.0), avec la
+  // même marge que les lignes existantes. Température refusée (400) et réflexion
+  // active par défaut : voir scoringModelParams dans score-profile-job.
+  "claude-sonnet-5-5": {
+    id: "claude-sonnet-5-5",
+    name: "Claude Sonnet 5.5",
+    provider: "anthropic",
+    tier: "balanced",
+    inputPricePerMTok: 2.00,
+    outputPricePerMTok: 10.00,
+    multiplier: 0.7,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Équilibré, nouvelle génération",
+  },
+  "claude-opus-5-5": {
+    id: "claude-opus-5-5",
+    name: "Claude Opus 5.5",
+    provider: "anthropic",
+    tier: "premium",
+    inputPricePerMTok: 4.00,
+    outputPricePerMTok: 20.00,
+    multiplier: 1.5,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Le plus intelligent, nouvelle génération",
+  },
 };
 
 // ─── Action Cost Catalog ────────────────────────────────────────────────────
@@ -124,11 +152,12 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 4_000,
     routingTier: "default",
     category: "sourcing",
-    // Auto mode → Haiku 4.5. Scoring est une tâche bien structurée
-    // (rubric explicite, output JSON, contexte fourni) → Haiku suffit pour
-    // 80-90 % des cas. Les orgs qui ont mis Sonnet/Opus en default
-    // gardent leur choix (orgDefault override autoDefault).
-    autoDefault: "claude-haiku-4-5",
+    // Auto mode → Sonnet 5.5 (décision Laurent du 2026-10-05 : la qualité du
+    // scoring prime). Avant : Haiku 4.5 en 1re passe puis Sonnet 4.6 sur les
+    // profils limites, deux appels à la suite. Sonnet 5.5 note en une passe : plus
+    // d'escalation (TIER_ESCALATION_MAP n'a pas d'entrée pour lui). Les orgs qui ont
+    // mis un autre modèle en default gardent leur choix (orgDefault > autoDefault).
+    autoDefault: "claude-sonnet-5-5",
   },
   outreach_message: {
     action: "outreach_message",

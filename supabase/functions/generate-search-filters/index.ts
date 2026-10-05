@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -513,7 +514,8 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
             },
             body: JSON.stringify({
               model: resolvedModel,
-              max_tokens: 2048,
+              max_tokens: withThinkingHeadroom(resolvedModel, 2048),
+              ...gen5Params(resolvedModel),
               system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
               messages: [
                 { role: "user", content: jobContext },
@@ -603,8 +605,8 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     const aiResult = await response.json();
     const _tokensIn = aiResult.usage?.input_tokens || 0;
     const _tokensOut = aiResult.usage?.output_tokens || 0;
-    // Claude API returns content as array of blocks
-    const content = aiResult.content?.[0]?.text || "";
+    // Claude API returns content as array of blocks (un bloc "thinking" peut précéder le texte)
+    const content = textFromContent(aiResult.content);
 
     console.log("[generate-search-filters] AI response:", content);
 

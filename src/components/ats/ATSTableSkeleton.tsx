@@ -9,12 +9,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-/** Les huit colonnes de `ATSTable`, aux mêmes largeurs. */
-const HEADER_WIDTHS = ['w-16', 'w-10', 'w-12', 'w-10', 'w-16', 'w-24', 'w-10', 'w-0'];
+/** Les six colonnes de `ATSTable`, aux mêmes largeurs. */
+const HEADER_WIDTHS = ['w-16', 'w-10', 'w-12', 'w-24', 'w-8', 'w-0'];
 
 export const ATSTableSkeleton: React.FC = () => {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card" role="status" aria-label="Chargement du tableau">
+    <div role="status" aria-label="Chargement du tableau">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -35,11 +35,9 @@ export const ATSTableSkeleton: React.FC = () => {
                 </div>
               </TableCell>
               <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-20 rounded-sm" /></TableCell>
-              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-16 rounded-sm" /></TableCell>
               <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-32 rounded-sm" /></TableCell>
-              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-28 rounded-sm" /></TableCell>
               <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-20 rounded-sm" /></TableCell>
-              <TableCell className="px-3 py-2.5"><Skeleton className="h-5 w-8 rounded-full" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
               <TableCell className="px-3 py-2.5"><Skeleton className="h-7 w-7" /></TableCell>
             </TableRow>
           ))}

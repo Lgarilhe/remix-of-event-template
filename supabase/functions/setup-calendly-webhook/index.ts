@@ -13,6 +13,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+/** Les deux événements que calendly-webhook traite (annulation : séance 'cancelled'). */
+const WEBHOOK_EVENTS = ['invitee.created', 'invitee.canceled'];
+
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -64,6 +67,14 @@ Deno.serve(async (req) => {
     }
     const calendlyApiKey = await resolveOrgCredentials(body.organization_id);
 
+    // calendly-webhook rejette (401) toute livraison non signée avec cette clé :
+    // sans elle, l'abonnement serait inutile. Refus avant tout appel Calendly,
+    // pour ne pas supprimer un abonnement existant puis échouer à le recréer.
+    const signingKey = Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY');
+    if (!signingKey) {
+      throw new Error('CALENDLY_WEBHOOK_SIGNING_KEY absent : abonnement non créé.');
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const webhookUrl = `${supabaseUrl}/functions/v1/calendly-webhook`;
 
@@ -95,8 +106,11 @@ Deno.serve(async (req) => {
         (wh: any) => wh.callback_url === webhookUrl && wh.state === 'active'
       );
 
+      // Un abonnement sans l'un des événements voulus n'est pas « déjà configuré » :
+      // il tombe dans la boucle ci-dessous, supprimé puis recréé avec les deux.
       const orgWide = sameCallback.find(
         (wh: any) => wh.scope === 'organization' && !wh.user
+          && WEBHOOK_EVENTS.every((ev) => (wh.events ?? []).includes(ev))
       );
 
       if (orgWide) {
@@ -130,9 +144,10 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: webhookUrl,
-        events: ['invitee.created', 'invitee.canceled'],
+        events: WEBHOOK_EVENTS,
         organization: organizationUri,
         scope: 'organization',
+        signing_key: signingKey,
       }),
     });
 

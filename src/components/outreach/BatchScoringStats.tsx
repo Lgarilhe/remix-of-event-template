@@ -13,7 +13,9 @@ const MODEL_LABELS: Record<string, string> = {
   'claude-haiku-4-5': 'IA rapide',
   'claude-sonnet-4-6': 'IA équilibrée',
   'claude-sonnet-4-5': 'IA équilibrée',
+  'claude-sonnet-5-5': 'IA équilibrée',
   'claude-opus-4-6': 'IA premium',
+  'claude-opus-5-5': 'IA premium',
 };
 
 export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, durationMs }) => {

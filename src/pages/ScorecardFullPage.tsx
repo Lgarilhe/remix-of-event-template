@@ -395,7 +395,7 @@ export default function ScorecardFullPage() {
           {backButton}
 
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} size={32} />
+            <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} candidateId={candidateId} size={32} />
             <div className="min-w-0 flex-1">
               <p className="eyebrow hidden leading-none sm:block">Grille d'entretien</p>
               <h1 className="truncate text-sm font-semibold sm:text-md">
@@ -498,7 +498,7 @@ export default function ScorecardFullPage() {
           {sidebarTab === 'candidate' ? (
             <div className="min-w-0 space-y-4 p-4">
               <div className="flex items-start gap-3">
-                <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} size={48} />
+                <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} candidateId={candidateId} size={48} />
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-md font-semibold text-foreground">{candidate.name}</h2>
                   {enrichedProfile?.headline && (

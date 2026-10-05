@@ -2,6 +2,7 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
+import { gen5Params, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import {
   enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType,
   ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON,
@@ -7474,7 +7475,8 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
         const { ANTI_AI_STYLE_PROMPT } = await import('../_shared/anti-ai-style.ts');
         const result = await callWithRetry(ANTHROPIC_API_KEY!, {
           model: resolvedAnthropicModel,
-          max_tokens: 500,
+          max_tokens: withThinkingHeadroom(resolvedAnthropicModel, 500),
+          ...gen5Params(resolvedAnthropicModel),
           system: [
             { type: 'text', text: ANTI_AI_STYLE_PROMPT, cache_control: { type: 'ephemeral' } },
             ...(seqAiContext ? [{ type: 'text', text: seqAiContext, cache_control: { type: 'ephemeral' } }] : []),

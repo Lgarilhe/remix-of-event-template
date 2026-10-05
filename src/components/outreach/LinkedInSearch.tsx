@@ -36,6 +36,8 @@ import { nlFilterEdit } from './search/nlFilterEdit';
 import { FilterWizard } from './filter-wizard';
 import type { JobDetails } from '@/types/jobDetails';
 import { SKILL_SYNONYMS } from '@/hooks/linkedin/skillSynonyms';
+import { PageBackdrop } from '@/components/layout/PageBackdrop';
+import { cn } from '@/lib/utils';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -1391,8 +1393,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         </div>
   ) : null;
 
+  // Fond animé du héros et du plan (nouvelle page mission) ; les résultats, denses, restent sans fond.
+  const showBackdrop = isV3 && !!activeProject && (flowMode === 'hero' || flowMode === 'plan');
+
   return (
-    <div className="w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]">
+    <div className={cn('w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]', showBackdrop && 'relative konekt-on-backdrop')}>
+      {showBackdrop && <PageBackdrop follow contained />}
 {/* Note merge: l'ancien FilterWizard ajouté en haut par design-audit-6EE0c est ignoré
     car HEAD a déjà un FilterWizard ligne ~1024 avec une signature plus complète
     (job, accountId, onApplyFilters). On garde la version HEAD. */}

@@ -243,7 +243,7 @@ test('B-C10 — aucun tiret long dans les textes visibles', () => {
 });
 
 // ---------------------------------------------------------------- B-C11
-test('B-C11 — cloche, useNotifications, compteur de messages et bulle supprimés', () => {
+test('B-C11 — cloche, useNotifications et compteur de messages supprimés', () => {
   for (const rel of [
     'src/hooks/useNotifications.ts',
     'src/components/notifications/NotificationDropdown.tsx',
@@ -255,7 +255,6 @@ test('B-C11 — cloche, useNotifications, compteur de messages et bulle supprim�
     /NotificationDropdown/,
     /['"]@\/hooks\/useNotifications['"]/,
     /['"]@\/hooks\/useUnreadMessageNotifications['"]/,
-    /AgentFAB/,
   ];
   for (const rel of walk('src')) {
     const src = read(rel);

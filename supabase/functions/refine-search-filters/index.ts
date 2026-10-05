@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -169,7 +170,8 @@ ${JSON.stringify(currentFilters, null, 2)}`;
       },
       body: JSON.stringify({
         model: resolvedModel,
-        max_tokens: 1024,
+        max_tokens: withThinkingHeadroom(resolvedModel, 1024),
+        ...gen5Params(resolvedModel),
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
       }),
@@ -184,7 +186,7 @@ ${JSON.stringify(currentFilters, null, 2)}`;
     const aiResult = await response.json();
     const _tokensIn = aiResult.usage?.input_tokens || 0;
     const _tokensOut = aiResult.usage?.output_tokens || 0;
-    const content = aiResult.content?.[0]?.text || "";
+    const content = textFromContent(aiResult.content);
 
     let parsed;
     try {
