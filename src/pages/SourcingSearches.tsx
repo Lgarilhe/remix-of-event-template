@@ -20,6 +20,7 @@ import { plural } from '@/lib/plural';
 import { timeAgo } from '@/lib/relativeTime';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageBackdrop } from '@/components/layout';
 import { AiBurst } from '@/components/outreach/search/SourcingFlow';
 import {
   AlertDialog,
@@ -123,17 +124,13 @@ export default function SourcingSearches() {
   const shown = showAll ? sorted : sorted.slice(0, VISIBLE_SEARCHES);
 
   return (
-    <div className="relative flex w-full min-h-[calc(100vh-64px)] flex-col items-center bg-background px-4 pb-12 pt-10 sm:pt-20">
+    <div className="konekt-on-backdrop relative flex w-full min-h-[calc(100vh-64px)] flex-col items-center bg-background px-4 pb-12 pt-10 sm:pt-20">
       <SEOHead
         title="Recherche | Konekt"
         description="Sourcez des candidats librement, sans créer de mission"
       />
 
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute top-0 left-1/2 h-[300px] w-[560px] max-w-full -translate-x-1/2 opacity-50"
-        style={{ background: 'radial-gradient(ellipse at center, var(--k-accent-tint), transparent 70%)' }}
-      />
+      <PageBackdrop />
 
       <motion.div
         initial={reduceMotion ? false : { opacity: 0, y: 12 }}

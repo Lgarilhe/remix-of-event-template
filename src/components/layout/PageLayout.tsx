@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { PageBackdrop } from './PageBackdrop';
 
 export interface PageLayoutProps {
   children: React.ReactNode;
@@ -17,6 +18,8 @@ export interface PageLayoutProps {
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
   /** Conservé pour compatibilité : l'animation d'entrée est portée par AppLayout */
   noAnimation?: boolean;
+  /** Fond décoratif du haut de page (PageBackdrop) : l'accueil seulement, jamais par défaut */
+  backdrop?: boolean;
   className?: string;
 }
 
@@ -33,12 +36,14 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   children,
   maxWidth = '2xl',
   noAnimation = true,
+  backdrop = false,
   className,
 }) => {
   return (
     // flex-1 plutôt que min-h-screen : sous l'en-tête de 48 px (téléphone), min-h-screen faisait défiler toute page courte.
-    <div className="flex-1 bg-background">
-      <div className={cn('py-6 pb-8', !noAnimation && 'animate-in fade-in-0 slide-in-from-bottom-1 duration-300', className)}>
+    <div className={cn('flex-1 bg-background', backdrop && 'relative konekt-on-backdrop')}>
+      {backdrop && <PageBackdrop />}
+      <div className={cn('py-6 pb-8', backdrop && 'relative', !noAnimation && 'animate-in fade-in-0 slide-in-from-bottom-1 duration-300', className)}>
         <div className={cn(
           MAX_WIDTH_CLASSES[maxWidth],
           'mx-auto px-3 sm:px-6 lg:px-8',

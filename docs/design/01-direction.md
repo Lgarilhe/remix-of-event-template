@@ -18,8 +18,8 @@ Ce que l'on prend des tendances 2026 :
 Ce que l'on écarte :
 
 - Le « liquid glass » et les surfaces en verre dépoli : illisibles sur les listes denses, coûteux à l'affichage, et contraires au calme recherché.
-- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne.
-- Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture.
+- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne. Seule exception : le fond de l'accueil et de la recherche hors mission (§ 7).
+- Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture. Même exception pour ces deux écrans.
 - Les emoji servant d'icône, et l'étincelle ✨ pour dire « IA ».
 
 ## 2. Couleur
@@ -185,7 +185,14 @@ Visages et pastilles (design simplifié, `06-simplicite.md`) :
 
 Retour d'appui : un bouton descend d'un pixel ou passe à 98 % de sa taille pendant l'appui. Une carte cliquable s'éclaire au survol (fond et filet), sans se soulever de plus d'un pixel.
 
-Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026) et icônes qui attendent. Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026), icônes qui attendent et fond de l'accueil (§ Fond animé). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+
+Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto AI) : `PageBackdrop` (`src/components/layout/PageBackdrop.tsx`, styles `.konekt-backdrop` de `src/index.css`) pose sur l'accueil (`/dashboard`, par `PageLayout backdrop`) et sur la recherche hors mission (`/sourcing`) trois taches de dégradé bleu-vert et bleu qui dérivent en 23, 29 et 37 s, un grain SVG fixe, le tout fondu vers le fond de page sur 28 rem. Règles à tenir si on le retouche :
+
+- Transform seul, jamais de `filter: blur` ni d'animation de couleur : le fond ne doit pas coûter de repeinture.
+- Décoratif : `aria-hidden`, aucun clic. Avec le mouvement réduit, les taches restent à leur place de départ (règle globale de `src/index.css`).
+- Le texte gris garde 4,5:1 sous les taches, en sombre comme en clair, de 390 à 1440 px de large et à toute phase de l'animation. Pour y arriver, la page qui porte le fond règle `--muted-foreground` un cran plus lisible (classe `.konekt-on-backdrop`, plus clair en sombre, plus foncé en clair). Les jetons globaux ne changent pas. Mesure faite le 05/10/2026 : 4,5 à 5,0 sur l'accueil, 5,6 et plus sur la recherche. Si on pousse les couleurs ou les opacités, refaire cette mesure avant de livrer.
+- Pas d'autre écran sans décision du propriétaire.
 
 Icônes qui attendent (design simplifié, demande du propriétaire du 04/10/2026) : `src/components/ui/animated-icons.tsx`. Une icône ne bouge que si quelque chose attend l'utilisateur, et chaque boucle finit sur la pose fixe de l'icône, celle qui reste quand le mouvement est réduit.
 
