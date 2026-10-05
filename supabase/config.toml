@@ -55,6 +55,11 @@ verify_jwt = false
 [functions.calendly-webhook]
 verify_jwt = false
 
+# Copie privée des photos des candidats (lot P) : appelée par pg_cron avec le
+# secret partagé, comparé dans la fonction.
+[functions.capture-candidate-photos]
+verify_jwt = false
+
 [functions.client-portal-data]
 verify_jwt = false
 
@@ -158,6 +163,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.nl-filter-edit]
+verify_jwt = false
+
+[functions.resolve-client-logo]
 verify_jwt = false
 
 [functions.resolve-pedigree-directory]

@@ -144,7 +144,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               >
                 <TableCell className="px-3 py-2.5">
                   <div className="flex min-w-0 items-center gap-3">
-                    <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={32} />
+                    <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={32} />
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <Button

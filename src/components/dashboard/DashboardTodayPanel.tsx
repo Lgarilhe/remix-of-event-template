@@ -190,7 +190,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
 
   const taskVisual = (r: Reminder) => {
     if (r.candidate_id || r.candidate_name) {
-      return <CandidateAvatar name={r.candidate_name || 'Candidat'} avatarUrl={r.candidate_id ? taskPhotos.get(r.candidate_id) ?? null : null} size={36} />;
+      return <CandidateAvatar name={r.candidate_name || 'Candidat'} avatarUrl={r.candidate_id ? taskPhotos.get(r.candidate_id) ?? null : null} candidateId={r.candidate_id} size={36} />;
     }
     if (r.job_id || r.job_title) {
       const client = r.job_id ? missionClientOf?.(r.job_id) ?? null : null;
@@ -402,7 +402,7 @@ const TodayItem: React.FC<{
           className="flex min-w-0 flex-1 items-center gap-3.5 rounded-lg py-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TimeCell time={item.time} note={note} muted={isDone || (isLate && !isLive)} />
-          <CandidateAvatar name={candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} size={36} />
+          <CandidateAvatar name={candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} candidateId={meta.candidateId} size={36} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-md font-medium text-foreground">
               {candidateName}

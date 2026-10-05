@@ -94,7 +94,7 @@ test('activité : omise sous une heure, discrète au-delà, la même source', ()
   assert.equal(activityLabel(new Date(now.getTime() + 86_400_000).toISOString(), now), null);
 });
 
-test('visages en entretien : trois au plus par mission, une personne une fois, la photo enregistrée seulement', () => {
+test('visages en entretien : trois au plus par mission, une personne une fois, la photo enregistrée seulement, l\'identifiant pour la copie', () => {
   const row = (project, candidate, name, picture, large) => ({
     project_id: project, candidate_id: candidate, candidate_name: name, picture, picture_large: large,
   });
@@ -111,14 +111,14 @@ test('visages en entretien : trois au plus par mission, une personne une fois, l
   ]);
   assert.equal(INTERVIEWING_FACES_PER_MISSION, 3);
   assert.deepEqual(out.m1, [
-    { name: 'Camille Fontaine', src: 'https://img.example/c1.jpg' },
-    { name: 'Hugo Lambert', src: 'https://img.example/h-large.jpg' },
-    { name: 'Inès Moreau', src: null },
+    { name: 'Camille Fontaine', src: 'https://img.example/c1.jpg', candidateId: 'c1' },
+    { name: 'Hugo Lambert', src: 'https://img.example/h-large.jpg', candidateId: 'c2' },
+    { name: 'Inès Moreau', src: null, candidateId: 'c3' },
   ]);
   // La même personne dans une autre mission garde sa pile dans cette mission.
-  assert.deepEqual(out.m2, [{ name: 'Camille Fontaine', src: null }]);
+  assert.deepEqual(out.m2, [{ name: 'Camille Fontaine', src: null, candidateId: 'c1' }]);
   // Nom vide ou photo illisible : jamais inventés.
-  assert.deepEqual(out.m3, [{ name: null, src: null }]);
+  assert.deepEqual(out.m3, [{ name: null, src: null, candidateId: 'c9' }]);
   assert.deepEqual(Object.keys(out).sort(), ['m1', 'm2', 'm3']);
   assert.deepEqual(groupInterviewingPeople(null), {});
   assert.deepEqual(groupInterviewingPeople({}), {});

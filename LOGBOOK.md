@@ -73,6 +73,41 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — SHIP — Design simplifié, lot P : copie privée des photos des candidats
+
+**Contexte** : les visages des candidats viennent du lien de photo LinkedIn enregistré sur leur ligne du pipeline (`linkedin_profile_data`). LinkedIn signe ces liens et les fait expirer : quelques semaines après la recherche, le visage redevient des initiales. Décision du propriétaire (« Copie privée ») : Konekt garde une petite copie, supprimée avec le candidat.
+**Décision / Fait** :
+- Bucket privé `candidate-photos` (200 ko, JPEG, PNG ou WebP) et table `candidate_photos`, une ligne par organisation et candidat. Lecture par les membres de l'organisation, écriture par la clé de service seulement.
+- `capture-candidate-photos`, lancée toutes les deux minutes par pg_cron, copie 25 photos par passage. Le registre RGPD est lu avant tout téléchargement ; seules les photos LinkedIn sont prises, sans suivre de redirection, type lu sur les octets. Un lien refusé (403, 404, 410) n'est repris que s'il change ; un autre échec est retenté trois fois, à une heure d'écart. Le profil LinkedIn n'est lu que pour 100 candidats au plus par passage, et un candidat examiné n'est relu qu'après un changement de sa ligne : sans cela, chaque passage relisait tous les profils du pipeline. Un candidat sorti du pipeline de l'organisation perd sa copie au passage suivant.
+- Effacement RGPD (`recordGdprErasure`, étape 10) : fichiers supprimés, lignes marquées `erased`, jamais reprises. `export-org-data` exporte la table.
+- Écran : `PersonAvatar` reçoit `candidateId` et montre la copie, sinon le lien LinkedIn, sinon les initiales. Les adresses sont signées par lots de 100 et valent une heure ; celles des visages encore affichés sont redemandées cinq minutes avant la fin. Une réserve par personne connectée (`CandidatePhotosProvider`). Écrans branchés : page mission (liste, À trier, kanban, fiche), /pipeline (kanban, tableau, chronologie), accueil, liste des missions, Tâches, agenda, scorecard. Les sources en direct (recherche, messagerie, invitations) ne changent pas.
+**Impact** : migration `20261005121536_photos_candidats_copie_privee.sql` ; `supabase/functions/capture-candidate-photos/`, `_shared/candidate-photo.ts`, `_shared/get-or-fetch-contact.ts`, `export-org-data` ; `src/lib/candidatePhotos.ts`, `src/components/CandidatePhotosProvider.tsx`, `person-avatar.tsx`, `types.ts` et les écrans cités. Tests : `tests/c1/photos-copie-privee.test.mjs` (14), audit `supabase/tests/candidate_photos_audit.sql` (17 contrôles, CI e2e, avec les appels anonymes refusés par l'API). La fusion touche `_shared/` : toutes les fonctions sont redéployées, `resolve-client-logo` comprise.
+**Recette `qa.md`** (banc local) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lien LinkedIn simulé en 404 : le kanban montre la copie ; copie affichée 27 ms après le nom ; passage à la vue par étape sans nouvelle lecture | PASS |
+| Claire | Aucun terme technique ni nom de fournisseur sur la page mission, /pipeline, l'accueil et Tâches ; aucune copie cassée | PASS |
+| Théo | Autre organisation : 0 ligne, signature refusée, dossier vide ; envoi et suppression de fichier refusés ; écriture de la table refusée (42501) ; adresse publique 400 ; appel anonyme 401 ; tâche sans secret 403 | PASS |
+| Sophie | Téléphone 390 px tactile : copie affichée, aucun débordement | PASS |
+**Reste à faire** :
+- [ ] Rattrapage, par LinkedIn, des candidats sans photo enregistrée ou au lien déjà expiré : plus tard, avec l'accord du propriétaire.
+- [ ] Effacement RGPD des profils (`linkedin_profile_data`) et des CV : lot à part.
+- [ ] Après fusion : suivre la première heure de la tâche (journal de la fonction, nombre de copies `stored` et `expired`).
+**Refs** : docs/design/06-simplicite.md (lot P).
+
+---
+
+## 2026-10-05 — BUG — Logos des clients : la fonction n'avait pas d'entrée dans config.toml
+
+**Contexte** : `resolve-client-logo` (#261) est arrivée sans entrée `[functions.resolve-client-logo]` dans `supabase/config.toml`. Le déploiement lit cette configuration : sans entrée, la fonction part avec `verify_jwt = true`, et la passerelle refuse les jetons ES256 des sessions. Les appels de `useClientLogoBackfill` échouaient donc sans bruit (l'erreur est avalée), et les logos des clients ne s'enregistraient probablement pas en production.
+**Décision / Fait** : entrée `verify_jwt = false` ajoutée, comme pour toutes les fonctions (l'authentification se fait dans la fonction, `requireAuth`). Garde dans `tests/c1/c1-fonctions.test.mjs` : chaque dossier de `supabase/functions/` a son entrée, `verify_jwt = false` sauf `submit-application` (neutralisée au lot C1, exception documentée).
+**Impact** : `supabase/config.toml`, `tests/c1/c1-fonctions.test.mjs`. Le déploiement automatique ne se déclenche que sur `supabase/functions/**` : après fusion, redéployer la fonction à la main (workflow « Deploy Supabase Edge Functions », cible `resolve-client-logo`).
+**Reste à faire** :
+- [ ] Redéployer `resolve-client-logo` après fusion.
+**Refs** : #261.
+
+---
+
 ## 2026-10-05 — SHIP — Design simplifié, lot T : la page Tâches comme la maquette
 
 **Contexte** : troisième écran du design simplifié (`docs/design/06-simplicite.md`), après l'accueil. La page Tâches suit la maquette « Konekt simplifié » : sept contrôles de filtre, une liste encadrée, des dates en rouge sur chaque ligne et une corbeille par ligne. Sur le banc, huit suggestions passaient avant les tâches : sur téléphone, la première tâche arrivait à 1 408 px du haut de la page.

@@ -135,6 +135,10 @@ jobs:
       # d'analyse et de création en lot.
       - name: Lecture d'offres depuis une adresse web
         run: node --test tests/ux/lecture-offres-serveur.test.mjs tests/ux/import-offres.test.mjs
+      # Design simplifié, lot P : copie privée des photos (règles de la copie,
+      # réserve d'écran, gardes sur la migration, la tâche et les écrans branchés).
+      - name: Copie privée des photos (design simplifié)
+        run: node --test tests/c1/photos-copie-privee.test.mjs
       - name: Vite production build
         run: npx vite build
 

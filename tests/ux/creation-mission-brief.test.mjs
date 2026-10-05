@@ -356,15 +356,19 @@ test('catalogues : brief_analysis en Sonnet 5.5 des deux côtés, filter_generat
   assert.doesNotMatch(clientLine('filter_generation'), /autoDefault/);
 });
 
-test('edge function : bloc texte de la réponse, effort et marge de réflexion pour les modèles 5.5', () => {
+test('edge function : aides génération 5 partagées (bloc texte, effort, marge de réflexion), 4096 jetons de contenu', () => {
   const server = read('supabase/functions/generate-search-filters/index.ts');
   const c = code(server);
-  assert.match(c, /const content = responseText\(aiResult\);/);
+  // Les aides vivent dans _shared/gen5-models.ts (une seule définition) : plus de copie locale.
+  assert.match(c, /import \{[^}]*gen5Params[^}]*\} from "\.\.\/_shared\/gen5-models\.ts";/);
+  assert.doesNotMatch(c, /function isGen5Model|function responseText|GEN5_EFFORT/, 'pas de copie locale des aides');
+  assert.match(c, /const content = textFromContent\(aiResult\.content\);/);
   assert.doesNotMatch(c, /aiResult\.content\?\.\[0\]/, 'content[0] est le bloc thinking avec Sonnet 5.5');
-  assert.match(c, /\/\^claude-\(sonnet\|opus\)-5\//);
-  assert.match(c, /output_config: \{ effort: GEN5_EFFORT \}/);
+  assert.match(c, /\.\.\.gen5Params\(resolvedModel\)/);
   assert.doesNotMatch(c, /temperature/, 'les modèles 5.5 refusent la température (400)');
-  assert.match(c, /max_tokens: 4096 \+ \(isGen5Model\(resolvedModel\) \? GEN5_THINKING_HEADROOM : 0\)/);
+  assert.match(c, /max_tokens: withThinkingHeadroom\(resolvedModel, 4096\)/);
+  // Délai porté à 55 s pour les modèles 5.5, qui réfléchissent avant de répondre.
+  assert.match(c, /isGen5Model\(resolvedModel\) \? 55000 : 45000/);
 });
 
 test('edge function : le brief structuré demandé au modèle est renvoyé, et une réponse illisible est signalée', () => {

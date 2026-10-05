@@ -137,7 +137,7 @@ const TaskRow = React.memo(function TaskRow({
 
   const visual =
     r.candidate_id || r.candidate_name ? (
-      <CandidateAvatar name={r.candidate_name || 'Candidat'} avatarUrl={photo} size={36} />
+      <CandidateAvatar name={r.candidate_name || 'Candidat'} avatarUrl={photo} candidateId={r.candidate_id} size={36} />
     ) : r.job_id || r.job_title ? (
       <MissionCompanyLogo company={mission?.client || r.job_title} logoUrl={mission?.logo ?? null} size={36} />
     ) : (
@@ -267,6 +267,7 @@ export function TaskSuggestions({ suggestions, photos, creatingKey, onAccept, on
               <CandidateAvatar
                 name={s.candidate.name}
                 avatarUrl={s.candidate.avatarUrl ?? (s.candidate.candidateId ? photos.get(s.candidate.candidateId) ?? null : null)}
+                candidateId={s.candidate.candidateId}
                 size={36}
               />
             ) : (

@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, isGen5Model, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,21 +13,6 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
-}
-
-// Modèles génération 5 (Sonnet 5.5, Opus 5.5) : la réflexion est active par défaut
-// et le premier bloc de la réponse est un bloc "thinking", pas le texte. On lit le
-// bloc texte au lieu de content[0], on règle l'effort, et on laisse une marge à
-// max_tokens parce que la réflexion en consomme. Même logique que score-profile-job.
-// Effort bas : l'utilisateur attend l'analyse dans une fenêtre ouverte.
-const GEN5_EFFORT = "low";
-const GEN5_THINKING_HEADROOM = 2000;
-function isGen5Model(model: string): boolean {
-  return /^claude-(sonnet|opus)-5/.test(model);
-}
-function responseText(data: { content?: Array<{ type?: string; text?: string }> } | null | undefined): string {
-  const block = (data?.content ?? []).find((b) => b?.type === "text");
-  return block?.text || "";
 }
 
 // Longueur de fiche transmise au modèle. Avant : 800 caractères, soit 13 % d'une
@@ -567,8 +553,8 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
               model: resolvedModel,
               // 2048 laissait peu de marge à une réponse chargée (filtres, brief structuré,
               // suggestions) : un JSON coupé tombait dans le repli sans que rien ne le dise.
-              max_tokens: 4096 + (isGen5Model(resolvedModel) ? GEN5_THINKING_HEADROOM : 0),
-              ...(isGen5Model(resolvedModel) ? { output_config: { effort: GEN5_EFFORT } } : {}),
+              max_tokens: withThinkingHeadroom(resolvedModel, 4096),
+              ...gen5Params(resolvedModel),
               system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
               messages: [
                 { role: "user", content: jobContext },
@@ -658,9 +644,8 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     const aiResult = await response.json();
     const _tokensIn = aiResult.usage?.input_tokens || 0;
     const _tokensOut = aiResult.usage?.output_tokens || 0;
-    // Claude API returns content as array of blocks : le texte n'est pas toujours
-    // le premier (bloc "thinking" des modèles 5.5).
-    const content = responseText(aiResult);
+    // Claude API returns content as array of blocks (un bloc "thinking" peut précéder le texte)
+    const content = textFromContent(aiResult.content);
     if (aiResult.stop_reason === "max_tokens") {
       console.warn("[generate-search-filters] Response truncated at max_tokens");
     }

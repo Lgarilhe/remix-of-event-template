@@ -119,13 +119,13 @@ export default function Dashboard() {
   }, [pendingList, stagnantList, interviewingByMission]);
   const photoKeys = useMemo(() => Array.from(new Set(shown.flat().map(photoKeyOf).filter(Boolean))), [shown]);
   const photos = useCandidateAvatars(photoKeys);
-  const personOf = (c: ATSCandidate): FocusPerson => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null });
+  const personOf = (c: ATSCandidate): FocusPerson => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null, candidateId: c.candidateId });
 
   const interviewing = useMemo(() => {
     const out: Record<string, InterviewingPeople> = {};
     for (const [projectId, list] of interviewingByMission) {
       out[projectId] = {
-        people: firstPeople(list).map((c) => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null })),
+        people: firstPeople(list).map((c) => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null, candidateId: c.candidateId })),
         total: countPeople(list),
       };
     }
