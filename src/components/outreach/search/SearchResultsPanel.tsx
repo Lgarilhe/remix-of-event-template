@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
-import { sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
+import { sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
 
 interface SearchResultsPanelProps {
   // Results
@@ -479,6 +479,30 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     setV3Restored(prev => new Set(prev).add(candidateId));
     await onRestoreProfile?.(candidateId);
   }, [onRestoreProfile]);
+
+  // Nouvelle page : les décisions de la fiche (Retenir, Écarter, Remettre à trier)
+  // passent par les mêmes écritures que le tableau, puis la fiche passe au profil
+  // voisin du groupe affiché, ou se ferme s'il n'en reste aucun.
+  const detailDecisions = useMemo(() => {
+    if (!isV3 || !detailProfile) return undefined;
+    const current = detailProfile;
+    const index = navList.findIndex(r => r.id === current.id);
+    const neighbor = index >= 0 ? (navList[index + 1] ?? navList[index - 1]) : undefined;
+    const then = async (action: () => Promise<void>) => {
+      await action();
+      if (neighbor) setDetailProfile(neighbor);
+      else setDetailOpen(false);
+    };
+    const group = sourcingGroupOf(treatedCandidates.get(current.id));
+    if (group === 'rejected') {
+      return onRestoreProfile ? { onRestore: () => then(() => restoreV3(current.id)) } : {};
+    }
+    if (group !== 'to_sort') return {};
+    return {
+      onRetain: onRetainProfiles && activeProject ? () => then(() => onRetainProfiles([current])) : undefined,
+      onDismiss: onDismissProfiles && selectedJob ? () => then(() => onDismissProfiles([current])) : undefined,
+    };
+  }, [isV3, detailProfile, navList, treatedCandidates, onRestoreProfile, restoreV3, onRetainProfiles, onDismissProfiles, activeProject, selectedJob]);
 
   return (
     <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
@@ -1367,6 +1391,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         onNavigateNext={navigateNext}
         currentIndex={detailIndex >= 0 ? detailIndex : undefined}
         totalCount={navList.length}
+        decisions={detailDecisions}
       />
 
       {/* Bulk InMail Modal */}

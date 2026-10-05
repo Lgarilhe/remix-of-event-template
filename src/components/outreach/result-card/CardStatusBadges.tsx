@@ -16,6 +16,8 @@ interface CardStatusBadgesProps {
   enrollmentInfo?: ProjectEnrollmentInfo | null;
   /** Nouvelle page mission : la note s'affiche en anneau, comme dans le Pipeline. */
   variant?: 'default' | 'mission-v3';
+  /** La note est déjà écrite ailleurs (fiche : carte Note) : pas de pastille de note. */
+  hideScore?: boolean;
 }
 
 export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
@@ -25,6 +27,7 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
   isLikelyToRespond,
   enrollmentInfo,
   variant = 'default',
+  hideScore = false,
 }) => {
   // Mapping statut enrollment → label/couleur. Réutilisé pour le tooltip.
   const enrollmentLabel = enrollmentInfo
@@ -127,10 +130,10 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       )}
       {/* Job Score promu inline (avant : row 4 séparée) — le plus important
           quand un candidat est scoré, doit être visible IMMÉDIATEMENT près du nom */}
-      {jobScore && jobScore.match_score > 0 && variant === 'mission-v3' && (
+      {!hideScore && jobScore && jobScore.match_score > 0 && variant === 'mission-v3' && (
         <ScorePill score={jobScore.match_score} title={scoreTitle} />
       )}
-      {jobScore && jobScore.match_score > 0 && variant !== 'mission-v3' && (
+      {!hideScore && jobScore && jobScore.match_score > 0 && variant !== 'mission-v3' && (
         <Badge
           variant="outline"
           className={`text-xs font-bold tabular-nums px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 ${
