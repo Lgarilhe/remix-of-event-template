@@ -1,5 +1,6 @@
 ﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { requireAuth } from "../_shared/require-auth.ts";
+import { stopLinkedInAccountSending, type LinkedInSendingStopResult } from "../_shared/linkedin-sending-stop.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +12,18 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+async function hmacSha256Hex(secret: string, value: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -59,6 +72,114 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+type AccountOwnership = { mapped: 'org' | 'foreign' | 'none'; userId: string | null };
+
+/**
+ * Appartenance d'un account_id Unipile (LinkedIn ou email) à l'organisation
+ * appelante. La clé Unipile plateforme est partagée entre les orgs : sans ce
+ * contrôle, un account_id d'une autre org pouvait être déconnecté, reconfiguré
+ * (proxy), lu, ou voir ses invitations traitées (SEC-004).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function lookupAccountOwnership(adminClient: any, organizationId: string, accountId: string): Promise<AccountOwnership> {
+  const tables: Array<[string, string]> = [
+    ['member_linkedin_accounts', 'linkedin_account_id'],
+    ['member_email_accounts', 'email_account_id'],
+  ];
+  let foreign = false;
+  for (const [table, column] of tables) {
+    const { data, error } = await adminClient
+      .from(table)
+      .select('organization_id, user_id')
+      .eq(column, accountId);
+    if (error) throw new HttpError(500, `Vérification du compte impossible (${table})`);
+    const rows = (data ?? []) as Array<{ organization_id: string; user_id: string | null }>;
+    const own = rows.find((r) => r.organization_id === organizationId);
+    if (own) return { mapped: 'org', userId: own.user_id ?? null };
+    if (rows.length > 0) foreign = true;
+  }
+  return { mapped: foreign ? 'foreign' : 'none', userId: null };
+}
+
+/**
+ * Refuse tout compte mappé à une autre org. Un compte orphelin (non mappé)
+ * n'est toléré que pour les flux de connexion (checkpoint, reconnexion), où
+ * le mapping n'existe pas encore ou pointe sur un id mort.
+ */
+async function assertAccountInOrg(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminClient: any,
+  organizationId: string,
+  accountId: unknown,
+  opts: { allowOrphan?: boolean } = {},
+): Promise<AccountOwnership> {
+  const id = typeof accountId === 'string' ? accountId.trim() : '';
+  if (!id) throw new HttpError(400, 'Account ID requis');
+  if (id.length > 512 || id.includes('..') || /[/\\?#]/.test(id)) throw new HttpError(400, 'Account ID invalide');
+  const ownership = await lookupAccountOwnership(adminClient, organizationId, id);
+  if (ownership.mapped === 'org') return ownership;
+  if (ownership.mapped === 'foreign' || !opts.allowOrphan) {
+    throw new HttpError(403, "Ce compte n'est pas rattaché à votre organisation");
+  }
+  return ownership;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getCallerOrgRole(adminClient: any, organizationId: string, userId: string): Promise<string | null> {
+  const { data } = await adminClient
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', organizationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return (data as { role?: string } | null)?.role ?? null;
+}
+
+/** Déconnexion, proxy, reconnexion : le propriétaire du compte ou un owner/admin de l'org. */
+async function assertCanManageAccount(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminClient: any,
+  organizationId: string,
+  userId: string,
+  ownership: AccountOwnership,
+): Promise<void> {
+  if (ownership.mapped !== 'org') return; // orphelin toléré en amont : aucun propriétaire à protéger
+  if (ownership.userId === userId) return;
+  const role = await getCallerOrgRole(adminClient, organizationId, userId);
+  if (role === 'owner' || role === 'admin') return;
+  throw new HttpError(403, "Seul le propriétaire du compte ou un administrateur de l'organisation peut effectuer cette action");
+}
+
+/** Segment d'URL Unipile : identifiant encodé, jamais de traversée de chemin. */
+function pathId(value: unknown, label: string): string {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s || s.length > 512 || s.includes('..') || /[/\\?#]/.test(s)) throw new HttpError(400, `${label} invalide`);
+  return encodeURIComponent(s);
+}
+
+/**
+ * Compte propriétaire d'un message ou d'une conversation. Le front n'envoie
+ * que message_id / chat_id (useMessageActions) : on le résout côté Unipile
+ * avant de vérifier l'appartenance à l'organisation.
+ */
+async function resolveAccountFromUnipile(
+  baseUrl: string,
+  apiKey: string,
+  kind: 'chats' | 'messages',
+  idEncoded: string,
+): Promise<string> {
+  const res = await fetchWithTimeout(`${baseUrl}/${kind}/${idEncoded}`, {
+    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new HttpError(404, kind === 'chats' ? 'Conversation introuvable' : 'Message introuvable');
+  const data = await res.json().catch(() => ({}));
+  if (typeof data?.account_id === 'string' && data.account_id) return data.account_id;
+  if (kind === 'messages' && typeof data?.chat_id === 'string' && data.chat_id) {
+    return resolveAccountFromUnipile(baseUrl, apiKey, 'chats', pathId(data.chat_id, 'chat_id'));
+  }
+  throw new HttpError(502, 'Compte propriétaire introuvable');
 }
 
 Deno.serve(async (req) => {
@@ -110,7 +231,6 @@ Deno.serve(async (req) => {
       throw new HttpError(400, 'Aucune organisation active');
     }
 
-    const keyPrefix = supabaseServiceRoleKey.slice(0, 12);
     const { data: membership, error: membershipError } = await adminClient
       .from('organization_members')
       .select('id')
@@ -119,27 +239,32 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!membership) {
+      // Diagnostic RLS côté serveur UNIQUEMENT — ne jamais exposer d'info
+      // sensible (préfixe de clé service-role) au client dans la réponse.
       console.error('[unipile-accounts] Membership check failed', {
         requestedOrgId: organizationId,
         userId: user.id,
         authMethod: auth.method,
         errorMsg: membershipError?.message,
         errorCode: membershipError?.code,
-        keyPrefix,
-        sbSecretDefined: Boolean(Deno.env.get('SB_SECRET_KEY')),
       });
-      throw new HttpError(403, `Forbidden — user=${user.id} org=${organizationId} err=${membershipError?.message ?? 'no row'} keyPrefix=${keyPrefix} sbSecretDefined=${Boolean(Deno.env.get('SB_SECRET_KEY'))}`);
+      throw new HttpError(403, 'Accès non autorisé à cette organisation');
     }
 
+    // Actions qui n'écrivent qu'en base (arrêt des envois, liaison retirée) :
+    // jamais bloquées par l'absence d'identifiants du prestataire, sinon
+    // « Dissocier » et le retrait d'un membre deviennent impossibles sur une
+    // organisation (ou un environnement) sans intégration LinkedIn.
+    const DATABASE_ONLY_ACTIONS = new Set(['unlink_linkedin_account', 'stop_member_linkedin']);
     const credentials = await resolveUnipileCredentials(organizationId);
-    if (!credentials) {
+    if (!credentials && !DATABASE_ONLY_ACTIONS.has(action)) {
       return new Response(
         JSON.stringify({ success: false, error: 'LinkedIn non configuré pour cette organisation' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { apiKey, dsn } = credentials;
+    const { apiKey, dsn } = credentials ?? { apiKey: '', dsn: '' };
     const baseUrl = `https://${dsn}/api/v1`;
 
     switch (action) {
@@ -193,6 +318,14 @@ Deno.serve(async (req) => {
             'Accept': 'application/json',
           },
         });
+
+        // Refus du prestataire : erreur explicite. Avant, data.items absent donnait
+        // { success: true, accounts: [] } et chaque écran lisait « aucun compte » ;
+        // le contexte garde désormais la liste précédente (LinkedInAccountsContext).
+        if (!response.ok) {
+          console.error('[unipile-accounts] list: provider status', response.status);
+          throw new HttpError(502, 'La liste des comptes LinkedIn est momentanément indisponible');
+        }
 
         const data = await response.json();
 
@@ -317,6 +450,8 @@ Deno.serve(async (req) => {
               name: acc.name,
               identifier: acc.name,
               status: mainStatus,
+              // false = orphelin visible en mode claim : à associer avant usage
+              mapped: allowedAccountIds.has(acc.id),
               profile_picture_url: profilePictureUrl,
               subscriptions: {
                 classic: true,
@@ -338,7 +473,8 @@ Deno.serve(async (req) => {
         const { data: memberEmailAccounts, error: memberEmailAccountsError } = await adminClient
           .from('member_email_accounts')
           .select('email_account_id')
-          .eq('organization_id', organizationId);
+          .eq('organization_id', organizationId)
+          .eq('user_id', user.id);
 
         if (memberEmailAccountsError) {
           console.error('[unipile-accounts] Failed to load org email account IDs:', memberEmailAccountsError);
@@ -356,7 +492,11 @@ Deno.serve(async (req) => {
         });
 
         const emailData = await emailResponse.json();
-        const EMAIL_TYPES = new Set(['GOOGLE', 'OUTLOOK', 'IMAP', 'MAIL', 'GMAIL']);
+        const EMAIL_TYPES = new Set([
+          'GOOGLE', 'GOOGLE_OAUTH', 'GMAIL',
+          'OUTLOOK', 'MICROSOFT', 'EXCHANGE',
+          'IMAP', 'MAIL', 'ICLOUD',
+        ]);
         const emailAccounts = (emailData.items || [])
           .filter((acc: { type: string; id: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()) && allowedEmailAccountIds.has(acc.id))
           .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }>; connection_params?: { mail?: { imap_user?: string; smtp_user?: string } } }) => {
@@ -383,7 +523,12 @@ Deno.serve(async (req) => {
 
       case 'hosted_auth_link': {
         // Generate a hosted auth link for white-label account connection (LinkedIn, WhatsApp, or Email)
-        const { success_redirect_url, failure_redirect_url, notify_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
+        const { success_redirect_url, failure_redirect_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
+
+        if (typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0) {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, reconnect_account_id, { allowOrphan: true });
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
 
         // Allow caller to specify provider(s), default to LinkedIn
         const resolvedProviders = Array.isArray(requestedProviders) && requestedProviders.length > 0
@@ -409,9 +554,21 @@ Deno.serve(async (req) => {
         // account_connected puisse upsert dans member_linkedin_accounts avec la bonne
         // paire (user_id, organization_id, linkedin_account_id).
         // Format : 'user:{userId}|org:{orgId}[|reconnect:{accountId}]'
+        const providerState = resolvedProviders
+          .map((provider) => String(provider).trim().toUpperCase())
+          .filter(Boolean)
+          .join(',');
+        const stateExpiresAt = Date.now() + 30 * 60 * 1000;
         const stateName = reconnect_account_id
-          ? `user:${user.id}|org:${organizationId}|reconnect:${reconnect_account_id}`
-          : `user:${user.id}|org:${organizationId}`;
+          ? `user:${user.id}|org:${organizationId}|providers:${providerState}|expires:${stateExpiresAt}|reconnect:${reconnect_account_id}`
+          : `user:${user.id}|org:${organizationId}|providers:${providerState}|expires:${stateExpiresAt}`;
+        const webhookSecret = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
+        const callbackBaseUrl = Deno.env.get('SUPABASE_URL');
+        if (!webhookSecret || !callbackBaseUrl) {
+          throw new HttpError(503, 'Connexion de compte temporairement indisponible');
+        }
+        const hostedSignature = await hmacSha256Hex(webhookSecret, stateName);
+        const trustedNotifyUrl = `${callbackBaseUrl}/functions/v1/unipile-webhook?hosted_sig=${hostedSignature}`;
 
         const hostedBody: Record<string, unknown> = {
           type: reconnect_account_id ? 'reconnect' : 'create',
@@ -421,6 +578,9 @@ Deno.serve(async (req) => {
           bypass_success_screen: false,
           disabled_options: disabledOptions,
           name: stateName, // user+org encoding pour webhook identification
+          // URL imposÃ©e cÃ´tÃ© serveur : le navigateur ne peut pas rediriger le
+          // callback contenant le mapping vers une destination arbitraire.
+          notify_url: trustedNotifyUrl,
         };
 
         // Si reconnect, Unipile attend aussi le account_id (doc hosted-auth)
@@ -430,7 +590,6 @@ Deno.serve(async (req) => {
 
         if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;
         if (failure_redirect_url) hostedBody.failure_redirect_url = failure_redirect_url;
-        if (notify_url) hostedBody.notify_url = notify_url;
         // Note : `org_name` est legacy/ignoré maintenant car `name` contient user:org encoding.
         // Si un caller veut un display name, il faut ajouter un champ custom séparé.
         if (org_name) hostedBody.organization_display_name = org_name;
@@ -489,6 +648,12 @@ Deno.serve(async (req) => {
         }
 
         const isReconnect = typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0;
+        if (isReconnect) {
+          // Remplacer la session LinkedIn d'un compte : jamais celui d'une autre org,
+          // et seulement son propre compte (ou owner/admin).
+          const ownership = await assertAccountInOrg(adminClient, organizationId, reconnect_account_id, { allowOrphan: true });
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
         const endpoint = isReconnect
           ? `${baseUrl}/accounts/${encodeURIComponent(reconnect_account_id)}`
           : `${baseUrl}/accounts`;
@@ -571,23 +736,40 @@ Deno.serve(async (req) => {
 
         // Upsert dans member_linkedin_accounts si nouveau compte (create path).
         // Pour le reconnect, le webhook account_connected suffira à repasser en OK.
+        // linked_by est NOT NULL sans défaut : sans lui l'upsert échouait et
+        // l'erreur était avalée, le compte n'était jamais rattaché (P0-A).
         if (!isReconnect && data.account_id) {
-          try {
-            await adminClient
-              .from('member_linkedin_accounts')
-              .upsert({
-                user_id: user.id,
-                organization_id: organizationId,
-                linkedin_account_id: data.account_id,
-                linkedin_account_name: data.name || 'Mon compte LinkedIn',
-                account_status: data.object === 'Checkpoint' ? 'CONNECTING' : 'OK',
-                last_checked_at: new Date().toISOString(),
-              }, {
-                onConflict: 'user_id,organization_id',
-              });
+          const { error: linkError } = await adminClient
+            .from('member_linkedin_accounts')
+            .upsert({
+              user_id: user.id,
+              organization_id: organizationId,
+              linkedin_account_id: data.account_id,
+              linkedin_account_name: data.name || 'Mon compte LinkedIn',
+              account_status: data.object === 'Checkpoint' ? 'CONNECTING' : 'OK',
+              last_checked_at: new Date().toISOString(),
+              linked_by: user.id,
+            }, {
+              onConflict: 'user_id,organization_id',
+            });
+          if (linkError && (linkError.code === '42501' || linkError.code === '23505')) {
+            console.error('[connect_cookie] Failed to upsert member_linkedin_accounts:', linkError);
+            // 42501 : trigger prevent_linkedin_account_cross_tenant (compte mappé à une autre org).
+            // 23505 : UNIQUE (organization_id, linkedin_account_id), déjà rattaché à un autre membre.
+            const linkErrorMessage = linkError.code === '42501'
+              ? 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail'
+              : 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation';
+            return new Response(
+              JSON.stringify({ success: false, error: linkErrorMessage, account_id: data.account_id }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          if (linkError) {
+            // Erreur transitoire : le compte existe côté service de connexion ; le client
+            // rattache lui-même juste après (linkAccount pose aussi linked_by).
+            console.error('[connect_cookie] Upsert member_linkedin_accounts failed (rattachement client à suivre):', linkError);
+          } else {
             console.log('[connect_cookie] Upserted member_linkedin_accounts for user', user.id, 'account', data.account_id);
-          } catch (e) {
-            console.warn('[connect_cookie] Failed to upsert member_linkedin_accounts:', e);
           }
         }
 
@@ -692,6 +874,8 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+        // Compte en cours de création : pas encore forcément mappé (orphelin toléré).
+        await assertAccountInOrg(adminClient, organizationId, account_id, { allowOrphan: true });
 
         const response = await fetchWithTimeout(`${baseUrl}/accounts/checkpoint`, {
           method: 'POST',
@@ -733,7 +917,12 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, account_id);
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
+
+        const response = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -760,6 +949,265 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'claim_linkedin_account': {
+        // « C'est mon compte » (MyLinkedInAccount) et « Lier » (TeamManagement).
+        // Remplace l'upsert du navigateur, refusé par la RLS à un membre
+        // (admins_manage). Le titulaire se relie lui-même ; owner/admin relient un
+        // membre de l'organisation.
+        const accountIdEncoded = pathId(params.account_id, 'Account ID');
+        const accountId = String(params.account_id).trim();
+        const targetUserId = typeof params.user_id === 'string' && params.user_id.trim()
+          ? params.user_id.trim()
+          : user.id;
+
+        if (targetUserId !== user.id) {
+          await assertCanManageAccount(adminClient, organizationId, user.id, { mapped: 'org', userId: targetUserId });
+          if (!(await getCallerOrgRole(adminClient, organizationId, targetUserId))) {
+            throw new HttpError(404, "Ce membre ne fait pas partie de l'organisation");
+          }
+        }
+
+        const ownership = await lookupAccountOwnership(adminClient, organizationId, accountId);
+        if (ownership.mapped === 'foreign') {
+          throw new HttpError(403, 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail');
+        }
+        if (ownership.mapped === 'org' && ownership.userId !== targetUserId) {
+          throw new HttpError(409, 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation');
+        }
+
+        // Le compte doit exister et être un compte LinkedIn ; son nom vient du
+        // prestataire, jamais du navigateur.
+        const accRes = await fetchWithTimeout(`${baseUrl}/accounts/${accountIdEncoded}`, {
+          headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+        });
+        if (accRes.status === 404) throw new HttpError(404, 'Compte LinkedIn introuvable');
+        if (!accRes.ok) {
+          console.error('[claim_linkedin_account] provider status', accRes.status);
+          throw new HttpError(502, 'Vérification du compte LinkedIn momentanément impossible. Réessayez.');
+        }
+        const acc = await accRes.json().catch(() => ({}));
+        if (acc?.type !== 'LINKEDIN') throw new HttpError(400, "Ce compte n'est pas un compte LinkedIn");
+
+        // SEC-030 reste ouvert : le mode revendication de « list » montre les
+        // orphelins de toutes les organisations. Jusqu'ici seul owner/admin pouvait
+        // en revendiquer un (RLS). Pour ne pas élargir ce droit, un membre ne
+        // revendique qu'un orphelin créé depuis moins de 30 minutes (validité d'un
+        // lien de connexion, hosted_auth_link) : le cas « rattachement perdu juste
+        // après sa propre connexion ».
+        if (ownership.mapped === 'none') {
+          const callerRole = await getCallerOrgRole(adminClient, organizationId, user.id);
+          if (callerRole !== 'owner' && callerRole !== 'admin') {
+            const createdMs = Date.parse(String(acc?.created_at ?? ''));
+            if (!Number.isFinite(createdMs) || Date.now() - createdMs > 30 * 60 * 1000) {
+              throw new HttpError(403, 'Demandez à un administrateur de votre organisation de relier ce compte');
+            }
+          }
+        }
+
+        const sources = (Array.isArray(acc?.sources) ? acc.sources : []) as Array<{ status?: string }>;
+        const rawStatus = sources.find((s) => s?.status === 'OK')?.status || sources[0]?.status || 'UNKNOWN';
+        const accountStatus = ['RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS'].includes(rawStatus) ? 'OK' : rawStatus;
+
+        const { data: current, error: currentError } = await adminClient
+          .from('member_linkedin_accounts')
+          .select('linkedin_account_id')
+          .eq('organization_id', organizationId)
+          .eq('user_id', targetUserId)
+          .maybeSingle();
+        if (currentError) throw new HttpError(500, 'Lecture de la liaison actuelle impossible. Réessayez.');
+
+        // Changement de compte (SEQ-041) : l'ancien compte ne doit plus rien
+        // envoyer une fois la liaison repointée. Ses inscriptions passent en
+        // pause manuelle (reprise après avoir relié le compte, ou nouvelle
+        // inscription depuis le nouveau compte), ses InMails programmés sont
+        // annulés. Échec = changement refusé, comme la dissociation.
+        const previousAccountId = typeof current?.linkedin_account_id === 'string' ? current.linkedin_account_id : '';
+        if (previousAccountId && previousAccountId !== accountId) {
+          try {
+            await stopLinkedInAccountSending(adminClient, { organizationId, accountId: previousAccountId });
+          } catch (stopError) {
+            console.error('[claim_linkedin_account] previous account sending stop failed:', stopError);
+            throw new HttpError(500, "Les envois de l'ancien compte LinkedIn n'ont pas pu être arrêtés : le changement de compte est annulé. Réessayez.");
+          }
+        }
+        const nowIso = new Date().toISOString();
+
+        const { data: linked, error: linkError } = await adminClient
+          .from('member_linkedin_accounts')
+          .upsert({
+            organization_id: organizationId,
+            user_id: targetUserId,
+            linkedin_account_id: accountId,
+            linkedin_account_name: typeof acc?.name === 'string' && acc.name.trim() ? acc.name.trim() : 'Compte LinkedIn',
+            linked_by: user.id,
+            account_status: accountStatus,
+            last_checked_at: nowIso,
+            failure_reason: null,
+            // Nouveau compte sur la liaison : la montée en charge repart de zéro
+            // (getAccountRampFactor lit linked_at, _shared/linkedin-quotas.ts).
+            ...(current?.linkedin_account_id === accountId ? {} : { linked_at: nowIso }),
+          }, { onConflict: 'organization_id,user_id' })
+          .select('id, user_id, linkedin_account_id');
+
+        if (linkError) {
+          console.error('[claim_linkedin_account] upsert failed:', linkError);
+          if (linkError.code === '42501') throw new HttpError(403, 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail');
+          if (linkError.code === '23505') throw new HttpError(409, 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation');
+          throw new HttpError(500, 'Le rattachement du compte LinkedIn a échoué');
+        }
+        if (!linked || linked.length !== 1) {
+          throw new HttpError(500, "Le rattachement du compte LinkedIn n'a pas été enregistré");
+        }
+        return new Response(
+          JSON.stringify({ success: true, mapping: linked[0] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'unlink_linkedin_account': {
+        // « Dissocier » (MyLinkedInAccount, TeamManagement). Remplace le DELETE du
+        // navigateur : refusé par la RLS à un membre sans erreur (0 ligne, faux
+        // succès), envois qui continuaient de partir du compte (process-sequences
+        // et process-inmail-queue ne contrôlent que les comptes reliés).
+        // Décision lot 1 : la session chez le prestataire n'est JAMAIS fermée ici
+        // (aucun DELETE /accounts) ; on retire la liaison et on arrête les envois.
+        const mappingId = typeof params.mapping_id === 'string' ? params.mapping_id.trim() : '';
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mappingId)) {
+          throw new HttpError(400, 'Liaison invalide');
+        }
+        // Le compte que l'écran affichait : une ligne repointée entre-temps
+        // (réconciliation de « list ») n'est jamais dissociée à l'aveugle.
+        const expectedAccountId = typeof params.expected_account_id === 'string' ? params.expected_account_id.trim() : '';
+        if (!expectedAccountId) throw new HttpError(400, 'Compte LinkedIn attendu manquant');
+
+        const { data: row, error: rowError } = await adminClient
+          .from('member_linkedin_accounts')
+          .select('id, user_id, linkedin_account_id')
+          .eq('id', mappingId)
+          .eq('organization_id', organizationId)
+          .maybeSingle();
+        if (rowError) throw new HttpError(500, 'Lecture de la liaison impossible');
+        if (!row) throw new HttpError(404, "Cette liaison LinkedIn n'existe plus");
+        if (row.linkedin_account_id !== expectedAccountId) {
+          throw new HttpError(409, 'Cette liaison a changé entre-temps. Rechargez la page puis réessayez.');
+        }
+
+        // Le titulaire sur sa ligne, owner/admin sur toutes celles de l'org.
+        await assertCanManageAccount(adminClient, organizationId, user.id, { mapped: 'org', userId: row.user_id });
+
+        // 1. Envois qui partent de ce compte (pause, InMails, rotation) :
+        //    helper partagé, idempotent. La liaison n'est jamais supprimée tant
+        //    que l'arrêt n'a pas réussi.
+        const keptLinked = "Les envois de ce compte n'ont pas pu être arrêtés : le compte reste relié";
+        let stopped: LinkedInSendingStopResult;
+        try {
+          stopped = await stopLinkedInAccountSending(adminClient, {
+            organizationId,
+            accountId: row.linkedin_account_id,
+          });
+        } catch (stopError) {
+          console.error('[unlink_linkedin_account] sending stop failed:', stopError);
+          throw new HttpError(500, keptLinked);
+        }
+
+        // 2. La liaison, résultat vérifié.
+        const { data: removed, error: removeError } = await adminClient
+          .from('member_linkedin_accounts')
+          .delete()
+          .eq('id', row.id)
+          .eq('organization_id', organizationId)
+          .select('id');
+        if (removeError) {
+          console.error('[unlink_linkedin_account] delete failed:', removeError);
+          throw new HttpError(500, "La dissociation n'a pas été enregistrée");
+        }
+        return new Response(
+          JSON.stringify({
+            success: true,
+            removed: removed?.length ?? 0,
+            paused_enrollments: stopped.pausedEnrollments,
+            relabeled_enrollments: stopped.relabeledEnrollments,
+            cancelled_inmails: stopped.cancelledInmails,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'stop_member_linkedin': {
+        // Retrait d'un membre de l'équipe (SEQ-042) : appelé par l'écran Équipe
+        // AVANT la suppression du membre. Ses comptes LinkedIn reliés dans
+        // l'organisation cessent d'envoyer (même arrêt que « Dissocier »), puis
+        // la liaison est retirée. Échec = le membre n'est pas retiré.
+        const memberUserId = typeof params.member_user_id === 'string' ? params.member_user_id.trim() : '';
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberUserId)) {
+          throw new HttpError(400, 'Membre invalide');
+        }
+
+        const callerRole = await getCallerOrgRole(adminClient, organizationId, user.id);
+        if (callerRole !== 'owner' && callerRole !== 'admin') {
+          throw new HttpError(403, "Seul un propriétaire ou un administrateur de l'organisation peut retirer un membre");
+        }
+        const memberRole = await getCallerOrgRole(adminClient, organizationId, memberUserId);
+        if (memberRole === 'owner' && callerRole !== 'owner') {
+          throw new HttpError(403, 'Seul un propriétaire peut arrêter les envois d’un autre propriétaire');
+        }
+
+        const { data: memberLinks, error: memberLinksError } = await adminClient
+          .from('member_linkedin_accounts')
+          .select('id, linkedin_account_id')
+          .eq('organization_id', organizationId)
+          .eq('user_id', memberUserId);
+        if (memberLinksError) throw new HttpError(500, 'Lecture des comptes LinkedIn du membre impossible. Réessayez.');
+        const links = (memberLinks ?? []) as Array<{ id: string; linkedin_account_id: string | null }>;
+        // Un membre déjà retiré dont la liaison est restée est accepté (nettoyage) ;
+        // sinon l'utilisateur doit appartenir à l'organisation.
+        if (!memberRole && links.length === 0) {
+          throw new HttpError(404, "Ce membre ne fait pas partie de l'organisation");
+        }
+
+        const keptMember = "Les envois de ce membre n'ont pas pu être arrêtés : il n'a pas été retiré. Réessayez.";
+        let pausedTotal = 0;
+        let relabeledTotal = 0;
+        let cancelledInmailsTotal = 0;
+        for (const link of links) {
+          if (link.linkedin_account_id) {
+            try {
+              const stopped = await stopLinkedInAccountSending(adminClient, {
+                organizationId,
+                accountId: link.linkedin_account_id,
+              });
+              pausedTotal += stopped.pausedEnrollments;
+              relabeledTotal += stopped.relabeledEnrollments;
+              cancelledInmailsTotal += stopped.cancelledInmails;
+            } catch (stopError) {
+              console.error('[stop_member_linkedin] sending stop failed:', stopError);
+              throw new HttpError(500, keptMember);
+            }
+          }
+          const { error: removeError } = await adminClient
+            .from('member_linkedin_accounts')
+            .delete()
+            .eq('id', link.id)
+            .eq('organization_id', organizationId)
+            .select('id');
+          if (removeError) {
+            console.error('[stop_member_linkedin] link delete failed:', removeError);
+            throw new HttpError(500, keptMember);
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            paused_enrollments: pausedTotal,
+            relabeled_enrollments: relabeledTotal,
+            cancelled_inmails: cancelledInmailsTotal,
+            removed_links: links.length,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'inmail_balance': {
         // Get InMail balance for an account
         // https://developer.unipile.com/reference/linkedincontroller_getinmailbalance
@@ -772,7 +1220,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetchWithTimeout(`${baseUrl}/linkedin/inmail_balance?account_id=${account_id}`, {
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+
+        const response = await fetchWithTimeout(`${baseUrl}/linkedin/inmail_balance?account_id=${encodeURIComponent(String(account_id))}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -818,7 +1268,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+
+        const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -852,7 +1304,6 @@ Deno.serve(async (req) => {
             f.toLowerCase().includes('sales') || f.toLowerCase().includes('navigator')
           ),
           premium_features: premiumFeatures,
-          raw_connection_params: connectionParams,
         };
 
         return new Response(
@@ -956,9 +1407,14 @@ Deno.serve(async (req) => {
             throw new HttpError(400, 'Mode proxy invalide. Valeurs acceptées : country, ip, custom');
         }
 
+        {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, account_id);
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
+
         console.log(`[update_proxy] Patching account ${account_id} (mode: ${proxy_mode}) with body:`, JSON.stringify(patchBody));
 
-        const patchResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        const patchResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           method: 'PATCH',
           headers: {
             'X-API-KEY': apiKey,
@@ -1043,8 +1499,10 @@ Deno.serve(async (req) => {
         if (!message_id || !reaction) {
           throw new HttpError(400, 'message_id et reaction requis');
         }
+        const reactionMessageId = pathId(message_id, 'message_id');
+        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', reactionMessageId));
         console.log(`[add_reaction] Adding "${reaction}" to message ${message_id}`);
-        const reactionRes = await fetchWithTimeout(`${baseUrl}/messages/${message_id}/reaction`, {
+        const reactionRes = await fetchWithTimeout(`${baseUrl}/messages/${reactionMessageId}/reaction`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -1072,8 +1530,10 @@ Deno.serve(async (req) => {
         if (!message_id) {
           throw new HttpError(400, 'message_id requis');
         }
+        const delMessageId = pathId(message_id, 'message_id');
+        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', delMessageId));
         console.log(`[delete_message] Deleting message ${message_id}`);
-        const delMsgRes = await fetchWithTimeout(`${baseUrl}/messages/${message_id}`, {
+        const delMsgRes = await fetchWithTimeout(`${baseUrl}/messages/${delMessageId}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -1099,8 +1559,10 @@ Deno.serve(async (req) => {
         if (!chat_id) {
           throw new HttpError(400, 'chat_id requis');
         }
+        const delChatId = pathId(chat_id, 'chat_id');
+        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'chats', delChatId));
         console.log(`[delete_chat] Deleting chat ${chat_id}`);
-        const delChatRes = await fetchWithTimeout(`${baseUrl}/chats/${chat_id}`, {
+        const delChatRes = await fetchWithTimeout(`${baseUrl}/chats/${delChatId}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -1126,8 +1588,9 @@ Deno.serve(async (req) => {
         if (!account_id) {
           throw new HttpError(400, 'Account ID requis');
         }
-        let invUrl = `${baseUrl}/users/invite/received?account_id=${account_id}&limit=${invLimit || 20}`;
-        if (invCursor) invUrl += `&cursor=${invCursor}`;
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+        let invUrl = `${baseUrl}/users/invite/received?account_id=${encodeURIComponent(String(account_id))}&limit=${Math.min(Math.max(Number(invLimit) || 20, 1), 100)}`;
+        if (invCursor) invUrl += `&cursor=${encodeURIComponent(String(invCursor))}`;
 
         console.log(`[list_invitations_received] GET ${invUrl}`);
         const invRes = await fetchWithTimeout(invUrl, {
@@ -1184,8 +1647,9 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'invitation_action doit être "accept" ou "decline"');
         }
 
+        await assertAccountInOrg(adminClient, organizationId, account_id);
         console.log(`[handle_invitation_received] ${finalAction} invitation ${invitation_id}`);
-        const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
+        const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${pathId(invitation_id, 'invitation_id')}`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -1221,13 +1685,14 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'account_id et invitations[] requis');
         }
 
+        await assertAccountInOrg(adminClient, organizationId, account_id);
         console.log(`[bulk_handle_invitations] Processing ${bulkInvitations.length} invitations`);
         const results: Array<{ invitation_id: string; status: string; error?: string }> = [];
 
         for (const inv of bulkInvitations) {
           const { invitation_id, shared_secret, action: bulkAction } = inv as { invitation_id: string; shared_secret: string; action: string };
           try {
-            const bulkRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
+            const bulkRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${pathId(invitation_id, 'invitation_id')}`, {
               method: 'POST',
               headers: {
                 'X-API-KEY': apiKey,
@@ -1278,7 +1743,9 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'Account ID requis');
         }
 
-        const detailResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+
+        const detailResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -1295,6 +1762,16 @@ Deno.serve(async (req) => {
 
         const detailData = await detailResponse.json();
 
+        // Projection : jamais les identifiants proxy ni les connection_params
+        // bruts (cookies/session) vers le navigateur.
+        const proxyInfo = detailData.proxy && typeof detailData.proxy === 'object'
+          ? { ...(detailData.proxy as Record<string, unknown>) }
+          : null;
+        if (proxyInfo) {
+          delete proxyInfo.username;
+          delete proxyInfo.password;
+        }
+
         return new Response(
           JSON.stringify({ 
             success: true,
@@ -1303,8 +1780,8 @@ Deno.serve(async (req) => {
               name: detailData.name,
               type: detailData.type,
               status: detailData.sources?.[0]?.status || 'UNKNOWN',
-              proxy: detailData.proxy || null,
-              connection_params: detailData.connection_params || null,
+              proxy: proxyInfo,
+              premium_features: detailData.connection_params?.im?.premiumFeatures ?? [],
             },
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1318,7 +1795,7 @@ Deno.serve(async (req) => {
         }
 
         try {
-          const pictureRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${attendee_id}/picture`, {
+          const pictureRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${pathId(attendee_id, 'attendee_id')}/picture`, {
             headers: { 'X-API-KEY': apiKey, 'Accept': 'image/*' },
           }, 10000);
 
@@ -1350,7 +1827,7 @@ Deno.serve(async (req) => {
 
         // Fallback: try metadata endpoint for picture_url
         try {
-          const metaRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${attendee_id}`, {
+          const metaRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${pathId(attendee_id, 'attendee_id')}`, {
             headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
           }, 10000);
           if (metaRes.ok) {

@@ -1,9 +1,11 @@
 /**
  * AgentActionsSettings — Historique des actions IA (lecture).
  *
- * Onglet /settings?tab=agent-actions. Liste les rows de agent_tool_executions
- * pour l'user (par défaut) ou toute l'org (admin/owner uniquement). Realtime
- * via la publication supabase_realtime (cf. migration
+ * Rubrique Paramètres › Journal de l’assistant (/settings/account/journal),
+ * provisoire jusqu'au lot 9 (vue Journal de /agents). Les politiques et les
+ * connecteurs n'y sont plus : ils sont dans Règles de l’assistant.
+ * Liste les rows de agent_tool_executions pour l'user (par défaut) ou toute
+ * l'org (admin/owner uniquement). Realtime via la publication supabase_realtime (cf. migration
  * 20260520150000_realtime_publication_copilot_tables.sql).
  *
  * Trois usages :
@@ -13,15 +15,23 @@
  *     vraiment fait (et quand).
  *  3. Comprendre un échec — voir le error_message dans real_result quand
  *     status=failed.
+ *
+ * Lot 12 du chantier design : plus de second en-tête sous celui de la rubrique
+ * (F-02) ; une lecture ratée s'affiche en erreur avec « Réessayer », jamais comme
+ * une liste vide (F-06) ; statuts en badges du kit, couleur réservée aux écarts
+ * (F-14) ; bascule des lectures annoncée (F-15) ; vouvoiement (F-11).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Toggle } from '@/components/ui/toggle';
 import {
   Select,
   SelectContent,
@@ -39,6 +49,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { StatGrid, StatTile } from '@/components/layout/StatTile';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { ErrorState } from '@/components/layout/ErrorState';
+import { EnrollFirstMessagePreview } from '@/components/agent/EnrollFirstMessagePreview';
+import { readFirstStepPreview } from '@/components/agent/firstStepPreview';
 import {
   CheckCircle2,
   Clock,
@@ -51,15 +66,12 @@ import {
   RotateCcw,
   Check,
   X,
-  Loader2,
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { timeAgo } from '@/lib/relativeTime';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { AgentPoliciesSettings } from './AgentPoliciesSettings';
-import { AgentConnectorsSettings } from './AgentConnectorsSettings';
 
 type ActionStatus = 'proposed' | 'approved' | 'executed' | 'auto_executed' | 'failed' | 'rejected';
 
@@ -89,32 +101,32 @@ interface AgentAction {
 const TOOL_LABEL: Record<string, string> = {
   // Reads (auto_executed, peu visibles)
   get_my_missions: 'Lister les missions',
-  get_mission_overview: 'Aperçu mission',
+  get_mission_overview: 'Aperçu de la mission',
   get_mission_candidates: 'Lister les candidats',
-  get_mission_process: 'Process mission',
+  get_mission_process: 'Process de la mission',
   get_sequences_status: 'Statut des séquences',
-  get_candidate_detail: 'Détail candidat',
+  get_candidate_detail: 'Fiche du candidat',
   get_upcoming_interviews: 'Entretiens à venir',
-  get_candidate_outreach: 'Outreach candidat',
+  get_candidate_outreach: 'Prospection du candidat',
   get_linkedin_thread: 'Fil LinkedIn',
-  search_knowledge: 'Recherche RAG',
-  get_vivier_overview: 'Aperçu CRM/vivier',
-  get_org_analytics: 'Stats organisation',
-  get_team_overview: 'Aperçu équipe',
-  get_recent_agent_actions: 'Historique actions IA',
+  search_knowledge: 'Recherche dans vos documents',
+  get_vivier_overview: 'Aperçu du vivier',
+  get_org_analytics: 'Statistiques de l’organisation',
+  get_team_overview: 'Aperçu de l’équipe',
+  get_recent_agent_actions: 'Historique des actions de l’assistant',
   // Mutations
-  update_candidate_stage: 'Modifier le stade candidat',
+  update_candidate_stage: 'Modifier l’étape du candidat',
   add_to_shortlist: 'Ajouter à la shortlist',
   draft_outreach_message: 'Rédiger un message d\'approche',
   create_mission: 'Créer une mission',
-  enroll_in_sequence: 'Enrôler dans une séquence',
+  enroll_in_sequence: 'Inscrire dans une séquence',
   schedule_interview: 'Planifier un entretien',
   enrich_candidate_contact: 'Enrichir un contact',
-  add_candidate_note: 'Ajouter une note candidat',
+  add_candidate_note: 'Ajouter une note au candidat',
   dismiss_candidate: 'Écarter un candidat',
   assign_candidate_to_member: 'Assigner un candidat',
-  update_mission_status: 'Modifier le statut mission',
-  update_mission_brief: 'Modifier le brief mission',
+  update_mission_status: 'Modifier le statut de la mission',
+  update_mission_brief: 'Modifier le brief de la mission',
   regenerate_search_filters: 'Régénérer les filtres LinkedIn',
   send_linkedin_message: 'Envoyer un message LinkedIn',
   pause_sequence: 'Mettre en pause une séquence',
@@ -123,51 +135,35 @@ const TOOL_LABEL: Record<string, string> = {
   update_member_quota: 'Modifier les quotas d\'un membre',
   apply_search_filters_to_mission: 'Appliquer les filtres de recherche',
   launch_search: 'Lancer la recherche autonome',
-  get_inbox_overview: 'Vue messagerie',
+  get_inbox_overview: 'Aperçu de la messagerie',
   bulk_update_stage: 'Déplacer plusieurs candidats',
   bulk_dismiss: 'Écarter plusieurs candidats',
-  send_email: 'Envoyer un email',
+  send_email: 'Envoyer un e-mail',
   create_sequence: 'Créer une séquence',
+  start_background_scoring: 'Évaluer les candidats d’une mission en arrière-plan',
 };
 
+/** Nom d'une action à l'écran ; jamais le nom technique d'un outil inconnu. */
+const toolLabel = (toolName: string) => TOOL_LABEL[toolName] || 'Action de l’assistant';
+
+type StatusTone = 'warning' | 'info' | 'success' | 'muted' | 'danger';
+
+/** Un statut, un badge du kit (même teinte partout) ; le pluriel sert aux compteurs. */
 const STATUS_CONFIG: Record<
   ActionStatus,
   {
     label: string;
+    plural: string;
     icon: typeof CheckCircle2;
-    className: string;
+    tone: StatusTone;
   }
 > = {
-  proposed: {
-    label: 'En attente',
-    icon: Clock,
-    className: 'bg-warning/10 text-warning border-warning/40',
-  },
-  approved: {
-    label: 'Approuvée',
-    icon: Activity,
-    className: 'bg-info/10 text-info border-info/40',
-  },
-  executed: {
-    label: 'Exécutée',
-    icon: CheckCircle2,
-    className: 'bg-success/10 text-success border-success/40',
-  },
-  auto_executed: {
-    label: 'Lecture',
-    icon: CheckCircle2,
-    className: 'bg-muted text-muted-foreground border-border',
-  },
-  failed: {
-    label: 'Échec',
-    icon: XCircle,
-    className: 'bg-destructive/10 text-destructive border-destructive/40',
-  },
-  rejected: {
-    label: 'Rejetée',
-    icon: Ban,
-    className: 'bg-muted text-muted-foreground border-border',
-  },
+  proposed: { label: 'En attente', plural: 'En attente', icon: Clock, tone: 'warning' },
+  approved: { label: 'Approuvée', plural: 'Approuvées', icon: Activity, tone: 'info' },
+  executed: { label: 'Exécutée', plural: 'Exécutées', icon: CheckCircle2, tone: 'success' },
+  auto_executed: { label: 'Lecture', plural: 'Lectures', icon: CheckCircle2, tone: 'muted' },
+  failed: { label: 'Échec', plural: 'Échecs', icon: XCircle, tone: 'danger' },
+  rejected: { label: 'Rejetée', plural: 'Rejetées', icon: Ban, tone: 'muted' },
 };
 
 // Sensitive tool list (mirror of AgentToolApprovalCard) — approving these
@@ -196,6 +192,8 @@ interface PendingDialog {
 
 export const AgentActionsSettings = () => {
   const { organizationId, isAdmin, isOwner } = useOrganization();
+  const { user } = useAuthReady();
+  const currentUserId = user?.id ?? null;
   const isPrivileged = isAdmin || isOwner;
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<'mine' | 'org'>('mine');
@@ -203,6 +201,14 @@ export const AgentActionsSettings = () => {
   const [includeReads, setIncludeReads] = useState(false);
   const [actionLoading, setActionLoading] = useState<Record<string, string | null>>({});
   const [pendingDialog, setPendingDialog] = useState<PendingDialog | null>(null);
+  const uid = useId();
+  const ids = {
+    list: `${uid}-liste`,
+    statusLabel: `${uid}-statut-libelle`,
+    status: `${uid}-statut`,
+    scopeLabel: `${uid}-portee-libelle`,
+    scope: `${uid}-portee`,
+  };
 
   // Lock scope to mine for non-privileged
   useEffect(() => {
@@ -212,6 +218,9 @@ export const AgentActionsSettings = () => {
   const {
     data: actions = [],
     isLoading,
+    isLoadingError,
+    isRefetchError,
+    error,
     refetch,
     isFetching,
   } = useQuery({
@@ -268,10 +277,14 @@ export const AgentActionsSettings = () => {
     queryKey: ['agent-actions-members', organizationId, userIds.join(',')],
     queryFn: async () => {
       if (userIds.length === 0) return {};
-      const { data } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, display_name')
+        .in('user_id', userIds);
+      if (error) throw error;
       const map: Record<string, string> = {};
-      for (const p of (data as Array<{ id: string; full_name: string | null }> | null) ?? []) {
-        if (p.full_name) map[p.id] = p.full_name;
+      for (const profile of data ?? []) {
+        if (profile.display_name) map[profile.user_id] = profile.display_name;
       }
       return map;
     },
@@ -290,7 +303,10 @@ export const AgentActionsSettings = () => {
           data?: Record<string, unknown>;
         }>('agent-tool-action', { execution_id: row.id, action });
         if (error || !data?.success) {
-          toast.error(data?.error || error?.message || `Action ${action} a échoué`);
+          toast.error(
+            data?.error || error?.message
+              || (action === 'approve' ? 'L’approbation a échoué. Réessayez.' : 'Le rejet a échoué. Réessayez.'),
+          );
           return;
         }
         if (action === 'reject') {
@@ -305,7 +321,7 @@ export const AgentActionsSettings = () => {
           });
           toast.success(`Action programmée pour ${when}`, { duration: 6000 });
         } else {
-          toast.success('Action exécutée ✓');
+          toast.success('Action exécutée');
         }
         // Realtime should refresh automatically, but invalidate as a safety net
         queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
@@ -323,7 +339,9 @@ export const AgentActionsSettings = () => {
         // Reset failed → proposed so the AgentToolApprovalCard banner picks
         // it back up. We do NOT auto-execute — user must explicitly approve
         // again (with potentially new context).
-        const { error } = await supabase
+        // Écriture relue : la RLS ne laisse modifier que ses propres actions,
+        // et un refus répond « succès » sur 0 ligne sans .select().
+        const { data: updated, error } = await supabase
           .from('agent_tool_executions')
           .update({
             status: 'proposed',
@@ -334,12 +352,19 @@ export const AgentActionsSettings = () => {
             proposed_at: new Date().toISOString(),
           })
           .eq('id', row.id)
-          .eq('status', 'failed');
+          .eq('status', 'failed')
+          .select('id');
         if (error) {
-          toast.error(`Relance échouée : ${error.message}`);
+          console.error('[AgentActionsSettings] requeue', error);
+          toast.error('La relance a échoué. Réessayez.');
           return;
         }
-        toast.success('Action remise en attente — approuve-la depuis le chat ou ici');
+        if (!updated || updated.length === 0) {
+          toast.error("Cette action n'a pas été relancée : seul son auteur peut la relancer, ou elle a déjà changé d'état.");
+          queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
+          return;
+        }
+        toast.success('Action remise en attente : approuvez-la depuis la conversation avec l’assistant, ou ici.');
         queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
       } finally {
         setActionLoading((prev) => ({ ...prev, [row.id]: null }));
@@ -352,18 +377,29 @@ export const AgentActionsSettings = () => {
     async (row: AgentAction) => {
       setActionLoading((prev) => ({ ...prev, [row.id]: 'cancel' }));
       try {
-        const { error } = await supabase
+        // Écriture relue (même piège RLS que la relance) : sans ligne
+        // modifiée, l'envoi programmé partira, jamais de faux succès.
+        const { data: updated, error } = await supabase
           .from('agent_tool_executions')
           .update({
             status: 'rejected',
-            user_note: '[Annulée depuis Settings — programmation annulée]',
+            // Note enregistrée en base, jamais affichée : même valeur qu'avant le lot 12
+            // (reprise par e2e/api/seq-scheduled-1.spec.ts), tiret écrit en échappement.
+            user_note: '[Annulée depuis Settings \u2014 programmation annulée]',
             scheduled_for: null,
           })
           .eq('id', row.id)
           .eq('status', 'approved')
-          .is('executed_at', null);
+          .is('executed_at', null)
+          .select('id');
         if (error) {
-          toast.error(`Annulation échouée : ${error.message}`);
+          console.error('[AgentActionsSettings] cancel', error);
+          toast.error('L’annulation a échoué. Réessayez.');
+          return;
+        }
+        if (!updated || updated.length === 0) {
+          toast.error("La programmation n'a pas été annulée : seul l'auteur de l'action peut l'annuler, ou l'envoi a déjà commencé.");
+          queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
           return;
         }
         toast.success('Programmation annulée');
@@ -394,10 +430,16 @@ export const AgentActionsSettings = () => {
     [runApproveReject, requeueFailed, cancelScheduled],
   );
 
-  if (isLoading) {
+  if (!organizationId || isLoading) {
     return (
-      <div className="flex justify-center py-12">
-        <BrutalLoader compact />
+      <div role="status" className="space-y-6">
+        <StatGrid cols={{ base: 2, sm: 4 }}>
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" aria-hidden="true" />)}
+        </StatGrid>
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 w-full rounded-xl" aria-hidden="true" />)}
+        </div>
+        <span className="sr-only">Chargement du journal de l’assistant…</span>
       </div>
     );
   }
@@ -407,61 +449,41 @@ export const AgentActionsSettings = () => {
     acc[a.status] = (acc[a.status] ?? 0) + 1;
     return acc;
   }, {});
+  const filtered = statusFilter !== 'all';
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <History className="w-5 h-5" />
-            Actions IA
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Toutes les actions proposées par le copilot et leur statut d'exécution.
-            Source de vérité — mis à jour en temps réel.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="shrink-0"
-        >
-          <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', isFetching && 'animate-spin')} />
-          Rafraîchir
-        </Button>
-      </div>
+      {/* Pas de second en-tête : le titre et la phrase de la rubrique suffisent (F-02). */}
+      {!isLoadingError && (
+        <StatGrid cols={{ base: 2, sm: 4 }}>
+          {(['proposed', 'executed', 'failed', 'rejected'] as ActionStatus[]).map((s) => {
+            const cfg = STATUS_CONFIG[s];
+            const count = byStatus[s] ?? 0;
+            // Couleur réservée aux écarts : ce qui attend une décision, ce qui a échoué (F-14).
+            const variant = s === 'proposed' ? 'warning' : s === 'failed' ? 'destructive' : 'default';
+            return (
+              <StatTile
+                key={s}
+                label={cfg.plural}
+                value={count}
+                icon={cfg.icon}
+                variant={variant}
+                accent={count > 0 && variant !== 'default'}
+              />
+            );
+          })}
+        </StatGrid>
+      )}
 
-      {/* Politiques d'autonomie par action (P2.1) */}
-      <AgentPoliciesSettings />
-
-      {/* Connecteurs MCP du copilot (P3.1) */}
-      <AgentConnectorsSettings />
-
-      {/* Quick stats — count par statut */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {(['proposed', 'executed', 'failed', 'rejected'] as ActionStatus[]).map((s) => {
-          const cfg = STATUS_CONFIG[s];
-          const Icon = cfg.icon;
-          return (
-            <Card key={s} className={cn('border', byStatus[s] ? cfg.className : 'border-border')}>
-              <CardContent className="p-3 flex items-center gap-2">
-                <Icon className="w-4 h-4 shrink-0" />
-                <div>
-                  <div className="text-xs font-medium">{cfg.label}</div>
-                  <div className="text-lg font-bold leading-none">{byStatus[s] ?? 0}</div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Filters */}
+      {/* Filtres */}
       <div className="flex flex-wrap items-center gap-2">
+        <span id={ids.statusLabel} className="sr-only">Statut</span>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40 h-9 text-xs">
+          <SelectTrigger
+            id={ids.status}
+            aria-labelledby={`${ids.statusLabel} ${ids.status}`}
+            className="h-8 w-full text-xs max-md:h-11 sm:w-44"
+          >
             <SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
@@ -476,68 +498,135 @@ export const AgentActionsSettings = () => {
         </Select>
 
         {isPrivileged && (
-          <Select value={scope} onValueChange={(v) => setScope(v as 'mine' | 'org')}>
-            <SelectTrigger className="w-40 h-9 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mine">Mes actions</SelectItem>
-              <SelectItem value="org">Toute l'organisation</SelectItem>
-            </SelectContent>
-          </Select>
+          <>
+            <span id={ids.scopeLabel} className="sr-only">Portée</span>
+            <Select value={scope} onValueChange={(v) => setScope(v as 'mine' | 'org')}>
+              <SelectTrigger
+                id={ids.scope}
+                aria-labelledby={`${ids.scopeLabel} ${ids.scope}`}
+                className="h-8 w-full text-xs max-md:h-11 sm:w-44"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mine">Mes actions</SelectItem>
+                {/* Apostrophe droite : texte cliqué par e2e/flows/seq-scheduled-1.spec.ts. */}
+                <SelectItem value="org">Toute l'organisation</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
         )}
+
+        {/* Bascule annoncée (aria-pressed), libellé fixe (F-15). */}
+        <Toggle
+          variant="outline"
+          size="sm"
+          pressed={includeReads}
+          onPressedChange={setIncludeReads}
+          className="text-xs max-md:h-11"
+        >
+          Inclure les lectures
+        </Toggle>
 
         <Button
           size="sm"
-          variant={includeReads ? 'default' : 'outline'}
-          onClick={() => setIncludeReads((v) => !v)}
-          className="h-9 text-xs"
+          variant="ghost"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="max-md:h-11 sm:ml-auto"
         >
-          {includeReads ? 'Masquer' : 'Inclure'} les lectures
+          <RefreshCw className={cn(isFetching && 'animate-spin')} aria-hidden="true" />
+          Rafraîchir
         </Button>
       </div>
 
       {/* Liste */}
-      {actions.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Aucune action ne correspond à ces filtres.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {actions.map((action) => (
-            <ActionRow
-              key={action.id}
-              action={action}
-              showAuthor={scope === 'org'}
-              authorName={memberNames[action.user_id]}
-              loadingAction={actionLoading[action.id] ?? null}
-              onAction={handleActionClick}
+      <section aria-labelledby={ids.list} className="space-y-2">
+        {/* Nomme la liste pour les lecteurs d'écran sans doubler l'en-tête visible de la
+            rubrique (F-02). */}
+        <h3 id={ids.list} className="sr-only">Actions de l'assistant</h3>
+        {/* Actualisation ratée : la liste déjà lue reste, et on le dit. */}
+        {isRefetchError && (
+          <p role="status" className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+            Actualisation impossible : la liste affichée peut dater.
+            <Button variant="link" size="xs" onClick={() => refetch()} className="h-auto px-0 max-md:h-11">
+              Réessayer
+            </Button>
+          </p>
+        )}
+        {isLoadingError ? (
+          // Lecture ratée : une erreur avec « Réessayer », jamais « aucune action » (F-06).
+          <ErrorState
+            title="Impossible de charger le journal de l’assistant."
+            description="Vérifiez votre connexion, puis réessayez."
+            detail={error instanceof Error ? error.message : null}
+            onRetry={() => { void refetch(); }}
+            retrying={isFetching}
+          />
+        ) : actions.length === 0 ? (
+          filtered ? (
+            <EmptyState
+              variant="compact"
+              icon={History}
+              title="Aucune action ne correspond à ces filtres."
+              headingLevel={4}
+              description="Changez de statut pour voir les autres actions."
+              action={(
+                <Button size="sm" variant="outline" onClick={() => setStatusFilter('all')} className="max-md:h-11">
+                  Afficher tous les statuts
+                </Button>
+              )}
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <EmptyState
+              variant="compact"
+              icon={History}
+              title="Aucune action pour le moment"
+              headingLevel={4}
+              description="Les actions que l’assistant propose dans vos conversations apparaîtront ici, avec leur statut."
+            />
+          )
+        ) : (
+          <ul className="space-y-2">
+            {actions.map((action) => (
+              <li key={action.id}>
+                <ActionRow
+                  action={action}
+                  showAuthor={scope === 'org'}
+                  authorName={memberNames[action.user_id]}
+                  loadingAction={actionLoading[action.id] ?? null}
+                  canAct={!currentUserId || action.user_id === currentUserId}
+                  onAction={handleActionClick}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* Dialog de confirmation pour les actions sensibles approuvées depuis la liste */}
       <AlertDialog open={pendingDialog !== null} onOpenChange={(open) => !open && setPendingDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer cette action sensible</AlertDialogTitle>
+            <AlertDialogTitle>Approuver cette action sensible ?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 {pendingDialog && (
                   <>
                     <p>
-                      Tu vas approuver l'action <strong>{TOOL_LABEL[pendingDialog.row.tool_name] || pendingDialog.row.tool_name}</strong>.
+                      Vous allez approuver l'action <strong className="font-medium text-foreground">{toolLabel(pendingDialog.row.tool_name)}</strong>.
                     </p>
                     {pendingDialog.row.dry_run_result?.summary && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs">
                         {pendingDialog.row.dry_run_result.summary}
                       </p>
                     )}
                     {pendingDialog.row.dry_run_result?.warning && (
-                      <p className="text-xs text-warning">⚠️ {pendingDialog.row.dry_run_result.warning}</p>
+                      <p className="flex items-start gap-1 text-xs text-warning">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                        {pendingDialog.row.dry_run_result.warning}
+                      </p>
                     )}
                   </>
                 )}
@@ -554,7 +643,7 @@ export const AgentActionsSettings = () => {
                 }
               }}
             >
-              Oui, j'approuve
+              Approuver l’action
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -568,26 +657,28 @@ interface ActionRowProps {
   showAuthor: boolean;
   authorName?: string;
   loadingAction: string | null;
+  /** Action de l'utilisateur : seul son auteur peut l'approuver, l'annuler ou la relancer. */
+  canAct: boolean;
   onAction: (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel') => void;
 }
 
-function ActionRow({ action, showAuthor, authorName, loadingAction, onAction }: ActionRowProps) {
+/** Une action, une carte (Card du kit : repère des tests de parcours). */
+function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAction }: ActionRowProps) {
   // Sub-status : 'approved' avec scheduled_for futur = en attente d'envoi
   const isQueued =
     action.status === 'approved' &&
     action.scheduled_for !== null &&
     new Date(action.scheduled_for).getTime() > Date.now();
   const cfg = isQueued
-    ? {
-        label: 'Programmée',
-        icon: Clock,
-        className: 'bg-info/10 text-info border-info/40',
-      }
+    ? { label: 'Programmée', icon: Clock, tone: 'info' as StatusTone }
     : STATUS_CONFIG[action.status];
   const Icon = cfg.icon;
-  const label = TOOL_LABEL[action.tool_name] || action.tool_name;
+  const label = toolLabel(action.tool_name);
   const summary = action.dry_run_result?.summary || '';
   const warning = action.dry_run_result?.warning;
+  const firstStepPreview = action.tool_name === 'enroll_in_sequence' && action.status === 'proposed'
+    ? readFirstStepPreview(action.dry_run_result?.details)
+    : null;
   const errorMessage =
     action.status === 'failed'
       ? action.real_result?.error || action.real_result?.message || null
@@ -609,124 +700,121 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, onAction }: 
 
   return (
     <Card>
-      <CardContent className="p-3 flex items-start gap-3">
-        <Badge variant="outline" className={cn('shrink-0 gap-1 h-6', cfg.className)}>
-          <Icon className="w-3 h-3" />
-          <span className="text-[10px]">{cfg.label}</span>
-        </Badge>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="text-sm font-medium">{label}</div>
+      <CardContent className="p-3">
+        <div className="min-w-0">
+          {/* Titre puis statut : les titres restent alignés quelle que soit la longueur du badge. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-sm font-medium text-foreground">{label}</p>
+            <Badge variant={cfg.tone} className="shrink-0">
+              <Icon className="h-3 w-3" aria-hidden="true" />
+              {cfg.label}
+            </Badge>
             {showAuthor && authorName && (
-              <span className="text-[10px] text-muted-foreground">par {authorName}</span>
+              <span className="text-xs text-muted-foreground">par {authorName}</span>
             )}
+            <time
+              dateTime={time}
+              title={format(new Date(time), 'PPp', { locale: fr })}
+              className="ml-auto text-xs text-muted-foreground"
+            >
+              {timeAgo(time)}
+            </time>
           </div>
 
           {summary && (
-            <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{summary}</div>
+            <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{summary}</p>
           )}
 
           {warning && action.status === 'proposed' && (
-            <div className="mt-1 flex items-start gap-1 text-[11px] text-warning">
-              <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+            <p className="mt-1 flex items-start gap-1 text-xs text-warning">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
               <span>{warning}</span>
-            </div>
+            </p>
+          )}
+
+          {/* Lot 5a : une inscription s'approuve ici aussi, jamais sans son premier message en entier. */}
+          {firstStepPreview && (
+            <EnrollFirstMessagePreview
+              preview={firstStepPreview}
+              fallbackName={String(action.dry_run_result?.details?.candidate ?? 'ce candidat')}
+            />
           )}
 
           {isQueued && scheduledLabel && (
-            <div className="mt-1 flex items-start gap-1 text-[11px] text-info">
-              <Clock className="w-3 h-3 shrink-0 mt-0.5" />
-              <span>Envoi prévu : <strong>{scheduledLabel}</strong></span>
-            </div>
+            <p className="mt-1 flex items-start gap-1 text-xs text-foreground-secondary">
+              <Clock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              <span>Envoi prévu : <strong className="font-medium text-foreground">{scheduledLabel}</strong></span>
+            </p>
           )}
 
           {errorMessage && (
-            <div className="mt-1 text-[11px] text-destructive break-words">
-              ⚠️ {String(errorMessage)}
-            </div>
+            <p className="mt-1 flex items-start gap-1 break-words text-xs text-danger">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              <span>{String(errorMessage)}</span>
+            </p>
           )}
 
           {resultMessage && (
-            <div className="mt-1 text-[11px] text-success break-words">{resultMessage}</div>
+            <p className="mt-1 break-words text-xs text-foreground-secondary">{resultMessage}</p>
           )}
 
           {/* Action buttons inline — only for actionable states */}
-          {(action.status === 'proposed' || action.status === 'failed' || isQueued) && (
+          {canAct && (action.status === 'proposed' || action.status === 'failed' || isQueued) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {action.status === 'proposed' && (
                 <>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="outline"
-                    className="h-7 px-2 text-[11px] gap-1"
+                    loading={loadingAction === 'approve'}
                     disabled={loadingAction != null}
                     onClick={() => onAction(action, 'approve')}
+                    className="max-md:h-11"
                   >
-                    {loadingAction === 'approve' ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Check className="w-3 h-3" />
-                    )}
+                    {loadingAction !== 'approve' && <Check aria-hidden="true" />}
                     Approuver
                   </Button>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="outline"
-                    className="h-7 px-2 text-[11px] gap-1"
+                    loading={loadingAction === 'reject'}
                     disabled={loadingAction != null}
                     onClick={() => onAction(action, 'reject')}
+                    className="max-md:h-11"
                   >
-                    {loadingAction === 'reject' ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <X className="w-3 h-3" />
-                    )}
+                    {loadingAction !== 'reject' && <X aria-hidden="true" />}
                     Rejeter
                   </Button>
                 </>
               )}
               {isQueued && (
                 <Button
-                  size="sm"
+                  size="xs"
                   variant="outline"
-                  className="h-7 px-2 text-[11px] gap-1 text-warning border-warning/40 hover:bg-warning/10"
+                  loading={loadingAction === 'cancel'}
                   disabled={loadingAction != null}
                   onClick={() => onAction(action, 'cancel')}
+                  className="max-md:h-11"
                 >
-                  {loadingAction === 'cancel' ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Ban className="w-3 h-3" />
-                  )}
+                  {loadingAction !== 'cancel' && <Ban aria-hidden="true" />}
                   Annuler la programmation
                 </Button>
               )}
               {action.status === 'failed' && (
                 <Button
-                  size="sm"
+                  size="xs"
                   variant="outline"
-                  className="h-7 px-2 text-[11px] gap-1"
+                  loading={loadingAction === 'requeue'}
                   disabled={loadingAction != null}
                   onClick={() => onAction(action, 'requeue')}
+                  className="max-md:h-11"
                 >
-                  {loadingAction === 'requeue' ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <RotateCcw className="w-3 h-3" />
-                  )}
+                  {loadingAction !== 'requeue' && <RotateCcw aria-hidden="true" />}
                   Relancer
                 </Button>
               )}
             </div>
           )}
-        </div>
-
-        <div
-          className="text-[10px] text-muted-foreground shrink-0 text-right"
-          title={format(new Date(time), 'PPp', { locale: fr })}
-        >
-          {formatDistanceToNow(new Date(time), { locale: fr, addSuffix: true })}
         </div>
       </CardContent>
     </Card>

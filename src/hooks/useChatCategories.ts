@@ -7,17 +7,17 @@ import { useAuthReady } from '@/hooks/useAuthReady';
 
 export type ChatCategory = 'interested' | 'not_interested' | 'to_recontact' | 'no_response';
 
+/** Étiquette posée à la main : libellé et ton de badge (variante de `Badge`, revue design D-04). */
 export interface ChatCategoryInfo {
   label: string;
-  emoji: string;
-  color: string;
+  tone: 'success' | 'warning' | 'danger' | 'muted';
 }
 
 export const CHAT_CATEGORIES: Record<ChatCategory, ChatCategoryInfo> = {
-  interested: { label: 'Intéressé', emoji: '🟢', color: 'text-success bg-success/10 border-success/30' },
-  not_interested: { label: 'Pas intéressé', emoji: '🔴', color: 'text-destructive bg-destructive/10 border-destructive/30' },
-  to_recontact: { label: 'À recontacter', emoji: '🟡', color: 'text-warning bg-warning/10 border-warning/30' },
-  no_response: { label: 'Sans réponse', emoji: '⚪', color: 'text-muted-foreground bg-muted border-muted-foreground/20' },
+  interested: { label: 'Intéressé', tone: 'success' },
+  not_interested: { label: 'Pas intéressé', tone: 'danger' },
+  to_recontact: { label: 'À recontacter', tone: 'warning' },
+  no_response: { label: 'Sans réponse', tone: 'muted' },
 };
 
 export function useChatCategories() {

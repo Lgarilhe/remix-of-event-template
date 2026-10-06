@@ -1,38 +1,78 @@
 /**
- * ProjectsListV2 — Liste des missions refondue (cohérente avec la DA v2).
+ * ProjectsListV2 : liste des missions (/missions), au langage de la nouvelle
+ * page mission (docs/design/01-direction.md, docs/design/06-simplicite.md).
  *
- * Tri narratif :
- *   ⚡ Demandent ton attention   (réponses à traiter, briefs incomplets, sourcing en attente)
- *   📍 En cours                  (missions actives normales)
- *   📦 Terminées / archivées     (collapsable)
+ * Deux groupes, chacun trié par dernière activité réelle (la plus récente de
+ * updated_at et de la dernière entrée d'un candidat dans une étape) :
+ *   En cours                 missions actives et en pause
+ *   Terminées, archivées     repliable, un simple titre avec son nombre
  *
- * Header avec titre Outfit + KPI strip + CTA gradient Skalr.
- * Cards de mission avec :
- *   - Next-step explicite (bouton ciblé)
- *   - Status pill colorée
- *   - KPIs inline (Sourcés / Contactés / Réponses)
- *   - Hover lift subtil
+ * Une ligne par mission : le logo du client (initiales sinon), le nom, le client
+ * dessous en discret, puis les effectifs « en ce moment » sous le nom de
+ * l'étape (À trier, Contacté, A répondu, En entretien), les mêmes que les
+ * colonnes du Pipeline, et « N profils trouvés » (jamais ouverts, au Sourcing).
+ * Aucun zéro écrit : une case à zéro reste vide (lue « 0 » par un lecteur
+ * d'écran), une colonne vide pour toutes les missions n'est pas affichée. Les
+ * candidats en entretien montrent leur visage (useInterviewingPeople), sinon le
+ * nombre. Sous 1 280 px, une phrase sous le nom reprend les nombres non nuls.
+ * Chiffres lus dans get_mission_stage_counts (useMissionStageCounts) : jamais de
+ * zéro inventé, une attente tant qu'ils se chargent, « indisponible » s'ils
+ * manquent. La liste elle-même a son attente et son état d'erreur : une lecture
+ * en échec ne s'affiche pas comme « aucune mission ».
  *
- * Réutilise tous les hooks existants — aucun changement métier.
+ * Dernière activité : écrite une seule fois par ligne, en discret, et
+ * seulement quand elle date d'au moins une heure (missionListFormat.ts).
+ * Sous 640 px : toute la ligne ouvre la mission (le nom n'a pas de zone à lui) ; « N profils
+ * trouvés » a une zone de 44 px de haut prise vers le bas seulement (marge négative, bouton
+ * positionné pour passer au-dessus de la phrase qui le suit), jamais au-dessus, pour ne pas voler
+ * les touchers du nom ; les boutons de la ligne d'action, positionnés et plus bas, gardent leur
+ * zone là où elles se recouvrent. La phrase des effectifs passe à la ligne
+ * au lieu d'être coupée, les entrées du menu et les boutons de la confirmation font 44 px.
+ * Le menu de la ligne apparaît au survol, au focus clavier ou au toucher
+ * (REVEAL_ON_ROW : l'opacité seule change, il reste atteignable au clavier). La confirmation
+ * de suppression rend le focus à ce bouton quand on l'annule (au début de la liste si la
+ * mission est supprimée).
+ *
+ * Prochaine action (lot 3) : une ligne par mission En cours, calculée par
+ * missionListAction (src/lib/missionNextAction.ts, la règle de la carte
+ * « Maintenant ») à partir des compteurs ci-dessus, de get_mission_attention
+ * (une seule requête pour toutes les missions) et des « Plus tard » de la
+ * personne. Pas de blocage LinkedIn par ligne (il reste sur la carte de la
+ * mission) ni de tri par urgence. Attente : un bloc gris de hauteur réservée ;
+ * lecture impossible : « Impossible de vérifier » avec Réessayer, jamais un
+ * zéro ; rien à proposer : aucun texte (la hauteur reste), jamais « Rien ne presse ».
+ * Couleur du texte courant ; orange seulement quand une réponse de candidat
+ * attend (rang 3 de la règle).
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Plus, Search, Sparkles, Briefcase, MapPin, Building2, MoreVertical,
-  Play, Pause, CheckCircle, Archive, Trash2, ArrowRight, ChevronDown,
-  ChevronUp, Zap, MessageSquare, FileText, AlertCircle,
+  Plus, Search, MoreHorizontal, Play, Pause, CheckCircle, Archive, Trash2,
+  ChevronRight, RefreshCw, ArrowRight,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
-import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
-import { UnifiedProject, mergeProjectsAndJobs } from '@/types/projects';
-import { useOrganization } from '@/hooks/useOrganization';
+import { UnifiedProject, toUnifiedProjects } from '@/types/projects';
+import { useClientLogoBackfill } from '@/hooks/useClientLogoBackfill';
+import { useMissionStageCounts, type MissionStageCounts } from '@/hooks/useMissionStageCounts';
+import { useMissionAttention } from '@/hooks/useMissionAttention';
+import { useMissionActionSnoozes } from '@/hooks/useMissionActionSnoozes';
+import { GENERAL_STAGE_LABEL, missionActivityAt } from '@/lib/stageDisplay';
+import {
+  missionListAction, sourceOk, SOURCE_LOADING, SOURCE_UNAVAILABLE,
+  type ActionIntent, type MissionListAction, type SourceState,
+} from '@/lib/missionNextAction';
+import { snoozeChecker } from '@/lib/missionSnooze';
+import { missionV3Path, V3_PARAM } from '@/lib/missionBeta';
+import { plural } from '@/lib/plural';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AvatarStack } from '@/components/ui/person-avatar';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { ErrorState } from '@/components/layout/ErrorState';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -41,466 +81,681 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
+import { REVEAL_ON_ROW } from '@/components/missions/v3/cadrage/sectionUi';
 import { CreateMissionV2 } from '@/components/missions/v2/CreateMissionV2';
 import { EmptyMissionState } from '@/components/missions/EmptyMissionState';
-import { Pill } from '@/components/missions/v2/Pill';
+import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
+import { MissionQuotaNotice } from '@/components/missions/MissionQuotaNotice';
+import { missionQuotaMessage } from '@/lib/sidebarMissions';
+import { toast } from 'sonner';
+import { activityLabel, countsPhrase, missionsSentence, type ListCounts } from './missionListFormat';
+import { useInterviewingPeople, type InterviewingPerson } from './useInterviewingPeople';
 
-// ── Types ──
+// ── Statuts ──
 
-const STATUS_CONFIG: Record<string, {
-  label: string; color: string; icon: typeof Play;
-}> = {
-  active: { label: 'Actif', color: 'hsl(var(--status-success))', icon: Play },
-  paused: { label: 'En pause', color: 'hsl(var(--status-warning))', icon: Pause },
-  completed: { label: 'Terminé', color: 'hsl(var(--status-info))', icon: CheckCircle },
-  archived: { label: 'Archivé', color: 'hsl(var(--muted-foreground))', icon: Archive },
+const STATUS_LABEL: Record<string, string> = {
+  active: 'Active',
+  paused: 'En pause',
+  completed: 'Terminée',
+  archived: 'Archivée',
 };
 
-// ── Next-step computation per project ──
+/** Groupe « En cours » : missions actives et en pause. */
+const isOngoing = (status: SourcingProject['status']) => status === 'active' || status === 'paused';
 
-interface NextStep {
+// ── Effectifs affichés, dans l'ordre du Pipeline ──
+
+interface CountColumn {
   label: string;
-  cta: string;
-  targetTab: string;
-  urgency: 'high' | 'medium' | 'low';
-  icon: typeof FileText;
+  of: (c: MissionStageCounts) => number;
+  /** Colonne des candidats en entretien : leurs visages quand on les connaît, sinon le nombre. */
+  faces?: boolean;
 }
 
-function computeNextStep(
-  project: UnifiedProject,
-  stats: ProjectStats,
-): NextStep | null {
-  const sp = project.sourcingProject;
-  // Pas de sourcing project (mission Notion seule) → CTA pour démarrer
-  if (!sp) {
-    return {
-      label: 'Démarrer la mission',
-      cta: 'Commencer',
-      targetTab: 'overview',
-      urgency: 'medium',
-      icon: Play,
-    };
-  }
+const COUNT_COLUMNS: ReadonlyArray<CountColumn> = [
+  { label: GENERAL_STAGE_LABEL.to_sort, of: (c) => c.toSort },
+  { label: GENERAL_STAGE_LABEL.contacted, of: (c) => c.contacted },
+  { label: GENERAL_STAGE_LABEL.replied, of: (c) => c.replied },
+  { label: GENERAL_STAGE_LABEL.interviewing, of: (c) => c.interviewing, faces: true },
+];
 
-  const filtersOk = sp.filters_snapshot && Object.keys(sp.filters_snapshot).length > 0;
-  const briefOk = !!(sp.job_details as any)?.title;
+/** Les effectifs affichés d'une mission, sous la forme que lit missionListFormat. */
+const listCountsOf = (c: MissionStageCounts): ListCounts => ({
+  toSort: c.toSort, contacted: c.contacted, replied: c.replied, interviewing: c.interviewing,
+});
 
-  // Réponses non traitées = urgent
-  if (stats.shortlisted > 0 && stats.untreated >= 1) {
-    return {
-      label: `${stats.untreated} candidat${stats.untreated > 1 ? 's' : ''} sourcé${stats.untreated > 1 ? 's' : ''} non contacté${stats.untreated > 1 ? 's' : ''}`,
-      cta: 'Contacter',
-      targetTab: 'outreach',
-      urgency: 'high',
-      icon: MessageSquare,
-    };
-  }
-  // Brief incomplet
-  if (!briefOk) {
-    return {
-      label: 'Brief incomplet',
-      cta: 'Compléter',
-      targetTab: 'brief',
-      urgency: 'high',
-      icon: FileText,
-    };
-  }
-  // Brief OK mais pas de filtres → analyse IA à lancer
-  if (!filtersOk) {
-    return {
-      label: 'Filtres à générer',
-      cta: 'Analyser le brief',
-      targetTab: 'brief',
-      urgency: 'medium',
-      icon: Sparkles,
-    };
-  }
-  // Filtres OK, mais pas encore de sourcing
-  if (stats.total === 0) {
-    return {
-      label: 'Sourcing en attente',
-      cta: 'Lancer le sourcing',
-      targetTab: 'sourcing',
-      urgency: 'medium',
-      icon: Search,
-    };
-  }
-  // Candidats sourcés mais pas messagés
-  if (stats.total > 0 && stats.messaged === 0) {
-    return {
-      label: `${stats.total} profil${stats.total > 1 ? 's' : ''} à contacter`,
-      cta: 'Outreach',
-      targetTab: 'outreach',
-      urgency: 'medium',
-      icon: Zap,
-    };
-  }
-  // Tout en cours → suivi pipeline
-  if (stats.messaged > 0) {
-    return {
-      label: `${stats.messaged} contacté${stats.messaged > 1 ? 's' : ''} · ${stats.shortlisted} qualifié${stats.shortlisted > 1 ? 's' : ''}`,
-      cta: 'Pipeline',
-      targetTab: 'pipeline',
-      urgency: 'low',
-      icon: Briefcase,
-    };
-  }
-  return null;
+/**
+ * Colonnes d'un groupe. Colonnes à partir de 1 280 px : dessous, une phrase
+ * et la date prennent place sous le nom. Une colonne vide
+ * pour toutes les missions du groupe n'est pas affichée.
+ */
+interface ListLayout {
+  columns: ReadonlyArray<CountColumn>;
+  /** Groupe replié des terminées : les effectifs non nuls en une phrase à droite, sans en-têtes. */
+  phrase: boolean;
+  activity: boolean;
 }
 
-// Détermine quelle "section narrative" reçoit la mission
-function getNarrativeBucket(
-  project: UnifiedProject,
-  step: NextStep | null,
-): 'attention' | 'progress' | 'archive' {
-  if (project.status === 'completed' || project.status === 'archived') return 'archive';
-  if (step?.urgency === 'high') return 'attention';
-  return 'progress';
-}
+/**
+ * Nombre ; une attente tant qu'il se charge, une cellule vide (lue « indisponible »)
+ * si la lecture a échoué ou ne rend pas la mission, une cellule vide (lue « 0 »)
+ * pour un zéro. Jamais un zéro écrit ni inventé.
+ */
+const CountCell: React.FC<{ value: number | null; pending: boolean }> = ({ value, pending }) => {
+  if (value === null) {
+    return pending
+      ? <Skeleton className="ml-auto h-4 w-6" aria-hidden="true" />
+      : <span className="sr-only">Indisponible</span>;
+  }
+  if (value === 0) return <span className="sr-only">0</span>;
+  return <span className="tabular-nums text-foreground">{value}</span>;
+};
 
-// ── Mission Card ──
-
-interface MissionCardProps {
-  project: UnifiedProject;
-  stats: ProjectStats;
-  step: NextStep | null;
-  onClick: (tab?: string) => void;
-  onStatusChange: (status: SourcingProject['status']) => void;
-  onDelete: () => void;
-  canDelete: boolean;
-}
-
-const MissionCard: React.FC<MissionCardProps> = ({
-  project, stats, step, onClick, onStatusChange, onDelete, canDelete,
+/** Candidats en entretien : leurs visages (le nombre total en « +N »), sinon le nombre. */
+const InterviewingCell: React.FC<{ value: number | null; pending: boolean; people?: InterviewingPerson[] }> = ({
+  value, pending, people,
 }) => {
-  const StepIcon = step?.icon || ArrowRight;
-  const statusCfg = STATUS_CONFIG[project.status] || STATUS_CONFIG.active;
-  const isAttention = step?.urgency === 'high';
+  if (value === null || value === 0 || !people || people.length === 0) {
+    return <CountCell value={value} pending={pending} />;
+  }
+  return <AvatarStack people={people} total={value} size={30} className="justify-end" />;
+};
 
-  const lastActivity = project.lastSearchAt || project.createdAt;
-  const lastActivityLabel = formatDistanceToNow(new Date(lastActivity), { addSuffix: true, locale: fr });
+// ── Prochaine action ──
+
+const LOADING_ACTION: MissionListAction = {
+  state: 'loading', rank: null, text: null, note: null, intent: null, snoozeKey: null,
+};
+
+/** Une donnée lue, sinon une attente, sinon « indisponible » (jamais un zéro). */
+function sourceOfValue<T>(value: T | null, pending: boolean): SourceState<T> {
+  if (value !== null) return sourceOk(value);
+  return pending ? SOURCE_LOADING : SOURCE_UNAVAILABLE;
+}
+
+/**
+ * Adresse que vise la ligne d'action : la fiche d'un candidat quand l'intention
+ * est d'ouvrir une ligne, sinon l'écran de la mission qui convient. Les
+ * intentions que la liste ne produit pas (blocage, formule, e-mail) ouvrent la
+ * mission. « Trier » ouvre le Pipeline filtré sur À trier (?etape=to_sort) :
+ * la section À trier de la liste sans filtre est repliée et sous les autres
+ * étapes, et son ouverture n'a pas d'adresse.
+ */
+function actionPath(missionId: string, intent: ActionIntent | null): string {
+  switch (intent?.type) {
+    case 'open_row':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.panel]: 'fiche', [V3_PARAM.candidate]: intent.rowId });
+    case 'open_conversation':
+      return `/inbox?chatId=${encodeURIComponent(intent.chatId)}`;
+    case 'filter_stage':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.stage]: intent.stage });
+    case 'open_to_sort':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.stage]: 'to_sort' });
+    case 'contact_retained':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.stage]: 'retained' });
+    case 'open_sourcing':
+      return missionV3Path(missionId, 'sourcing');
+    case 'open_cadrage':
+      return missionV3Path(missionId, 'cadrage', { [V3_PARAM.section]: intent.section });
+    default:
+      return missionV3Path(missionId);
+  }
+}
+
+/**
+ * La ligne d'action d'une mission. Même hauteur dans tous les états, y compris
+ * quand il n'y a rien à proposer (un espace sans texte) : la liste ne saute pas
+ * quand les lectures arrivent. Sous 640 px, 44 px de haut pour le doigt.
+ * Couleur du texte courant ; orange seulement quand une réponse de candidat
+ * attend (rang 3 de la règle).
+ * L'élément racine reste le même d'un état à l'autre : « Réessayer » lui passe
+ * le focus avant de relire, sinon le bouton démonté le ferait tomber sur la page.
+ */
+const ActionLine: React.FC<{
+  action: MissionListAction;
+  missionName: string;
+  onAction: () => void;
+  onRetry: () => void;
+}> = ({ action, missionName, onAction, onRetry }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const retry = () => {
+    rootRef.current?.focus();
+    onRetry();
+  };
+
+  let content: React.ReactNode = null;
+  if (action.state === 'loading') {
+    content = (
+      <>
+        <Skeleton className="h-3.5 w-44 max-w-full" aria-hidden="true" />
+        <span className="sr-only">Chargement de la prochaine action</span>
+      </>
+    );
+  } else if (action.state === 'unavailable') {
+    content = (
+      <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+        <span>Impossible de vérifier.</span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); retry(); }}
+          className="relative rounded-sm text-foreground-secondary underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  } else if (action.state !== 'none') {
+    content = (
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onAction(); }}
+          aria-label={`${action.text ?? ''}, ${missionName}`}
+          className={cn(
+            'relative inline-flex min-w-0 items-center gap-1.5 rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11',
+            action.rank === '3' ? 'text-warning' : 'text-foreground',
+          )}
+        >
+          <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{action.text}</span>
+        </button>
+        {action.note && <span className="shrink-0 text-muted-foreground">{action.note}</span>}
+      </div>
+    );
+  }
 
   return (
     <div
-      className={cn(
-        'group bg-card border rounded-xl p-4 transition-all duration-200 cursor-pointer',
-        'hover:border-foreground/30 hover:shadow-md hover:-translate-y-px',
-        isAttention ? 'border-warning/40' : 'border-border',
-      )}
-      onClick={() => onClick()}
-      style={isAttention ? { background: 'linear-gradient(135deg, hsl(var(--card)), hsl(var(--status-warning-muted) / 0.4))' } : undefined}
+      ref={rootRef}
+      tabIndex={action.state === 'none' ? undefined : -1}
+      role={action.state === 'loading' ? 'status' : undefined}
+      aria-hidden={action.state === 'none' ? true : undefined}
+      className="mt-1 flex h-5 min-w-0 items-center text-sm outline-none max-sm:h-11"
     >
-      <div className="flex items-start gap-3 sm:gap-4">
-        {/* Icon */}
-        <div
-          className={cn(
-            'h-10 w-10 rounded-lg grid place-items-center flex-shrink-0',
-            isAttention ? '' : 'bg-muted',
-          )}
-          style={isAttention
-            ? { background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }
-            : { color: 'hsl(var(--muted-foreground))' }
-          }
-        >
-          <Briefcase className="w-4 h-4" strokeWidth={2} />
-        </div>
+      {content}
+    </div>
+  );
+};
 
-        {/* Body */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h3 className="font-semibold text-[14px] truncate">{project.name}</h3>
-            <span
-              className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full"
-              style={{ background: `${statusCfg.color}1a`, color: statusCfg.color }}
-            >
-              <span className="h-1 w-1 rounded-full" style={{ background: statusCfg.color }} />
-              {statusCfg.label}
-            </span>
-          </div>
+// ── Ligne de mission ──
 
-          <p className="text-[12px] text-muted-foreground inline-flex items-center gap-2 flex-wrap mb-2">
-            {project.clientName && (
-              <>
-                <span className="inline-flex items-center gap-1">
-                  <Building2 className="w-3 h-3" /> {project.clientName}
-                </span>
-                {project.location && <span className="text-muted-foreground/40">·</span>}
-              </>
-            )}
-            {project.location && (
-              <>
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> {project.location}
-                </span>
-                <span className="text-muted-foreground/40">·</span>
-              </>
-            )}
-            <span className="text-[11px]">Mise à jour {lastActivityLabel}</span>
-          </p>
+interface MissionRowProps {
+  project: UnifiedProject;
+  /** Groupe replié des terminées et archivées : la ligne garde sa forme, en plus discret. */
+  archived?: boolean;
+  layout: ListLayout;
+  /** Compteurs de la mission ; null tant qu'ils ne sont pas lus (ou en échec). */
+  counts: MissionStageCounts | null;
+  /** Compteurs en cours de lecture (attente plutôt que « indisponible »). */
+  countsPending: boolean;
+  /** Candidats en entretien, quand on connaît leurs visages. */
+  people?: InterviewingPerson[];
+  /** Date d'activité (updated_at ou dernière entrée dans une étape). */
+  activityAt: string | null;
+  /** Heure de la liste (avance à la minute) : sert à écrire l'activité. */
+  now: number;
+  /** Prochaine action ; null pour une mission qui n'est pas En cours (pas de ligne). */
+  action: MissionListAction | null;
+  onAction: () => void;
+  onRetryAction: () => void;
+  onOpen: () => void;
+  onOpenSourcing: () => void;
+  onStatusChange: (status: SourcingProject['status']) => void;
+  /** Ouvre la confirmation ; reçoit le bouton « ... » de la ligne, à qui rendre le focus si on annule. */
+  onDelete: (opener: HTMLElement | null) => void;
+  canDelete: boolean;
+}
 
-          {/* Inline KPI strip */}
-          {project.sourcingProject && (
-            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mb-3">
-              <KpiInline label="Sourcés" value={stats.total} />
-              <KpiInline label="Contactés" value={stats.messaged} />
-              <KpiInline label="Réponses" value={stats.shortlisted} highlight={stats.shortlisted > 0} />
-            </div>
-          )}
+const MissionRow: React.FC<MissionRowProps> = ({
+  project, archived, layout, counts, countsPending, people, activityAt, now, action, onAction, onRetryAction,
+  onOpen, onOpenSourcing, onStatusChange, onDelete, canDelete,
+}) => {
+  const activity = activityLabel(activityAt, new Date(now));
+  const showJobTitle = !!project.jobTitle && project.jobTitle.trim().toLowerCase() !== project.name.trim().toLowerCase();
+  // Le client d'abord : c'est de lui que parle le logo.
+  const subline = [project.clientName, showJobTitle ? project.jobTitle : null, project.location].filter(Boolean).join(' · ');
+  const statusLabel = project.status !== 'active' ? STATUS_LABEL[project.status] : null;
+  const phrase = counts ? countsPhrase(listCountsOf(counts)) : '';
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
-          {/* Next-step row */}
-          {step && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-[11px]',
-                  isAttention ? 'font-medium' : 'text-muted-foreground',
-                )}
-                style={isAttention ? { color: 'hsl(var(--status-warning))' } : undefined}
-              >
-                {isAttention && <AlertCircle className="w-3 h-3" />}
-                {step.label}
-              </span>
+  return (
+    <tr
+      data-testid="mission-row"
+      onClick={onOpen}
+      className={cn(
+        'group cursor-pointer border-b border-border transition-colors duration-150 hover:bg-muted/40',
+        archived && 'text-foreground-secondary',
+      )}
+    >
+      <td className={cn('min-w-0 pl-3 pr-3 sm:pl-2', archived ? 'py-2.5' : 'py-3.5')}>
+        <div className="flex min-w-0 items-center gap-3.5">
+          {/* Jamais d'opacité sur le logo : elle faisait passer ses initiales sous 4,5:1.
+              Une mission terminée est atténuée par la couleur de son texte. */}
+          <MissionCompanyLogo
+            company={project.clientName || project.name}
+            logoUrl={project.clientLogoUrl}
+            size={archived ? 32 : 40}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-baseline gap-2.5">
+              {/* Pas de zone agrandie sur téléphone : toute la ligne ouvre la mission, et une zone
+                  de 44 px au-dessus de « N profils trouvés » lui volait ses touchers. */}
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClick(step.targetTab);
-                }}
+                onClick={(e) => { e.stopPropagation(); onOpen(); }}
                 className={cn(
-                  'h-7 px-3 rounded-full text-[11px] font-semibold inline-flex items-center gap-1 transition-colors ml-auto',
-                  isAttention
-                    ? 'bg-foreground text-background hover:opacity-90'
-                    : 'bg-card border border-border hover:bg-accent text-foreground',
+                  'min-w-0 truncate rounded-sm text-left text-md font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  archived ? 'text-foreground-secondary' : 'text-foreground',
                 )}
+                title={project.name}
               >
-                <StepIcon className="w-3 h-3" />
-                {step.cta}
-                <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
+                {project.name}
               </button>
+              {statusLabel && <span className="shrink-0 text-sm text-muted-foreground">{statusLabel}</span>}
             </div>
-          )}
+            <p className="flex min-w-0 items-center gap-x-2 text-sm text-muted-foreground">
+              {/* Client, poste, lieu, puis l'activité (sous 1 280 px : au-delà, elle a sa colonne) :
+                  une seule ligne, c'est la fin qui se coupe. */}
+              {(subline || activity) && (
+                <span className="min-w-0 truncate">
+                  {subline}
+                  {activity && <span className="xl:hidden">{subline ? ' · ' : ''}Activité {activity}</span>}
+                </span>
+              )}
+              {counts && counts.unopened > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onOpenSourcing(); }}
+                  className="shrink-0 rounded-sm underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:relative max-sm:-mb-6 max-sm:pb-6"
+                >
+                  {plural(counts.unopened, 'profil trouvé', 'profils trouvés')}
+                </button>
+              )}
+            </p>
+            {/* Sous 1 280 px les colonnes d'effectifs disparaissent : une seule phrase, sans zéro, les reprend.
+                Elle passe à la ligne plutôt que d'être coupée : c'est la seule trace des nombres. */}
+            {counts ? (
+              phrase && <p className="mt-0.5 text-sm text-muted-foreground xl:hidden">{phrase}</p>
+            ) : countsPending ? (
+              <div className="mt-1 xl:hidden">
+                <Skeleton className="h-3.5 w-40 max-w-full" aria-hidden="true" />
+                <span className="sr-only">Chargement des effectifs</span>
+              </div>
+            ) : (
+              <p className="mt-0.5 text-sm text-muted-foreground xl:hidden">Effectifs indisponibles</p>
+            )}
+            {action && (
+              <ActionLine action={action} missionName={project.name} onAction={onAction} onRetry={onRetryAction} />
+            )}
+          </div>
         </div>
-
-        {/* More menu */}
+      </td>
+      {layout.columns.map((col) => (
+        <td key={col.label} className="hidden py-3.5 pr-3 text-right text-md xl:table-cell">
+          {col.faces
+            ? <InterviewingCell value={counts ? col.of(counts) : null} pending={countsPending} people={people} />
+            : <CountCell value={counts ? col.of(counts) : null} pending={countsPending} />}
+        </td>
+      ))}
+      {layout.phrase && (
+        <td className="hidden py-2.5 pr-3 text-right text-sm text-muted-foreground xl:table-cell">{phrase}</td>
+      )}
+      {layout.activity && (
+        <td className="hidden py-3.5 pr-3 text-right text-sm tabular-nums text-muted-foreground xl:table-cell">
+          {activity ?? ''}
+        </td>
+      )}
+      <td className="py-2 pr-2 text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
+            <Button
+              ref={menuTriggerRef}
+              variant="ghost"
+              size="icon-sm"
               onClick={(e) => e.stopPropagation()}
-              className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-              aria-label="Plus d'actions"
+              aria-label={`Actions pour ${project.name}`}
+              title="Plus d'actions"
+              className={cn(REVEAL_ON_ROW, 'data-[state=open]:opacity-100 max-sm:h-11 max-sm:w-11')}
             >
-              <MoreVertical className="w-3.5 h-3.5" />
-            </button>
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          {/* Le contenu du menu est dans un portail, mais l'évènement remonte par l'arbre React
+              jusqu'à la ligne : sans cet arrêt, chaque action ouvrirait aussi la mission. */}
+          <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
             {project.status !== 'active' && (
-              <DropdownMenuItem onClick={() => onStatusChange('active')}>
-                <Play className="w-3.5 h-3.5 mr-2" /> Activer
+              <DropdownMenuItem onClick={() => onStatusChange('active')} className="max-sm:min-h-11">
+                <Play className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Activer
               </DropdownMenuItem>
             )}
             {project.status !== 'paused' && (
-              <DropdownMenuItem onClick={() => onStatusChange('paused')}>
-                <Pause className="w-3.5 h-3.5 mr-2" /> Mettre en pause
+              <DropdownMenuItem onClick={() => onStatusChange('paused')} className="max-sm:min-h-11">
+                <Pause className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Mettre en pause
               </DropdownMenuItem>
             )}
             {project.status !== 'completed' && (
-              <DropdownMenuItem onClick={() => onStatusChange('completed')}>
-                <CheckCircle className="w-3.5 h-3.5 mr-2" /> Marquer terminée
+              <DropdownMenuItem onClick={() => onStatusChange('completed')} className="max-sm:min-h-11">
+                <CheckCircle className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Marquer terminée
               </DropdownMenuItem>
             )}
             {project.status !== 'archived' && (
-              <DropdownMenuItem onClick={() => onStatusChange('archived')}>
-                <Archive className="w-3.5 h-3.5 mr-2" /> Archiver
+              <DropdownMenuItem onClick={() => onStatusChange('archived')} className="max-sm:min-h-11">
+                <Archive className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Archiver
               </DropdownMenuItem>
             )}
             {canDelete && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={onDelete}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-2" /> Supprimer
+                <DropdownMenuItem onClick={() => onDelete(menuTriggerRef.current)} className="text-danger focus:text-danger max-sm:min-h-11">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Supprimer
                 </DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 };
 
-const KpiInline: React.FC<{ label: string; value: number; highlight?: boolean }> = ({
-  label, value, highlight,
+// ── Tableau d'un groupe ──
+
+/** Largeur de la colonne des visages (trois visages et « +N ») et des nombres. */
+const columnWidth = (col: CountColumn) => (col.faces ? 'w-32' : 'w-20');
+
+/**
+ * Tableau d'un groupe : une rangée d'en-têtes seulement s'il y a des colonnes
+ * d'effectifs à nommer (le groupe replié des terminées n'en a pas).
+ */
+const MissionTable: React.FC<{ caption: string; layout: ListLayout; children: React.ReactNode }> = ({
+  caption, layout, children,
 }) => (
-  <span className="inline-flex items-baseline gap-1">
-    <span
-      className={cn(
-        'font-display font-bold tabular-nums text-[13px] leading-none',
-        highlight ? '' : value === 0 ? 'text-muted-foreground/40' : 'text-foreground',
+  <div className="-mx-3 overflow-x-auto sm:mx-0">
+    <table className="w-full table-fixed border-collapse text-sm">
+      <caption className="sr-only">{caption}</caption>
+      <colgroup>
+        <col />
+        {layout.columns.map((col) => <col key={col.label} className={cn('hidden xl:table-column', columnWidth(col))} />)}
+        {layout.phrase && <col className="hidden w-72 xl:table-column" />}
+        {layout.activity && <col className="hidden w-28 xl:table-column" />}
+        <col className="w-12 max-sm:w-16" />
+      </colgroup>
+      {layout.columns.length > 0 && (
+        <thead className="hidden xl:table-header-group">
+          <tr className="h-9 border-b border-border text-left text-xs font-medium text-muted-foreground">
+            <th scope="col" className="pl-3 pr-3 font-medium sm:pl-2">Mission</th>
+            {layout.columns.map((col) => (
+              <th key={col.label} scope="col" className="hidden pr-3 text-right font-medium xl:table-cell">{col.label}</th>
+            ))}
+            {layout.activity && (
+              <th scope="col" className="hidden pr-3 text-right font-medium xl:table-cell">Activité</th>
+            )}
+            <th scope="col" className="pr-2 text-right font-medium"><span className="sr-only">Actions</span></th>
+          </tr>
+        </thead>
       )}
-      style={highlight && value > 0 ? { color: 'hsl(var(--status-success))' } : undefined}
-    >
-      {value}
-    </span>
-    <span className="text-[10px] text-muted-foreground">{label}</span>
-  </span>
+      <tbody>{children}</tbody>
+    </table>
+  </div>
 );
 
+const LoadingRows: React.FC = () => (
+  <div aria-busy="true" aria-label="Chargement des missions">
+    {[0, 1, 2, 3].map((i) => (
+      <div key={i} className="flex items-center gap-3.5 border-b border-border py-3.5 pl-3 pr-3 sm:pl-2">
+        <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-4 w-56 max-w-full" />
+          <Skeleton className="mt-2 h-3.5 w-36 max-w-full" />
+        </div>
+        <Skeleton className="hidden h-4 w-40 xl:block" />
+      </div>
+    ))}
+  </div>
+);
+
+/**
+ * Colonnes d'un groupe, d'après les missions affichées. Pendant la première
+ * lecture des compteurs, toutes les colonnes d'effectifs attendent (squelettes) ;
+ * ensuite, seules celles qui ont un nombre non nul pour une mission au moins.
+ */
+function groupLayout(
+  rows: readonly UnifiedProject[],
+  countsOf: (p: UnifiedProject) => MissionStageCounts | null,
+  activityOf: (p: UnifiedProject) => string | null,
+  now: number,
+  countsWaiting: boolean,
+  archived: boolean,
+): ListLayout {
+  const known = rows.map(countsOf);
+  const at = new Date(now);
+  return {
+    columns: archived ? [] : countsWaiting ? COUNT_COLUMNS : COUNT_COLUMNS.filter(col => known.some(c => c !== null && col.of(c) > 0)),
+    phrase: archived && known.some(c => c !== null && countsPhrase(listCountsOf(c)) !== ''),
+    activity: rows.some(p => activityLabel(activityOf(p), at) !== null),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────
-// Main component
+// Composant principal
 // ─────────────────────────────────────────────────────────────────
 
 export const ProjectsListV2: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject } = useSourcingProjects();
-  const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
-  const { canCreateJob } = useQuotaGate();
+  const {
+    projects: sourcingProjects, isLoading: spLoading, hasData, isError: listError, refetch: refetchProjects,
+    deleteProject, updateProject,
+  } = useSourcingProjects();
+  const { canCreateJob, jobQuotaKnown, maxJobs } = useQuotaGate();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchive, setShowArchive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<UnifiedProject | null>(null);
+  // Focus de la confirmation de suppression : le bouton « ... » de la ligne (invisible hors
+  // survol) le reprend à la fermeture ; sinon, le début de la liste. Sans cela il tombait sur <body>.
+  const deleteOpenerRef = useRef<HTMLElement | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Honor ?create=mode deep links (rétrocompat)
+  // Honor ?create=mode deep links (barre latérale, palette, tableau de bord,
+  // onboarding). Attend que le plafond de missions soit connu : au plafond, le
+  // formulaire ne s'ouvre pas, le paramètre est retiré et l'encart gris est déjà
+  // à la place du bouton.
+  const createParam = searchParams.get('create');
   useEffect(() => {
-    const createMode = searchParams.get('create');
-    if (createMode && ['brief', 'import', 'manual'].includes(createMode)) {
-      setCreateInitialTab(createMode);
+    if (!createParam || !['brief', 'import', 'manual'].includes(createParam)) return;
+    if (!jobQuotaKnown) return;
+    if (canCreateJob) {
+      setCreateInitialTab(createParam);
       setShowCreateModal(true);
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.delete('create');
-        return next;
-      }, { replace: true });
+    } else if (maxJobs !== null) {
+      toast.info(missionQuotaMessage(maxJobs));
     }
-  }, [searchParams, setSearchParams]);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('create');
+      return next;
+    }, { replace: true });
+  }, [createParam, jobQuotaKnown, canCreateJob, maxJobs, setSearchParams]);
 
   const unifiedProjects = useMemo(
-    () => mergeProjectsAndJobs(notionJobs, sourcingProjects),
-    [notionJobs, sourcingProjects],
+    () => toUnifiedProjects(sourcingProjects),
+    [sourcingProjects],
   );
+  // Logo du client : enregistré côté serveur pour les missions qui n'en ont pas.
+  const logoCandidates = useMemo(
+    () => unifiedProjects.map((p) => ({
+      id: p.sourcingProject.id,
+      clientName: p.clientName,
+      logoUrl: p.clientLogoUrl,
+      logoCheckedAt: p.sourcingProject.jd_client_logo_checked ?? null,
+    })),
+    [unifiedProjects],
+  );
+  useClientLogoBackfill(logoCandidates);
 
   const spIds = useMemo(
     () => unifiedProjects.map(p => p.sourcingProject?.id).filter((id): id is string => !!id),
     [unifiedProjects],
   );
-  const { data: projectStats = {} } = useMultipleProjectStats(spIds);
 
-  const getStats = (project: UnifiedProject): ProjectStats => {
-    if (project.sourcingProject) {
-      return projectStats[project.sourcingProject.id] || {
-        total: project.sourcingProject.stats_total_found,
-        scored: project.sourcingProject.stats_scored,
-        messaged: project.sourcingProject.stats_messaged,
-        shortlisted: project.sourcingProject.stats_shortlisted,
-        dismissed: project.sourcingProject.stats_dismissed,
-        untreated: 0,
-      };
-    }
-    return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
-  };
+  // Compteurs d'étapes : une seule lecture pour toutes les missions.
+  const countsQuery = useMissionStageCounts(spIds);
+  const counts = countsQuery.data;
+  const countsOf = useCallback(
+    (project: UnifiedProject): MissionStageCounts | null => counts?.[project.sourcingProject.id] ?? null,
+    [counts],
+  );
+  const activityOf = useCallback(
+    (project: UnifiedProject): string | null =>
+      missionActivityAt(project.updatedAt, countsOf(project)?.lastStageMoveAt ?? null) ?? project.createdAt,
+    [countsOf],
+  );
 
-  // Filter by search query
+  // Recherche : nom, poste, client et lieu du brief.
   const filtered = useMemo(() => unifiedProjects.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
       p.name.toLowerCase().includes(q)
-      || p.clientName?.toLowerCase().includes(q)
-      || p.location?.toLowerCase().includes(q)
-      || p.skills.some(s => s.toLowerCase().includes(q))
+      || !!p.jobTitle?.toLowerCase().includes(q)
+      || !!p.clientName?.toLowerCase().includes(q)
+      || !!p.location?.toLowerCase().includes(q)
     );
   }), [unifiedProjects, searchQuery]);
 
-  // Group by narrative bucket
-  const buckets = useMemo(() => {
-    const attention: { project: UnifiedProject; stats: ProjectStats; step: NextStep | null }[] = [];
-    const progress: typeof attention = [];
-    const archive: typeof attention = [];
-
-    filtered.forEach(p => {
-      const stats = getStats(p);
-      const step = computeNextStep(p, stats);
-      const bucket = getNarrativeBucket(p, step);
-      const entry = { project: p, stats, step };
-      if (bucket === 'attention') attention.push(entry);
-      else if (bucket === 'progress') progress.push(entry);
-      else archive.push(entry);
-    });
-
-    // Sort each bucket by recency
-    const byRecency = (a: typeof attention[0], b: typeof attention[0]) => {
-      const aDate = a.project.lastSearchAt || a.project.createdAt;
-      const bDate = b.project.lastSearchAt || b.project.createdAt;
-      return new Date(bDate).getTime() - new Date(aDate).getTime();
+  // Deux groupes, chacun trié par dernière activité.
+  const groups = useMemo(() => {
+    const time = (p: UnifiedProject) => {
+      const t = new Date(activityOf(p) ?? 0).getTime();
+      return Number.isNaN(t) ? 0 : t;
     };
-    attention.sort(byRecency);
-    progress.sort(byRecency);
-    archive.sort(byRecency);
+    const byActivity = (a: UnifiedProject, b: UnifiedProject) => time(b) - time(a);
+    return {
+      ongoing: filtered.filter(p => isOngoing(p.status)).sort(byActivity),
+      archive: filtered.filter(p => !isOngoing(p.status)).sort(byActivity),
+    };
+  }, [filtered, activityOf]);
 
-    return { attention, progress, archive };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, projectStats]);
+  // Sous-titre : missions « En cours » seulement, effectifs additionnés ; rien
+  // tant qu'une de ces missions n'a pas ses compteurs.
+  const ongoingProjects = useMemo(() => unifiedProjects.filter(p => isOngoing(p.status)), [unifiedProjects]);
+  const summary = useMemo((): ListCounts | null => {
+    const rows = ongoingProjects.map(countsOf);
+    const known = rows.length > 0 && rows.every((c): c is MissionStageCounts => c !== null);
+    if (!known) return null;
+    const all = rows as MissionStageCounts[];
+    const sum = (of: (c: MissionStageCounts) => number) => all.reduce((n, c) => n + of(c), 0);
+    return {
+      toSort: sum(c => c.toSort),
+      contacted: sum(c => c.contacted),
+      replied: sum(c => c.replied),
+      interviewing: sum(c => c.interviewing),
+    };
+  }, [ongoingProjects, countsOf]);
 
-  // Global KPIs
-  const globalKpis = useMemo(() => {
-    let activeMissions = 0;
-    let totalSourced = 0;
-    let totalToContact = 0;
-    let totalResponses = 0;
-    unifiedProjects.forEach(p => {
-      if (p.status === 'active') activeMissions++;
-      const s = getStats(p);
-      totalSourced += s.total;
-      totalToContact += s.untreated;
-      totalResponses += s.shortlisted;
-    });
-    return { activeMissions, totalSourced, totalToContact, totalResponses };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unifiedProjects, projectStats]);
+  // Prochaine action de chaque mission En cours : la règle de la carte
+  // « Maintenant » en forme courte. Une seule requête d'attention pour toutes
+  // les missions ; les reports sont ceux de la personne, les mêmes que sur la
+  // carte. L'heure avance à la minute pour qu'un report finisse sans rechargement.
+  const ongoingIds = useMemo(() => ongoingProjects.map(p => p.sourcingProject.id), [ongoingProjects]);
+  const attentionQuery = useMissionAttention(ongoingIds);
+  const { index: snoozes, isLoading: snoozesWaiting } = useMissionActionSnoozes();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  // Navigate
-  const navigateToWorkspace = useCallback(async (project: UnifiedProject, tab?: string) => {
-    let spId = project.sourcingProject?.id;
-
-    if (!spId && project.source === 'notion' && project.job) {
-      try {
-        const newProject = await createProject({
-          name: project.job.title,
-          job_id: project.job.id,
-          job_title: project.job.title,
-          client_name: project.job.client?.name,
-          description: project.description || undefined,
-        });
-        spId = newProject?.id;
-      } catch {
-        const { toast } = await import('sonner');
-        toast.error('Impossible de créer la mission');
-        return;
-      }
+  // Hors ligne, React Query met la requête en pause : « indisponible », pas une attente sans fin.
+  const countsWaiting = countsQuery.isPending && countsQuery.fetchStatus !== 'paused';
+  const attentionWaiting = attentionQuery.isPending && attentionQuery.fetchStatus !== 'paused';
+  const attention = attentionQuery.data;
+  const actions = useMemo(() => {
+    const out = new Map<string, MissionListAction>();
+    for (const p of ongoingProjects) {
+      const id = p.sourcingProject.id;
+      // Un report non lu ferait paraître puis disparaître une action : on attend.
+      out.set(id, snoozesWaiting ? LOADING_ACTION : missionListAction({
+        now,
+        mission: { id, name: p.name, status: p.status },
+        counts: sourceOfValue(counts?.[id] ?? null, countsWaiting),
+        attention: sourceOfValue(attention?.[id] ?? null, attentionWaiting),
+        snoozed: snoozeChecker(snoozes, id, now),
+      }));
     }
+    return out;
+  }, [ongoingProjects, counts, attention, snoozes, now, countsWaiting, attentionWaiting, snoozesWaiting]);
 
-    if (!spId) return;
-    navigate(`/missions/${spId}${tab ? `?tab=${tab}` : ''}`);
-  }, [createProject, navigate]);
+  const refetchCounts = countsQuery.refetch;
+  const refetchAttention = attentionQuery.refetch;
+  const retryActions = useCallback(() => {
+    void refetchCounts();
+    void refetchAttention();
+  }, [refetchCounts, refetchAttention]);
+
+  // Visages des candidats en entretien : une lecture, pour les missions En cours qui en ont.
+  const faceIds = useMemo(
+    () => ongoingProjects.map(p => p.sourcingProject.id).filter(id => (counts?.[id]?.interviewing ?? 0) > 0),
+    [ongoingProjects, counts],
+  );
+  const interviewingPeople = useInterviewingPeople(faceIds).data;
+
+  // Colonnes de chaque groupe, d'après les missions affichées.
+  const ongoingLayout = useMemo(
+    () => groupLayout(groups.ongoing, countsOf, activityOf, now, countsWaiting, false),
+    [groups.ongoing, countsOf, activityOf, now, countsWaiting],
+  );
+  const archiveLayout = useMemo(
+    () => groupLayout(groups.archive, countsOf, activityOf, now, countsWaiting, true),
+    [groups.archive, countsOf, activityOf, now, countsWaiting],
+  );
+
+  // La mission s'ouvre sans ?tab= ; « N profils trouvés » va droit au Sourcing
+  // (MissionEntry convertit l'adresse pour l'ancienne page).
+  const navigateToWorkspace = useCallback((project: UnifiedProject) => {
+    navigate(`/missions/${encodeURIComponent(project.sourcingProject.id)}`);
+  }, [navigate]);
+  const navigateToSourcing = useCallback((project: UnifiedProject) => {
+    navigate(`/missions/${encodeURIComponent(project.sourcingProject.id)}/sourcing`);
+  }, [navigate]);
+  const navigateToAction = useCallback((project: UnifiedProject, action: MissionListAction | null) => {
+    navigate(actionPath(project.sourcingProject.id, action?.intent ?? null));
+  }, [navigate]);
 
   const handleStatusChange = (project: UnifiedProject) => async (newStatus: SourcingProject['status']) => {
-    if (project.sourcingProject) {
+    if (!project.sourcingProject) return;
+    try {
       await updateProject({ id: project.sourcingProject.id, status: newStatus });
+    } catch {
+      // le toast d'échec est posé par onError du hook
     }
   };
 
-  const isLoading = spLoading || jobsLoading;
+  // Liste pas encore reçue (requête en cours, en attente du réseau ou pas encore
+  // activée) : une attente, jamais l'état vide. Liste en échec sans donnée : un
+  // état d'erreur, jamais l'état vide non plus.
+  // Une recherche déplie les terminées et archivées : sans cela, un résultat
+  // qui s'y trouve resterait caché sans message.
+  const searchActive = searchQuery.trim() !== '';
+  const archiveOpen = showArchive || searchActive;
+  const isLoading = spLoading || (!hasData && !listError);
+  const loadFailed = !hasData && listError;
 
-  // Empty state if no missions at all
-  if (!isLoading && unifiedProjects.length === 0) {
+  // Aucune mission : état vide de l'écran entier, sous le titre de la page
+  // (son bouton suffit, l'en-tête n'en porte pas).
+  if (hasData && unifiedProjects.length === 0) {
     return (
-      <>
+      <div className="mx-auto w-full max-w-[1200px]">
+        <PageHeader title="Missions" />
+        {/* Missions confiées par une entreprise (cabinets et indépendants) :
+            affichées avant l'état vide, qui parle des missions propres. */}
+        <div className="mb-6 empty:hidden">
+          <PartnerMissionsSection />
+        </div>
         <EmptyMissionState
           onCreateAI={() => { setCreateInitialTab('brief'); setShowCreateModal(true); }}
           onCreateManual={() => { setCreateInitialTab('manual'); setShowCreateModal(true); }}
@@ -516,178 +771,154 @@ export const ProjectsListV2: React.FC = () => {
             }
           />
         )}
-      </>
+      </div>
     );
   }
 
+  // Une phrase, seulement ce qui n'est pas nul : effectifs « en ce moment »
+  // additionnés sur les missions En cours (missionListFormat.ts).
+  const subtitle = !hasData ? undefined : missionsSentence(ongoingProjects.length, summary);
+
+  const renderRow = (project: UnifiedProject, layout: ListLayout, archived = false) => {
+    const id = project.sourcingProject.id;
+    const action = actions.get(id) ?? null;
+    return (
+      <MissionRow
+        key={project.key}
+        project={project}
+        archived={archived}
+        layout={layout}
+        counts={countsOf(project)}
+        countsPending={countsQuery.isPending}
+        people={interviewingPeople?.[id]}
+        activityAt={activityOf(project)}
+        now={now}
+        action={action}
+        onAction={() => navigateToAction(project, action)}
+        onRetryAction={retryActions}
+        onOpen={() => navigateToWorkspace(project)}
+        onOpenSourcing={() => navigateToSourcing(project)}
+        onStatusChange={handleStatusChange(project)}
+        onDelete={(opener) => { deleteOpenerRef.current = opener; setDeleteTarget(project); }}
+        canDelete={!!project.sourcingProject}
+      />
+    );
+  };
+
+  // Deux groupes : le titre « En cours » ne sert qu'à les distinguer, il est
+  // seulement lu par un lecteur d'écran quand il n'y en a qu'un.
+  const twoGroups = groups.ongoing.length > 0 && groups.archive.length > 0;
+
   return (
-    <div className="max-w-[1200px] mx-auto w-full">
-      {/* ── Hero header ── */}
-      <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
-        <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">
-            Tableau de bord
-          </p>
-          <h1 className="font-display text-[26px] sm:text-[30px] font-bold leading-tight">
-            Tes missions{' '}
-            <span className="font-editorial italic font-normal text-muted-foreground">
-              en cours
-            </span>
-          </h1>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            {globalKpis.activeMissions} mission{globalKpis.activeMissions > 1 ? 's' : ''} active{globalKpis.activeMissions > 1 ? 's' : ''}
-            {buckets.attention.length > 0 && (
-              <>
-                <span className="mx-1.5">·</span>
-                <span className="font-medium" style={{ color: 'hsl(var(--status-warning))' }}>
-                  {buckets.attention.length} demande{buckets.attention.length > 1 ? 'nt' : ''} ton attention
-                </span>
-              </>
-            )}
-          </p>
-        </div>
+    <div className="mx-auto w-full max-w-[1200px]">
+      <PageHeader
+        title="Missions"
+        subtitle={subtitle}
+        actions={
+          !canCreateJob && maxJobs !== null ? (
+            <MissionQuotaNotice maxJobs={maxJobs} className="max-w-xs" />
+          ) : (
+            <Button
+              variant="primary"
+              className="max-sm:min-h-11"
+              onClick={() => { setCreateInitialTab('brief'); setShowCreateModal(true); }}
+            >
+              <Plus aria-hidden="true" />
+              Nouvelle mission
+            </Button>
+          )
+        }
+      />
 
-        <button
-          type="button"
-          onClick={() => {
-            if (!canCreateJob) {
-              import('sonner').then(({ toast }) => toast.error("Quota de missions atteint"));
-              return;
-            }
-            setCreateInitialTab('brief');
-            setShowCreateModal(true);
-          }}
-          className="h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-2 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" strokeWidth={2.5} />
-          Nouvelle mission
-        </button>
-      </div>
+      {countsQuery.isError && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground" role="alert">
+          Les effectifs des missions n'ont pas pu être chargés.
+          <Button variant="ghost" size="xs" className="max-sm:min-h-11" onClick={() => { void countsQuery.refetch(); }}>
+            <RefreshCw aria-hidden="true" />
+            Réessayer
+          </Button>
+        </p>
+      )}
 
-      {/* ── KPI strip ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <KpiCard label="Missions actives" value={globalKpis.activeMissions} />
-        <KpiCard label="Sourcés au total" value={globalKpis.totalSourced} />
-        <KpiCard label="À contacter" value={globalKpis.totalToContact} highlight={globalKpis.totalToContact > 0 ? 'warning' : undefined} />
-        <KpiCard label="Réponses reçues" value={globalKpis.totalResponses} highlight={globalKpis.totalResponses > 0 ? 'success' : undefined} />
-      </div>
-
-      {/* ── Search bar ── */}
-      <div className="relative mb-5">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+      {/* ── Recherche ── */}
+      <div className="relative mb-6 max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
-          placeholder="Rechercher une mission, un client, un poste…"
+          placeholder="Rechercher une mission, un client, un poste"
+          aria-label="Rechercher une mission"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-9 pl-9 bg-card border-border"
+          className="pl-9 max-sm:h-11"
         />
       </div>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 bg-card border border-border rounded-xl animate-pulse" />
-          ))}
-        </div>
+      {isLoading && <LoadingRows />}
+
+      {loadFailed && (
+        <ErrorState
+          variant="compact"
+          className="border-0 bg-transparent"
+          title="Impossible de charger vos missions"
+          description="Vérifiez votre connexion, puis réessayez."
+          onRetry={() => { void refetchProjects(); }}
+        />
       )}
 
-      {/* ── Section : Demandent ton attention ── */}
-      {!isLoading && buckets.attention.length > 0 && (
-        <Section
-          title="Demandent ton attention"
-          subtitle={`${buckets.attention.length} mission${buckets.attention.length > 1 ? 's' : ''} avec une action urgente`}
-          icon="⚡"
-        >
-          {buckets.attention.map(({ project, stats, step }) => (
-            <MissionCard
-              key={project.key}
-              project={project}
-              stats={stats}
-              step={step}
-              onClick={(tab) => navigateToWorkspace(project, tab)}
-              onStatusChange={handleStatusChange(project)}
-              onDelete={() => setDeleteTarget(project)}
-              canDelete={!!project.sourcingProject}
-            />
-          ))}
-        </Section>
-      )}
+      {/* Les deux groupes : le début de la liste reprend le focus quand la mission supprimée n'existe plus. */}
+      <div ref={listRef} tabIndex={-1} role="group" aria-label="Liste des missions" className="outline-none">
+        {/* ── En cours ── */}
+        {!isLoading && groups.ongoing.length > 0 && (
+          <section className="mb-10" aria-labelledby="missions-en-cours">
+            <h2 id="missions-en-cours" className={twoGroups ? 'mb-1 text-lg font-semibold text-foreground' : 'sr-only'}>
+              En cours
+            </h2>
+            <MissionTable caption="Missions en cours" layout={ongoingLayout}>
+              {groups.ongoing.map((project) => renderRow(project, ongoingLayout))}
+            </MissionTable>
+          </section>
+        )}
 
-      {/* ── Section : En cours ── */}
-      {!isLoading && buckets.progress.length > 0 && (
-        <Section
-          title="En cours"
-          subtitle={`${buckets.progress.length} mission${buckets.progress.length > 1 ? 's' : ''} active${buckets.progress.length > 1 ? 's' : ''}`}
-          icon="📍"
-        >
-          {buckets.progress.map(({ project, stats, step }) => (
-            <MissionCard
-              key={project.key}
-              project={project}
-              stats={stats}
-              step={step}
-              onClick={(tab) => navigateToWorkspace(project, tab)}
-              onStatusChange={handleStatusChange(project)}
-              onDelete={() => setDeleteTarget(project)}
-              canDelete={!!project.sourcingProject}
-            />
-          ))}
-        </Section>
-      )}
-
-      {/* ── Section : Archive (collapsable) ── */}
-      {!isLoading && buckets.archive.length > 0 && (
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => setShowArchive(s => !s)}
-            className="w-full flex items-center justify-between text-left mb-3 hover:bg-muted/40 px-2 py-1.5 rounded-md transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-base">📦</span>
-              <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-                  Terminées · archivées
-                </p>
-                <p className="text-[10px] text-muted-foreground/70">
-                  {buckets.archive.length} mission{buckets.archive.length > 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-            {showArchive ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </button>
-          {showArchive && (
-            <div className="space-y-2">
-              {buckets.archive.map(({ project, stats, step }) => (
-                <MissionCard
-                  key={project.key}
-                  project={project}
-                  stats={stats}
-                  step={step}
-                  onClick={(tab) => navigateToWorkspace(project, tab)}
-                  onStatusChange={handleStatusChange(project)}
-                  onDelete={() => setDeleteTarget(project)}
-                  canDelete={!!project.sourcingProject}
+        {/* ── Terminées, archivées (repliable) : un titre avec son nombre, sans cadre ni en-têtes ── */}
+        {!isLoading && groups.archive.length > 0 && (
+          <section className="mb-10" aria-labelledby="missions-archivees">
+            <h2 className="mb-1">
+              <button
+                type="button"
+                onClick={() => { if (!searchActive) setShowArchive(s => !s); }}
+                aria-expanded={archiveOpen}
+                className="-ml-1 inline-flex items-center gap-2 rounded-md px-1 py-1 text-lg font-semibold text-foreground hover:text-foreground-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
+              >
+                <ChevronRight
+                  className={cn('h-4 w-4 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none', archiveOpen && 'rotate-90')}
+                  aria-hidden="true"
                 />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                <span id="missions-archivees">Terminées, archivées</span>
+                <span className="text-sm font-normal text-muted-foreground">{plural(groups.archive.length, 'mission')}</span>
+              </button>
+            </h2>
+            {archiveOpen && (
+              <MissionTable caption="Missions terminées et archivées" layout={archiveLayout}>
+                {groups.archive.map((project) => renderRow(project, archiveLayout, true))}
+              </MissionTable>
+            )}
+          </section>
+        )}
+      </div>
 
-      {/* No results after filtering */}
+      {/* ── Missions partenaires (cabinets et indépendants) ── */}
+      {!isLoading && <PartnerMissionsSection />}
+
+      {/* Recherche sans résultat */}
       {!isLoading && filtered.length === 0 && unifiedProjects.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-12 text-center">
-          <Search className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
-          <p className="text-sm font-medium mb-1">Aucune mission trouvée</p>
-          <p className="text-xs text-muted-foreground">
-            Essaye avec d'autres mots-clés ou efface la recherche.
+        <div className="px-4 py-10 text-center">
+          <p className="text-md text-foreground">Aucune mission trouvée.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Essayez avec d'autres mots-clés ou effacez la recherche.
           </p>
         </div>
       )}
 
-      {/* ── Modals ── */}
+      {/* ── Fenêtres ── */}
       {showCreateModal && (
         <CreateMissionV2
           isOpen={showCreateModal}
@@ -701,21 +932,37 @@ export const ProjectsListV2: React.FC = () => {
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            // Annuler ou Échap : retour au bouton « ... » de la ligne. Supprimer : la ligne va
+            // disparaître (opener vidé au clic), le focus va au début de la liste.
+            event.preventDefault();
+            const opener = deleteOpenerRef.current;
+            deleteOpenerRef.current = null;
+            (opener && opener.isConnected ? opener : listRef.current)?.focus();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette mission ?</AlertDialogTitle>
             <AlertDialogDescription>
-              "{deleteTarget?.name}" sera supprimée définitivement avec tous ses candidats sourcés et messages.
+              « {deleteTarget?.name} » sera supprimée définitivement avec tous ses candidats sourcés et messages.
               Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel className="max-sm:min-h-11">Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 max-sm:min-h-11"
               onClick={async () => {
+                // La fenêtre se ferme dès le clic, avant la fin de la suppression : la ligne
+                // part, on ne lui rend pas le focus.
+                deleteOpenerRef.current = null;
                 if (deleteTarget?.sourcingProject) {
-                  await deleteProject(deleteTarget.sourcingProject.id);
+                  try {
+                    await deleteProject(deleteTarget.sourcingProject.id);
+                  } catch {
+                    // le toast d'échec est posé par onError du hook
+                  }
                 }
                 setDeleteTarget(null);
               }}
@@ -725,51 +972,6 @@ export const ProjectsListV2: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-};
-
-// ─── Sub-components ──────────────────────────────────────────────
-
-const Section: React.FC<{
-  title: string;
-  subtitle: string;
-  icon: string;
-  children: React.ReactNode;
-}> = ({ title, subtitle, icon, children }) => (
-  <div className="mb-6">
-    <div className="flex items-center gap-2 mb-3">
-      <span className="text-base">{icon}</span>
-      <div>
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-          {title}
-        </p>
-        <p className="text-[10px] text-muted-foreground/70">{subtitle}</p>
-      </div>
-    </div>
-    <div className="space-y-2">{children}</div>
-  </div>
-);
-
-const KpiCard: React.FC<{
-  label: string;
-  value: number;
-  highlight?: 'success' | 'warning';
-}> = ({ label, value, highlight }) => {
-  const highlightColor =
-    highlight === 'success' ? 'hsl(var(--status-success))'
-    : highlight === 'warning' ? 'hsl(var(--status-warning))'
-    : undefined;
-
-  return (
-    <div className="bg-card border border-border rounded-lg px-4 py-3">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
-      <p
-        className="font-display text-[22px] font-bold tabular-nums leading-none"
-        style={highlightColor && value > 0 ? { color: highlightColor } : undefined}
-      >
-        {value}
-      </p>
     </div>
   );
 };

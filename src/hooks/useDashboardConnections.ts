@@ -3,8 +3,10 @@
  * pour l'utilisateur courant.
  *
  * 3 canaux suivis :
- * - LinkedIn (via Unipile, avec profile picture si dispo)
- * - WhatsApp (via Unipile, filtré par provider/type)
+ * - LinkedIn : le compte relié à l'utilisateur (member_linkedin_accounts),
+ *   jamais celui d'un collègue ; état calculé par resolveMyLinkedInStatus
+ * - WhatsApp : jamais dans la liste (unipile-accounts ne renvoie que les
+ *   comptes LinkedIn), affiché mais neutre pour hasIssue et allConnected
  * - Email (via Unipile email_account, mapping member_email_accounts)
  *
  * Pour chaque canal :
@@ -12,9 +14,9 @@
  * - account : compte Unipile mappé à l'user (nom, identifier, etc.)
  * - avatarUrl : photo de profil LinkedIn si dispo (utilisée pour le greeting)
  *
- * Plombage Unipile : `useLinkedInAccounts` retourne TOUS les comptes Unipile
- * (LinkedIn + WhatsApp). On filtre par type/provider. Les emails ont leur
- * propre liste séparée (action 'list_email').
+ * Plombage Unipile : `useLinkedInAccounts` retourne les comptes LinkedIn
+ * reliés à l'organisation (et les orphelins en mode revendication). Les emails
+ * ont leur propre liste séparée (action 'list_email').
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
@@ -23,6 +25,7 @@ import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useMemberEmailAccounts } from '@/hooks/useMemberEmailAccounts';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { resolveMyLinkedInStatus, channelStatusOf } from '@/lib/linkedinStatus';
 
 export type ConnectionStatus = 'connected' | 'error' | 'connecting' | 'disconnected';
 
@@ -41,9 +44,9 @@ export interface DashboardConnections {
   whatsapp: ChannelConnection;
   email: ChannelConnection;
   isLoading: boolean;
-  /** True if at least one connector is in error/disconnected state */
+  /** True if LinkedIn or email is in error/disconnected state (WhatsApp ignoré, voir plus bas) */
   hasIssue: boolean;
-  /** True if all 3 connectors are connected and OK */
+  /** True if LinkedIn and email are connected and OK (WhatsApp ignoré) */
   allConnected: boolean;
 }
 
@@ -59,8 +62,8 @@ const mapUnipileStatus = (raw: string | null | undefined): ConnectionStatus => {
 
 export function useDashboardConnections(): DashboardConnections {
   const { isReady, user } = useAuthReady();
-  const { accounts: unipileAccounts, loading: unipileLoading } = useLinkedInAccounts();
-  const { getMappingForUser: getLinkedInMapping, isLoading: linkedinMappingLoading } = useMemberLinkedInAccounts();
+  const { accounts: unipileAccounts, loading: unipileLoading, ready: unipileReady } = useLinkedInAccounts();
+  const { mappings: linkedinMappings, isReady: linkedinMappingReady, isLoading: linkedinMappingLoading } = useMemberLinkedInAccounts();
   const { getMappingForUser: getEmailMapping, isLoading: emailMappingLoading } = useMemberEmailAccounts();
 
   // Email accounts come from a separate Unipile call (list_email)
@@ -98,21 +101,19 @@ export function useDashboardConnections(): DashboardConnections {
   return useMemo<DashboardConnections>(() => {
     const userId = user?.id || null;
 
-    // ─── LinkedIn ───
-    const linkedinMapping = userId ? getLinkedInMapping(userId) : null;
-    const linkedinAccount = linkedinMapping
-      ? unipileAccounts.find((a: any) => a.id === linkedinMapping.linkedin_account_id) || null
-      : // Fallback : si pas de mapping mais 1 seul compte non-WhatsApp, on l'utilise
-        unipileAccounts.find((a: any) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP') || null;
-
+    // ─── LinkedIn : SON compte uniquement (liaison stricte, aucun repli sur un collègue) ───
+    const li = resolveMyLinkedInStatus({
+      userId,
+      mappings: linkedinMappings,
+      mappingsLoaded: linkedinMappingReady,
+      accounts: unipileAccounts,
+      accountsLoaded: unipileReady,
+    });
     const linkedin: ChannelConnection = {
-      status: mapUnipileStatus(linkedinAccount?.status),
-      label:
-        (linkedinAccount as any)?.name ||
-        linkedinMapping?.linkedin_account_name ||
-        null,
-      avatarUrl: (linkedinAccount as any)?.profile_picture_url || null,
-      rawStatus: linkedinAccount?.status || null,
+      status: channelStatusOf(li.state),
+      label: li.account?.name || li.mapping?.linkedin_account_name || null,
+      avatarUrl: li.account?.profile_picture_url || null,
+      rawStatus: li.rawStatus,
     };
 
     // ─── WhatsApp ───
@@ -140,7 +141,9 @@ export function useDashboardConnections(): DashboardConnections {
       rawStatus: emailAccount?.status || null,
     };
 
-    const channels = [linkedin, whatsapp, email];
+    // WhatsApp n'est jamais dans la liste (unipile-accounts ne renvoie que les
+    // comptes LinkedIn) : il ne compte ni comme problème ni pour Tout actif.
+    const channels = [linkedin, email];
     const hasIssue = channels.some((c) => c.status === 'error' || c.status === 'disconnected');
     const allConnected = channels.every((c) => c.status === 'connected');
 
@@ -161,7 +164,9 @@ export function useDashboardConnections(): DashboardConnections {
     linkedinMappingLoading,
     emailMappingLoading,
     emailLoading,
-    getLinkedInMapping,
+    linkedinMappings,
+    linkedinMappingReady,
+    unipileReady,
     getEmailMapping,
   ]);
 }

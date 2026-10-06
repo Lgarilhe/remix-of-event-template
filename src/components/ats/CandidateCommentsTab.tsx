@@ -3,6 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { Loader2, Send, Trash2, MessageCircle, AtSign } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { REVEAL_ON_ROW } from '@/components/missions/v3/cadrage/sectionUi';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -177,7 +181,8 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
       if (error) throw error;
 
       // Create in-app notifications for mentioned users
-      if (mentionedUserIds.length > 0) {
+      // La policy INSERT exige organization_id : le destinataire doit être membre de la même organisation.
+      if (mentionedUserIds.length > 0 && organizationId) {
         const notifications = mentionedUserIds
           .filter(uid => uid !== user.id) // Don't notify yourself
           .map(uid => ({
@@ -185,8 +190,8 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
             type: 'mention',
             title: `${getMemberName(user.id)} vous a mentionné`,
             body: `Sur le profil de ${candidateName}: "${newComment.trim().slice(0, 100)}${newComment.trim().length > 100 ? '...' : ''}"`,
-            link: `/ats?candidate=${candidateId}`,
-            organization_id: organization?.id || null,
+            link: `/pipeline?candidate=${candidateId}`,
+            organization_id: organizationId,
           }));
         
         if (notifications.length > 0) {
@@ -224,7 +229,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
         const isMember = members.some(m => m.display_name === memberName);
         if (isMember) {
           return (
-            <span key={i} className="inline-flex items-center gap-0.5 px-1 py-0 bg-primary/10 text-primary font-medium text-xs rounded-sm">
+            <span key={i} className="inline-flex items-center gap-0.5 rounded-md bg-brand/15 px-1 text-sm font-medium text-brand">
               <AtSign className="w-2.5 h-2.5" />
               {memberName}
             </span>
@@ -236,99 +241,104 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Input */}
+    <div className="space-y-5">
+      {/* Saisie */}
       <div className="relative">
-        <div className="flex gap-0">
-          <div className="flex-1 relative">
-            <Textarea
-              ref={textareaRef}
-              value={newComment}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Ajouter un commentaire... Tapez @ pour mentionner"
-              className="min-h-[60px] rounded-lg border-border text-sm resize-none pr-2"
-            />
-            {/* Mention autocomplete dropdown */}
-            {showMentions && filteredMembers.length > 0 && (
-              <div
-                ref={mentionListRef}
-                className="absolute top-full left-0 right-0 mt-1 bg-background border border-border shadow-lg z-[100] max-h-40 overflow-y-auto rounded-sm"
-              >
-                {filteredMembers.map((member, i) => (
-                  <button
-                    key={member.user_id}
-                    onClick={() => insertMention(member)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors",
-                      i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-                    )}
-                  >
-                    <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0">
-                      {member.display_name.charAt(0)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium truncate">{member.display_name}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !newComment.trim()}
-            className="h-auto px-4 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50 hover:bg-foreground/90 transition-colors"
+        <Textarea
+          ref={textareaRef}
+          value={newComment}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Écrire un commentaire pour l'équipe"
+          aria-label="Nouveau commentaire"
+          className="min-h-[72px] resize-none text-sm"
+        />
+        {/* Mention autocomplete dropdown */}
+        {showMentions && filteredMembers.length > 0 && (
+          <div
+            ref={mentionListRef}
+            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
           >
-            {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          </button>
+            {filteredMembers.map((member, i) => (
+              <button
+                key={member.user_id}
+                type="button"
+                onClick={() => insertMention(member)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150',
+                  i === mentionIndex ? 'bg-accent text-foreground' : 'hover:bg-accent',
+                )}
+              >
+                <PersonAvatar name={member.display_name} size={24} />
+                <span className="min-w-0 truncate">{member.display_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">Tapez @ pour mentionner un collègue</p>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={handleSubmit}
+            loading={submitting}
+            disabled={!newComment.trim()}
+          >
+            {!submitting && <Send aria-hidden="true" />}
+            Commenter
+          </Button>
         </div>
       </div>
 
-      {/* Comments list */}
+      {/* Commentaires */}
       {loading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
         </div>
       ) : comments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-          <MessageCircle className="w-8 h-8 mb-2 opacity-40" />
-          <p className="text-xs font-medium uppercase tracking-wider">Aucun commentaire</p>
-          <p className="text-xs mt-1">Soyez le premier à commenter</p>
-        </div>
+        <EmptyState
+          className="border-0 py-6"
+          variant="compact"
+          icon={MessageCircle}
+          title="Aucun commentaire"
+          description="Laissez un commentaire visible de toute l'équipe."
+        />
       ) : (
-        <div className="space-y-2">
-          {comments.map(comment => (
-            <div key={comment.id} className="group p-3 border border-border bg-foreground/[0.02] hover:border-border transition-colors">
-              <div className="flex items-start gap-2">
-                <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0 mt-0.5">
-                  {getMemberName(comment.created_by).charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
+        <ul className="divide-y divide-border">
+          {comments.map(comment => {
+            const author = getMemberName(comment.created_by);
+            return (
+              <li key={comment.id} className="group flex items-start gap-3 py-3 first:pt-0">
+                <PersonAvatar name={author} size={32} className="mt-0.5" />
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
-                      {getMemberName(comment.created_by)}
-                    </span>
+                    <span className="text-sm font-semibold text-foreground">{author}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-muted-foreground">
                         {formatDistanceToNow(parseISO(comment.created_at), { addSuffix: true, locale: fr })}
                       </span>
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
                         onClick={() => handleDelete(comment.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
+                        aria-label="Supprimer le commentaire"
+                        title="Supprimer le commentaire"
+                        className={cn('-mr-1 text-muted-foreground hover:bg-danger-muted hover:text-danger', REVEAL_ON_ROW)}
                       >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                        <Trash2 aria-hidden="true" />
+                      </Button>
                     </div>
                   </div>
-                  <p className="text-sm text-foreground mt-1 whitespace-pre-wrap leading-relaxed">
+                  <p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                     {renderContent(comment.content)}
                   </p>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

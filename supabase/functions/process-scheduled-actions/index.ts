@@ -24,9 +24,10 @@
 // Deno.serve direct (pattern du projet)
 
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
-import { executeScheduledAction, type ToolContext } from "../_shared/agent-tools.ts";
+import { executeScheduledAction, recordActionOutcomeMessage, type ToolContext } from "../_shared/agent-tools.ts";
 import { registerMutatingTools } from "../_shared/agent-tools-mutations.ts";
 import { registerReadTools } from "../_shared/agent-tools-reads.ts";
+import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +46,20 @@ function humanDelayMs(): number {
   return Math.floor(Math.random() * 10_000) + 5_000;
 }
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Budget d'une invocation : la fonction est coupée à 60 s. Au-delà de 40 s,
+// on ne réserve plus de nouvelle action ; les lignes non réservées repartent
+// au passage suivant (SEQ-114). La pause humanisante est aussi bornée par ce
+// budget.
+const TIME_BUDGET_MS = 40_000;
+
+// Une action réservée (executed_at posé) mais restée 'approved' au-delà de ce
+// délai a été interrompue pendant son exécution (invocation coupée) : son
+// statut final ne sera jamais écrit, la sélection (executed_at IS NULL) ne la
+// reprend pas. On la clôt en 'failed' avec un message explicite, sans la
+// rejouer : l'envoi a pu partir.
+const STALE_RESERVATION_MS = 10 * 60 * 1000;
+const STALE_RESERVATION_MESSAGE = "Délai dépassé : l'action a pu partir, vérifiez avant de relancer";
 
 // Register tools once at module load — `register*` are idempotent (no-op
 // after first call) so multiple invocations of the cron stay cheap.
@@ -69,7 +84,11 @@ Deno.serve(async (req) => {
   const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || '';
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 
-  if (!token || (token !== serviceRoleKey && token !== cronSecret)) {
+  // Comparaison à temps constant ; les deux secrets restent acceptés (cron
+  // PROCESS_SEQUENCES_SECRET et clé de service).
+  const authorized = Boolean(token)
+    && (timingSafeEqual(token, serviceRoleKey) || (cronSecret !== '' && timingSafeEqual(token, cronSecret)));
+  if (!authorized) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -77,6 +96,10 @@ Deno.serve(async (req) => {
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const startedAt = Date.now();
+
+  // ===== RATTRAPAGE DES RÉSERVATIONS INTERROMPUES =====
+  const staleRescued = await failStaleReservations(supabase);
 
   // ===== FETCH DUE ACTIONS =====
   const nowIso = new Date().toISOString();
@@ -100,7 +123,7 @@ Deno.serve(async (req) => {
 
   if (!rows || rows.length === 0) {
     return new Response(
-      JSON.stringify({ success: true, processed: 0, message: 'No due actions' }),
+      JSON.stringify({ success: true, processed: 0, stale_failed: staleRescued, message: 'No due actions' }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
@@ -114,6 +137,7 @@ Deno.serve(async (req) => {
     success: boolean;
     error?: string;
   }> = [];
+  let deferred = 0;
 
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i] as {
@@ -124,12 +148,20 @@ Deno.serve(async (req) => {
       conversation_id: string | null;
       scheduled_for: string;
     };
-    // Délai humanisant entre 2 actions (sauf la 1ère). Limite : le timeout
-    // edge function Supabase est 60s, donc 10 actions × ~10s max sleep
-    // ≈ 90s. On reste large : sleep max 15s × 10 = 150s WC, mais executeAction
-    // prend <2s donc on est ok dans 60s tant que pas toutes au max.
+    // Délai humanisant entre 2 actions (sauf la 1ère), dans le budget de
+    // temps : au-delà, on s'arrête et les actions restantes, non réservées,
+    // partent au passage suivant (2 minutes plus tard).
     if (i > 0) {
-      await sleep(humanDelayMs());
+      const delay = humanDelayMs();
+      if (Date.now() - startedAt + delay > TIME_BUDGET_MS) {
+        deferred = rows.length - i;
+        break;
+      }
+      await sleep(delay);
+    }
+    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+      deferred = rows.length - i;
+      break;
     }
 
     const ctx: ToolContext = {
@@ -174,8 +206,71 @@ Deno.serve(async (req) => {
       processed: results.length,
       success_count: successCount,
       failure_count: results.length - successCount,
+      deferred,
+      stale_failed: staleRescued,
       results,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
   );
 });
+
+/**
+ * Clôt en 'failed' les actions réservées puis interrompues (executed_at posé
+ * depuis plus de STALE_RESERVATION_MS, statut toujours 'approved') et trace le
+ * dénouement dans la conversation d'origine. Jamais rejouées : l'envoi a pu
+ * partir avant la coupure. Non bloquant.
+ */
+async function failStaleReservations(
+  supabase: ToolContext['adminClient'],
+): Promise<number> {
+  try {
+    const cutoffIso = new Date(Date.now() - STALE_RESERVATION_MS).toISOString();
+    const { data: stale, error } = await supabase
+      .from('agent_tool_executions')
+      .select('id, tool_name, conversation_id, dry_run_result')
+      .eq('status', 'approved')
+      .not('executed_at', 'is', null)
+      .lt('executed_at', cutoffIso)
+      .limit(BATCH_LIMIT);
+    if (error) {
+      console.error('[process-scheduled-actions] stale reservations lookup failed:', error);
+      return 0;
+    }
+    let failed = 0;
+    for (const row of (stale ?? []) as Array<{
+      id: string;
+      tool_name: string;
+      conversation_id: string | null;
+      dry_run_result: Record<string, unknown> | null;
+    }>) {
+      const { data: closed, error: closeError } = await supabase
+        .from('agent_tool_executions')
+        .update({
+          status: 'failed',
+          real_result: { success: false, error: STALE_RESERVATION_MESSAGE, source: 'process-scheduled-actions-timeout' } as unknown as Record<string, unknown>,
+        })
+        .eq('id', row.id)
+        .eq('status', 'approved')
+        .lt('executed_at', cutoffIso)
+        .select('id');
+      if (closeError) {
+        console.error(`[process-scheduled-actions] stale reservation ${row.id} not closed:`, closeError);
+        continue;
+      }
+      if (!closed || closed.length === 0) continue;
+      failed += 1;
+      const summary = typeof row.dry_run_result?.summary === 'string' ? row.dry_run_result.summary : null;
+      await recordActionOutcomeMessage(
+        supabase,
+        { id: row.id, conversationId: row.conversation_id, toolName: row.tool_name, dryRunSummary: summary },
+        'failed',
+        { success: false, error: STALE_RESERVATION_MESSAGE },
+      );
+    }
+    if (failed > 0) console.warn(`[process-scheduled-actions] ${failed} interrupted action(s) closed as failed`);
+    return failed;
+  } catch (e) {
+    console.error('[process-scheduled-actions] stale reservations rescue failed:', e);
+    return 0;
+  }
+}

@@ -1,16 +1,20 @@
 /**
  * Hook for managing enrollment preview state:
  * - Lazy AI message generation per candidate
- * - Variable resolution for non-AI steps
+ * - Étapes écrites : rendues par la préparation avec les valeurs du serveur
+ *   (lot 5d-1, usePreviewValues) ; ce hook ne garde que leurs retouches
  * - Inline editing with local overrides
  * - Bulk generation with concurrency control
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { invokeWithCredits, estimateActionCredits } from '@/lib/invokeWithCredits';
+import type { EdgeFunctionError } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { isClosedChannelStep } from '@/lib/sequenceCompatibility';
+import { requiresAiReview } from '@/lib/contactRecipientsGuard';
 
 export interface SequenceStepPreview {
   stepId: string;
@@ -29,6 +33,103 @@ export interface SequenceStepPreview {
   timeoutBranchStepId?: string | null;
   parentStepId?: string | null;
   branch?: string | null;
+  /** Cible « oui » d'une vérification (if_true_goto_step). */
+  ifTrueGotoStep?: string | null;
+  /** Cible « non » d'une vérification (if_false_goto_step). */
+  ifFalseGotoStep?: string | null;
+  /** Étape suivante explicite (next_step_id), chaînage suivi par le moteur. */
+  nextStepId?: string | null;
+  /** Version d'un test A/B (variant_group), null hors test. */
+  variantGroup?: string | null;
+  /** Fin de séquence après cette étape (ends_sequence). */
+  endsSequence?: boolean | null;
+}
+
+/** Vrai si la séquence a des embranchements : un seul chemin sera suivi par candidat. */
+export function hasBranching(steps: readonly SequenceStepPreview[]): boolean {
+  return steps.some(s => !!(s.ifTrueGotoStep || s.ifFalseGotoStep || s.timeoutBranchStepId || s.parentStepId || s.branch));
+}
+
+/**
+ * Étapes des AUTRES branches que celle de `stepId`, pour que l'IA ne rédige
+ * pas une étape comme si les messages de l'autre chemin étaient partis. Suit
+ * le routage du moteur : vérification oui / non (if_true_goto_step,
+ * if_false_goto_step, puis chaînage next_step_id depuis chaque cible) et
+ * arbre parent_step_id / branch (enfants d'un même parent, par branche).
+ */
+export function otherBranchStepIds(steps: readonly SequenceStepPreview[], stepId: string): Set<string> {
+  const byId = new Map(steps.map(s => [s.stepId, s]));
+  const chainFrom = (startId: string | null | undefined): Set<string> => {
+    const out = new Set<string>();
+    let current = startId ? byId.get(startId) : undefined;
+    while (current && !out.has(current.stepId) && out.size < steps.length) {
+      out.add(current.stepId);
+      current = current.nextStepId ? byId.get(current.nextStepId) : undefined;
+    }
+    return out;
+  };
+  const descendantsOf = (rootId: string): Set<string> => {
+    const out = new Set<string>([rootId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const s of steps) {
+        if (s.parentStepId && out.has(s.parentStepId) && !out.has(s.stepId)) {
+          out.add(s.stepId);
+          grew = true;
+        }
+      }
+    }
+    return out;
+  };
+
+  // Chaque décision donne plusieurs branches (ensembles d'étapes exclusifs).
+  const decisions: Set<string>[][] = [];
+  for (const s of steps) {
+    if (s.ifTrueGotoStep && s.ifFalseGotoStep) {
+      decisions.push([chainFrom(s.ifTrueGotoStep), chainFrom(s.ifFalseGotoStep)]);
+    }
+  }
+  const childrenByParent = new Map<string, Map<string, Set<string>>>();
+  for (const s of steps) {
+    if (!s.parentStepId || !s.branch) continue;
+    const byBranch = childrenByParent.get(s.parentStepId) ?? new Map<string, Set<string>>();
+    const set = byBranch.get(s.branch) ?? new Set<string>();
+    descendantsOf(s.stepId).forEach(id => set.add(id));
+    byBranch.set(s.branch, set);
+    childrenByParent.set(s.parentStepId, byBranch);
+  }
+  childrenByParent.forEach(byBranch => {
+    if (byBranch.size > 1) decisions.push(Array.from(byBranch.values()));
+  });
+
+  const excluded = new Set<string>();
+  for (const branches of decisions) {
+    const own = branches.find(b => b.has(stepId));
+    if (!own) continue;
+    for (const other of branches) {
+      if (other === own) continue;
+      other.forEach(id => { if (!own.has(id)) excluded.add(id); });
+    }
+  }
+  return excluded;
+}
+
+/** Texte affiché quand la génération IA d'un aperçu a échoué. */
+export const PREVIEW_GENERATION_FAILED_MESSAGE =
+  "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le.";
+
+/**
+ * Code d'un aperçu refusé par generate-outreach-message : le texte proposé
+ * porte encore une violation bloquante du moteur (rémunération, signature
+ * « Recruteur », formulation de cabinet). Correctif 2 du plan du lot 5.
+ */
+export const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';
+
+/** Texte affiché sous un aperçu en échec : la phrase du serveur pour un aperçu refusé, sinon l'échec générique. */
+export function previewErrorMessage(err: unknown): string {
+  const e = err as EdgeFunctionError | null | undefined;
+  return e?.code === PREVIEW_NOT_COMPLIANT_CODE && e.message ? e.message : PREVIEW_GENERATION_FAILED_MESSAGE;
 }
 
 export interface GeneratedMessage {
@@ -44,64 +145,365 @@ export interface GeneratedMessage {
 export type PreviewMap = Map<string, Map<string, GeneratedMessage>>; // candidateId -> stepId -> message
 
 /**
- * Override des règles de timing d'un step pour CETTE inscription
- * uniquement (sans toucher au template global de la séquence).
+ * Override des règles de timing d'une étape pour TOUS les candidats de
+ * l'inscription en cours (une seule valeur par fenêtre, pas par candidat),
+ * sans toucher à la séquence elle-même.
  *
- * Ex : la séquence prévoit un délai de 5 jours avant le 2e message,
- * mais pour ce candidat précis on veut relancer plus vite (3 jours).
+ * Ex : la séquence prévoit un délai de 5 jours avant le 2e message, mais pour
+ * cette inscription on veut relancer plus vite (3 jours).
  * → stepConfigOverrides[stepId] = { delayDays: 3 }
  *
- * Stocké sur sequence_enrollments.tracking_data.step_config_overrides.
+ * Écrit sur chaque sequence_enrollments.tracking_data.step_config_overrides.
  * Lu par le cron process-sequences au moment de scheduler le step :
  *   override.delayDays ?? step.delay_days
  */
-export interface StepConfigOverride {
+// Alias de type (et non interface) : il s'écrit tel quel dans la colonne JSON
+// tracking_data, sans conversion.
+export type StepConfigOverride = {
   /** Délai en jours avant l'exécution du step (override de step.delay_days). */
   delayDays?: number;
   /** Délai en heures additionnel (override de step.delay_hours). */
   delayHours?: number;
   /** Pour les steps wait_* : nombre de jours avant timeout (override de step.timeout_days). */
   timeoutDays?: number;
-}
+};
 
 interface UseEnrollmentPreviewOptions {
   steps: SequenceStepPreview[];
   profiles: LinkedInProfile[];
+  /**
+   * Candidats visés par la génération groupée, son compteur et l'estimation de
+   * crédits (par défaut : tous). L'aperçu exclut ainsi les candidats retirés,
+   * passés, déjà contactés ou incompatibles avec la séquence.
+   */
+  targetProfiles?: LinkedInProfile[];
   job?: { id: string; title: string; client?: any; skills?: string[]; description?: string; location?: string; accompagnement?: string[] } | null;
   accountId: string;
+  /**
+   * Clé de conservation des aperçus pendant la session (séquence, mission,
+   * compte d'envoi). Sans clé, les aperçus vivent le temps du composant.
+   */
+  sessionKey?: string;
+  /**
+   * Lot 5d-1 : texte d'une étape écrite pour ce candidat, rendu avec les
+   * valeurs du serveur (preview_values, attendues si elles ne sont pas encore
+   * là, candidat hors de l'écran compris) et les variables remplies à l'envoi
+   * gardées telles quelles ; null si le serveur n'en donne pas (effacement,
+   * échec). Sert de contexte aux messages rédigés par l'IA et de texte de
+   * départ quand leur génération échoue ; à défaut, le modèle brut.
+   */
+  writtenText?: (profile: LinkedInProfile, step: SequenceStepPreview) => Promise<{ subject: string; message: string } | null>;
 }
 
 // Steps that have sendable messages
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
-function hasMessage(step: SequenceStepPreview): boolean {
-  return MESSAGE_ACTION_TYPES.includes(step.actionType) && !!step.messageTemplate?.trim();
+/**
+ * Étape dont le message part : un modèle écrit, ou une étape à message
+ * rédigée par l'IA pour chaque candidat, même sans modèle (le moteur la
+ * rédige et l'envoie : aiWillGenerate de process-sequences). Jamais une
+ * invitation sans note : le moteur ne rédige pas de note. Un canal fermé
+ * (e-mail, WhatsApp, D2) est sauté par le moteur, ni aperçu ni génération
+ * facturée pour lui.
+ */
+export function hasMessage(step: Pick<SequenceStepPreview, 'actionType' | 'messageTemplate' | 'useAiPersonalization'>): boolean {
+  if (!MESSAGE_ACTION_TYPES.includes(step.actionType) || isClosedChannelStep(step.actionType)) return false;
+  if (step.messageTemplate?.trim()) return true;
+  return !!step.useAiPersonalization && step.actionType !== 'connection_request';
 }
 
-function resolveVariables(template: string, profile: LinkedInProfile): string {
-  if (!template) return '';
-  return template
-    .replace(/\{\{first_name\}\}/gi, profile.first_name || profile.name?.split(' ')[0] || '')
-    .replace(/\{\{last_name\}\}/gi, profile.last_name || profile.name?.split(' ').slice(1).join(' ') || '')
-    .replace(/\{\{full_name\}\}/gi, profile.name || '')
-    .replace(/\{\{company\}\}/gi, profile.work_experience?.[0]?.company || '')
-    .replace(/\{\{headline\}\}/gi, profile.headline || '')
-    .replace(/\{\{location\}\}/gi, profile.location || '')
-    .replace(/\{\{job_title\}\}/gi, profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position || '');
+/**
+ * Étape comptée comme déjà envoyée dans l'historique simulé (prevSentSteps).
+ * Une étape d'un canal fermé n'est jamais partie : la compter ferait écrire à
+ * l'IA une relance d'un message que le candidat n'a pas reçu.
+ */
+function isSentReachStep(step: SequenceStepPreview): boolean {
+  return MESSAGE_ACTION_TYPES.includes(step.actionType) && !isClosedChannelStep(step.actionType);
 }
 
-export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnrollmentPreviewOptions) {
-  const [previews, setPreviews] = useState<PreviewMap>(new Map());
-  const [generatedCount, setGeneratedCount] = useState(0);
-  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
-  const abortRef = useRef(false);
+// ── Aperçus conservés pendant la session (revue design D-46) ──
+// Fermer la préparation ne jette plus les messages déjà générés (facturés) ni
+// les retouches : ils sont gardés en mémoire, par séquence, mission et compte
+// d'envoi, puis par candidat. Rien n'est écrit dans le navigateur : un
+// rechargement de la page les efface. Un aperçu n'est repris que si son étape
+// n'a pas changé depuis (même type, même modèle, même réglage IA).
+
+interface StoredPreview {
+  signature: string;
+  message: GeneratedMessage;
+}
+
+/** Nombre de préparations gardées ; la plus ancienne part au-delà. */
+const SESSION_LIMIT = 20;
+const sessionPreviews = new Map<string, Map<string, Map<string, StoredPreview>>>();
+
+function stepSignature(step: SequenceStepPreview): string {
+  return [step.actionType, step.useAiPersonalization ? 'ia' : '', step.aiTone ?? '', step.subjectTemplate, step.messageTemplate].join('\u0001');
+}
+
+function isWorthKeeping(msg: GeneratedMessage): boolean {
+  return !msg.isGenerating && (msg.isGenerated || msg.isEdited);
+}
+
+function keepInSession(key: string | undefined, step: SequenceStepPreview | undefined, candidateId: string, msg: GeneratedMessage) {
+  if (!key || !step || !isWorthKeeping(msg)) return;
+  let byCandidate = sessionPreviews.get(key);
+  if (!byCandidate) {
+    if (sessionPreviews.size >= SESSION_LIMIT) {
+      const oldest = sessionPreviews.keys().next().value;
+      if (oldest !== undefined) sessionPreviews.delete(oldest);
+    }
+    byCandidate = new Map();
+    sessionPreviews.set(key, byCandidate);
+  }
+  let byStep = byCandidate.get(candidateId);
+  if (!byStep) {
+    byStep = new Map();
+    byCandidate.set(candidateId, byStep);
+  }
+  byStep.set(step.stepId, { signature: stepSignature(step), message: { ...msg, isGenerating: false } });
+}
+
+function restoreFromSession(key: string | undefined, steps: SequenceStepPreview[], profiles: LinkedInProfile[]): PreviewMap {
+  const restored: PreviewMap = new Map();
+  const stored = key ? sessionPreviews.get(key) : undefined;
+  if (!stored) return restored;
+  const signatures = new Map(steps.map(s => [s.stepId, stepSignature(s)]));
+  for (const profile of profiles) {
+    const byStep = stored.get(profile.id);
+    if (!byStep) continue;
+    const messages = new Map<string, GeneratedMessage>();
+    byStep.forEach((entry, stepId) => {
+      if (signatures.get(stepId) === entry.signature) messages.set(stepId, { ...entry.message, isGenerating: false });
+    });
+    if (messages.size > 0) restored.set(profile.id, messages);
+  }
+  return restored;
+}
+
+/** Réglages d'approche d'une mission (sourcing_projects.job_details.outreach_config). */
+export interface MissionOutreachConfig {
+  recruitment_mode?: 'internal' | 'client';
+  sender_role?: string;
+  anonymize_client?: boolean;
+  anonymized_alias?: string;
+}
+
+/** Identifiant de mission sans le préfixe « project: » des postes synthétiques du sourcing. */
+export function normalizeMissionJobId(rawJobId: string | null | undefined): string | null {
+  if (!rawJobId) return null;
+  return rawJobId.startsWith('project:') ? rawJobId.slice('project:'.length) : rawJobId;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Mission d'un poste pour les envois (project_id, lot 0b) : l'identifiant sans
+ * le préfixe « project: », seulement s'il a la forme d'un uuid. Sinon
+ * undefined : rien n'est envoyé, le serveur résout la mission.
+ */
+export function missionIdOfJob(rawJobId: string | null | undefined): string | undefined {
+  const id = normalizeMissionJobId(rawJobId);
+  return id && UUID_RE.test(id) ? id : undefined;
+}
+
+/**
+ * Lit outreach_config et le nom du client de la mission liée au poste. Partagé
+ * par l'aperçu d'inscription et l'InMail groupé : sans ces réglages, la
+ * génération retombe sur le mode cabinet et n'anonymise pas le client.
+ * status : 'idle' (aucun poste), 'loading', 'ready' (trouvé ou poste hors
+ * mission), 'error' (lecture en échec, réglages inconnus).
+ */
+export function useMissionOutreachConfig(rawJobId: string | null | undefined) {
+  const [state, setState] = useState<{
+    outreachConfig: MissionOutreachConfig | null;
+    missionClientName: string | null;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+  }>({ outreachConfig: null, missionClientName: null, status: rawJobId ? 'loading' : 'idle' });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    // 🔧 FIX CRITIQUE : depuis le flow Sourcing, useLinkedInSearch génère
+    // des jobs synthétiques avec id: "project:{uuid}". Sans décaper ce
+    // préfixe, la requête ne trouve RIEN → outreach_config null → repli
+    // CABINET (mode INTERNE jamais appliqué, client jamais anonymisé).
+    const jobId = normalizeMissionJobId(rawJobId);
+    if (!jobId) {
+      setState({ outreachConfig: null, missionClientName: null, status: 'idle' });
+      return;
+    }
+    setState(prev => ({ ...prev, status: 'loading' }));
+    (async () => {
+      try {
+        // Un identifiant non uuid (poste externe) ferait échouer id.eq : on ne
+        // compare alors que job_id.
+        const base = supabase.from('sourcing_projects').select('id, job_id, job_details, client_name');
+        const { data, error } = await (UUID_RE.test(jobId)
+          ? base.or(`id.eq.${jobId},job_id.eq.${jobId}`)
+          : base.eq('job_id', jobId)
+        ).limit(1).maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        const jd = (data?.job_details ?? null) as Record<string, unknown> | null;
+        setState({
+          outreachConfig: (jd?.outreach_config ?? null) as MissionOutreachConfig | null,
+          missionClientName: data?.client_name
+            ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
+            ?? null,
+          status: 'ready',
+        });
+      } catch (err) {
+        console.warn('[useMissionOutreachConfig] outreach_config fetch failed:', err);
+        if (!cancelled) setState({ outreachConfig: null, missionClientName: null, status: 'error' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rawJobId, attempt]);
+
+  const retry = useCallback(() => setAttempt(a => a + 1), []);
+  return { ...state, retry };
+}
+
+/**
+ * Prénom de l'expéditeur pour signer les messages générés : « Laurent », pas
+ * « L. Garilhe » ni le nom de famille. Sources dans l'ordre :
+ *  1. user_metadata.first_name (signup direct)
+ *  2. profiles.display_name (1er token = prénom)
+ *  3. user_metadata.full_name (1er token)
+ *  4. partie locale de l'e-mail « prenom.nom » (jamais le nom de famille)
+ * undefined si rien d'utilisable : la génération prend alors son défaut explicite.
+ */
+export function useSenderFirstName(): string | undefined {
   const { user } = useAuthReady();
+  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id;
+    if (!userId) {
+      setProfileDisplayName(null);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!cancelled && data?.display_name) {
+          setProfileDisplayName(data.display_name);
+        }
+      } catch (err) {
+        console.warn('[useSenderFirstName] profile display_name fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
-  // Overrides des règles de timing par step pour CETTE inscription.
-  // Map<stepId, { delayDays?, delayHours?, timeoutDays? }>.
-  // Vide par défaut → utilise les valeurs du template séquence.
-  // Mis à jour quand l'user clique "Modifier le délai" sur un step.
-  // Inclus dans tracking_data.step_config_overrides à l'enrôlement,
+  const meta = (user?.user_metadata ?? {}) as { first_name?: string; full_name?: string };
+  if (meta.first_name?.trim()) return meta.first_name.trim();
+  if (profileDisplayName?.trim()) {
+    const firstToken = profileDisplayName.trim().split(/\s+/)[0];
+    if (firstToken && firstToken.length >= 2) return firstToken;
+  }
+  if (meta.full_name?.trim()) {
+    const firstToken = meta.full_name.trim().split(/\s+/)[0];
+    if (firstToken && firstToken.length >= 2) return firstToken;
+  }
+  if (user?.email) {
+    const tokens = user.email.split('@')[0].split(/[._-]/);
+    // Format "prenom.nom" → tokens[0] = prénom (>= 2 caractères). Format
+    // "p.nom" : on ne renvoie PAS le nom (signal IA), plutôt undefined.
+    if (tokens[0] && tokens[0].length >= 2) {
+      return tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1);
+    }
+  }
+  return undefined;
+}
+
+export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, accountId, sessionKey, writtenText }: UseEnrollmentPreviewOptions) {
+  const [previews, setPreviews] = useState<PreviewMap>(() => restoreFromSession(sessionKey, steps, profiles));
+  // Dernier état des aperçus, lu par les générations en cours : une closure
+  // figée (raccourci clavier, workers de la génération groupée) ne voyait pas
+  // les messages modifiés entre-temps et les régénérait par-dessus.
+  const previewsRef = useRef<PreviewMap>(previews);
+  useEffect(() => { previewsRef.current = previews; }, [previews]);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  // Lot 5a-2 : numéro de la dernière génération IA réussie. Toute génération
+  // ou régénération le change, ce qui décoche la case de relecture.
+  const [aiGenerationVersion, setAiGenerationVersion] = useState(0);
+  const abortRef = useRef(false);
+  // Préparation fermée : plus aucune génération ne part (celles en cours
+  // arrivent quand même et sont conservées pour la session).
+  const unmountedRef = useRef(false);
+  // Candidats inscrits : leurs aperçus ne sont plus conservés.
+  const discardedRef = useRef<Set<string>>(new Set());
+  const targets = targetProfiles ?? profiles;
+  // Dernière fonction de rendu des étapes écrites, lue par les générations en cours.
+  const writtenTextRef = useRef(writtenText);
+  useEffect(() => { writtenTextRef.current = writtenText; }, [writtenText]);
+  /** Texte d'une étape écrite (lot 5d-1) : valeurs du serveur, attendues ; sans elles, le modèle brut. */
+  const writtenMessage = useCallback(async (profile: LinkedInProfile, step: SequenceStepPreview): Promise<{ subject: string; message: string }> => {
+    const rendered = await writtenTextRef.current?.(profile, step).catch(() => null);
+    return rendered ?? { subject: step.subjectTemplate, message: step.messageTemplate };
+  }, []);
+  /**
+   * Historique simulé donné à l'IA (prevSentSteps) : pour chaque étape déjà
+   * partie, l'aperçu gardé (généré ou retouché), sinon, pour une étape écrite,
+   * son texte rendu pour ce candidat (lot 5d-1), jamais le modèle non rendu
+   * tant que le serveur donne les valeurs.
+   */
+  const buildPrevSentSteps = useCallback(async (
+    profile: LinkedInProfile,
+    sentSteps: SequenceStepPreview[],
+    keptOf: (stepId: string) => GeneratedMessage | undefined,
+  ) => Promise.all(sentSteps.map(async s => {
+    const kept = keptOf(s.stepId);
+    const message = kept?.message
+      ? kept.message
+      : !s.useAiPersonalization && hasMessage(s) ? (await writtenMessage(profile, s)).message : '';
+    return {
+      actionType: s.actionType,
+      finalMessage: message.replace(/<br\s*\/?>(\s*)/gi, '\n'),
+      stepOrder: s.stepOrder,
+    };
+  })), [writtenMessage]);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
+
+  const keep = useCallback((step: SequenceStepPreview | undefined, candidateId: string, msg: GeneratedMessage) => {
+    if (discardedRef.current.has(candidateId)) return;
+    keepInSession(sessionKey, step, candidateId, msg);
+  }, [sessionKey]);
+
+  // Les retouches et les aperçus affichés rejoignent la session à chaque
+  // changement ; un aperçu en cours de génération garde la version précédente.
+  useEffect(() => {
+    if (!sessionKey) return;
+    const stepsById = new Map(steps.map(s => [s.stepId, s]));
+    previews.forEach((byStep, candidateId) => {
+      byStep.forEach((msg, stepId) => keep(stepsById.get(stepId), candidateId, msg));
+    });
+  }, [previews, steps, sessionKey, keep]);
+
+  /** Oublie les aperçus des candidats inscrits (ils ne servent plus). */
+  const discardSessionPreviews = useCallback((candidateIds: string[]) => {
+    const stored = sessionKey ? sessionPreviews.get(sessionKey) : undefined;
+    for (const id of candidateIds) {
+      discardedRef.current.add(id);
+      stored?.delete(id);
+    }
+  }, [sessionKey]);
+
+  // Overrides des règles de timing par étape pour l'inscription en cours :
+  // une seule valeur, appliquée à TOUS les candidats inscrits depuis cette
+  // fenêtre. Map<stepId, { delayDays?, delayHours?, timeoutDays? }>.
+  // Vide par défaut → utilise les valeurs de la séquence.
+  // Inclus dans tracking_data.step_config_overrides de chaque inscription,
   // lu par process-sequences au scheduling.
   const [stepConfigOverrides, setStepConfigOverrides] = useState<Map<string, StepConfigOverride>>(new Map());
 
@@ -135,129 +537,13 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     return result;
   }, [stepConfigOverrides]);
 
-  // Fetch outreach_config de la mission depuis sourcing_projects.job_details.
-  // Sans ça, l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet
-  // externe" même si l'user a config la mission en mode interne dans le brief.
-  const [outreachConfig, setOutreachConfig] = useState<{
-    recruitment_mode?: 'internal' | 'client';
-    sender_role?: string;
-    anonymize_client?: boolean;
-    anonymized_alias?: string;
-  } | null>(null);
-  const [missionClientName, setMissionClientName] = useState<string | null>(null);
+  // outreach_config de la mission (sourcing_projects.job_details). Sans ça,
+  // l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet externe" même
+  // si la mission est en mode interne, et n'anonymise pas le client.
+  const { outreachConfig, missionClientName } = useMissionOutreachConfig(job?.id);
 
-  useEffect(() => {
-    let cancelled = false;
-    const rawJobId = job?.id;
-    if (!rawJobId) {
-      setOutreachConfig(null);
-      setMissionClientName(null);
-      return;
-    }
-    // 🔧 FIX CRITIQUE : depuis le flow Sourcing, useLinkedInSearch génère
-    // des jobs synthétiques avec id: "project:{uuid}" (préfixe pour
-    // distinguer des Notion job IDs). Si on ne décape pas ce préfixe,
-    // notre query .or(`id.eq.project:abc-123,job_id.eq.project:abc-123`)
-    // ne match RIEN → outreach_config arrive null → fallback CABINET.
-    // C'est ce qui faisait que mode INTERNE n'était JAMAIS appliqué
-    // depuis le modal d'enrollment.
-    const jobId = rawJobId.startsWith('project:')
-      ? rawJobId.slice('project:'.length)
-      : rawJobId;
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('sourcing_projects')
-          .select('id, job_id, job_details, client_name')
-          .or(`id.eq.${jobId},job_id.eq.${jobId}`)
-          .limit(1)
-          .maybeSingle();
-        if (cancelled) return;
-        const jd = (data?.job_details ?? null) as Record<string, unknown> | null;
-        const cfg = (jd?.outreach_config ?? null) as typeof outreachConfig;
-        setOutreachConfig(cfg);
-        setMissionClientName(
-          data?.client_name
-            ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
-            ?? null,
-        );
-        console.log('[useEnrollmentPreview] Fetched mission config:', {
-          rawJobId,
-          resolvedJobId: jobId,
-          found: !!data,
-          recruitment_mode: cfg?.recruitment_mode || '(undefined)',
-          client_name: data?.client_name || '(undefined)',
-        });
-      } catch (err) {
-        console.warn('[useEnrollmentPreview] outreach_config fetch failed:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [job?.id]);
-
-  // Nom de l'expéditeur — on garde UNIQUEMENT le prénom pour signer
-  // "Laurent" et pas "L. Garilhe" / "Laurent Garilhe" / "Garilhe".
-  // Sources dans l'ordre :
-  //  1. user_metadata.first_name (signup direct)
-  //  2. profiles.display_name fetché en DB (1er token = prénom)
-  //  3. user_metadata.full_name (1er token)
-  //  4. email local part (avec heuristique pour éviter d'extraire le nom)
-  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const userId = user?.id;
-    if (!userId) {
-      setProfileDisplayName(null);
-      return;
-    }
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (!cancelled && data?.display_name) {
-          setProfileDisplayName(data.display_name);
-        }
-      } catch (err) {
-        console.warn('[useEnrollmentPreview] profile display_name fetch failed:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user?.id]);
-
-  const senderName: string | undefined = (() => {
-    const fullNameMeta = (user?.user_metadata as any)?.full_name as string | undefined;
-    const firstNameMeta = (user?.user_metadata as any)?.first_name as string | undefined;
-    // Priorité 1 : user_metadata.first_name (le plus fiable)
-    if (firstNameMeta?.trim()) return firstNameMeta.trim();
-    // Priorité 2 : profiles.display_name (1er token = prénom)
-    if (profileDisplayName?.trim()) {
-      const firstToken = profileDisplayName.trim().split(/\s+/)[0];
-      if (firstToken && firstToken.length >= 2) return firstToken;
-    }
-    // Priorité 3 : user_metadata.full_name (1er token)
-    if (fullNameMeta?.trim()) {
-      const firstToken = fullNameMeta.trim().split(/\s+/)[0];
-      if (firstToken && firstToken.length >= 2) return firstToken;
-    }
-    // Fallback ultime : email — on ESSAIE de deviner le prénom
-    // mais on ne renvoie PAS le nom de famille en signature (signal IA).
-    // Si on n'a vraiment rien d'utilisable, on renvoie undefined → l'edge
-    // function tombera sur son défaut "[Prénom]" (au moins explicite).
-    if (user?.email) {
-      const local = user.email.split('@')[0];
-      const tokens = local.split(/[._-]/);
-      // Si format "prenom.nom" → tokens[0] = prénom (>=2 chars)
-      if (tokens[0] && tokens[0].length >= 2) {
-        return tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1);
-      }
-      // Format "p.nom" → on ne renvoie PAS le nom (Garilhe), trop risqué
-      // Mieux vaut undefined et que l'edge function fasse un fallback générique
-    }
-    return undefined;
-  })();
+  // Prénom de l'expéditeur (signature des messages et {{sender_name}}).
+  const senderName = useSenderFirstName();
 
   // 🔍 DEBUG : log ce qui arrive aux call sites pour qu'on puisse voir
   // si outreach_config est bien fetché et passé.
@@ -275,7 +561,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   }, [job?.id, outreachConfig, missionClientName, senderName]);
 
   const messageSteps = steps.filter(hasMessage);
-  const totalToGenerate = profiles.length;
+  const totalToGenerate = targets.length;
 
   const getPreview = useCallback((candidateId: string, stepId: string): GeneratedMessage | undefined => {
     return previews.get(candidateId)?.get(stepId);
@@ -290,11 +576,30 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       };
       candidateMap.set(stepId, { ...existing, ...msg });
       next.set(candidateId, candidateMap);
+      previewsRef.current = next;
       return next;
     });
   }, []);
 
-  const generateForCandidate = useCallback(async (profile: LinkedInProfile) => {
+  /** Lot 5d-1 : retire l'aperçu d'une étape (retouche d'une étape écrite), à l'écran et dans la session. */
+  const removePreview = useCallback((candidateId: string, stepId: string) => {
+    setPreviews(prev => {
+      const candidateMap = prev.get(candidateId);
+      if (!candidateMap?.has(stepId)) return prev;
+      const next = new Map(prev);
+      const nextCandidate = new Map(candidateMap);
+      nextCandidate.delete(stepId);
+      if (nextCandidate.size > 0) next.set(candidateId, nextCandidate);
+      else next.delete(candidateId);
+      previewsRef.current = next;
+      return next;
+    });
+    if (sessionKey) sessionPreviews.get(sessionKey)?.get(candidateId)?.delete(stepId);
+  }, [sessionKey]);
+
+  // ignoreBulkAbort : génération d'un seul candidat (bouton, Ctrl+Entrée),
+  // jamais bloquée par l'arrêt d'une génération groupée précédente.
+  const generateForCandidate = useCallback(async (profile: LinkedInProfile, options?: { ignoreBulkAbort?: boolean }) => {
     // 🔧 Accumulator local pour résoudre un BUG de closure :
     // setPreview est async (passe par React state), donc dans la même
     // boucle, lire `previews.get(profile.id)?.get(s.stepId)` retourne
@@ -314,18 +619,40 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     // Pré-charge les previews déjà existants (cas où l'user a déjà
     // généré certains steps avant ; on ne les regenere pas mais on
     // veut les inclure dans prevSentSteps des steps suivants).
-    const existingCandidateMap = previews.get(profile.id);
+    const existingCandidateMap = previewsRef.current.get(profile.id);
     if (existingCandidateMap) {
       existingCandidateMap.forEach((msg, stepId) => {
         if (msg.isGenerated || msg.isEdited) localPreviews.set(stepId, msg);
       });
     }
 
-    for (const step of messageSteps) {
-      if (abortRef.current) return;
+    // Lot 5d-1 : les valeurs des étapes écrites de ce candidat sont demandées
+    // avec ses aperçus, candidat hors de l'écran compris : « Générer tous les
+    // aperçus » rend aussi ses étapes écrites prêtes (gratuit).
+    const firstWritten = messageSteps.find(s => !s.useAiPersonalization);
+    if (firstWritten) await writtenMessage(profile, firstWritten);
 
-      const existing = localPreviews.get(step.stepId);
-      if (existing?.isGenerated && !existing.isEdited) continue; // Already generated
+    for (const step of messageSteps) {
+      if (unmountedRef.current) return;
+      if (abortRef.current && !options?.ignoreBulkAbort) return;
+
+      // Jamais de régénération d'un message déjà généré ou modifié à la main
+      // (« Générer tous les aperçus », touche Entrée) : seul le bouton
+      // « Régénérer » de l'étape (regenerateStep) le remplace. Lecture fraîche
+      // à chaque étape : un message modifié ou lancé ailleurs pendant la boucle
+      // est respecté. Un message en erreur reste régénérable.
+      const current = previewsRef.current.get(profile.id)?.get(step.stepId);
+      const existing = localPreviews.get(step.stepId) ?? current;
+      if (existing && (existing.isEdited || existing.isGenerated || existing.isGenerating)) {
+        if (current && (current.isEdited || current.isGenerated)) localPreviews.set(step.stepId, current);
+        continue;
+      }
+
+      // Lot 5d-1 : étape écrite, rendue à l'écran avec les valeurs du serveur
+      // (preview_values) : rien à générer ni à garder, sa retouche seule est
+      // enregistrée. Son texte rendu sert de contexte aux étapes IA qui
+      // suivent (buildPrevSentSteps).
+      if (!step.useAiPersonalization) continue;
 
       setPreview(profile.id, step.stepId, { isGenerating: true, error: undefined });
 
@@ -349,26 +676,23 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       // - Cas InMail FALLBACK : SEULEMENT les steps avant le wait_connection
       //   (= profile_visit + connection_request) car les messages "if accepted"
       //   n'ont jamais été envoyés
-      const reachActionTypes = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
       const upperBound = isInmailFallback
         ? waitConnectionBefore!.stepOrder
         : step.stepOrder;
-      const prevSentSteps = steps
-        .filter(s =>
-          s.stepOrder < upperBound &&
-          reachActionTypes.includes(s.actionType)
-        )
-        .sort((a, b) => a.stepOrder - b.stepOrder)
-        .map(s => {
-          const prev = localPreviews.get(s.stepId);
-          return {
-            actionType: s.actionType,
-            finalMessage: prev?.message
-              ? prev.message.replace(/<br\s*\/?>(\s*)/gi, '\n')
-              : '',
-            stepOrder: s.stepOrder,
-          };
-        });
+      // Séquence à embranchements : les étapes de l'autre chemin ne sont
+      // jamais parties pour ce candidat.
+      const otherBranch = otherBranchStepIds(steps, step.stepId);
+      const prevSentSteps = await buildPrevSentSteps(
+        profile,
+        steps
+          .filter(s =>
+            s.stepOrder < upperBound &&
+            isSentReachStep(s) &&
+            !otherBranch.has(s.stepId)
+          )
+          .sort((a, b) => a.stepOrder - b.stepOrder),
+        stepId => localPreviews.get(stepId),
+      );
 
       if (step.useAiPersonalization) {
         try {
@@ -461,13 +785,17 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             // cabinet → AI disait "j'accompagne une scale-up tech"
             // même quand la mission était config en INTERNE.
             outreachConfig: outreachConfig || undefined,
+            // Mission (préfixe « project: » accepté) : le serveur relit ses
+            // réglages d'approche quand outreachConfig est absent (SEQ-051).
+            missionId: job?.id || undefined,
           });
 
           if (error) throw error;
 
-          const formattedMessage = (data?.message || step.messageTemplate)
-            .replace(/\n\n/g, '<br><br>')
-            .replace(/\n/g, '<br>');
+          // Texte brut : la preview est rendue en texte (whitespace-pre-wrap),
+          // plus en HTML. Les champs LinkedIn interpolés ne doivent jamais
+          // atteindre innerHTML (XSS stockée, audit 2026-09-01).
+          const formattedMessage = data?.message || step.messageTemplate;
 
           const generatedMsg: GeneratedMessage = {
             subject: data?.subject || step.subjectTemplate || '',
@@ -483,49 +811,49 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           // steps suivants).
           localPreviews.set(step.stepId, generatedMsg);
           setPreview(profile.id, step.stepId, generatedMsg);
+          setAiGenerationVersion(v => v + 1);
+          // Écrit aussi pour la session : si la préparation a été fermée
+          // pendant l'appel, le message payé n'est pas perdu.
+          keep(step, profile.id, generatedMsg);
         } catch (err: any) {
           console.error('Preview generation error:', err);
-          // Fallback to template with variables resolved
+          // Texte de départ : le modèle rendu pour ce candidat (lot 5d-1).
           const fallbackMsg: GeneratedMessage = {
-            subject: resolveVariables(step.subjectTemplate, profile),
-            message: resolveVariables(step.messageTemplate, profile),
+            ...(await writtenMessage(profile, step)),
             isGenerated: false,
             isGenerating: false,
-            error: 'Impossible de générer — le message template sera utilisé tel quel',
+            isEdited: false,
+            error: previewErrorMessage(err),
           };
           localPreviews.set(step.stepId, fallbackMsg);
           setPreview(profile.id, step.stepId, fallbackMsg);
         }
-      } else {
-        // No AI: resolve variables (template only)
-        const noAiMsg: GeneratedMessage = {
-          subject: resolveVariables(step.subjectTemplate, profile),
-          message: resolveVariables(step.messageTemplate, profile),
-          isGenerated: true,
-          isGenerating: false,
-          isEdited: false,
-        };
-        // Important : on l'ajoute aussi à localPreviews pour que les
-        // steps suivants reçoivent ce message comme prevSentStep (même
-        // pour les steps non-IA, le message a été "envoyé" du point de
-        // vue séquentiel).
-        localPreviews.set(step.stepId, noAiMsg);
-        setPreview(profile.id, step.stepId, noAiMsg);
       }
     }
-  }, [messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
+  }, [messageSteps, steps, job, accountId, setPreview, keep, outreachConfig, missionClientName, senderName, writtenMessage, buildPrevSentSteps]);
 
+  // Génération pour un seul candidat : indépendante de l'arrêt de la
+  // génération groupée, interrompue quand la préparation se ferme.
   const generateForCandidateById = useCallback(async (candidateId: string) => {
     const profile = profiles.find(p => p.id === candidateId);
     if (!profile) return;
-    await generateForCandidate(profile);
-    setGeneratedCount(prev => prev + 1);
+    // L'arrêt de « Générer tous les aperçus » ne bloque pas une génération
+    // demandée ensuite pour ce seul candidat (le drapeau reste levé pour les
+    // travailleurs de la génération groupée arrêtée).
+    await generateForCandidate(profile, { ignoreBulkAbort: true });
   }, [profiles, generateForCandidate]);
 
   const regenerateStep = useCallback(async (candidateId: string, stepId: string) => {
     const profile = profiles.find(p => p.id === candidateId);
     const step = messageSteps.find(s => s.stepId === stepId);
     if (!profile || !step) return;
+
+    // Lot 5d-1 : étape écrite, rien à générer : sa retouche est retirée et
+    // l'aperçu revient au modèle rendu avec les valeurs du serveur.
+    if (!step.useAiPersonalization) {
+      removePreview(candidateId, stepId);
+      return;
+    }
 
     // Clear edited state to allow regeneration
     setPreview(candidateId, stepId, { isEdited: false, isGenerated: false });
@@ -594,23 +922,18 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           ? waitConnectionBefore!.stepOrder
           : step.stepOrder;
 
-        const prevSentSteps = steps
-          .filter(s =>
-            s.stepOrder < upperBound &&
-            ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
-              .includes(s.actionType)
-          )
-          .sort((a, b) => a.stepOrder - b.stepOrder)
-          .map(s => {
-            const prev = previews.get(candidateId)?.get(s.stepId);
-            return {
-              actionType: s.actionType,
-              finalMessage: prev?.message
-                ? prev.message.replace(/<br\s*\/?>(\s*)/gi, '\n')
-                : '',
-              stepOrder: s.stepOrder,
-            };
-          });
+        const otherBranch = otherBranchStepIds(steps, step.stepId);
+        const prevSentSteps = await buildPrevSentSteps(
+          profile,
+          steps
+            .filter(s =>
+              s.stepOrder < upperBound &&
+              isSentReachStep(s) &&
+              !otherBranch.has(s.stepId)
+            )
+            .sort((a, b) => a.stepOrder - b.stepOrder),
+          stepId => previewsRef.current.get(candidateId)?.get(stepId),
+        );
 
         const { data, error } = await invokeWithCredits<{
           subject?: string;
@@ -637,46 +960,55 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             prevSentSteps,
           },
           outreachConfig: outreachConfig || undefined,
+          missionId: job?.id || undefined,
         });
 
         if (error) throw error;
 
-        const formattedMessage = (data?.message || step.messageTemplate)
-          .replace(/\n\n/g, '<br><br>')
-          .replace(/\n/g, '<br>');
+        // Texte brut, rendu en whitespace-pre-wrap côté modal (plus d'innerHTML).
+        const formattedMessage = data?.message || step.messageTemplate;
 
-        setPreview(candidateId, stepId, {
+        const regenerated: GeneratedMessage = {
           subject: data?.subject || '',
           message: formattedMessage,
           personalizationPoints: data?.personalization_points,
           isGenerated: true,
           isGenerating: false,
           isEdited: false,
-        });
-      } catch {
+        };
+        setPreview(candidateId, stepId, regenerated);
+        setAiGenerationVersion(v => v + 1);
+        keep(step, candidateId, regenerated);
+      } catch (err) {
+        // Texte de départ : le modèle rendu pour ce candidat (lot 5d-1).
         setPreview(candidateId, stepId, {
-          subject: resolveVariables(step.subjectTemplate, profile),
-          message: resolveVariables(step.messageTemplate, profile),
+          ...(await writtenMessage(profile, step)),
           isGenerated: false,
           isGenerating: false,
-          error: 'Impossible de générer — le message template sera utilisé tel quel',
+          error: previewErrorMessage(err),
         });
       }
-    } else {
-      setPreview(candidateId, stepId, {
-        subject: resolveVariables(step.subjectTemplate, profile),
-        message: resolveVariables(step.messageTemplate, profile),
-        isGenerated: true,
-        isGenerating: false,
-        isEdited: false,
-      });
     }
-  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
+  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, keep, outreachConfig, missionClientName, senderName, writtenMessage, removePreview, buildPrevSentSteps]);
 
-  const editMessage = useCallback((candidateId: string, stepId: string, field: 'subject' | 'message', value: string) => {
+  // `base` (lot 5d-1) : première retouche d'une étape écrite, sans aperçu
+  // gardé ; elle part de son texte et de son objet rendus pour ce candidat,
+  // sinon l'objet serait perdu (enregistré vide).
+  const editMessage = useCallback((
+    candidateId: string,
+    stepId: string,
+    field: 'subject' | 'message',
+    value: string,
+    base?: { subject: string; message: string },
+  ) => {
+    // Un message modifié à la main part tel quel (getMessageOverrides) : l'avis
+    // d'échec de génération ne s'applique plus.
+    const current = previewsRef.current.get(candidateId)?.get(stepId);
     setPreview(candidateId, stepId, {
+      ...(base && !current?.isEdited ? base : {}),
       [field]: value,
       isEdited: true,
+      error: undefined,
     });
   }, [setPreview]);
 
@@ -684,18 +1016,16 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   const generateAll = useCallback(async (maxConcurrent = 3) => {
     setIsBulkGenerating(true);
     abortRef.current = false;
-    setGeneratedCount(0);
 
-    const queue = [...profiles];
-    let completed = 0;
+    const queue = [...targets];
 
     const worker = async () => {
       while (queue.length > 0 && !abortRef.current) {
+        // Préparation fermée : les candidats restants ne sont pas générés.
+        if (unmountedRef.current) break;
         const profile = queue.shift();
         if (!profile) break;
         await generateForCandidate(profile);
-        completed++;
-        setGeneratedCount(completed);
       }
     };
 
@@ -703,7 +1033,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     await Promise.all(workers);
 
     setIsBulkGenerating(false);
-  }, [profiles, generateForCandidate]);
+  }, [targets, generateForCandidate]);
 
   const cancelBulkGeneration = useCallback(() => {
     abortRef.current = true;
@@ -732,7 +1062,9 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     isEdited?: boolean;
   }> => {
     const overrides: Record<string, { subject?: string; message?: string; isEdited?: boolean }> = {};
-    const candidateMap = previews.get(candidateId);
+    // Dernier état (pas la closure du clic) : une modification faite pendant
+    // une inscription groupée vaut pour les candidats pas encore inscrits.
+    const candidateMap = previewsRef.current.get(candidateId);
     if (!candidateMap) return overrides;
 
     candidateMap.forEach((msg, stepId) => {
@@ -747,29 +1079,69 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       }
     });
     return overrides;
-  }, [previews]);
+  }, []);
 
   // Candidate analysis for bulk mode
   const candidateAnalysis = {
-    total: profiles.length,
-    withEmail: profiles.filter(p => p.contact_info?.emails?.length).length,
-    withPhone: profiles.filter(p => p.contact_info?.phones?.length).length,
-    withoutEmail: profiles.filter(p => !p.contact_info?.emails?.length).length,
-    withoutPhone: profiles.filter(p => !p.contact_info?.phones?.length).length,
+    total: targets.length,
+    withEmail: targets.filter(p => p.contact_info?.emails?.length).length,
+    withPhone: targets.filter(p => p.contact_info?.phones?.length).length,
+    withoutEmail: targets.filter(p => !p.contact_info?.emails?.length).length,
+    withoutPhone: targets.filter(p => !p.contact_info?.phones?.length).length,
   };
 
-  const hasAiSteps = messageSteps.some(s => s.useAiPersonalization);
-  const estimatedCredits = hasAiSteps ? profiles.length * 2 : 0; // ~2 credits per AI generation
+  // Une génération par candidat ET par étape personnalisée : compter les
+  // candidats seuls divisait l'estimation par le nombre d'étapes de la séquence.
+  // Le coût unitaire vient de l'estimateur du produit, sur le modèle qui servira
+  // à l'appel : le littéral 2 utilisé jusqu'ici était le plancher de l'action,
+  // pas son estimation, et annonçait moins de la moitié de ce qui sera exigé.
+  const aiStepCount = messageSteps.filter(s => s.useAiPersonalization).length;
+  const hasAiSteps = aiStepCount > 0;
+  const creditsPerMessage = estimateActionCredits('outreach_message');
+  const estimatedCredits = targets.length * aiStepCount * creditsPerMessage;
+
+  // Aperçus prêts : candidats visés dont tous les messages sont générés ou
+  // modifiés. Dérivé des aperçus (et non compté à chaque clic) : relancer la
+  // génération du même candidat ne fait plus dépasser le total. Lot 5d-1 :
+  // seules les étapes rédigées par l'IA se génèrent ; une étape écrite est
+  // rendue avec les valeurs du serveur, sans génération.
+  const generatedSteps = messageSteps.filter(s => s.useAiPersonalization);
+  const generatedCount = generatedSteps.length === 0
+    ? 0
+    : targets.filter(p => generatedSteps.every(s => {
+        const msg = previews.get(p.id)?.get(s.stepId);
+        return !!msg && (msg.isGenerated || msg.isEdited);
+      })).length;
+
+  // Lot 5a-2 : étapes dont le message partirait rédigé par l'IA (jamais une
+  // invitation). Le moteur ne les envoie plus sans texte relu : chaque
+  // candidat à inscrire doit avoir leur texte généré (ou écrit à la main).
+  // Compte des candidats visés à qui il en manque au moins un.
+  const aiReviewSteps = messageSteps.filter(requiresAiReview);
+  const aiReviewMissingCount = aiReviewSteps.length === 0
+    ? 0
+    : targets.filter(p => aiReviewSteps.some(s => {
+        const msg = previews.get(p.id)?.get(s.stepId);
+        return !msg || msg.isGenerating || !(msg.isGenerated || msg.isEdited);
+      })).length;
 
   return {
     previews,
     messageSteps,
     hasMessageSteps: messageSteps.length > 0,
     hasAiSteps,
+    /** Lot 5a-2 : étapes à message rédigées par l'IA, à générer et relire avant l'inscription. */
+    aiReviewSteps,
+    /** Lot 5a-2 : candidats visés dont un message rédigé par l'IA manque encore. */
+    aiReviewMissingCount,
+    /** Lot 5a-2 : change à chaque génération ou régénération IA (décoche la case de relecture). */
+    aiGenerationVersion,
     generatedCount,
     totalToGenerate,
     isBulkGenerating,
     estimatedCredits,
+    /** Coût estimé d'un message personnalisé par l'IA, en crédits. */
+    creditsPerMessage,
     candidateAnalysis,
     getPreview,
     generateForCandidateById,
@@ -778,6 +1150,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     generateAll,
     cancelBulkGeneration,
     getMessageOverrides,
+    discardSessionPreviews,
     // Per-step rule overrides (delays, timeouts) for this enrollment only.
     getStepConfig,
     setStepConfig,

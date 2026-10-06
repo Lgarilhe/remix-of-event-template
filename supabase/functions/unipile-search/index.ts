@@ -112,6 +112,8 @@ interface SearchParams {
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
+import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
+import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -154,6 +156,118 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
   return null;
 }
 
+/** Erreur d'entrée client → réponse 4xx (jamais 500). */
+class UnipileInputError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * Identifiant destiné à un segment de chemin ou un paramètre d'URL Unipile
+ * (profile_id, chat_id, account_id). Sans encodage, profile_id = "../accounts"
+ * transformait GET /users/../accounts en GET /accounts sur la clé plateforme
+ * (SEC-007). Les slugs LinkedIn %-encodés envoyés par le front sont décodés
+ * puis ré-encodés à l'identique.
+ */
+/**
+ * LinkedIn répond 422 « unable to process » à une requête booléenne dont les
+ * parenthèses ou les guillemets ne sont pas fermés (génération IA, troncature
+ * à 200 caractères). On rééquilibre avant l'envoi : guillemet orphelin retiré,
+ * « ) » sans « ( » retirée, « ( » restées ouvertes refermées en fin de chaîne.
+ */
+function balanceBooleanKeywords(input: string): string {
+  let s = input;
+  if ((s.match(/"/g) ?? []).length % 2 === 1) {
+    const i = s.lastIndexOf('"');
+    s = s.slice(0, i) + s.slice(i + 1);
+  }
+  let out = '';
+  let depth = 0;
+  let inQuote = false;
+  for (const ch of s) {
+    if (ch === '"') inQuote = !inQuote;
+    if (!inQuote) {
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        if (depth === 0) continue;
+        depth--;
+      }
+    }
+    out += ch;
+  }
+  // Retire un opérateur resté pendant avant de refermer (« … AND » / « … OR »)
+  out = out.replace(/\s+(AND|OR|NOT)\s*$/i, '');
+  return out + ')'.repeat(depth);
+}
+
+function unipileId(value: unknown, label: string): string {
+  let s = typeof value === 'string' ? value : value == null ? '' : String(value);
+  s = s.trim();
+  if (s.includes('%')) {
+    try { s = decodeURIComponent(s); } catch { /* valeur brute conservée */ }
+  }
+  if (!s || s.length > 512 || s === '.' || s.includes('..') || /[/\\?#]/.test(s)) {
+    throw new UnipileInputError(`${label} invalide`);
+  }
+  return encodeURIComponent(s);
+}
+
+/** Comptes LinkedIn rattachés à l'organisation (member_linkedin_accounts). */
+async function loadOrgLinkedInAccountIds(organizationId: string): Promise<Set<string>> {
+  const sb = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+  );
+  const { data, error } = await sb
+    .from('member_linkedin_accounts')
+    .select('linkedin_account_id')
+    .eq('organization_id', organizationId);
+  if (error) throw new Error(`member_linkedin_accounts lookup failed: ${error.message}`);
+  return new Set(
+    ((data ?? []) as Array<{ linkedin_account_id: string | null }>)
+      .map((r) => r.linkedin_account_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
+}
+
+const CHAT_ACCOUNT_CACHE_TTL_MS = 15 * 60 * 1000;
+const chatAccountCache = new Map<string, { accountId: string; expiresAt: number }>();
+
+/**
+ * Compte propriétaire d'une conversation (GET /chats/{id} renvoie account_id),
+ * vérifié contre les comptes de l'organisation : chat_id n'était lié à rien
+ * (SEC-006). Cache mémoire 15 min par isolate pour ne pas doubler les appels
+ * du polling inbox.
+ */
+async function resolveChatAccount(
+  baseUrl: string,
+  apiKey: string,
+  organizationId: string,
+  chatIdEncoded: string,
+  orgAccountIds: Set<string>,
+): Promise<string> {
+  const cacheKey = `${organizationId}:${chatIdEncoded}`;
+  const now = Date.now();
+  const hit = chatAccountCache.get(cacheKey);
+  if (hit && hit.expiresAt > now && orgAccountIds.has(hit.accountId)) return hit.accountId;
+
+  const res = await fetchWithTimeout(`${baseUrl}/chats/${chatIdEncoded}`, {
+    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new UnipileInputError('Conversation introuvable', 404);
+  const chat = await res.json().catch(() => ({}));
+  const accountId = typeof chat?.account_id === 'string' ? chat.account_id : '';
+  if (!accountId || !orgAccountIds.has(accountId)) {
+    throw new UnipileInputError("Cette conversation n'appartient pas à un compte LinkedIn de votre organisation", 403);
+  }
+  if (chatAccountCache.size > 5000) chatAccountCache.clear();
+  chatAccountCache.set(cacheKey, { accountId, expiresAt: now + CHAT_ACCOUNT_CACHE_TTL_MS });
+  return accountId;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -190,11 +304,15 @@ Deno.serve(async (req) => {
 
     const { action, account_id, organization_id, ...params } = await req.json();
 
-    if (isInternal) {
-      if (!organization_id) {
-        return new Response(JSON.stringify({ error: 'organization_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-    } else if (organization_id) {
+    // organization_id OBLIGATOIRE pour tous les modes, ET membership vérifié pour
+    // tout appel user : sinon un user qui OMETTAIT organization_id sautait le
+    // check et resolveUnipileCredentials(undefined) retombait sur la clé Unipile
+    // partagée (env). Le fallback env reste légitime (org sans créds propres)
+    // mais n'est plus accessible sans appartenance vérifiée.
+    if (!organization_id) {
+      return new Response(JSON.stringify({ error: 'organization_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (!isInternal) {
       const sb = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
       const { data: membership } = await sb.from('organization_members').select('id').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
       if (!membership) {
@@ -243,6 +361,31 @@ Deno.serve(async (req) => {
 
     const baseUrl = `https://${dsn}/api/v1`;
 
+    // ─── Rattachement du compte LinkedIn à l'organisation (SEC-006) ────────
+    // La clé Unipile est partagée entre les orgs sans créds propres : sans ce
+    // contrôle, un account_id d'une autre org donnait accès à sa boîte, à ses
+    // recherches et à ses envois. Vaut aussi pour les appels internes
+    // (organization_id est requis dans tous les modes).
+    const accountIdRaw = String(account_id).trim();
+    unipileId(accountIdRaw, 'account_id');
+    const orgAccountIds = await loadOrgLinkedInAccountIds(organization_id);
+    if (!orgAccountIds.has(accountIdRaw)) {
+      return new Response(JSON.stringify({
+        success: false,
+        errorType: 'ACCOUNT_NOT_LINKED',
+        error: "Ce compte LinkedIn n'est pas rattaché à votre organisation. Associez-le depuis Paramètres > Connecteurs.",
+      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Actions sur une conversation : le compte propriétaire du chat doit lui
+    // aussi appartenir à l'organisation. C'est ce compte qui porte le quota.
+    const chatScopedActions = new Set(['get_messages', 'send_message', 'mark_as_read', 'sync_chat_history']);
+    let gateAccountId = accountIdRaw;
+    if (chatScopedActions.has(action) && params?.chat_id) {
+      const chatIdEncoded = unipileId(params.chat_id, 'chat_id');
+      gateAccountId = await resolveChatAccount(baseUrl, apiKey, organization_id, chatIdEncoded, orgAccountIds);
+    }
+
     // ─── Gate quota LinkedIn (actions manuelles user) ─────────────────────
     // Conformité #260513-007211 : les vues de profil / recherches / envois
     // déclenchés depuis l'app comptent désormais dans le MÊME plafond que
@@ -261,7 +404,7 @@ Deno.serve(async (req) => {
         const sbGate = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
         const gate = await enforceLinkedInAction(sbGate as any, {
-          accountId: account_id,
+          accountId: gateAccountId,
           actionType: gatedType,
           userId: userId || null,
           organizationId: organization_id || null,
@@ -297,15 +440,19 @@ Deno.serve(async (req) => {
       }
 
       case 'get_messages': {
-        return await handleGetMessages(baseUrl, apiKey, account_id, params);
+        return await handleGetMessages(baseUrl, apiKey, gateAccountId, params);
       }
 
       case 'sync_chat_history': {
-        return await handleSyncChatHistory(baseUrl, apiKey, account_id, params);
+        return await handleSyncChatHistory(baseUrl, apiKey, gateAccountId, params);
       }
 
       case 'send_message': {
-        return await handleSendMessage(baseUrl, apiKey, account_id, params);
+        return await handleSendMessage(baseUrl, apiKey, gateAccountId, params, {
+          organizationId: String(organization_id),
+          userId,
+          isInternal,
+        });
       }
 
       case 'mark_as_read': {
@@ -328,6 +475,12 @@ Deno.serve(async (req) => {
     }
   } catch (error) {
     console.error('Error:', error);
+    if (error instanceof UnipileInputError) {
+      return new Response(
+        JSON.stringify({ success: false, error: error.message }),
+        { status: error.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur interne' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -480,9 +633,9 @@ async function handleSearch(
         }
       }
       console.log(`[search] Keywords truncated: ${keywords.length} → ${truncated.length} chars`);
-      searchBody.keywords = truncated;
+      searchBody.keywords = balanceBooleanKeywords(truncated);
     } else {
-      searchBody.keywords = keywords;
+      searchBody.keywords = balanceBooleanKeywords(keywords);
     }
   }
 
@@ -581,7 +734,7 @@ async function handleSearch(
     // According to the API doc, company can be an array of objects with keywords, priority, scope
     // So we can add keyword-based companies to the company array
     const keywordCompanies = company_keywords.map(c => ({
-      keywords: c.keywords,
+      keywords: balanceBooleanKeywords(c.keywords),
       priority: c.priority,
       scope: c.scope,
     }));
@@ -681,7 +834,7 @@ async function handleSearch(
   // Note: if job_title already set `role`, append keyword-based roles
   if (role?.length && api === 'recruiter') {
     const keywordRoles = role.map(r => ({
-      keywords: r.keywords,
+      keywords: balanceBooleanKeywords(r.keywords),
       priority: r.priority || 'MUST_HAVE',
       scope: r.scope || 'CURRENT_OR_PAST',
     }));
@@ -1013,7 +1166,7 @@ async function handleSearch(
     }
   }
 
-  const searchUrl = `${baseUrl}/linkedin/search?account_id=${accountId}`;
+  const searchUrl = `${baseUrl}/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
   console.log('Search URL:', searchUrl);
   console.log('Search body:', JSON.stringify(searchBody));
 
@@ -1246,7 +1399,7 @@ async function handleGetProfile(
     );
   }
 
-  const response = await fetchWithTimeout(`${baseUrl}/users/${profile_id}?account_id=${accountId}`, {
+  const response = await fetchWithTimeout(`${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`, {
     headers: {
       'X-API-KEY': apiKey,
       'Accept': 'application/json',
@@ -1621,7 +1774,7 @@ async function handleGetMessages(
   }
   queryParams.set('limit', String(limit));
 
-  const url = `${baseUrl}/chats/${chat_id}/messages?${queryParams.toString()}`;
+  const url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}/messages?${queryParams.toString()}`;
   console.log('Get messages URL:', url);
 
   const response = await fetchWithTimeout(url, {
@@ -1655,6 +1808,220 @@ async function handleGetMessages(
   );
 }
 
+/** Appelant d'un envoi : organisation vérifiée, utilisateur (vide en appel interne). */
+interface SendContext {
+  organizationId: string;
+  userId: string;
+  isInternal: boolean;
+}
+
+const SEND_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sendText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+/** Candidat d'une conversation déjà liée à une mission sur ce compte (lien conversation–mission). */
+async function linkedChatCandidate(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  organizationId: string,
+  accountId: string,
+  chatId: string,
+): Promise<CandidateRef | null> {
+  const { data, error } = await admin
+    .from('mission_conversations')
+    .select('candidate_id, candidate_ids, candidate_slug')
+    .eq('organization_id', organizationId)
+    .eq('account_id', accountId)
+    .eq('chat_id', chatId)
+    .order('last_mission_send_at', { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error) {
+    console.warn('[unipile-search] send_message: lien de conversation illisible:', error.message);
+    return null;
+  }
+  const row = (data ?? [])[0] as { candidate_id: string | null; candidate_ids: string[] | null; candidate_slug: string | null } | undefined;
+  if (!row) return null;
+  const ref = candidateRef({ ids: [row.candidate_id, ...(row.candidate_ids ?? [])], slug: row.candidate_slug });
+  return ref.ids.length > 0 ? ref : null;
+}
+
+/**
+ * Candidat d'une conversation lu auprès du prestataire : le seul participant
+ * qui n'est pas le compte. Aucun ou plusieurs (groupe) : null.
+ */
+async function fetchChatCandidate(baseUrl: string, apiKey: string, chatId: string): Promise<CandidateRef | null> {
+  try {
+    const res = await fetchWithTimeout(`${baseUrl}/chats/${encodeURIComponent(chatId)}/attendees`, {
+      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      await res.text();
+      console.warn(`[unipile-search] send_message: participants indisponibles (statut ${res.status})`);
+      return null;
+    }
+    const body = await res.json();
+    const items: unknown[] = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+    const others = items.filter((a) => {
+      if (!a || typeof a !== 'object') return false;
+      const att = a as Record<string, unknown>;
+      return !(att.is_self === true || att.is_self === 1 || att.role === 'self');
+    }) as Array<Record<string, unknown>>;
+    if (others.length !== 1) return null;
+    const other = others[0];
+    const specifics = other.specifics as Record<string, unknown> | null | undefined;
+    const ref = candidateRef({
+      ids: [sendText(other.provider_id)],
+      slug: sendText(other.public_identifier) ?? sendText(specifics?.public_identifier),
+      profileUrl: sendText(other.profile_url),
+      name: sendText(other.name),
+    });
+    return ref.ids.length > 0 ? ref : null;
+  } catch (e) {
+    console.warn('[unipile-search] send_message: lecture des participants impossible:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/** Envoi manuel à enregistrer : candidat, mission et auteur, résolus avant le POST. */
+interface ManualSendTarget {
+  // deno-lint-ignore no-explicit-any
+  admin: any;
+  candidate: CandidateRef;
+  projectId: string | null;
+  createdBy: string | null;
+  source: 'manual' | 'assistant';
+  sendKind: 'message' | 'inmail';
+}
+
+/**
+ * Refonte mission, lot 0b-2a (S14), avant le POST : candidat, mission et
+ * auteur de l'envoi, puis marqueur (record_candidate_outbound, p_pending) pour
+ * que l'écho de ce message au webhook ne soit pas pris pour un message écrit
+ * hors Konekt (décision 5a). Mission : project_id s'il a la forme d'un uuid
+ * (préfixe project: accepté), sinon résolue par le serveur. Candidat :
+ * recipient_id et recipient_profile_url ; pour une conversation existante,
+ * celui du lien, sinon le participant de la conversation. source et
+ * created_by ne sont lus que sur un appel interne (assistant). Candidat
+ * effacé (RGPD) dans l'organisation, ou registre illisible : rien n'est
+ * enregistré, le message part quand même. Au mieux : jamais d'erreur rendue.
+ */
+async function prepareManualSend(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: SendContext,
+): Promise<ManualSendTarget | null> {
+  try {
+    const rawProjectId = params.project_id;
+    const projectId = missionIdFrom(rawProjectId);
+    if (!projectId && rawProjectId != null && rawProjectId !== '') {
+      console.warn('[unipile-search] send_message: project_id ignoré (forme invalide)');
+    }
+    const chatId = sendText(params.chat_id);
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+    );
+
+    let candidate = candidateRef({
+      ids: [sendText(params.recipient_id)],
+      profileUrl: sendText(params.recipient_profile_url),
+    });
+    if (candidate.ids.length === 0 && chatId) {
+      candidate = (await linkedChatCandidate(admin, ctx.organizationId, accountId, chatId))
+        ?? (await fetchChatCandidate(baseUrl, apiKey, chatId))
+        ?? candidate;
+    }
+    if (candidate.ids.length === 0) {
+      console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
+      return null;
+    }
+    try {
+      // Client esm.sh, type attendu npm : même API.
+      // deno-lint-ignore no-explicit-any
+      if (await isCandidateErasedForOrg(admin as any, {
+        organizationId: ctx.organizationId,
+        linkedinIds: candidate.ids,
+        linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
+      })) {
+        console.log('[unipile-search] send_message: candidat effacé, rien n\'est enregistré');
+        return null;
+      }
+    } catch (e) {
+      console.warn('[unipile-search] send_message: registre d\'effacement illisible, rien n\'est enregistré:', e instanceof Error ? e.message : e);
+      return null;
+    }
+
+    const internalCreatedBy = sendText(params.created_by);
+    const target: ManualSendTarget = {
+      admin,
+      candidate,
+      projectId,
+      createdBy: ctx.isInternal
+        ? (internalCreatedBy && SEND_UUID_RE.test(internalCreatedBy) ? internalCreatedBy : null)
+        : (ctx.userId || null),
+      source: ctx.isInternal && params.source === 'assistant' ? 'assistant' : 'manual',
+      // is_inmail ne vaut que pour une nouvelle conversation (voir l'envoi).
+      sendKind: !params.chat_id && params.is_inmail ? 'inmail' : 'message',
+    };
+    const marker = await recordOutbound(admin, {
+      organizationId: ctx.organizationId,
+      accountId,
+      candidate,
+      source: target.source,
+      projectId,
+      chatId,
+      createdBy: target.createdBy,
+      pending: true,
+      sendKind: target.sendKind,
+    });
+    if (!marker.ok) console.error('[unipile-search] send_message: marqueur non posé:', marker.fn, marker.kind, marker.error);
+    return target;
+  } catch (e) {
+    console.error('[unipile-search] send_message: préparation de l\'enregistrement impossible:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * Après un envoi réussi : lien conversation–mission et « Contacté »
+ * (record_candidate_outbound), au mieux. Un échec est journalisé et n'est
+ * jamais renvoyé : le message est parti.
+ */
+async function recordManualSend(
+  target: ManualSendTarget,
+  accountId: string,
+  params: Record<string, unknown>,
+  sent: Record<string, unknown>,
+  ctx: SendContext,
+): Promise<void> {
+  try {
+    const res = await recordOutbound(target.admin, {
+      organizationId: ctx.organizationId,
+      accountId,
+      candidate: target.candidate,
+      source: target.source,
+      projectId: target.projectId,
+      chatId: sendText(params.chat_id) ?? sendText(sent?.chat_id),
+      messageId: sendText(sent?.message_id),
+      createdBy: target.createdBy,
+      sendKind: target.sendKind,
+    });
+    if (!res.ok) {
+      console.error('[unipile-search] send_message:', res.fn, res.kind, res.error);
+    } else if ('reason' in res.data) {
+      console.log(`[unipile-search] send_message: aucun lien (${res.data.reason})`);
+    } else {
+      console.log(`[unipile-search] send_message: mission ${res.data.project_id} (${res.data.via}), ${res.data.rows.length} ligne(s)`);
+    }
+  } catch (e) {
+    console.error('[unipile-search] send_message: enregistrement de l\'envoi impossible:', e instanceof Error ? e.message : e);
+  }
+}
+
 /**
  * Send message to a LinkedIn user
  * Supports both direct messages (for 1st degree) and InMails (for 2nd/3rd degree)
@@ -1664,7 +2031,8 @@ async function handleSendMessage(
   baseUrl: string,
   apiKey: string,
   accountId: string,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  ctx: SendContext,
 ): Promise<Response> {
   const { chat_id, recipient_id, text, message, subject, is_inmail } = params;
   const messageText = (text || message) as string;
@@ -1692,7 +2060,7 @@ async function handleSendMessage(
 
   if (chat_id) {
     // Send to existing chat
-    url = `${baseUrl}/chats/${chat_id}/messages`;
+    url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}/messages`;
   } else {
     // Create new chat/message to recipient
     // For InMails (2nd/3rd degree), we need to use the LinkedIn Recruiter API format
@@ -1711,6 +2079,8 @@ async function handleSendMessage(
   }
 
   console.log('Send message URL:', url, 'is_inmail:', is_inmail);
+
+  const manualSend = await prepareManualSend(baseUrl, apiKey, accountId, params, ctx);
 
   const response = await fetchWithTimeout(url, {
     method: 'POST',
@@ -1744,6 +2114,8 @@ async function handleSendMessage(
     // cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
     await recordUsageSignal(sbUsage as any, accountId, parseUsagePct(data), undefined);
   } catch (_e) { /* non-fatal */ }
+
+  if (manualSend) await recordManualSend(manualSend, accountId, params, data, ctx);
 
   return new Response(
     JSON.stringify({
@@ -1848,7 +2220,7 @@ async function handleMarkAsRead(
   }
 
   try {
-    const url = `${baseUrl}/chats/${chat_id}`;
+    const url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}`;
     console.log('Mark as read URL:', url);
 
     const response = await fetchWithTimeout(url, {
@@ -1905,7 +2277,7 @@ async function handleGetUserPosts(
       );
     }
 
-    const url = `${baseUrl}/users/${encodeURIComponent(identifier)}/posts?account_id=${accountId}&limit=${limit}`;
+    const url = `${baseUrl}/users/${unipileId(identifier, 'identifier')}/posts?account_id=${encodeURIComponent(accountId)}&limit=${Math.min(Math.max(Number(limit) || 5, 1), 50)}`;
     console.log('Fetching user posts:', url);
 
     const response = await fetchWithTimeout(url, {

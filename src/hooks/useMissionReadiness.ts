@@ -13,7 +13,15 @@ export interface StepReadiness {
   nextAction: { label: string; tab: string } | null;
 }
 
-export function computeReadiness(project: SourcingProject): StepReadiness[] {
+/**
+ * Entrée minimale de computeReadiness : une ligne de liste (sans job_details ni
+ * filters_snapshot) suffit, et donne les mêmes verrous que la page (la barre
+ * latérale s'en sert pour les missions qui ne sont pas ouvertes).
+ */
+export type ReadinessInput = Pick<SourcingProject, 'name' | 'job_title' | 'stats_total_found' | 'stats_messaged'>
+  & Partial<Pick<SourcingProject, 'job_details' | 'filters_snapshot'>>;
+
+export function computeReadiness(project: ReadinessInput): StepReadiness[] {
   const jd = (project.job_details || {}) as JobDetails;
   const { filled, total } = countBriefFields(jd);
   const briefPct = total === 0 ? 0 : Math.round((filled / total) * 100);

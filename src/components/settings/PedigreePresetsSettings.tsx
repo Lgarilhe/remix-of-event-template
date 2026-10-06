@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Pencil, Settings as SettingsIcon, Building2, Shield, AlertCircle, Bookmark } from 'lucide-react';
+import { Plus, Trash2, Pencil, Building2, Shield, AlertCircle, Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { ErrorState } from '@/components/layout/ErrorState';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -25,7 +28,7 @@ import {
   SENIORITY_LABELS,
 } from '@/types/pedigreePreset';
 import { PedigreeRequirementsEditor, cleanRequirements } from '@/components/pedigree/PedigreeRequirementsEditor';
-import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 
 const EMPTY_REQUIREMENTS: PedigreeRequirements = {
   schools_required: [],
@@ -38,7 +41,7 @@ const EMPTY_REQUIREMENTS: PedigreeRequirements = {
 };
 
 export const PedigreePresetsSettings: React.FC = () => {
-  const { presets, loading, createPreset, updatePreset, deletePreset } = usePedigreePresets();
+  const { presets, loading, isError, refresh, createPreset, updatePreset, deletePreset } = usePedigreePresets();
   const [editing, setEditing] = useState<ClientPedigreePreset | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -47,52 +50,64 @@ export const PedigreePresetsSettings: React.FC = () => {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-          <Bookmark className="w-4 h-4" />
+      {/* Revue design (F-01) : titre en casse de phrase, action dans l'emplacement de droite (plus dans le titre). */}
+      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Bookmark className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           ICP par société
-          <Button
-            size="sm"
-            onClick={() => setCreating(true)}
-            className="ml-auto h-7 gap-1.5 text-xs"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Nouvel ICP
-          </Button>
         </CardTitle>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setCreating(true)}
+          className="shrink-0 max-md:h-11"
+        >
+          <Plus aria-hidden="true" />
+          Nouvel ICP
+        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Configurez l'ICP (Ideal Candidate Profile) de chaque société — ce qui définit un bon
-          candidat pour elle (écoles, entreprises, séniorité, stade de financement). L'ICP
-          s'applique automatiquement à toutes les missions de la société et le scoring IA
-          l'honore avec priorité sur les règles d'équité par défaut.
+          L'ICP (profil de candidat idéal) d'une société dit ce qui fait un bon candidat pour elle :
+          écoles, entreprises, séniorité, stade de financement. Il s'applique à toutes les missions de
+          la société, et l'évaluation des candidats par l'assistant le fait passer avant les règles
+          d'équité par défaut.
         </p>
 
-        {/* RGPD note */}
-        <div className="flex items-start gap-3 p-3 border border-amber-500/20 bg-amber-500/5 rounded-md">
-          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-700 dark:text-amber-400">
+        {/* RGPD note. Revue design (F-13) : jetons de statut, plus d'ambre brut ni de variante dark: morte. */}
+        <div className="flex items-start gap-3 rounded-lg border border-warning/25 bg-warning-muted p-3">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <p className="text-xs text-foreground">
             <strong>Note RGPD</strong> : ces critères ciblent l'objectif (école, type d'entreprise) et
             non l'origine du candidat. Discriminer sur la nationalité ou l'origine ethnique est illégal
-            en France. Préférez "diplôme délivré par établissement français" à toute formulation
+            en France. Préférez « diplôme délivré par un établissement français » à toute formulation
             excluant explicitement des candidats étrangers.
-          </div>
+          </p>
         </div>
 
         {/* Liste des ICP */}
         {loading ? (
-          <div className="flex justify-center py-8">
-            <BrutalLoader compact />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <p role="status" className="sr-only">Chargement des ICP…</p>
+            <Skeleton className="h-28 w-full rounded-lg" aria-hidden="true" />
+            <Skeleton className="h-28 w-full rounded-lg" aria-hidden="true" />
           </div>
+        ) : isError ? (
+          <ErrorState
+            variant="compact"
+            title="Impossible de charger les ICP."
+            description="Vérifiez votre connexion, puis réessayez."
+            onRetry={() => { void refresh(); }}
+          />
         ) : presets.length === 0 ? (
-          <div className="border border-dashed border-border rounded-lg p-8 text-center space-y-2">
-            <SettingsIcon className="w-8 h-8 text-muted-foreground mx-auto" />
-            <p className="text-sm text-muted-foreground">
-              Aucun ICP configuré. Créez-en un pour automatiser les critères de sélection sur vos
-              missions par société.
-            </p>
-          </div>
+          <EmptyState
+            variant="compact"
+            icon={Bookmark}
+            title="Aucun ICP configuré"
+            headingLevel={4}
+            description="Créez-en un avec « Nouvel ICP » pour appliquer vos critères de sélection aux missions de chaque société."
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {presets.map(preset => (
@@ -134,23 +149,23 @@ const PresetCard: React.FC<{
 }> = ({ preset, onEdit, onDelete }) => {
   const req = preset.pedigree_requirements;
   const summary: string[] = [];
-  if (req.schools_required?.length) summary.push(`${req.schools_required.length} école${req.schools_required.length > 1 ? 's' : ''}`);
+  if (req.schools_required?.length) summary.push(plural(req.schools_required.length, 'école'));
   if (req.diploma_must_be_from && req.diploma_must_be_from !== 'any') summary.push(DIPLOMA_ORIGIN_LABELS[req.diploma_must_be_from]);
-  if (req.companies_required_provenance?.length) summary.push(`${req.companies_required_provenance.length} provenance${req.companies_required_provenance.length > 1 ? 's' : ''}`);
-  if (req.companies_specific_required?.length) summary.push(`${req.companies_specific_required.length} entreprise${req.companies_specific_required.length > 1 ? 's' : ''} cible${req.companies_specific_required.length > 1 ? 's' : ''}`);
+  if (req.companies_required_provenance?.length) summary.push(plural(req.companies_required_provenance.length, 'provenance'));
+  if (req.companies_specific_required?.length) summary.push(plural(req.companies_specific_required.length, 'entreprise cible', 'entreprises cibles'));
   if (req.min_seniority) summary.push(`Min. ${SENIORITY_LABELS[req.min_seniority]}`);
 
   return (
-    <div className="border border-border rounded-lg p-4 space-y-3 bg-card hover:border-foreground/20 transition-colors">
+    <div className="space-y-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-border-strong">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-semibold text-sm truncate">{preset.name}</h3>
+          <h4 className="truncate text-sm font-semibold">{preset.name}</h4>
           {preset.client_company_name && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-              <Building2 className="w-3 h-3" />
+            <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              <Building2 className="h-3 w-3" aria-hidden="true" />
               {preset.client_company_name}
               {preset.is_default_for_client && (
-                <Badge variant="outline" className="ml-1 text-[10px] h-4 px-1.5 border-emerald-500/30 text-emerald-600">
+                <Badge variant="outline" className="ml-1 py-0">
                   Par défaut
                 </Badge>
               )}
@@ -158,21 +173,44 @@ const PresetCard: React.FC<{
           )}
         </div>
         <div className="flex gap-1 shrink-0">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
-            <Pencil className="w-3.5 h-3.5" />
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
-                <Trash2 className="w-3.5 h-3.5" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                onClick={onEdit}
+                aria-label={`Modifier l'ICP ${preset.name}`}
+              >
+                <Pencil aria-hidden="true" />
               </Button>
-            </AlertDialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Modifier</TooltipContent>
+          </Tooltip>
+          <AlertDialog>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                    aria-label={`Supprimer l'ICP ${preset.name}`}
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                </AlertDialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Supprimer</TooltipContent>
+            </Tooltip>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Supprimer cet ICP ?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  L'ICP "{preset.name}" sera retiré. Les missions qui l'utilisent garderont
-                  les critères en snapshot dans leur brief, mais ne seront plus liées à l'ICP.
+                  L'ICP « {preset.name} » sera retiré. Les missions qui l'utilisent garderont une copie
+                  de ses critères dans leur brief, mais ne seront plus liées à l'ICP.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -191,11 +229,11 @@ const PresetCard: React.FC<{
       {summary.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {summary.map((s, i) => (
-            <Badge key={i} variant="secondary" className="text-[10px]">{s}</Badge>
+            <Badge key={i} variant="secondary">{s}</Badge>
           ))}
           {req.strict_mode && (
-            <Badge className="text-[10px] bg-amber-500/10 text-amber-700 border border-amber-500/30">
-              <Shield className="w-2.5 h-2.5 mr-0.5" />
+            <Badge variant="outline">
+              <Shield className="h-3 w-3" aria-hidden="true" />
               Mode strict
             </Badge>
           )}
@@ -265,7 +303,7 @@ const PresetFormDialog: React.FC<{
           <DialogTitle>{editing ? "Modifier l'ICP" : 'Nouvel ICP'}</DialogTitle>
           <DialogDescription>
             Configurez les critères qui définissent un bon candidat pour cette société.
-            Appliqués automatiquement au scoring de toutes ses missions.
+            Ils s’appliquent à l’évaluation des candidats de toutes ses missions.
           </DialogDescription>
         </DialogHeader>
 
@@ -276,7 +314,7 @@ const PresetFormDialog: React.FC<{
               <Label htmlFor="preset-name">Nom de l'ICP *</Label>
               <Input
                 id="preset-name"
-                placeholder="ex: BlaBlaCar — Top tech FR"
+                placeholder="ex : Profils tech, écoles d’ingénieurs"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -285,27 +323,28 @@ const PresetFormDialog: React.FC<{
               <Label htmlFor="preset-description">Description (note interne)</Label>
               <Textarea
                 id="preset-description"
-                placeholder="Pour quoi sert cet ICP, contexte société..."
+                placeholder="À quoi sert cet ICP, contexte de la société…"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
               />
             </div>
             <div>
-              <Label htmlFor="preset-client">Nom de la société (auto-application)</Label>
+              <Label htmlFor="preset-client">Nom de la société (application automatique)</Label>
               <Input
                 id="preset-client"
-                placeholder="ex: BlaBlaCar"
+                placeholder="ex : Atelier Martin"
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
+                aria-describedby="preset-client-help"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Si renseigné + "par défaut" coché ci-dessous, cet ICP sera automatiquement appliqué
+              <p id="preset-client-help" className="text-xs text-muted-foreground mt-1">
+                Si ce nom est renseigné et « par défaut » activé ci-dessous, cet ICP s'applique
                 aux nouvelles missions créées pour cette société.
               </p>
             </div>
             {clientName.trim() && (
-              <div className="flex items-center justify-between p-3 border border-border rounded-md">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
                 <div>
                   <Label htmlFor="preset-default" className="cursor-pointer">Appliquer par défaut pour cette société</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -321,9 +360,9 @@ const PresetFormDialog: React.FC<{
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={handleSubmit} disabled={!name.trim() || submitting}>
-            {submitting ? 'Enregistrement…' : editing ? 'Mettre à jour' : 'Créer'}
+          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={!name.trim()} loading={submitting}>
+            {submitting ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer l’ICP'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -44,6 +44,12 @@ export interface ToolContext {
    * launch_search → run-agent-search), sans élargir l'auth de la cible.
    */
   userBearer?: string | null;
+  /**
+   * Détails de l'aperçu approuvé (dry_run_result.details), posés seulement
+   * sur le chemin cron (executeScheduledAction) : un tool y relit ce que
+   * l'utilisateur a vu au moment d'approuver (ex. compte d'envoi, décision 34).
+   */
+  approvedDetails?: Record<string, unknown> | null;
 }
 
 export interface DryRunResult {
@@ -71,6 +77,8 @@ export interface AgentTool {
   inputSchema: AnthropicToolDefinition['input_schema'];
   /** true = passe par la review user (toutes les mutations). false = exécute direct (read-only). */
   requiresApproval: boolean;
+  /** Avoid persisting sensitive tool output (for example personal email bodies) in the audit log. */
+  redactResultInAudit?: boolean;
   /** Catégorie pour grouper dans l'UI */
   category: 'read' | 'mutation_safe' | 'mutation_destructive' | 'mutation_external';
   /** Vérifie que l'user a le droit de faire cette action (RLS, role, etc.) */
@@ -116,7 +124,7 @@ export function getAnthropicToolDefinitions(): AnthropicToolDefinition[] {
 // ============================================================================
 // Table agent_tool_policies : une row (org, tool) → 'auto' | 'approve' | 'off'.
 // Défaut sans row : reads → auto, mutations → approve (comportement historique).
-// GARDE-FOU : les tools mutation_external et la liste destructive ci-dessous ne
+// GARDE-FOU : les tools mutation_external et la liste ci-dessous ne
 // peuvent JAMAIS être 'auto' — le clamp est appliqué ICI, côté serveur, quelle
 // que soit la valeur en base (le frontend propose, le serveur tranche).
 
@@ -128,6 +136,14 @@ const NEVER_AUTO_TOOLS = new Set([
   'invite_team_member',
   'update_member_quota',
   'update_mission_status',
+  // Lot 0a : l'assistant ne change une étape qu'avec un clic (conception 3.3).
+  'update_candidate_stage',
+  'add_to_shortlist',
+  'bulk_update_stage',
+  // Lot 5a : rien ne part sans le clic d'une personne (décision 1 du lot 5).
+  // L'inscription et la reprise déclenchent des envois de la séquence.
+  'enroll_in_sequence',
+  'resume_sequence',
 ]);
 
 const policyCache = new Map<string, { at: number; policies: Map<string, ToolPolicy> }>();
@@ -241,6 +257,9 @@ export async function handleProposedToolCall(
     } catch (err) {
       result = { success: false, error: err instanceof Error ? err.message : String(err) };
     }
+    const auditResult: ExecuteResult = tool.redactResultInAudit
+      ? { success: result.success, data: { redacted: true } }
+      : result;
 
     // Log execution (status auto_executed = no review needed, executed inline)
     const { data: row } = await ctx.adminClient
@@ -254,7 +273,7 @@ export async function handleProposedToolCall(
         params,
         status: result.success ? 'auto_executed' : 'failed',
         dry_run_result: dryRunResult as unknown as Record<string, unknown>,
-        real_result: result as unknown as Record<string, unknown>,
+        real_result: auditResult as unknown as Record<string, unknown>,
         executed_at: new Date().toISOString(),
       })
       .select('id')
@@ -377,6 +396,28 @@ export async function recordActionOutcomeMessage(
  * on N'EXÉCUTE PAS. Le cron process-scheduled-actions s'en charge quand
  * la plage horaire s'ouvre. Évite que l'user reste collé hors 8h-16h.
  */
+/**
+ * Rejoue tool.verifyAccess juste avant execute (SEC-002). Les params relus
+ * en base sont ceux réellement exécutés : l'UI peut les avoir édités entre
+ * proposition et approbation, et la policy RLS autorise le propriétaire de la
+ * ligne à les réécrire. Renvoie le motif de refus, ou null.
+ */
+async function recheckAccess(
+  tool: AgentTool,
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<string | null> {
+  try {
+    const access = await tool.verifyAccess(params, ctx);
+    if (!access.allowed) return `Accès refusé à l'exécution : ${access.reason ?? 'non autorisé'}`;
+    return null;
+  } catch (err) {
+    return `Vérification d'accès impossible : ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+const ALREADY_HANDLED_MESSAGE = 'Action déjà traitée';
+
 export async function confirmToolExecution(
   executionId: string,
   ctx: ToolContext,
@@ -391,18 +432,16 @@ export async function confirmToolExecution(
     return { success: false, error: 'Execution not found', executionId };
   }
 
-  // Idempotency: si déjà executed, retourner le résultat sans re-exécuter
-  if (row.status === 'executed') {
-    return {
-      success: true,
-      data: (row.real_result as Record<string, unknown>) ?? {},
-      executionId,
-    };
-  }
-
   // Sécurité : seul l'user qui a la row peut approuver, et l'org doit matcher
   if (row.user_id !== ctx.userId || row.organization_id !== ctx.organizationId) {
     return { success: false, error: 'Forbidden — execution belongs to another user/org', executionId };
+  }
+
+  // Décision 33 : un second « Approuver » sur une action déjà exécutée est
+  // refusé (avant : le résultat relu revenait comme un nouveau succès, et la
+  // vérification de propriété venait après, ce qui le livrait à un tiers).
+  if (row.status === 'executed' || row.status === 'auto_executed') {
+    return { success: false, error: ALREADY_HANDLED_MESSAGE, executionId };
   }
 
   if (row.status !== 'proposed' && row.status !== 'approved') {
@@ -431,7 +470,8 @@ export async function confirmToolExecution(
           approved_at: new Date().toISOString(),
           scheduled_for: scheduledIso,
         })
-        .eq('id', executionId);
+        .eq('id', executionId)
+        .is('executed_at', null);
       const scheduledResult: ExecuteResult = {
         success: true,
         data: {
@@ -457,21 +497,37 @@ export async function confirmToolExecution(
   }
 
   // ── Path standard : exécution immédiate
-  // Mark as approved (transitionnel, traçable)
-  await ctx.adminClient
+  // Réservation atomique (BUG-016) : une seule approbation concurrente passe
+  // (double clic, deux onglets, carte chat + page Settings). executed_at sert
+  // de verrou jusqu'à l'écriture du statut final.
+  const reservedAtIso = new Date().toISOString();
+  const { data: reservedRows, error: reserveError } = await ctx.adminClient
     .from('agent_tool_executions')
-    .update({ status: 'approved', approved_at: new Date().toISOString() })
-    .eq('id', executionId);
+    .update({ status: 'approved', approved_at: reservedAtIso, executed_at: reservedAtIso })
+    .eq('id', executionId)
+    .in('status', ['proposed', 'approved'])
+    .is('executed_at', null)
+    .select('params, conversation_id');
+  const reserved = ((reservedRows ?? []) as Array<{ params: Record<string, unknown> | null; conversation_id: string | null }>)[0];
+  if (reserveError || !reserved) {
+    return { success: false, error: 'Action déjà en cours ou déjà traitée', executionId };
+  }
 
   // Execute — le ctx d'approbation (agent-tool-action) n'a pas le
   // conversation_id d'origine : on le réinjecte depuis la row pour que les
   // tools qui en dépendent (launch_search) le voient à l'exécution.
-  const execCtx: ToolContext = { ...ctx, conversationId: row.conversation_id ?? ctx.conversationId };
+  const execParams = (reserved.params ?? {}) as Record<string, unknown>;
+  const execCtx: ToolContext = { ...ctx, conversationId: reserved.conversation_id ?? row.conversation_id ?? ctx.conversationId };
+  const denied = await recheckAccess(tool, execParams, execCtx);
   let result: ExecuteResult;
-  try {
-    result = await tool.execute(row.params as Record<string, unknown>, execCtx);
-  } catch (err) {
-    result = { success: false, error: err instanceof Error ? err.message : String(err) };
+  if (denied) {
+    result = { success: false, error: denied };
+  } else {
+    try {
+      result = await tool.execute(execParams, execCtx);
+    } catch (err) {
+      result = { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   // Update final status
@@ -552,19 +608,45 @@ export async function executeScheduledAction(
   // Build a ctx scoped to the original user/org so the tool's verifyAccess
   // checks (and any service-role queries it makes) target the correct
   // organization.
+  const approvedDryRun = (row.dry_run_result as Record<string, unknown> | null) ?? {};
+  const approvedDetails = approvedDryRun.details;
   const scopedCtx: ToolContext = {
     ...ctx,
     userId: row.user_id,
     organizationId: row.organization_id,
     conversationId: row.conversation_id,
     messageId: row.message_id,
+    approvedDetails: approvedDetails && typeof approvedDetails === 'object' && !Array.isArray(approvedDetails)
+      ? approvedDetails as Record<string, unknown>
+      : null,
   };
 
+  // Réservation atomique (BUG-016) : deux ticks de cron concurrents ne
+  // doivent exécuter qu'une fois. executed_at posé avant l'exécution.
+  const { data: reservedRows, error: reserveError } = await ctx.adminClient
+    .from('agent_tool_executions')
+    .update({ executed_at: new Date().toISOString() })
+    .eq('id', executionId)
+    .eq('status', 'approved')
+    .is('executed_at', null)
+    .select('params');
+  const reserved = ((reservedRows ?? []) as Array<{ params: Record<string, unknown> | null }>)[0];
+  if (reserveError || !reserved) {
+    return { success: false, error: 'Already executing', executionId };
+  }
+
+  // Les params relus sont ceux exécutés ; verifyAccess rejoué (SEC-002).
+  const execParams = (reserved.params ?? {}) as Record<string, unknown>;
+  const denied = await recheckAccess(tool, execParams, scopedCtx);
   let result: ExecuteResult;
-  try {
-    result = await tool.execute(row.params as Record<string, unknown>, scopedCtx);
-  } catch (err) {
-    result = { success: false, error: err instanceof Error ? err.message : String(err) };
+  if (denied) {
+    result = { success: false, error: denied };
+  } else {
+    try {
+      result = await tool.execute(execParams, scopedCtx);
+    } catch (err) {
+      result = { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   await ctx.adminClient

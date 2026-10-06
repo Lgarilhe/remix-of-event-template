@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
@@ -10,6 +11,7 @@ import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { calculatePreScore, PreScoreResult } from '@/hooks/linkedin/preScoring';
+import { BASE_KONEKT_QUERY_KEY } from '@/hooks/useBaseKonekt';
 import { toast } from 'sonner';
 
 const RESULTS_PER_BATCH = 25;
@@ -208,10 +210,18 @@ export function buildSearchParams(
         baseParams.location_within_area = filters.location_within_area;
       }
     } else if (filters.api === 'database') {
-      // Database mode: send name + id so Apollo gets text locations
-      baseParams.location = filters.location.map(f => ({ id: f.id, name: f.name }));
+      // Database mode: send name + id so the backend gets text locations.
+      // DOESNT_HAVE dropped: the mapping puts every location in an inclusive
+      // clause — an "excluded" location would flip into a positive criterion.
+      baseParams.location = filters.location
+        .filter(f => f.priority !== 'DOESNT_HAVE')
+        .map(f => ({ id: f.id, name: f.name }));
     } else {
-      baseParams.location = filters.location.map(f => f.id);
+      // classic / sales_nav: bare IDs, priority not supported — drop exclusions
+      // rather than inverting them into includes.
+      baseParams.location = filters.location
+        .filter(f => f.priority !== 'DOESNT_HAVE')
+        .map(f => f.id);
     }
   }
 
@@ -252,7 +262,11 @@ export function buildSearchParams(
       // Database: send names (Apollo rejects numeric IDs)
       baseParams.school = effectiveSchool.map(f => ({ id: f.id, name: f.name || f.id }));
     } else {
-      baseParams.school = effectiveSchool.map(f => f.id);
+      // classic / sales_nav: bare IDs wrapped in {include} by the edge —
+      // a DOESNT_HAVE school would become an INCLUDE criterion. Drop them.
+      baseParams.school = effectiveSchool
+        .filter(f => f.priority !== 'DOESNT_HAVE')
+        .map(f => f.id);
     }
   }
 
@@ -493,12 +507,14 @@ export function buildSearchParams(
     }
   }
 
-  // Tenure filters
+  // Tenure filters — clé dédiée tenure_at_company : l'edge la mappe en
+  // tenure_in_company (Recruiter) / tenure_at_company (SN). L'ancienne clé
+  // `tenure` signifie expérience TOTALE côté edge et écrasait years_of_experience.
   if (filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null) {
     const tenure: Record<string, number> = {};
     if (filters.tenure_at_company_min !== null) tenure.min = filters.tenure_at_company_min;
     if (filters.tenure_at_company_max !== null) tenure.max = filters.tenure_at_company_max;
-    baseParams.tenure = [tenure];
+    baseParams.tenure_at_company = [tenure];
   }
 
   // Boolean filters
@@ -645,6 +661,14 @@ export function buildSearchParams(
   if (filters.api === 'recruiter' || filters.api === 'database') {
     if (filters.tenure_at_role_min != null) baseParams.tenure_at_role_min = filters.tenure_at_role_min;
     if (filters.tenure_at_role_max != null) baseParams.tenure_at_role_max = filters.tenure_at_role_max;
+    // Recruiter : l'edge ne lit que la forme array tenure_at_role[{min,max}]
+    // (mappée en tenure_in_position) — les clés plates ci-dessus sont ignorées.
+    if (filters.api === 'recruiter' && (filters.tenure_at_role_min != null || filters.tenure_at_role_max != null)) {
+      const range: Record<string, number> = {};
+      if (filters.tenure_at_role_min != null) range.min = filters.tenure_at_role_min;
+      if (filters.tenure_at_role_max != null) range.max = filters.tenure_at_role_max;
+      baseParams.tenure_at_role = [range];
+    }
   }
 
   // ── Sales Navigator signal filters ──
@@ -654,11 +678,20 @@ export function buildSearchParams(
     if (filters.following_your_company === true) baseParams.following_your_company = true;
     if (filters.viewed_your_profile === true) baseParams.viewed_your_profile_recently = true;
     if (filters.past_colleague === true) baseParams.past_colleague = true;
-    // Sales Nav tenure_at_role (array format)
+    // Sales Nav tenure_at_role (array format) — le schéma n'accepte que des
+    // paliers fixes (min ∈ {0,1,3,6,10}, max ∈ {1,2,5,10}) : on arrondit de
+    // façon conservatrice (min au palier inférieur, max au palier supérieur)
+    // au lieu d'envoyer une valeur libre qui invaliderait toute la requête.
     if (filters.tenure_at_role_min != null || filters.tenure_at_role_max != null) {
+      const SN_TENURE_MIN_BUCKETS = [10, 6, 3, 1, 0];
+      const SN_TENURE_MAX_BUCKETS = [1, 2, 5, 10];
       const range: Record<string, number> = {};
-      if (filters.tenure_at_role_min != null) range.min = filters.tenure_at_role_min;
-      if (filters.tenure_at_role_max != null) range.max = filters.tenure_at_role_max;
+      if (filters.tenure_at_role_min != null) {
+        range.min = SN_TENURE_MIN_BUCKETS.find(b => b <= filters.tenure_at_role_min!) ?? 0;
+      }
+      if (filters.tenure_at_role_max != null) {
+        range.max = SN_TENURE_MAX_BUCKETS.find(b => b >= filters.tenure_at_role_max!) ?? 10;
+      }
       baseParams.tenure_at_role = [range];
     }
   }
@@ -728,6 +761,8 @@ export function useLinkedInSearchActions(
     setHasSearched,
   } = setters;
 
+  const queryClient = useQueryClient();
+
   const handleSearch = useCallback(async (appendMode = false, retryCount = 0) => {
     const isDatabase = context.searchSource === 'database';
 
@@ -766,12 +801,13 @@ export function useLinkedInSearchActions(
       setLoading(true);
     }
 
+    // Portée fonction : en cas d'échec sur un tour ultérieur, les profils déjà
+    // payés au tour précédent sont affichés au lieu d'être jetés.
+    let allCollected: LinkedInProfile[] = [];
+    let currentCursor = appendMode ? cursor : null;
+
     try {
       const currentFilters = context.filtersRef.current;
-      
-      // Accumulate profiles across multiple API calls until we reach the target batch size
-      let allCollected: LinkedInProfile[] = [];
-      let currentCursor = appendMode ? cursor : null;
       let latestTotal: number | null = null;
       let exhausted = false;
       const seen = new Set<string>();
@@ -845,12 +881,23 @@ export function useLinkedInSearchActions(
         // sinon elle épuise le compteur et bloque sa propre pagination.
         if (!isDatabase) quota.recordAction('searchResultsFetched', batch.length);
 
-        // Apply client-side experience filter
-        const filteredBatch = filterByCalculatedExperience(
-          batch,
-          currentFilters.calculated_experience_min,
-          currentFilters.calculated_experience_max
-        );
+        // Filtre d'expérience côté navigateur : une estimation (fin de la
+        // dernière formation, sinon premier poste) qui écarte à tort un profil
+        // senior ayant suivi une formation récente, et qui ignore le maximum.
+        // Quand LinkedIn applique déjà la tranche saisie (Recruiter ou Sales
+        // Navigator, paramètre envoyé), c'est LinkedIn qui décide : la deuxième
+        // passe ferait disparaître des profils qu'il vient de valider, et
+        // relancerait jusqu'à dix pages pour en trouver assez.
+        const linkedinFiltersExperience = !isDatabase
+          && (currentFilters.api === 'recruiter' || currentFilters.api === 'sales_navigator')
+          && (currentFilters.years_of_experience_min !== null || currentFilters.years_of_experience_max !== null);
+        const filteredBatch = linkedinFiltersExperience
+          ? batch
+          : filterByCalculatedExperience(
+            batch,
+            currentFilters.calculated_experience_min,
+            currentFilters.calculated_experience_max
+          );
 
         // Apply client-side location filter only for LinkedIn results.
         // Base Konekt already filters location server-side, and local geo keyword
@@ -890,6 +937,13 @@ export function useLinkedInSearchActions(
         }
 
         currentCursor = batchCursor;
+
+        // Base Konekt : chaque appel consomme une recherche du forfait ou des
+        // crédits. Une action de l'utilisateur ne doit en consommer qu'une :
+        // la suite se charge par « Charger plus ».
+        if (isDatabase) {
+          break;
+        }
 
         // If we've collected enough, stop
         if (allCollected.length >= RESULTS_PER_BATCH) {
@@ -943,6 +997,7 @@ export function useLinkedInSearchActions(
             current_positions: p.current_positions,
             past_positions: p.past_positions,
             profile_picture_url: p.profile_picture_url,
+            profile_picture_url_large: p.profile_picture_url_large,
             network_distance: p.network_distance,
             connections_count: p.connections_count,
             industry: p.industry,
@@ -985,7 +1040,8 @@ export function useLinkedInSearchActions(
         if (scoredBatch.length === 0) {
           toast.info('Aucun nouveau profil trouvé. Essayez d\'élargir vos filtres ou de modifier vos mots-clés.', { id: 'no-new-results', duration: 5000 });
         } else if (scoredBatch.length < 5 && noMoreResults) {
-          toast.info(`Seulement ${scoredBatch.length} nouveau${scoredBatch.length > 1 ? 'x' : ''} profil${scoredBatch.length > 1 ? 's' : ''} trouvé${scoredBatch.length > 1 ? 's' : ''}. Fin des résultats LinkedIn pour ces filtres.`, { id: 'few-new-results', duration: 5000 });
+          const sourceLabel = isDatabase ? 'de la Base Konekt' : 'LinkedIn';
+          toast.info(`Seulement ${scoredBatch.length} nouveau${scoredBatch.length > 1 ? 'x' : ''} profil${scoredBatch.length > 1 ? 's' : ''} trouvé${scoredBatch.length > 1 ? 's' : ''}. Fin des résultats ${sourceLabel} pour ces filtres.`, { id: 'few-new-results', duration: 5000 });
         }
         setResults(prev => [...prev, ...scoredBatch]);
       } else {
@@ -995,6 +1051,17 @@ export function useLinkedInSearchActions(
 
     } catch (error: any) {
       console.error('[LinkedInSearch] Search error:', error);
+
+      // Une page déjà servie a été payée : on l'affiche avant le message.
+      if (allCollected.length > 0) {
+        setCursor(currentCursor);
+        if (appendMode) {
+          setResults(prev => [...prev, ...allCollected]);
+        } else {
+          setResults(allCollected);
+          setHasSearched(true);
+        }
+      }
 
       const errorMessage = String(error?.message || '');
       const errorType = String(error?.errorType || '').toLowerCase();
@@ -1008,18 +1075,30 @@ export function useLinkedInSearchActions(
       // alors que le compte allait très bien.
       const isUnprocessableSearch = errorMessage.toLowerCase().includes('unable to process');
 
-      // NEVER auto-retry on session conflicts
-      if (isMultipleSessionsError) {
+      // Base Konekt fermée pour cet espace : le message serveur est technique,
+      // on dit à l'user ce qui bloque plutôt que de le relayer tel quel.
+      if (errorType === 'not_enabled') {
+        toast.error("La Base Konekt n'est pas activée pour votre espace. Un administrateur peut l'activer depuis le panneau de recherche ou les paramètres.", {
+          id: 'search-error',
+          duration: 8000,
+        });
+      } else if (errorType === 'quota_check_unavailable') {
+        toast.error('Le décompte de vos recherches incluses est momentanément indisponible. Réessayez dans un instant.', {
+          id: 'search-error',
+          duration: 8000,
+        });
+      } else if (isMultipleSessionsError) {
+        // NEVER auto-retry on session conflicts
         toast.error(
           isStandaloneSearch
-            ? 'Conflit de session LinkedIn — votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Réglages → Connecteurs) : elle partage la session au lieu d’en créer une deuxième.'
-            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Réglages → Connecteurs) : elle partage la session au lieu d’en créer une deuxième.',
+            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.'
+            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.',
           {
             id: 'search-error',
             duration: 15000,
             action: {
               label: 'Reconnecter',
-              onClick: () => window.location.href = '/settings?tab=connectors',
+              onClick: () => window.location.href = '/settings/account/connections',
             },
           }
         );
@@ -1034,7 +1113,7 @@ export function useLinkedInSearchActions(
         // pointer l'user vers la bonne action (avant : message générique
         // "reconnectez votre compte" identique pour tous les cas)
         const lowerErr = errorMessage?.toLowerCase() || '';
-        let detail = 'Reconnectez votre compte dans Paramètres > Mon compte.';
+        let detail = 'Reconnectez votre compte dans Paramètres › Connexions.';
         if (lowerErr.includes('captcha')) {
           detail = 'LinkedIn demande une vérification captcha. Allez sur linkedin.com pour la valider, puis revenez.';
         } else if (lowerErr.includes('rate') || lowerErr.includes('429')) {
@@ -1050,7 +1129,7 @@ export function useLinkedInSearchActions(
           duration: 15000,
           action: {
             label: "Reconnecter",
-            onClick: () => { window.location.href = "/settings?tab=account"; },
+            onClick: () => { window.location.href = "/settings/account/connections"; },
           },
         });
       } else if (isUnprocessableSearch) {
@@ -1067,10 +1146,15 @@ export function useLinkedInSearchActions(
       // Stop infinite scroll from retrying on error
       setHasMoreResults(false);
     } finally {
+      // Base Konekt : une page servie a entamé le forfait ou les crédits, même
+      // si un tour ultérieur a échoué. Le compteur du panneau doit suivre.
+      if (isDatabase) {
+        queryClient.invalidateQueries({ queryKey: [BASE_KONEKT_QUERY_KEY] });
+      }
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
+  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, queryClient, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
 
   const handleLoadMore = useCallback(() => {
     if (!cursor) return;

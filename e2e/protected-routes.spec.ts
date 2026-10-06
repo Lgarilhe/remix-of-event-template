@@ -1,6 +1,16 @@
 import { test, expect } from '@playwright/test';
 
-const PROTECTED_ROUTES = ['/dashboard', '/missions', '/pipeline', '/inbox', '/settings'];
+const PROTECTED_ROUTES = [
+  '/dashboard',
+  '/missions',
+  '/pipeline',
+  '/inbox',
+  '/settings',
+  // Paramètres, lot 2 : rubriques et ancienne adresse ?tab= (redirigée avant la garde).
+  '/settings/account/connections',
+  '/settings/org/billing',
+  '/settings?tab=billing',
+];
 
 test.describe('Auth gating', () => {
   for (const route of PROTECTED_ROUTES) {

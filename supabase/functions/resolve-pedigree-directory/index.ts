@@ -207,6 +207,10 @@ serve(async (req: Request) => {
       // Re-résoudre les pending/failed OU les resolved trop vieux (>30 jours)
       query.or(`resolution_status.in.(pending,failed),last_resolved_at.lt.${monthAgo}`);
     }
+    // failed < pending < resolved : les entrées jamais résolues passent avant
+    // le rafraîchissement des vieilles — sinon le batch de 200 se remplit de
+    // resolved périmés et les nouvelles entrées attendent des semaines.
+    query.order('resolution_status', { ascending: true });
     const { data: schools, error } = await query.limit(200);
     if (error) console.error('[resolve-pedigree] schools fetch error:', error);
     for (const s of (schools || []) as DirectoryRow[]) {
@@ -239,6 +243,8 @@ serve(async (req: Request) => {
     if (!force) {
       query.or(`resolution_status.in.(pending,failed),last_resolved_at.lt.${monthAgo}`);
     }
+    // Nouvelles entrées (pending/failed) avant le rafraîchissement des resolved
+    query.order('resolution_status', { ascending: true });
     const { data: companies, error } = await query.limit(200);
     if (error) console.error('[resolve-pedigree] companies fetch error:', error);
     for (const c of (companies || []) as DirectoryRow[]) {

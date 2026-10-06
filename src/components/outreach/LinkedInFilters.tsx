@@ -485,12 +485,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection
           id="experience"
           title="Expérience & Ancienneté"
-          icon={<Clock className="w-4 h-4 text-orange-500/80" />}
+          icon={<Clock className="w-4 h-4 text-muted-foreground" />}
           badge={countExperienceFilters}
           isOpen={openSections.experience}
           onToggle={() => toggleSection('experience')}
           activeFiltersPreview={experienceFiltersPreview}
-          bgColorClass="bg-warning/5"
+          bgColorClass=""
         >
           {/* Calculated Experience */}
           <FilterGroup
@@ -688,12 +688,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection
           id="company"
           title="Entreprise actuelle"
-          icon={<Building2 className="w-4 h-4 text-emerald-500/80" />}
+          icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
           badge={countCompanyFilters}
           isOpen={openSections.company}
           onToggle={() => toggleSection('company')}
           activeFiltersPreview={companyFiltersPreview}
-          bgColorClass="bg-success/5"
+          bgColorClass=""
         >
           {/* Smart filters — company type */}
           <FilterGroup title="Filtres intelligents">
@@ -829,12 +829,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         <FilterSection
           id="past"
           title="Expérience passée"
-          icon={<History className="w-4 h-4 text-amber-500/80" />}
+          icon={<History className="w-4 h-4 text-muted-foreground" />}
           badge={countPastFilters}
           isOpen={openSections.past}
           onToggle={() => toggleSection('past')}
           activeFiltersPreview={pastFiltersPreview}
-          bgColorClass="bg-warning/5"
+          bgColorClass=""
         >
           {/* Past Company */}
           <FilterGroup title="Ancienne entreprise" badge={filters.past_company.length}>

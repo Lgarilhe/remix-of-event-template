@@ -30,6 +30,16 @@ function getAllowedOrigins(): string[] {
 
 const ALLOWED = getAllowedOrigins();
 const ALLOW_ANY = ALLOWED.includes('*');
+const KONEKT_PREVIEW_HOST_RE = /^konekt-[a-z0-9-]+-lgarilhe-konektfrs-projects\.vercel\.app$/i;
+
+function isKonektPreviewOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === 'https:' && KONEKT_PREVIEW_HOST_RE.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Build CORS headers based on the request's Origin header.
@@ -38,7 +48,7 @@ const ALLOW_ANY = ALLOWED.includes('*');
  */
 export function buildCorsHeaders(req: Request): Record<string, string> {
   const requestOrigin = req.headers.get('origin') || '';
-  const allowed = ALLOW_ANY || ALLOWED.includes(requestOrigin);
+  const allowed = ALLOW_ANY || ALLOWED.includes(requestOrigin) || isKonektPreviewOrigin(requestOrigin);
 
   const headers: Record<string, string> = {
     'Access-Control-Allow-Headers':

@@ -17,8 +17,9 @@
  *  - Skip si chat_analysis_cache déjà à jour (< 24h)
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { autoAnalyzeKey, hasAutoAnalyzed, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import type { Chat } from './useMessagesInbox';
 
 const MAX_CONCURRENT = 3;
@@ -34,9 +35,8 @@ interface PrefetchOptions {
 }
 
 export function useAutoPrefetchAnalyses({ chats, enabled = true }: PrefetchOptions) {
-  // Garde la liste des chat_ids déjà prefetched dans la session pour
-  // éviter de relancer si le hook re-render
-  const prefetchedRef = useRef<Set<string>>(new Set());
+  // Garde « une fois par chat et par session » persistée (sessionStorage) :
+  // un useRef était remis à zéro à chaque remount de l'inbox.
 
   useEffect(() => {
     if (!enabled || chats.length === 0) return;
@@ -50,26 +50,24 @@ export function useAutoPrefetchAnalyses({ chats, enabled = true }: PrefetchOptio
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return; // Skip si onglet pas visible
       }
-      if (prefetchedRef.current.has(chat.id)) return;
-      prefetchedRef.current.add(chat.id);
+      // On délègue à `auto-analyze-message` qui :
+      // - Fetch les messages réels depuis Unipile
+      // - Lance analyze-response avec le contexte complet (incl. jobs)
+      // - Cache le résultat dans message_analysis_cache
+      // C'est exactement ce que fait le webhook Unipile à chaque nouveau
+      // message, on déclenche le même flow ici en background pour les
+      // chats antérieurs. Promesse partagée avec la sélection et la
+      // ré-analyse « stale » (une seule analyse par chat et par session).
+      const guardKey = autoAnalyzeKey(chat);
+      const senderId = chat.attendees?.[0]?.id || null;
+      const pending = runAutoAnalyzeOnce(guardKey, () => supabase.functions.invoke('auto-analyze-message', {
+        body: { chat_id: chat.id, account_id: chat.account_id, sender_id: senderId },
+      }));
+      if (!pending) return;
       inFlight++;
 
       try {
-        // On délègue à `auto-analyze-message` qui :
-        // - Fetch les messages réels depuis Unipile
-        // - Lance analyze-response avec le contexte complet (incl. jobs)
-        // - Cache le résultat dans message_analysis_cache
-        // C'est exactement ce que fait le webhook Unipile à chaque nouveau
-        // message, on déclenche le même flow ici en background pour les
-        // chats antérieurs.
-        const senderId = chat.attendees?.[0]?.id || null;
-        await supabase.functions.invoke('auto-analyze-message', {
-          body: {
-            chat_id: chat.id,
-            account_id: chat.account_id,
-            sender_id: senderId,
-          },
-        });
+        await pending;
       } catch (e) {
         // Silent fail — c'est juste un prefetch
         console.debug('[prefetch] analyse failed for chat', chat.id, e);
@@ -108,7 +106,9 @@ export function useAutoPrefetchAnalyses({ chats, enabled = true }: PrefetchOptio
 
       // Filtre : chats sans cache OU avec cache expiré (>24h)
       const toAnalyze = candidates.filter(chat => {
-        if (prefetchedRef.current.has(chat.id)) return false;
+        if (hasAutoAnalyzed(autoAnalyzeKey(chat))) return false;
+        // Dernier message envoyé par nous : rien de nouveau à analyser côté candidat
+        if (chat.last_message?.is_sender === true) return false;
         const cachedAt = cachedMap.get(chat.id);
         if (!cachedAt) return true; // pas de cache
         return (now - cachedAt) > CACHE_TTL_MS; // cache expiré

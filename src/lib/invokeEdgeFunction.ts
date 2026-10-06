@@ -17,9 +17,7 @@ const TIMEOUT_MS = 55_000;
 const HEAVY_AI_FUNCTIONS = new Set([
   'generate-scorecard',
   'score-profile-job',
-  'screen-candidate',
   'generate-call-report',
-  'audit-employer-brand',
 ]);
 const HEAVY_AI_TIMEOUT_MS = 90_000;
 
@@ -60,7 +58,7 @@ function humanizeError(err: Error | string): string {
   const lower = msg.toLowerCase();
 
   if (lower.includes('not found') || lower.includes('404') || lower.includes('function not found')) {
-    return "Cette fonctionnalité n'est pas encore déployée sur le serveur. Contacte le support.";
+    return "Cette fonctionnalité n'est pas encore déployée sur le serveur. Contactez le support.";
   }
   if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
     return 'Problème de connexion réseau. Vérifiez votre connexion internet et réessayez.';
@@ -76,6 +74,12 @@ function humanizeError(err: Error | string): string {
   }
   if (lower.includes('rate limit') || lower.includes('429') || lower.includes('too many')) {
     return 'Trop de requêtes. Patientez quelques secondes avant de réessayer.';
+  }
+  // Refus de crédits. Le serveur place normalement une phrase française dans
+  // `error` et le jeton technique dans `error_code` ; cette règle sert de filet
+  // si les deux champs sont inversés, sinon l'utilisateur lirait le jeton brut.
+  if (lower.includes('insufficient_credits') || lower.includes('credits_exhausted')) {
+    return 'Crédits IA insuffisants. Un administrateur peut en ajouter dans Paramètres › Abonnement et crédits.';
   }
   if (lower.includes('internal') || lower.includes('500') || lower.includes('502') || lower.includes('503')) {
     return 'Erreur serveur temporaire. Réessayez dans quelques instants.';
@@ -135,10 +139,40 @@ async function doFetchEdgeFunction(
   }
 }
 
+/**
+ * Erreur renvoyée par invokeEdgeFunction. Sur une réponse non-2xx, `status`
+ * porte le code HTTP et `code` l'`error_code` métier du serveur s'il existe
+ * (INSUFFICIENT_CREDITS, QUOTA_EXCEEDED, PLAN_REQUIRED, ...).
+ */
+export interface EdgeFunctionError extends Error {
+  status?: number;
+  code?: string;
+}
+
+/**
+ * Refus de crédits, quel que soit le champ par lequel le serveur l'exprime.
+ *
+ * A tester à la place de la sous-chaîne du message : le texte affiché est une
+ * phrase française traduite, il ne contient ni le code HTTP ni le jeton
+ * technique. Couvre les trois formes rencontrées : le 402 du garde serveur
+ * (status), l'error_code du corps (code), et le refus émis par le navigateur
+ * avant l'appel (message, sans status ni code).
+ */
+export function isInsufficientCreditsError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as EdgeFunctionError;
+  if (e.status === 402) return true;
+  if (e.code === 'INSUFFICIENT_CREDITS' || e.code === 'CREDITS_EXHAUSTED') return true;
+  const msg = typeof e.message === 'string' ? e.message.toLowerCase() : '';
+  return msg.includes('insufficient_credits')
+    || msg.includes('credits_exhausted')
+    || msg.includes('crédits ia insuffisants');
+}
+
 export async function invokeEdgeFunction<T = Record<string, unknown>>(
   functionName: string,
   body: Record<string, unknown> = {}
-): Promise<{ data: T & { success?: boolean; error?: string }; error: Error | null }> {
+): Promise<{ data: T & { success?: boolean; error?: string; error_code?: string }; error: EdgeFunctionError | null }> {
   const enrichedBody = { ...body };
   if (!enrichedBody.organization_id) {
     const orgId = await getActiveOrganizationId();
@@ -178,7 +212,16 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
             : text.trim() || `HTTP ${response.status}`;
 
       const friendlyMsg = humanizeError(rawMessage);
-      return { data: { success: false, error: friendlyMsg } as any, error: new Error(friendlyMsg) };
+      // On conserve le payload d'erreur du serveur (error_code et détails) dans
+      // `data` pour les appelants qui testent data?.error_code, sans changer la
+      // forme { data, error }. `success` et `error` restent normalisés.
+      const errorCode = typeof payload?.error_code === 'string' ? payload.error_code : undefined;
+      const errorData = { ...(payload ?? {}), success: false, error: friendlyMsg };
+      const err: EdgeFunctionError = Object.assign(new Error(friendlyMsg), {
+        status: response.status,
+        ...(errorCode ? { code: errorCode } : {}),
+      });
+      return { data: errorData as any, error: err };
     }
 
     return {

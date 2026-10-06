@@ -1,7 +1,7 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { Building2, ArrowRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
 
 interface Props {
   orgName: string;
@@ -9,68 +9,34 @@ interface Props {
   onSkip: () => void;
 }
 
+const ACTION_CLASS = 'min-h-11 flex-1 sm:min-h-0';
+
+/** Accueil d'un collaborateur externe qui vient de rejoindre un espace (Auth.tsx). */
 export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspace, onSkip }) => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md flex flex-col items-center text-center gap-6">
-        {/* Icon */}
-        <motion.div
-          className="w-16 h-16 bg-foreground text-background flex items-center justify-center"
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4 }}
-          style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
-        >
-          <Building2 className="w-7 h-7" />
-        </motion.div>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
+        <IconTile icon={Building2} size="lg" aria-hidden="true" />
 
-        {/* Title */}
-        <motion.div
-          className="space-y-2"
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.15, duration: 0.4 }}
-        >
-          <h1 className="font-editorial font-normal italic text-3xl sm:text-4xl leading-tight">
-            Vous avez rejoint {orgName}.
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            en tant que collaborateur externe.
-          </p>
-        </motion.div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vous avez rejoint {orgName}</h1>
+          <p className="text-sm text-muted-foreground">Vous y participez en tant que collaborateur externe.</p>
+        </div>
 
-        {/* Question */}
-        <motion.p
-          className="text-foreground/80 text-sm"
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.4 }}
-        >
+        <p className="text-sm text-foreground-secondary">
           Souhaitez-vous aussi créer votre propre espace de travail ?
-        </motion.p>
+        </p>
 
-        {/* Actions */}
-        <motion.div
-          className="flex flex-col sm:flex-row gap-3 w-full"
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.4 }}
-        >
-          <Button
-            onClick={onCreateWorkspace}
-            className="flex-1 gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
-          >
-            Créer mon espace <ArrowRight className="w-4 h-4" />
+        <div className="flex w-full flex-col gap-3 sm:flex-row">
+          <Button variant="primary" onClick={onCreateWorkspace} className={ACTION_CLASS}>
+            Créer mon espace
+            <ArrowRight aria-hidden="true" />
           </Button>
-          <Button
-            onClick={onSkip}
-            variant="outline"
-            className="flex-1 gap-2 border border-border text-sm"
-          >
-            <Clock className="w-4 h-4" /> Plus tard
+          <Button variant="outline" onClick={onSkip} className={ACTION_CLASS}>
+            <Clock aria-hidden="true" />
+            Plus tard
           </Button>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

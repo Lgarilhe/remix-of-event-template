@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,18 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Placé APRÈS le court-circuit sans profil : ce retour ne coûte rien, le
+    // refuser ferait payer un cas gratuit. settleCredits tourne après la
+    // réponse du modèle, donc sans ce garde une org à sec obtient l'analyse.
+    // aiAction identique au settle ci-dessous, sinon l'estimation ne
+    // correspond pas au montant réellement déduit.
+    const gate = await assertCredits({
+      userId,
+      aiAction: "detect_profile_fraud",
+      systemCall: auth.method === "service_role",
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Build profile summary for analysis
     const experiences = profileData.experiences || profileData.positions || [];

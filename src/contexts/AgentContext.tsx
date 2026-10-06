@@ -17,11 +17,15 @@ interface AgentContextValue {
    * s'il est déjà monté.
    */
   openConversation: (conversationId: string) => void;
+  /**
+   * Ouvre le drawer sur un fil vide, sans contexte de mission (bouton
+   * « Nouvelle conversation » de la barre latérale). Incrémente
+   * openRequestNonce pour que le panel re-seed même s'il est déjà monté.
+   */
+  startNewConversation: () => void;
   /** Compteur bumpé par openConversation — le panel re-seed quand il change */
   openRequestNonce: number;
   initialJobId: string | null;
-  unreadCount: number;
-  setUnreadCount: (count: number) => void;
   // Simple message-based open (Lovable's addition)
   initialMessage: string | null;
   openAgentWithMessage: (message: string) => void;
@@ -53,10 +57,9 @@ const AgentContext = createContext<AgentContextValue>({
   conversationId: null,
   setConversationId: () => {},
   openConversation: () => {},
+  startNewConversation: () => {},
   openRequestNonce: 0,
   initialJobId: null,
-  unreadCount: 0,
-  setUnreadCount: () => {},
   initialMessage: null,
   openAgentWithMessage: () => {},
   contextMode: null,
@@ -75,7 +78,6 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [initialJobId, setInitialJobId] = useState<string | null>(null);
   const [initialMessage, setInitialMessage] = useState<string | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
 
   // Contextual agent state
   const [contextMode, setContextMode] = useState<AgentContextMode>(null);
@@ -105,6 +107,19 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [openRequestNonce, setOpenRequestNonce] = useState(0);
   const openConversation = useCallback((id: string) => {
     setConversationId(id);
+    setInitialJobId(null);
+    setInitialMessage(null);
+    setContextMode(null);
+    setBriefContext(null);
+    setAutoJob(null);
+    setProjectId(null);
+    setAccountId(null);
+    setOpenRequestNonce((n) => n + 1);
+    setIsOpen(true);
+  }, []);
+
+  const startNewConversation = useCallback(() => {
+    setConversationId(null);
     setInitialJobId(null);
     setInitialMessage(null);
     setContextMode(null);
@@ -168,12 +183,11 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         conversationId,
         setConversationId,
         openConversation,
+        startNewConversation,
         openRequestNonce,
         initialJobId,
         initialMessage,
         openAgentWithMessage,
-        unreadCount,
-        setUnreadCount,
         contextMode,
         briefContext,
         autoJob,

@@ -27,6 +27,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-safety:
+    name: Agent safety tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Agent security regression tests
+        run: npm run test:agent
+      # Lot C1 : garde-fous statiques des fonctions (plus de Notion hors
+      # connexion de l'assistant : API, secrets et colonnes ; filtres
+      # d'organisation, portail client, rôle Collaborateur).
+      - name: C1 regression tests (fonctions)
+        run: node --test tests/c1/c1-fonctions.test.mjs
+      # Refonte mission, lot 0b : écrivains de l'étape candidat (notation,
+      # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
+      - name: Lot 0b regression tests (écrivains)
+        run: node --test tests/c1/lot0b-ecrivains.test.mjs
+      # Refonte mission, lot 0c : lectures (vue mission_candidate_rows,
+      # get_mission_stage_counts, libellés « au total », outils de
+      # l'assistant, purge RGPD en compte seulement), un bloc par sous-lot.
+      - name: Lot 0c regression tests (lectures)
+        run: node --test tests/c1/lot0c-lectures.test.mjs
+      # Refonte mission, lot 0c-3 et 0c-4 : écrans de mission, /pipeline,
+      # fiches et annulation sur la vue mission_candidate_rows.
+      - name: Lot 0c-3 et 0c-4 regression tests (écrans)
+        run: node --test tests/c1/lot0c-socle-ecrans.test.mjs tests/c1/lot0c3-kanban.test.mjs tests/c1/lot0c3-vues.test.mjs tests/c1/lot0c4-pipeline.test.mjs tests/c1/lot0c4-fiches.test.mjs
+      # Refonte mission, lots 1 et 2 : nouvelle page mission derrière
+      # l'interrupteur (route, redirections en effet, ancienne page intacte,
+      # aucune écriture directe de l'étape, jamais ouverts exclus, textes).
+      - name: Lots 1 et 2 regression tests (nouvelle page mission)
+        run: node --test tests/c1/lot12-mission-v3.test.mjs
+      # Refonte mission, lot 3 : règle de la prochaine action et reports
+      # « Plus tard » (modules purs, sans import), puis les gardes statiques
+      # de l'écran de la carte « Maintenant ».
+      - name: Lot 3 regression tests (carte Maintenant)
+        run: node --test tests/c1/lot3-*.test.mjs
+      # Photos des candidats : la notation garde la photo LinkedIn enregistrée,
+      # le rafraîchissement des adresses est branché (tests sans dépendance).
+      - name: Photos des candidats (notation)
+        run: node --test tests/ux/photos-candidats.test.mjs
+
+  migrations:
+    name: Migrations (versions uniques)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aucune version de migration dupliquée
+        # Deux fichiers avec la même version cassent `supabase db push` et le
+        # CI e2e (duplicate key sur schema_migrations_pkey). Cas réel : 20260716130000.
+        run: |
+          dups=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1 | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            echo "::error::Versions de migration dupliquées : $dups"
+            exit 1
+          fi
+          echo "OK : $(ls supabase/migrations/*.sql | wc -l) migrations, versions uniques."
+
   build:
     name: Build (bloquant)
     runs-on: ubuntu-latest
@@ -38,6 +99,65 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Lot C1 : garde-fous statiques du front (gel de la Marketplace, textes,
+      # expiration des liens de portail). Ce test lit les sources avec esbuild.
+      - name: C1 regression tests (front)
+        run: node --test tests/c1/c1-front.test.mjs
+      # Refonte mission, lots 1 et 2 : interrupteur et correspondance des
+      # adresses (src/lib/missionBeta.ts), règles de la nouvelle page. Ce test
+      # empaquette les modules avec esbuild.
+      - name: Lots 1 et 2 tests (interrupteur de la nouvelle page mission)
+        run: node --test tests/ux/lot12-mission-beta.test.mjs
+      # Refonte mission, lot 3 : comportement de la règle de la prochaine
+      # action (chaque rang, états des sources, reports, phrases). Dates
+      # locales : fuseau fixé.
+      - name: Lot 3 tests (règle de la prochaine action et reports)
+        env:
+          TZ: Europe/Paris
+        run: node --test tests/ux/lot3-maintenant.test.mjs
+      # Refonte des séquences, lots 5c-1 et 5c-2 : socle des pages Séquences
+      # (interrupteur éteint par défaut, routes et accès gardés, aucun lien
+      # vers /sequences hors des accès gardés, statut d'une inscription,
+      # Parcours sur le graphe, curseurs), puis la pause groupée. Le socle lit
+      # les modules TypeScript avec Node 22 (lecture native du TypeScript) ;
+      # le second test les transpile avec esbuild. Lot 5d-2 : gardes de l'éditeur
+      # unique (seq-v2-editeur) et parité de la charge envoyée à
+      # save_sequence_steps avec l'ancien éditeur (seq-v2-charge-utile, hook
+      # d'édition réel empaqueté avec esbuild).
+      - name: Lot 5c tests (socle des pages Séquences)
+        env:
+          TZ: Europe/Paris
+        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs
+      # Design simplifié, fondations : paliers de texte (rien sous 12 px),
+      # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
+      - name: Fondations du design simplifié
+        run: node --test tests/ux/fondations-simplicite.test.mjs
+      # Design simplifié, lot A : l'accueil (À faire, Missions en cours), rendu
+      # des deux panneaux empaqueté avec esbuild.
+      - name: Accueil du design simplifié
+        run: node --test tests/ux/accueil-simplicite.test.mjs
+      # Design simplifié, lot T : la page Tâches (lignes avec visage ou logo,
+      # « En retard » sous le réveil, filtres dans un menu, suggestions sous la liste).
+      - name: Tâches du design simplifié
+        run: node --test tests/ux/taches-simplicite.test.mjs
+      # Brief IA (création de mission) : design simplifié, analyse par l'action
+      # brief_analysis (Sonnet 5.5), brouillon conservé à la fermeture.
+      - name: Brief IA de la création de mission
+        run: node --test tests/ux/creation-mission-brief.test.mjs
+      # Brief IA, lecture d'offres depuis une adresse web : fonction fetch-job-source
+      # (garde SSRF, lecteurs, flux de décision sur réseau simulé) et écrans de choix,
+      # d'analyse et de création en lot.
+      - name: Lecture d'offres depuis une adresse web
+        run: node --test tests/ux/lecture-offres-serveur.test.mjs tests/ux/import-offres.test.mjs
+      # Design simplifié, lot P : copie privée des photos (règles de la copie,
+      # réserve d'écran, gardes sur la migration, la tâche et les écrans branchés).
+      - name: Copie privée des photos (design simplifié)
+        run: node --test tests/c1/photos-copie-privee.test.mjs
+      # Lot P, P-0b : règles pures des adresses de photo (échéance e=, adresses
+      # utilisables). Compilées par esbuild : ce fichier demande npm ci, d'où sa
+      # place ici et non dans agent-safety.
+      - name: Adresses de photo fraîches (P-0b)
+        run: node --test tests/ux/photos-adresses-fraiches.test.mjs
       - name: Vite production build
         run: npx vite build
 
@@ -90,6 +210,42 @@ jobs:
             echo "::notice::La PR résorbe de la dette TypeScript ($ERRS_BASE → $ERRS_PR). 👏"
           fi
           exit 0
+
+  design:
+    name: Design (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dette design PR vs base (docs/design/)
+        # Aucun paquet requis : le script ne lit que src/. Le même script mesure
+        # la PR puis la base, copié hors du dépôt avant le checkout de la base
+        # (sur la première PR, la base ne l'a pas encore).
+        shell: bash --noprofile --norc {0}
+        run: |
+          cp scripts/design/ratchet.mjs "$RUNNER_TEMP/ratchet.mjs"
+          node "$RUNNER_TEMP/ratchet.mjs"
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            echo "::notice::Pas de base (workflow_dispatch) : rapport informatif uniquement."
+            exit 0
+          fi
+
+          git -c advice.detachedHead=false checkout "$BASE_SHA"
+          node "$RUNNER_TEMP/ratchet.mjs" --json > "$RUNNER_TEMP/base.json"
+          git -c advice.detachedHead=false checkout -
+          node "$RUNNER_TEMP/ratchet.mjs" --compare "$RUNNER_TEMP/base.json"
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::La PR augmente au moins un compteur de dette design. Règles : docs/design/01-direction.md."
+          fi
+          exit $STATUS
 
   lint:
     name: Lint (ratchet)

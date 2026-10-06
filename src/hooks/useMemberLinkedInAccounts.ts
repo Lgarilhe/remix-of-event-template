@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from './useOrganization';
 import { toast } from 'sonner';
 
@@ -19,13 +20,24 @@ export interface MemberLinkedInMapping {
   proxy_protocol: string | null;
   proxy_last_error: string | null;
   proxy_is_active: boolean | null;
+  account_status: string | null;
+  failure_reason: string | null;
+  last_checked_at: string | null;
+}
+
+/** Réponse de l'action serveur unlink_linkedin_account. */
+export interface UnlinkLinkedInResult {
+  removed?: number;
+  paused_enrollments?: number;
+  relabeled_enrollments?: number;
+  cancelled_inmails?: number;
 }
 
 export function useMemberLinkedInAccounts() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
 
-  const { data: mappings = [], isLoading } = useQuery({
+  const { data: mappings = [], isLoading, isSuccess, isRefetchError, isLoadingError, refetch } = useQuery({
     queryKey: ['member-linkedin-accounts', organizationId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -38,55 +50,53 @@ export function useMemberLinkedInAccounts() {
     enabled: !!organizationId,
   });
 
+  // Liaison et dissociation passent par le serveur (unipile-accounts) : la RLS
+  // (admins_manage) refusait l'écriture directe à un simple membre, sans erreur
+  // pour le DELETE (0 ligne, faux succès). Le résultat est vérifié ici.
   const linkAccount = useMutation({
-    mutationFn: async ({ userId, linkedinAccountId, linkedinAccountName }: {
-      userId: string;
-      linkedinAccountId: string;
-      linkedinAccountName?: string;
-    }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié');
-
-      const { error } = await supabase.from('member_linkedin_accounts').upsert({
-        organization_id: organizationId!,
-        user_id: userId,
-        linkedin_account_id: linkedinAccountId,
-        linkedin_account_name: linkedinAccountName || null,
-        linked_by: user.id,
-      }, { onConflict: 'organization_id,user_id' });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-linkedin-accounts'] });
-      toast.success('Compte LinkedIn associé');
-    },
-    onError: (err: Error) => {
-      const msg = err.message || '';
-      if (msg.includes('CROSS_TENANT_VIOLATION') || msg.includes('already mapped to another organization')) {
-        toast.error('Ce compte LinkedIn appartient à une autre organisation', {
-          description: 'Pour des raisons de sécurité, un compte LinkedIn ne peut être associé qu\'à une seule organisation Konekt. Contactez le support si nécessaire.',
-        });
-      } else if (msg.includes('duplicate') || msg.includes('unique')) {
-        toast.error('Ce compte LinkedIn est déjà associé à un autre membre');
-      } else {
-        toast.error('Erreur lors de l\'association', { description: msg });
+    mutationFn: async ({ userId, linkedinAccountId }: { userId: string; linkedinAccountId: string; silent?: boolean }) => {
+      if (!organizationId) throw new Error('Organisation introuvable, rechargez la page');
+      const { data, error } = await invokeEdgeFunction<{ mapping?: { user_id?: string; linkedin_account_id?: string } }>('unipile-accounts', {
+        action: 'claim_linkedin_account', organization_id: organizationId,
+        user_id: userId, account_id: linkedinAccountId,
+      });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "L'association a échoué");
+      if (data.mapping?.linkedin_account_id !== linkedinAccountId || data.mapping?.user_id !== userId) {
+        throw new Error("L'association n'a pas été confirmée. Rechargez la page puis réessayez.");
       }
     },
+    onSuccess: (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['member-linkedin-accounts'] });
+      if (!vars.silent) toast.success('Compte LinkedIn associé');
+    },
+    onError: (err: Error) => toast.error("Le compte LinkedIn n'a pas été associé", { description: err.message }),
   });
 
+  // « Dissocier » ne ferme jamais la session LinkedIn : le serveur retire la
+  // liaison et arrête les envois du compte (relances en pause, InMails
+  // programmés annulés). expectedAccountId : le compte que l'écran affichait,
+  // une liaison repointée entre-temps est refusée.
   const unlinkAccount = useMutation({
-    mutationFn: async (mappingId: string) => {
-      const { error } = await supabase
-        .from('member_linkedin_accounts')
-        .delete()
-        .eq('id', mappingId);
-      if (error) throw error;
+    mutationFn: async ({ mappingId, expectedAccountId }: { mappingId: string; expectedAccountId: string }) => {
+      if (!organizationId) throw new Error('Organisation introuvable, rechargez la page');
+      const { data, error } = await invokeEdgeFunction<UnlinkLinkedInResult>('unipile-accounts', {
+        action: 'unlink_linkedin_account', organization_id: organizationId,
+        mapping_id: mappingId, expected_account_id: expectedAccountId,
+      });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || 'La dissociation a échoué');
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['member-linkedin-accounts'] });
-      toast.success('Association LinkedIn retirée');
+      const n = data.paused_enrollments ?? 0;
+      const m = data.cancelled_inmails ?? 0;
+      const parts = [
+        n > 0 ? `${n} relance${n > 1 ? 's' : ''} mise${n > 1 ? 's' : ''} en pause` : null,
+        m > 0 ? `${m} InMail${m > 1 ? 's' : ''} programmé${m > 1 ? 's' : ''} annulé${m > 1 ? 's' : ''}` : null,
+      ].filter(Boolean);
+      toast.success('Compte LinkedIn dissocié', parts.length ? { description: `${parts.join(', ')}.` } : undefined);
     },
-    onError: () => toast.error('Erreur lors de la suppression'),
+    onError: (err: Error) => toast.error("Le compte LinkedIn n'a pas été dissocié", { description: err.message }),
   });
 
   const getMappingForUser = (userId: string) =>
@@ -101,9 +111,19 @@ export function useMemberLinkedInAccounts() {
   return {
     mappings,
     isLoading,
+    // React Query 5 : une requête désactivée (organisation pas encore connue) a
+    // isLoading à false. Prêt = des liaisons ont été reçues : un rechargement
+    // raté (isRefetchError) garde la dernière liste au lieu de repasser en attente.
+    isReady: isSuccess || isRefetchError,
+    // Lecture en échec sans aucune liaison reçue : à afficher comme une erreur
+    // avec « Réessayer », jamais comme « aucun compte » ni comme un chargement.
+    isError: isLoadingError,
+    refetch,
     linkAccount: linkAccount.mutate,
+    linkAccountAsync: linkAccount.mutateAsync,
     unlinkAccount: unlinkAccount.mutate,
     isLinking: linkAccount.isPending,
+    isUnlinking: unlinkAccount.isPending,
     getMappingForUser,
     getMappingForAccount,
     getUserLinkedAccountId,

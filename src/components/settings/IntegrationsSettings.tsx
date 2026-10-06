@@ -1,30 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId, type ReactNode } from 'react';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
+import { useAircallConnectionActions, useTelephonyStatus } from '@/hooks/useTelephonyStatus';
+import { AircallConnectionPanel } from './AircallConnectionPanel';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { classifyLinkedInStatus, type LinkedInHealth } from '@/lib/linkedinStatus';
+import { plural } from '@/lib/plural';
 import {
-  Eye,
-  EyeOff,
   Check,
-  Loader2,
   ChevronDown,
-  ChevronUp,
   ExternalLink,
+  Plus,
   RefreshCw,
-  Linkedin,
   Trash2,
 } from 'lucide-react';
 import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { ProxyConfigPanel } from '@/components/outreach/ProxyConfigPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { confirmAlert } from '@/lib/confirmAlert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,10 +46,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-import notionLogo from '@/assets/notion-logo.webp';
 import calendlyLogo from '@/assets/calendly-logo.webp';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
-import airtableLogo from '@/assets/airtable-logo.svg';
 import aircallLogo from '@/assets/aircall-logo.webp';
 
 interface IntegrationField {
@@ -58,65 +65,103 @@ interface IntegrationConfig {
   connectedKey: string;
   fields: IntegrationField[];
   hostedAuth?: boolean;
+  /** Retirée de « Ajouter une intégration » : la carte ne reste que si une clé est posée, pour pouvoir la retirer. */
+  retired?: boolean;
+  /** L'état « connecté » est posé par le serveur (liaison réussie), jamais par l'enregistrement des champs. */
+  serverManagedConnection?: boolean;
 }
 
 const INTEGRATIONS: IntegrationConfig[] = [
-  {
-    id: 'notion',
-    name: 'Notion',
-    description: 'Synchronisation des postes, candidats et shortlists avec vos bases Notion.',
-    logoSrc: notionLogo,
-    connectedKey: 'notion_connected',
-    fields: [
-      { key: 'notion_api_key', label: 'Clé API Notion', placeholder: 'ntn_...', secret: true },
-      { key: 'notion_postes_db_id', label: 'ID base Postes', placeholder: 'xxxxxxxx-xxxx-...' },
-      { key: 'notion_candidats_db_id', label: 'ID base Candidats', placeholder: 'xxxxxxxx-xxxx-...' },
-      { key: 'notion_shortlist_db_id', label: 'ID base Shortlist', placeholder: 'xxxxxxxx-xxxx-...' },
-    ],
-  },
   {
     id: 'calendly',
     name: 'Calendly',
     description: 'Synchronisation automatique des rendez-vous de qualification.',
     logoSrc: calendlyLogo,
     connectedKey: 'calendly_connected',
+    retired: true,
     fields: [
-      { key: 'calendly_api_key', label: 'Clé API Calendly', placeholder: 'eyJ...', secret: true },
+      { key: 'calendly_api_key', label: 'Clé API Calendly', placeholder: 'eyJ…', secret: true },
     ],
   },
   {
     id: 'unipile',
-    name: 'Comptes LinkedIn de l\'agence',
-    description: 'Gérez tous les comptes LinkedIn connectés par les membres : statut, proxys par compte, dissociation admin. Pour connecter votre propre compte, allez dans Mon compte.',
+    name: 'Comptes LinkedIn de l\'organisation',
+    description: 'Gérez tous les comptes LinkedIn connectés par les membres : statut, proxys par compte, dissociation admin. Pour connecter votre propre compte, allez dans Connexions.',
     logoSrc: linkedinLogo,
     connectedKey: 'unipile_connected',
     hostedAuth: true,
     fields: [],
   },
   {
-    id: 'airtable',
-    name: 'Airtable',
-    description: 'Synchronisation des données avec vos bases Airtable (candidats, placements, KPIs).',
-    logoSrc: airtableLogo,
-    connectedKey: 'airtable_connected',
-    fields: [
-      { key: 'airtable_api_key', label: 'Clé API Airtable', placeholder: 'pat...', secret: true },
-      { key: 'airtable_base_id', label: 'ID Base principale', placeholder: 'app...' },
-      { key: 'airtable_base_id_2', label: 'ID Base secondaire (optionnel)', placeholder: 'app...' },
-    ],
-  },
-  {
     id: 'aircall',
     name: 'Aircall',
-    description: 'Suivi des appels et correspondance automatique avec les candidats.',
+    description: 'Appels reçus et émis, rattachés aux candidats par leur numéro de téléphone.',
     logoSrc: aircallLogo,
     connectedKey: 'aircall_connected',
+    serverManagedConnection: true,
     fields: [
-      { key: 'aircall_api_id', label: 'API ID Aircall', placeholder: 'xxx...' },
-      { key: 'aircall_api_token', label: 'API Token Aircall', placeholder: 'xxx...', secret: true },
+      { key: 'aircall_api_id', label: 'Identifiant API Aircall', placeholder: 'xxx…' },
+      { key: 'aircall_api_token', label: 'Jeton API Aircall', placeholder: 'xxx…', secret: true },
     ],
   },
 ];
+/* ──────────────────────────────────────────────
+ *  État et en-tête communs aux cartes
+ * ────────────────────────────────────────────── */
+type StatusTone = 'success' | 'warning' | 'danger' | 'muted';
+const DOT: Record<StatusTone, string> = {
+  success: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+  muted: 'bg-muted-foreground',
+};
+
+/** Revue design (F-14) : un état se lit en mot, précédé d'une pastille de 6 px ; plus de badge plein. */
+const StatusText = ({ tone, children }: { tone: StatusTone; children: ReactNode }) => (
+  <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+    <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT[tone])} aria-hidden="true" />
+    {children}
+  </span>
+);
+
+/** Même lecture du statut que la carte « Mon compte LinkedIn » (src/lib/linkedinStatus.ts), jamais le code brut. */
+const LINKEDIN_HEALTH: Record<LinkedInHealth, { label: string; tone: StatusTone }> = {
+  connected: { label: 'Connecté', tone: 'success' },
+  connecting: { label: 'Connexion en cours', tone: 'warning' },
+  needs_reconnect: { label: 'À reconnecter', tone: 'danger' },
+  unknown: { label: 'État à vérifier', tone: 'muted' },
+};
+
+/**
+ * En-tête repliable d'une carte d'outil. Revue design (F-15, F-24) : titre de
+ * niveau 4 sous « Outils reliés », bouton du kit avec aria-expanded (posé par
+ * CollapsibleTrigger), logo dans une tuile qui ne se comprime pas.
+ * Design simplifié : carte à plat, le logo part du bord du titre de la rubrique
+ * (le fond du survol déborde de 8 px de chaque côté).
+ */
+const IntegrationHeader = ({ config, open, status }: { config: IntegrationConfig; open: boolean; status: ReactNode }) => (
+  <h4 className="-mx-2">
+    <CollapsibleTrigger asChild>
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-auto w-full justify-start gap-3 whitespace-normal rounded-lg px-2 py-3 text-left font-normal active:scale-100"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-muted">
+          <img src={config.logoSrc} alt="" className="h-7 w-7 object-contain" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-foreground">{config.name}</span>
+          <span className="block text-xs text-muted-foreground">{config.description}</span>
+          <span className="mt-1 flex sm:hidden">{status}</span>
+        </span>
+        <span className="hidden shrink-0 sm:flex">{status}</span>
+        <ChevronDown className={cn('text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden="true" />
+      </Button>
+    </CollapsibleTrigger>
+  </h4>
+);
+
 /* ──────────────────────────────────────────────
  *  LinkedIn Hosted Auth Card (white-label)
  * ────────────────────────────────────────────── */
@@ -125,16 +170,20 @@ const LinkedInHostedAuthCard = ({
 }: {
   config: IntegrationConfig;
   values: Record<string, string | null>;
-  onSave: (updates: Record<string, any>) => Promise<void>;
+  onSave: (updates: Record<string, string | boolean | null>) => Promise<void>;
   isSaving: boolean;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const { accounts: linkedInAccounts, loading: loadingAccounts, reload: loadAccounts } = useLinkedInAccounts();
+  const {
+    accounts: linkedInAccounts, loading: loadingAccounts, ready: accountsReady, loadError: accountsError, reload: loadAccounts,
+  } = useLinkedInAccounts();
   const { organization } = useOrganization();
   const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
   const [proxyCache, setProxyCache] = useState<Record<string, { country: string | null; mode: string | null }>>({});
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  // Liste jamais reçue : ni « Aucun compte » ni « Non connecté », qui seraient faux.
+  const listFailed = accountsError && !accountsReady;
 
   // Initialize proxy cache from mappings (use JSON key to avoid infinite loop)
   const mappingsKey = JSON.stringify(mappings.map(m => [m.linkedin_account_id, m.proxy_country, m.proxy_mode]));
@@ -149,21 +198,21 @@ const LinkedInHostedAuthCard = ({
     setGenerating(true);
     try {
       const currentUrl = window.location.href;
-      const { data } = await invokeEdgeFunction('unipile-accounts', {
+      const { data } = await invokeEdgeFunction<{ url?: string }>('unipile-accounts', {
         action: 'hosted_auth_link',
         success_redirect_url: currentUrl,
         failure_redirect_url: currentUrl,
         org_name: organization?.name || undefined,
       });
 
-      if (data?.success && (data as any).url) {
-        window.open((data as any).url, '_blank', 'noopener,noreferrer');
+      if (data?.success && data.url) {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
         toast.info('Une fenêtre de connexion LinkedIn s\'est ouverte. Revenez ici une fois la connexion effectuée.');
       } else {
-        throw new Error((data as any)?.error || 'Erreur lors de la génération du lien');
+        throw new Error(data?.error || 'Le lien de connexion n\'a pas pu être créé. Réessayez.');
       }
-    } catch (e: any) {
-      toast.error(e.message || 'Erreur lors de la connexion');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error && e.message ? e.message : 'La connexion n\'a pas pu démarrer. Réessayez.');
     } finally {
       setGenerating(false);
     }
@@ -180,121 +229,96 @@ const LinkedInHostedAuthCard = ({
         toast.success('Compte LinkedIn déconnecté');
         await loadAccounts();
       } else {
-        throw new Error((data as any)?.error || 'Erreur');
+        throw new Error(data?.error || 'Le compte n\'a pas pu être déconnecté. Réessayez.');
       }
-    } catch (e: any) {
-      toast.error(e.message || 'Erreur lors de la déconnexion');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error && e.message ? e.message : 'Le compte n\'a pas pu être déconnecté. Réessayez.');
     } finally {
       setDisconnecting(null);
     }
   };
 
+  // Un compte à reconnecter est l'écart à signaler : il prend le pas sur le nombre de comptes.
+  const toReconnect = linkedInAccounts.filter((a) => classifyLinkedInStatus(a.status) === 'needs_reconnect').length;
+  const status = loadingAccounts && linkedInAccounts.length === 0 ? (
+    <StatusText tone="muted">Vérification…</StatusText>
+  ) : listFailed ? (
+    <StatusText tone="muted">État indisponible</StatusText>
+  ) : toReconnect > 0 ? (
+    <StatusText tone="danger">{plural(toReconnect, 'compte à reconnecter', 'comptes à reconnecter')}</StatusText>
+  ) : linkedInAccounts.length > 0 ? (
+    <StatusText tone="success">{plural(linkedInAccounts.length, 'compte connecté', 'comptes connectés')}</StatusText>
+  ) : (
+    <StatusText tone="muted">Non connecté</StatusText>
+  );
+
   return (
     <Card>
-      <button
-        className="w-full text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <CardHeader className="py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 flex items-center justify-center rounded-lg overflow-hidden">
-                <img src={config.logoSrc} alt={config.name} className="w-10 h-10 object-contain" />
-              </div>
-              <div>
-                <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
-                <CardDescription className="text-xs">{config.description}</CardDescription>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {loadingAccounts && linkedInAccounts.length === 0 ? (
-                <Badge variant="secondary" className="text-xs px-2">
-                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                  Vérification…
-                </Badge>
-              ) : linkedInAccounts.length > 0 ? (
-                <Badge
-                  variant="default"
-                  className="text-xs px-2 bg-success text-success-foreground hover:bg-success/90"
-                >
-                  {linkedInAccounts.length} compte{linkedInAccounts.length > 1 ? 's' : ''} connecté{linkedInAccounts.length > 1 ? 's' : ''}
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="text-xs px-2">
-                  Non connecté
-                </Badge>
-              )}
-              {expanded ? (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              )}
-            </div>
-          </div>
-        </CardHeader>
-      </button>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <IntegrationHeader config={config} open={expanded} status={status} />
 
-      {expanded && (
-        <CardContent className="pt-0 pb-4 space-y-4">
+        <CollapsibleContent className="space-y-4 pb-4 pt-2">
           {/* Connected accounts list */}
-          {loadingAccounts ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Chargement des comptes...</span>
+          {loadingAccounts && linkedInAccounts.length === 0 ? (
+            <div className="space-y-2">
+              <p role="status" className="sr-only">Chargement des comptes LinkedIn…</p>
+              <Skeleton className="h-14 w-full rounded-lg" aria-hidden="true" />
+              <Skeleton className="h-14 w-full rounded-lg" aria-hidden="true" />
             </div>
+          ) : listFailed ? (
+            <ErrorBox title="Impossible de charger les comptes LinkedIn." onRetry={() => { void loadAccounts(); }} />
           ) : linkedInAccounts.length > 0 ? (
-          <div className="space-y-2">
-              {linkedInAccounts.map((account: any) => (
-                <div key={account.id} className="p-3 bg-muted/50 rounded-lg space-y-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              {linkedInAccounts.map((account) => {
+                const health = LINKEDIN_HEALTH[classifyLinkedInStatus(account.status)];
+                const accountName = account.name || 'Compte LinkedIn';
+                return (
+                <div key={account.id} className="space-y-2 rounded-lg bg-muted/50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       {account.profile_picture_url ? (
-                        <img src={account.profile_picture_url} alt={account.name || 'Photo de profil'} className="w-8 h-8 rounded-full" />
+                        <img src={account.profile_picture_url} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
                       ) : (
-                        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                          <Linkedin className="w-4 h-4 text-primary" />
-                        </div>
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border bg-background text-xs font-semibold text-foreground-secondary" aria-hidden="true">
+                          {accountName.charAt(0).toUpperCase()}
+                        </span>
                       )}
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{account.name}</p>
-                        <div className="flex items-center gap-1.5">
-                          <div className={cn(
-                            'w-1.5 h-1.5 rounded-full',
-                            account.status === 'OK' ? 'bg-success' : 'bg-warning'
-                          )} />
-                          <span className="text-xs text-muted-foreground">
-                            {account.status === 'OK' ? 'Actif' : account.status}
-                          </span>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{accountName}</p>
+                        <StatusText tone={health.tone}>{health.label}</StatusText>
                       </div>
                     </div>
                     <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          disabled={disconnecting === account.id}
-                        >
-                          {disconnecting === account.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </Button>
-                      </AlertDialogTrigger>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                              disabled={disconnecting === account.id}
+                              loading={disconnecting === account.id}
+                              aria-label={`Déconnecter le compte ${accountName}`}
+                            >
+                              {disconnecting !== account.id && <Trash2 aria-hidden="true" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>Déconnecter</TooltipContent>
+                      </Tooltip>
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Déconnecter ce compte LinkedIn ?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Le compte <strong>{account.name}</strong> sera supprimé de la plateforme. Vous pourrez le reconnecter ultérieurement.
+                            Le compte <strong>{accountName}</strong> sera supprimé de la plateforme. Vous pourrez le reconnecter ultérieurement.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Annuler</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDisconnectAccount(account.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            className="bg-destructive"
                           >
                             Déconnecter
                           </AlertDialogAction>
@@ -305,6 +329,10 @@ const LinkedInHostedAuthCard = ({
                   {account.status === 'OK' && (() => {
                     const mapping = getMappingForAccount(account.id);
                     const cached = proxyCache[account.id];
+                    // Lot 3 : réglage du proxy montré seulement là où un proxy est posé (mode, pays ou hôte), réglage de la session compris.
+                    const proxyMode = cached?.mode ?? mapping?.proxy_mode ?? null;
+                    const hasProxy = (!!proxyMode && proxyMode !== 'none') || !!(cached?.country ?? mapping?.proxy_country) || !!mapping?.proxy_host;
+                    if (!hasProxy) return null;
                     return (
                       <ProxyConfigPanel
                         accountId={account.id}
@@ -321,10 +349,11 @@ const LinkedInHostedAuthCard = ({
                     );
                   })()}
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-2">
+            <p className="py-2 text-center text-sm text-muted-foreground">
               Aucun compte LinkedIn connecté.
             </p>
           )}
@@ -332,27 +361,33 @@ const LinkedInHostedAuthCard = ({
           {/* Connect button */}
           <div className="flex gap-2">
             <Button
+              type="button"
               onClick={handleConnectLinkedIn}
               disabled={generating}
-              className="flex-1"
+              loading={generating}
+              className="flex-1 max-md:h-11"
               size="sm"
             >
-              {generating ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <ExternalLink className="w-4 h-4 mr-2" />
-              )}
+              {!generating && <ExternalLink aria-hidden="true" />}
               Connecter un compte LinkedIn
             </Button>
             {linkedInAccounts.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadAccounts}
-                disabled={loadingAccounts}
-              >
-                <RefreshCw className={cn('w-4 h-4', loadingAccounts && 'animate-spin')} />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="max-md:h-11 max-md:w-11"
+                    onClick={() => { void loadAccounts(); }}
+                    disabled={loadingAccounts}
+                    aria-label="Actualiser la liste des comptes"
+                  >
+                    <RefreshCw className={cn(loadingAccounts && 'animate-spin')} aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Actualiser</TooltipContent>
+              </Tooltip>
             )}
           </div>
 
@@ -360,34 +395,41 @@ const LinkedInHostedAuthCard = ({
           {linkedInAccounts.length > 0 && (
             <WebhookManager />
           )}
-        </CardContent>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 };
 
 
-
-
 /* ──────────────────────────────────────────────
  *  Generic integration card (API key based)
  * ────────────────────────────────────────────── */
+// Référence stable quand l'organisation n'a pas encore de ligne d'intégrations :
+// un `{}` recréé à chaque rendu réinitialisait les champs en cours de saisie.
+const EMPTY_VALUES: Record<string, never> = {};
+
 const IntegrationCard = ({
   config,
   values,
   onSave,
   isSaving,
+  statusOverride,
+  renderExtra,
 }: {
   config: IntegrationConfig;
   values: Record<string, string | null>;
-  onSave: (updates: Record<string, any>) => Promise<void>;
+  onSave: (updates: Record<string, string | boolean | null>) => Promise<void>;
   isSaving: boolean;
+  /** Remplace l'état de l'en-tête (liaison dont l'état vient du serveur). */
+  statusOverride?: ReactNode;
+  /** Contenu sous les champs, avec l'état « champs modifiés, non enregistrés ». */
+  renderExtra?: (ctx: { hasChanges: boolean }) => ReactNode;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const isConnected = !!values[config.connectedKey];
-  
+  const fieldIdPrefix = useId();
 
   useEffect(() => {
     const initial: Record<string, string> = {};
@@ -400,104 +442,156 @@ const IntegrationCard = ({
   const hasChanges = config.fields.some(f => (localValues[f.key] || '') !== (values[f.key] || ''));
 
   const handleSave = async () => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, string | boolean | null> = {};
     config.fields.forEach(f => {
-      updates[f.key] = localValues[f.key] || null;
+      if (f.secret) {
+        // Write-only : champ vide = inchangé (le retrait passe par « Retirer la clé »)
+        const v = localValues[f.key]?.trim();
+        if (v) updates[f.key] = v;
+      } else {
+        updates[f.key] = localValues[f.key] || null;
+      }
     });
+    // Un secret déjà enregistré (hint présent) compte comme rempli même si le champ est vide
     const allFilled = config.fields.every(f =>
-      f.key.includes('_2') || !!localValues[f.key]?.trim()
+      f.key.includes('_2') ||
+      !!localValues[f.key]?.trim() ||
+      (!!f.secret && !!values[`${f.key}_hint`])
     );
-    updates[config.connectedKey] = allFilled;
+    if (!config.serverManagedConnection) updates[config.connectedKey] = allFilled;
     await onSave(updates);
   };
 
   return (
     <Card>
-      <button
-        className="w-full text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <CardHeader className="py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 flex items-center justify-center rounded-lg overflow-hidden">
-                <img src={config.logoSrc} alt={config.name} className="w-10 h-10 object-contain" />
-              </div>
-              <div>
-                <CardTitle className="text-sm font-semibold">{config.name}</CardTitle>
-                <CardDescription className="text-xs">{config.description}</CardDescription>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={isConnected ? 'default' : 'secondary'}
-                className={cn(
-                  'text-xs px-2',
-                  isConnected && 'bg-success text-success-foreground hover:bg-success/90'
-                )}
-              >
-                {isConnected ? 'Connecté' : 'Non configuré'}
-              </Badge>
-              {expanded ? (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <IntegrationHeader
+          config={config}
+          open={expanded}
+          status={statusOverride ?? (isConnected
+            ? <StatusText tone="success">Connecté</StatusText>
+            : <StatusText tone="muted">Non configuré</StatusText>)}
+        />
+
+        <CollapsibleContent className="space-y-4 pb-4 pt-2">
+          {config.fields.map(field => {
+            const fieldId = `${fieldIdPrefix}-${field.key}`;
+            return (
+            <div key={field.key} className="space-y-1.5">
+              <label htmlFor={fieldId} className="text-xs font-medium text-foreground">{field.label}</label>
+              <Input
+                id={fieldId}
+                type={field.secret ? 'password' : 'text'}
+                autoComplete={field.secret ? 'new-password' : undefined}
+                placeholder={
+                  field.secret && values[`${field.key}_hint`]
+                    ? `Clé enregistrée (${values[`${field.key}_hint`]}), saisir pour remplacer`
+                    : field.placeholder
+                }
+                value={localValues[field.key] || ''}
+                onChange={(e) =>
+                  setLocalValues(prev => ({ ...prev, [field.key]: e.target.value }))
+                }
+                className="max-md:h-11"
+              />
+              {field.secret && !!values[`${field.key}_hint`] && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="xs"
+                  disabled={isSaving}
+                  className="h-auto px-0 text-xs font-normal text-muted-foreground underline underline-offset-2 hover:text-danger max-md:min-h-11"
+                  onClick={async () => {
+                    const ok = await confirmAlert({
+                      title: 'Retirer cette clé ?',
+                      description: "L'intégration sera déconnectée jusqu'à la saisie d'une nouvelle clé.",
+                      confirmLabel: 'Retirer',
+                      destructive: true,
+                    });
+                    if (ok) await onSave({ [field.key]: null, ...(config.serverManagedConnection ? {} : { [config.connectedKey]: false }) });
+                  }}
+                >
+                  Retirer la clé
+                </Button>
               )}
             </div>
-          </div>
-        </CardHeader>
-      </button>
-
-      {expanded && (
-        <CardContent className="pt-0 pb-4 space-y-4">
-          {config.fields.map(field => (
-            <div key={field.key} className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">{field.label}</label>
-              <div className="relative">
-                <Input
-                  type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
-                  placeholder={field.placeholder}
-                  value={localValues[field.key] || ''}
-                  onChange={(e) =>
-                    setLocalValues(prev => ({ ...prev, [field.key]: e.target.value }))
-                  }
-                  className="pr-10 text-sm border-border"
-                />
-                {field.secret && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() =>
-                      setShowSecrets(prev => ({ ...prev, [field.key]: !prev[field.key] }))
-                    }
-                  >
-                    {showSecrets[field.key] ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           <Button
+            type="button"
             onClick={handleSave}
             disabled={!hasChanges || isSaving}
-            className="w-full mt-2"
+            loading={isSaving}
+            className="mt-2 w-full max-md:h-11"
             size="sm"
           >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <Check className="w-4 h-4 mr-2" />
-            )}
+            {!isSaving && <Check aria-hidden="true" />}
             Enregistrer
           </Button>
-        </CardContent>
-      )}
+
+          {renderExtra?.({ hasChanges })}
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
+  );
+};
+
+/* ──────────────────────────────────────────────
+ *  Carte Aircall : identifiants, puis liaison dont l'état vient du serveur
+ * ────────────────────────────────────────────── */
+const AircallCard = ({
+  config,
+  values,
+  onSave,
+  isSaving,
+}: {
+  config: IntegrationConfig;
+  values: Record<string, string | null>;
+  onSave: (updates: Record<string, string | boolean | null>) => Promise<void>;
+  isSaving: boolean;
+}) => {
+  const { data: status, isLoading, isError } = useTelephonyStatus();
+  const { disconnect } = useAircallConnectionActions();
+  const hasCredentials = !!values.aircall_api_id && !!values.aircall_api_token_hint;
+
+  const statusNode = isLoading ? (
+    <StatusText tone="muted">Vérification…</StatusText>
+  ) : isError ? (
+    <StatusText tone="muted">État indisponible</StatusText>
+  ) : status?.connected ? (
+    <StatusText tone="success">Relié</StatusText>
+  ) : hasCredentials ? (
+    <StatusText tone="warning">À relier</StatusText>
+  ) : (
+    <StatusText tone="muted">Non configuré</StatusText>
+  );
+
+  // Retirer le jeton pendant que la liaison est active : la liaison part d'abord,
+  // elle a besoin du jeton pour se retirer chez Aircall.
+  const handleSave = async (updates: Record<string, string | boolean | null>) => {
+    if (updates.aircall_api_token === null && status?.connected) {
+      try {
+        await disconnect();
+      } catch (e) {
+        toast.error(e instanceof Error && e.message ? e.message : 'La liaison n\'a pas pu être retirée. Réessayez.');
+        return;
+      }
+    }
+    await onSave(updates);
+  };
+
+  return (
+    <IntegrationCard
+      config={config}
+      values={values}
+      onSave={handleSave}
+      isSaving={isSaving}
+      statusOverride={statusNode}
+      renderExtra={({ hasChanges }) => (
+        <AircallConnectionPanel hasCredentials={hasCredentials} hasUnsavedChanges={hasChanges} />
+      )}
+    />
   );
 };
 
@@ -506,27 +600,31 @@ const IntegrationCard = ({
  * ────────────────────────────────────────────── */
 export const IntegrationsSettings = () => {
   const { integrations, isLoading, updateIntegration, isUpdating } = useOrganizationIntegrations();
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [manuallyAdded, setManuallyAdded] = useState<Set<string>>(new Set());
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-8">
-        <BrutalLoader compact />
+      <div className="space-y-3">
+        <p role="status" className="sr-only">Chargement des outils reliés…</p>
+        <Skeleton className="h-[72px] w-full rounded-xl" aria-hidden="true" />
       </div>
     );
   }
 
-  const values = (integrations || {}) as Record<string, any>;
+  // Les colonnes *_connected sont des booléens : les cartes ne les lisent que par !!.
+  const values = (integrations ?? EMPTY_VALUES) as unknown as Record<string, string | null>;
 
-  // Only show API-key integrations (Notion, Airtable, Calendly, Aircall) if already configured
+  // Only show API-key integrations (Calendly, Aircall) if already configured
   const visibleIntegrations = INTEGRATIONS.filter(config => {
     if (config.hostedAuth) return true;
-    return !!values[config.connectedKey];
+    if (values[config.connectedKey]) return true;
+    // Une clé encore enregistrée garde la carte visible : pour la retirer (carte retirée du menu)
+    // ou pour finir la liaison (Aircall, dont l'état « connecté » n'est posé qu'après la liaison).
+    return config.fields.some(f => f.secret && !!values[`${f.key}_hint`]);
   });
 
-  const hiddenIntegrations = INTEGRATIONS.filter(config => 
-    !config.hostedAuth && !values[config.connectedKey]
+  const hiddenIntegrations = INTEGRATIONS.filter(config =>
+    !config.hostedAuth && !config.retired && !visibleIntegrations.some(v => v.id === config.id)
   );
 
   const allVisible = [
@@ -547,6 +645,14 @@ export const IntegrationsSettings = () => {
             onSave={updateIntegration}
             isSaving={isUpdating}
           />
+        ) : config.id === 'aircall' ? (
+          <AircallCard
+            key={config.id}
+            config={config}
+            values={values}
+            onSave={updateIntegration}
+            isSaving={isUpdating}
+          />
         ) : (
           <IntegrationCard
             key={config.id}
@@ -558,38 +664,31 @@ export const IntegrationsSettings = () => {
         )
       )}
 
-      {/* Add integration button */}
+      {/* Revue design (F-24) : menu du kit (clavier, Échap, clic extérieur), icône Plus, filet plein. */}
       {remainingHidden.length > 0 && (
-        <div className="relative">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddMenu(!showAddMenu)}
-            className="w-full border-dashed border-2 text-muted-foreground hover:text-foreground"
-          >
-            + Ajouter une intégration
-          </Button>
-          {showAddMenu && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-lg shadow-lg z-10 p-2 space-y-1">
-              {remainingHidden.map(config => (
-                <button
-                  key={config.id}
-                  onClick={() => {
-                    setManuallyAdded(prev => new Set(prev).add(config.id));
-                    setShowAddMenu(false);
-                  }}
-                  className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-muted text-left"
-                >
-                  <img src={config.logoSrc} alt={config.name} className="w-6 h-6 object-contain" />
-                  <div>
-                    <p className="text-sm font-medium">{config.name}</p>
-                    <p className="text-xs text-muted-foreground">{config.description}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="w-full max-md:h-11">
+              <Plus aria-hidden="true" />
+              Ajouter une intégration
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            {remainingHidden.map(config => (
+              <DropdownMenuItem
+                key={config.id}
+                className="items-start gap-3 max-md:min-h-11"
+                onSelect={() => setManuallyAdded(prev => new Set(prev).add(config.id))}
+              >
+                <img src={config.logoSrc} alt="" className="h-6 w-6 shrink-0 object-contain" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{config.name}</span>
+                  <span className="block text-xs text-muted-foreground">{config.description}</span>
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );

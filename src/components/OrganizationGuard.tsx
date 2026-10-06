@@ -1,16 +1,33 @@
 import { Navigate } from 'react-router-dom';
 import { useOrganization } from '@/hooks/useOrganization';
 import { withPreviewAccessToken } from '@/lib/previewToken';
-import { LowCreditBanner } from './ai/LowCreditBanner';
+import { Spinner } from '@/components/ui/spinner';
+import { ErrorState } from '@/components/layout/ErrorState';
 
 export const OrganizationGuard = ({ children }: { children: React.ReactNode }) => {
-  const { isLoading, needsOnboarding } = useOrganization();
+  const { isLoading, isError, organization, needsOnboarding, refetchOrganization, isRefetchingOrganization } = useOrganization();
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-6 h-6 border border-border border-t-foreground rounded-full animate-spin" />
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner label="Chargement de votre espace" />
       </div>
+    );
+  }
+
+  // F3 : erreur de chargement de l'espace (réseau, 5xx, jeton expiré) SANS
+  // donnée en cache → on n'envoie jamais l'utilisateur vers /onboarding
+  // (risque de création d'un espace doublon). `!organization` évite d'éjecter
+  // un utilisateur dont l'org est déjà chargée quand une refetch en arrière-plan échoue.
+  if (isError && !organization) {
+    return (
+      <ErrorState
+        variant="page"
+        title="Impossible de charger votre espace de travail"
+        description="Vérifiez votre connexion, puis réessayez."
+        onRetry={() => { void refetchOrganization(); }}
+        retrying={isRefetchingOrganization}
+      />
     );
   }
 
@@ -18,19 +35,8 @@ export const OrganizationGuard = ({ children }: { children: React.ReactNode }) =
     return <Navigate to={withPreviewAccessToken('/onboarding')} replace />;
   }
 
-  // FIX layout (BUG zone de saisie inbox invisible — 2026-04-28) :
-  // Le LowCreditBanner (~40px) et children sont rendus dans <main> qui est un
-  // flex container (cf AppLayout). Le banner garde sa hauteur intrinsèque
-  // (shrink-0) et children prend le reste avec flex-1 + min-h-0 pour pouvoir
-  // imbriquer des layouts h-full sans déborder.
-  return (
-    <>
-      <div className="shrink-0">
-        <LowCreditBanner />
-      </div>
-      <div className="flex-1 min-h-0">
-        {children}
-      </div>
-    </>
-  );
+  // Les bandeaux d'essai et de crédits IA sont rendus par AppLayout, dans la
+  // zone principale : ici, au-dessus du gabarit, la barre latérale fixe en
+  // masquait le début (dont « Essai : N jours restants »).
+  return <>{children}</>;
 };

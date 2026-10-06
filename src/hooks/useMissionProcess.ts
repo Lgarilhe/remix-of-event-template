@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { toast } from 'sonner';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 
 const db = supabase as any;
 
@@ -61,7 +62,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
   const { organizationId } = useOrganization();
 
   // Fetch steps
-  const { data: steps = [], isLoading: loadingSteps } = useQuery({
+  const { data: steps = [], isLoading: loadingSteps, isError: stepsError, refetch: refetchSteps } = useQuery({
     queryKey: ['mission-process-steps', projectId],
     queryFn: async () => {
       if (!projectId) return [];
@@ -112,6 +113,8 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      // Noms de l'équipe (RPC get_mission_team_profiles), lus par le lot marketplace.
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'team-profiles', projectId] });
       toast.success('Membre assigné à la mission');
     },
     onError: (err: Error) => {
@@ -134,6 +137,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'team-profiles', projectId] });
       toast.success('Membre retiré de la mission');
     },
     onError: (err: Error) => toast.error(err.message),
@@ -195,6 +199,8 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-process-steps', projectId] });
+      // Les candidats de l'étape supprimée perdent leur process_step_id (ON DELETE SET NULL).
+      void invalidateStageReaders(queryClient);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -225,25 +231,64 @@ export const useMissionProcess = (projectId: string | undefined) => {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Initialize with steps from a template
-  const initializeFromTemplate = async (templateSteps: typeof DEFAULT_STEPS) => {
-    if (!projectId || !organizationId) return;
+  // Replace ALL steps atomically via RPC replace_process_steps (templates ET « Réoptimiser »).
+  // Supprime les anciennes étapes, insère les nouvelles, remappe pipeline_stage des candidats
+  // positionnés sur une étape supprimée (même nom, sinon 1re étape). Retourne le nb repositionnés.
+  const replaceStepsMutation = useMutation({
+    mutationFn: async ({ templateSteps }: { templateSteps: typeof DEFAULT_STEPS; label?: string }) => {
+      if (!projectId) throw new Error('Missing context');
+      const { data, error } = await db.rpc('replace_process_steps', {
+        p_project_id: projectId,
+        p_steps: templateSteps,
+      });
+      if (error) throw error;
+      return (data ?? 0) as number;
+    },
+    onSuccess: (remapped, { label }) => {
+      queryClient.invalidateQueries({ queryKey: ['mission-process-steps', projectId] });
+      // Candidats repositionnés : kanban, compteurs et /pipeline à relire.
+      void invalidateStageReaders(queryClient);
+      // Le nombre brut de la fonction compte des lignes (doublons et écartés compris),
+      // pas des candidats : on ne l'annonce pas, la boîte de confirmation a donné le compte.
+      const suffix = remapped > 0 ? ' · candidats repositionnés' : '';
+      toast.success((label ? `Process « ${label} » appliqué` : 'Process créé') + suffix);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Retourne le nb de candidats repositionnés, ou null si échec (erreur déjà toastée par onError).
+  const initializeFromTemplate = async (templateSteps: typeof DEFAULT_STEPS, label?: string): Promise<number | null> => {
+    if (!projectId) return null;
     try {
-      for (const step of templateSteps) {
-        await addStepMutation.mutateAsync({ ...step } as any);
-      }
-      toast.success('Process créé');
+      return await replaceStepsMutation.mutateAsync({ templateSteps, label });
     } catch {
-      // Individual step errors already toasted by mutation onError
+      return null;
     }
   };
 
   const initializeDefaultSteps = () => initializeFromTemplate(DEFAULT_STEPS);
 
+  // Nb de candidats positionnés sur une étape ACTUELLE (process_step_id, lot 0c ;
+  // une ligne par candidat, doublons réunis) : pour l'AlertDialog. null quand la
+  // lecture échoue : un zéro inventé ferait annoncer « aucun candidat ».
+  const countCandidatesOnSteps = async (): Promise<number | null> => {
+    if (!projectId || steps.length === 0) return 0;
+    const { count, error } = await db
+      .from('mission_candidate_rows')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .in('process_step_id', steps.map(s => s.id));
+    if (error) return null;
+    return count ?? 0;
+  };
+
   return {
     steps,
     team,
     loadingSteps,
+    /** Lecture des étapes en échec (sans données). */
+    stepsError,
+    refetchSteps,
     loadingTeam,
     addStep: addStepMutation.mutateAsync,
     updateStep: updateStepMutation.mutateAsync,
@@ -251,8 +296,9 @@ export const useMissionProcess = (projectId: string | undefined) => {
     reorderSteps: reorderStepsMutation.mutateAsync,
     initializeDefaultSteps,
     initializeFromTemplate,
+    countCandidatesOnSteps,
     addTeamMember: addTeamMemberMutation.mutateAsync,
     removeTeamMember: removeTeamMemberMutation.mutateAsync,
-    isAdding: addStepMutation.isPending,
+    isAdding: addStepMutation.isPending || replaceStepsMutation.isPending,
   };
 };

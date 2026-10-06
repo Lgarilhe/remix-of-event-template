@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,14 +8,20 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Save, Loader2, Calendar, Clock as ClockIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { Sparkles } from 'lucide-react';
+import { sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
+import { estimateActionCredits } from '@/lib/invokeWithCredits';
+import { plural } from '@/lib/plural';
+import { useSenderFirstName } from '@/hooks/useEnrollmentPreview';
+import { proposeAiMessage } from './proposeAiMessage';
 
 interface EditScheduledMessageModalProps {
   isOpen: boolean;
@@ -32,8 +39,21 @@ interface EditScheduledMessageModalProps {
     enrollment?: {
       profile_name: string | null;
     };
+    /** Texte affiché dans le Journal (modification, aperçu validé à l'inscription ou modèle). */
+    preview?: {
+      message: string | null;
+      subject: string | null;
+    };
   } | null;
   onSaved: () => void;
+  /**
+   * Lot 5a-2 : « Relire le message » d'une étape rédigée par l'IA reportée
+   * par le moteur. Prérempli avec le modèle de l'étape, « Proposer avec
+   * l'IA » (coût annoncé, résultat modifiable) ; « Enregistrer » n'écrit que
+   * final_message et final_subject d'une étape encore programmée, et le
+   * moteur l'envoie au premier passage, au plus une heure plus tard.
+   */
+  aiReview?: boolean;
 }
 
 export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps> = ({
@@ -41,31 +61,64 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   onClose,
   execution,
   onSaved,
+  aiReview = false,
 }) => {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [proposing, setProposing] = useState(false);
+  const subjectId = useId();
+  const messageId = useId();
+  const helpId = useId();
+  const senderName = useSenderFirstName();
 
   const actionType = execution?.step?.action_type;
-  const needsSubject = actionType === 'inmail';
+  // Un e-mail a un objet comme un InMail : sans ce champ, l'enregistrement
+  // écrivait final_subject = null et l'objet personnalisé était perdu.
+  const needsSubject = actionType === 'inmail' || actionType === 'email';
+  // Message IA (smart_message) : il part en InMail hors relation directe, qui
+  // exige un objet. Champ proposé, facultatif.
+  const showsSubject = needsSubject || actionType === 'smart_message';
 
   useEffect(() => {
     if (execution) {
-      setSubject(execution.final_subject || execution.step?.subject_template || '');
-      setMessage(execution.final_message || execution.step?.message_template || '');
+      // Même valeur que celle affichée dans le Journal : on corrige le message
+      // qui partira, pas le modèle de l'étape.
+      setSubject(
+        execution.final_subject || execution.preview?.subject || execution.step?.subject_template || '',
+      );
+      setMessage(
+        execution.final_message || execution.preview?.message || execution.step?.message_template || '',
+      );
     }
   }, [execution]);
 
+  // Lot 5a-2 : même génération que l'aperçu de la préparation, pour ce
+  // candidat et cette étape. Rien n'est écrit avant « Enregistrer ».
+  const handlePropose = async () => {
+    if (!execution) return;
+    setProposing(true);
+    try {
+      const proposal = await proposeAiMessage(execution.id, senderName);
+      setMessage(proposal.message);
+      if (showsSubject && proposal.subject) setSubject(proposal.subject);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "La proposition de l'IA a échoué. Réessayez, ou écrivez le message vous-même.");
+    } finally {
+      setProposing(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!execution) return;
-    
+
     if (!message.trim()) {
       toast.error('Le message ne peut pas être vide');
       return;
     }
 
     if (needsSubject && !subject.trim()) {
-      toast.error("L'objet ne peut pas être vide pour un InMail");
+      toast.error("L'objet ne peut pas être vide pour un InMail ou un e-mail");
       return;
     }
 
@@ -78,7 +131,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       const { data: updated, error } = await supabase
         .from('sequence_step_executions')
         .update({
-          final_subject: needsSubject ? subject.trim() : null,
+          final_subject: showsSubject ? subject.trim() || null : null,
           final_message: message.trim(),
         })
         .eq('id', execution.id)
@@ -88,18 +141,24 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       if (error) throw error;
 
       if (!updated || updated.length === 0) {
-        toast.error("Ce message est déjà en cours d'envoi ou envoyé — modification impossible.");
+        toast.error("Ce message est déjà en cours d'envoi ou envoyé : modification impossible.");
         onSaved();
         onClose();
         return;
       }
 
-      toast.success('Message mis à jour');
+      if (aiReview) {
+        toast.success('Message relu', { description: 'Il partira au prochain passage, dans l’heure.' });
+      } else {
+        toast.success('Message mis à jour', { description: 'La nouvelle version partira à l’heure prévue.' });
+      }
       onSaved();
       onClose();
     } catch (err) {
       console.error('Error updating message:', err);
-      toast.error('Erreur lors de la mise à jour');
+      // Refus de la base (étape déjà partie, plus programmée…) : sa raison en
+      // français plutôt qu'un « réessayez » qui échouerait encore.
+      toast.error(sequenceWriteRefusal(err) ?? "La modification n'a pas été enregistrée. Réessayez.");
     } finally {
       setSaving(false);
     }
@@ -107,60 +166,68 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
 
   if (!execution) return null;
 
+  const scheduledAt = new Date(execution.scheduled_at);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Save className="w-5 h-5 text-blue-600" />
-            Modifier le message planifié
-          </DialogTitle>
+          <DialogTitle>{aiReview ? 'Relire le message' : 'Modifier le message planifié'}</DialogTitle>
+          <DialogDescription>
+            {aiReview ? (
+              <>
+                {sequenceActionLabel(actionType)} pour {execution.enrollment?.profile_name || 'le candidat'} : ce message est
+                rédigé par l'IA pour chaque candidat. Relisez-le, faites-le proposer par l'IA ou écrivez-le : il partira tel
+                quel au prochain passage, dans l'heure.
+              </>
+            ) : (
+              <>
+                {sequenceActionLabel(actionType)} · envoi prévu pour {execution.enrollment?.profile_name || 'le candidat'} le{' '}
+                {format(scheduledAt, 'EEEE d MMMM', { locale: fr })} à {format(scheduledAt, 'HH:mm')}.
+              </>
+            )}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Recipient info */}
-          <div className="p-3 bg-muted/50 rounded-lg">
-            <div className="text-sm font-medium">
-              {execution.enrollment?.profile_name || 'Candidat'}
+        <div className="space-y-4">
+          {aiReview && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handlePropose} loading={proposing} disabled={saving} className="max-md:h-11">
+                {!proposing && <Sparkles aria-hidden="true" />}
+                Proposer avec l'IA
+              </Button>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                environ {plural(estimateActionCredits('outreach_message'), 'crédit')}
+              </span>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                <span>{format(new Date(execution.scheduled_at), 'EEEE d MMMM', { locale: fr })}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <ClockIcon className="w-3 h-3" />
-                <span>{format(new Date(execution.scheduled_at), 'HH:mm')}</span>
-              </div>
-            </div>
-          </div>
+          )}
 
-          {/* Subject (for InMail) */}
-          {needsSubject && (
+          {/* Objet (InMail et e-mail ; Message IA, facultatif) */}
+          {showsSubject && (
             <div className="space-y-2">
-              <Label htmlFor="subject">Objet</Label>
+              <Label htmlFor={subjectId}>{needsSubject ? 'Objet' : 'Objet, si le message part en InMail'}</Label>
               <Input
-                id="subject"
+                id={subjectId}
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Objet de l'InMail..."
+                placeholder="Ex. : Lead Backend Go chez Nova Pay"
               />
             </div>
           )}
 
           {/* Message */}
           <div className="space-y-2">
-            <Label htmlFor="message">Message</Label>
+            <Label htmlFor={messageId}>Message</Label>
             <Textarea
-              id="message"
+              id={messageId}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Contenu du message..."
+              aria-describedby={helpId}
               rows={8}
               className="resize-none"
             />
-            <p className="text-xs text-muted-foreground">
-              Les variables comme {'{firstName}'} seront remplacées automatiquement.
+            <p id={helpId} className="text-xs text-muted-foreground">
+              Les variables comme {'{{first_name}}'} ou {'{{prenom}}'} sont remplacées à l'envoi.
             </p>
           </div>
         </div>
@@ -169,18 +236,8 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
           <Button variant="outline" onClick={onClose}>
             Annuler
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Enregistrement...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Enregistrer
-              </>
-            )}
+          <Button variant="primary" onClick={handleSave} loading={saving} disabled={proposing}>
+            Enregistrer le message
           </Button>
         </DialogFooter>
       </DialogContent>

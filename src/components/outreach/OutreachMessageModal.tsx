@@ -1,29 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { ModelPicker } from '@/components/ai/ModelPicker';
+import { useOrganization } from '@/hooks/useOrganization';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { InMailTextEditor } from './InMailTextEditor';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { MESSAGE_TONES, type MessageTone } from '@/lib/sequenceCatalog';
 import { 
-  Loader2, 
   Copy, 
   Check, 
   RefreshCw, 
-  Sparkles,
-  MessageSquare,
   Lightbulb,
   Send,
 } from 'lucide-react';
@@ -45,9 +49,12 @@ interface OutreachMessageModalProps {
   onMessageSent?: () => void | Promise<void>;
   candidateHistory?: CandidateHistoryForPrompt | null;
   calendlyLink?: string | null;
+  /** Mission de l'envoi (uuid). Prioritaire sur l'id du poste, qui n'est pas
+   *  celui de la mission pour une mission ancienne (job_id hérité). */
+  projectId?: string;
 }
 
-type Tone = 'professional' | 'casual' | 'enthusiastic';
+type Tone = MessageTone;
 
 export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   open,
@@ -58,6 +65,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   onMessageSent,
   candidateHistory,
   calendlyLink,
+  projectId,
 }) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -73,6 +81,11 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   });
   const [customInstructions, setCustomInstructions] = useState('');
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const senderId = useId();
+  const instructionsId = useId();
+  const subjectId = useId();
+  const messageId = useId();
+  const { organizationId } = useOrganization();
 
   // Reset state when profile changes
   const profileKey = profile?.id || `${profile?.first_name}-${profile?.last_name}`;
@@ -188,6 +201,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         },
         tone,
         senderName: senderName.trim() || undefined,
+        // Le serveur relit outreach_config de la mission (anonymisation du client)
+        // quand le front ne le transmet pas.
+        missionId: job.id || undefined,
         accountId: selectedAccount || undefined,
         profileId: candidateProviderId || undefined,
         candidateHistory: candidateHistory || undefined,
@@ -212,7 +228,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       setHasGenerated(true);
     } catch (err) {
       console.error('Generate message error:', err);
-      toast.error('Erreur lors de la génération du message');
+      toast.error("Le message n'a pas pu être généré. Réessayez.");
     } finally {
       setLoading(false);
     }
@@ -223,17 +239,17 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
     const plainMessage = message
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '');
-    const fullMessage = subject ? `Objet: ${subject}\n\n${plainMessage}` : plainMessage;
+    const fullMessage = subject ? `Objet : ${subject}\n\n${plainMessage}` : plainMessage;
     await navigator.clipboard.writeText(fullMessage);
     setCopied(true);
-    toast.success('Message copié !');
+    toast.success('Message copié dans le presse-papiers');
     setTimeout(() => setCopied(false), 2000);
   };
 
   // Send message via LinkedIn (direct message or InMail based on network distance)
   const handleSendMessage = async () => {
     if (!selectedAccount) {
-      toast.error('Aucun compte LinkedIn sélectionné');
+      toast.error('Choisissez un compte LinkedIn pour envoyer le message.');
       return;
     }
 
@@ -241,7 +257,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
     const profileAny = profile as any;
     const recipientId = profileAny.provider_id || profile.id;
     if (!recipientId) {
-      toast.error('Impossible d\'identifier le destinataire');
+      toast.error('Destinataire introuvable : rouvrez son profil, puis réessayez.');
       return;
     }
 
@@ -251,7 +267,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       .replace(/<[^>]+>/g, '');
 
     if (!plainMessage.trim()) {
-      toast.error('Le message ne peut pas être vide');
+      toast.error("Écrivez le message avant de l'envoyer.");
       return;
     }
 
@@ -261,11 +277,19 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const networkDist = profile.network_distance || profileAny.specifics?.network_distance;
       const isFirstDegree = networkDist === 'DISTANCE_1' || networkDist === 1;
       
+      // Mission de l'envoi (lot 0b) : le serveur y pose « Contacté » au vrai
+      // envoi. Sans mission reconnue, il la résout lui-même.
+      const recipientProfileUrl = profile.public_profile_url
+        || profile.profile_url
+        || profileAny.linkedin_url
+        || undefined;
       const { data } = await invokeUnipile({
         body: {
           action: 'send_message',
           account_id: selectedAccount,
           recipient_id: recipientId,
+          recipient_profile_url: recipientProfileUrl,
+          project_id: missionIdOfJob(projectId) ?? missionIdOfJob(job.id),
           message: plainMessage,
           subject: !isFirstDegree ? subject : undefined,
           is_inmail: !isFirstDegree,
@@ -282,113 +306,39 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       }
 
       setMessageSent(true);
-      toast.success(isFirstDegree ? 'Message envoyé !' : 'InMail envoyé !');
+      toast.success(`${isFirstDegree ? 'Message envoyé' : 'InMail envoyé'} à ${profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim()}`);
       
-      // Track in inmail_queue so candidate appears in ATS
+      // Suivi de l'envoi dans inmail_queue (pipeline, statistiques de réponse).
+      // La policy n'accepte que la ligne 'sent' de l'appelant dans son
+      // organisation : sans organization_id, l'insert était refusé en silence
+      // (supabase-js ne lève pas, l'erreur n'était pas lue).
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from('inmail_queue').insert({
-            account_id: selectedAccount,
-            recipient_profile_id: recipientId,
-            recipient_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
-            recipient_headline: profile.headline || null,
-            subject: subject || '(Message direct)',
-            message: plainMessage,
-            status: 'sent',
-            sent_at: new Date().toISOString(),
-            created_by: user.id,
-            network_distance: isFirstDegree ? 1 : (typeof networkDistance === 'number' ? networkDistance : 2),
-          });
-        }
+        if (!user || !organizationId) throw new Error('Session ou organisation introuvable');
+        const { error: trackError } = await supabase.from('inmail_queue').insert({
+          organization_id: organizationId,
+          account_id: selectedAccount,
+          recipient_profile_id: recipientId,
+          recipient_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+          recipient_headline: profile.headline || null,
+          subject: subject || '(Message direct)',
+          message: plainMessage,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          created_by: user.id,
+          network_distance: isFirstDegree ? 1 : (typeof networkDistance === 'number' ? networkDistance : 2),
+        });
+        if (trackError) throw trackError;
       } catch (trackErr) {
         console.error('Error tracking message in ATS:', trackErr);
-      }
-
-      // Create candidate + shortlist in Notion automatically
-      try {
-        const profileData = buildProfileData();
-        const workExp = profile.work_experience || [];
-        const currentJob = workExp.find(exp => !exp.end) || workExp[0];
-        
-        // Compute years of experience
-        const earliestYear = workExp
-          .map(exp => getYear(exp.start))
-          .filter((y): y is number => !!y)
-          .sort((a, b) => a - b)[0];
-        const yearsOfExperience = earliestYear ? new Date().getFullYear() - earliestYear : undefined;
-
-        // Extract domains from headline/skills
-        const domainKeywords: Record<string, string[]> = {
-          'Backend': ['backend', 'java', 'python', 'node', 'go', 'rust', 'c#', '.net', 'php', 'ruby', 'spring'],
-          'Frontend': ['frontend', 'front-end', 'react', 'vue', 'angular', 'typescript', 'javascript', 'css'],
-          'Fullstack': ['fullstack', 'full-stack', 'full stack'],
-          'DevOps': ['devops', 'sre', 'infrastructure', 'kubernetes', 'docker', 'ci/cd', 'terraform', 'aws', 'gcp', 'azure', 'cloud'],
-          'Data': ['data', 'machine learning', 'ml', 'ai', 'deep learning', 'nlp', 'analytics'],
-          'Data Engineering': ['data engineer', 'etl', 'spark', 'airflow', 'dbt'],
-          'Mobile': ['mobile', 'ios', 'android', 'react native', 'flutter', 'swift', 'kotlin'],
-          'Product': ['product', 'product manager', 'product owner', 'po', 'pm'],
-          'Design': ['design', 'ux', 'ui', 'figma', 'user experience'],
-          'QA': ['qa', 'quality', 'test', 'testing', 'sdet'],
-          'Security': ['security', 'cybersecurity', 'infosec', 'pentest'],
-          'Management': ['engineering manager', 'vp engineering', 'cto', 'tech lead', 'head of'],
-        };
-        const headlineLower = (profile.headline || '').toLowerCase();
-        const skillNames = (profile.skills || []).map(s => (typeof s === 'string' ? s : s.name).toLowerCase());
-        const searchText = `${headlineLower} ${skillNames.join(' ')}`;
-        const domains = Object.entries(domainKeywords)
-          .filter(([_, keywords]) => keywords.some(k => searchText.includes(k)))
-          .map(([domain]) => domain)
-          .slice(0, 3); // Max 3 domains
-
-        // Education level mapping
-        const education = profile.education || [];
-        let educationLevel: string | undefined;
-        const degreeText = education.map(e => `${e.degree || ''} ${e.field_of_study || ''}`).join(' ').toLowerCase();
-        if (degreeText.includes('phd') || degreeText.includes('doctorat')) educationLevel = 'Doctorat';
-        else if (degreeText.includes('master') || degreeText.includes('msc') || degreeText.includes('mba') || degreeText.includes('ingénieur') || degreeText.includes('engineer')) educationLevel = 'Bac +5';
-        else if (degreeText.includes('bachelor') || degreeText.includes('licence') || degreeText.includes('bsc')) educationLevel = 'Bac +3';
-
-        // Determine accompagnement from job
-        const accompagnementRaw = job.accompagnement || [];
-        let accompagnement: string | undefined;
-        if (accompagnementRaw.some(a => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded'))) {
-          accompagnement = 'RPO';
-        } else if (accompagnementRaw.some(a => a.toLowerCase().includes('succès') || a.toLowerCase().includes('succes'))) {
-          accompagnement = 'Succès';
-        }
-
-        // Build LinkedIn URL
-        const linkedinUrl = profile.public_profile_url 
-          || profile.profile_url 
-          || (profile as any).linkedin_url
-          || undefined;
-
-        await invokeEdgeFunction('add-to-shortlist', {
-          name: profileData.name,
-          headline: profile.headline,
-          linkedinUrl,
-          currentRole: currentJob ? `${currentJob.role || ''}${currentJob.company ? ` chez ${currentJob.company}` : ''}`.trim() : undefined,
-          seniority: undefined,
-          domains: domains.length > 0 ? domains : undefined,
-          yearsOfExperience,
-          educationLevel,
-          jobId: job.id,
-          jobTitle: job.title,
-          clientName: job.client?.name,
-          clientId: job.client?.id,
-          entity: 'Konekt',
-          accompagnement,
-          etape: 'Contacté',
-          etat: 'En attente de réponse',
+        // Le message est parti : on ne l'annonce pas comme un échec, mais le
+        // suivi manquant se voit (candidat absent du pipeline sinon sans explication).
+        toast.warning("Le message est parti, mais son suivi n'a pas été enregistré", {
+          description: "Ce candidat n'apparaîtra pas dans le pipeline pour cet envoi.",
         });
-        console.log('Notion candidate + shortlist created/updated');
-      } catch (notionErr) {
-        console.error('Error creating Notion records:', notionErr);
-        // Non-blocking — don't fail the message send
       }
-      
-      // Notify parent that message was sent (await to ensure DB upsert completes)
+
+      // Notify parent that message was sent
       await onMessageSent?.();
       
       // Close modal after short delay
@@ -397,7 +347,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       }, 1500);
     } catch (err: any) {
       console.error('Send message error:', err);
-      toast.error(err.message || 'Erreur lors de l\'envoi du message');
+      toast.error("Le message n'a pas pu être envoyé. Réessayez.");
     } finally {
       setSending(false);
     }
@@ -413,86 +363,69 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-xl border border-border shadow-lg bg-background">
-        {/* ── Header ── */}
-        <div className="px-4 sm:px-6 pt-5 pb-3 border-b border-border">
-          <DialogHeader className="space-y-0.5">
-            <DialogTitle className="text-base sm:text-lg font-bold text-foreground leading-tight">
-              Message pour {fullName}
-            </DialogTitle>
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground/70">{job.title}</span>
-              {job.client?.name && <span className="text-muted-foreground/40"> · {job.client.name}</span>}
-            </p>
+      <DialogContent className="max-h-[90vh] max-w-2xl gap-0 overflow-y-auto p-0">
+        {/* ── En-tête ── */}
+        <div className="border-b border-border px-4 pb-3 pt-5 pr-14 sm:px-6">
+          <DialogHeader className="space-y-0.5 text-left">
+            <DialogTitle>Message pour {fullName}</DialogTitle>
+            <DialogDescription>
+              <span className="font-medium text-foreground-secondary">{job.title}</span>
+              {job.client?.name && <span> · {job.client.name}</span>}
+            </DialogDescription>
           </DialogHeader>
         </div>
 
-        <div className="p-4 sm:p-6 space-y-4">
-          {/* ── Config row ── */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-            <div className="flex-1">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Ton</label>
-              <div className="flex gap-1">
-                {[
-                  { value: 'professional', label: 'Professionnel', short: 'Pro', icon: '👔' },
-                  { value: 'casual', label: 'Décontracté', short: 'Cool', icon: '💬' },
-                  { value: 'enthusiastic', label: 'Enthousiaste', short: 'Enthousiaste', icon: '⚡' },
-                ].map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => setTone(t.value as Tone)}
-                    className={`h-8 px-2.5 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 ${
-                      tone === t.value
-                        ? 'bg-foreground text-background border-foreground'
-                        : 'bg-background text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground'
-                    }`}
-                  >
-                    <span>{t.icon}</span>
-                    <span className="hidden sm:inline">{t.label}</span>
-                    <span className="sm:hidden">{t.short}</span>
-                  </button>
-                ))}
-              </div>
+        <div className="space-y-4 p-4 sm:p-6">
+          {/* ── Ton et signature ── */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground" aria-hidden="true">Ton</p>
+              <SegmentedControl<Tone>
+                aria-label="Ton du message"
+                size="default"
+                value={tone}
+                onValueChange={setTone}
+                options={MESSAGE_TONES.map((t) => ({ value: t.value, label: t.label }))}
+              />
             </div>
-            <div className="shrink-0">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Signature</label>
+            <div className="shrink-0 space-y-1.5">
+              <Label htmlFor={senderId} className="text-xs font-medium text-muted-foreground">Signature</Label>
               <Input
+                id={senderId}
                 value={senderName}
                 onChange={(e) => handleSenderNameChange(e.target.value)}
-                placeholder="Prénom"
-                className="w-full sm:w-28 h-8 text-sm rounded-md"
+                placeholder="Ex. : Camille"
+                className="w-full sm:w-36"
               />
             </div>
           </div>
 
-          {/* ── Instructions ── */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Instructions <span className="text-muted-foreground/40">(optionnel)</span>
-            </label>
-            <textarea
+          {/* ── Consignes ── */}
+          <div className="space-y-1.5">
+            <Label htmlFor={instructionsId} className="text-xs font-medium text-muted-foreground">
+              Consignes pour l'IA Konekt <span className="font-normal">(facultatif)</span>
+            </Label>
+            <Textarea
+              id={instructionsId}
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
-              placeholder="Ex: Mentionne son article récent, propose un call mardi…"
+              placeholder="Ex. : mentionnez son dernier article, proposez un appel mardi"
               rows={2}
-              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-muted/20 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              className="min-h-0 resize-none"
             />
           </div>
 
-          {/* ── Generate CTA ── */}
+          {/* ── Générer ── */}
           {!hasGenerated && (
             <div className="flex items-center gap-2">
               <Button
+                variant="primary"
+                size="lg"
                 onClick={generateMessage}
-                disabled={loading}
-                className="flex-1 h-10 bg-foreground hover:bg-foreground/90 text-background font-medium rounded-md shadow-sm text-sm"
+                loading={loading}
+                className="flex-1"
               >
-                {loading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Génération…</>
-                ) : (
-                  <><Sparkles className="w-4 h-4 mr-2" />Générer le message</>
-                )}
+                {loading ? 'Génération…' : 'Générer le message'}
               </Button>
               <ModelPicker
                 actionId="outreach_message"
@@ -504,85 +437,95 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             </div>
           )}
 
-          {/* ── Generated content ── */}
+          {/* ── Message généré ── */}
           {hasGenerated && (
             <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Objet</label>
+              <div className="space-y-1.5">
+                <Label htmlFor={subjectId} className="text-xs font-medium text-muted-foreground">Objet</Label>
                 <Input
+                  id={subjectId}
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Objet du message…"
-                  className="h-9 font-medium rounded-md"
+                  placeholder="Objet du message"
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Message</label>
+              <div className="space-y-1.5">
+                <Label htmlFor={messageId} className="text-xs font-medium text-muted-foreground">Message</Label>
                 <InMailTextEditor
+                  id={messageId}
                   value={message}
                   onChange={setMessage}
-                  placeholder="Le message d'approche…"
+                  placeholder="Le message d'approche"
                   minHeight="180px"
                   maxCharacters={1900}
                 />
               </div>
 
               {personalizationPoints.length > 0 && (
-                <div className="bg-muted/20 rounded-md p-3 border border-border">
-                  <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                    <Lightbulb className="w-3.5 h-3.5" />
+                <div className="rounded-lg border border-border bg-muted p-3">
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
                     Points de personnalisation
                   </p>
-                  <ul className="space-y-0.5">
+                  <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground-secondary">
                     {personalizationPoints.map((point, i) => (
-                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                        <span className="text-foreground/20 mt-0.5 shrink-0">•</span>
-                        {point}
-                      </li>
+                      <li key={i}>{point}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {/* ── Footer actions ── */}
-              <div className="flex items-center gap-2 pt-3 border-t border-border">
+              {/* ── Actions ── */}
+              <div className="flex items-center gap-2 border-t border-border pt-3">
                 {canSendDirectly && (
                   <Button
+                    variant="primary"
                     onClick={handleSendMessage}
-                    disabled={sending || messageSent}
-                    className={`flex-1 h-9 font-medium rounded-md text-sm transition-all ${
-                      messageSent
-                        ? 'bg-success text-success-foreground'
-                        : 'bg-foreground text-background hover:bg-foreground/90'
-                    }`}
+                    disabled={messageSent}
+                    loading={sending}
+                    className="flex-1"
                   >
-                    {messageSent ? <><Check className="w-3.5 h-3.5 mr-1.5" />Envoyé !</>
-                      : sending ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Envoi…</>
-                      : <><Send className="w-3.5 h-3.5 mr-1.5" />{isFirstDegree ? 'Envoyer' : 'Envoyer InMail'}</>
-                    }
+                    {messageSent ? (
+                      <>
+                        <Check aria-hidden="true" />
+                        {isFirstDegree ? 'Message envoyé' : 'InMail envoyé'}
+                      </>
+                    ) : sending ? (
+                      'Envoi…'
+                    ) : (
+                      <>
+                        <Send aria-hidden="true" />
+                        {isFirstDegree ? 'Envoyer le message' : "Envoyer l'InMail"}
+                      </>
+                    )}
                   </Button>
                 )}
 
                 <Button
                   onClick={handleCopy}
                   variant="outline"
-                  className={`h-9 rounded-md text-sm font-medium ${!canSendDirectly ? 'flex-1' : 'px-3'}`}
+                  className={!canSendDirectly ? 'flex-1' : undefined}
                 >
-                  {copied
-                    ? <><Check className="w-3.5 h-3.5 mr-1.5" />Copié</>
-                    : <><Copy className="w-3.5 h-3.5 mr-1.5" />{!canSendDirectly ? 'Copier' : ''}</>
-                  }
+                  {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                  {copied ? 'Copié' : 'Copier'}
                 </Button>
 
-                <Button
-                  variant="ghost"
-                  onClick={generateMessage}
-                  disabled={loading}
-                  className="h-9 w-9 p-0 rounded-md text-muted-foreground hover:text-foreground"
-                >
-                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={generateMessage}
+                      disabled={loading}
+                      aria-label="Régénérer le message"
+                      className="shrink-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <RefreshCw className={loading ? 'animate-spin' : undefined} aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Régénérer le message</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           )}

@@ -58,7 +58,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
-        <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card hover:bg-accent transition-colors text-sm">
+        <button className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] hover:bg-[var(--k-surface-2)] transition-colors text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <History className="w-4 h-4" />
             <span className="font-medium">Historique</span>
@@ -77,7 +77,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                 key={entry.id}
                 type="button"
                 onClick={() => onApplyFilters(entry.filters_snapshot)}
-                className="w-full text-left group bg-card border border-border rounded-lg p-3 hover:border-linkedin/30 active:border-linkedin/50 transition-colors cursor-pointer"
+                className="w-full text-left group bg-[var(--k-surface)] border border-[var(--k-hairline)] rounded-[10px] p-3 hover:border-[var(--k-hairline-hover)] transition-colors cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span className="text-xs text-muted-foreground">
@@ -85,14 +85,14 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                   </span>
                   <div className="flex items-center gap-1">
                     <span
-                      className="inline-flex items-center justify-center h-6 w-6 rounded text-linkedin"
+                      className="inline-flex items-center justify-center h-6 w-6 rounded text-[var(--k-text-muted)]"
                       title="Réutiliser ces filtres"
                     >
                       <Play className="w-3 h-3" />
                     </span>
                     <span
                       role="button"
-                      className="inline-flex items-center justify-center h-6 w-6 rounded text-red-400 hover:text-red-600 hover:bg-destructive/10"
+                      className="inline-flex items-center justify-center h-6 w-6 rounded text-[var(--k-text-muted)] hover:text-destructive hover:bg-destructive/10"
                       onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
                       title="Supprimer"
                     >
@@ -111,19 +111,19 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                     {entry.results_count} résultats
                   </span>
                   {entry.messaged_count > 0 && (
-                    <span className="flex items-center gap-1 text-blue-500">
+                    <span className="flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
                       {entry.messaged_count}
                     </span>
                   )}
                   {entry.shortlisted_count > 0 && (
-                    <span className="flex items-center gap-1 text-green-500">
+                    <span className="flex items-center gap-1">
                       <Star className="w-3 h-3" />
                       {entry.shortlisted_count}
                     </span>
                   )}
                   {entry.dismissed_count > 0 && (
-                    <span className="flex items-center gap-1 text-orange-400">
+                    <span className="flex items-center gap-1">
                       <Archive className="w-3 h-3" />
                       {entry.dismissed_count}
                     </span>

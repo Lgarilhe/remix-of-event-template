@@ -1,35 +1,26 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useOrganization } from '@/hooks/useOrganization';
+import { motion } from 'framer-motion';
+import { toast } from 'sonner';
+import { useOrganization, ORG_ALREADY_EXISTS } from '@/hooks/useOrganization';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { supabase } from '@/integrations/supabase/client';
+import { updateOrganization } from '@/lib/organizationUpdate';
 import { InvitationBanner } from '@/components/InvitationBanner';
+import { Spinner } from '@/components/ui/spinner';
 import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
-import { ChapterInterstitial } from '@/components/onboarding/ChapterInterstitial';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
-import { SceneAudit } from '@/components/onboarding/SceneAudit';
-import { SceneProfile, type ProfileFormState } from '@/components/onboarding/SceneProfile';
-import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
+import { SceneLinkedIn } from '@/components/onboarding/SceneLinkedIn';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
-import { SceneGoal, GOAL_OPTIONS } from '@/components/onboarding/SceneGoal';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
-import { SceneStack, STACK_OPTIONS } from '@/components/onboarding/SceneStack';
-import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
 import { SceneSpecializations } from '@/components/onboarding/SceneSpecializations';
-import { SceneAiTone } from '@/components/onboarding/SceneAiTone';
-import { SceneQuotas } from '@/components/onboarding/SceneQuotas';
-import { SceneICP, SENIORITY_OPTIONS, type IcpData } from '@/components/onboarding/SceneICP';
-import { ScenePreparing, type PreparingLine } from '@/components/onboarding/ScenePreparing';
-import { EMPTY_AI_CONTEXT } from '@/hooks/useAiContext';
-import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch, type LaunchChecklistItem } from '@/components/onboarding/SceneLaunch';
 import {
   FLOWS,
   DEFAULT_FLOW,
   chaptersForFlow,
-  chapterIndexOfScene,
   type OrgType,
   type SceneKey,
 } from '@/components/onboarding/onboardingMeta';
@@ -40,6 +31,8 @@ import {
 } from '@/components/onboarding/onboardingStorage';
 
 export interface OnboardingCompanyData {
+  /** Id de l'organisation créée (le hook `useOrganization` n'est pas encore rafraîchi à ce moment). */
+  orgId: string | null;
   name: string;
   domain: string | null;
   linkedinUrl: string | null;
@@ -53,86 +46,56 @@ const Onboarding = () => {
   const [step, setStep] = useState(() => {
     if (!restored?.orgType) return 0;
     const flow = FLOWS[restored.orgType];
-    return Math.min(Math.max(restored.step, 0), flow.length - 1);
+    // Repli : la progression est reprise sur la scène persistée ; si cette scène
+    // n'existe plus (tunnel raccourci), on repart de la première scène.
+    const idx = restored.scene ? flow.indexOf(restored.scene) : -1;
+    return idx >= 0 ? idx : 0;
   });
-  const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
+  // F3 : verrou anti double clic sur la création silencieuse (flux freelance)
+  const orgCreateInFlightRef = useRef(false);
+  // Id de l'espace créé dans CE tunnel. `orgCreated` ne convient pas comme
+  // garde : il passe à true dès l'entrée pour un collaborateur venu via `?new=1`.
+  // Sauvegardé avec la progression : après un rechargement, le réessai reprend
+  // cet espace au lieu d'échouer sur « déjà membre » ou d'en créer un second.
+  const [createdOrgId, setCreatedOrgId] = useState<string | null>(restored?.createdOrgId ?? null);
+  const tunnelStartedRef = useRef(false);
   const [completedScenes, setCompletedScenes] = useState<Set<SceneKey>>(
     () => new Set(restored?.completed ?? [])
   );
-  const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(restored?.orgDetails ?? null);
-  const [goal, setGoal] = useState(restored?.goal ?? '');
-  const [stack, setStack] = useState<string[]>(restored?.stack ?? []);
-  const [icp, setIcp] = useState<IcpData | null>(restored?.icp ?? null);
-  const [discoverySource, setDiscoverySource] = useState(restored?.discoverySource ?? '');
   const [specializations, setSpecializations] = useState<string[]>(restored?.specializations ?? []);
-  const [profileState, setProfileState] = useState<ProfileFormState | undefined>(
-    restored?.profileBasics
-      ? {
-          displayName: restored.profileBasics.displayName,
-          jobTitle: restored.profileBasics.jobTitle,
-          linkedinUrl: restored.profileBasics.linkedinUrl,
-          selectedSpecs: [],
-          scanResult: null,
-          experienceClassifications: [],
-        }
-      : undefined
-  );
-  const [teamInvitedCount, setTeamInvitedCount] = useState(0);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const reduceMotion = useReducedMotion();
-  const { organization, organizationId, createOrganization } = useOrganization();
+  const { organization, createOrganization, refetchOrganization, isLoading: isOrgLoading } = useOrganization();
   const { accounts } = useLinkedInAccounts();
+  // F3 : `?new=1` = création d'un second espace demandée explicitement
+  // (accueil collaborateur dans Auth.tsx). Sans ce flag, un utilisateur qui a
+  // déjà un espace est renvoyé au dashboard (voir avant le `return`).
+  const isExplicitNewWorkspace = new URLSearchParams(location.search).get('new') === '1';
 
   const flow = useMemo(() => (orgType ? FLOWS[orgType] : DEFAULT_FLOW), [orgType]);
   const chapters = useMemo(() => chaptersForFlow(flow), [flow]);
   const currentScene = flow[step] ?? 'orgtype';
-  const trackableSteps = flow.length - 1;
-  const completedInFlow = useMemo(
-    () => flow.filter((s) => s !== 'launch' && completedScenes.has(s)).length,
-    [flow, completedScenes]
-  );
-  const scorePercent = Math.round((completedInFlow / Math.max(trackableSteps, 1)) * 100);
 
   const linkedInConnected = accounts.some(
     (a: any) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP'
   );
 
-  // ─── Interstitiel de chapitre ───
-  const [interstitialIdx, setInterstitialIdx] = useState<number | null>(null);
-  const prevChapterRef = useRef(chapterIndexOfScene(currentScene, chapters));
-  useEffect(() => {
-    const idx = chapterIndexOfScene(currentScene, chapters);
-    if (idx > 0 && idx !== prevChapterRef.current && direction > 0) {
-      setInterstitialIdx(idx);
-    }
-    prevChapterRef.current = idx;
-  }, [currentScene, chapters, direction]);
-
   // ─── Persistance de la progression ───
   useEffect(() => {
     saveOnboardingProgress({
       step,
+      scene: flow[step] ?? null,
       orgType,
-      goal,
-      stack,
-      icp: icp ?? undefined,
       orgDetails: orgDetailsData,
-      discoverySource,
       specializations,
       completed: Array.from(completedScenes),
-      profileBasics: profileState
-        ? {
-            displayName: profileState.displayName,
-            jobTitle: profileState.jobTitle,
-            linkedinUrl: profileState.linkedinUrl,
-          }
-        : null,
+      createdOrgId,
     });
-  }, [step, orgType, goal, stack, icp, orgDetailsData, discoverySource, specializations, completedScenes, profileState]);
+  }, [step, flow, orgType, orgDetailsData, specializations, completedScenes, createdOrgId]);
 
   useEffect(() => {
     if (organization && !orgCreated) {
@@ -150,12 +113,10 @@ const Onboarding = () => {
   }, []);
 
   const goNext = useCallback(() => {
-    setDirection(1);
     setStep((s) => Math.min(s + 1, flow.length - 1));
   }, [flow.length]);
 
   const goBack = useCallback(() => {
-    setDirection(-1);
     setStep((s) => Math.max(0, s - 1));
   }, []);
 
@@ -167,62 +128,14 @@ const Onboarding = () => {
     [markCompleted, goNext]
   );
 
-  // ─── Contexte IA org (objectif + outils) — injecté à la création de l'org ───
-  const buildOrgAiContext = useCallback(() => {
-    const parts: string[] = [];
-    if (goal) {
-      const label = GOAL_OPTIONS.find((o) => o.value === goal)?.title ?? goal;
-      parts.push(`Objectif principal de l'équipe : ${label}.`);
-    }
-    if (stack.length > 0 && !stack.includes('none')) {
-      const labels = stack.map((v) => STACK_OPTIONS.find((o) => o.value === v)?.label ?? v);
-      parts.push(`Outils déjà utilisés : ${labels.join(', ')}.`);
-    }
-    if (icp) {
-      if (icp.roles) parts.push(`Postes recrutés le plus souvent : ${icp.roles}.`);
-      if (icp.seniorities.length > 0) {
-        const labels = icp.seniorities.map((v) => SENIORITY_OPTIONS.find((o) => o.value === v)?.label ?? v);
-        parts.push(`Séniorités visées : ${labels.join(', ')}.`);
-      }
-      if (icp.locations) parts.push(`Zones de recrutement : ${icp.locations}.`);
-    }
-    if (parts.length === 0) return null;
-    return { ...EMPTY_AI_CONTEXT, free_text: parts.join(' ') };
-  }, [goal, stack, icp]);
-
   // ─── Handlers ───
   const handleOrgTypeSelected = useCallback(
     (type: OrgType) => {
       setOrgType(type);
       markCompleted('orgtype');
-      setDirection(1);
       setStep(1);
     },
     [markCompleted]
-  );
-
-  const handleGoalSelected = useCallback(
-    (value: string) => {
-      setGoal(value);
-      completeAndNext('goal');
-    },
-    [completeAndNext]
-  );
-
-  const handleStackSubmitted = useCallback(
-    (values: string[]) => {
-      setStack(values);
-      completeAndNext('stack');
-    },
-    [completeAndNext]
-  );
-
-  const handleIcpSubmitted = useCallback(
-    (data: IcpData) => {
-      setIcp(data);
-      completeAndNext('icp');
-    },
-    [completeAndNext]
   );
 
   const handleOrgDetailsSubmitted = useCallback(
@@ -233,94 +146,97 @@ const Onboarding = () => {
     [completeAndNext]
   );
 
-  const handleDiscoverySubmitted = useCallback(
-    (source: string) => {
-      setDiscoverySource(source);
-      completeAndNext('discovery');
-    },
-    [completeAndNext]
-  );
-
   const handleSpecializationsSubmitted = useCallback(
     async (specs: string[]) => {
+      if (orgCreateInFlightRef.current) return; // double clic pendant la création
       setSpecializations(specs);
-      markCompleted('specializations');
-      setDirection(1);
 
       if (orgType === 'freelance' && orgDetailsData) {
+        orgCreateInFlightRef.current = true;
         try {
-          const { data: { user } } = await supabase.auth.getUser();
-          const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
-          const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
-          const org = await createOrganization({
-            name: userName,
-            slug: `${slug}-${Date.now().toString(36)}`,
-          });
-          if (org?.id) {
-            const aiCtx = buildOrgAiContext();
-            await supabase
-              .from('organizations')
-              .update({
-                org_type: 'freelance',
-                team_size: orgDetailsData.teamSize,
-                specializations: specs,
-                discovery_source: discoverySource,
-                freelance_mode: orgDetailsData.freelanceMode,
-                annual_hires: orgDetailsData.annualHires ?? null,
-                ...(aiCtx ? { ai_context: aiCtx } : {}),
-              } as any)
-              .eq('id', org.id);
+          // Réessai après un échec d'écriture de l'activité : l'espace existe
+          // déjà (créé avec son type), on ne le recrée pas.
+          let orgId = createdOrgId;
+          if (!orgId) {
+            const { data: { user } } = await supabase.auth.getUser();
+            const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
+            const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
+            try {
+              const org = await createOrganization({
+                name: userName,
+                slug: `${slug}-${Date.now().toString(36)}`,
+                // Type écrit dans l'INSERT : l'espace n'existe jamais sans type
+                orgType: 'freelance',
+                // F3 : création silencieuse (pas de clic dédié) → autorisée pour un
+                // second espace uniquement si demandé explicitement via `?new=1`
+                confirmSecond: isExplicitNewWorkspace,
+              });
+              orgId = org.id;
+            } catch (createErr) {
+              // Espace déjà créé par ce tunnel sans que l'id soit connu (réponse
+              // perdue après l'INSERT, progression sauvegardée avant l'ajout de
+              // createdOrgId) : on le reprend s'il a été créé par l'utilisateur et
+              // qu'il est de type indépendant, plutôt que de bloquer le tunnel.
+              if ((createErr as { code?: string })?.code !== ORG_ALREADY_EXISTS) throw createErr;
+              const { data: fresh } = await refetchOrganization();
+              const own = fresh?.organization as { id: string; created_by: string; org_type?: string | null } | undefined;
+              if (!user || !own || own.created_by !== user.id || own.org_type !== 'freelance') throw createErr;
+              orgId = own.id;
+            }
+            setCreatedOrgId(orgId);
+            setOrgCreated(true);
           }
-          setOrgCreated(true);
+          try {
+            await updateOrganization(orgId, {
+              team_size: orgDetailsData.teamSize,
+              specializations: specs,
+              freelance_mode: orgDetailsData.freelanceMode,
+              annual_hires: orgDetailsData.annualHires ?? null,
+            });
+          } catch (detailsErr) {
+            // Pas d'avancée sans écriture : l'utilisateur revalide depuis cet écran.
+            console.error('[Onboarding] freelance details update failed:', detailsErr);
+            toast.error("Votre activité n'a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.");
+            return;
+          }
         } catch (err) {
           console.error('[Onboarding] Auto-create org failed:', err);
+          if ((err as { code?: string })?.code === ORG_ALREADY_EXISTS) {
+            // F3 : la mutation ne toaste pas ce cas ; l'utilisateur garde son
+            // espace existant et ne poursuit pas un tunnel sans organisation
+            toast.error('Vous faites déjà partie d’un espace de travail. Retrouvez-le depuis le tableau de bord.');
+          } else if (/duplicate key|organizations_slug_key/.test((err as Error)?.message ?? '')) {
+            // onError de la mutation tait ce cas : sans ce toast, le clic ne produirait rien
+            toast.error("Votre espace n'a pas pu être créé. Réessayez.");
+          }
+          // Autre échec : la mutation l'a déjà signalé (onError) ; on reste sur cet écran.
+          return;
+        } finally {
+          orgCreateInFlightRef.current = false;
         }
       }
 
+      markCompleted('specializations');
       setStep((s) => Math.min(s + 1, flow.length - 1));
     },
-    [markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, flow.length, buildOrgAiContext]
+    [markCompleted, createOrganization, refetchOrganization, createdOrgId, orgType, orgDetailsData, flow.length, isExplicitNewWorkspace]
   );
 
   const handleOrgCreated = useCallback(
     (data: OnboardingCompanyData) => {
       setOrgCreated(true);
-      setCompanyData(data);
+      if (data.orgId) setCreatedOrgId(data.orgId);
       markCompleted('org');
-
-      if (organizationId && orgType && orgDetailsData) {
-        const aiCtx = buildOrgAiContext();
-        supabase
-          .from('organizations')
-          .update({
-            org_type: orgType,
-            team_size: orgDetailsData.teamSize,
-            specializations,
-            discovery_source: discoverySource,
-            freelance_mode: orgDetailsData.freelanceMode,
-            annual_hires: orgDetailsData.annualHires ?? null,
-            ...(aiCtx ? { ai_context: aiCtx } : {}),
-          } as any)
-          .eq('id', organizationId);
-      }
-
-      goNext();
-    },
-    [markCompleted, goNext, organizationId, orgType, orgDetailsData, specializations, discoverySource, buildOrgAiContext]
-  );
-
-  const handleIntegrationsNext = useCallback(
-    (connectedCount: number) => {
-      if (connectedCount > 0) markCompleted('integrations');
+      // org_type est écrit dans l'INSERT (SceneOrganization → createOrganization) :
+      // plus d'UPDATE séparé ici, donc plus d'espace sans type.
       goNext();
     },
     [markCompleted, goNext]
   );
 
-  const handleTeamFinish = useCallback(
-    (invitedCount: number) => {
-      setTeamInvitedCount(invitedCount);
-      if (invitedCount > 0) markCompleted('team');
+  const handleLinkedInNext = useCallback(
+    (connected: boolean) => {
+      if (connected) markCompleted('linkedin');
       goNext();
     },
     [markCompleted, goNext]
@@ -330,64 +246,46 @@ const Onboarding = () => {
     clearOnboardingProgress();
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
-    navigate('/dashboard', { replace: true });
+    // Une organisation qui vient d'être créée n'a aucune mission : on ouvre
+    // directement la création (ProjectsListV2 honore ?create=brief).
+    navigate('/missions?create=brief', { replace: true });
   }, [navigate, queryClient]);
-
-  // ─── Lignes de l'écran de préparation (reflètent la vraie configuration) ───
-  const preparingLines = useMemo<PreparingLine[]>(() => {
-    const goalLabel = GOAL_OPTIONS.find((o) => o.value === goal)?.title;
-    return [
-      { key: 'answers', label: goalLabel ? `Analyse de votre objectif — ${goalLabel.toLowerCase()}` : 'Analyse de vos réponses' },
-      { key: 'sectors', label: specializations.length > 0 ? `Indexation de vos secteurs (${specializations.length})` : 'Indexation de vos secteurs' },
-      { key: 'ai', label: 'Personnalisation de l’IA Konekt — ton et consignes' },
-      { key: 'quotas', label: 'Application de vos plafonds d’envoi LinkedIn' },
-      { key: 'workspace', label: organization?.name ? `Préparation de l’espace ${organization.name}` : 'Préparation de votre tableau de bord' },
-    ];
-  }, [goal, specializations, organization?.name]);
 
   // ─── Récap de lancement ───
   const launchItems = useMemo<LaunchChecklistItem[]>(() => {
     const items: LaunchChecklistItem[] = [
       { key: 'org', label: 'Espace de travail créé', done: orgCreated || !!organization },
-      { key: 'activity', label: 'Activité & secteurs renseignés', done: completedScenes.has('specializations') },
     ];
-    if (flow.includes('audit')) {
-      items.push({ key: 'audit', label: 'Image employeur analysée', done: completedScenes.has('audit') });
+    if (flow.includes('specializations')) {
+      items.push({ key: 'activity', label: 'Activité et secteurs renseignés', done: completedScenes.has('specializations') });
     }
-    items.push(
-      { key: 'profile', label: 'Profil recruteur complété', done: completedScenes.has('profile'), settingsPath: '/settings?tab=account' },
-      { key: 'aitone', label: 'IA personnalisée (ton & consignes)', done: completedScenes.has('aitone'), settingsPath: '/settings?tab=ai-context' },
-      { key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings?tab=account' },
-      { key: 'quotas', label: 'Rythme de prospection réglé', done: completedScenes.has('quotas'), settingsPath: '/settings?tab=account' }
-    );
-    if (flow.includes('team')) {
-      items.push({ key: 'team', label: 'Équipe invitée', done: completedScenes.has('team') || teamInvitedCount > 0, settingsPath: '/settings?tab=team' });
-    }
+    items.push({ key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings/account/connections' });
     return items;
-  }, [orgCreated, organization, completedScenes, flow, linkedInConnected, teamInvitedCount]);
+  }, [orgCreated, organization, completedScenes, flow, linkedInConnected]);
 
-  // ─── Transitions de scène ───
-  const variants = reduceMotion
-    ? {
-        enter: () => ({ opacity: 0 }),
-        center: { opacity: 1 },
-        exit: () => ({ opacity: 0 }),
-      }
-    : {
-        enter: (dir: number) => ({
-          x: dir > 0 ? 90 : -90,
-          opacity: 0,
-          scale: 0.96,
-          filter: 'blur(8px)',
-        }),
-        center: { x: 0, opacity: 1, scale: 1, filter: 'blur(0px)' },
-        exit: (dir: number) => ({
-          x: dir > 0 ? -90 : 90,
-          opacity: 0,
-          scale: 0.96,
-          filter: 'blur(8px)',
-        }),
-      };
+  // F3 : un utilisateur qui a déjà un espace et arrive à l'ENTRÉE du tunnel
+  // (step 0, pas de progression en cours) sans `?new=1` n'a rien à faire ici →
+  // dashboard. `step === 0` est sans effet de bord : toute création d'org dans
+  // le tunnel a lieu à un step > 0 (scènes `org` / `specializations`), donc un
+  // utilisateur en cours d'onboarding n'est jamais renvoyé.
+  // Un utilisateur qui est déjà entré dans le tunnel (step > 0 à un moment,
+  // y compris après rechargement avec progression restaurée) et revient au
+  // premier écran ne doit pas être éjecté : son org vient peut-être d'être créée.
+  useEffect(() => {
+    if (step > 0) tunnelStartedRef.current = true;
+  }, [step]);
+  if (step === 0 && !isExplicitNewWorkspace && !tunnelStartedRef.current) {
+    if (isOrgLoading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Spinner size="lg" label="Chargement de votre espace" />
+        </div>
+      );
+    }
+    if (organization) {
+      return <Navigate to={withPreviewAccessToken('/dashboard')} replace />;
+    }
+  }
 
   return (
     <OnboardingShell
@@ -401,125 +299,44 @@ const Onboarding = () => {
         <InvitationBanner />
       </div>
 
-      <div className="w-full relative" style={{ minHeight: 340 }}>
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={step}
-            custom={direction}
-            variants={variants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full"
-          >
-            {currentScene === 'orgtype' && (
-              <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
-            )}
-            {currentScene === 'goal' && (
-              <SceneGoal onSelect={handleGoalSelected} onBack={goBack} savedValue={goal} />
-            )}
-            {currentScene === 'orgdetails' && orgType && (
-              <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
-            )}
-            {currentScene === 'stack' && (
-              <SceneStack onSubmit={handleStackSubmitted} onBack={goBack} savedStack={stack} />
-            )}
-            {currentScene === 'discovery' && (
-              <SceneDiscovery
-                onSubmit={handleDiscoverySubmitted}
-                onSkip={goNext}
-                onBack={goBack}
-                savedValue={discoverySource}
-              />
-            )}
-            {currentScene === 'specializations' && (
-              <SceneSpecializations
-                onSubmit={handleSpecializationsSubmitted}
-                onBack={goBack}
-                savedSpecializations={specializations}
-              />
-            )}
-            {currentScene === 'icp' && (
-              <SceneICP
-                onSubmit={handleIcpSubmitted}
-                onSkip={goNext}
-                onBack={goBack}
-                savedIcp={icp ?? undefined}
-              />
-            )}
-            {currentScene === 'org' && (
-              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
-            )}
-            {currentScene === 'audit' && (
-              <SceneAudit
-                companyData={companyData}
-                onNext={() => completeAndNext('audit')}
-                onBack={goBack}
-              />
-            )}
-            {currentScene === 'profile' && (
-              <SceneProfile
-                onNext={() => completeAndNext('profile')}
-                onBack={goBack}
-                orgType={orgType}
-                savedState={profileState}
-                onStateChange={setProfileState}
-              />
-            )}
-            {currentScene === 'aitone' && (
-              <SceneAiTone
-                onNext={() => completeAndNext('aitone')}
-                onSkip={goNext}
-                onBack={goBack}
-              />
-            )}
-            {currentScene === 'integrations' && (
-              <SceneIntegrations onNext={handleIntegrationsNext} onBack={goBack} />
-            )}
-            {currentScene === 'quotas' && (
-              <SceneQuotas
-                onNext={() => completeAndNext('quotas')}
-                onSkip={goNext}
-                onBack={goBack}
-              />
-            )}
-            {currentScene === 'team' && (
-              <SceneTeam
-                organizationId={organizationId}
-                onFinish={handleTeamFinish}
-                onBack={goBack}
-              />
-            )}
-            {currentScene === 'preparing' && (
-              <ScenePreparing
-                lines={preparingLines}
-                onDone={() => completeAndNext('preparing')}
-              />
-            )}
-            {currentScene === 'launch' && (
-              <SceneLaunch
-                items={launchItems}
-                scorePercent={scorePercent}
-                orgName={organization?.name}
-                onFinish={handleFinish}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
+      <div className="w-full min-h-80">
+        {/* Changement de scène : un fondu d'entrée de 200 ms, rien d'autre (01-direction.md, § 7). */}
+        <motion.div
+          key={step}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="w-full"
+        >
+          {currentScene === 'orgtype' && (
+            <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
+          )}
+          {currentScene === 'orgdetails' && orgType && (
+            <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
+          )}
+          {currentScene === 'specializations' && (
+            <SceneSpecializations
+              onSubmit={handleSpecializationsSubmitted}
+              onBack={goBack}
+              savedSpecializations={specializations}
+            />
+          )}
+          {currentScene === 'org' && orgType && (
+            <SceneOrganization orgType={orgType} onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
+          )}
+          {/* Pas de retour : la scène précédente crée l'espace de travail */}
+          {currentScene === 'linkedin' && (
+            <SceneLinkedIn onNext={handleLinkedInNext} />
+          )}
+          {currentScene === 'launch' && (
+            <SceneLaunch
+              items={launchItems}
+              orgName={organization?.name}
+              onFinish={handleFinish}
+            />
+          )}
+        </motion.div>
       </div>
-
-      {/* Interstitiel de chapitre */}
-      <AnimatePresence>
-        {interstitialIdx !== null && chapters[interstitialIdx] && (
-          <ChapterInterstitial
-            chapter={chapters[interstitialIdx]}
-            chapterIndex={interstitialIdx}
-            totalChapters={chapters.length}
-            onDismiss={() => setInterstitialIdx(null)}
-          />
-        )}
-      </AnimatePresence>
     </OnboardingShell>
   );
 };

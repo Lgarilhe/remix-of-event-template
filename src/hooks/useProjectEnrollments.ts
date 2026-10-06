@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -19,21 +19,40 @@ export interface ProjectEnrollmentInfo {
   created_at: string;
 }
 
+/** Rechargements des instances montées : une inscription faite ailleurs rafraîchit tous les badges. */
+const refreshListeners = new Set<() => void>();
+
+/**
+ * Recharge toutes les instances montées de useProjectEnrollments (par exemple
+ * après une inscription depuis la recherche, dont le badge « En séquence » est
+ * affiché par un autre composant que celui qui inscrit).
+ */
+export function refreshProjectEnrollments(): void {
+  refreshListeners.forEach((listener) => listener());
+}
+
 /**
  * Fetch les enrollments actifs/passés pour les candidats d'une mission.
  * Indexé par profile_id pour un lookup O(1) côté UI.
  *
- * @param jobId — l'id du job lié à la mission (= sourcing_projects.job_id
- *   ou sourcing_projects.id selon la convention de ce projet). On accepte
- *   les 2 et on tente les 2 lookups.
+ * @param jobIdOrIds — l'id du job lié à la mission (= sourcing_projects.job_id
+ *   ou sourcing_projects.id selon la convention de ce projet), ou la liste des
+ *   valeurs possibles (missionEnrollmentJobIds de src/lib/sequenceErrorMessages).
  */
-export function useProjectEnrollments(jobId: string | null | undefined) {
+export function useProjectEnrollments(jobIdOrIds: string | readonly string[] | null | undefined) {
+  // Clé primitive : un tableau recréé à chaque rendu ne relance pas la lecture.
+  const jobId = (typeof jobIdOrIds === 'string' ? [jobIdOrIds] : [...(jobIdOrIds ?? [])])
+    .filter(Boolean)
+    .join(',') || null;
   const [enrollments, setEnrollments] = useState<Map<string, ProjectEnrollmentInfo>>(new Map());
   const [loading, setLoading] = useState(false);
+  /** Mission dont les badges affichés proviennent. */
+  const loadedForRef = useRef<string | null>(null);
 
   const fetchEnrollments = useCallback(async () => {
     if (!jobId) {
       setEnrollments(new Map());
+      loadedForRef.current = null;
       return;
     }
     setLoading(true);
@@ -50,7 +69,7 @@ export function useProjectEnrollments(jobId: string | null | undefined) {
           created_at,
           sequences:outreach_sequences ( name )
         `)
-        .eq('job_id', jobId)
+        .in('job_id', jobId.split(','))
         .order('created_at', { ascending: false })
         .limit(500);
 
@@ -64,7 +83,7 @@ export function useProjectEnrollments(jobId: string | null | undefined) {
             enrollment_id: row.id,
             profile_id: row.profile_id,
             sequence_id: row.sequence_id,
-            sequence_name: (row.sequences as any)?.name || null,
+            sequence_name: (row.sequences as { name: string | null } | null)?.name || null,
             status: row.status,
             current_step_order: row.current_step_order ?? 0,
             replied_at: row.replied_at,
@@ -73,9 +92,16 @@ export function useProjectEnrollments(jobId: string | null | undefined) {
         }
       }
       setEnrollments(map);
+      loadedForRef.current = jobId;
     } catch (err) {
+      // On garde les badges déjà affichés pour cette mission : les vider ferait
+      // croire qu'aucun candidat n'est en séquence et inviterait à les
+      // réinscrire. Ceux d'une autre mission ne sont jamais conservés.
       console.error('[useProjectEnrollments]', err);
-      setEnrollments(new Map());
+      if (loadedForRef.current !== jobId) {
+        setEnrollments(new Map());
+        loadedForRef.current = null;
+      }
     } finally {
       setLoading(false);
     }
@@ -83,6 +109,12 @@ export function useProjectEnrollments(jobId: string | null | undefined) {
 
   useEffect(() => {
     fetchEnrollments();
+  }, [fetchEnrollments]);
+
+  useEffect(() => {
+    const listener = () => { fetchEnrollments(); };
+    refreshListeners.add(listener);
+    return () => { refreshListeners.delete(listener); };
   }, [fetchEnrollments]);
 
   return { enrollments, loading, refetch: fetchEnrollments };

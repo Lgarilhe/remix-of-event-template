@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSubscriptionGate } from "../_shared/subscription-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,13 +87,35 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Rôle borné côté serveur (SEC-018) : l'insert se fait sous service_role,
+    // enforce_role_hierarchy ne s'applique donc pas. Jamais 'owner' par invitation.
+    const ALLOWED_INVITE_ROLES = ["admin", "member", "collaborator"];
+    const invitedRole = String(invitation.role ?? "member").trim().toLowerCase();
+    if (!ALLOWED_INVITE_ROLES.includes(invitedRole)) {
+      throw new Error("Rôle d'invitation invalide");
+    }
+
+    // Sièges (lot P0-C) : un siège = une ligne organization_members, tous rôles.
+    // L'invitation reste en attente : l'invité pourra réessayer une fois un siège ajouté.
+    const gate = await getSubscriptionGate(supabase, invitation.organization_id);
+    if (gate.seatCount >= gate.seatLimit) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: "seats_exceeded",
+          error: "L'espace de travail n'a plus de siège disponible. Demandez à un administrateur d'en ajouter.",
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Add as member
     const { error: memberError } = await supabase
       .from("organization_members")
       .insert({
         organization_id: invitation.organization_id,
         user_id: user.id,
-        role: invitation.role,
+        role: invitedRole,
       });
 
     if (memberError) throw memberError;

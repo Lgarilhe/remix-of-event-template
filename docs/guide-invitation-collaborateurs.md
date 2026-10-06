@@ -7,7 +7,7 @@
 
 ## 🚀 Étape 1 — Tu invites un collaborateur (30 secondes)
 
-1. Va sur **https://konekt-app-navy.vercel.app/settings?tab=team**
+1. Va sur **https://konekt-app-navy.vercel.app/settings/org/team**
 2. Clique sur le formulaire d'invitation en bas de la liste des membres
 3. Tape l'email du collaborateur
 4. Choisis le rôle :

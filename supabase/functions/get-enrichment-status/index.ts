@@ -4,8 +4,16 @@
  * Workflow :
  *   1. Auth + org check
  *   2. GET Better Contact /api/v2/async/{request_id}
- *   3. Si status='terminated' → UPDATE candidate_enrichments avec contact_data + retour
+ *   3. Si status='terminated' → UPDATE candidate_enrichments avec contact_data,
+ *      incrément du compteur mensuel (statistiques), débit de crédits seulement
+ *      si la ligne n'est pas couverte par le forfait (included = false), puis retour
  *   4. Si encore en cours → return status='pending'
+ *
+ * Corps : { request_id, candidate_id? } — si candidate_id (identifiant d'un
+ * candidat du pipeline) est fourni et qu'un contact est trouvé, le résultat est
+ * gardé sur la fiche pipeline (candidate_contacts, source 'enriched').
+ *
+ * Réponse : `included` = demande couverte par le forfait (aucun crédit débité).
  *
  * Frontend appelle ce endpoint toutes les 5s tant que status='pending'.
  *
@@ -23,6 +31,23 @@ const corsHeaders = {
 };
 
 const BC_BASE = "https://app.bettercontact.rocks/api/v2";
+
+/**
+ * Prix d'un crédit du fournisseur d'enrichissement, en dollars.
+ *
+ * La quantité de crédits vient de la réponse du fournisseur, qui la renvoie à
+ * chaque demande terminée ; seul le prix unitaire manque. Le tarif public va de
+ * 0,040 à 0,050 $ le crédit selon le palier, et le secret
+ * BETTERCONTACT_CREDIT_COST_USD permet d'y mettre le tarif réellement contracté.
+ *
+ * Sans ce coût, settleCredits retombait sur le calcul par jetons, qui vaut zéro
+ * pour une action qui n'en consomme aucun : le suivi de marge était aveugle
+ * précisément sur la ligne la plus chère (audit tarifaire du 2026-09-09).
+ */
+const ENRICH_CREDIT_COST_USD = (() => {
+  const raw = Number(Deno.env.get("BETTERCONTACT_CREDIT_COST_USD"));
+  return Number.isFinite(raw) && raw > 0 ? raw : 0.045;
+})();
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -49,9 +74,19 @@ function extractContactFromBcResult(bcData: any): {
   email_provider: string | null;
   phone_provider: string | null;
   credits_consumed: number;
+  /**
+   * Nombre de crédits annoncé par le fournisseur, ou null s'il n'a rien annoncé
+   * ou a renvoyé autre chose qu'un nombre. Le distinguer d'un zéro est ce qui
+   * sépare un coût mesuré d'un coût supposé.
+   */
+  credits_reported: number | null;
 } {
   const dataArray = Array.isArray(bcData?.data) ? bcData.data : [];
   const first = dataArray[0] || {};
+  const rawCredits = Number(bcData?.credits_consumed);
+  const creditsReported = Number.isFinite(rawCredits) && rawCredits >= 0
+    ? Math.trunc(rawCredits)
+    : null;
   return {
     email: first.contact_email_address || null,
     email_status: first.contact_email_address_status || null,
@@ -59,8 +94,43 @@ function extractContactFromBcResult(bcData: any): {
     phone_type: first.contact_phone_number_type || null,
     email_provider: first.email_provider || null,
     phone_provider: first.phone_provider || null,
-    credits_consumed: Number(bcData?.credits_consumed ?? 0),
+    credits_consumed: creditsReported ?? 0,
+    credits_reported: creditsReported,
   };
+}
+
+/**
+ * Garde le résultat sur la fiche pipeline : candidate_contacts, une ligne par
+ * (organisation, candidat). Seuls les champs trouvés sont écrits : un email ou
+ * un téléphone saisi à la main pour l'autre champ n'est pas effacé.
+ */
+async function saveCandidateContact(
+  client: ReturnType<typeof createClient>,
+  input: { organizationId: string; candidateId: string; userId: string; email: string | null; phone: string | null },
+): Promise<void> {
+  if (!input.email && !input.phone) return;
+  // Une fiche saisie à la main garde son étiquette « Saisi » quand un seul
+  // champ est enrichi ; « Enrichi » seulement si la ligne est neuve ou déjà enrichie.
+  const { data: existing } = await client
+    .from("candidate_contacts")
+    .select("source")
+    .eq("organization_id", input.organizationId)
+    .eq("candidate_id", input.candidateId)
+    .maybeSingle();
+  const source = !existing || !existing.source || String(existing.source).startsWith("enriched") ? "enriched" : existing.source;
+  const { error } = await client
+    .from("candidate_contacts")
+    .upsert({
+      organization_id: input.organizationId,
+      candidate_id: input.candidateId,
+      source,
+      updated_by: input.userId,
+      ...(input.email ? { email: input.email } : {}),
+      ...(input.phone ? { phone: input.phone } : {}),
+    }, { onConflict: "organization_id,candidate_id" });
+  if (error) {
+    console.warn("[get-enrichment-status] candidate_contacts upsert failed:", error.message);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -69,7 +139,7 @@ Deno.serve(async (req) => {
   try {
     // ── Auth ──
     const auth = await requireAuth(req, corsHeaders);
-    if (!auth.userId) return auth.response!;
+    if (!auth.userId) return json({ success: false, error: "Authentification utilisateur requise" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceClient = createClient(
@@ -79,6 +149,9 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const requestId = body.request_id || body.id;
+    // Identifiant pipeline optionnel (job_candidate_status.candidate_id, texte)
+    const candidateIdRaw = typeof body.candidate_id === "string" ? body.candidate_id.trim() : "";
+    const candidateId = candidateIdRaw.length > 0 && candidateIdRaw.length <= 200 ? candidateIdRaw : null;
 
     if (!requestId) {
       return json({ success: false, error: "request_id requis" }, 400);
@@ -93,7 +166,7 @@ Deno.serve(async (req) => {
         p_window_seconds: 60,
       });
       if (rlAllowed === false) {
-        return json({ success: false, error: "Trop de requêtes." }, 429);
+        return json({ success: false, error: "Trop de requêtes.", error_code: "RATE_LIMITED" }, 429);
       }
     } catch { /* RPC indispo, on laisse passer */ }
 
@@ -119,7 +192,7 @@ Deno.serve(async (req) => {
       console.warn(`[get-enrichment-status] Row introuvable pour request_id=${requestId} — refus pour sécurité multi-tenant`);
       return json({
         success: false,
-        error: "Demande d'enrichment introuvable. La table candidate_enrichments est-elle bien créée ?",
+        error: "Demande d'enrichissement introuvable",
         error_code: "ENRICHMENT_NOT_FOUND",
       }, 404);
     }
@@ -138,9 +211,19 @@ Deno.serve(async (req) => {
 
       // ── Si déjà terminé en DB, retour direct (pas besoin de re-call BC) ──
       if (cached.status === "terminated") {
+        if (candidateId) {
+          await saveCandidateContact(serviceClient, {
+            organizationId: cached.organization_id,
+            candidateId,
+            userId: auth.userId,
+            email: cached.contact_email || null,
+            phone: cached.contact_phone || null,
+          });
+        }
         return json({
           success: true,
           status: "terminated",
+          included: cached.included === true,
           contact: {
             email: cached.contact_email,
             email_status: cached.contact_email_status,
@@ -223,65 +306,105 @@ Deno.serve(async (req) => {
       completed_at: new Date().toISOString(),
     };
 
+    const isIncluded = cached?.included === true;
+
     if (cached?.id) {
-      // Update la row existante
-      const { error: updateError } = await serviceClient
+      // Le passage à « terminée » est réclamé par une écriture conditionnelle :
+      // seule la requête qui trouve encore la demande en cours l'emporte, et
+      // c'est elle seule qui débite. Deux sondages simultanés du même
+      // request_id (deux onglets, un lot qui repasse) voyaient sinon tous les
+      // deux une demande en cours et facturaient chacun leur tour.
+      const { data: claimed, error: updateError } = await serviceClient
         .from("candidate_enrichments")
         .update(updatePayload)
-        .eq("id", cached.id);
+        .eq("id", cached.id)
+        .eq("status", "pending")
+        .select("id");
 
       if (updateError) {
         console.warn("[get-enrichment-status] UPDATE failed:", updateError.message);
       }
+      const wonTransition = (claimed ?? []).length > 0;
 
       // ── SETTLE CREDITS Konekt ──
       // Débite uniquement si :
-      //  - on n'a pas déjà settle pour cette row (credits_consumed était 0 avant)
+      //  - cette requête a gagné la transition « en cours » → « terminée »
+      //  - la demande n'est pas couverte par le forfait (included = false)
       //  - BC a réellement trouvé email ou phone (sinon BC ne facture rien non plus)
-      // L'idempotence est garantie par : on settle UNE FOIS par transition pending→terminated.
       // Si l'user re-clique enrich sur ce profil dans 30j, c'est servi par le cache (pas de re-settle).
-      const alreadySettled = (cached.credits_consumed ?? 0) > 0;
-      if (!alreadySettled && cached.organization_id) {
+      if (wonTransition && cached.organization_id) {
         const ownerUserId = cached.requested_by_user_id || auth.userId;
         let creditsUsed = 0;
 
-        if (contact.email) {
-          settleCredits(serviceClient, {
-            organizationId: cached.organization_id,
-            userId: ownerUserId,
-            aiAction: "enrich_contact_email",
-            modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
-            tokensInput: 0,
-            tokensOutput: 0,
-            description: `Email enrichi via cascade — ${cached.linkedin_url}`,
-          }).catch(e => console.warn("[get-enrichment-status] settle email failed:", e));
-          creditsUsed += 1;
-        }
-        if (contact.phone) {
-          settleCredits(serviceClient, {
-            organizationId: cached.organization_id,
-            userId: ownerUserId,
-            aiAction: "enrich_contact_phone",
-            modelId: "claude-haiku-4-5",
-            tokensInput: 0,
-            tokensOutput: 0,
-            description: `Téléphone enrichi via cascade — ${cached.linkedin_url}`,
-          }).catch(e => console.warn("[get-enrichment-status] settle phone failed:", e));
-          creditsUsed += 10;
+        if (!isIncluded) {
+          // Coût fournisseur de la demande. La réponse porte le nombre de
+          // crédits réellement débités : on le répartit entre l'email et le
+          // mobile au prorata de leurs poids, 1 et 10. Si le fournisseur n'a
+          // rien annoncé, aucun coût n'est écrit : mieux vaut un blanc qu'un
+          // chiffre inventé, puisque ce champ ne sert qu'à mesurer la marge.
+          const emailUnits = contact.email ? 1 : 0;
+          const phoneUnits = contact.phone ? 10 : 0;
+          const nominalUnits = emailUnits + phoneUnits;
+          const costPerUnit = contact.credits_reported != null && nominalUnits > 0
+            ? (contact.credits_reported * ENRICH_CREDIT_COST_USD) / nominalUnits
+            : null;
+          if (contact.credits_reported != null && contact.credits_reported > 0 && nominalUnits === 0) {
+            console.error(
+              `[get-enrichment-status] facturé ${contact.credits_reported} crédits sans résultat pour ${requestId}`,
+            );
+          }
+
+          if (contact.email) {
+            await settleCredits(serviceClient, {
+              organizationId: cached.organization_id,
+              userId: ownerUserId,
+              aiAction: "enrich_contact_email",
+              modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
+              tokensInput: 0,
+              tokensOutput: 0,
+              ...(costPerUnit != null ? { costUsd: costPerUnit * emailUnits } : {}),
+              description: `Contact enrichi (email) : ${cached.linkedin_url}`,
+            });
+            creditsUsed += 1;
+          }
+          if (contact.phone) {
+            await settleCredits(serviceClient, {
+              organizationId: cached.organization_id,
+              userId: ownerUserId,
+              aiAction: "enrich_contact_phone",
+              modelId: "claude-haiku-4-5",
+              tokensInput: 0,
+              tokensOutput: 0,
+              ...(costPerUnit != null ? { costUsd: costPerUnit * phoneUnits } : {}),
+              description: `Contact enrichi (téléphone) : ${cached.linkedin_url}`,
+            });
+            creditsUsed += 10;
+          }
         }
 
-        // Increment quota mensuel utilisateur (atomique via RPC)
-        if (creditsUsed > 0) {
-          serviceClient.rpc("increment_enrichment_quota", {
+        // Compteur mensuel par membre (statistiques, y compris sous forfait),
+        // incrémenté AVANT de renvoyer le contact (atomique via RPC).
+        if (contact.email || contact.phone) {
+          const { error: quotaError } = await serviceClient.rpc("increment_enrichment_quota", {
             p_user_id: ownerUserId,
             p_org_id: cached.organization_id,
             p_emails: contact.email ? 1 : 0,
             p_phones: contact.phone ? 1 : 0,
             p_credits: creditsUsed,
-          }).then(({ error }) => {
-            if (error) console.warn("[get-enrichment-status] quota increment failed:", error.message);
           });
+          if (quotaError) console.warn("[get-enrichment-status] quota increment failed:", quotaError.message);
         }
+      }
+
+      // Fiche pipeline : garder le contact trouvé
+      if (candidateId && cached.organization_id) {
+        await saveCandidateContact(serviceClient, {
+          organizationId: cached.organization_id,
+          candidateId,
+          userId: auth.userId,
+          email: contact.email,
+          phone: contact.phone,
+        });
       }
     } else {
       // Pas de row → on n'écrit pas en DB ni settle (dégradé, pas de cache).
@@ -291,6 +414,7 @@ Deno.serve(async (req) => {
     return json({
       success: true,
       status: "terminated",
+      included: isIncluded,
       contact: {
         email: contact.email,
         email_status: contact.email_status,
@@ -302,6 +426,7 @@ Deno.serve(async (req) => {
       credits_consumed: contact.credits_consumed,
     });
   } catch (err) {
+    if (err instanceof Response) return err;
     console.error("[get-enrichment-status] Error:", err);
     return json({ success: false, error: "Erreur serveur" }, 500);
   }

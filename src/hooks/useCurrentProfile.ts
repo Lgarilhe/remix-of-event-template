@@ -1,13 +1,15 @@
 /**
  * useCurrentProfile — fetch profile data for the current user.
  *
- * Source de vérité pour le `display_name` (rempli pendant l'onboarding).
- * Utilisé pour les greetings, les avatars, les @mentions, etc.
+ * Nom affiché de l'utilisateur courant (barre latérale, salutation du tableau
+ * de bord). profiles.display_name est posé à l'inscription par handle_new_user,
+ * qui y met le préfixe d'e-mail faute de nom fourni.
  *
  * Cascade de fallback dans `displayName` :
- * 1. profile.display_name (Supabase profiles table) — passé au prettifier
- *    car certains onboardings legacy y ont stocké l'email prefix brut
- *    ("l.garilhe") au lieu d'un vrai nom.
+ * 1. profile.display_name (Supabase profiles table) — passé au prettifier.
+ *    handle_new_user y stocke l'email prefix brut ("l.garilhe") quand
+ *    l'inscription ne fournit pas de nom : ce préfixe ne passe pas devant les
+ *    métadonnées (il est ignoré ici et retrouvé à l'étape 4).
  * 2. user.user_metadata.full_name (auth metadata)
  * 3. user.user_metadata.first_name + last_name
  * 4. email parsé "intelligemment" : "l.garilhe@konekt.fr" → "L. Garilhe"
@@ -17,11 +19,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
 
+// Colonnes réelles de profiles seulement : l'e-mail vient de la session auth,
+// et aucun avatar n'est stocké.
 export interface CurrentProfile {
   user_id: string;
   display_name: string | null;
-  email: string | null;
-  avatar_url: string | null;
 }
 
 /**
@@ -72,29 +74,37 @@ export function useCurrentProfile() {
       if (!user) return null;
       const { data, error } = await supabase
         .from('profiles')
-        .select('user_id, display_name, email, avatar_url')
+        .select('user_id, display_name')
         .eq('user_id', user.id)
         .maybeSingle();
       if (error) {
         console.warn('[useCurrentProfile] fetch error:', error);
         return null;
       }
-      return data as CurrentProfile | null;
+      return data;
     },
     enabled: isReady && !!user,
     staleTime: 5 * 60 * 1000, // 5min
   });
 
   // Cascade de fallback pour displayName + firstName.
-  // On fait passer chaque source au prettifier — un onboarding legacy a pu
-  // stocker l'email-prefix brut ("l.garilhe") dans profile.display_name.
+  // On fait passer chaque source au prettifier — handle_new_user stocke
+  // l'email-prefix brut ("l.garilhe") dans profile.display_name, et ce préfixe
+  // ne passe pas devant les métadonnées.
   const fallbackFromMetadata =
     user?.user_metadata?.full_name ||
     [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ').trim() ||
     null;
 
+  const emailLocalPart = user?.email?.split('@')[0]?.toLowerCase() || null;
+  const storedName = profile?.display_name?.trim() || null;
+  // handle_new_user remplit display_name avec le préfixe d'e-mail quand
+  // l'inscription ne fournit pas de nom (toujours le cas aujourd'hui) : ce
+  // préfixe ne doit pas masquer le nom complet des métadonnées (connexion Google).
+  const storedNameIsEmailPrefix = !!storedName && storedName.toLowerCase() === emailLocalPart;
+
   const displayName =
-    prettifyName(profile?.display_name ?? null) ||
+    (storedNameIsEmailPrefix ? null : prettifyName(storedName)) ||
     prettifyName(fallbackFromMetadata) ||
     parseEmailToName(user?.email || null) ||
     null;
@@ -105,7 +115,8 @@ export function useCurrentProfile() {
     profile,
     displayName,
     firstName,
-    avatarUrl: profile?.avatar_url || null,
+    // E-mail de la session auth (profiles n'a pas de colonne email).
+    email: user?.email ?? null,
     isLoading: !isReady || isLoading,
   };
 }

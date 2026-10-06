@@ -80,6 +80,18 @@ jobs:
             exit 1
           fi
 
+      - name: Versions de migration uniques
+        # Deux fichiers portant la même version (cas 20260716130000 en juillet
+        # 2026) cassent `db push` (duplicate key sur schema_migrations_pkey)
+        # et le CI e2e. On refuse avant de toucher à la prod.
+        run: |
+          dups=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1 | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            echo "::error::Versions de migration dupliquées : $dups"
+            exit 1
+          fi
+          echo "OK : $(ls supabase/migrations/*.sql | wc -l) migrations, versions uniques."
+
       - name: Link Supabase project
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

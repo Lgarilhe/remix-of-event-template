@@ -98,12 +98,12 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
     <FilterSection
       id="position"
       title="Poste & Compétences"
-      icon={<Briefcase className="w-4 h-4 text-violet-500/80" />}
+      icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}
       badge={countPositionFilters}
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={activeFiltersPreview}
-      bgColorClass="bg-brand-purple/5"
+      bgColorClass=""
     >
       {/* Job Title with priority */}
       <FilterGroup
@@ -153,13 +153,13 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                 <span className="min-w-0 whitespace-normal break-words leading-snug">{role.keywords}</span>
                 <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
-              <button type="button" onClick={() => onRemoveRole(index)} className="text-purple-400 hover:text-purple-600 shrink-0">
+              <button type="button" onClick={() => onRemoveRole(index)} className="text-muted-foreground hover:text-foreground shrink-0">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Select value={role.priority} onValueChange={(v) => onUpdateRole(index, { priority: v as FilterPriority })}>
-                <SelectTrigger className="text-xs h-6 bg-card border-purple-200">
+                <SelectTrigger className="text-xs h-6 bg-card border-brand/30">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,7 +169,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                 </SelectContent>
               </Select>
               <Select value={role.scope} onValueChange={(v) => onUpdateRole(index, { scope: v as FilterScope })}>
-                <SelectTrigger className="text-xs h-6 bg-card border-purple-200">
+                <SelectTrigger className="text-xs h-6 bg-card border-brand/30">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -1,12 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
-import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
+import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
+import { useBaseKonektState } from '@/hooks/useBaseKonekt';
+import { BaseKonektDialog } from './BaseKonektDialog';
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
+import { SearchPromptBar } from './SearchPromptBar';
+import { FilterFacets } from './FilterFacets';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
@@ -18,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, Loader2, AlertTriangle, Lock, Pencil, Sparkles, Plus, X } from 'lucide-react';
+import { Search, Loader2, AlertTriangle, Lock, Pencil, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface FilterSuggestions {
@@ -57,8 +60,9 @@ interface SearchFiltersPanelProps {
   searchSource?: 'linkedin' | 'database';
   onSearchSourceChange?: (source: 'linkedin' | 'database') => void;
   
-  // Quota
-  quota: {
+  // Quota (obsolète : QuotaDisplay lit désormais les compteurs serveur du
+  // compte sélectionné ; conservé pour l'appelant LinkedInSearch)
+  quota?: {
     quotas: {
       searchResultsFetched: number;
       profileVisits: number;
@@ -84,6 +88,8 @@ interface SearchFiltersPanelProps {
   onScoringInstructionsChange?: (value: string) => void;
   suggestions?: FilterSuggestions | null;
   onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
+  /** Nouvelle page mission : sans la barre en langage naturel (le champ « Affiner » la remplace). */
+  hidePromptBar?: boolean;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -102,7 +108,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   activeProject,
   searchSource,
   onSearchSourceChange,
-  quota,
   onSearch,
   onClearFilters,
   searchHistory = [],
@@ -113,23 +118,30 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   onScoringInstructionsChange,
   suggestions,
   onSuggestionsGenerated,
+  hidePromptBar = false,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
-  const { data: allJobs = [] } = useJobs();
+  // Détail complet (autocomplete LinkedIn, booléen, spotlights…) replié par
+  // défaut en contexte mission : les facettes couvrent l'essentiel.
+  const [advancedOpen, setAdvancedOpen] = useState(!activeProject);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
-  // Feature flag Base Konekt (rollout contrôlé par org). Lisible admin/owner.
-  const { integrations } = useOrganizationIntegrations();
-  const coresignalEnabled = integrations?.coresignal_enabled === true;
-
-  const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
-    if (jobId) {
-      const foundJob = allJobs.find(j => j.id === jobId);
-      if (foundJob) {
-        onJobChange(foundJob);
-      }
+  // Base Konekt : état lisible par tous les membres (RPC get_base_konekt_state),
+  // pas seulement par les administrateurs.
+  const {
+    isEnabled: baseKonektEnabled, planAllows: baseKonektPlanAllows,
+    includedRemaining, creditsPerSearch, isLoading: baseKonektLoading,
+  } = useBaseKonektState();
+  const [baseKonektDialogOpen, setBaseKonektDialogOpen] = useState(false);
+  // La source « Base Konekt » peut être restaurée depuis le cache d'une mission
+  // alors que l'accès a été coupé entretemps : on revient sur LinkedIn plutôt
+  // que de laisser partir des recherches qui seront refusées.
+  const baseKonektUsable = baseKonektEnabled && baseKonektPlanAllows;
+  useEffect(() => {
+    if (!baseKonektLoading && !baseKonektUsable && searchSource === 'database') {
+      onSearchSourceChange?.('linkedin');
     }
-  }, [allJobs, onJobChange]);
+  }, [baseKonektLoading, baseKonektUsable, searchSource, onSearchSourceChange]);
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount);
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
@@ -147,37 +159,56 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </Alert>
       )}
 
-      {/* Sélecteur de source — visible seulement si Base Konekt activée pour l'org.
-          « LinkedIn » = recherche live via la session LinkedIn. « Base Konekt » =
-          recherche base de données (identité visible, sans toucher au compte). */}
-      {coresignalEnabled && onSearchSourceChange && (
-        <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-md">
-          <button
-            type="button"
-            onClick={() => onSearchSourceChange('linkedin')}
-            className={cn(
-              'text-xs font-medium py-1.5 rounded transition-colors',
-              searchSource !== 'database'
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            LinkedIn
-          </button>
-          <button
-            type="button"
-            onClick={() => onSearchSourceChange('database')}
-            className={cn(
-              'text-xs font-medium py-1.5 rounded transition-colors',
-              searchSource === 'database'
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Base Konekt
-          </button>
+      {/* Sélecteur de source. « LinkedIn » = recherche live via la session
+          LinkedIn. « Base Konekt » = recherche base de données (identité
+          visible, sans toucher au compte). Tant que la Base Konekt n'est pas
+          activée, l'onglet garde sa place mais ouvre la boîte de présentation :
+          c'est le point de découverte de la source. */}
+      {onSearchSourceChange && (
+        <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
+            <button
+              type="button"
+              onClick={() => onSearchSourceChange('linkedin')}
+              className={cn(
+                'text-sm font-medium py-1.5 rounded-[7px] transition-colors',
+                searchSource !== 'database' || !baseKonektUsable
+                  ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+                  : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
+              )}
+            >
+              LinkedIn
+            </button>
+            <button
+              type="button"
+              onClick={() => baseKonektUsable ? onSearchSourceChange('database') : setBaseKonektDialogOpen(true)}
+              className={cn(
+                'text-sm font-medium py-1.5 rounded-[7px] transition-colors',
+                baseKonektUsable && searchSource === 'database'
+                  ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+                  : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
+              )}
+            >
+              Base Konekt
+            </button>
+          </div>
+          {/* Rien tant que l'état n'est pas connu : annoncer un prix faux, même
+              une seconde, vaut mieux évité. */}
+          {!baseKonektLoading && baseKonektUsable && (
+            <p className="px-1 text-3xs text-[var(--k-text-muted)]">
+              {includedRemaining > 0
+                ? `${includedRemaining} recherche${includedRemaining > 1 ? 's' : ''} incluse${includedRemaining > 1 ? 's' : ''} restante${includedRemaining > 1 ? 's' : ''} ce mois`
+                : `${creditsPerSearch} crédits par page de résultats`}
+            </p>
+          )}
         </div>
       )}
+
+      <BaseKonektDialog
+        open={baseKonektDialogOpen}
+        onOpenChange={setBaseKonektDialogOpen}
+        onActivated={() => onSearchSourceChange?.('database')}
+      />
 
       {/* Alerte compte LinkedIn — uniquement en mode LinkedIn (la Base Konekt
           n'exige pas de compte connecté). */}
@@ -193,18 +224,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Account selector — only visible in LinkedIn mode */}
       {searchSource !== 'database' && (
-      <div className="bg-background border border-border p-2 sm:p-2.5 space-y-2">
+      <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5 space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-3xs font-bold text-muted-foreground uppercase tracking-wider">Compte</label>
-          <QuotaDisplay
-            searchResultsFetched={quota.quotas.searchResultsFetched}
-            profileVisits={quota.quotas.profileVisits}
-            messagesSent={quota.quotas.messagesSent}
-            invitationsSent={quota.quotas.invitationsSent}
-            inmailsSent={quota.quotas.inmailsSent}
-            apiMode={quota.apiMode}
-            compact={true}
-          />
+          <label className="text-xs text-muted-foreground">Compte</label>
+          <QuotaDisplay accountId={selectedAccount} compact={true} />
         </div>
 
         <div className="flex items-center gap-2">
@@ -253,7 +276,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
           {/* Mode selector */}
           <TooltipProvider>
-            <div className="flex gap-0.5 p-0.5 bg-muted shrink-0">
+            <div className="flex gap-0.5 p-0.5 rounded-[8px] border border-[var(--k-hairline)] bg-[var(--k-surface)] shrink-0">
               {API_TYPE_OPTIONS.map((option) => {
                 let isAvailable: boolean;
                 if (option.value === 'classic') {
@@ -276,10 +299,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                     disabled={!isAvailable}
                     className={`w-7 h-7 text-xs font-medium transition-all ${
                       !isAvailable
-                        ? 'text-foreground/20 cursor-not-allowed'
+                        ? 'text-[var(--k-text-placeholder)] cursor-not-allowed'
                         : filters.api === option.value
-                          ? 'bg-background text-foreground shadow-sm'
-                          : 'text-foreground/50 hover:text-foreground hover:bg-background/50'
+                          ? 'bg-[var(--k-surface-2)] text-[var(--k-text)] rounded-[6px] border border-[var(--k-hairline)]'
+                          : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
                     }`}
                   >
                     {!isAvailable ? <Lock className="w-2.5 h-2.5 mx-auto" /> : shortLabel}
@@ -331,10 +354,12 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Mission context: poste actif compact (1 ligne) */}
       {activeProject && selectedJob && (
-        <div className="bg-background border border-border p-2 sm:p-2.5 flex items-center gap-2 min-w-0">
-          <span className="text-sm shrink-0" aria-hidden="true">🎯</span>
+        <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5 flex items-center gap-2 min-w-0">
+          <span className="w-7 h-7 shrink-0 grid place-items-center rounded-[7px] border border-[var(--k-hairline)] bg-[var(--k-surface-2)] text-[var(--k-text-2)]" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-[15px] h-[15px]"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+          </span>
           <div className="flex flex-col gap-0 min-w-0 flex-1">
-            <span className="text-3xs font-bold text-muted-foreground uppercase tracking-wider leading-tight">
+            <span className="text-xs text-muted-foreground leading-tight">
               Poste actif
             </span>
             <p className="text-sm font-medium text-foreground truncate leading-tight">
@@ -347,11 +372,35 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </div>
       )}
 
+      {/* Barre de recherche en langage naturel — entrée principale (mission).
+          La phrase augmente le brief ; l'IA Konekt en dérive les filtres
+          éditables affichés ci-dessous. */}
+      {activeProject && selectedJob && !hidePromptBar && (
+        <SearchPromptBar
+          selectedJob={selectedJob}
+          accountId={selectedAccount}
+          searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
+          currentLocation={filters.location}
+          onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+          onSuggestionsGenerated={onSuggestionsGenerated}
+        />
+      )}
+
+      {/* Facettes — la recherche entière lisible et éditable d'un coup d'œil.
+          Le détail complet reste accessible via « Options avancées ». */}
+      <FilterFacets
+        filters={filters}
+        setFilters={setFilters}
+        accountId={selectedAccount}
+        searchSource={searchSource === 'database' || filters.api === 'database' ? 'database' : 'linkedin'}
+        onClearAll={onClearFilters}
+      />
+
       <div className="space-y-2 sm:space-y-3">
-        {/* Filter actions — HEAD's AutoFillFiltersButton kept (no onOpenFilterWizard
-            prop in HEAD signature; the wizard is invoked via the search.showFilterWizard
-            state from useLinkedInSearch instead) */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        {/* Auto-fill depuis le brief — masqué en contexte mission : la barre
+            de recherche en langage naturel (SearchPromptBar) couvre déjà la
+            génération, l'ancien bouton violet faisait doublon. */}
+        <div className={cn('flex-wrap items-center gap-1.5 sm:gap-2', activeProject ? 'hidden' : 'flex')}>
           <AutoFillFiltersButton
             selectedJob={selectedJob}
             accountId={selectedAccount}
@@ -420,26 +469,26 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           };
 
           return (
-            <div className="bg-background border border-border p-2 sm:p-2.5">
+            <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <Sparkles className="w-3 h-3 text-primary" />
-                <span className="text-3xs font-bold uppercase tracking-wider text-muted-foreground">Suggestions IA</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5 text-[var(--k-text-muted)]" aria-hidden="true"><path d="M14.08 13.2 17.2 15M12 14.4V18M9.92 13.2 6.8 15M9.92 10.8 6.8 9M12 9.6V6M14.08 10.8 17.2 9"/></svg>
+                <span className="text-xs text-muted-foreground">Suggestions IA</span>
               </div>
               <div className="flex flex-wrap gap-1">
                 {chips.slice(0, 8).map(chip => (
                   <span
                     key={chip.key}
-                    className="inline-flex items-center gap-0.5 pl-2 pr-0.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-2xs text-foreground group"
+                    className="inline-flex items-center gap-0.5 pl-2 pr-0.5 py-0.5 rounded-full border border-[var(--k-hairline)] bg-transparent text-2xs text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors group"
                   >
-                    <span className="text-3xs text-primary/60 font-medium mr-0.5">{chip.category}</span>
+                    <span className="text-3xs text-[var(--k-text-muted)] font-medium mr-0.5">{chip.category}</span>
                     <span className="truncate max-w-[100px]">{chip.label}</span>
                     <button
                       type="button"
                       onClick={() => handleAccept(chip)}
-                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-primary/20 transition-colors"
+                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-[var(--k-accent-tint)] transition-colors"
                       title="Ajouter"
                     >
-                      <Plus className="w-2.5 h-2.5 text-primary" />
+                      <Plus className="w-2.5 h-2.5 text-[var(--k-accent)]" />
                     </button>
                     <button
                       type="button"
@@ -458,8 +507,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
-          <div className="bg-background border border-border p-2 sm:p-2.5">
-            <label className="text-3xs font-bold text-muted-foreground mb-1 block uppercase tracking-wider">
+          <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
+            <label className="text-xs text-muted-foreground mb-1 block">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60 normal-case tracking-normal">(optionnel)</span>
             </label>
             <textarea
@@ -467,7 +516,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               onChange={(e) => onScoringInstructionsChange(e.target.value)}
               placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer la localisation, bonus si exp. scale-up…"
               rows={2}
-              className="w-full px-2.5 py-1.5 text-sm border border-border bg-background rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground/30 resize-none"
+              className="w-full px-2.5 py-1.5 text-sm border border-[var(--k-hairline)] bg-[var(--k-surface-2)] rounded-[8px] text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none focus:border-[var(--k-hairline-focus)] resize-none transition-colors"
             />
           </div>
         )}
@@ -483,10 +532,30 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         />
       )}
 
+      {/* ── Options avancées — booléen, autocomplete LinkedIn, spotlights… ── */}
+      <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(o => !o)}
+          aria-expanded={advancedOpen}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
+        >
+          <svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round"
+            className={cn('w-3.5 h-3.5 text-[var(--k-text-muted)] transition-transform duration-200', advancedOpen && 'rotate-90')}
+          >
+            <path d="M9.5 7 15 12l-5.5 5" />
+          </svg>
+          Options avancées
+          <span className="ml-auto font-mono text-2xs text-[var(--k-text-muted)]">booléen · séniorité · école · spotlights</span>
+        </button>
+      </div>
+
+      <div className={cn(!advancedOpen && 'hidden', 'space-y-2 sm:space-y-2.5')}>
       {/* Keywords preview + edit dialog — compact (label inline + bouton) */}
-      <div className="bg-background border border-border p-2.5">
+      <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+          <label className="text-xs text-muted-foreground">
             Mots-clés
           </label>
           {filters.keywords && (
@@ -498,7 +567,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <button
           type="button"
           onClick={() => { setKeywordsDraft(filters.keywords); setKeywordsDialogOpen(true); }}
-          className="w-full min-w-0 text-left flex items-start gap-2 px-2.5 py-1.5 border border-input bg-background hover:bg-accent/50 transition-colors min-h-[34px] group rounded-md"
+          className="w-full min-w-0 text-left flex items-start gap-2 px-2.5 py-1.5 border border-[var(--k-hairline)] bg-[var(--k-surface-2)] hover:border-[var(--k-hairline-hover)] transition-colors min-h-[34px] group rounded-[8px]"
         >
           {filters.keywords ? (
             <span className="text-sm whitespace-normal break-words leading-snug flex-1 min-w-0">{filters.keywords}</span>
@@ -548,21 +617,22 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         onChange={setFilters}
         accountId={selectedAccount}
       />
+      </div>{/* /Options avancées */}
 
       {/* Action buttons — sticky at bottom */}
-      <div className="sticky bottom-0 z-10 bg-background pt-2 pb-1 border-t border-border -mx-0 px-0">
+      <div className="sticky bottom-0 z-10 bg-background pt-2 pb-1 border-t border-[var(--k-hairline)] -mx-0 px-0">
         <div className="flex gap-2">
           <Button
             onClick={onSearch}
             disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
-            className="flex-1 bg-foreground text-background hover:bg-foreground/90"
+            className="flex-1 bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border-0"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
             ) : (
               <Search className="w-4 h-4 mr-2" />
             )}
-            {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
+            {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez une mission' : 'Rechercher'}
           </Button>
           <Button
             variant="outline"

@@ -1,6 +1,8 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,6 +73,18 @@ Deno.serve(async (req) => {
     if (!ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
+
+    // Refus avant l'appel. On estime sur _aiParams.modelId, celui dont dérive
+    // resolvedModel envoyé au fournisseur : estimer sur le défaut du tier
+    // réclamerait un coût que l'appel ne produit pas.
+    const gate = await assertCredits({
+      userId,
+      aiAction: _aiParams.aiAction,
+      modelId: _aiParams.modelId,
+      systemCall: auth.method === "service_role" && !userId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     const effectiveTotal = totalResults ?? resultCount;
     const autoDirection = effectiveTotal < 50 ? 'expand' : effectiveTotal > 500 ? 'narrow' : 'expand';
@@ -156,7 +170,8 @@ ${JSON.stringify(currentFilters, null, 2)}`;
       },
       body: JSON.stringify({
         model: resolvedModel,
-        max_tokens: 1024,
+        max_tokens: withThinkingHeadroom(resolvedModel, 1024),
+        ...gen5Params(resolvedModel),
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
       }),
@@ -171,7 +186,7 @@ ${JSON.stringify(currentFilters, null, 2)}`;
     const aiResult = await response.json();
     const _tokensIn = aiResult.usage?.input_tokens || 0;
     const _tokensOut = aiResult.usage?.output_tokens || 0;
-    const content = aiResult.content?.[0]?.text || "";
+    const content = textFromContent(aiResult.content);
 
     let parsed;
     try {

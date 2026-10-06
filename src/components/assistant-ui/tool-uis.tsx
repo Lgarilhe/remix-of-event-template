@@ -1,5 +1,10 @@
 import React from 'react';
 import { makeAssistantToolUI } from '@assistant-ui/react';
+import { Building2, Check, Globe, Search } from 'lucide-react';
+
+import notionLogo from '@/assets/notion-logo.webp';
+import { EmailProviderLogo } from '@/components/assistant-ui/connector-logos';
+import type { EmailConnectorProvider } from '@/hooks/useEmailConnectorStatus';
 
 /** Labels français des tools du copilot (reads + mutations + sourcing) */
 const TOOL_CHIP_LABELS: Record<string, string> = {
@@ -14,16 +19,19 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   get_upcoming_interviews: 'Lecture des entretiens',
   get_candidate_outreach: 'Lecture de la prospection',
   get_linkedin_thread: 'Lecture du fil LinkedIn',
-  search_knowledge: 'Recherche sémantique',
+  search_knowledge: 'Recherche dans vos documents',
   get_vivier_overview: 'Lecture du vivier',
   get_org_analytics: 'Lecture des statistiques',
   get_team_overview: "Lecture de l'équipe",
   get_recent_agent_actions: 'Vérification des actions',
+  search_email_threads: 'Recherche dans les e-mails',
+  search_emails: 'Recherche dans les e-mails',
+  get_email_thread: "Lecture d'un échange e-mail",
   // Mutations (propose → bandeau d'approbation)
-  add_candidate_note: 'Note candidat',
+  add_candidate_note: 'Note sur un candidat',
   dismiss_candidate: 'Écarter un candidat',
-  assign_candidate_to_member: 'Assignation candidat',
-  update_candidate_stage: 'Changement de stade',
+  assign_candidate_to_member: "Attribution d'un candidat",
+  update_candidate_stage: "Changement d'étape",
   add_to_shortlist: 'Ajout à la shortlist',
   update_mission_status: 'Statut de mission',
   update_mission_brief: 'Modification du brief',
@@ -34,21 +42,59 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   get_inbox_overview: 'Lecture de la messagerie',
   bulk_update_stage: 'Déplacement de candidats',
   bulk_dismiss: 'Écartement de candidats',
-  send_email: "Envoi d'email",
+  send_email: "Envoi d'un e-mail",
   create_sequence: 'Création de séquence',
   create_mission: 'Création de mission',
   send_linkedin_message: 'Message LinkedIn',
   pause_sequence: 'Pause de séquence',
   resume_sequence: 'Reprise de séquence',
-  enroll_in_sequence: 'Enrôlement en séquence',
+  enroll_in_sequence: 'Inscription en séquence',
   draft_outreach_message: "Rédaction d'approche",
   invite_team_member: "Invitation d'un membre",
   update_member_quota: 'Modification de quotas',
-  enrich_candidate_contact: 'Enrichissement contact',
+  enrich_candidate_contact: 'Recherche de coordonnées',
 };
 
-const toolChipLabel = (toolName: string) =>
-  TOOL_CHIP_LABELS[toolName] ?? toolName.replace(/_/g, ' ');
+const notionToolKind = (toolName: string): 'search' | 'fetch' | null => {
+  const normalized = toolName.toLowerCase().replace(/\s+/g, '');
+  if (normalized.includes('notion-search')) return 'search';
+  if (normalized.includes('notion-fetch')) return 'fetch';
+  return null;
+};
+
+interface EmailToolInfo {
+  kind: 'search' | 'thread';
+  provider: EmailConnectorProvider;
+}
+
+const emailToolInfo = (toolName: string): EmailToolInfo | null => {
+  const normalizedName = toolName.trim().toLowerCase();
+  const providerMatch = normalizedName.match(/^(gmail|outlook|email)\s*[·:|]\s*/);
+  const provider = (providerMatch?.[1] ?? 'email') as EmailConnectorProvider;
+  const baseName = normalizedName
+    .replace(/^(gmail|outlook|email)\s*[·:|]\s*/, '')
+    .replace(/\s+/g, '');
+
+  if (baseName.includes('search_email_threads') || baseName.includes('search_emails')) {
+    return { kind: 'search', provider };
+  }
+  if (baseName.includes('get_email_thread')) return { kind: 'thread', provider };
+  return null;
+};
+
+const emailProviderLabel = (provider: EmailConnectorProvider): string => {
+  if (provider === 'gmail') return 'Gmail';
+  if (provider === 'outlook') return 'Outlook';
+  return 'vos e-mails';
+};
+
+const toolChipLabel = (toolName: string) => {
+  const notionKind = notionToolKind(toolName);
+  if (notionKind === 'search') return 'Recherche dans Notion';
+  if (notionKind === 'fetch') return "Lecture d’une page Notion";
+  // Jamais le nom technique d'un outil absent de la table (revue design E-38).
+  return TOOL_CHIP_LABELS[toolName] ?? "Action de l'assistant";
+};
 
 /**
  * Fallback générique : chip discrète de progression pour TOUT tool sans UI
@@ -63,71 +109,162 @@ export const ToolFallbackChip: React.FC<{
   status?: { type: string };
 }> = ({ toolName, result, status }) => {
   const outcome = (result as { outcome?: string } | undefined)?.outcome;
+  const notionKind = notionToolKind(toolName);
+  const emailInfo = emailToolInfo(toolName);
   // "en cours" UNIQUEMENT pendant le run actif : un message annulé/interrompu
   // (status incomplete — nouvel envoi pendant l'exécution, erreur réseau) ne
   // doit pas laisser une chip animée à vie.
   const running = result === undefined && status?.type === 'running';
   const unresolved = result === undefined && !running;
+  const successful = !running && !unresolved && (
+    outcome === undefined || outcome === 'ok' || outcome === 'executed_inline'
+  );
+
+  // Les appels aux connecteurs réussis servent uniquement de progression pendant le
+  // stream. Une fois terminés, on les retire pour laisser toute la place au
+  // résultat final ; les erreurs et interruptions restent visibles.
+  if (notionKind && successful) return null;
+  if (emailInfo && successful) return null;
+
+  if (notionKind) {
+    const failed = !running && !unresolved && outcome === 'error';
+    const title = notionKind === 'search' ? 'Recherche dans Notion' : 'Lecture dans Notion';
+    const interruptedLabel = notionKind === 'search' ? 'Recherche interrompue' : 'Lecture interrompue';
+    const failedLabel = notionKind === 'search' ? 'La recherche a échoué' : 'La lecture a échoué';
+
+    return (
+      <div
+        role={failed ? 'alert' : 'status'}
+        aria-live="polite"
+        className="my-2 flex w-fit max-w-full items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2"
+      >
+        {/* Fond blanc : le logo officiel reste lisible en thème sombre. */}
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white">
+          <img
+            src={notionLogo}
+            alt=""
+            data-testid="notion-tool-logo"
+            className="h-[18px] w-[18px] object-contain"
+          />
+          {running && (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-background bg-brand"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-foreground">{title}</span>
+          <span className="block text-2xs text-muted-foreground">
+            {running && 'En cours…'}
+            {unresolved && interruptedLabel}
+            {failed && failedLabel}
+            {!running && !unresolved && !failed && outcome === 'denied' && 'Accès refusé'}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  if (emailInfo) {
+    const failed = !running && !unresolved && outcome === 'error';
+    const providerLabel = emailProviderLabel(emailInfo.provider);
+    const title = emailInfo.kind === 'search'
+      ? `Recherche dans ${providerLabel}`
+      : emailInfo.provider === 'email'
+        ? "Lecture d'un échange e-mail"
+        : `Lecture d'un échange ${providerLabel}`;
+    const interruptedLabel = emailInfo.kind === 'search' ? 'Recherche interrompue' : 'Lecture interrompue';
+    const failedLabel = emailInfo.kind === 'search' ? 'La recherche a échoué' : 'La lecture a échoué';
+
+    return (
+      <div
+        role={failed ? 'alert' : 'status'}
+        aria-live="polite"
+        className="my-2 flex w-fit max-w-full items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2"
+      >
+        {/* Fond blanc : le logo officiel reste lisible en thème sombre. */}
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white">
+          <EmailProviderLogo
+            provider={emailInfo.provider}
+            aria-hidden="true"
+            data-testid={`${emailInfo.provider}-tool-logo`}
+            className="h-[18px] w-[18px]"
+          />
+          {running && (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-background bg-brand"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-foreground">{title}</span>
+          <span className="block text-2xs text-muted-foreground">
+            {running && 'En cours…'}
+            {unresolved && interruptedLabel}
+            {failed && failedLabel}
+            {!running && !unresolved && !failed && outcome === 'denied' && 'Accès refusé'}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="my-1 inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">
-      <span className="font-medium text-foreground/80">{toolChipLabel(toolName)}</span>
-      {running && <span className="animate-pulse">en cours…</span>}
-      {unresolved && <span className="text-muted-foreground/60">interrompu</span>}
+    <div className="my-1 inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+      <span className="font-medium text-foreground">{toolChipLabel(toolName)}</span>
+      {running && <span>en cours…</span>}
+      {unresolved && <span>interrompu</span>}
       {!running && !unresolved && outcome === 'awaiting_approval' && (
-        <span className="text-amber-600 dark:text-amber-400">⏳ en attente d'approbation</span>
+        <span className="text-warning">en attente de votre validation</span>
       )}
-      {!running && !unresolved && outcome === 'denied' && <span className="text-destructive">refusé</span>}
-      {!running && !unresolved && outcome === 'error' && <span className="text-destructive">échec</span>}
+      {!running && !unresolved && outcome === 'denied' && <span className="text-danger">refusé</span>}
+      {!running && !unresolved && outcome === 'error' && <span className="text-danger">échec</span>}
       {!running && !unresolved && (outcome === undefined || outcome === 'ok' || outcome === 'executed_inline') && (
-        <span className="text-accent">✓</span>
+        <>
+          <Check className="h-3 w-3" aria-hidden="true" />
+          <span className="sr-only">terminé</span>
+        </>
       )}
     </div>
   );
 };
+
+/** Ligne d'état d'un outil nommé : icône, nom, « en cours… » puis « terminée ». */
+const ToolStatusLine: React.FC<{
+  icon: React.ElementType;
+  label: string;
+  status: string;
+  doneLabel: string;
+}> = ({ icon: Icon, label, status, doneLabel }) => (
+  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+    <span className="font-medium text-foreground">{label}</span>
+    {status === 'running' && <span>en cours…</span>}
+    {status === 'complete' && <span>{doneLabel}</span>}
+  </div>
+);
 
 /** Placeholder tool UIs — these render inline cards when tools are invoked */
 
 export const SearchCandidatesToolUI = makeAssistantToolUI({
   toolName: 'search_candidates',
   render: ({ args, status }) => (
-    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-      <span className="font-semibold text-foreground">🔍 Recherche de candidats</span>
-      {status.type === 'running' && (
-        <span className="ml-2 animate-pulse">en cours…</span>
-      )}
-      {status.type === 'complete' && (
-        <span className="ml-2 text-accent">✓ terminée</span>
-      )}
-    </div>
+    <ToolStatusLine icon={Search} label="Recherche de candidats" status={status.type} doneLabel="terminée" />
   ),
 });
 
 export const EnrichCompanyToolUI = makeAssistantToolUI({
   toolName: 'enrich_company',
   render: ({ args, status }) => (
-    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-      <span className="font-semibold text-foreground">🏢 Enrichissement entreprise</span>
-      {status.type === 'running' && (
-        <span className="ml-2 animate-pulse">en cours…</span>
-      )}
-      {status.type === 'complete' && (
-        <span className="ml-2 text-accent">✓ terminé</span>
-      )}
-    </div>
+    <ToolStatusLine icon={Building2} label="Fiche de l'entreprise" status={status.type} doneLabel="terminée" />
   ),
 });
 
 export const WebSearchToolUI = makeAssistantToolUI({
   toolName: 'web_search',
   render: ({ args, status }) => (
-    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-      <span className="font-semibold text-foreground">🌐 Recherche web</span>
-      {status.type === 'running' && (
-        <span className="ml-2 animate-pulse">en cours…</span>
-      )}
-      {status.type === 'complete' && (
-        <span className="ml-2 text-accent">✓ terminée</span>
-      )}
-    </div>
+    <ToolStatusLine icon={Globe} label="Recherche sur le web" status={status.type} doneLabel="terminée" />
   ),
 });

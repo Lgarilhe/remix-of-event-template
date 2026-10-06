@@ -1,87 +1,62 @@
+/**
+ * Indicateurs du pipeline global, en tuiles neutres sans survol (revue design
+ * E-24) : rien ne s'y clique. Deux colonnes au téléphone et trois ensuite,
+ * pour que chaque libellé (« Contactés au total ») reste lisible en entier (E-21).
+ *
+ * Design simplifié (lot Suite) : affichés dans l'onglet Analyse seulement, en
+ * tuiles sans cadre (fond doux, comme le Bilan de la page mission) ; une tuile
+ * à zéro ne s'affiche pas.
+ *
+ * Lot 0c-4 : les tuiles comptent des cumuls « au total » (plan 0c, section
+ * 4.1), sur l'étape générale et les jalons, mêmes définitions que les ever_*
+ * de get_mission_stage_counts : un candidat contacté puis écarté reste compté.
+ */
 import React from 'react';
-import { Users, Send, MessageCircle, UserCheck, Trophy } from 'lucide-react';
-import { ATSCandidate } from '@/hooks/useATSData';
+import { StatGrid, StatTile } from '@/components/layout';
+import type { ATSCandidate } from '@/hooks/useATSData';
+import { CUMULATIVE_LABEL } from '@/lib/stageDisplay';
 
 interface ATSStatsProps {
   candidates: ATSCandidate[];
-  stages: { key: string; label: string; color: string }[];
 }
 
-const STAT_CONFIG: { key: string; label: string; icon: typeof Users; suffix?: string }[] = [
-  { key: 'total', label: 'Total', icon: Users },
-  { key: 'contacted', label: 'Contactés', icon: Send },
-  { key: 'responseRate', label: 'Réponse', icon: MessageCircle, suffix: '%' },
-  { key: 'inProgress', label: 'En cours', icon: UserCheck },
-  { key: 'won', label: 'Gagnés', icon: Trophy },
-  { key: 'conversionRate', label: 'Conv.', icon: Trophy, suffix: '%' },
-];
+/** Étape atteinte : jalon, étape actuelle, ou étape d'avant un écart (colonnes ever_*). */
+const reached = (c: ATSCandidate, milestone: string | null | undefined, stages: readonly string[]): boolean =>
+  !!milestone
+  || (!!c.generalStage && stages.includes(c.generalStage))
+  || (!!c.rejectedFromStage && stages.includes(c.rejectedFromStage));
 
-function isContacted(c: ATSCandidate): boolean {
-  if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
-  if (['Contacté', 'Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
-  // Only count sequence as contacted if a message was actually sent (completed/replied), not just enrolled (active)
-  if (c.sequenceStatus && ['completed', 'replied'].includes(c.sequenceStatus)) return true;
-  if (c.source === 'inmail' && !['Nouveau'].includes(c.stage)) return true;
-  return false;
-}
+const CONTACTED_STAGES = ['contacted', 'replied', 'interviewing', 'hired'];
+const REPLIED_STAGES = ['replied', 'interviewing', 'hired'];
+const INTERVIEWED_STAGES = ['interviewing', 'hired'];
+const HIRED_STAGES = ['hired'];
 
-function isReplied(c: ATSCandidate): boolean {
-  if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
-  if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
-  if (c.sequenceStatus === 'replied') return true;
-  return false;
-}
+const percent = (value: number) => `${value}\u00a0%`;
 
-export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
+/** Tuile sans cadre : fond doux, comme les chiffres du Bilan de la page mission. */
+const TILE = 'rounded-xl border-0 bg-muted/60';
+
+export const ATSStats: React.FC<ATSStatsProps> = ({ candidates }) => {
   const stats = React.useMemo(() => {
     const total = candidates.length;
-    const contacted = candidates.filter(isContacted).length;
-    const replied = candidates.filter(isReplied).length;
-    const inProgress = candidates.filter(c =>
-      ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
-    ).length;
-    const won = candidates.filter(c => c.stage === 'Gagné').length;
-    const lost = candidates.filter(c => c.stage === 'Perdu').length;
+    const contacted = candidates.filter(c => reached(c, c.contactedAt, CONTACTED_STAGES)).length;
+    const replied = candidates.filter(c => reached(c, c.repliedAt, REPLIED_STAGES)).length;
+    const interviewed = candidates.filter(c => reached(c, c.firstInterviewAt, INTERVIEWED_STAGES)).length;
+    const hired = candidates.filter(c => reached(c, c.hiredAt, HIRED_STAGES)).length;
 
     const responseRate = contacted > 0 ? Math.round((replied / contacted) * 100) : 0;
-    const conversionRate = (won + lost) > 0 ? Math.round((won / (won + lost)) * 100) : 0;
 
-    return { total, contacted, replied, inProgress, won, lost, responseRate, conversionRate };
+    return { total, contacted, replied, interviewed, hired, responseRate };
   }, [candidates]);
 
-  const values: Record<string, number> = {
-    total: stats.total,
-    contacted: stats.contacted,
-    responseRate: stats.responseRate,
-    inProgress: stats.inProgress,
-    won: stats.won,
-    conversionRate: stats.conversionRate,
-  };
-
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
-      {STAT_CONFIG.map(stat => {
-        const Icon = stat.icon;
-        const value = values[stat.key];
-        return (
-          <div
-            key={stat.key}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors"
-          >
-            <div className="h-7 w-7 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-              <Icon className="w-3.5 h-3.5 text-foreground" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-[14px] font-bold text-foreground tabular-nums leading-tight">
-                {value}{stat.suffix || ''}
-              </p>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold truncate">
-                {stat.label}
-              </p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <StatGrid cols={{ base: 2, sm: 3, xl: 6 }}>
+      <StatTile label="Candidats" value={stats.total} className={TILE} />
+      {stats.contacted > 0 && <StatTile label={CUMULATIVE_LABEL.ever_contacted} value={stats.contacted} className={TILE} />}
+      {stats.replied > 0 && <StatTile label={CUMULATIVE_LABEL.ever_replied} value={stats.replied} className={TILE} />}
+      {stats.replied > 0 && <StatTile label="Taux de réponse" value={percent(stats.responseRate)} className={TILE} />}
+      {stats.interviewed > 0 && <StatTile label={CUMULATIVE_LABEL.ever_interviewed} value={stats.interviewed} className={TILE} />}
+      {stats.hired > 0 && <StatTile label={CUMULATIVE_LABEL.ever_hired} value={stats.hired} className={TILE} />}
+    </StatGrid>
   );
 };

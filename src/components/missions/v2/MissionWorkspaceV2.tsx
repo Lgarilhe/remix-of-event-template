@@ -1,16 +1,17 @@
 /**
- * MissionWorkspaceV2 — Nouveau parcours mission à 3 phases.
+ * MissionWorkspaceV2 — Parcours mission à 3 phases (seul parcours depuis
+ * le retrait de la V1 à 8 onglets).
  *
- * Remplace les 8 tabs actuelles (overview/brief/process/sourcing/outreach/
- * pipeline/insights/config) par 3 phases linéaires :
+ * Les 8 anciens onglets (overview/brief/process/sourcing/outreach/
+ * pipeline/insights/config) sont regroupés en 3 phases linéaires :
  *
  *   Phase 1 — Cadrage : Brief / Process / Config (sous-onglets)
  *   Phase 2 — Sourcing & Outreach : Sourcing / Outreach (sous-onglets)
  *   Phase 3 — Pipeline : Pipeline / Insights (sous-onglets)
  *
  * IMPORTANT : ce composant ne change RIEN au métier. Il importe et
- * compose les composants existants (MissionBrief, MissionSourcing, etc.)
- * tels quels. Aucun hook, aucune action, aucune feature n'est touchée.
+ * compose les vues existantes (MissionBriefV2, MissionSourcing, etc.)
+ * telles quelles. Aucun hook, aucune action, aucune feature n'est touchée.
  *
  * Architecture :
  *   ┌─ Header breadcrumb ─────────────────────────────────┐
@@ -25,8 +26,8 @@
  *   │                                                      │
  *   └──────────────────────────────────────────────────────┘
  *
- * Note : le copilot IA est accessible via le bouton flottant 👁
- * en bas à droite (pas un rail latéral persistant).
+ * Note : l'assistant s'ouvre depuis l'onglet Assistant de la barre latérale
+ * ou par Ctrl K (pas de rail latéral persistant).
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -41,14 +42,12 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { toast } from 'sonner';
 
-import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
-import { MissionBrief } from '@/components/missions/MissionBrief';
-import { MissionProcess } from '@/components/missions/MissionProcess';
-import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionInsights } from '@/components/missions/MissionInsights';
+
+import { MISSION_PHASES, VIEW_TO_PHASE, parseMissionView, type MissionViewId } from '@/lib/missionViews';
 
 import { PhaseStepper, PhaseId } from './PhaseStepper';
 import { MissionOverviewV2 } from './MissionOverviewV2';
@@ -58,49 +57,15 @@ import { MissionConfigV2 } from './MissionConfigV2';
 
 // ── Mapping ancien tab → phase + sous-onglet ───────────────────────
 // Pour préserver la rétrocompat des deep links (?tab=brief continue de
-// marcher en redirigeant vers ?phase=1&sub=brief).
-type SubTab =
-  | 'overview' // phase 1, vue par défaut (dashboard)
-  | 'brief'    // phase 1
-  | 'process'  // phase 1
-  | 'config'   // phase 1
-  | 'sourcing' // phase 2
-  | 'outreach' // phase 2
-  | 'pipeline' // phase 3
-  | 'insights'; // phase 3
+// marcher). Libellés et ordre : src/lib/missionViews.ts, partagé avec la
+// barre latérale (une vue porte le même nom partout).
+type SubTab = MissionViewId;
 
-const SUB_TO_PHASE: Record<SubTab, PhaseId> = {
-  overview: 1,
-  brief: 1,
-  process: 1,
-  config: 1,
-  sourcing: 2,
-  outreach: 2,
-  pipeline: 3,
-  insights: 3,
-};
+const SUB_TO_PHASE: Readonly<Record<SubTab, PhaseId>> = VIEW_TO_PHASE;
 
-const PHASE_SUBS: Record<PhaseId, { id: SubTab; label: string }[]> = {
-  1: [
-    { id: 'overview', label: 'Vue d\'ensemble' },
-    { id: 'brief', label: 'Brief' },
-    { id: 'process', label: 'Process' },
-    { id: 'config', label: 'Configuration' },
-  ],
-  2: [
-    { id: 'sourcing', label: 'Sourcing' },
-    { id: 'outreach', label: 'Outreach' },
-  ],
-  3: [
-    { id: 'pipeline', label: 'Pipeline' },
-    { id: 'insights', label: 'Insights' },
-  ],
-};
-
-const ALL_SUBS: SubTab[] = [
-  'overview', 'brief', 'process', 'config',
-  'sourcing', 'outreach', 'pipeline', 'insights',
-];
+const PHASE_SUBS: Record<PhaseId, { id: SubTab; label: string }[]> = Object.fromEntries(
+  MISSION_PHASES.map(phase => [phase.id, [...phase.views]]),
+) as Record<PhaseId, { id: SubTab; label: string }[]>;
 
 // Sub-tabs qui doivent être limités en largeur pour rester lisibles
 // (forms / dashboards). Les autres (sourcing/pipeline) prennent toute
@@ -140,10 +105,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
 
   // Lit le sous-tab depuis ?tab=, fallback overview (rétrocompat avec
   // les anciens deep links).
-  const tabFromUrl = searchParams.get('tab');
-  const activeSub: SubTab = ALL_SUBS.includes((tabFromUrl || '') as SubTab)
-    ? (tabFromUrl as SubTab)
-    : 'overview';
+  const activeSub: SubTab = parseMissionView(searchParams.get('tab'));
   const activePhase: PhaseId = SUB_TO_PHASE[activeSub];
 
   const setActiveSub = useCallback((sub: SubTab) => {
@@ -235,7 +197,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
               onClick={() => handleSubChange(sub.id)}
               disabled={locked}
               className={cn(
-                'px-3 py-1.5 text-[13px] font-medium border-b-2 transition-colors flex-shrink-0',
+                'px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex-shrink-0',
                 isActive
                   ? 'border-foreground text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -243,13 +205,13 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
               )}
             >
               {sub.label}
-              {locked && <span className="ml-1.5 text-[10px]">🔒</span>}
+              {locked && <span className="ml-1.5 text-2xs">🔒</span>}
             </button>
           );
         })}
       </div>
 
-      {/* ── Body : main content (le copilot est accessible via le bouton flottant en bas à droite) ── */}
+      {/* ── Body : main content (l'assistant s'ouvre depuis la barre latérale ou par Ctrl K) ── */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto min-w-0">
           <div

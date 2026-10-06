@@ -3,6 +3,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import { requireAuth } from "../_shared/require-auth.ts";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+
+// Le modèle est écrit en dur dans les deux requêtes de ce fichier. Le garde et
+// le règlement doivent citer le même, sinon l'un estime au tarif d'un modèle
+// et l'autre débite à celui d'un autre.
+const REPLY_SUGGESTIONS_MODEL = "claude-sonnet-4-6";
 
 // Timeout wrapper for fetch calls
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -408,7 +414,7 @@ Deno.serve(async (req) => {
 
     const { context } = _body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
-      aiAction: "reply_suggestion", modelId: "claude-sonnet-4-6", description: null,
+      aiAction: "reply_suggestion", modelId: REPLY_SUGGESTIONS_MODEL, description: null,
     };
     try {
       const { extractAIParams } = await import("../_shared/settle-credits.ts");
@@ -419,9 +425,14 @@ Deno.serve(async (req) => {
 
     // Fetch org_id for RAG
     let orgId: string | null = null;
+    // Prénom de l'appelant (celui qui répond), pour le rôle d'expéditeur du
+    // contexte d'approche : jamais le nom du candidat.
+    let callerFirstName: string | null = null;
     try {
-      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id, display_name').eq('user_id', userId).maybeSingle();
       orgId = profileRow?.active_organization_id || null;
+      const displayName = String(profileRow?.display_name || '').trim();
+      callerFirstName = displayName ? (displayName.split(/\s+/)[0] || displayName) : null;
     } catch (e) {
       console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
     }
@@ -438,6 +449,21 @@ Deno.serve(async (req) => {
     if (!context || !context.messages || context.messages.length === 0) {
       throw new Error("Conversation context is required");
     }
+
+    // Refus avant l'appel, après le court-circuit de préchauffage (qui ne
+    // consomme rien). Le modèle est écrit en dur plus bas, y compris pour la
+    // seconde tentative en cas de JSON illisible : c'est Sonnet qu'on estime,
+    // pas le modèle rapide du tier. Les deux appels servent la même requête,
+    // un seul garde les couvre.
+    const gate = await assertCredits({
+      userId,
+      organizationId: orgId,
+      aiAction: _aiParams.aiAction,
+      modelId: REPLY_SUGGESTIONS_MODEL,
+      systemCall: auth.method === "service_role" && !userId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Detect conversation language
     const detectedLanguage = detectLanguage(context.messages);
@@ -561,11 +587,29 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
     let outreachContextBlock = '';
     if (context.outreachConfig && (context.outreachConfig.recruitment_mode || context.outreachConfig.sender_role || context.outreachConfig.anonymize_client)) {
       try {
+        // Nom de l'organisation vérifiée de l'appelant (membre de son
+        // organisation active) : identité de l'expéditeur, jamais « Konekt » (SEQ-097).
+        let organizationName: string | null = null;
+        if (orgId) {
+          const { data: membership, error: memberError } = await svc.from('organization_members')
+            .select('id').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+          if (memberError) console.warn('[generate-reply-suggestions] membership check failed:', memberError.message);
+          if (membership) {
+            const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
+            if (orgError) console.warn('[generate-reply-suggestions] organization name read failed:', orgError.message);
+            organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim() || null;
+          }
+        }
         const { buildOutreachContext } = await import('../_shared/outreach-context.ts');
         outreachContextBlock = '\n' + buildOutreachContext(
           context.outreachConfig as any,
-          context.outreachClientName || jobData?.client?.name,
-          context.candidateName || 'le recruteur',
+          // context.jobData : `jobData` seul n'existait pas dans ce bloc, l'erreur
+          // levée supprimait tout le contexte d'approche sans nom de client.
+          context.outreachClientName || context.jobData?.client?.name,
+          // Expéditeur = l'appelant qui répond (context.candidateName est le
+          // candidat : il devenait « RÔLE EXPÉDITEUR : Jean Dupont, CTO »).
+          callerFirstName,
+          organizationName,
         );
       } catch (e) {
         console.warn('[generate-reply-suggestions] outreach-context import failed:', e);
@@ -625,7 +669,7 @@ Réponds UNIQUEMENT en JSON valide:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: REPLY_SUGGESTIONS_MODEL,
         max_tokens: 400,
         system: [
           { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
@@ -674,7 +718,7 @@ Réponds UNIQUEMENT en JSON valide:
           const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {
             organizationId: orgId2, userId: userId!,
-            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            aiAction: _aiParams.aiAction, modelId: REPLY_SUGGESTIONS_MODEL,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
           }).catch((e) => console.warn("[generate-reply-suggestions] settle error:", e));
@@ -721,7 +765,7 @@ Réponds UNIQUEMENT en JSON valide:
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-6",
+            model: REPLY_SUGGESTIONS_MODEL,
             max_tokens: 400,
             system: [{ type: "text", text: "Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
             messages: [{ role: "user", content: `Conversation:\n${conversationHistory}\n\nGénère 3 réponses.` }],
@@ -747,7 +791,7 @@ Réponds UNIQUEMENT en JSON valide:
                 organizationId: retryOrgId,
                 userId: userId!,
                 aiAction: _aiParams.aiAction,
-                modelId: _aiParams.modelId,
+                modelId: REPLY_SUGGESTIONS_MODEL,
                 tokensInput: retryTokensIn,
                 tokensOutput: retryTokensOut,
                 description: _aiParams.description,

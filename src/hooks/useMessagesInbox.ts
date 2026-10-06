@@ -1,11 +1,13 @@
-import { useCallback, useRef, useEffect, useReducer } from 'react';
+import { useCallback, useRef, useEffect, useReducer, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { emitQuotaAction } from '@/lib/quotaEvents';
+import { autoAnalyzeKey, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, type JobDetails } from '@/types/jobDetails';
 import { useChatCategories } from './useChatCategories';
 import { useChatStatus, getEffectiveStatus } from './useChatStatus';
 import {
@@ -20,6 +22,9 @@ import {
   getUnreadCount,
   buildChatSearchText,
 } from './useMessagesInboxHelpers';
+
+/** Identifiant de mission (sourcing_projects.id). */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Types
 export interface ChatAttendee {
@@ -38,7 +43,20 @@ export interface ChatAttendee {
   public_identifier?: string;
   specifics?: {
     occupation?: string;
+    /** Distance LinkedIn du participant quand le fournisseur la donne (FIRST_DEGREE, DISTANCE_1…). */
+    network_distance?: string;
   };
+  /** Distance LinkedIn parfois posée à la racine du participant. */
+  network_distance?: string;
+}
+
+/** Séquence proposée depuis la messagerie, avec ses étapes complètes triées par ordre. */
+export interface InboxSequenceOption {
+  id: string;
+  name: string;
+  steps: any[];
+  stepCount: number;
+  project_id: string | null;
 }
 
 export interface Chat {
@@ -110,6 +128,11 @@ export interface SequenceEnrollmentInfo {
   status: string;
   replied_at: string | null;
   current_step_order: number;
+  /** Raison d'une pause (compte déconnecté, limite atteinte…), dite par le badge de statut. */
+  pause_reason?: string | null;
+  /** tracking_data.completion_reason et tracking_data.manual_stop : statut d'un arrêt manuel (lot 5b). */
+  completion_reason?: string | null;
+  manual_stop?: unknown;
   /** Config outreach de la mission (incarnation IA + anonymisation).
    *  Lue depuis sourcing_projects.job_details.outreach_config. */
   outreach_config?: {
@@ -171,6 +194,41 @@ export interface ActiveMissionLite {
     anonymize_client?: boolean;
     anonymized_alias?: string;
   } | null;
+}
+
+// Brief d'une mission (sourcing_projects.job_details) au format JobData lu par
+// les suggestions de réponse, l'analyse et le bouton « Réponse + CTA ».
+// Le salaire annuel n'est pas repris : generate-reply-suggestions et
+// analyze-response l'attendent en k€, jobDataToBrief en euros.
+function missionToJobData(p: { id: string; name: string | null; job_title: string | null; client_name: string | null; job_details: unknown }): JobData {
+  const jd: JobDetails = (p.job_details as JobDetails | null) || {};
+  // Client anonymisé : l'alias remplace le vrai nom avant tout envoi à l'IA.
+  const clientName = jd.outreach_config?.anonymize_client
+    ? (jd.outreach_config.anonymized_alias || '').trim() || 'une entreprise tech française'
+    : jd.client?.name || p.client_name;
+  const mustHave = jd.skills_must_have || [];
+  const shouldHave = jd.skills_should_have || [];
+  const niceToHave = jd.skills_nice_to_have || [];
+  const daily = jd.salary_type === 'daily';
+  return {
+    id: p.id,
+    title: jd.title || p.job_title || p.name || 'Mission',
+    client: clientName ? { name: clientName, sector: jd.client?.sector || '' } : null,
+    skills: [...mustHave, ...shouldHave],
+    seniority: jd.seniority,
+    location: jd.location,
+    remote: jd.remote_policy ? REMOTE_LABELS[jd.remote_policy] || jd.remote_policy : undefined,
+    tjmMin: daily ? jd.salary_min : undefined,
+    tjmMax: daily ? jd.salary_max : undefined,
+    contractType: jd.contract_type ? CONTRACT_TYPE_LABELS[jd.contract_type] || jd.contract_type : undefined,
+    description: jd.mission_description,
+    mustHave: mustHave.length > 0 ? mustHave.join(', ') : undefined,
+    shouldHave: shouldHave.length > 0 ? shouldHave.join(', ') : undefined,
+    niceToHave: niceToHave.length > 0 ? niceToHave.join(', ') : undefined,
+    teamInfo: jd.context,
+    xpMin: jd.experience_min,
+    xpMax: jd.experience_max,
+  };
 }
 
 // ── Merge chats by candidate ─────────────────────────────
@@ -381,7 +439,7 @@ interface ContextState {
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   availableJobs: JobData[];
   activeMissions: ActiveMissionLite[];
-  sequences: Array<{ id: string; name: string; steps: any[] }>;
+  sequences: InboxSequenceOption[];
   replySuggestions: Array<{ text: string; type: string }>;
   loadingSuggestions: boolean;
   suggestionsLoaded: boolean;
@@ -393,7 +451,7 @@ type ContextAction =
   | { type: 'SET_ENROLLMENTS_MAP'; map: Map<string, SequenceEnrollmentInfo> }
   | { type: 'SET_AVAILABLE_JOBS'; jobs: JobData[] }
   | { type: 'SET_ACTIVE_MISSIONS'; missions: ActiveMissionLite[] }
-  | { type: 'SET_SEQUENCES'; sequences: Array<{ id: string; name: string; steps: any[] }> }
+  | { type: 'SET_SEQUENCES'; sequences: InboxSequenceOption[] }
   | { type: 'SET_REPLY_SUGGESTIONS'; suggestions: Array<{ text: string; type: string }> }
   | { type: 'SET_LOADING_SUGGESTIONS'; loading: boolean }
   | { type: 'SET_SUGGESTIONS_LOADED'; loaded: boolean }
@@ -442,22 +500,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
   const chatsRef = useRef<Chat[]>([]);
   chatsRef.current = chats;
+  // Échec de la dernière lecture de la liste : la messagerie affiche une
+  // erreur avec « Réessayer » au lieu d'une liste vide (revue design D-09).
+  const [chatsError, setChatsError] = useState<string | null>(null);
+  // Id du chat affiché, lu par fetchMessages pour ignorer une réponse en
+  // retard qui concerne un chat que l'utilisateur a déjà quitté.
+  const selectedChatIdRef = useRef<string | null>(null);
+  selectedChatIdRef.current = selectedChat?.id ?? null;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-
-  // Backward-compatible setSelectedChat wrapper
-  const _setSelectedChat = useCallback((chatOrUpdater: Chat | null | ((prev: Chat | null) => Chat | null)) => {
-    if (typeof chatOrUpdater === 'function') {
-      chatDispatch({ type: 'UPDATE_SELECTED_CHAT', updater: chatOrUpdater });
-    } else {
-      chatDispatch({ type: 'SELECT_CHAT', chat: chatOrUpdater });
-    }
-  }, []);
-
-  const setSelectedChat = useCallback((chat: Chat | null) => {
-    chatDispatch({ type: 'SELECT_CHAT', chat });
-    onChatChange?.(chat?.id || null);
-  }, [onChatChange]);
 
   // Backward-compatible set* wrappers for chat state
   const setChats = useCallback((chatsOrUpdater: Chat[] | ((prev: Chat[]) => Chat[])) => {
@@ -511,6 +562,33 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       uiDispatch({ type: 'SET_NEW_MESSAGE', value: vOrUpdater });
     }
   }, []);
+
+  // Sélection d'un chat. Déclarée après le reducer UI : changer de
+  // conversation vide le composer dans le même rendu, pour que MessageView
+  // restaure le brouillon du nouveau chat sans écraser celui de l'ancien
+  // (avant : le texte rédigé pour A restait affiché, et envoyable, sur B).
+  const selectChat = useCallback((chat: Chat | null) => {
+    const nextId = chat?.id ?? null;
+    if (nextId !== selectedChatIdRef.current) {
+      uiDispatch({ type: 'SET_NEW_MESSAGE', value: '' });
+    }
+    selectedChatIdRef.current = nextId;
+    chatDispatch({ type: 'SELECT_CHAT', chat });
+  }, []);
+
+  // Backward-compatible setSelectedChat wrapper
+  const _setSelectedChat = useCallback((chatOrUpdater: Chat | null | ((prev: Chat | null) => Chat | null)) => {
+    if (typeof chatOrUpdater === 'function') {
+      chatDispatch({ type: 'UPDATE_SELECTED_CHAT', updater: chatOrUpdater });
+    } else {
+      selectChat(chatOrUpdater);
+    }
+  }, [selectChat]);
+
+  const setSelectedChat = useCallback((chat: Chat | null) => {
+    selectChat(chat);
+    onChatChange?.(chat?.id || null);
+  }, [selectChat, onChatChange]);
   const setShowUnreadOnly = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_UNREAD_ONLY', value: v }), []);
   const setSourceFilter = useCallback((v: 'all' | 'classic' | 'recruiter') => uiDispatch({ type: 'SET_SOURCE_FILTER', value: v }), []);
   const setResponseFilter = useCallback((v: 'all' | 'waiting_candidate' | 'waiting_me') => uiDispatch({ type: 'SET_RESPONSE_FILTER', value: v }), []);
@@ -538,7 +616,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const setEnrollmentsMap = useCallback((m: Map<string, SequenceEnrollmentInfo>) => ctxDispatch({ type: 'SET_ENROLLMENTS_MAP', map: m }), []);
   const setAvailableJobs = useCallback((j: JobData[]) => ctxDispatch({ type: 'SET_AVAILABLE_JOBS', jobs: j }), []);
   const setActiveMissions = useCallback((m: ActiveMissionLite[]) => ctxDispatch({ type: 'SET_ACTIVE_MISSIONS', missions: m }), []);
-  const setSequences = useCallback((s: Array<{ id: string; name: string; steps: any[] }>) => ctxDispatch({ type: 'SET_SEQUENCES', sequences: s }), []);
+  const setSequences = useCallback((s: InboxSequenceOption[]) => ctxDispatch({ type: 'SET_SEQUENCES', sequences: s }), []);
+  // État de la liste des séquences du dialogue de choix (chargée à chaque ouverture).
+  const [sequencesStatus, setSequencesStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const setReplySuggestions = useCallback((s: Array<{ text: string; type: string }>) => ctxDispatch({ type: 'SET_REPLY_SUGGESTIONS', suggestions: s }), []);
   const setLoadingSuggestions = useCallback((v: boolean) => ctxDispatch({ type: 'SET_LOADING_SUGGESTIONS', loading: v }), []);
   const setSuggestionsLoaded = useCallback((v: boolean) => ctxDispatch({ type: 'SET_SUGGESTIONS_LOADED', loaded: v }), []);
@@ -558,7 +638,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     try {
       let query = supabase
         .from('sequence_enrollments')
-        .select('profile_id, job_title, job_id, status, replied_at, current_step_order')
+        // Lot 5b : raison de fin et trace d'un arrêt manuel (« Arrêtée par … le … »).
+        // Ligne typée à la main : l'inférence des chemins JSON dépasse la profondeur de TypeScript.
+        .select<string, Omit<SequenceEnrollmentInfo, 'outreach_config' | 'client_name'>>('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop')
         .order('created_at', { ascending: false })
         .limit(500);
 
@@ -615,7 +697,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     try {
       const { data, error } = await supabase
         .from('sourcing_projects')
-        .select('id, name, job_id, job_title, client_name, status, job_details')
+        .select('id, name, kind, job_id, job_title, client_name, status, job_details')
         .eq('organization_id', organizationId)
         .neq('status', 'archived')
         .order('updated_at', { ascending: false })
@@ -633,80 +715,48 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         outreach_config: (p.job_details as any)?.outreach_config || null,
       }));
       setActiveMissions(missions);
+      // Postes proposés aux suggestions de réponse et à l'analyse : les missions
+      // actives, identifiées par leur uuid (le job_id des inscriptions en séquence).
+      setAvailableJobs((data || [])
+        .filter((p) => p.status === 'active' && p.kind !== 'search')
+        .map(missionToJobData));
     } catch (error) {
       console.error('Error fetching active missions:', error);
     }
   }, [organizationId]);
 
-  // Fetch available jobs from Notion
-  const fetchAvailableJobs = useCallback(async () => {
-    try {
-      const response = await invokeEdgeFunction<{ jobs?: any[] }>('fetch-notion-jobs', { status: 'Publié' });
-      
-      if (response.error) throw response.error;
-      
-      if (response.data?.jobs) {
-        const jobs: JobData[] = response.data.jobs.slice(0, 30).map((job: any) => ({
-          id: job.id,
-          title: job.title || 'Poste',
-          client: job.client,
-          skills: job.skills || [],
-          seniority: job.seniority,
-          location: job.location,
-          remote: job.remote,
-          salaryMin: job.salaryMin,
-          salaryMax: job.salaryMax,
-          tjmMin: job.tjmMin || job.tjm,
-          tjmMax: job.tjmMax,
-          contractType: job.contractType,
-          description: job.description,
-          requirements: job.requirements,
-          mustHave: job.mustHave,
-          shouldHave: job.shouldHave,
-          niceToHave: job.niceToHave,
-          sourcingCriteria: job.sourcingCriteria,
-          teamInfo: job.teamInfo,
-          xpMin: job.xpMin,
-          xpMax: job.xpMax,
-          transversalCriteria: job.transversalCriteria,
-        }));
-        setAvailableJobs(jobs);
-      }
-    } catch (error) {
-      console.error('Error fetching jobs for matching:', error);
-    }
-  }, []);
-
-  // Fetch active sequences
+  // Séquences actives de l'organisation (la RLS borne à l'organisation), comme
+  // le menu Séquence du sourcing : une séquence partagée par un collègue est
+  // proposée. Étapes complètes (textes des messages, heures d'envoi), triées
+  // par ordre : la préparation avec aperçu montre les messages avant
+  // l'inscription. Rechargée à chaque ouverture du dialogue de choix.
   const fetchSequences = useCallback(async () => {
     if (!user) return;
 
+    setSequencesStatus('loading');
     try {
       const { data, error } = await supabase
         .from('outreach_sequences')
-        .select(`
-          id,
-          name,
-          sequence_steps (
-            id,
-            step_order,
-            action_type,
-            delay_days,
-            delay_hours
-          )
-        `)
+        .select('id, name, project_id, sequence_steps (*)')
         .eq('is_active', true)
-        .eq('created_by', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('step_order', { referencedTable: 'sequence_steps', ascending: true });
       
       if (error) throw error;
-      setSequences(data?.map(s => ({
-        id: s.id,
-        name: s.name,
-        steps: s.sequence_steps || [],
-      })) || []);
+      setSequences((data || []).map(s => {
+        const steps = [...(s.sequence_steps || [])].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
+        return {
+          id: s.id,
+          name: s.name,
+          project_id: s.project_id,
+          stepCount: steps.length,
+          steps,
+        };
+      }));
+      setSequencesStatus('ready');
     } catch (error) {
       console.error('Error fetching sequences:', error);
+      setSequencesStatus('error');
     }
   }, [user]);
 
@@ -717,8 +767,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setLoadingChats(true);
     try {
       const { data } = await invokeUnipile({
-        body: { 
-          action: 'get_chats', 
+        body: {
+          action: 'get_chats',
           account_id: selectedAccount,
           limit: 250,
         },
@@ -728,6 +778,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
       const fetchedChats = data.chats as Chat[] || [];
       const mergedChats = mergeChatsByCandidate(fetchedChats);
+      setChatsError(null);
       setChats(mergedChats);
       setFilteredChats(mergedChats);
       
@@ -752,7 +803,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       if (showToast) toast.success('Conversations actualisées');
     } catch (error) {
       console.error('Error fetching chats:', error);
-      toast.error('Erreur lors du chargement des conversations');
+      setChatsError(error instanceof Error && error.message ? error.message : 'unknown');
+      // Liste déjà affichée : elle reste en place, un toast signale l'échec.
+      // Liste vide : l'erreur prend sa place, avec « Réessayer ».
+      if (chatsRef.current.length > 0) {
+        toast.error("Les conversations n'ont pas été actualisées", {
+          description: 'Vérifiez votre connexion, puis réessayez.',
+        });
+      }
     } finally {
       setLoadingChats(false);
     }
@@ -807,7 +865,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       toast.success(`${newChats.length} conversations supplémentaires chargées`);
     } catch (error) {
       console.error('Error loading more chats:', error);
-      toast.error('Erreur lors du chargement');
+      toast.error("Les conversations suivantes n'ont pas été chargées", {
+        description: 'Réessayez dans un instant.',
+      });
     } finally {
       setLoadingMoreChats(false);
     }
@@ -864,7 +924,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       }
     } catch (error) {
       console.error('Error loading all chats:', error);
-      toast.error('Erreur lors du chargement complet');
+      toast.error("La recherche dans toutes les conversations n'a pas abouti", {
+        description: 'Réessayez dans un instant.',
+      });
     } finally {
       setLoadingAllChats(false);
     }
@@ -882,6 +944,17 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     const mergedIds = chat?._mergedChatIds;
     const chatIds = (mergedIds && mergedIds.length > 1) ? mergedIds : [chatId];
 
+    // Vrai tant que le chat demandé est encore celui affiché (ou l'un de ses
+    // fils fusionnés) : une réponse arrivée après un changement de
+    // conversation ne doit pas écraser le fil du nouveau chat.
+    const stillActive = () => {
+      const current = selectedChatIdRef.current;
+      if (!current) return false;
+      if (current === chatId) return true;
+      const currentChat = chatsRef.current.find(c => c.id === current);
+      return !!currentChat?._mergedChatIds?.includes(chatId);
+    };
+
     setLoadingMessages(true);
     try {
       if (loadMore) {
@@ -896,6 +969,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           },
         });
         if (!data?.success) throw new Error(data?.error as string);
+        if (!stillActive()) return 0;
         const newMessages = (data.messages as Message[]) || [];
         setMessages(prev => [...newMessages, ...prev]);
         setCursor(data.cursor as string | null);
@@ -907,7 +981,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           body: { action: 'get_messages', account_id: selectedAccount, chat_id: primaryChatId, limit: 50 },
         });
         if (!primaryData?.success) throw new Error(primaryData?.error as string);
-        
+        if (!stillActive()) return 0;
+
         const primaryMessages = (primaryData.messages as Message[]) || [];
         const primaryCursor = primaryData.cursor as string | null;
         
@@ -940,7 +1015,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
                 extraMessages.push(...msgs);
               }
             }
-            if (extraMessages.length > 0) {
+            if (extraMessages.length > 0 && stillActive()) {
               setMessages(prev => {
                 const seen = new Set(prev.map(m => m.id));
                 const newMsgs = extraMessages.filter(m => !seen.has(m.id));
@@ -961,10 +1036,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       return 0;
     } catch (error) {
       console.error('Error fetching messages:', error);
-      toast.error('Erreur lors du chargement des messages');
+      if (stillActive()) {
+        toast.error("Les messages n'ont pas été chargés", {
+          description: 'Vérifiez votre connexion, puis rechargez la conversation.',
+        });
+      }
       return 0;
     } finally {
-      setLoadingMessages(false);
+      // Une requête périmée ne doit pas éteindre le spinner du nouveau chat.
+      if (stillActive()) setLoadingMessages(false);
     }
   }, [selectedAccount]);
 
@@ -998,7 +1078,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         body: { action: 'sync_chat_history', account_id: selectedAccount, chat_id: chatId },
       });
       if (!start.data?.success) {
-        if (!silent) toast.error('Impossible de synchroniser', { description: (start.data?.error as string) || 'Erreur inconnue' });
+        console.warn('[syncChatHistory] start failed:', start.data?.error);
+        if (!silent) toast.error("La conversation n'a pas été synchronisée", { description: 'Réessayez dans quelques minutes.' });
         return 0;
       }
 
@@ -1016,8 +1097,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
       while (status !== 'SYNC_DONE' && status !== 'SYNC_ERROR') {
         if (Date.now() - startedAt > MAX_DURATION_MS) {
-          if (!silent) toast.warning('Synchronisation trop longue, arrêt', {
-            description: 'Réessayez dans quelques minutes.',
+          if (!silent) toast.warning('La synchronisation prend trop de temps', {
+            description: 'Elle a été interrompue. Réessayez dans quelques minutes.',
           });
           return 0;
         }
@@ -1026,7 +1107,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           body: { action: 'sync_chat_history', account_id: selectedAccount, chat_id: chatId },
         });
         if (!poll.data?.success) {
-          if (!silent) toast.error('Erreur pendant la synchronisation');
+          if (!silent) toast.error("La conversation n'a pas été synchronisée", { description: 'Réessayez dans quelques minutes.' });
           return 0;
         }
         status = (poll.data as { status?: string }).status;
@@ -1043,79 +1124,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       return count;
     } catch (e) {
       console.error('[syncChatHistory] error:', e);
-      if (!silent) toast.error('Erreur lors de la synchronisation');
+      if (!silent) toast.error("La conversation n'a pas été synchronisée", { description: 'Réessayez dans quelques minutes.' });
       return 0;
     } finally {
       if (!silent) setLoadingMessages(false);
     }
   }, [selectedAccount, fetchMessages]);
-
-  // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
-  const syncAfterInboxSend = useCallback(async (chat: Chat) => {
-    if (!user) return;
-
-    try {
-      const profileId = getAttendeeProfileId(chat);
-      const profileUrl = chat.attendees?.[0]?.profile_url || null;
-      const candidateName = getChatDisplayName(chat);
-      const candidateHeadline = getChatHeadline(chat);
-
-      // Find job context from enrollments or job_candidate_status
-      const enrollmentProfileId = profileId || (profileUrl ? profileUrl.split('/').filter(Boolean).pop() : null);
-      const enrollment = enrollmentProfileId ? enrollmentsMap.get(enrollmentProfileId) : null;
-      const jobId = enrollment?.job_id || null;
-      const jobTitle = enrollment?.job_title || null;
-      const job = jobId ? availableJobs.find(j => j.id === jobId) : null;
-
-      // 1. Update job_candidate_status to 'messaged' if we have a candidate id + job
-      if (profileId && jobId) {
-        await supabase
-          .from('job_candidate_status')
-          .upsert({
-            job_id: jobId,
-            candidate_id: profileId,
-            linkedin_profile_url: profileUrl || null,
-            candidate_name: candidateName || null,
-            candidate_headline: candidateHeadline || null,
-            status: 'messaged',
-            created_by: user.id,
-            organization_id: organizationId,
-          }, {
-            onConflict: 'job_id,candidate_id,created_by',
-          });
-        console.log('[Inbox] Status updated to messaged for', candidateName);
-      }
-
-      // 2. Sync to Notion via add-to-shortlist (create/update candidate + shortlist)
-      if (candidateName) {
-        // Determine accompagnement from job data
-        const accompagnementRaw = (job as any)?.accompagnement || [];
-        let accompagnement: string | undefined;
-        if (accompagnementRaw.some?.((a: string) => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded'))) {
-          accompagnement = 'RPO';
-        } else if (accompagnementRaw.some?.((a: string) => a.toLowerCase().includes('succès') || a.toLowerCase().includes('succes'))) {
-          accompagnement = 'Succès';
-        }
-
-        await invokeEdgeFunction('add-to-shortlist', {
-          name: candidateName,
-          headline: candidateHeadline,
-          linkedinUrl: profileUrl || undefined,
-          jobId: jobId || undefined,
-          jobTitle: jobTitle || undefined,
-          clientName: job?.client?.name || undefined,
-          clientId: (job?.client as any)?.id || undefined,
-          entity: 'Konekt',
-          accompagnement,
-          etape: 'Contacté',
-          etat: 'En attente de réponse',
-        });
-        console.log('[Inbox] Notion sync done for', candidateName);
-      }
-    } catch (err) {
-      console.error('[Inbox] Post-send sync error (non-blocking):', err);
-    }
-  }, [availableJobs, enrollmentsMap, organizationId, user]);
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback((smooth = true) => {
@@ -1163,65 +1177,25 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Mark chat as read locally after sending
       markChatAsReadLocally(selectedChat.id);
       
-      // Fire-and-forget: sync status + Notion
-      syncAfterInboxSend(selectedChat);
-      
+      // « Contacté » est posé par le serveur à l'envoi, dans la mission de la
+      // conversation (lot 0b) : plus d'écriture du pipeline ici.
+
       setTimeout(() => scrollToBottom(true), 100);
 
       emitQuotaAction('messagesSent', 1, selectedAccount);
       toast.success('Message envoyé');
     } catch (error) {
       console.error('Error sending message:', error);
-      toast.error("Erreur lors de l'envoi du message");
-    } finally {
-      setSending(false);
-    }
-  }, [selectedAccount, selectedChat, newMessage, syncAfterInboxSend]);
-
-  // Send suggestion directly
-  const handleSuggestionSend = useCallback(async (text: string) => {
-    if (!selectedAccount || !selectedChat || sending) return;
-    
-    setSending(true);
-    try {
-      const { data } = await invokeUnipile({
-        body: { 
-          action: 'send_message', 
-          account_id: selectedAccount,
-          chat_id: selectedChat.id,
-          text: text.trim(),
-        },
+      toast.error("Le message n'a pas été envoyé", {
+        description: 'Votre texte est conservé. Vérifiez votre connexion, puis réessayez.',
       });
-
-      if (!data?.success) throw new Error(data?.error as string);
-
-      const sentMessage: Message = {
-        id: Date.now().toString(),
-        text: text.trim(),
-        timestamp: new Date().toISOString(),
-        is_sender: true,
-      };
-      setMessages(prev => [...prev, sentMessage]);
-      setReplySuggestions([]);
-      setSuggestionsLoaded(false);
-      
-      // Mark chat as read locally after sending
-      if (selectedChat) markChatAsReadLocally(selectedChat.id);
-      
-      // Fire-and-forget: sync status + Notion
-      syncAfterInboxSend(selectedChat);
-      
-      setTimeout(() => scrollToBottom(true), 100);
-
-      emitQuotaAction('messagesSent', 1, selectedAccount);
-      toast.success('Message envoyé');
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error("Erreur lors de l'envoi du message");
     } finally {
       setSending(false);
     }
-  }, [selectedAccount, selectedChat, sending, syncAfterInboxSend]);
+  }, [selectedAccount, selectedChat, newMessage]);
+
+  // Une suggestion IA n'est jamais envoyée d'un clic : elle remplit le
+  // composeur, où on la relit avant d'envoyer (revue design D-14).
 
   // Fetch AI reply suggestions
   const fetchReplySuggestions = useCallback(async () => {
@@ -1314,58 +1288,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setNewMessage(text);
   }, []);
 
-  // Enroll in sequence
-  const enrollInSequence = useCallback(async (sequence: { id: string; name: string; steps: any[] }) => {
-    if (!selectedChat || !selectedAccount || !user) return;
-    
-    const profileId = getAttendeeProfileId(selectedChat);
-    if (!profileId) {
-      toast.error('Impossible d\'identifier le profil');
-      return;
-    }
-    
-    try {
-      // Atomic upsert : la contrainte DB UNIQUE(sequence_id, profile_id)
-      // dédoublonne au niveau base. ignoreDuplicates renvoie tableau vide si
-      // l'enrollment existait déjà (peu importe son status) → on affiche
-      // simplement le toast "déjà inscrit" sans pré-check stale.
-      const { data: inserted, error } = await supabase
-        .from('sequence_enrollments')
-        .upsert({
-          sequence_id: sequence.id,
-          account_id: selectedAccount,
-          profile_id: profileId,
-          profile_name: getChatDisplayName(selectedChat),
-          profile_headline: getChatHeadline(selectedChat),
-          profile_url: selectedChat.attendees?.[0]?.profile_url,
-          created_by: user.id,
-          organization_id: organizationId,
-          user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          status: 'active',
-          current_step_order: 0,
-        }, {
-          onConflict: 'sequence_id,profile_id',
-          ignoreDuplicates: true,
-        })
-        .select('id');
-
-      if (error) throw error;
-      if (!inserted || inserted.length === 0) {
-        toast.info('Déjà inscrit dans cette séquence');
-        setShowSequenceSelect(false);
-        return;
-      }
-      
-      toast.success(`✨ Inscrit dans "${sequence.name}"`, {
-        description: `${getChatDisplayName(selectedChat)} va recevoir les étapes de la séquence.`,
-      });
-      setShowSequenceSelect(false);
-      fetchEnrollments();
-    } catch (error) {
-      console.error('Error enrolling in sequence:', error);
-      toast.error('Erreur lors de l\'inscription');
-    }
-  }, [fetchEnrollments, organizationId, selectedAccount, selectedChat, user]);
+  // Ouvre le choix de la séquence (revue design D-02) et recharge la liste :
+  // une séquence créée ou activée depuis l'ouverture de la messagerie apparaît.
+  // Sans séquence active, le dialogue le dit et mène aux missions, où les
+  // séquences se créent ; une erreur de lecture s'y affiche aussi.
+  const handleEnrollInSequence = useCallback(() => {
+    if (!selectedChat) return;
+    setShowSequenceSelect(true);
+    void fetchSequences();
+  }, [selectedChat, fetchSequences]);
 
   // Handle adding to pipeline
   const handleAddToPipeline = useCallback((jobId?: string) => {
@@ -1373,17 +1304,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setPipelinePreSelectedJobId(jobId);
     setShowPipelineModal(true);
   }, [selectedChat]);
-
-  // Handle enrolling in sequence
-  const handleEnrollInSequence = useCallback(() => {
-    if (!selectedChat || sequences.length === 0) {
-      toast.error('Aucune séquence active', {
-        description: 'Créez une séquence dans l\'onglet Séquences d\'abord.',
-      });
-      return;
-    }
-    setShowSequenceSelect(true);
-  }, [selectedChat, sequences.length]);
 
   // Resolve Calendly link when a chat is selected
   useEffect(() => {
@@ -1445,10 +1365,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
           if (cancelled) return;
           if (enrollment?.job_id) {
-            const { data: project } = await supabase
+            // Mission par son id ou par son job_id, préfixe « project: » retiré
+            // (lot 0c-4) : un poste de mission V2 n'a pas de job_id.
+            const jobKey = enrollment.job_id.replace(/^project:/, '');
+            const projectQuery = supabase
               .from('sourcing_projects')
-              .select('calendly_link')
-              .eq('job_id', enrollment.job_id)
+              .select('calendly_link');
+            const { data: project } = await (UUID_PATTERN.test(jobKey)
+              ? projectQuery.or(`id.eq.${jobKey},job_id.eq.${jobKey}`)
+              : projectQuery.eq('job_id', jobKey))
               .not('calendly_link', 'is', null)
               .limit(1)
               .maybeSingle();
@@ -1504,17 +1429,17 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         : calendlyLink;
       const calendlyMessage = `Voici un lien pour réserver un créneau afin de discuter du poste avec notre équipe : ${calendlyWithPrefill}`;
       setNewMessage(prev => prev ? `${prev}\n\n${calendlyMessage}` : calendlyMessage);
-      toast.success('📅 Lien Calendly inséré dans le message');
+      toast.success('Lien de rendez-vous inséré dans le message');
       return;
     }
-    
-    toast.info('📅 Aucun lien Calendly configuré', {
-      description: `Ajoutez un lien Calendly dans les paramètres du projet pour ${profileName}`,
+
+    toast.info('Aucun lien de rendez-vous pour cette conversation', {
+      description: `Ajoutez votre lien Calendly à la mission pour proposer un créneau à ${profileName}.`,
       action: {
         label: 'Copier le nom',
         onClick: () => {
           navigator.clipboard.writeText(profileName);
-          toast.success('Nom copié !');
+          toast.success('Nom copié');
         },
       },
     });
@@ -1606,7 +1531,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       fetchChats();
       fetchEnrollments();
       fetchActiveMissions();
-      fetchAvailableJobs();
       fetchSequences();
 
       // Don't reset chat/messages if we have an initial chat to restore
@@ -1615,7 +1539,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setMessages([]);
       }
     }
-  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchActiveMissions, fetchAvailableJobs, fetchSequences, user]);
+  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchActiveMissions, fetchSequences, user]);
 
   // Auto-poll chat list every 30s to detect new messages / conversations
   useEffect(() => {
@@ -1692,17 +1616,22 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             setReplySuggestions(suggestions);
             setSuggestionsLoaded(true);
           } else {
-            // Cache miss → trigger auto-analyze en background. Le webhook
-            // Unipile devrait déjà l'avoir fait pour les nouveaux messages,
-            // mais pour les anciens chats jamais ouverts, on déclenche ici.
+            // Cache miss → trigger auto-analyze en background, UNE fois par
+            // chat (et par dernier message) et par session : le webhook LinkedIn
+            // couvre les nouveaux messages, le panneau IA reste disponible.
+            const guardKey = autoAnalyzeKey(selectedChat);
             const senderId = selectedChat.attendees?.[0]?.id || null;
-            supabase.functions.invoke('auto-analyze-message', {
+            // Partage l'analyse déjà en vol (préchargement, ré-analyse) au lieu
+            // de sortir : le cache est relu à la fin dans tous les cas.
+            const pending = runAutoAnalyzeOnce(guardKey, () => supabase.functions.invoke('auto-analyze-message', {
               body: {
                 chat_id: chatId,
                 account_id: accountId,
                 sender_id: senderId,
               },
-            }).then((res) => {
+            }));
+            if (!pending) return;
+            pending.then((res) => {
               // Re-query le cache après l'analyse pour récupérer les suggestions
               if (res.data?.success) {
                 supabase
@@ -1831,6 +1760,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setSelectedChat,
     messages,
     loadingChats,
+    /** Échec de la dernière lecture de la liste (null si elle a abouti). */
+    chatsError,
     loadingMessages,
     searchQuery,
     setSearchQuery,
@@ -1895,9 +1826,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     syncChatHistory,
     sendMessage,
     handleSuggestionClick,
-    handleSuggestionSend,
     fetchReplySuggestions,
-    enrollInSequence,
+    // Toute inscription passe par SequenceEnrollModal (candidat, messages et
+    // avertissements montrés avant d'engager quoi que ce soit, constat UX05).
+    /** Recharge la liste des séquences du dialogue de choix. */
+    fetchSequences,
+    sequencesStatus,
+    /** Rafraîchit les inscriptions après une confirmation depuis la modale. */
+    fetchEnrollments,
     handleAddToPipeline,
     handleEnrollInSequence,
     handleScheduleCall,

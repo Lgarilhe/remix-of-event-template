@@ -1,103 +1,142 @@
 /**
- * Dashboard — page d'accueil de l'app Konekt.
+ * Dashboard — page d'accueil de l'application (design simplifié,
+ * docs/design/06-simplicite.md).
  *
- * Pattern SaaS moderne (Linear / Pipedrive / Notion) : pas un wall of stats
- * mais une page d'**action** + **personnalisable** (drag-to-reorder).
+ * L'en-tête, puis deux sections :
+ *   1. À faire — ce qui attend une action (compte LinkedIn à reconnecter,
+ *      réponses, relances, candidats qui n'avancent plus), puis les tâches en
+ *      retard et la journée (entretiens, envois, tâches).
+ *   2. Missions en cours — une ligne par mission, visages des candidats en
+ *      entretien, chiffres au total.
  *
- * Layout :
- * - Greeting (fixe, en haut)
- * - 5 sections sortables (drag handle au hover) :
- *   1. Connections — état temps réel des 3 canaux outreach
- *   2. Focus       — alertes color-coded "à traiter aujourd'hui"
- *   3. Missions+Today — combo 2 colonnes (missions actives + agenda)
- *   4. Week        — highlight perf hebdo
- *   5. Activity    — feed des derniers mouvements candidats
+ * Décision du propriétaire (04/10/2026) : plus de cartes des canaux (une ligne
+ * « À faire » quand LinkedIn est à reconnecter), plus de « Cette semaine » ni
+ * d'activité récente sur l'accueil (Pipeline, onglet Analyse, et la fiche de
+ * chaque candidat), plus de réordonnancement des sections.
  *
- * L'ordre est persisté par user dans localStorage via useDashboardLayout.
+ * Chaque section a ses états : chargement (squelette), erreur avec
+ * « Réessayer », vide avec la prochaine action (docs/design/01-direction.md, § 8).
  */
 
-import React, { useMemo, useState } from 'react';
-import { Reorder } from 'framer-motion';
-import { differenceInDays, parseISO } from 'date-fns';
-import { Undo2 } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
 import { PageLayout } from '@/components/layout';
-import { useATSData, type ATSCandidate } from '@/hooks/useATSData';
+import { Button } from '@/components/ui/button';
+import { useATSData, daysInStage, stagnantDays, countPeople, type ATSCandidate } from '@/hooks/useATSData';
+import { STALE_EXEMPT_STAGES } from '@/lib/stageDisplay';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
-import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
+import { useSidebarNotifications } from '@/hooks/sidebar/useSidebarNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
-import { useDashboardLayout, type DashboardSectionKey } from '@/hooks/useDashboardLayout';
-import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
-import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
+import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
-import { DashboardFocusPanel } from '@/components/dashboard/DashboardFocusPanel';
-import { DashboardConnections } from '@/components/dashboard/DashboardConnections';
-import { DashboardMissionsPanel } from '@/components/dashboard/DashboardMissionsPanel';
+import { DashboardFocusPanel, type FocusPerson } from '@/components/dashboard/DashboardFocusPanel';
+import { DashboardMissionsPanel, type InterviewingPeople } from '@/components/dashboard/DashboardMissionsPanel';
 import { DashboardTodayPanel } from '@/components/dashboard/DashboardTodayPanel';
-import { DashboardWeekHighlight } from '@/components/dashboard/DashboardWeekHighlight';
-import { DashboardActivityFeed } from '@/components/dashboard/DashboardActivityFeed';
-import { DashboardSortableItem } from '@/components/dashboard/DashboardSortableItem';
 
-// Helpers (used to derive focus panel counters)
-const STAGE_GUIDE_TIMES: Record<string, number> = {
-  'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5,
-  'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7,
-};
-
+// Stagnant : même règle que la carte, le tableau et l'analyse du /pipeline
+// (délais de useATSData, jours depuis l'entrée dans l'étape). À trier et Retenu
+// sont exemptés (plan 0c, section 6.4), comme les étapes terminales.
 const isStagnant = (c: ATSCandidate): boolean => {
-  const guide = STAGE_GUIDE_TIMES[c.stage];
-  if (!guide || !c.lastActivity) return false;
-  try {
-    return differenceInDays(new Date(), parseISO(c.lastActivity)) > guide;
-  } catch {
-    return false;
-  }
+  if (c.generalStage && STALE_EXEMPT_STAGES.has(c.generalStage)) return false;
+  return stagnantDays(c) !== null;
 };
 
+// À relancer : a répondu, et sans suite depuis un jour ou plus dans l'étape.
 const isPendingResponse = (c: ATSCandidate): boolean => {
   if (c.stage !== 'Répondu') return false;
-  if (!c.lastActivity) return true;
-  try {
-    return differenceInDays(new Date(), parseISO(c.lastActivity)) >= 1;
-  } catch {
-    return true;
+  const days = daysInStage(c);
+  return days === null || days >= 1;
+};
+
+// Ligne de job_candidate_status qui porte la photo enregistrée du candidat.
+const photoKeyOf = (c: ATSCandidate): string =>
+  c.source === 'local' && c.id.startsWith('local-') ? c.id.slice('local-'.length) : c.sourceId;
+
+// Visages montrés par pile : trois personnes distinctes au plus.
+const STACK_FACES = 3;
+const firstPeople = (list: ATSCandidate[]): ATSCandidate[] => {
+  const seen = new Set<string>();
+  const out: ATSCandidate[] = [];
+  for (const c of list) {
+    const key = c.candidateId || c.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+    if (out.length === STACK_FACES) break;
   }
+  return out;
 };
 
 export default function Dashboard() {
-  const { candidates, loading, handleStageChange, handleTagsChange, refetch } = useATSData();
-  const { projects, isLoading: projectsLoading } = useSourcingProjects();
-  const { data: scheduledMessages = [], isLoading: messagesLoading } = useTodayScheduledMessages();
-  const { grouped: groupedReminders, isLoading: remindersLoading } = useAllReminders();
-  const unreadMessages = useUnreadMessageNotifications();
-  const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
+  const { candidates, loading, error: candidatesError } = useATSData();
+  const { projects, isLoading: projectsLoading, error: projectsError, refetch: refetchProjects } = useSourcingProjects();
+  const {
+    data: scheduledMessages = [],
+    isLoading: messagesLoading,
+    error: messagesError,
+    refetch: refetchMessages,
+  } = useTodayScheduledMessages();
+  const {
+    grouped: groupedReminders,
+    isLoading: remindersLoading,
+    error: remindersError,
+    refetch: refetchReminders,
+    toggleComplete,
+  } = useAllReminders();
+  // Réponses de candidats comptées par la barre : mêmes clés, même nombre que
+  // les lignes en gras de la section Réponses. null : inconnu.
+  const { replies } = useSidebarNotifications();
+  const unreadMessages = replies.data ? replies.data.candidates.filter((c) => c.counted).length : null;
+  const unreadPeople = replies.data?.candidates.filter((c) => c.counted).slice(0, STACK_FACES).map((r) => ({ name: r.name }));
+  const unreadMessagesUnavailable = replies.status === 'error' || replies.status === 'offline';
+  const { displayName } = useCurrentProfile();
   const connections = useDashboardConnections();
-  const { order, setOrder, resetOrder, isCustomized } = useDashboardLayout();
 
-  // Avatar prioritaire : LinkedIn (photo réelle) > profil custom upload > fallback initiales
-  const greetingAvatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl;
+  const candidatesUnavailable = !!candidatesError && candidates.length === 0;
 
-  const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const pendingList = useMemo(() => (candidatesUnavailable ? [] : candidates.filter(isPendingResponse)), [candidates, candidatesUnavailable]);
+  const stagnantList = useMemo(() => (candidatesUnavailable ? [] : candidates.filter(isStagnant)), [candidates, candidatesUnavailable]);
 
-  // Derived counters for the Focus Panel
-  const focusCounters = useMemo(() => {
-    const stagnant = candidates.filter(isStagnant).length;
-    const pending = candidates.filter(isPendingResponse).length;
-    const remindersToday = groupedReminders.today.length + groupedReminders.overdue.length;
-    return {
-      stagnant,
-      pending,
-      remindersToday,
-    };
-  }, [candidates, groupedReminders.today.length, groupedReminders.overdue.length]);
+  // Candidats en entretien en ce moment, par mission (étape générale du lot 0c).
+  const interviewingByMission = useMemo(() => {
+    const byMission = new Map<string, ATSCandidate[]>();
+    for (const c of candidates) {
+      if (c.generalStage !== 'interviewing' || !c.projectId) continue;
+      byMission.set(c.projectId, [...(byMission.get(c.projectId) ?? []), c]);
+    }
+    return byMission;
+  }, [candidates]);
 
-  // Active candidates count (exclude terminal)
+  // Une seule lecture des photos pour toutes les piles de visages.
+  const shown = useMemo(() => {
+    const lists = [firstPeople(pendingList), firstPeople(stagnantList)];
+    for (const list of interviewingByMission.values()) lists.push(firstPeople(list));
+    return lists;
+  }, [pendingList, stagnantList, interviewingByMission]);
+  const photoKeys = useMemo(() => Array.from(new Set(shown.flat().map(photoKeyOf).filter(Boolean))), [shown]);
+  const photos = useCandidateAvatars(photoKeys);
+  const personOf = (c: ATSCandidate): FocusPerson => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null, candidateId: c.candidateId });
+
+  const interviewing = useMemo(() => {
+    const out: Record<string, InterviewingPeople> = {};
+    for (const [projectId, list] of interviewingByMission) {
+      out[projectId] = {
+        people: firstPeople(list).map((c) => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null, candidateId: c.candidateId })),
+        total: countPeople(list),
+      };
+    }
+    return out;
+  }, [interviewingByMission, photos]);
+
+  // Candidats actifs : hors étapes terminales, une personne comptée une fois
+  // même présente dans deux missions. Les profils jamais ouverts sont déjà
+  // exclus par useATSData.
   const activeCandidatesCount = useMemo(
-    () => candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu').length,
+    () => countPeople(candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu')),
     [candidates],
   );
 
@@ -106,127 +145,82 @@ export default function Dashboard() {
     [projects],
   );
 
-  // Reminders due today (today + overdue, not done)
+  // Client d'une mission, pour les initiales d'une tâche sans candidat, et son logo enregistré.
+  const missionClientOf = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p.jd_client || p.client_name || null]));
+    return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
+  }, [projects]);
+  const missionLogoOf = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p.jd_client_logo ?? null]));
+    return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
+  }, [projects]);
+
+  // Tâches du jour : aujourd'hui et en retard, non terminées.
   const remindersToday = useMemo(
     () => [...groupedReminders.overdue, ...groupedReminders.today],
     [groupedReminders.overdue, groupedReminders.today],
   );
 
-  /**
-   * Map clé → contenu rendu. Chaque section gère son propre skeleton/empty
-   * state en interne. Si une section n'a rien à afficher (loading initial,
-   * etc.), on retourne `null` pour la skipper du flux Reorder.
-   */
-  const sections: Record<DashboardSectionKey, React.ReactNode> = {
-    connections: !connections.isLoading ? (
-      <DashboardConnections
-        linkedin={connections.linkedin}
-        whatsapp={connections.whatsapp}
-        email={connections.email}
-        hasIssue={connections.hasIssue}
-        allConnected={connections.allConnected}
-      />
-    ) : null,
-    focus: !loading ? (
-      <DashboardFocusPanel
-        unreadMessages={unreadMessages}
-        stagnantCandidates={focusCounters.stagnant}
-        remindersToday={focusCounters.remindersToday}
-        pendingResponses={focusCounters.pending}
-      />
-    ) : null,
-    'missions-today': (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        <div className="lg:col-span-2">
-          <DashboardMissionsPanel projects={projects} isLoading={projectsLoading} />
-        </div>
-        <div>
-          <DashboardTodayPanel
-            scheduledMessages={scheduledMessages}
-            remindersToday={remindersToday}
-            isLoading={messagesLoading || remindersLoading}
-          />
-        </div>
-      </div>
-    ),
-    week:
-      !loading && candidates.length > 0 ? (
-        <div className="mb-6">
-          <DashboardWeekHighlight candidates={candidates} />
-        </div>
-      ) : null,
-    activity: !loading ? (
-      <div className="mb-6">
-        <DashboardActivityFeed
-          candidates={candidates}
-          onCandidateClick={(c) => setSelectedCandidate(c)}
-        />
-      </div>
-    ) : null,
+  const todayError = remindersError ?? (messagesError ? (messagesError as { message?: string }).message ?? 'Erreur' : null);
+  const retryToday = () => {
+    void refetchReminders();
+    void refetchMessages();
   };
 
   return (
-    <PageLayout maxWidth="2xl">
+    <PageLayout maxWidth="md" backdrop>
       <SEOHead
-        title="Dashboard | Konekt"
+        title="Tableau de bord | Konekt"
         description="Votre point de départ : ce qui demande votre attention aujourd'hui."
       />
 
-      {/* 1. Greeting (fixe en haut) */}
       <DashboardGreeting
         userName={displayName}
-        avatarUrl={greetingAvatarUrl}
         activeCandidatesCount={activeCandidatesCount}
         activeMissionsCount={activeMissionsCount}
       />
 
-      {/* 2. Sections sortables — drag handle visible au hover */}
-      <Reorder.Group
-        axis="y"
-        values={order}
-        onReorder={setOrder}
-        className="space-y-0 list-none"
-      >
-        {order.map((key) => {
-          const content = sections[key];
-          if (!content) return null;
-          return (
-            <DashboardSortableItem key={key} value={key}>
-              {content}
-            </DashboardSortableItem>
-          );
-        })}
-      </Reorder.Group>
+      <div className="mt-4 space-y-12">
+        <section aria-labelledby="dashboard-todo">
+          <div className="flex flex-wrap items-baseline justify-between gap-4 pb-1">
+            <h2 id="dashboard-todo" className="text-lg font-semibold text-foreground">
+              À faire
+            </h2>
+            <Button asChild variant="link" size="sm" className="min-h-11 px-0 text-muted-foreground md:min-h-0">
+              <Link to="/tasks">Toutes les tâches</Link>
+            </Button>
+          </div>
+          <DashboardFocusPanel
+            isLoading={loading}
+            linkedinIssue={connections.linkedin.status === 'error'}
+            unreadMessages={unreadMessages}
+            unreadMessagesUnavailable={unreadMessagesUnavailable}
+            unreadPeople={unreadPeople}
+            pendingResponses={candidatesUnavailable ? null : pendingList.length}
+            pendingPeople={firstPeople(pendingList).map(personOf)}
+            stagnantCandidates={candidatesUnavailable ? null : stagnantList.length}
+            stagnantPeople={firstPeople(stagnantList).map(personOf)}
+          />
+          <DashboardTodayPanel
+            scheduledMessages={scheduledMessages}
+            remindersToday={remindersToday}
+            missionClientOf={missionClientOf}
+            missionLogoOf={missionLogoOf}
+            isLoading={messagesLoading || remindersLoading}
+            error={todayError}
+            onRetry={retryToday}
+            onToggleReminder={toggleComplete}
+          />
+        </section>
 
-      {/* Reset order — discret en bas, visible seulement si customisé */}
-      {isCustomized && (
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={resetOrder}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Undo2 className="w-3 h-3" />
-            Réinitialiser l'ordre
-          </button>
-        </div>
-      )}
-
-      {/* Modals */}
-      {selectedCandidate && (
-        <CandidateDetailModal
-          candidate={selectedCandidate}
-          onClose={() => setSelectedCandidate(null)}
-          onStageChange={handleStageChange}
-          onTagsChange={handleTagsChange}
-          onRefresh={refetch}
+        <DashboardMissionsPanel
+          projects={projects}
+          interviewing={interviewing}
+          isLoading={projectsLoading}
+          error={projectsError ? (projectsError as { message?: string }).message ?? 'Erreur' : null}
+          onRetry={() => void refetchProjects()}
         />
-      )}
-
-      <JobDetailSheet
-        jobId={selectedJobId}
-        open={!!selectedJobId}
-        onOpenChange={(open) => !open && setSelectedJobId(null)}
-      />
+      </div>
     </PageLayout>
   );
 }

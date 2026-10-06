@@ -2,13 +2,31 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, Loader2, Mail, RefreshCw, Unlink } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { ErrorState } from '@/components/layout/ErrorState';
+import { AlertTriangle, ExternalLink, RefreshCw, Unlink } from 'lucide-react';
 import { useMemberEmailAccounts } from '@/hooks/useMemberEmailAccounts';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { supabase } from '@/integrations/supabase/client';
+import { classifyLinkedInStatus } from '@/lib/linkedinStatus';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+/**
+ * Mon compte e-mail (Paramètres › Connexions, #email).
+ *
+ * Lot 12 du chantier design : une liste non reçue s'affiche en erreur avec
+ * « Réessayer », jamais comme un compte à connecter (F-06) ; état et fournisseur
+ * en mots, jamais le code du prestataire (F-25) ; dissociation confirmée (F-21).
+ */
 
 interface EmailAccount {
   id: string;
@@ -18,37 +36,74 @@ interface EmailAccount {
   type?: string;
 }
 
+type Provider = 'GOOGLE' | 'OUTLOOK' | 'IMAP';
+
+/** Fournisseur d'un compte, en clair ; null pour un type inconnu (jamais le code brut). */
+function providerLabel(raw?: string | null): string | null {
+  const value = (raw ?? '').toUpperCase();
+  if (!value) return null;
+  if (value.includes('GOOGLE') || value.includes('GMAIL')) return 'Gmail';
+  if (value.includes('OUTLOOK') || value.includes('MICROSOFT') || value.includes('OFFICE')) return 'Outlook';
+  if (value.includes('IMAP') || value === 'MAIL') return 'IMAP';
+  return null;
+}
+
+/**
+ * État d'un compte e-mail en mots. Le prestataire emploie les mêmes codes d'état
+ * pour tous les comptes : même classement que LinkedIn (src/lib/linkedinStatus.ts).
+ */
+function emailStateDisplay(status?: string | null): { label: string; dot: string; text: string } {
+  switch (classifyLinkedInStatus(status)) {
+    case 'connected': return { label: 'Actif', dot: 'bg-success', text: 'text-muted-foreground' };
+    case 'connecting': return { label: 'Connexion en cours…', dot: 'bg-info', text: 'text-muted-foreground' };
+    case 'needs_reconnect': return { label: 'Connexion expirée', dot: 'bg-danger', text: 'font-medium text-danger' };
+    default: return { label: 'État à vérifier', dot: 'bg-warning', text: 'font-medium text-warning' };
+  }
+}
+
 export const MyEmailAccount = () => {
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState<Provider | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(false);
-  const { mappings, linkAccount, unlinkAccount, getMappingForUser, getMappingForAccount } = useMemberEmailAccounts();
+  // Première lecture en cours dès le montage : pas de faux « connectez votre compte ».
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const [listError, setListError] = useState(false);
+  const {
+    mappings,
+    isLoading: mappingsLoading,
+    isError: mappingsError,
+    refetch: refetchMappings,
+    linkAccount,
+    unlinkAccount,
+    getMappingForUser,
+    getMappingForAccount,
+  } = useMemberEmailAccounts();
   const { organization } = useOrganization();
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Utilisateur de la session partagée : prêt ou non, jamais un faux « non relié » en attendant.
+  const { user, isReady: authReady } = useAuthReady();
+  const currentUserId = user?.id ?? null;
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousCountRef = useRef<number>(0);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUserId(user.id);
-    });
-  }, []);
-
-  // Fetch email accounts from Unipile
-  const loadEmailAccounts = useCallback(async () => {
+  // Fetch email accounts from Unipile. background : relecture de la détection
+  // automatique, dont un échec passager ne remplace pas l'écran par une erreur.
+  const loadEmailAccounts = useCallback(async (options?: { background?: boolean }) => {
     setLoadingAccounts(true);
     try {
-      const { data } = await invokeEdgeFunction('unipile-accounts', {
+      const { data, error } = await invokeEdgeFunction<{ accounts?: EmailAccount[] }>('unipile-accounts', {
         action: 'list_email',
       });
-      if ((data as any)?.success && (data as any)?.accounts) {
-        const accounts = (data as any).accounts as EmailAccount[];
-        setEmailAccounts(accounts);
-        return accounts;
+      if (!error && data?.success && data.accounts) {
+        setEmailAccounts(data.accounts);
+        setAccountsLoaded(true);
+        setListError(false);
+        return data.accounts;
       }
+      if (!options?.background) setListError(true);
     } catch (err) {
       console.warn('Failed to load email accounts:', err);
+      if (!options?.background) setListError(true);
     } finally {
       setLoadingAccounts(false);
     }
@@ -86,12 +141,12 @@ export const MyEmailAccount = () => {
         return;
       }
       try {
-        const accounts = await loadEmailAccounts();
+        const accounts = await loadEmailAccounts({ background: true });
         if (accounts && accounts.length > previousCountRef.current) {
           previousCountRef.current = accounts.length;
           if (pollingRef.current) clearInterval(pollingRef.current);
           pollingRef.current = null;
-          toast.success('Nouveau compte email détecté ! Sélectionnez-le ci-dessous.');
+          toast.success('Nouveau compte e-mail détecté : sélectionnez-le ci-dessous.');
         }
       } catch {
         // ignore polling errors
@@ -99,11 +154,11 @@ export const MyEmailAccount = () => {
     }, 10000);
   }, [loadEmailAccounts]);
 
-  const handleConnect = async (provider: 'GOOGLE' | 'OUTLOOK' | 'IMAP') => {
-    setGenerating(true);
+  const handleConnect = async (provider: Provider) => {
+    setGenerating(provider);
     try {
       const currentUrl = window.location.href;
-      const { data } = await invokeEdgeFunction('unipile-accounts', {
+      const { data } = await invokeEdgeFunction<{ url?: string }>('unipile-accounts', {
         action: 'hosted_auth_link',
         providers: [provider],
         success_redirect_url: currentUrl,
@@ -111,19 +166,19 @@ export const MyEmailAccount = () => {
         org_name: organization?.name || undefined,
       });
 
-      if (data?.success && (data as any).url) {
-        window.open((data as any).url, '_blank', 'noopener,noreferrer');
+      if (data?.success && data.url) {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
         const providerName = provider === 'GOOGLE' ? 'Gmail' : provider === 'OUTLOOK' ? 'Outlook' : 'IMAP';
         toast.info(`Une fenêtre de connexion ${providerName} s'est ouverte. Le compte sera détecté automatiquement.`);
         // Start auto-polling to detect new account
         startPolling();
       } else {
-        throw new Error((data as any)?.error || 'Erreur lors de la génération du lien');
+        throw new Error(data?.error || 'Erreur lors de la génération du lien');
       }
-    } catch (e: any) {
-      toast.error(e.message || 'Erreur lors de la connexion');
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : 'Erreur lors de la connexion');
     } finally {
-      setGenerating(false);
+      setGenerating(null);
     }
   };
 
@@ -157,136 +212,203 @@ export const MyEmailAccount = () => {
     }
   };
 
+  const busy = refreshing || loadingAccounts;
+  const refreshButton = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleRefresh}
+          disabled={busy}
+          className="text-muted-foreground max-md:h-11 max-md:w-11"
+          aria-label="Actualiser la liste des comptes e-mail"
+        >
+          <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Actualiser</TooltipContent>
+    </Tooltip>
+  );
+  // Dissocier retire la liaison : confirmation, comme pour LinkedIn (F-21).
+  const unlinkButton = (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-danger hover:text-danger max-sm:flex-1 max-md:h-11">
+          <Unlink aria-hidden="true" />
+          Dissocier
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Dissocier ce compte e-mail ?</AlertDialogTitle>
+          <AlertDialogDescription>
+            L'adresse ne sera plus rattachée à votre profil Konekt. Votre boîte e-mail et ses messages
+            ne sont pas touchés, et vous pourrez la relier de nouveau.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction onClick={handleUnlink} className="bg-destructive">
+            Dissocier
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+  const connectButtons = (
+    <div className="flex flex-col gap-2 sm:flex-row">
+      {(['GOOGLE', 'OUTLOOK'] as const).map((provider) => (
+        <Button
+          key={provider}
+          variant="outline"
+          size="sm"
+          onClick={() => handleConnect(provider)}
+          loading={generating === provider}
+          disabled={generating !== null}
+          className="max-md:h-11 sm:flex-1"
+        >
+          {generating !== provider && <ExternalLink aria-hidden="true" />}
+          {provider === 'GOOGLE' ? 'Connecter Gmail' : 'Connecter Outlook'}
+        </Button>
+      ))}
+    </div>
+  );
+
+  const initialLoad = !authReady || mappingsLoading || (!accountsLoaded && !listError);
+  const myState = myAccount ? emailStateDisplay(myAccount.status) : null;
+  const myProvider = providerLabel(myMapping?.provider);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Mail className="w-5 h-5" />
-          Mon compte email
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <ChannelIcon channel="email" size="sm" decorative />
+          Mon compte e-mail
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {myMapping && myAccount ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <Mail className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {myMapping.email_address || myAccount.identifier || myAccount.name}
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <div className={cn(
-                      'w-1.5 h-1.5 rounded-full',
-                      myAccount.status === 'OK' ? 'bg-primary' : 'bg-destructive'
-                    )} />
-                    <span className="text-xs text-muted-foreground">
-                      {myAccount.status === 'OK' ? 'Actif' : myAccount.status}
-                      {myMapping.provider && ` (${myMapping.provider})`}
-                    </span>
-                  </div>
-                </div>
+        {initialLoad ? (
+          <div role="status" className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 shrink-0 rounded-full" aria-hidden="true" />
+            <div className="flex-1 space-y-2" aria-hidden="true">
+              <Skeleton className="h-4 w-48 max-w-full" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <span className="sr-only">Chargement de votre compte e-mail…</span>
+          </div>
+        ) : mappingsError ? (
+          // Associations non lues : on ne sait pas si un compte vous est relié (F-06).
+          <ErrorState
+            variant="compact"
+            title="Impossible de lire l'association de votre compte e-mail."
+            description="Vérifiez votre connexion, puis réessayez."
+            onRetry={() => { void refetchMappings(); }}
+          />
+        ) : myMapping && myAccount && myState ? (
+          <div className="flex flex-col gap-3 rounded-lg bg-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-background" aria-hidden="true">
+                <ChannelIcon channel="email" size="md" decorative />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {myMapping.email_address || myAccount.identifier || myAccount.name}
+                </p>
+                <p className="flex flex-wrap items-center gap-x-1.5 text-xs">
+                  <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', myState.dot)} aria-hidden="true" />
+                  <span className={myState.text}>{myState.label}</span>
+                  {myProvider && <span className="text-muted-foreground">· {myProvider}</span>}
+                </p>
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRefresh}
-                  disabled={refreshing || loadingAccounts}
-                  className="text-muted-foreground"
-                >
-                  <RefreshCw className={cn('w-4 h-4', (refreshing || loadingAccounts) && 'animate-spin')} />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleUnlink} className="text-destructive hover:text-destructive">
-                  <Unlink className="w-4 h-4 mr-1" />
-                  Dissocier
-                </Button>
-              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+              {refreshButton}
+              {unlinkButton}
             </div>
           </div>
         ) : myMapping && !myAccount ? (
-          <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground flex items-center justify-between">
-            <span>Compte lié : {myMapping.email_address || myMapping.email_account_id}</span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={refreshing || loadingAccounts}
-                className="text-muted-foreground"
+          // Relié, compte absent de la liste : liste non reçue (panne) ou compte disparu.
+          <div className="space-y-3">
+            {/* Même anatomie que l'état d'erreur du kit (ErrorState compact). */}
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
+              <span
+                className={cn(
+                  'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
+                  listError ? 'bg-danger-muted text-danger' : 'bg-warning-muted text-warning',
+                )}
               >
-                <RefreshCw className={cn('w-4 h-4', (refreshing || loadingAccounts) && 'animate-spin')} />
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold text-foreground">
+                  {listError ? 'Impossible de vérifier votre compte e-mail pour le moment.' : 'Compte e-mail introuvable'}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  Le compte <span className="font-medium text-foreground">{myMapping.email_address || myMapping.email_account_id}</span>
+                  {listError
+                    ? ' reste relié à votre profil. Réessayez dans un instant.'
+                    : " n'est plus disponible. Dissociez-le puis connectez de nouveau votre messagerie."}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={busy} className="max-md:h-11">
+                <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
+                {listError ? 'Réessayer' : 'Rafraîchir'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleUnlink} className="text-destructive">
-                <Unlink className="w-3 h-3 mr-1" />
-                Dissocier
-              </Button>
+              {unlinkButton}
             </div>
           </div>
+        ) : listError ? (
+          // Liste non reçue : on ne sait pas quels comptes existent, seul « Réessayer » a un sens (F-06).
+          <ErrorState
+            variant="compact"
+            title="Impossible de charger vos comptes e-mail."
+            description="Vérifiez votre connexion, puis réessayez."
+            onRetry={() => { void handleRefresh(); }}
+            retrying={busy}
+          />
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Connectez votre compte email pour envoyer des emails d'outreach directement depuis vos séquences.
+              Connectez votre compte e-mail pour envoyer des e-mails de prospection depuis vos séquences.
             </p>
 
-            {unlinkedAccounts.length > 0 ? (
+            {unlinkedAccounts.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-foreground">
-                  Compte{unlinkedAccounts.length > 1 ? 's' : ''} disponible{unlinkedAccounts.length > 1 ? 's' : ''} :
+                  {unlinkedAccounts.length > 1 ? 'Comptes disponibles' : 'Compte disponible'}
                 </p>
-                {unlinkedAccounts.map(acc => (
-                  <div key={acc.id} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm">{acc.identifier || acc.name || acc.id}</span>
-                      {acc.status === 'OK' && (
-                        <Badge variant="secondary" className="text-xs">Actif</Badge>
-                      )}
-                      {acc.type && (
-                        <Badge variant="outline" className="text-xs">{acc.type}</Badge>
-                      )}
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => handleLinkAccount(acc.id)}>
-                      C'est mon compte
-                    </Button>
-                  </div>
-                ))}
-                <div className="flex gap-2">
-                  <Button onClick={() => handleConnect('GOOGLE')} disabled={generating} variant="outline" className="flex-1" size="sm">
-                    {generating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                    Gmail
-                  </Button>
-                  <Button onClick={() => handleConnect('OUTLOOK')} disabled={generating} variant="outline" className="flex-1" size="sm">
-                    {generating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                    Outlook
-                  </Button>
-                </div>
+                <ul className="space-y-2">
+                  {unlinkedAccounts.map(acc => (
+                    <li key={acc.id} className="flex flex-col gap-2 rounded-lg bg-muted p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <ChannelIcon channel="email" size="sm" decorative />
+                        <span className="truncate text-sm text-foreground">{acc.identifier || acc.name || acc.id}</span>
+                        {classifyLinkedInStatus(acc.status) === 'connected' && (
+                          <Badge variant="muted" className="shrink-0">Actif</Badge>
+                        )}
+                        {providerLabel(acc.type) && (
+                          <Badge variant="outline" className="shrink-0">{providerLabel(acc.type)}</Badge>
+                        )}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => handleLinkAccount(acc.id)} className="shrink-0 max-md:h-11">
+                        C'est mon compte
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Button onClick={() => handleConnect('GOOGLE')} disabled={generating} className="flex-1" size="sm">
-                    {generating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                    Gmail
-                  </Button>
-                  <Button onClick={() => handleConnect('OUTLOOK')} disabled={generating} variant="outline" className="flex-1" size="sm">
-                    {generating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                    Outlook
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={handleRefresh}
-                  disabled={refreshing || loadingAccounts}
-                >
-                  <RefreshCw className={cn('w-4 h-4 mr-2', (refreshing || loadingAccounts) && 'animate-spin')} />
-                  Rafraîchir les comptes
-                </Button>
-              </div>
+            )}
+
+            {connectButtons}
+
+            {unlinkedAccounts.length === 0 && (
+              <Button variant="outline" size="sm" className="w-full max-md:h-11" onClick={handleRefresh} disabled={busy}>
+                <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
+                Rafraîchir les comptes
+              </Button>
             )}
           </div>
         )}

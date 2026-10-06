@@ -1,22 +1,43 @@
 import React from 'react';
+import { Mail, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CHANNELS, channelOfAccount, type Channel } from '@/lib/channels';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 
-export type ChannelType = 'linkedin' | 'whatsapp';
+/**
+ * Pastille d'un canal : logo officiel pour LinkedIn et WhatsApp, icône grise
+ * pour l'e-mail et l'appel (table `src/lib/channels.ts`). Le libellé, quand il
+ * est affiché, reste en texte neutre et le logo devient décoratif, pour ne
+ * pas lire le nom deux fois.
+ */
+
+export type ChannelType = Channel;
 
 interface ChannelIconProps {
-  channel: ChannelType;
+  channel: Channel;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
   showLabel?: boolean;
+  /** Le nom du canal est déjà écrit à côté : l'icône ne se lit pas. */
+  decorative?: boolean;
 }
 
 const SIZES = {
-  xs: 'w-3 h-3',
-  sm: 'w-4 h-4',
-  md: 'w-5 h-5',
-  lg: 'w-6 h-6',
+  xs: 'h-3 w-3',
+  sm: 'h-4 w-4',
+  md: 'h-5 w-5',
+  lg: 'h-6 w-6',
+};
+
+const LOGOS: Partial<Record<Channel, string>> = {
+  linkedin: linkedinLogo,
+  whatsapp: whatsappLogo,
+};
+
+const ICONS: Partial<Record<Channel, React.ElementType>> = {
+  email: Mail,
+  call: Phone,
 };
 
 export const ChannelIcon: React.FC<ChannelIconProps> = ({
@@ -24,32 +45,30 @@ export const ChannelIcon: React.FC<ChannelIconProps> = ({
   size = 'sm',
   className,
   showLabel = false,
+  decorative = false,
 }) => {
+  const label = CHANNELS[channel].label;
   const sizeClass = SIZES[size];
-
-  if (channel === 'whatsapp') {
-    return (
-      <span className={cn('inline-flex items-center gap-1', className)}>
-        <img src={whatsappLogo} alt="WhatsApp" className={cn(sizeClass, 'rounded-sm')} />
-        {showLabel && <span className="text-xs font-medium text-whatsapp">WhatsApp</span>}
-      </span>
-    );
-  }
+  const logo = LOGOS[channel];
+  const Icon = ICONS[channel];
+  const hidden = showLabel || decorative;
 
   return (
     <span className={cn('inline-flex items-center gap-1', className)}>
-      <img src={linkedinLogo} alt="LinkedIn" className={cn(sizeClass, 'rounded-sm')} />
-      {showLabel && <span className="text-xs font-medium text-linkedin">LinkedIn</span>}
+      {logo ? (
+        <img src={logo} alt={hidden ? '' : label} aria-hidden={hidden || undefined} className={cn(sizeClass, 'rounded-sm')} />
+      ) : Icon ? (
+        <Icon
+          className={cn(sizeClass, 'text-muted-foreground')}
+          aria-hidden={hidden ? true : undefined}
+          aria-label={hidden ? undefined : label}
+          role={hidden ? undefined : 'img'}
+        />
+      ) : null}
+      {showLabel && <span className="text-xs font-medium text-foreground-secondary">{label}</span>}
     </span>
   );
 };
 
-/**
- * Detect channel from Unipile account_type or provider string.
- */
-export function detectChannel(accountType?: string): ChannelType {
-  if (!accountType) return 'linkedin';
-  const lower = accountType.toLowerCase();
-  if (lower.includes('whatsapp') || lower === 'wa' || lower === 'whatsapp') return 'whatsapp';
-  return 'linkedin';
-}
+/** Canal d'un compte de messagerie d'après son type (voir `channelOfAccount`). */
+export const detectChannel = channelOfAccount;

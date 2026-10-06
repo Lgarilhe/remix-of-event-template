@@ -332,7 +332,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         {/* Subscription badges */}
                         <div className="flex items-center gap-1">
                           {account.subscriptions?.recruiter && (
-                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-brand-purple/10 text-purple-700">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-brand-purple/10 text-brand">
                               <Building2 className="w-2.5 h-2.5 mr-0.5" />
                               Recruiter
                             </Badge>
@@ -363,10 +363,10 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                                     // Force re-render by triggering parent refresh
                                     onAccountConnected();
                                   }}
-                                  className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 transition-colors"
+                                  className="flex items-center gap-1 text-xs text-brand hover:text-brand-hover transition-colors"
                                 >
                                   {getSubscriptionOverrides()[account.id]?.recruiter ? (
-                                    <ToggleRight className="w-4 h-4 text-purple-600" />
+                                    <ToggleRight className="w-4 h-4 text-brand" />
                                   ) : (
                                     <ToggleLeft className="w-4 h-4 text-muted-foreground" />
                                   )}
@@ -515,16 +515,16 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 
                 {/* Multi-contract tip */}
                 <TooltipProvider>
-                  <div className="p-3 bg-brand-purple/10 border border-border rounded-lg text-xs text-purple-700">
+                  <div className="p-3 bg-brand-purple/10 border border-border rounded-lg text-xs text-brand">
                     <div className="flex items-start gap-2">
                       <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="font-medium mb-1">Plusieurs contrats Recruiter ?</p>
-                        <p className="text-purple-600">
+                        <p className="text-brand">
                           Si vous avez accès à plusieurs sièges Recruiter (ex: votre entreprise + un client), 
                           connectez chaque contrat séparément :
                         </p>
-                        <ol className="list-decimal list-inside mt-1 space-y-0.5 text-purple-600">
+                        <ol className="list-decimal list-inside mt-1 space-y-0.5 text-brand">
                           <li>Ouvrez LinkedIn Recruiter et sélectionnez le contrat souhaité</li>
                           <li>Récupérez le cookie li_at correspondant</li>
                           <li>Connectez-le ici (chaque contrat = une connexion)</li>

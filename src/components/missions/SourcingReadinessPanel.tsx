@@ -29,12 +29,12 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
   onSearch,
   filtersReady = false,
 }) => {
-  const { creditsRemaining, isLoading: creditsLoading } = useAICredits();
+  const { creditsRemaining, isLoading: creditsLoading, hasBalance: hasCredits } = useAICredits();
   const jd = (project.job_details || {}) as Partial<JobDetails>;
   const brief = countBriefFields(jd);
   const [, setSearchParams] = useSearchParams();
 
-  const creditsOk = !creditsLoading && creditsRemaining > 0;
+  const creditsOk = hasCredits && creditsRemaining > 0;
   const briefReady = brief.filled >= 4;
   const briefDone = brief.filled >= 8;
 
@@ -102,15 +102,24 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
           Brief {brief.filled}/{brief.total}
         </span>
 
-        <span className={cn(
-          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs',
-          creditsOk
-            ? 'border-accent/20 bg-accent/5 text-accent'
-            : 'border-destructive/20 bg-destructive/5 text-destructive',
-        )}>
-          <span className={cn('h-1.5 w-1.5 rounded-full', creditsOk ? 'bg-accent' : 'bg-destructive')} />
-          {creditsLoading ? '...' : `${creditsRemaining.toLocaleString('fr-FR')} cr`}
-        </span>
+        {/* Solde illisible : pas de pastille rouge à 0 cr, qui annoncerait à
+            tort un compte vidé. On n'affiche le solde que s'il est connu. */}
+        {(creditsLoading || hasCredits) && (
+          <span className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs',
+            creditsLoading
+              ? 'border-border bg-muted/30 text-muted-foreground'
+              : creditsOk
+                ? 'border-accent/20 bg-accent/5 text-accent'
+                : 'border-destructive/20 bg-destructive/5 text-destructive',
+          )}>
+            <span className={cn(
+              'h-1.5 w-1.5 rounded-full',
+              creditsLoading ? 'bg-muted-foreground/40' : creditsOk ? 'bg-accent' : 'bg-destructive',
+            )} />
+            {creditsLoading ? '...' : `${creditsRemaining.toLocaleString('fr-FR')} cr`}
+          </span>
+        )}
       </div>
 
       <div className="space-y-2">

@@ -14,6 +14,17 @@ import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
+import { getSubscriptionGate } from './subscription-gate.ts';
+import { getOrFetchContact, isCandidateErasedForOrg, GdprRegistryUnavailableError } from './get-or-fetch-contact.ts';
+import { firstExecutionTime, pickFirstRootStep, validTimeZone } from './sequence-first-step.ts';
+import {
+  buildFirstStepPreview,
+  drawRankVariant,
+  hasAiPersonalizedStep,
+  missionCandidateFields,
+  type MissionCandidateRowLike,
+  type PreviewStep,
+} from './enroll-preview.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -23,18 +34,17 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 }
 
 // ─── Tool 1 — update_candidate_stage ────────────────────────────────────────
-// MVP : seul tool implémenté pour valider la mécanique end-to-end.
+// Refonte mission, lot 0b-4 : les outils d'étape (update_candidate_stage,
+// add_to_shortlist, dismiss_candidate, bulk_update_stage, bulk_dismiss)
+// n'écrivent plus status ni pipeline_stage. Ils passent par
+// apply_mission_candidate_stage, origine 'user' (l'utilisateur a approuvé le
+// geste), qui tient l'étape générale, les jalons et le couple de
+// compatibilité. Portée : toutes les lignes du candidat dans la mission
+// (project_id), dans l'organisation, quel qu'en soit l'auteur (décision 15) ;
+// l'aperçu d'approbation annonce le nombre de lignes.
 //
-// Updates `pipeline_stage` (the business-facing kanban stage seen in the ATS
-// view), NOT `status` (the technical state machine). The frontend ATS calls
-// computeEffectiveStage(pipeline_stage, status) to combine both — see
-// useATSData.ts:96. Updating pipeline_stage is the right "user-facing"
-// mutation : moves the card across the kanban board.
-//
-// MVP refuse to UPSERT — it requires the row to already exist. This avoids
-// Claude hallucinating candidate_ids and creating orphan rows. The candidate
-// must have been "discovered" first (via LinkedIn search) before we can move
-// it on the pipeline.
+// Aucune création : la ligne doit déjà exister dans la mission. Cela évite
+// qu'un identifiant inventé crée une ligne orpheline.
 
 // Business pipeline stages (matches STAGE_ORDER in useATSData.ts).
 // Final states: Gagné = won, Perdu = lost.
@@ -52,6 +62,321 @@ const ALLOWED_STAGES = [
 ] as const;
 type PipelineStage = (typeof ALLOWED_STAGES)[number];
 
+type GeneralStage = 'to_sort' | 'retained' | 'contacted' | 'replied' | 'interviewing' | 'hired' | 'rejected';
+interface StageTarget { stage: GeneralStage; legacyStage?: string | null }
+
+// Copie de ATS_LABEL_TO_STAGE (src/lib/candidateStage.ts) : ce fichier Deno ne
+// peut pas importer src/. Les deux tables doivent rester identiques
+// (tests/c1/lot0b-ecrivains.test.mjs). Libellé hérité seulement quand l'étape
+// générale ne suffit pas (décision 20).
+const ATS_LABEL_TO_STAGE: Readonly<Record<PipelineStage, StageTarget>> = {
+  'Nouveau': { stage: 'to_sort' },
+  'Contacté': { stage: 'contacted' },
+  'Répondu': { stage: 'replied' },
+  'Pressenti': { stage: 'retained' },
+  'Pré-qualif': { stage: 'interviewing', legacyStage: 'Pré-qualif' },
+  'CV envoyé': { stage: 'interviewing', legacyStage: 'CV envoyé' },
+  'ITW en cours': { stage: 'interviewing', legacyStage: 'ITW en cours' },
+  'Offre': { stage: 'interviewing', legacyStage: 'Offre' },
+  'Gagné': { stage: 'hired', legacyStage: 'Gagné' },
+  'Perdu': { stage: 'rejected' },
+};
+
+const GENERAL_STAGE_LABELS: Record<GeneralStage, string> = {
+  to_sort: 'À trier',
+  retained: 'Retenu',
+  contacted: 'Contacté',
+  replied: 'A répondu',
+  interviewing: 'En entretien',
+  hired: 'Embauché',
+  rejected: 'Écarté',
+};
+
+// « Retenir » (add_to_shortlist) : un candidat déjà contacté, en échange ou en
+// entretien reste à son étape.
+const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
+
+const MISSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Mission d'un paramètre job_id : id de sourcing_projects (préfixe « project: » retiré), sinon null. */
+function missionIdParam(params: Record<string, unknown>): string | null {
+  const raw = String(params.job_id || '').trim().replace(/^project:/, '');
+  return MISSION_UUID_RE.test(raw) ? raw.toLowerCase() : null;
+}
+
+function lineCount(n: number): string {
+  return `${n} ligne${n > 1 ? 's' : ''}`;
+}
+
+interface MissionCandidateRow {
+  id: string;
+  candidate_id: string;
+  candidate_name: string | null;
+  candidate_headline: string | null;
+  general_stage: GeneralStage | null;
+  pipeline_stage: string | null;
+  status: string | null;
+}
+
+/** Lignes des candidats dans la mission, dans l'organisation, tous auteurs. */
+async function missionCandidateRows(
+  ctx: ToolContext,
+  projectId: string,
+  candidateIds: string[],
+): Promise<{ rows: MissionCandidateRow[]; error: string | null }> {
+  if (candidateIds.length === 0) return { rows: [], error: null };
+  const { data, error } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select('id, candidate_id, candidate_name, candidate_headline, general_stage, pipeline_stage, status')
+    .eq('organization_id', ctx.organizationId)
+    .eq('project_id', projectId)
+    .in('candidate_id', candidateIds)
+    .order('created_at', { ascending: true });
+  if (error) return { rows: [], error: error.message };
+  return { rows: (data as MissionCandidateRow[] | null) ?? [], error: null };
+}
+
+/** La mission doit exister et appartenir à l'organisation de l'appelant. */
+async function verifyMissionOfOrg(
+  ctx: ToolContext,
+  projectId: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const { data: project, error } = await ctx.adminClient
+    .from('sourcing_projects')
+    .select('id, organization_id')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (error) return { allowed: false, reason: "La mission n'a pas pu être vérifiée. Réessayez dans un instant." };
+  if (!project) return { allowed: false, reason: `Mission ${projectId} introuvable` };
+  if (project.organization_id !== ctx.organizationId) {
+    return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+  }
+  return { allowed: true };
+}
+
+/** Un candidat, une mission : mission de l'organisation et au moins une ligne du candidat. */
+async function verifySingleCandidate(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const projectId = missionIdParam(params);
+  const candidateId = String(params.candidate_id || '').trim();
+  if (!projectId || !candidateId) return { allowed: false, reason: 'job_id (mission UUID) and candidate_id are required' };
+  const mission = await verifyMissionOfOrg(ctx, projectId);
+  if (!mission.allowed) return mission;
+  const { rows, error } = await missionCandidateRows(ctx, projectId, [candidateId]);
+  if (error) return { allowed: false, reason: "Le candidat n'a pas pu être vérifié. Réessayez dans un instant." };
+  if (rows.length === 0) {
+    return {
+      allowed: false,
+      reason: `Le candidat ${candidateId} n'est pas encore associé à cette mission. Lance d'abord une recherche LinkedIn ou ajoute-le manuellement avant de modifier son étape.`,
+    };
+  }
+  return { allowed: true };
+}
+
+/** La ligne est-elle déjà à la cible (étape générale, et libellé hérité s'il est demandé) ? */
+function isAtTarget(row: MissionCandidateRow, target: StageTarget): boolean {
+  return row.general_stage === target.stage && (!target.legacyStage || row.pipeline_stage === target.legacyStage);
+}
+
+function stageLabelOf(row: MissionCandidateRow): string {
+  return row.general_stage ? GENERAL_STAGE_LABELS[row.general_stage] ?? row.general_stage : '(non défini)';
+}
+
+const STAGE_REFUSAL_MESSAGES: Record<string, string> = {
+  STAGE_MISSION_NOT_FOUND: 'Cette mission est introuvable dans votre organisation.',
+  STAGE_ROW_NOT_FOUND: "Ce candidat n'est plus dans cette mission. Rechargez la page.",
+  STAGE_STEP_REQUIRED: "Choisissez l'étape d'entretien de cette mission.",
+  STAGE_STEP_NOT_IN_MISSION: "Cette étape n'appartient pas à la mission du candidat. Rechargez la page.",
+};
+
+function stageRefusalMessage(hint: string | null | undefined): string {
+  return (hint && STAGE_REFUSAL_MESSAGES[hint]) || "Le changement d'étape n'a pas été enregistré. Réessayez.";
+}
+
+interface StageApplyRow {
+  id: string;
+  changed?: boolean;
+  result?: string;
+  general_stage?: string | null;
+  hint?: string | null;
+}
+
+interface CandidateStageOutcome {
+  rows: StageApplyRow[];
+  changed: number;
+  unchanged: number;
+  kept: number;
+  refused: number;
+  error: string | null;
+}
+
+/**
+ * Pose l'étape d'un candidat sur toutes ses lignes de la mission
+ * (apply_mission_candidate_stage, origine 'user', aucune création), puis la
+ * raison d'un écart en écriture directe (skip_reason, hors étape) sur les
+ * lignes désormais écartées.
+ */
+async function applyCandidateStage(
+  ctx: ToolContext,
+  projectId: string,
+  candidateId: string,
+  target: StageTarget,
+  fromStages: GeneralStage[] | null,
+  skipReason: string | null,
+): Promise<CandidateStageOutcome> {
+  const outcome: CandidateStageOutcome = { rows: [], changed: 0, unchanged: 0, kept: 0, refused: 0, error: null };
+  const { data, error } = await ctx.adminClient.rpc('apply_mission_candidate_stage', {
+    p_organization_id: ctx.organizationId,
+    p_project_id: projectId,
+    p_candidate: { ids: [candidateId] },
+    p_stage: target.stage,
+    p_source: 'user',
+    p_process_step_id: null,
+    p_legacy_stage: target.legacyStage ?? null,
+    p_from_stages: fromStages,
+    p_create_by: null,
+    p_only_created_by: null,
+  });
+  if (error) {
+    console.warn('[agent-tools] apply_mission_candidate_stage failed:', error.message, error.hint);
+    outcome.error = stageRefusalMessage(error.hint);
+    return outcome;
+  }
+  const rows: StageApplyRow[] = Array.isArray((data as { rows?: unknown })?.rows)
+    ? (data as { rows: StageApplyRow[] }).rows
+    : [];
+  outcome.rows = rows;
+  for (const r of rows) {
+    if (r.result === 'error') outcome.refused++;
+    else if (r.result === 'skipped' || r.result === 'kept' || r.result === 'not_contacted') outcome.kept++;
+    else if (r.changed) outcome.changed++;
+    else outcome.unchanged++;
+  }
+  if (rows.length > 0 && outcome.refused === rows.length) {
+    outcome.error = stageRefusalMessage(rows[0].hint);
+  }
+  if (skipReason && target.stage === 'rejected') {
+    const rejectedIds = rows.filter((r) => r.result !== 'error' && r.general_stage === 'rejected').map((r) => r.id);
+    if (rejectedIds.length > 0) {
+      const { error: reasonError } = await ctx.adminClient
+        .from('job_candidate_status')
+        .update({ skip_reason: skipReason })
+        .eq('organization_id', ctx.organizationId)
+        .eq('project_id', projectId)
+        .eq('candidate_id', candidateId)
+        .in('id', rejectedIds);
+      if (reasonError) console.warn('[agent-tools] skip_reason update failed:', reasonError.message);
+    }
+  }
+  return outcome;
+}
+
+/** Aperçu d'un changement d'étape pour un candidat (toutes ses lignes de la mission). */
+async function candidateStageDryRun(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+  stageLabel: PipelineStage,
+  fromStages: GeneralStage[] | null,
+) {
+  const candidateId = String(params.candidate_id || '').trim();
+  const projectId = missionIdParam(params) ?? '';
+  const reason = params.reason ? String(params.reason) : null;
+  const target = ATS_LABEL_TO_STAGE[stageLabel];
+
+  const [{ rows }, { data: project }] = await Promise.all([
+    missionCandidateRows(ctx, projectId, [candidateId]),
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name')
+      .eq('id', projectId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle(),
+  ]);
+
+  const jobLabel = project?.job_title || project?.name || projectId;
+  const clientLabel = project?.client_name ? ` (${project.client_name})` : '';
+  const first = rows[0];
+  const candidateLabel = first?.candidate_name || candidateId;
+  const fromLabels = [...new Set(rows.map(stageLabelOf))];
+  const fromStage = fromLabels.length > 0 ? fromLabels.join(', ') : '(non défini)';
+  const keptRows = fromStages ? rows.filter((r) => !r.general_stage || !fromStages.includes(r.general_stage)) : [];
+  const movingRows = rows.filter((r) => !keptRows.includes(r) && !isAtTarget(r, target));
+  const isNoOp = movingRows.length === 0;
+  // Aucune ligne à la cible, toutes laissées à leur étape (déjà plus loin) :
+  // le candidat n'est pas « déjà à l'étape », il reste où il est.
+  const keptAll = isNoOp && keptRows.length > 0 && keptRows.length === rows.length;
+  const keptLabels = [...new Set(keptRows.map(stageLabelOf))].join(', ');
+
+  return {
+    summary: keptAll
+      ? `${candidateLabel} reste à « ${keptLabels} » sur "${jobLabel}${clientLabel}" (déjà plus loin que « ${stageLabel} », ${lineCount(rows.length)})`
+      : isNoOp
+      ? `${candidateLabel} est déjà à l'étape « ${stageLabel} » sur "${jobLabel}${clientLabel}" (${lineCount(rows.length)})`
+      : `Déplacer ${candidateLabel} : « ${fromStage} » → « ${stageLabel} » sur "${jobLabel}${clientLabel}" (${lineCount(movingRows.length)})`,
+    details: {
+      candidate_id: candidateId,
+      candidate_name: first?.candidate_name ?? null,
+      candidate_headline: first?.candidate_headline ?? null,
+      job_id: projectId,
+      job_label: jobLabel,
+      client_label: project?.client_name ?? null,
+      from_stage: fromStage,
+      to_stage: stageLabel,
+      rows: rows.length,
+      rows_to_move: movingRows.length,
+      rows_kept: keptRows.length,
+      reason,
+      is_no_op: isNoOp,
+      kept_all: keptAll,
+    },
+    warning: keptRows.length > 0
+      ? (keptRows.length > 1
+        ? `${lineCount(keptRows.length)} déjà plus loin, laissées à leur étape.`
+        : `${lineCount(keptRows.length)} déjà plus loin, laissée à son étape.`)
+      : isNoOp
+      ? 'Aucun changement : le candidat est déjà à cette étape.'
+      : target.stage === 'rejected'
+      ? 'Ce candidat sera écarté de cette mission.'
+      : undefined,
+  };
+}
+
+function candidateStageResult(outcome: CandidateStageOutcome, stageLabel: string) {
+  if (outcome.error) return { success: false, error: outcome.error };
+  if (outcome.rows.length === 0) {
+    return { success: false, error: "Ce candidat n'est plus dans cette mission. Rechargez la page." };
+  }
+  // Toutes les lignes laissées à leur étape (déjà plus loin) : rien n'a changé,
+  // et le résultat ne doit pas annoncer la nouvelle étape.
+  if (outcome.changed + outcome.unchanged === 0 && outcome.kept > 0) {
+    return {
+      success: true,
+      data: {
+        rows: outcome.rows.length,
+        changed: 0,
+        unchanged: 0,
+        kept: outcome.kept,
+        refused: outcome.refused,
+        kept_all: true,
+        message: `Aucun changement : le candidat est déjà plus loin que « ${stageLabel} », il reste à son étape.`,
+      },
+    };
+  }
+  return {
+    success: true,
+    data: {
+      rows: outcome.rows.length,
+      changed: outcome.changed,
+      unchanged: outcome.unchanged,
+      kept: outcome.kept,
+      refused: outcome.refused,
+      new_stage: stageLabel,
+    },
+  };
+}
+
 const updateCandidateStage: AgentTool = {
   name: 'update_candidate_stage',
   description:
@@ -67,7 +392,7 @@ const updateCandidateStage: AgentTool = {
       candidate_id: {
         type: 'string',
         description:
-          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or notion_candidate_id, or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
+          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
       },
       job_id: {
         type: 'string',
@@ -88,140 +413,42 @@ const updateCandidateStage: AgentTool = {
   },
 
   async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
-    const candidateId = String(params.candidate_id || '');
-    if (!jobId || !candidateId) return { allowed: false, reason: 'job_id and candidate_id are required' };
-
-    // 1. Job must belong to the user's org
-    const { data: project } = await ctx.adminClient
-      .from('sourcing_projects')
-      .select('id, organization_id')
-      .eq('id', jobId)
-      .maybeSingle();
-
-    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
-    if (project.organization_id !== ctx.organizationId) {
-      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    const stage = String(params.new_stage || '');
+    if (!(ALLOWED_STAGES as readonly string[]).includes(stage)) {
+      return { allowed: false, reason: `new_stage must be one of: ${ALLOWED_STAGES.join(', ')}` };
     }
-
-    // 2. Row must already exist (we don't create candidates from chat)
-    const { data: row } = await ctx.adminClient
-      .from('job_candidate_status')
-      .select('id')
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .eq('created_by', ctx.userId)
-      .maybeSingle();
-
-    if (!row) {
-      return {
-        allowed: false,
-        reason: `Le candidat ${candidateId} n'est pas encore associé à cette mission. Lance d'abord une recherche LinkedIn ou ajoute-le manuellement avant de modifier son stade.`,
-      };
-    }
-
-    return { allowed: true };
+    return verifySingleCandidate(params, ctx);
   },
 
   async dryRun(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-    const newStage = String(params.new_stage) as PipelineStage;
-    const reason = params.reason ? String(params.reason) : null;
-
-    // Fetch current row + project metadata in parallel
-    const [{ data: current }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('pipeline_stage, status, candidate_name, candidate_headline, updated_at')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
-
-    const jobLabel = project?.job_title || project?.name || jobId;
-    const clientLabel = project?.client_name ? ` (${project.client_name})` : '';
-    const candidateLabel = current?.candidate_name || candidateId;
-    const fromStage = current?.pipeline_stage || '(non défini)';
-    const isNoOp = current?.pipeline_stage === newStage;
-
-    return {
-      summary: isNoOp
-        ? `${candidateLabel} est déjà au stade « ${newStage} » sur "${jobLabel}${clientLabel}"`
-        : `Déplacer ${candidateLabel} : « ${fromStage} » → « ${newStage} » sur "${jobLabel}${clientLabel}"`,
-      details: {
-        candidate_id: candidateId,
-        candidate_name: current?.candidate_name ?? null,
-        candidate_headline: current?.candidate_headline ?? null,
-        job_id: jobId,
-        job_label: jobLabel,
-        client_label: project?.client_name ?? null,
-        from_stage: fromStage,
-        to_stage: newStage,
-        underlying_status: current?.status ?? null,
-        reason,
-        is_no_op: isNoOp,
-      },
-      warning: isNoOp
-        ? 'Aucun changement — le candidat est déjà à ce stade.'
-        : newStage === 'Perdu'
-        ? 'Stade terminal : ce candidat sera marqué comme perdu pour cette mission.'
-        : undefined,
-    };
+    return candidateStageDryRun(params, ctx, String(params.new_stage) as PipelineStage, null);
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const projectId = missionIdParam(params);
+    const candidateId = String(params.candidate_id || '').trim();
     const newStage = String(params.new_stage) as PipelineStage;
-    const reason = params.reason ? String(params.reason) : null;
-
-    // UPDATE only — row existence already verified in verifyAccess
-    const updatePayload: Record<string, unknown> = { pipeline_stage: newStage };
-    if (newStage === 'Perdu' && reason) {
-      updatePayload.skip_reason = reason;
+    const target = ATS_LABEL_TO_STAGE[newStage];
+    if (!projectId || !candidateId || !target) {
+      return { success: false, error: 'job_id, candidate_id and a valid new_stage are required' };
     }
-
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update(updatePayload)
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .eq('created_by', ctx.userId)
-      .select('id, pipeline_stage, status, updated_at')
-      .single();
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return {
-      success: true,
-      data: {
-        row_id: data.id,
-        new_pipeline_stage: data.pipeline_stage,
-        underlying_status: data.status,
-        updated_at: data.updated_at,
-      },
-    };
+    const reason = params.reason ? String(params.reason).slice(0, 500) : null;
+    const outcome = await applyCandidateStage(ctx, projectId, candidateId, target, null, reason);
+    return candidateStageResult(outcome, newStage);
   },
 };
 
 // ─── Tool 2 — add_to_shortlist ──────────────────────────────────────────────
-// Raccourci sémantique : alias de update_candidate_stage avec stage='Pressenti'
-// (= shortlist business). Existe séparément car Claude le comprend mieux quand
-// l'user dit "ajoute X à ma shortlist" sans connaître le nom exact du stage.
+// Raccourci sémantique : « Retenir » (étape retained, libellé Pressenti), sans
+// faire reculer un candidat déjà contacté ou plus loin. Existe séparément car
+// Claude le comprend mieux quand l'user dit "ajoute X à ma shortlist" sans
+// connaître le nom exact du stage.
 
 const addToShortlist: AgentTool = {
   name: 'add_to_shortlist',
   description:
-    "Add a candidate to the user's shortlist for a specific mission. Internally moves the candidate to the 'Pressenti' pipeline stage. " +
+    "Add a candidate to the user's shortlist for a specific mission. Internally moves the candidate to the 'Pressenti' pipeline stage, " +
+    "only from 'Nouveau', 'Pressenti' or 'Perdu': a candidate already contacted or further along stays at their stage (result kept_all: true, nothing changed). " +
     "Use this when the user says 'ajoute X à la shortlist', 'shortliste Y', 'mets-le dans mes pressentis'.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -235,14 +462,22 @@ const addToShortlist: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  verifyAccess: (params, ctx) => updateCandidateStage.verifyAccess(params, ctx),
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
-    return updateCandidateStage.dryRun({ ...params, new_stage: 'Pressenti' }, ctx);
+    return candidateStageDryRun(params, ctx, 'Pressenti', RETAIN_FROM_STAGES);
   },
 
+  // Retenu depuis À trier, Retenu ou Écarté seulement : un candidat plus
+  // avancé reste à son étape.
   async execute(params, ctx) {
-    return updateCandidateStage.execute({ ...params, new_stage: 'Pressenti' }, ctx);
+    const projectId = missionIdParam(params);
+    const candidateId = String(params.candidate_id || '').trim();
+    if (!projectId || !candidateId) return { success: false, error: 'job_id and candidate_id are required' };
+    const outcome = await applyCandidateStage(
+      ctx, projectId, candidateId, ATS_LABEL_TO_STAGE['Pressenti'], RETAIN_FROM_STAGES, null,
+    );
+    return candidateStageResult(outcome, 'Pressenti');
   },
 };
 
@@ -455,13 +690,330 @@ const createMission: AgentTool = {
 // ─── Tool 4 — enroll_in_sequence ────────────────────────────────────────────
 // INSERT dans sequence_enrollments. Le candidat doit déjà exister
 // (job_candidate_status row), et la séquence doit appartenir à l'org.
+//
+// Anti-doublon organisation (lot P0-D, docs/p0-plan-2026-09-06.md, section 2) :
+// un candidat encore en séquence dans l'organisation (inscription active ou en
+// pause, quelle que soit sa date : SEQ-128) ou contacté dans les 90 derniers
+// jours (inscription répondue ou terminée, InMail groupé programmé, en cours
+// ou envoyé : SEQ-125), toute séquence et tout compte, est refusé, sauf
+// `force: true` posé par un propriétaire ou administrateur.
+// Rapprochement (SEQ-046) : profile_id, provider_id et resolved_profile_id
+// (identifiant Recruiter ou classique), plus le slug de profile_url, comparés
+// après normalisation (identifiant LinkedIn ou URL en minuscules sans barre
+// finale). Même règle que src/lib/enrollmentDuplicates.ts.
+
+const RECENT_CONTACT_WINDOW_DAYS = 90;
+/** Inscriptions qui peuvent encore envoyer : signalées sans limite de date. */
+const LIVE_CONTACT_STATUSES = ['active', 'paused'];
+/** Contact terminé : signalé sur RECENT_CONTACT_WINDOW_DAYS jours. */
+const RECENT_CONTACT_STATUSES = ['replied', 'completed'];
+/**
+ * InMails groupés comptés comme un contact, sur RECENT_CONTACT_WINDOW_DAYS jours.
+ * Même liste que process-inmail-queue et src/lib/enrollmentDuplicates.ts : un
+ * InMail qui a reçu une réponse reste un contact.
+ */
+const INMAIL_CONTACT_STATUSES = ['pending', 'scheduled', 'sending', 'sent', 'replied'];
+
+interface RecentOrgContact {
+  createdBy: string | null;
+  createdByFirstName: string | null;
+  createdAt: string;
+  /** Séquence de l'inscription, null pour un InMail groupé. */
+  sequenceId: string | null;
+  sequenceName: string | null;
+  source: 'sequence' | 'inmail';
+}
+
+function normalizeEnrollmentKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/\/+$/, '').toLowerCase();
+  return normalized || null;
+}
+
+function linkedInSlugOf(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function quoteFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function formatRecentContact(recent: RecentOrgContact): string {
+  const who = recent.createdByFirstName || "un membre de l'équipe";
+  const date = new Date(recent.createdAt).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris',
+  });
+  const via = recent.source === 'inmail' ? ' par InMail' : '';
+  const seq = recent.sequenceName ? ` (séquence « ${recent.sequenceName} »)` : '';
+  return `Déjà contacté par ${who} le ${date}${via}${seq}`;
+}
+
+/**
+ * Contact de l'organisation qui concerne déjà ce candidat : inscription en
+ * cours (active ou en pause, sans limite de date), inscription close depuis
+ * moins de 90 jours, ou InMail groupé (inmail_queue) programmé, en cours ou
+ * envoyé depuis moins de 90 jours. Le plus récent, ou null.
+ */
+async function findRecentOrgContact(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<RecentOrgContact | null> {
+  const rawValues = [params.candidate_id, params.profile_url]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim());
+  if (rawValues.length === 0) return null;
+
+  const keys = new Set<string>();
+  const queryValues = new Set<string>(rawValues);
+  const slugs = new Set<string>();
+  for (const value of rawValues) {
+    const key = normalizeEnrollmentKey(value);
+    if (key) { keys.add(key); queryValues.add(key); }
+    const slug = linkedInSlugOf(value);
+    if (slug) { keys.add(slug); queryValues.add(slug); slugs.add(slug); }
+  }
+  const list = Array.from(queryValues).map(quoteFilterValue).join(',');
+  // Slug de profile_url : motif sans caractère réservé du filtre, comparaison
+  // exacte ensuite (« marie-martin » ne désigne pas « marie-martin-4b2a1 »).
+  const slugFilters = Array.from(slugs)
+    .filter((slug) => /^[a-z0-9\-_.%~]+$/i.test(slug))
+    .map((slug) => `profile_url.ilike.*/in/${slug}*`);
+  const identityFilter = [
+    `profile_id.in.(${list})`,
+    `provider_id.in.(${list})`,
+    `resolved_profile_id.in.(${list})`,
+    ...slugFilters,
+  ].join(',');
+  const since = new Date(Date.now() - RECENT_CONTACT_WINDOW_DAYS * 86_400_000).toISOString();
+  const columns = 'profile_id, provider_id, resolved_profile_id, profile_url, created_by, created_at, status, sequence_id';
+
+  // Deux requêtes (un second .or() se combinerait en ET avec le filtre
+  // d'identité) : inscriptions vivantes sans date, closes sur 90 jours. Plus
+  // les InMails groupés de l'organisation sur 90 jours (SEQ-125), rapprochés
+  // par recipient_profile_id, comme dans src/lib/enrollmentDuplicates.ts.
+  const [live, recentClosed, inmails] = await Promise.all([
+    ctx.adminClient
+      .from('sequence_enrollments')
+      .select(columns)
+      .eq('organization_id', ctx.organizationId)
+      .in('status', LIVE_CONTACT_STATUSES)
+      .or(identityFilter)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    ctx.adminClient
+      .from('sequence_enrollments')
+      .select(columns)
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', since)
+      .in('status', RECENT_CONTACT_STATUSES)
+      .or(identityFilter)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    ctx.adminClient
+      .from('inmail_queue')
+      .select('recipient_profile_id, created_by, created_at, status')
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', since)
+      .in('status', INMAIL_CONTACT_STATUSES)
+      .in('recipient_profile_id', Array.from(queryValues))
+      .order('created_at', { ascending: false })
+      .limit(20),
+  ]);
+  const error = live.error ?? recentClosed.error ?? inmails.error;
+  if (error) throw new Error(`Vérification des contacts récents impossible : ${error.message}`);
+
+  const matchesKey = (value: unknown): boolean => {
+    const key = normalizeEnrollmentKey(value);
+    if (key && keys.has(key)) return true;
+    const slug = linkedInSlugOf(value);
+    return !!slug && keys.has(slug);
+  };
+  const enrollmentRows = [...(live.data ?? []), ...(recentClosed.data ?? [])] as Array<Record<string, unknown>>;
+  const contacts: Array<{ created_by: unknown; created_at: unknown; sequence_id: string | null; source: 'sequence' | 'inmail' }> = [
+    ...enrollmentRows
+      .filter((row) => {
+        if ([row.profile_id, row.provider_id, row.resolved_profile_id].some(matchesKey)) return true;
+        const urlSlug = linkedInSlugOf(row.profile_url);
+        return !!urlSlug && slugs.has(urlSlug);
+      })
+      .map((row) => ({
+        created_by: row.created_by,
+        created_at: row.created_at,
+        sequence_id: row.sequence_id ? String(row.sequence_id) : null,
+        source: 'sequence' as const,
+      })),
+    ...((inmails.data ?? []) as Array<Record<string, unknown>>)
+      .filter((row) => matchesKey(row.recipient_profile_id))
+      .map((row) => ({
+        created_by: row.created_by,
+        created_at: row.created_at,
+        sequence_id: null,
+        source: 'inmail' as const,
+      })),
+  ];
+  contacts.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+  const match = contacts[0];
+  if (!match) return null;
+
+  const [{ data: profile }, { data: seq }] = await Promise.all([
+    match.created_by
+      ? ctx.adminClient.from('profiles').select('display_name').eq('user_id', String(match.created_by)).maybeSingle()
+      : Promise.resolve({ data: null }),
+    match.sequence_id
+      ? ctx.adminClient.from('outreach_sequences').select('name').eq('id', match.sequence_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const firstName = String(profile?.display_name ?? '').trim().split(/\s+/)[0] || null;
+
+  return {
+    createdBy: match.created_by ? String(match.created_by) : null,
+    createdByFirstName: firstName,
+    createdAt: String(match.created_at),
+    sequenceId: match.sequence_id,
+    sequenceName: seq?.name ? String(seq.name) : null,
+    source: match.source,
+  };
+}
+
+/**
+ * Inscription du candidat, quel que soit son statut, dans CETTE séquence
+ * (même rapprochement que findRecentOrgContact). Cherchée à part du contact
+ * le plus récent : un contact plus récent ailleurs (InMail, autre séquence)
+ * la masquait, et force: true inscrivait une seconde fois sous un autre
+ * identifiant, que UNIQUE(sequence_id, profile_id) ne voit pas. Lève une
+ * erreur si la lecture échoue.
+ */
+async function isAlreadyInSequence(params: Record<string, unknown>, ctx: ToolContext): Promise<boolean> {
+  const rawValues = [params.candidate_id, params.profile_url]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim());
+  if (rawValues.length === 0) return false;
+  const keys = new Set<string>();
+  const queryValues = new Set<string>(rawValues);
+  const slugs = new Set<string>();
+  for (const value of rawValues) {
+    const key = normalizeEnrollmentKey(value);
+    if (key) { keys.add(key); queryValues.add(key); }
+    const slug = linkedInSlugOf(value);
+    if (slug) { keys.add(slug); queryValues.add(slug); slugs.add(slug); }
+  }
+  const list = Array.from(queryValues).map(quoteFilterValue).join(',');
+  const identityFilter = [
+    `profile_id.in.(${list})`,
+    `provider_id.in.(${list})`,
+    `resolved_profile_id.in.(${list})`,
+    ...Array.from(slugs)
+      .filter((slug) => /^[a-z0-9\-_.%~]+$/i.test(slug))
+      .map((slug) => `profile_url.ilike.*/in/${slug}*`),
+  ].join(',');
+  const { data, error } = await ctx.adminClient
+    .from('sequence_enrollments')
+    .select('profile_id, provider_id, resolved_profile_id, profile_url')
+    .eq('organization_id', ctx.organizationId)
+    .eq('sequence_id', String(params.sequence_id))
+    .or(identityFilter)
+    .limit(20);
+  if (error) throw new Error(`Vérification des inscriptions de la séquence impossible : ${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).some((row) => {
+    const byKey = [row.profile_id, row.provider_id, row.resolved_profile_id].some((value) => {
+      const key = normalizeEnrollmentKey(value);
+      if (key && keys.has(key)) return true;
+      const slug = linkedInSlugOf(value);
+      return !!slug && keys.has(slug);
+    });
+    const urlSlug = linkedInSlugOf(row.profile_url);
+    return byKey || (!!urlSlug && slugs.has(urlSlug));
+  });
+}
+
+const GDPR_ENROLL_MESSAGE = "Ce candidat a demandé l'effacement de ses données : inscription impossible.";
+const GDPR_UNVERIFIED_MESSAGE = "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié. Réessayez dans un instant.";
+// Lot 5a (décision 5 du lot 5) : un message rédigé par l'IA pour chaque
+// candidat se relit candidat par candidat, ce que la conversation ne permet pas.
+const AI_SEQUENCE_ENROLL_MESSAGE =
+  "Cette séquence contient un message rédigé par l'IA pour chaque candidat : inscrivez ce candidat depuis l'écran, où vous relirez son message.";
+const CANDIDATE_UNREADABLE_MESSAGE =
+  "Les informations du candidat dans la mission n'ont pas pu être relues. Réessayez dans un instant.";
+
+/** Colonnes des étapes lues pour la première étape et pour l'aperçu du premier message. */
+const ENROLL_STEP_COLUMNS =
+  'id, step_order, action_type, message_template, subject_template, use_ai_personalization, step_channel, sender_id, ' +
+  'variant_group, variant_weight, ends_sequence, delay_days, delay_hours, delay_minutes, preferred_hour_start, preferred_hour_end, ' +
+  'parent_step_id, branch, if_true_goto_step, if_false_goto_step, timeout_branch_step_id, next_step_id';
+
+type EnrollStepRow = PreviewStep & {
+  delay_days: number | null;
+  delay_hours: number | null;
+  delay_minutes: number | null;
+  preferred_hour_start: number | null;
+  preferred_hour_end: number | null;
+};
+
+/** Titre de la mission posé sur l'inscription (job_title), comme le poste synthétique de l'interface. */
+function enrollMissionTitle(project: { name?: unknown; job_title?: unknown; job_details?: unknown } | null): string | null {
+  const jd = project?.job_details && typeof project.job_details === 'object'
+    ? project.job_details as Record<string, unknown>
+    : {};
+  const title = [jd.title, project?.job_title, project?.name].find((v) => typeof v === 'string' && v.trim());
+  return typeof title === 'string' ? title.trim() : null;
+}
+
+/**
+ * Ligne du candidat dans la mission (lot 5a) : organisation de l'appelant et
+ * project_id, rapprochée par candidate_id, puis par le slug de
+ * linkedin_profile_url. Plusieurs lignes (doublons) : la plus récente. null si
+ * le candidat n'est pas dans la mission ; lève une erreur si la lecture échoue.
+ */
+async function enrollCandidateRow(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<MissionCandidateRowLike | null> {
+  const projectId = missionIdParam(params);
+  if (!projectId) return null;
+  const columns = 'candidate_name, candidate_headline, linkedin_profile_data, linkedin_profile_url';
+  const candidateId = String(params.candidate_id || '').trim();
+  if (candidateId) {
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select(columns)
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', projectId)
+      .eq('candidate_id', candidateId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    if ((data ?? []).length > 0) return (data as MissionCandidateRowLike[])[0];
+  }
+  const slug = linkedInSlugOf(params.profile_url);
+  if (!slug || !/^[a-z0-9\-_.%~]+$/i.test(slug)) return null;
+  const { data, error } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select(columns)
+    .eq('organization_id', ctx.organizationId)
+    .eq('project_id', projectId)
+    .ilike('linkedin_profile_url', `%/in/${slug}%`)
+    .order('updated_at', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  // Slug exact (« marie-martin » ne désigne pas « marie-martin-4b2a1 »).
+  return ((data ?? []) as Array<MissionCandidateRowLike & { linkedin_profile_url?: string | null }>)
+    .find((row) => linkedInSlugOf(row.linkedin_profile_url) === slug) ?? null;
+}
 
 const enrollInSequence: AgentTool = {
   name: 'enroll_in_sequence',
   description:
-    "Enroll a candidate into an outreach sequence. The sequence steps will start being processed by the cron. " +
-    "Use when the user says 'enrôle X dans ma séquence Y', 'lance la séquence sur ce candidat'. " +
-    "Requires the candidate to already exist on the mission and the sequence to belong to the user's org.",
+    "Enroll a candidate into an outreach sequence. The first step is scheduled right away (within the step's preferred hours), then the sequence engine takes over. " +
+    "Use when the user says 'inscris X dans ma séquence Y', 'lance la séquence sur ce candidat'. " +
+    "Requires the candidate to already exist on the mission and the sequence to belong to the user's org. " +
+    "Messages are always sent from the requesting user's OWN connected LinkedIn account (never a teammate's): " +
+    "omit account_id to use it; an account_id that is not linked to the user is refused. " +
+    "Refused when the organization is already in a sequence with the candidate, or contacted them in the last 90 days (any sequence, any account, or a bulk InMail); " +
+    "only an owner or admin can override with force: true after explicit confirmation. " +
+    "Refused for a sequence with a message written by AI for each candidate: the user enrolls from the screen, where each message is reviewed. " +
+    "Always proposed for approval, with the full first message the candidate will receive.",
   category: 'mutation_safe',
   requiresApproval: true,
   inputSchema: {
@@ -471,10 +1023,18 @@ const enrollInSequence: AgentTool = {
       candidate_id: { type: 'string', description: 'Provider/Unipile ID of the candidate (used as provider_id).' },
       profile_url: { type: 'string', description: 'LinkedIn URL of the candidate.' },
       profile_name: { type: 'string', description: 'Display name (e.g. "Marie Martin").' },
-      account_id: { type: 'string', description: 'Unipile LinkedIn account_id of the recruiter who will send.' },
+      account_id: {
+        type: 'string',
+        description: "Optional. The requesting user's own connected LinkedIn account_id. Omit it: the user's own account is used.",
+      },
       job_id: { type: 'string', description: 'Mission UUID this enrollment is tied to.' },
+      force: {
+        type: 'boolean',
+        description:
+          'Set to true only when the user explicitly confirms enrolling a candidate already contacted by the organization in the last 90 days. Owners and admins only.',
+      },
     },
-    required: ['sequence_id', 'candidate_id', 'account_id', 'job_id'],
+    required: ['sequence_id', 'candidate_id', 'job_id'],
   },
 
   async verifyAccess(params, ctx) {
@@ -485,7 +1045,7 @@ const enrollInSequence: AgentTool = {
     // Sequence must belong to the user's org
     const { data: seq } = await ctx.adminClient
       .from('outreach_sequences')
-      .select('id, organization_id, name, is_active')
+      .select('id, organization_id, name, is_active, created_by, project_id')
       .eq('id', sequenceId)
       .maybeSingle();
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
@@ -493,6 +1053,47 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
     if (!seq.is_active) return { allowed: false, reason: `La séquence "${seq.name}" est désactivée` };
+
+    // D3 : un collaborateur n'inscrit que dans une séquence qu'il voit dans
+    // l'interface (RLS SELECT de B6 : la sienne, ou celle d'une mission dont
+    // il fait partie de l'équipe). Échec fermé si la lecture échoue.
+    if (seq.created_by !== ctx.userId) {
+      const role = await readCallerOrgRole(ctx);
+      if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+      if (!FULL_SEQUENCE_ROLES.has(role)) {
+        let inMissionTeam = false;
+        if (seq.project_id) {
+          const { data: teamRows, error: teamError } = await ctx.adminClient
+            .from('mission_team')
+            .select('id')
+            .eq('project_id', seq.project_id)
+            .eq('user_id', ctx.userId)
+            .limit(1);
+          if (teamError) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+          inMissionTeam = (teamRows ?? []).length > 0;
+        }
+        if (!inMissionTeam) {
+          return {
+            allowed: false,
+            reason: "Vous ne pouvez inscrire des candidats que dans vos propres séquences ou dans celles des missions dont vous faites partie de l'équipe.",
+          };
+        }
+      }
+    }
+
+    // Lot 5a : séquence avec un message rédigé par l'IA pour chaque candidat,
+    // refusée (relecture par inscrit impossible depuis la conversation).
+    // Échec fermé si les étapes ne peuvent pas être lues.
+    const { data: aiSteps, error: aiStepsError } = await ctx.adminClient
+      .from('sequence_steps')
+      .select('action_type, use_ai_personalization')
+      .eq('sequence_id', sequenceId);
+    if (aiStepsError) {
+      return { allowed: false, reason: "Les étapes de la séquence n'ont pas pu être vérifiées. Réessayez dans un instant." };
+    }
+    if (hasAiPersonalizedStep((aiSteps ?? []) as Array<{ action_type: string; use_ai_personalization: boolean | null }>)) {
+      return { allowed: false, reason: AI_SEQUENCE_ENROLL_MESSAGE };
+    }
 
     // Job must also belong to org
     const { data: project } = await ctx.adminClient
@@ -504,11 +1105,78 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Mission inaccessible' };
     }
 
+    // Plan : même garde que l'interface (sequences_send). Sans elle, le moteur
+    // passait l'inscription en pause « abonnement requis » au premier passage,
+    // alors que l'assistant avait annoncé la première action. Échec fermé.
+    try {
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        return {
+          allowed: false,
+          reason: "Votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour inscrire des candidats.",
+        };
+      }
+    } catch {
+      return { allowed: false, reason: "Votre abonnement n'a pas pu être vérifié. Réessayez dans un instant." };
+    }
+
+    // Compte d'envoi (SEQ-043) : le compte LinkedIn relié de l'utilisateur
+    // dans cette organisation, en état OK. Jamais celui d'un collègue, même
+    // si le modèle reprend un account_id vu ailleurs.
+    const sending = await resolveSendingAccount(params, ctx);
+    if ('error' in sending) return { allowed: false, reason: sending.error };
+    if (sending.account_status !== 'OK') {
+      return {
+        allowed: false,
+        reason: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats.",
+      };
+    }
+
+    // Anti-doublon organisation. Rejoué avant execute (SEC-002), donc la règle
+    // tient aussi à l'approbation. Déjà dans cette séquence (tout statut, tout
+    // identifiant) : refus que force: true ne lève jamais.
+    const candidate = String(params.profile_name ?? params.candidate_id);
+    let recent: Awaited<ReturnType<typeof findRecentOrgContact>>;
+    try {
+      if (await isAlreadyInSequence(params, ctx)) {
+        return {
+          allowed: false,
+          reason: `${candidate} est déjà inscrit dans cette séquence : pas de double inscription.`,
+        };
+      }
+      recent = await findRecentOrgContact(params, ctx);
+    } catch (err) {
+      return { allowed: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+    if (recent) {
+      if (params.force !== true) {
+        return {
+          allowed: false,
+          reason:
+            `${candidate} : ${formatRecentContact(recent)}. Inscription refusée pour éviter un double contact. ` +
+            `Un propriétaire ou administrateur peut passer outre en relançant avec force: true après confirmation explicite.`,
+        };
+      }
+      const { data: callerRole } = await ctx.adminClient
+        .from('organization_members')
+        .select('role')
+        .eq('organization_id', ctx.organizationId)
+        .eq('user_id', ctx.userId)
+        .maybeSingle();
+      if (callerRole?.role !== 'admin' && callerRole?.role !== 'owner') {
+        return {
+          allowed: false,
+          reason:
+            `${candidate} : ${formatRecentContact(recent)}. La dérogation force: true est réservée aux propriétaires et administrateurs.`,
+        };
+      }
+    }
+
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
-    const [{ data: seq }, { data: project }] = await Promise.all([
+    const [{ data: seq }, { data: project }, recent, sending, { data: steps, error: stepsError }, candidateRow] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name')
@@ -516,52 +1184,276 @@ const enrollInSequence: AgentTool = {
         .maybeSingle(),
       ctx.adminClient
         .from('sourcing_projects')
-        .select('name, job_title')
+        .select('name, job_title, job_details')
         .eq('id', String(params.job_id))
         .maybeSingle(),
+      findRecentOrgContact(params, ctx),
+      resolveSendingAccount(params, ctx),
+      ctx.adminClient
+        .from('sequence_steps')
+        .select(ENROLL_STEP_COLUMNS)
+        .eq('sequence_id', String(params.sequence_id)),
+      enrollCandidateRow(params, ctx),
     ]);
+    if (stepsError) throw new Error(`Lecture des étapes impossible : ${stepsError.message}`);
 
-    // Check if already enrolled
-    const { data: existing } = await ctx.adminClient
-      .from('sequence_enrollments')
-      .select('id, current_step_order')
-      .eq('sequence_id', String(params.sequence_id))
-      .eq('provider_id', String(params.candidate_id))
-      .maybeSingle();
+    // Déjà dans cette séquence, sous quelque identifiant que ce soit.
+    const existing = await isAlreadyInSequence(params, ctx).catch(() => false);
+
+    const candidate = String(params.profile_name ?? params.candidate_id);
+    const account = 'error' in sending ? null : sending;
+
+    // Lot 5a : premier message construit comme le moteur, sur une inscription
+    // qui porte exactement les champs qu'execute écrira (ligne de la mission).
+    const candidateFields = missionCandidateFields(candidateRow, {
+      profileName: typeof params.profile_name === 'string' ? params.profile_name : null,
+      missionTitle: enrollMissionTitle(project),
+    });
+    const firstStepPreview = await buildFirstStepPreview(
+      ctx.adminClient as unknown as Parameters<typeof buildFirstStepPreview>[0],
+      {
+        steps: (steps ?? []) as unknown as EnrollStepRow[],
+        enrollment: {
+          sequence_id: String(params.sequence_id),
+          profile_id: String(params.candidate_id),
+          provider_id: String(params.candidate_id),
+          profile_url: params.profile_url ? String(params.profile_url) : null,
+          account_id: account?.account_id ?? null,
+          job_id: String(params.job_id),
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          ...candidateFields,
+        },
+        candidateInMission: !!candidateRow,
+      },
+    );
+    const accountLabel = account ? `« ${account.account_name ?? 'votre compte LinkedIn'} »` : null;
+    const warning = existing
+      ? 'Ce candidat est déjà dans cette séquence : pas de double inscription.'
+      : recent
+        ? `${formatRecentContact(recent)}. Inscription forcée par dérogation (force: true).`
+        : undefined;
 
     return {
       summary: existing
-        ? `${params.profile_name ?? params.candidate_id} est déjà enrôlé dans « ${seq?.name ?? 'cette séquence'} »`
-        : `Enrôler ${params.profile_name ?? params.candidate_id} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}`,
+        ? `${candidate} est déjà inscrit dans « ${seq?.name ?? 'cette séquence'} »`
+        : `Inscrire ${candidate} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}` +
+          (accountLabel ? `, envoi depuis votre compte LinkedIn ${accountLabel}` : '') +
+          (recent ? ' malgré un contact récent de l\'organisation' : ''),
       details: {
         sequence_name: seq?.name ?? null,
-        candidate: params.profile_name ?? params.candidate_id,
+        candidate,
         job: project?.job_title ?? project?.name ?? null,
         already_enrolled: !!existing,
+        sending_account: account
+          ? { account_id: account.account_id, name: account.account_name, status: account.account_status }
+          : null,
+        recent_contact: recent
+          ? {
+              contacted_by: recent.createdBy,
+              contacted_by_first_name: recent.createdByFirstName,
+              contacted_at: recent.createdAt,
+              sequence_id: recent.sequenceId,
+              sequence_name: recent.sequenceName,
+              forced: true,
+            }
+          : null,
+        first_step_preview: firstStepPreview,
       },
-      warning: existing ? 'Ce candidat est déjà dans cette séquence — pas de double enrôlement.' : undefined,
+      warning,
     };
   },
 
   async execute(params, ctx) {
+    // Doublon relu ici pour le compte rendu (verifyAccess a déjà tranché) :
+    // une erreur de lecture ne fait pas échouer une inscription approuvée.
+    let recent: Awaited<ReturnType<typeof findRecentOrgContact>> = null;
+    try {
+      recent = await findRecentOrgContact(params, ctx);
+    } catch {
+      recent = null;
+    }
+
+    // Compte d'envoi relu à l'exécution (account_id peut être absent).
+    const sending = await resolveSendingAccount(params, ctx);
+    if ('error' in sending) return { success: false, error: sending.error };
+    if (sending.account_status !== 'OK') {
+      return { success: false, error: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats." };
+    }
+
+    // D5 : candidat effacé, même par un effacement limité à l'organisation
+    // (marqueur de l'une de ses inscriptions, rapprochée par identifiant
+    // LinkedIn même sans profile_url) ou au registre global. Relu à
+    // l'exécution : une action programmée voit l'effacement survenu depuis
+    // l'approbation. Échec fermé.
+    try {
+      const erased = await isCandidateErasedForOrg(ctx.adminClient, {
+        organizationId: ctx.organizationId,
+        linkedinIds: [typeof params.candidate_id === 'string' ? params.candidate_id : null],
+        linkedinUrl: typeof params.profile_url === 'string' ? params.profile_url : null,
+      });
+      if (erased) return { success: false, error: GDPR_ENROLL_MESSAGE };
+    } catch (err) {
+      console.error('[enroll_in_sequence] erasure check failed:', err);
+      return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
+    }
+
+    // Première étape (SEQ-044) : étape racine de plus petit step_order. En
+    // test A/B, version tirée comme l'interface et le moteur (lot 5a :
+    // l'aperçu annonce chaque version « selon le tirage »).
+    const { data: steps, error: stepsError } = await ctx.adminClient
+      .from('sequence_steps')
+      .select(ENROLL_STEP_COLUMNS)
+      .eq('sequence_id', String(params.sequence_id));
+    if (stepsError) return { success: false, error: `Lecture des étapes impossible : ${stepsError.message}` };
+    const stepRows = (steps ?? []) as unknown as EnrollStepRow[];
+    const rootStep = pickFirstRootStep(stepRows);
+    if (!rootStep) {
+      return { success: false, error: "Cette séquence n'a aucune étape : ajoutez-en une avant d'inscrire des candidats." };
+    }
+    const { step: firstStep, variantAssigned } = drawRankVariant(stepRows, rootStep);
+
+    // Lot 5a : mêmes champs du candidat que l'aperçu de la carte d'approbation
+    // (ligne de la mission relue ici), donc le message montré est celui qui
+    // part. Lecture impossible : inscription refusée plutôt qu'un autre texte.
+    let candidateRow: MissionCandidateRowLike | null;
+    try {
+      candidateRow = await enrollCandidateRow(params, ctx);
+    } catch (err) {
+      console.error('[enroll_in_sequence] mission candidate read failed:', err);
+      return { success: false, error: CANDIDATE_UNREADABLE_MESSAGE };
+    }
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, job_details')
+      .eq('id', String(params.job_id))
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    const candidateFields = missionCandidateFields(candidateRow, {
+      profileName: typeof params.profile_name === 'string' ? params.profile_name : null,
+      missionTitle: enrollMissionTitle(project),
+    });
+
+    // Coordonnées connues du candidat (SEQ-066), sources gratuites seulement
+    // (enrichissements de l'organisation, fiche du pipeline) : sans elles, le
+    // moteur saute toute étape e-mail ou WhatsApp. Candidat ayant demandé
+    // l'effacement de ses données : inscription refusée.
+    let emailUsed: string | null = null;
+    let phoneUsed: string | null = null;
+    if (typeof params.profile_url === 'string' && params.profile_url.trim()) {
+      try {
+        const contact = await getOrFetchContact(ctx.adminClient, {
+          organizationId: ctx.organizationId,
+          linkedinUrl: params.profile_url,
+        });
+        if (contact.gdprBlocked) {
+          return { success: false, error: GDPR_ENROLL_MESSAGE };
+        }
+        emailUsed = contact.email ? contact.email.trim().toLowerCase() : null;
+        phoneUsed = contact.phone ? String(contact.phone).trim() || null : null;
+      } catch (err) {
+        // Décision 13 : registre des effacements illisible, inscription refusée.
+        if (err instanceof GdprRegistryUnavailableError) return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
+        console.warn('[enroll_in_sequence] contact lookup failed (non-blocking):', err);
+      }
+    }
+
+    // Fuseau de l'inscripteur (member_quotas de l'organisation), comme l'interface.
+    const { data: quotaRow } = await ctx.adminClient
+      .from('member_quotas')
+      .select('timezone')
+      .eq('user_id', ctx.userId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    const userTimezone = validTimeZone(typeof quotaRow?.timezone === 'string' ? quotaRow.timezone : null);
+
     const { data, error } = await ctx.adminClient
       .from('sequence_enrollments')
       .insert({
         sequence_id: String(params.sequence_id),
+        profile_id: String(params.candidate_id),
         provider_id: String(params.candidate_id),
         profile_url: params.profile_url ? String(params.profile_url) : null,
-        profile_name: params.profile_name ? String(params.profile_name) : null,
-        account_id: String(params.account_id),
+        account_id: sending.account_id,
         job_id: String(params.job_id),
         organization_id: ctx.organizationId,
         created_by: ctx.userId,
         current_step_order: 0,
+        status: 'active',
+        user_timezone: userTimezone,
+        email_used: emailUsed,
+        phone_used: phoneUsed,
+        // profile_name, profile_headline, job_title (titre de la mission), company_name.
+        ...candidateFields,
       })
       .select('id, current_step_order')
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: { enrollment_id: data.id } };
+    if (error) {
+      return {
+        success: false,
+        error: error.code === '23505' ? 'Ce candidat est déjà inscrit dans cette séquence.' : error.message,
+      };
+    }
+
+    // Première exécution planifiée tout de suite, comme l'interface. Sans
+    // elle, l'inscription restait gelée (rattrapage horaire du moteur) ou était
+    // close sans envoi sur une séquence numérotée à partir de 1.
+    const scheduledAt = firstExecutionTime(
+      new Date(),
+      { days: firstStep.delay_days, hours: firstStep.delay_hours, minutes: firstStep.delay_minutes },
+      { start: firstStep.preferred_hour_start, end: firstStep.preferred_hour_end },
+      userTimezone,
+    );
+    const { error: execError } = await ctx.adminClient
+      .from('sequence_step_executions')
+      .insert({
+        enrollment_id: data.id,
+        step_id: firstStep.id,
+        step_order: firstStep.step_order ?? 0,
+        scheduled_at: scheduledAt.toISOString(),
+        status: 'scheduled',
+        variant_assigned: variantAssigned,
+        organization_id: ctx.organizationId,
+      });
+    if (execError) {
+      const { error: cleanupError } = await ctx.adminClient
+        .from('sequence_enrollments')
+        .delete()
+        .eq('id', data.id)
+        .eq('organization_id', ctx.organizationId);
+      if (cleanupError) console.error('[enroll_in_sequence] enrollment cleanup failed:', cleanupError);
+      return {
+        success: false,
+        error: `La première étape n'a pas pu être planifiée : l'inscription est annulée. Réessayez. (${execError.message})`,
+      };
+    }
+
+    const when = scheduledAt.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: userTimezone });
+    const candidate = String(params.profile_name ?? params.candidate_id);
+    return {
+      success: true,
+      data: {
+        enrollment_id: data.id,
+        first_step_scheduled_at: scheduledAt.toISOString(),
+        sending_account: { account_id: sending.account_id, name: sending.account_name },
+        email_known: !!emailUsed,
+        message: recent
+          ? `${candidate} est inscrit par dérogation (${formatRecentContact(recent)}). Première action prévue le ${when}.`
+          : `${candidate} est inscrit. Première action prévue le ${when}.`,
+        ...(recent
+          ? {
+              recent_contact: {
+                contacted_by: recent.createdBy,
+                contacted_by_first_name: recent.createdByFirstName,
+                contacted_at: recent.createdAt,
+                sequence_id: recent.sequenceId,
+                sequence_name: recent.sequenceName,
+              },
+            }
+          : {}),
+      },
+    };
   },
 };
 
@@ -571,6 +1463,42 @@ const enrollInSequence: AgentTool = {
 // l'execute() le copie dans le clipboard de l'user (pas d'envoi auto pour
 // l'instant — l'envoi via Unipile/Resend nécessite une UX dédiée et un canal
 // résolu, on l'ajoute en v3).
+
+/**
+ * Contexte du brouillon : la ligne du candidat dans la mission, dans
+ * l'organisation, quel qu'en soit l'auteur (lot 0c-2 : project_id et
+ * organization_id, plus job_id brut ni created_by), et la mission de
+ * l'organisation. Plusieurs lignes (doublons) : la plus récente.
+ */
+async function draftContext(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<{
+  row: { candidate_name: string | null; candidate_headline: string | null; linkedin_profile_data: unknown } | null;
+  project: { name: string | null; job_title: string | null; client_name: string | null; description: string | null; job_details: unknown } | null;
+}> {
+  const projectId = missionIdParam(params);
+  const candidateId = String(params.candidate_id || '').trim();
+  if (!projectId || !candidateId) return { row: null, project: null };
+  const [{ data: row }, { data: project }] = await Promise.all([
+    ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_name, candidate_headline, linkedin_profile_data')
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', projectId)
+      .eq('candidate_id', candidateId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, description, job_details')
+      .eq('id', projectId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle(),
+  ]);
+  return { row, project };
+}
 
 const draftOutreachMessage: AgentTool = {
   name: 'draft_outreach_message',
@@ -603,28 +1531,13 @@ const draftOutreachMessage: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  async verifyAccess(params, ctx) {
-    return updateCandidateStage.verifyAccess(params, ctx);
-  },
+  // Pas de new_stage ici : contrôle d'un candidat et d'une mission de
+  // l'organisation, comme add_to_shortlist.
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-
-    const [{ data: row }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_name, candidate_headline, linkedin_profile_data')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name, description, job_details')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
+    const { row, project } = await draftContext(ctx, params);
 
     const tone = String(params.tone ?? 'casual');
     const channel = String(params.channel ?? 'linkedin_dm');
@@ -647,27 +1560,12 @@ const draftOutreachMessage: AgentTool = {
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
     const tone = String(params.tone ?? 'casual');
     const channel = String(params.channel ?? 'linkedin_dm');
     const angle = params.angle ? String(params.angle) : null;
 
     // Fetch context
-    const [{ data: row }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_name, candidate_headline, linkedin_profile_data')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name, description, job_details')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
+    const { row, project } = await draftContext(ctx, params);
 
     if (!row || !project) {
       return { success: false, error: 'Candidat ou mission introuvable' };
@@ -715,6 +1613,18 @@ CONTRAINTES:
         response_format: { type: 'json_object' },
         timeoutMs: 25000,
       });
+      // Ce brouillon atteignait le fournisseur sans jamais être décompté, alors
+      // qu'il produit exactement le même objet qu'une génération de message
+      // depuis l'interface : même action, même tarif.
+      const { settleClaudeUsage } = await import('./settle-usage.ts');
+      await settleClaudeUsage({
+        userId: ctx.userId,
+        organizationId: ctx.organizationId,
+        aiAction: 'outreach_message',
+        usage: result.usage,
+        modelId: result.model,
+        description: "Brouillon de message proposé par l'assistant",
+      });
       const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
       return {
         success: true,
@@ -747,11 +1657,20 @@ CONTRAINTES:
 //
 // requiresApproval=true car coûte des crédits Konekt (1 cr email, 10 cr phone).
 
+// Libellés neutres des sources gratuites de la cascade (clés = `source` renvoyé
+// par enrich-candidate-contact). Jamais de nom de fournisseur dans la note.
+const FREE_SOURCE_LABELS: Record<string, string> = {
+  unipile: 'les informations de contact LinkedIn',
+  manual: 'la fiche candidat',
+  job_status: 'la fiche candidat',
+  airtable: "l'ATS",
+};
+
 const enrichCandidateContact: AgentTool = {
   name: 'enrich_candidate_contact',
   description:
     "Retrieve a candidate's professional email and/or mobile phone via a waterfall cascade " +
-    "(free sources first: Unipile contact_info, org cache 30j, ATS sync ; then paid Better Contact " +
+    "(free sources first: LinkedIn contact info, org cache 30 days, ATS sync; then a paid enrichment provider " +
     "in last resort). Use this when the user explicitly says things like 'trouve l'email de X', " +
     "'récupère le téléphone de Y', 'enrichis ce candidat'. " +
     "Cost : 1 Konekt credit per email found, 10 credits per mobile found. ZERO credit if not found " +
@@ -841,7 +1760,7 @@ const enrichCandidateContact: AgentTool = {
         cost_phone_credits: withPhone ? 10 : 0,
         estimated_max_credits: maxCredits,
         billing_note:
-          "Cascade gratuite testée d'abord (Unipile / cache 30j / ATS). Crédits débités uniquement si le contact est trouvé via fournisseur payant — 0 crédit si introuvable ou déjà en cache.",
+          "Cascade gratuite testée d'abord (contacts LinkedIn, cache 30 jours, ATS). Crédits débités uniquement si le contact est trouvé via un fournisseur payant : 0 crédit si introuvable ou déjà en cache.",
       },
       warning: !withEmail && !withPhone
         ? "Ni email ni téléphone demandé — l'exécution échouera (with_email ou with_phone doit être true)."
@@ -908,8 +1827,8 @@ const enrichCandidateContact: AgentTool = {
             phone_provider: data.contact.phone_provider_source,
             credits_used: 0,
             note: data.source === 'cache'
-              ? 'Profil déjà enrichi (cache 30j) — gratuit'
-              : `Trouvé dans ${data.source} — gratuit`,
+              ? 'Profil déjà enrichi (cache 30 jours), gratuit'
+              : `Trouvé via ${FREE_SOURCE_LABELS[String(data.source)] ?? 'une source gratuite'}, gratuit`,
           },
         };
       }
@@ -920,9 +1839,9 @@ const enrichCandidateContact: AgentTool = {
         data: {
           status: 'pending',
           request_id: data.request_id,
-          note: `Enrichment lancé via cascade (Unipile → cache → ATS → fournisseurs payants). ` +
-                `Résultat dans 30s à 3min — l'utilisateur peut continuer son sourcing en attendant. ` +
-                `Le contact apparaîtra automatiquement sur la card du candidat dans la liste sourcing.`,
+          note: `Enrichissement lancé via la cascade (sources gratuites, cache, ATS, puis fournisseurs payants). ` +
+                `Résultat sous 30 s à 3 min ; l'utilisateur peut continuer son sourcing en attendant. ` +
+                `Le contact apparaîtra automatiquement sur la fiche du candidat dans la liste sourcing.`,
           estimated_max_credits: (withEmail ? 1 : 0) + (withPhone ? 10 : 0),
         },
       };
@@ -1044,10 +1963,9 @@ const addCandidateNote: AgentTool = {
 };
 
 // ─── Tool 8 — dismiss_candidate ─────────────────────────────────────────────
-// Marque un candidat comme "écarté" pour une mission spécifique (status=
-// 'dismissed' dans job_candidate_status). N'utilise PAS pipeline_stage='Perdu'
-// car ce stade signifie "process abouti puis perdu en fin de tunnel", alors
-// que dismissed = "pas pertinent dès le départ pour cette mission".
+// Écarte un candidat d'une mission (étape rejected, par
+// apply_mission_candidate_stage, origine 'user'), puis écrit la raison
+// (skip_reason) sur ses lignes écartées de la mission.
 
 const dismissCandidate: AgentTool = {
   name: 'dismiss_candidate',
@@ -1077,108 +1995,27 @@ const dismissCandidate: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
-    const candidateId = String(params.candidate_id || '');
-    if (!jobId || !candidateId) return { allowed: false, reason: 'job_id and candidate_id are required' };
-
-    const { data: project } = await ctx.adminClient
-      .from('sourcing_projects')
-      .select('id, organization_id')
-      .eq('id', jobId)
-      .maybeSingle();
-
-    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
-    if (project.organization_id !== ctx.organizationId) {
-      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
-    }
-
-    const { data: row } = await ctx.adminClient
-      .from('job_candidate_status')
-      .select('id, status')
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .maybeSingle();
-
-    if (!row) {
-      return {
-        allowed: false,
-        reason: `Le candidat ${candidateId} n'est pas associé à cette mission.`,
-      };
-    }
-    return { allowed: true };
-  },
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-    const reason = params.reason ? String(params.reason) : null;
-
-    const [{ data: current }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('status, candidate_name, candidate_headline')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
-
-    const jobLabel = project?.job_title || project?.name || jobId;
-    const candidateLabel = current?.candidate_name || candidateId;
-    const isNoOp = current?.status === 'dismissed';
-
+    const preview = await candidateStageDryRun(params, ctx, 'Perdu', null);
+    const d = preview.details;
+    const name = d.candidate_name || d.candidate_id;
     return {
-      summary: isNoOp
-        ? `${candidateLabel} est déjà écarté de "${jobLabel}"`
-        : `Écarter ${candidateLabel} de la mission "${jobLabel}"`,
-      details: {
-        candidate_id: candidateId,
-        candidate_name: current?.candidate_name ?? null,
-        candidate_headline: current?.candidate_headline ?? null,
-        job_id: jobId,
-        job_label: jobLabel,
-        client_label: project?.client_name ?? null,
-        from_status: current?.status ?? null,
-        to_status: 'dismissed',
-        reason,
-        is_no_op: isNoOp,
-      },
-      warning: isNoOp ? 'Aucun changement — déjà écarté.' : undefined,
+      ...preview,
+      summary: d.is_no_op
+        ? `${name} est déjà écarté de "${d.job_label}"`
+        : `Écarter ${name} de la mission "${d.job_label}" (${lineCount(d.rows_to_move)})`,
     };
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-    const reason = params.reason ? String(params.reason) : null;
-
-    const updatePayload: Record<string, unknown> = { status: 'dismissed' };
-    if (reason) updatePayload.skip_reason = reason;
-
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update(updatePayload)
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .select('id, status, skip_reason, updated_at')
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    return {
-      success: true,
-      data: {
-        row_id: data.id,
-        new_status: data.status,
-        skip_reason: data.skip_reason,
-        updated_at: data.updated_at,
-      },
-    };
+    const projectId = missionIdParam(params);
+    const candidateId = String(params.candidate_id || '').trim();
+    if (!projectId || !candidateId) return { success: false, error: 'job_id and candidate_id are required' };
+    const reason = params.reason ? String(params.reason).slice(0, 500) : null;
+    const outcome = await applyCandidateStage(ctx, projectId, candidateId, ATS_LABEL_TO_STAGE['Perdu'], null, reason);
+    return candidateStageResult(outcome, 'Perdu');
   },
 };
 
@@ -1218,11 +2055,12 @@ const assignCandidateToMember: AgentTool = {
   },
 
   async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
+    // Mission : uuid de sourcing_projects, préfixe « project: » accepté (lot 0c-2).
+    const jobId = missionIdParam(params) ?? '';
     const candidateId = String(params.candidate_id || '');
     const assigneeId = String(params.assigned_to_user_id || '');
     if (!jobId || !candidateId || !assigneeId) {
-      return { allowed: false, reason: 'job_id, candidate_id and assigned_to_user_id are required' };
+      return { allowed: false, reason: 'job_id (mission UUID), candidate_id and assigned_to_user_id are required' };
     }
 
     // 1. Mission in user's org
@@ -1236,12 +2074,16 @@ const assignCandidateToMember: AgentTool = {
       return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
     }
 
-    // 2. Candidate exists in this mission
+    // 2. Candidate exists in this mission. Par project_id et organisation
+    //    (lot 0c-2) : job_id vaut souvent « project:<uuid> », et un doublon
+    //    (deux auteurs) ne doit pas faire échouer maybeSingle.
     const { data: row } = await ctx.adminClient
       .from('job_candidate_status')
       .select('id')
-      .eq('job_id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', jobId)
       .eq('candidate_id', candidateId)
+      .limit(1)
       .maybeSingle();
     if (!row) {
       return {
@@ -1269,15 +2111,17 @@ const assignCandidateToMember: AgentTool = {
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const jobId = missionIdParam(params) ?? String(params.job_id);
     const assigneeId = String(params.assigned_to_user_id);
 
     const [{ data: current }, { data: project }, { data: assignee }, { data: existing }] = await Promise.all([
       ctx.adminClient
         .from('job_candidate_status')
         .select('candidate_name, candidate_headline')
+        .eq('organization_id', ctx.organizationId)
+        .eq('project_id', jobId)
         .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
+        .limit(1)
         .maybeSingle(),
       ctx.adminClient
         .from('sourcing_projects')
@@ -1335,15 +2179,17 @@ const assignCandidateToMember: AgentTool = {
 
   async execute(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const jobId = missionIdParam(params) ?? String(params.job_id);
     const assigneeId = String(params.assigned_to_user_id);
 
     // Fetch candidate_name for the assignment row (denormalized for UI lookups)
     const { data: current } = await ctx.adminClient
       .from('job_candidate_status')
       .select('candidate_name')
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', jobId)
       .eq('candidate_id', candidateId)
-      .eq('job_id', jobId)
+      .limit(1)
       .maybeSingle();
 
     // Check if assignment already exists
@@ -1589,7 +2435,7 @@ const updateMissionBrief: AgentTool = {
     if (invalidFields.length > 0) {
       return {
         allowed: false,
-        reason: `Champs non modifiables via le copilot : ${invalidFields.join(', ')}. Ces champs nécessitent l'éditeur brief.`,
+        reason: `Champs non modifiables par l'assistant : ${invalidFields.join(', ')}. Ces champs nécessitent l'éditeur brief.`,
       };
     }
 
@@ -1630,7 +2476,7 @@ const updateMissionBrief: AgentTool = {
     );
 
     return {
-      summary: `Mettre à jour le brief de "${jobLabel}" — champs : ${fieldsChanged}`,
+      summary: `Mettre à jour le brief de "${jobLabel}" : champs ${fieldsChanged}`,
       details: {
         job_id: jobId,
         job_label: jobLabel,
@@ -1855,13 +2701,13 @@ const regenerateSearchFilters: AgentTool = {
 async function resolveSendingAccount(
   params: Record<string, unknown>,
   ctx: ToolContext,
-): Promise<{ account_id: string; account_status: string | null } | { error: string }> {
+): Promise<{ account_id: string; account_status: string | null; account_name: string | null } | { error: string }> {
   const requested = params.account_id ? String(params.account_id).trim() : '';
 
   if (requested) {
     const { data } = await ctx.adminClient
       .from('member_linkedin_accounts')
-      .select('linkedin_account_id, account_status')
+      .select('linkedin_account_id, account_status, linkedin_account_name')
       .eq('linkedin_account_id', requested)
       .eq('user_id', ctx.userId)
       .eq('organization_id', ctx.organizationId)
@@ -1872,28 +2718,97 @@ async function resolveSendingAccount(
     return {
       account_id: (data as Record<string, unknown>).linkedin_account_id as string,
       account_status: ((data as Record<string, unknown>).account_status as string | null) ?? null,
+      account_name: ((data as Record<string, unknown>).linkedin_account_name as string | null) ?? null,
     };
   }
 
   // Fallback : take the user's first LinkedIn account (status=OK first)
   const { data: accounts } = await ctx.adminClient
     .from('member_linkedin_accounts')
-    .select('linkedin_account_id, account_status, linked_at')
+    .select('linkedin_account_id, account_status, linkedin_account_name, linked_at')
     .eq('user_id', ctx.userId)
     .eq('organization_id', ctx.organizationId)
     .order('linked_at', { ascending: true });
 
-  const list = (accounts ?? []) as Array<{ linkedin_account_id: string; account_status: string | null; linked_at: string }>;
+  const list = (accounts ?? []) as Array<{ linkedin_account_id: string; account_status: string | null; linkedin_account_name: string | null; linked_at: string }>;
   if (list.length === 0) {
-    return { error: "Aucun compte LinkedIn n'est connecté à votre profil. Connecte-en un via Paramètres → Comptes connectés." };
+    return { error: "Aucun compte LinkedIn n'est relié à votre profil. Reliez-en un depuis Paramètres > Mon compte." };
   }
   // Prefer the first OK account ; otherwise return the first connected (the
   // status check below will reject CREDENTIALS / DISCONNECTED with a clearer
   // error than "no account").
   const okOne = list.find((a) => a.account_status === 'OK');
   const chosen = okOne ?? list[0];
-  return { account_id: chosen.linkedin_account_id, account_status: chosen.account_status };
+  return { account_id: chosen.linkedin_account_id, account_status: chosen.account_status, account_name: chosen.linkedin_account_name ?? null };
 }
+
+const CHAT_NOT_IN_ORG_MESSAGE = "Cette conversation n'appartient pas à un compte LinkedIn de votre organisation";
+
+/**
+ * Compte qui porte une conversation existante (GET /chats/{id}) : c'est lui
+ * qui envoie la réponse, quel que soit l'account_id transmis. Il doit être un
+ * compte relié de l'appelant dans l'organisation (SEQ-043, jamais celui d'un
+ * collègue) : unipile-search ne contrôle que l'organisation, et le quota était
+ * compté sur le compte de l'appelant alors que le message partait de celui du
+ * collègue. Renvoie aussi l'identifiant LinkedIn du destinataire quand le
+ * prestataire le donne (contrôle RGPD).
+ */
+async function resolveChatSendingAccount(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ account_id: string; account_status: string | null; attendee_provider_id: string | null } | { error: string }> {
+  const chatId = String(params.chat_id ?? '').trim();
+  if (!chatId || chatId.length > 512 || chatId.includes('..') || /[/\\?#]/.test(chatId)) {
+    return { error: 'chat_id invalide' };
+  }
+  let creds: { apiKey: string; dsn: string } | null = null;
+  try {
+    creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
+  } catch (e) {
+    console.error('[send_linkedin_message] credentials error:', e);
+  }
+  if (!creds) return { error: 'Connexion LinkedIn indisponible : réessayez dans un instant.' };
+  const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
+
+  let chat: Record<string, unknown> | null = null;
+  try {
+    const res = await fetchWithTimeout(`${baseDsn}/api/v1/chats/${encodeURIComponent(chatId)}`, {
+      headers: { 'X-API-KEY': creds.apiKey, 'Accept': 'application/json' },
+    });
+    if (!res.ok) return { error: 'Conversation LinkedIn introuvable.' };
+    chat = await res.json().catch(() => null);
+  } catch {
+    return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
+  }
+  const ownerId = typeof chat?.account_id === 'string' ? chat.account_id.trim() : '';
+  if (!ownerId) return { error: CHAT_NOT_IN_ORG_MESSAGE };
+
+  const { data: links, error } = await ctx.adminClient
+    .from('member_linkedin_accounts')
+    .select('user_id, account_status')
+    .eq('organization_id', ctx.organizationId)
+    .eq('linkedin_account_id', ownerId)
+    .limit(5);
+  if (error) return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
+  const rows = (links ?? []) as Array<{ user_id: string | null; account_status: string | null }>;
+  if (rows.length === 0) return { error: CHAT_NOT_IN_ORG_MESSAGE };
+  const own = rows.find((r) => r.user_id === ctx.userId);
+  if (!own) {
+    return {
+      error: "Cette conversation appartient au compte LinkedIn d'un autre membre de l'équipe : vous ne pouvez répondre que depuis votre propre compte.",
+    };
+  }
+  const requested = params.account_id ? String(params.account_id).trim() : '';
+  if (requested && requested !== ownerId) {
+    return { error: "Cette conversation n'appartient pas au compte LinkedIn indiqué." };
+  }
+  const attendee = typeof chat?.attendee_provider_id === 'string' ? chat.attendee_provider_id.trim() : '';
+  return { account_id: ownerId, account_status: own.account_status ?? null, attendee_provider_id: attendee || null };
+}
+
+const GDPR_MESSAGE_REFUSED = "Ce candidat a demandé l'effacement de ses données : message impossible.";
+const SENDING_ACCOUNT_CHANGED_MESSAGE =
+  "Votre compte LinkedIn d'envoi a changé depuis l'approbation : le message n'est pas parti. Redemandez l'envoi pour qu'il parte de votre compte actuel.";
 
 const sendLinkedInMessage: AgentTool = {
   name: 'send_linkedin_message',
@@ -1970,7 +2885,39 @@ const sendLinkedInMessage: AgentTool = {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { allowed: false, reason: resolved.error };
     if (resolved.account_status && resolved.account_status !== 'OK') {
-      return { allowed: false, reason: `Compte LinkedIn ${resolved.account_id} en statut "${resolved.account_status}". Reconnecte-le avant d'envoyer.` };
+      return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+    }
+
+    // Toujours membre de l'organisation : rejoué par le cron, une liaison
+    // LinkedIn restée en place après un retrait ne suffit pas. Échec fermé.
+    if (!(await readCallerOrgRole(ctx))) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+
+    // Réponse dans une conversation : elle doit être portée par un compte de
+    // l'appelant (jamais celui d'un collègue).
+    let recipient = recipientId;
+    if (chatId) {
+      const chat = await resolveChatSendingAccount(params, ctx);
+      if ('error' in chat) return { allowed: false, reason: chat.error };
+      if (chat.account_status && chat.account_status !== 'OK') {
+        return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+      }
+      recipient = chat.attendee_provider_id ?? '';
+    }
+
+    // D5 : jamais de message à un candidat effacé (marqueur d'une inscription
+    // de l'organisation ou registre global). Rejoué avant l'envoi, y compris
+    // par le cron pour un message programmé. Échec fermé.
+    if (recipient) {
+      try {
+        const erased = await isCandidateErasedForOrg(ctx.adminClient, {
+          organizationId: ctx.organizationId,
+          linkedinIds: [recipient],
+        });
+        if (erased) return { allowed: false, reason: GDPR_MESSAGE_REFUSED };
+      } catch (err) {
+        console.error('[send_linkedin_message] erasure check failed:', err);
+        return { allowed: false, reason: GDPR_UNVERIFIED_MESSAGE };
+      }
     }
 
     return { allowed: true };
@@ -1996,7 +2943,7 @@ const sendLinkedInMessage: AgentTool = {
 
     // dryRun is a PREVIEW — do NOT log to the ledger (log:false). Only execute() reserves a slot.
     const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId, isInmail ? 'inmail' : 'message', { organizationId: ctx.organizationId, source: 'agent_tool', log: false });
-    const userQuotas = await getUserQuotas(ctx.adminClient, ctx.userId);
+    const userQuotas = await getUserQuotas(ctx.adminClient, ctx.userId, ctx.organizationId);
     // Si on est hors plage MAIS pas au-dessus du cap, on PLANIFIE pour la
     // prochaine ouverture de business hours (au lieu de refuser).
     const isOverCap = quotaCheck.count_today >= quotaCheck.max_per_day;
@@ -2077,9 +3024,23 @@ const sendLinkedInMessage: AgentTool = {
   async execute(params, ctx) {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { success: false, error: resolved.error };
-    const accountId = resolved.account_id;
+    let accountId = resolved.account_id;
     const text = String(params.text);
     const chatId = params.chat_id ? String(params.chat_id) : null;
+    // Réponse : le quota va au compte qui porte la conversation, celui qui
+    // envoie réellement (un compte de l'appelant, vérifié ici aussi).
+    if (chatId) {
+      const chat = await resolveChatSendingAccount(params, ctx);
+      if ('error' in chat) return { success: false, error: chat.error };
+      accountId = chat.account_id;
+    }
+    // Décision 34 : message programmé dont le compte d'envoi n'est plus celui
+    // affiché à l'approbation (liaison remplacée avant l'échéance) : échec,
+    // rien ne part du nouveau compte.
+    const approvedAccount = typeof ctx.approvedDetails?.account_id === 'string' ? ctx.approvedDetails.account_id.trim() : '';
+    if (approvedAccount && approvedAccount !== accountId) {
+      return { success: false, error: SENDING_ACCOUNT_CHANGED_MESSAGE };
+    }
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : null;
@@ -2109,6 +3070,21 @@ const sendLinkedInMessage: AgentTool = {
       body.is_inmail = true;
       if (subject) body.subject = subject;
     }
+    // Refonte mission, lot 0b-2a (plan, section 2.3) : l'envoi pose le lien
+    // conversation–mission et « Contacté ». Origine assistant, auteur de la
+    // ligne créée = l'utilisateur, mission de la conversation de l'assistant
+    // (même organisation), sinon résolue par unipile-search.
+    body.source = 'assistant';
+    body.created_by = ctx.userId;
+    if (ctx.conversationId) {
+      const { data: conv } = await ctx.adminClient
+        .from('agent_conversations')
+        .select('project_id')
+        .eq('id', ctx.conversationId)
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle();
+      if (conv?.project_id) body.project_id = conv.project_id;
+    }
 
     try {
       const response = await fetch(`${supabaseUrl}/functions/v1/unipile-search`, {
@@ -2124,6 +3100,34 @@ const sendLinkedInMessage: AgentTool = {
         return { success: false, error: data.error || `LinkedIn send failed (HTTP ${response.status})` };
       }
 
+      // Suivi de l'envoi, comme le message direct de l'interface (SEQ-118) :
+      // ligne inmail_queue « sent », lue par l'anti-doublon d'inscription,
+      // get_candidate_outreach et le pipeline. Une réponse dans une
+      // conversation n'est pas suivie (pas plus que depuis la messagerie).
+      // Le message est parti : un échec du suivi est signalé, sans échec.
+      let trackingWarning: string | null = null;
+      if (recipientId) {
+        const { error: trackError } = await ctx.adminClient
+          .from('inmail_queue')
+          .insert({
+            organization_id: ctx.organizationId,
+            created_by: ctx.userId,
+            account_id: accountId,
+            recipient_profile_id: recipientId,
+            recipient_name: params.recipient_name ? String(params.recipient_name).trim() || null : null,
+            subject: subject || '(Message direct)',
+            message: text,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            network_distance: isInmail ? 2 : 1,
+          })
+          .select('id');
+        if (trackError) {
+          console.error('[send_linkedin_message] tracking insert failed:', trackError);
+          trackingWarning = "Le message est parti, mais son suivi n'a pas été enregistré : ce candidat n'apparaîtra pas dans le pipeline pour cet envoi.";
+        }
+      }
+
       return {
         success: true,
         data: {
@@ -2132,6 +3136,7 @@ const sendLinkedInMessage: AgentTool = {
             : isInmail
             ? 'InMail envoyé.'
             : 'Message LinkedIn envoyé (nouvelle conversation créée).',
+          ...(trackingWarning ? { tracking_warning: trackingWarning } : {}),
           quota_after: {
             count_today: quotaCheck.count_today + 1,
             max_per_day: quotaCheck.max_per_day,
@@ -2146,16 +3151,49 @@ const sendLinkedInMessage: AgentTool = {
 };
 
 // ─── Tool 14 — pause_sequence ───────────────────────────────────────────────
-// Met en pause une séquence outreach (is_active=false). Les steps en attente
-// restent dans sequence_step_executions mais le cron skip les enrollments
-// quand is_active=false.
+// Met en pause une séquence outreach. Le moteur ne lit PAS is_active (SEQ-024) :
+// mettre la séquence en pause, c'est mettre ses inscriptions actives en pause
+// (status 'paused', pause_reason 'sequence_inactive'), comme la désactivation
+// depuis l'interface. Les étapes planifiées gardent leur date (le moteur ignore
+// celles d'une inscription en pause) et repartent à la reprise.
+
+type GateClient = Parameters<typeof getSubscriptionGate>[0];
+
+/** Raisons de pause reprises par la réactivation d'une séquence (contrat des lots, §2). */
+const SEQUENCE_LEVEL_PAUSE_REASONS = ['sequence_inactive', 'auto_paused'];
+
+// D3 (contrat §7 et §8) : un collaborateur n'agit que sur les inscriptions
+// qu'il a créées, comme la RLS de B6. Ces outils écrivent en clé de service :
+// sans ce contrôle, l'assistant rouvrait au collaborateur ce que l'interface
+// et process-sequences lui refusent. Seuls ces trois rôles agissent sur toute
+// la séquence ; tout autre rôle est traité comme un collaborateur.
+const FULL_SEQUENCE_ROLES = new Set(['owner', 'admin', 'member']);
+const RIGHTS_UNVERIFIED_MESSAGE = "Vos droits n'ont pas pu être vérifiés. Réessayez dans un instant.";
+
+/**
+ * Rôle exact de l'appelant dans l'organisation courante (organization_members).
+ * null si la lecture échoue ou s'il n'est pas membre : l'appelant refuse
+ * (échec fermé). Ne pas reprendre resolveRole de agent-tools-reads.ts, qui
+ * ne distingue pas un échec de lecture d'un collaborateur.
+ */
+async function readCallerOrgRole(ctx: ToolContext): Promise<string | null> {
+  const { data, error } = await ctx.adminClient
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', ctx.organizationId)
+    .eq('user_id', ctx.userId)
+    .maybeSingle();
+  if (error || !data || typeof data.role !== 'string') return null;
+  return data.role;
+}
 
 const pauseSequence: AgentTool = {
   name: 'pause_sequence',
   description:
-    "Pause an outreach sequence (stops all enrolled candidates from progressing). " +
+    "Pause an outreach sequence: every candidate currently in progress is paused (no message leaves until resume_sequence). " +
     "Use this when the user says 'mets en pause la séquence X', 'arrête temporairement Y'. " +
-    "Reversible via `resume_sequence`. The enrolled candidates and their progress are preserved. " +
+    "Reversible via `resume_sequence`. The enrolled candidates and their scheduled steps are preserved. " +
+    "Refused to users with the collaborator role (it would pause their teammates' candidates too). " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2183,6 +3221,18 @@ const pauseSequence: AgentTool = {
     if (seq.organization_id !== ctx.organizationId) {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
+    // D3 (contrat §8) : refusé à tout collaborateur, même auteur de la
+    // séquence (la mise en pause gèlerait aussi les inscriptions de ses
+    // collègues), comme la désactivation depuis l'interface.
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+    if (!FULL_SEQUENCE_ROLES.has(role)) {
+      return {
+        allowed: false,
+        reason:
+          "En tant que collaborateur, vous ne pouvez pas mettre en pause une séquence entière : cela mettrait en pause les candidats de toute l'équipe. Mettez vos candidats en pause un par un depuis la liste des inscrits.",
+      };
+    }
     return { allowed: true };
   },
 
@@ -2198,22 +3248,24 @@ const pauseSequence: AgentTool = {
         .from('sequence_enrollments')
         .select('id', { count: 'exact', head: true })
         .eq('sequence_id', sequenceId)
-        .in('status', ['active', 'pending']),
+        .eq('organization_id', ctx.organizationId)
+        .eq('status', 'active'),
     ]);
 
     const seqName = seq?.name || sequenceId;
-    const isNoOp = seq?.is_active === false;
+    const active = activeEnrollments ?? 0;
+    const isNoOp = seq?.is_active === false && active === 0;
 
     return {
       summary: isNoOp
         ? `La séquence "${seqName}" est déjà en pause`
-        : `Mettre en pause la séquence "${seqName}" (${activeEnrollments ?? 0} candidats actifs gelés)`,
+        : `Mettre en pause la séquence "${seqName}" : ${active} candidat(s) en cours mis en pause, aucun message ne partira avant la reprise`,
       details: {
         sequence_id: sequenceId,
         sequence_name: seqName,
         from_is_active: seq?.is_active ?? null,
         to_is_active: false,
-        active_enrollments: activeEnrollments ?? 0,
+        active_enrollments: active,
         is_no_op: isNoOp,
       },
       warning: isNoOp ? 'Aucun changement.' : undefined,
@@ -2222,34 +3274,68 @@ const pauseSequence: AgentTool = {
 
   async execute(params, ctx) {
     const sequenceId = String(params.sequence_id);
+    const nowIso = new Date().toISOString();
+
+    // 1. Inscriptions actives en pause d'abord : si la suite échoue, aucun
+    //    message ne part (l'inverse laissait une séquence « en pause » qui
+    //    envoyait encore).
+    const { data: paused, error: pauseError } = await ctx.adminClient
+      .from('sequence_enrollments')
+      .update({ status: 'paused', pause_reason: 'sequence_inactive', updated_at: nowIso })
+      .eq('sequence_id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('status', 'active')
+      .select('id');
+    if (pauseError) {
+      return {
+        success: false,
+        error: `Les candidats de la séquence n'ont pas pu être mis en pause : rien n'a changé, les envois continuent. (${pauseError.message})`,
+      };
+    }
+    const pausedCount = (paused ?? []).length;
+
+    // 2. La séquence elle-même.
     const { data, error } = await ctx.adminClient
       .from('outreach_sequences')
       .update({ is_active: false })
       .eq('id', sequenceId)
       .eq('organization_id', ctx.organizationId)
-      .select('id, is_active, updated_at')
-      .single();
-    if (error) return { success: false, error: error.message };
+      .select('id, is_active, updated_at');
+    const row = ((data ?? []) as Array<{ id: string; is_active: boolean; updated_at: string }>)[0];
+    if (error || !row) {
+      return {
+        success: false,
+        error: `${pausedCount} candidat(s) mis en pause, mais la séquence n'a pas pu être marquée en pause. Aucun message ne partira ; relancez la mise en pause pour terminer.`,
+      };
+    }
     return {
       success: true,
       data: {
-        sequence_id: data.id,
-        is_active: data.is_active,
-        updated_at: data.updated_at,
-        message: 'Séquence en pause. Les candidats inscrits ne progresseront plus jusqu\'à la reprise.',
+        sequence_id: row.id,
+        is_active: row.is_active,
+        updated_at: row.updated_at,
+        paused_enrollments: pausedCount,
+        message: `Séquence en pause : ${pausedCount} candidat(s) mis en pause. Aucun message ne partira avant la reprise.`,
       },
     };
   },
 };
 
 // ─── Tool 15 — resume_sequence ──────────────────────────────────────────────
-// Réactive une séquence pausée (is_active=true).
+// Réactive une séquence en pause : is_active true, puis reprise côté serveur
+// des inscriptions mises en pause avec la séquence (pause_reason
+// 'sequence_inactive' ou 'auto_paused'), par l'action resume_enrollments de
+// process-sequences (étape en attente gardée à sa date, compte d'envoi
+// vérifié). Les pauses manuelles, abonnement, compte déconnecté ne reprennent
+// pas.
 
 const resumeSequence: AgentTool = {
   name: 'resume_sequence',
   description:
-    "Resume a paused outreach sequence — enrolled candidates start progressing again on the next cron tick. " +
+    "Resume a paused outreach sequence — the candidates paused with the sequence start progressing again (each step keeps its planned date). " +
+    "Candidates paused individually, for a disconnected account or for billing are NOT resumed. " +
     "Use this when the user says 'relance la séquence X', 'réactive Y'. " +
+    "A user with the collaborator role can only resume a sequence they created, and only their own candidates resume. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2269,44 +3355,85 @@ const resumeSequence: AgentTool = {
     if (!sequenceId) return { allowed: false, reason: 'sequence_id is required' };
     const { data: seq } = await ctx.adminClient
       .from('outreach_sequences')
-      .select('id, organization_id')
+      .select('id, organization_id, created_by')
       .eq('id', sequenceId)
       .maybeSingle();
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
     if (seq.organization_id !== ctx.organizationId) {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
+    // D3 (contrat §8) : un collaborateur ne réactive que ses propres
+    // séquences (même règle que la RLS org_members_update), et seulement avec
+    // son JWT, pour que process-sequences ne reprenne que ses inscriptions.
+    // Sans JWT (exécution programmée), refus plutôt que la clé de service.
+    // Rejoué juste avant execute (recheckAccess, SEC-002).
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+    if (!FULL_SEQUENCE_ROLES.has(role)) {
+      if (seq.created_by !== ctx.userId) {
+        return { allowed: false, reason: 'Vous ne pouvez réactiver que les séquences que vous avez créées.' };
+      }
+      if (!ctx.userBearer) {
+        return {
+          allowed: false,
+          reason: "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat.",
+        };
+      }
+    }
+    // Plan d'abord : sans envoi de séquences, le moteur remettrait aussitôt
+    // les candidats en pause (abonnement requis).
+    try {
+      // Client typé comme l'attend le helper (son type « no-check » diffère de
+      // celui de ToolContext ; même objet à l'exécution).
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        return {
+          allowed: false,
+          reason: "Votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour réactiver cette séquence.",
+        };
+      }
+    } catch {
+      return { allowed: false, reason: "Votre abonnement n'a pas pu être vérifié. Réessayez dans un instant." };
+    }
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
     const sequenceId = String(params.sequence_id);
+    // Un collaborateur ne reprend que ses inscriptions (D3) : l'aperçu ne
+    // compte que celles-là.
+    const role = await readCallerOrgRole(ctx);
+    let toResumeQuery = ctx.adminClient
+      .from('sequence_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('sequence_id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('status', 'paused')
+      .in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
+    if (!role || !FULL_SEQUENCE_ROLES.has(role)) toResumeQuery = toResumeQuery.eq('created_by', ctx.userId);
     const [{ data: seq }, { count: enrollments }] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name, is_active')
         .eq('id', sequenceId)
         .maybeSingle(),
-      ctx.adminClient
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', sequenceId)
-        .in('status', ['active', 'pending']),
+      toResumeQuery,
     ]);
 
     const seqName = seq?.name || sequenceId;
-    const isNoOp = seq?.is_active === true;
+    const toResume = enrollments ?? 0;
+    const isNoOp = seq?.is_active === true && toResume === 0;
 
     return {
       summary: isNoOp
         ? `La séquence "${seqName}" est déjà active`
-        : `Réactiver la séquence "${seqName}" (${enrollments ?? 0} candidats reprendront leur progression)`,
+        : `Réactiver la séquence "${seqName}" : ${toResume} candidat(s) en pause reprendront, chaque étape garde sa date prévue`,
       details: {
         sequence_id: sequenceId,
         sequence_name: seqName,
         from_is_active: seq?.is_active ?? null,
         to_is_active: true,
-        enrollments_to_resume: enrollments ?? 0,
+        enrollments_to_resume: toResume,
         is_no_op: isNoOp,
       },
       warning: isNoOp ? 'Aucun changement.' : undefined,
@@ -2315,21 +3442,90 @@ const resumeSequence: AgentTool = {
 
   async execute(params, ctx) {
     const sequenceId = String(params.sequence_id);
+
+    // 0. Identité de l'appel à process-sequences, décidée AVANT de réactiver
+    //    la séquence : clé de service pour propriétaire, administrateur et
+    //    membre (reprise de toute la séquence), JWT de l'utilisateur pour un
+    //    collaborateur (process-sequences ne reprend alors que ses propres
+    //    inscriptions, D3). Collaborateur sans JWT : refus, jamais la clé de service.
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { success: false, error: RIGHTS_UNVERIFIED_MESSAGE };
+    const actsForWholeSequence = FULL_SEQUENCE_ROLES.has(role);
+    if (!actsForWholeSequence && !ctx.userBearer) {
+      return {
+        success: false,
+        error: "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat. Rien n'a changé.",
+      };
+    }
+
+    // 1. La séquence d'abord : l'inverse ferait envoyer une séquence encore
+    //    affichée « en pause ».
     const { data, error } = await ctx.adminClient
       .from('outreach_sequences')
       .update({ is_active: true })
       .eq('id', sequenceId)
       .eq('organization_id', ctx.organizationId)
-      .select('id, is_active, updated_at')
-      .single();
-    if (error) return { success: false, error: error.message };
+      .select('id, is_active, updated_at');
+    const row = ((data ?? []) as Array<{ id: string; is_active: boolean; updated_at: string }>)[0];
+    if (error || !row) {
+      return { success: false, error: `La séquence n'a pas pu être réactivée${error ? ` (${error.message})` : ''}.` };
+    }
+
+    // 2. Reprise des candidats par l'action serveur (règle unique de reprise).
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const callerToken = actsForWholeSequence ? serviceKey : ctx.userBearer;
+    const partial = "La séquence est active, mais la reprise des candidats en pause a échoué : ils restent en pause. Réessayez depuis la liste des séquences.";
+    if (!supabaseUrl || !callerToken) return { success: false, error: partial };
+    let body: {
+      success?: boolean;
+      message?: string;
+      counts?: Partial<Record<'resumed' | 'nothing_to_resume' | 'account_unlinked' | 'not_paused' | 'error', number>>;
+      /** Inscriptions non traitées dans le budget de temps de l'action serveur (un second appel les reprend). */
+      remaining?: number;
+      /** Inscriptions en pause laissées de côté car créées par des collègues (appelant collaborateur, contrat §8). */
+      other_members?: number;
+    } = {};
+    try {
+      const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/process-sequences`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${callerToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resume_enrollments',
+          organization_id: ctx.organizationId,
+          sequence_id: sequenceId,
+          pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS,
+        }),
+      }, 45_000);
+      body = await res.json().catch(() => ({}));
+      if (!res.ok || body.success !== true) {
+        return { success: false, error: body.message ? `${partial} (${body.message})` : partial };
+      }
+    } catch {
+      return { success: false, error: partial };
+    }
+
+    const counts = body.counts ?? {};
+    const resumed = counts.resumed ?? 0;
+    const unlinked = counts.account_unlinked ?? 0;
+    const failed = counts.error ?? 0;
+    const remaining = typeof body.remaining === 'number' && body.remaining > 0 ? body.remaining : 0;
+    const notes: string[] = [];
+    if (unlinked > 0) notes.push(`${unlinked} restent en pause : leur compte LinkedIn d'envoi n'est plus relié`);
+    if (failed > 0) notes.push(`${failed} n'ont pas pu être repris`);
+    if (remaining > 0) notes.push(`${remaining} n'ont pas encore été traités faute de temps : relancez la réactivation pour les reprendre`);
+    const otherMembers = typeof body.other_members === 'number' && body.other_members > 0 ? body.other_members : 0;
+    if (otherMembers > 0) notes.push(`${otherMembers} inscrits par vos collègues restent en pause : leur recruteur ou un administrateur peut les reprendre`);
     return {
       success: true,
       data: {
-        sequence_id: data.id,
-        is_active: data.is_active,
-        updated_at: data.updated_at,
-        message: 'Séquence réactivée. La progression reprendra au prochain tick du cron (toutes les minutes en business hours).',
+        sequence_id: row.id,
+        is_active: row.is_active,
+        updated_at: row.updated_at,
+        counts,
+        remaining,
+        message: `Séquence réactivée : ${resumed} candidat(s) repris, chaque étape garde sa date prévue.` +
+          (notes.length > 0 ? ` ${notes.join(' ; ')}.` : ''),
       },
     };
   },
@@ -2343,17 +3539,19 @@ const resumeSequence: AgentTool = {
 // via auth.getUser()), d'où la réplication de son envoi ici. Si une invitation
 // pending existe déjà pour l'email, elle est réutilisée et l'email renvoyé.
 
-const ALLOWED_INVITE_ROLES = ['admin', 'collaborator'] as const;
+// C1 (R11) : « collaborator » n'est plus proposé jusqu'au lot C2 ; la table des
+// invitations le refuse (organization_invitations_role_guard).
+const ALLOWED_INVITE_ROLES = ['admin', 'member'] as const;
 type InviteRole = (typeof ALLOWED_INVITE_ROLES)[number];
 
 const inviteTeamMember: AgentTool = {
   name: 'invite_team_member',
   description:
     "Invite a new member to the user's organization by email. " +
-    "Use this when the user says 'invite x@y.fr en collaborateur', 'ajoute Marie à mon équipe'. " +
+    "Use this when the user says 'invite x@y.fr dans mon équipe', 'ajoute Marie à mon équipe'. " +
     "Creates an invitation row (expires in 7 days) and immediately sends the invitation email (same pipeline as Settings → Team). " +
     "If a pending invitation already exists for this email, it is reused (original role kept) and the email is re-sent. " +
-    "Only `admin` and `collaborator` roles allowed via the copilot — to grant `owner`, use the Settings → Team UI. " +
+    "Only `admin` and `member` roles allowed via the copilot — to grant `owner`, use the Settings → Team UI. " +
     "The caller must be admin or owner of the org. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
@@ -2368,7 +3566,7 @@ const inviteTeamMember: AgentTool = {
       role: {
         type: 'string',
         enum: ALLOWED_INVITE_ROLES as unknown as string[],
-        description: "Role to grant on acceptance. One of: admin, collaborator. Default: collaborator.",
+        description: "Role to grant on acceptance. One of: admin, member. Default: member.",
       },
     },
     required: ['email'],
@@ -2376,7 +3574,7 @@ const inviteTeamMember: AgentTool = {
 
   async verifyAccess(params, ctx) {
     const email = String(params.email || '').trim().toLowerCase();
-    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    const role = (params.role ? String(params.role) : 'member') as InviteRole;
     if (!email) return { allowed: false, reason: 'email is required' };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return { allowed: false, reason: `Email invalide : "${email}"` };
@@ -2415,12 +3613,48 @@ const inviteTeamMember: AgentTool = {
       }
     }
 
+    // Sièges : même règle que send-team-invitation. Sans ce contrôle, le
+    // copilot envoyait l'email, réservait un siège facturable, et l'acceptation
+    // était ensuite refusée en 403 par le serveur.
+    const { data: pendingSame } = await ctx.adminClient
+      .from('organization_invitations')
+      .select('id')
+      .eq('organization_id', ctx.organizationId)
+      .eq('email', email)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    // Le renvoi d'une invitation déjà en attente ne consomme pas de siège neuf.
+    if (!pendingSame) {
+      try {
+        const gate = await getSubscriptionGate(ctx.adminClient, ctx.organizationId);
+        const { count: pendingCount, error: pendingError } = await ctx.adminClient
+          .from('organization_invitations')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', ctx.organizationId)
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString());
+        if (pendingError) {
+          return { allowed: false, reason: 'Impossible de vérifier les sièges disponibles. Réessayez.' };
+        }
+        if (gate.seatCount + (pendingCount ?? 0) >= gate.seatLimit) {
+          return { allowed: false, reason: 'Tous vos sièges sont utilisés. Ajoutez un siège dans Abonnement.' };
+        }
+      } catch (e) {
+        return {
+          allowed: false,
+          reason: e instanceof Error ? e.message : 'Impossible de vérifier les sièges disponibles.',
+        };
+      }
+    }
+
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
     const email = String(params.email || '').trim().toLowerCase();
-    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    const role = (params.role ? String(params.role) : 'member') as InviteRole;
 
     const { data: org } = await ctx.adminClient
       .from('organizations')
@@ -2428,13 +3662,14 @@ const inviteTeamMember: AgentTool = {
       .eq('id', ctx.organizationId)
       .maybeSingle();
 
-    // Check for pending invitation to same email
+    // Check for pending invitation to same email (encore valide seulement)
     const { data: pending } = await ctx.adminClient
       .from('organization_invitations')
       .select('id, created_at, expires_at, status')
       .eq('organization_id', ctx.organizationId)
       .eq('email', email)
       .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
       .maybeSingle();
 
     return {
@@ -2459,7 +3694,7 @@ const inviteTeamMember: AgentTool = {
 
   async execute(params, ctx) {
     const email = String(params.email).trim().toLowerCase();
-    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    const role = (params.role ? String(params.role) : 'member') as InviteRole;
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -2699,20 +3934,33 @@ const updateMemberQuota: AgentTool = {
   async dryRun(params, ctx) {
     const targetUserId = String(params.target_user_id);
 
-    const [{ data: profile }, { data: current }] = await Promise.all([
+    // Nom et e-mail de la cible pour la carte d'approbation. profiles n'a ni
+    // full_name ni email, et sa clé id n'est pas l'user_id : la lecture échouait
+    // et la carte n'affichait qu'un UUID. L'e-mail vient de l'API
+    // d'administration (client service role) : la RPC get_org_member_emails
+    // filtre sur auth.uid(), NULL ici, et renverrait un ensemble vide.
+    const [{ data: profile }, { data: authUser }, { data: current }] = await Promise.all([
       ctx.adminClient
         .from('profiles')
-        .select('full_name, email')
-        .eq('id', targetUserId)
+        .select('display_name')
+        .eq('user_id', targetUserId)
         .maybeSingle(),
+      ctx.adminClient.auth.admin
+        .getUserById(targetUserId)
+        .catch(() => ({ data: { user: null } })),
       ctx.adminClient
         .from('member_quotas')
         .select('max_actions_per_day, business_hours_start, business_hours_end, timezone')
         .eq('user_id', targetUserId)
+        // Ligne de l'organisation courante uniquement (client service role,
+        // RLS contournée) : sans ce filtre, le diff montrait une autre organisation.
+        .eq('organization_id', ctx.organizationId)
         .maybeSingle(),
     ]);
 
-    const memberLabel = profile?.full_name || profile?.email || targetUserId;
+    const targetName: string | null = profile?.display_name || null;
+    const targetEmail: string | null = authUser?.user?.email ?? null;
+    const memberLabel = targetName || targetEmail || targetUserId;
     const diff: Array<{ field: string; from: unknown; to: unknown }> = [];
     const fields = ['max_actions_per_day', 'business_hours_start', 'business_hours_end', 'timezone'] as const;
     for (const f of fields) {
@@ -2722,11 +3970,11 @@ const updateMemberQuota: AgentTool = {
     }
 
     return {
-      summary: `Mettre à jour les quotas LinkedIn de ${memberLabel} — ${diff.map((d) => d.field).join(', ')}`,
+      summary: `Mettre à jour les quotas LinkedIn de ${memberLabel} : ${diff.map((d) => d.field).join(', ')}`,
       details: {
         target_user_id: targetUserId,
-        target_name: profile?.full_name ?? null,
-        target_email: profile?.email ?? null,
+        target_name: targetName,
+        target_email: targetEmail,
         had_existing_row: !!current,
         diff,
       },
@@ -2750,6 +3998,9 @@ const updateMemberQuota: AgentTool = {
       .from('member_quotas')
       .select('id')
       .eq('user_id', targetUserId)
+      // Organisation courante uniquement : sinon la mise à jour par id
+      // modifiait la ligne d'une autre organisation de la cible.
+      .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
     if (existing) {
@@ -3285,37 +4536,81 @@ const launchSearch: AgentTool = {
 // candidat par son nom pour que l'utilisateur voie exactement ce qui va être
 // modifié avant d'approuver. Ne crée jamais de rows : les candidats absents
 // de job_candidate_status pour cette mission sont ignorés et signalés.
+// Lot 0b-4 : une boucle apply_mission_candidate_stage par candidat (origine
+// 'user'), sur toutes ses lignes de la mission (project_id), tous auteurs.
 
 const BULK_MAX = 50;
 
-interface BulkTarget {
-  candidate_id: string;
-  candidate_name: string | null;
-  current: string | null;
-}
-
+/** Candidats demandés présents dans la mission (lignes) et absents. */
 async function resolveBulkTargets(
   ctx: ToolContext,
-  jobId: string,
+  projectId: string,
   candidateIds: string[],
-  field: 'pipeline_stage' | 'status',
-): Promise<{ found: BulkTarget[]; missing: string[] }> {
-  const { data } = await ctx.adminClient
-    .from('job_candidate_status')
-    .select(`candidate_id, candidate_name, ${field}`)
-    .eq('organization_id', ctx.organizationId)
-    .eq('job_id', jobId)
-    .in('candidate_id', candidateIds);
-  const rows = (data as Array<Record<string, any>> | null) ?? [];
-  const foundIds = new Set(rows.map((r) => r.candidate_id));
+): Promise<{ rows: MissionCandidateRow[]; foundIds: string[]; missing: string[]; error: string | null }> {
+  const { rows, error } = await missionCandidateRows(ctx, projectId, candidateIds);
+  const found = new Set(rows.map((r) => r.candidate_id));
   return {
-    found: rows.map((r) => ({
-      candidate_id: r.candidate_id,
-      candidate_name: r.candidate_name ?? null,
-      current: r[field] ?? null,
-    })),
-    missing: candidateIds.filter((id) => !foundIds.has(id)),
+    rows,
+    foundIds: candidateIds.filter((id) => found.has(id)),
+    missing: candidateIds.filter((id) => !found.has(id)),
+    error,
   };
+}
+
+/** Mission de l'organisation, 2 à BULK_MAX candidats, au moins une ligne dans la mission. */
+async function verifyBulkAccess(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+  singleTool: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+  const ids = parseBulkIds(params);
+  if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : ${singleTool})` };
+  const projectId = missionIdParam(params);
+  if (!projectId) return { allowed: false, reason: 'job_id (mission UUID) is required' };
+  const mission = await verifyMissionOfOrg(ctx, projectId);
+  if (!mission.allowed) return mission;
+  const { foundIds, error } = await resolveBulkTargets(ctx, projectId, ids);
+  if (error) return { allowed: false, reason: "Les candidats n'ont pas pu être vérifiés. Réessayez dans un instant." };
+  if (foundIds.length === 0) return { allowed: false, reason: "Aucun des candidats fournis n'existe sur cette mission." };
+  return { allowed: true };
+}
+
+/** Nombre de candidats distincts d'un ensemble de lignes (un candidat peut avoir une ligne par auteur). */
+function distinctCandidates(rows: MissionCandidateRow[]): number {
+  return new Set(rows.map((r) => r.candidate_id)).size;
+}
+
+/** Lignes regroupées par candidat, dans l'ordre de première apparition. */
+function rowsByCandidate(rows: MissionCandidateRow[]): MissionCandidateRow[][] {
+  const groups = new Map<string, MissionCandidateRow[]>();
+  for (const r of rows) {
+    const g = groups.get(r.candidate_id);
+    if (g) g.push(r);
+    else groups.set(r.candidate_id, [r]);
+  }
+  return [...groups.values()];
+}
+
+/** Boucle apply_mission_candidate_stage par candidat ; cumule les lignes. */
+async function applyBulkStage(
+  ctx: ToolContext,
+  projectId: string,
+  candidateIds: string[],
+  target: StageTarget,
+  skipReason: string | null,
+): Promise<{ changed: number; unchanged: number; kept: number; refused: number; failedCandidates: number }> {
+  const total = { changed: 0, unchanged: 0, kept: 0, refused: 0, failedCandidates: 0 };
+  for (const candidateId of candidateIds) {
+    const outcome = await applyCandidateStage(ctx, projectId, candidateId, target, null, skipReason);
+    total.changed += outcome.changed;
+    total.unchanged += outcome.unchanged;
+    total.kept += outcome.kept;
+    total.refused += outcome.refused;
+    // Appel en échec (erreur transitoire, délai) : aucune ligne rendue, candidat non traité.
+    if (outcome.error && outcome.rows.length === 0) total.failedCandidates++;
+  }
+  return total;
 }
 
 function parseBulkIds(params: Record<string, unknown>): string[] {
@@ -3352,67 +4647,66 @@ const bulkUpdateStage: AgentTool = {
     required: ['job_id', 'candidate_ids', 'new_stage'],
   },
   async verifyAccess(params, ctx) {
-    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
-    const ids = parseBulkIds(params);
-    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : update_candidate_stage)` };
-    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
     const stage = String(params.new_stage || '');
     if (!(ALLOWED_STAGES as readonly string[]).includes(stage)) {
       return { allowed: false, reason: `new_stage must be one of: ${ALLOWED_STAGES.join(', ')}` };
     }
-    return { allowed: true };
+    return verifyBulkAccess(params, ctx, 'update_candidate_stage');
   },
   async dryRun(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
-    const stage = String(params.new_stage);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
-    const toMove = found.filter((t) => t.current !== stage);
-    const noOps = found.length - toMove.length;
+    const projectId = missionIdParam(params) ?? '';
+    const stage = String(params.new_stage) as PipelineStage;
+    const target = ATS_LABEL_TO_STAGE[stage];
+    const { rows, missing } = await resolveBulkTargets(ctx, projectId, ids);
+    const toMove = rows.filter((r) => !isAtTarget(r, target));
+    const noOps = rows.length - toMove.length;
     return {
-      summary: `Déplacer ${toMove.length} candidat(s) vers « ${stage} »`,
+      summary: `Déplacer ${distinctCandidates(toMove)} candidat(s) vers « ${stage} » (${lineCount(toMove.length)})`,
       details: {
-        job_id: jobId,
+        job_id: projectId,
         new_stage: stage,
         reason: String(params.reason || '') || null,
-        candidates: found.map((t) => ({
-          name: t.candidate_name || t.candidate_id,
-          from: t.current,
+        candidates: rowsByCandidate(rows).map((g) => ({
+          name: g[0].candidate_name || g[0].candidate_id,
+          from: [...new Set(g.map(stageLabelOf))].join(', '),
           to: stage,
-          no_op: t.current === stage,
+          no_op: g.every((r) => isAtTarget(r, target)),
         })),
+        rows: rows.length,
         skipped_not_in_pipeline: missing,
         no_op_count: noOps,
       },
       warning: missing.length > 0
-        ? `${missing.length} candidat(s) introuvable(s) sur cette mission — ils seront ignorés.`
+        ? `${missing.length} candidat(s) introuvable(s) sur cette mission, ils seront ignorés.`
         : noOps > 0
-        ? `${noOps} candidat(s) déjà au stade cible (aucun changement pour eux).`
+        ? `${noOps} ligne(s) déjà à l'étape cible (aucun changement pour elles).`
         : undefined,
     };
   },
   async execute(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
-    const stage = String(params.new_stage);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
-    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update({ pipeline_stage: stage })
-      .eq('organization_id', ctx.organizationId)
-      .eq('job_id', jobId)
-      .in('candidate_id', found.map((t) => t.candidate_id))
-      .select('candidate_id');
-    if (error) return { success: false, error: error.message };
-    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    const projectId = missionIdParam(params);
+    const stage = String(params.new_stage) as PipelineStage;
+    const target = ATS_LABEL_TO_STAGE[stage];
+    if (!projectId || !target) return { success: false, error: 'job_id and a valid new_stage are required' };
+    const { foundIds, missing, error: lookupError } = await resolveBulkTargets(ctx, projectId, ids);
+    if (lookupError) return { success: false, error: "Les candidats n'ont pas pu être relus. Réessayez." };
+    if (foundIds.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const total = await applyBulkStage(ctx, projectId, foundIds, target, null);
+    if (total.changed + total.unchanged + total.kept === 0) {
+      return { success: false, error: "Le changement d'étape n'a pas été enregistré. Réessayez." };
+    }
     return {
       success: true,
       data: {
-        updated,
+        updated: total.changed,
+        unchanged: total.unchanged,
+        refused: total.refused,
+        failed: total.failedCandidates,
         skipped: missing.length,
         new_stage: stage,
-        message: `${updated} candidat(s) déplacé(s) vers « ${stage} »${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}.`,
+        message: `${total.changed} ligne(s) déplacée(s) vers « ${stage} »${missing.length ? ` (${missing.length} candidat(s) ignoré(s), hors pipeline)` : ''}${total.refused ? `, ${total.refused} refusée(s)` : ''}${total.failedCandidates ? `, ${total.failedCandidates} candidat(s) non traité(s), réessayez` : ''}.`,
       },
     };
   },
@@ -3441,54 +4735,52 @@ const bulkDismiss: AgentTool = {
     required: ['job_id', 'candidate_ids', 'reason'],
   },
   async verifyAccess(params, ctx) {
-    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
-    const ids = parseBulkIds(params);
-    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : dismiss_candidate)` };
-    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
     if (!String(params.reason || '').trim()) return { allowed: false, reason: 'reason is required for bulk dismissal' };
-    return { allowed: true };
+    return verifyBulkAccess(params, ctx, 'dismiss_candidate');
   },
   async dryRun(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
-    const toDismiss = found.filter((t) => t.current !== 'dismissed');
+    const projectId = missionIdParam(params) ?? '';
+    const target = ATS_LABEL_TO_STAGE['Perdu'];
+    const { rows, missing } = await resolveBulkTargets(ctx, projectId, ids);
+    const toDismiss = rows.filter((r) => !isAtTarget(r, target));
     return {
-      summary: `Écarter ${toDismiss.length} candidat(s) de la mission`,
+      summary: `Écarter ${distinctCandidates(toDismiss)} candidat(s) de la mission (${lineCount(toDismiss.length)})`,
       details: {
-        job_id: jobId,
+        job_id: projectId,
         reason: String(params.reason),
-        candidates: found.map((t) => ({
-          name: t.candidate_name || t.candidate_id,
-          current_status: t.current,
-          already_dismissed: t.current === 'dismissed',
+        candidates: rowsByCandidate(rows).map((g) => ({
+          name: g[0].candidate_name || g[0].candidate_id,
+          current_stage: [...new Set(g.map(stageLabelOf))].join(', '),
+          already_dismissed: g.every((r) => isAtTarget(r, target)),
         })),
+        rows: rows.length,
         skipped_not_in_pipeline: missing,
       },
-      warning: `Action destructive : ${toDismiss.length} candidat(s) seront marqués « écartés » sur cette mission.${missing.length ? ` ${missing.length} id(s) introuvable(s) seront ignorés.` : ''}`,
+      warning: `Action destructive : ${toDismiss.length} ligne(s) seront écartées sur cette mission.${missing.length ? ` ${missing.length} id(s) introuvable(s) seront ignorés.` : ''}`,
     };
   },
   async execute(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
+    const projectId = missionIdParam(params);
+    if (!projectId) return { success: false, error: 'job_id is required' };
     const reason = String(params.reason).slice(0, 500);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
-    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update({ status: 'dismissed', skip_reason: reason })
-      .eq('organization_id', ctx.organizationId)
-      .eq('job_id', jobId)
-      .in('candidate_id', found.map((t) => t.candidate_id))
-      .select('candidate_id');
-    if (error) return { success: false, error: error.message };
-    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    const { foundIds, missing, error: lookupError } = await resolveBulkTargets(ctx, projectId, ids);
+    if (lookupError) return { success: false, error: "Les candidats n'ont pas pu être relus. Réessayez." };
+    if (foundIds.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const total = await applyBulkStage(ctx, projectId, foundIds, ATS_LABEL_TO_STAGE['Perdu'], reason);
+    if (total.changed + total.unchanged + total.kept === 0) {
+      return { success: false, error: "Le changement d'étape n'a pas été enregistré. Réessayez." };
+    }
     return {
       success: true,
       data: {
-        dismissed: updated,
+        dismissed: total.changed,
+        unchanged: total.unchanged,
+        refused: total.refused,
+        failed: total.failedCandidates,
         skipped: missing.length,
-        message: `${updated} candidat(s) écarté(s)${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}. Motif : ${reason}`,
+        message: `${total.changed} ligne(s) écartée(s)${missing.length ? ` (${missing.length} candidat(s) ignoré(s), hors pipeline)` : ''}${total.refused ? `, ${total.refused} refusée(s)` : ''}${total.failedCandidates ? `, ${total.failedCandidates} candidat(s) non traité(s), réessayez` : ''}. Motif : ${reason}`,
       },
     };
   },
@@ -3519,12 +4811,14 @@ async function resolveSenderEmailAccount(
 ): Promise<{ email_account_id: string; email_address: string | null } | null> {
   const { data } = await ctx.adminClient
     .from('member_email_accounts')
-    .select('email_account_id, email_address, user_id, account_status')
+    .select('email_account_id, email_address, account_status')
     .eq('organization_id', ctx.organizationId)
-    .limit(20);
-  const rows = (data as Array<{ email_account_id: string; email_address: string | null; user_id: string; account_status: string | null }> | null) ?? [];
-  const ok = rows.filter((r) => (r.account_status ?? 'OK') === 'OK');
-  return ok.find((r) => r.user_id === ctx.userId) ?? ok[0] ?? null;
+    .eq('user_id', ctx.userId)
+    .or('account_status.is.null,account_status.in.(OK,CONNECTED)')
+    .order('linked_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { email_account_id: string; email_address: string | null } | null) ?? null;
 }
 
 const sendEmail: AgentTool = {
@@ -3639,15 +4933,20 @@ const sendEmail: AgentTool = {
 // Crée une séquence outreach multi-étapes (outreach_sequences + sequence_steps).
 // Ne déclenche AUCUN envoi : les envois partent à l'enrollment (enroll_in_sequence,
 // lui-même sous approbation). Types d'étapes exposés au modèle = sous-ensemble
-// sûr du CHECK action_type.
+// sûr du CHECK action_type, aligné sur l'éditeur (isStepTypeOffered).
+// Décision D2 (contrat des lots, §7) : canaux e-mail et WhatsApp fermés, le
+// moteur saute ces étapes ; l'assistant ne les propose donc plus. Les remettre
+// ici en même temps que l'éditeur à la réouverture du canal.
 
 const SEQ_STEP_TYPES: Record<string, { action_type: string; channel: 'linkedin' | 'email' }> = {
   message: { action_type: 'message', channel: 'linkedin' },
   inmail: { action_type: 'inmail', channel: 'linkedin' },
   connection_request: { action_type: 'connection_request', channel: 'linkedin' },
-  email: { action_type: 'email', channel: 'email' },
   wait_reply: { action_type: 'wait_reply', channel: 'linkedin' },
 };
+
+/** Délai d'attente d'une réponse quand le modèle n'en donne pas (même défaut que l'éditeur). */
+const WAIT_REPLY_DEFAULT_TIMEOUT_DAYS = 3;
 
 interface SeqStepInput {
   type: string;
@@ -3683,11 +4982,13 @@ function parseSequenceSteps(params: Record<string, unknown>): { steps: SeqStepIn
 const createSequence: AgentTool = {
   name: 'create_sequence',
   description:
-    "Create a multi-step outreach sequence (LinkedIn messages / InMails / connection requests / emails / wait-for-reply). " +
+    "Create a multi-step LinkedIn outreach sequence (messages / InMails / connection requests / wait-for-reply). " +
     "Use when the user says 'crée une séquence de relance', 'monte-moi une séquence 3 touches pour la mission X'. " +
     "Creating a sequence sends NOTHING — candidates are added later via enroll_in_sequence (separate approval). " +
-    "steps: 1-8 items {type: message|inmail|connection_request|email|wait_reply, delay_days (0-30, since previous step), " +
-    "subject (required for email/inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "steps: 1-8 items {type: message|inmail|connection_request|wait_reply, delay_days (0-30, since previous step ; " +
+    "for wait_reply: how many days to wait for an answer, default 3 — without an answer the sequence moves on), " +
+    "subject (required for inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "Email and WhatsApp steps are not available yet: never propose them. " +
     "Optional mission_id links the sequence to a mission.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -3704,7 +5005,7 @@ const createSequence: AgentTool = {
           properties: {
             type: { type: 'string', enum: Object.keys(SEQ_STEP_TYPES) },
             delay_days: { type: 'number', description: 'Days to wait after the previous step (0-30, default 0).' },
-            subject: { type: 'string', description: 'Subject — required for email and inmail steps.' },
+            subject: { type: 'string', description: 'Subject — required for inmail steps.' },
             message: { type: 'string', description: 'Message template (plain text French). Not needed for wait_reply.' },
           },
           required: ['type'],
@@ -3753,12 +5054,14 @@ const createSequence: AgentTool = {
         steps: steps.map((s, i) => ({
           order: i + 1,
           type: STEP_LABEL[s.type] ?? s.type,
-          delay: s.delay_days > 0 ? `J+${s.delay_days}` : 'immédiat',
+          delay: s.type === 'wait_reply'
+            ? `attente de ${s.delay_days > 0 ? s.delay_days : WAIT_REPLY_DEFAULT_TIMEOUT_DAYS} jour(s)`
+            : s.delay_days > 0 ? `J+${s.delay_days}` : 'immédiat',
           subject: s.subject,
           message_preview: s.message ? (s.message.length > 120 ? s.message.slice(0, 117) + '…' : s.message) : null,
         })),
       },
-      warning: "Aucun envoi ne part à la création : les candidats sont ajoutés ensuite via l'enrollment (validation séparée).",
+      warning: "Aucun envoi ne part à la création : les candidats sont inscrits ensuite (validation séparée).",
     };
   },
 
@@ -3766,12 +5069,25 @@ const createSequence: AgentTool = {
     const parsed = parseSequenceSteps(params);
     if ('error' in parsed) return { success: false, error: parsed.error };
 
+    // SEQ-154, comme l'éditeur : créée active, sauf si l'offre n'autorise pas
+    // l'envoi de séquences (créée désactivée, avec un message). Offre
+    // illisible : désactivée aussi (échec fermé).
+    let inactiveReason: string | null = null;
+    try {
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        inactiveReason = "votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour l'activer.";
+      }
+    } catch {
+      inactiveReason = "votre abonnement n'a pas pu être vérifié. Activez-la depuis vos séquences une fois l'offre confirmée.";
+    }
+
     const { data: seq, error: seqErr } = await ctx.adminClient
       .from('outreach_sequences')
       .insert({
         name: String(params.name).trim().slice(0, 200),
         description: String(params.description || '').trim().slice(0, 1000) || null,
-        is_active: true,
+        is_active: inactiveReason === null,
         created_by: ctx.userId,
         organization_id: ctx.organizationId,
         project_id: String(params.mission_id || '').trim() || null,
@@ -3780,18 +5096,28 @@ const createSequence: AgentTool = {
       .single();
     if (seqErr || !seq) return { success: false, error: seqErr?.message || 'sequence insert failed' };
 
-    const stepRows = parsed.steps.map((s, i) => ({
-      sequence_id: seq.id,
-      step_order: i + 1,
-      action_type: SEQ_STEP_TYPES[s.type].action_type,
-      step_channel: SEQ_STEP_TYPES[s.type].channel,
-      condition_type: 'always',
-      delay_days: s.delay_days,
-      delay_hours: 0,
-      subject_template: s.subject,
-      message_template: s.message,
-      use_ai_personalization: false,
-    }));
+    // Numérotation à partir de 0, comme l'éditeur (SEQ-044 : le rattrapage du
+    // moteur cherche l'étape 0). Attente de réponse (SEQ-031) : événement
+    // attendu explicite et délai d'attente, sinon le moteur franchissait
+    // l'étape aussitôt en clôturant l'inscription comme « a répondu ».
+    const stepRows = parsed.steps.map((s, i) => {
+      const isWaitReply = s.type === 'wait_reply';
+      return {
+        sequence_id: seq.id,
+        step_order: i,
+        action_type: SEQ_STEP_TYPES[s.type].action_type,
+        step_channel: SEQ_STEP_TYPES[s.type].channel,
+        condition_type: 'always',
+        delay_days: isWaitReply ? 0 : s.delay_days,
+        delay_hours: 0,
+        subject_template: s.subject,
+        message_template: s.message,
+        use_ai_personalization: false,
+        ...(isWaitReply
+          ? { wait_for_event: 'reply_received', timeout_days: s.delay_days > 0 ? s.delay_days : WAIT_REPLY_DEFAULT_TIMEOUT_DAYS }
+          : {}),
+      };
+    });
     const { error: stepsErr } = await ctx.adminClient.from('sequence_steps').insert(stepRows);
     if (stepsErr) {
       // Cleanup best-effort : pas de séquence orpheline sans étapes
@@ -3804,7 +5130,10 @@ const createSequence: AgentTool = {
       data: {
         sequence_id: seq.id,
         steps_created: stepRows.length,
-        message: `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Pour y ajouter des candidats : enroll_in_sequence (validation séparée).`,
+        is_active: inactiveReason === null,
+        message: inactiveReason
+          ? `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s), enregistrée désactivée : ${inactiveReason}`
+          : `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Les candidats s'inscrivent ensuite, avec une validation séparée.`,
       },
     };
   },
@@ -3827,11 +5156,29 @@ function normalizeMissionId(raw: unknown): string {
   return String(raw || '').trim().replace(/^project:/, '');
 }
 
+/**
+ * Profils à noter : même périmètre que le worker process-agent-tasks
+ * (organisation de l'appelant, mission, et le job_id de la plus ancienne ligne
+ * de la mission, forme sous laquelle score-profile-job écrit la note). Le
+ * nombre annoncé égale ainsi progress_total (lot 0c-2).
+ */
 async function countUnscoredProfiles(ctx: ToolContext, projectId: string): Promise<number> {
+  const { data: sampleRow } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select('job_id')
+    .eq('project_id', projectId)
+    .eq('organization_id', ctx.organizationId)
+    .not('job_id', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const jobId = (sampleRow as { job_id?: string | null } | null)?.job_id || `project:${projectId}`;
   const { count } = await ctx.adminClient
     .from('job_candidate_status')
     .select('id', { count: 'exact', head: true })
     .eq('project_id', projectId)
+    .eq('organization_id', ctx.organizationId)
+    .eq('job_id', jobId)
     .is('score', null)
     .not('linkedin_profile_data', 'is', null);
   return count ?? 0;

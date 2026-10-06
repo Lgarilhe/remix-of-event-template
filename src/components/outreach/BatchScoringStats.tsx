@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Brain, BarChart3, Sparkles, Zap } from 'lucide-react';
+import { CheckCircle2, Brain, BarChart3, Zap } from 'lucide-react';
 import type { BatchScoringStats as Stats } from './JobScoreDisplay';
 
 interface BatchScoringStatsProps {
@@ -13,7 +13,9 @@ const MODEL_LABELS: Record<string, string> = {
   'claude-haiku-4-5': 'IA rapide',
   'claude-sonnet-4-6': 'IA équilibrée',
   'claude-sonnet-4-5': 'IA équilibrée',
+  'claude-sonnet-5-5': 'IA équilibrée',
   'claude-opus-4-6': 'IA premium',
+  'claude-opus-5-5': 'IA premium',
 };
 
 export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, durationMs }) => {
@@ -32,7 +34,7 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground pl-6 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <Brain className="w-3 h-3 text-purple-400" />
+          <Brain className="w-3 h-3 text-brand" />
           <span>{stats.llmCalled} scorés par l'IA</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -51,12 +53,9 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
             </span>
           </div>
         )}
-        {stats.llmCalled > 0 && (
-          <div className="flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3 text-foreground/50" />
-            <span>{stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''} IA</span>
-          </div>
-        )}
+        {/* Pas de compteur de crédits ici : llmCalled compte des profils, alors
+            que la facturation se fait par appel serveur et au prorata des
+            jetons. Le coût réel est dans Paramètres › Abonnement et crédits. */}
       </div>
     </div>
   );

@@ -4,9 +4,21 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from 'react-helmet-async';
 import * as Sentry from "@sentry/react";
+import { MotionConfig } from "framer-motion";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { reloadWithPreviewAccessToken } from "@/lib/previewToken";
 import App from "./App.tsx";
+// Polices hébergées avec l'application (plus d'appel à Google Fonts, qui transmettait
+// l'adresse IP des utilisateurs à un tiers). docs/design/01-direction.md, § 3.
+import "@fontsource/instrument-sans/400.css";
+import "@fontsource/instrument-sans/500.css";
+import "@fontsource/instrument-sans/600.css";
+import "@fontsource/instrument-sans/700.css";
+import "@fontsource/space-mono/400.css";
+import "@fontsource/space-mono/700.css";
+import "@fontsource/bricolage-grotesque/600.css";
+import "@fontsource/bricolage-grotesque/700.css";
+import "@fontsource/bricolage-grotesque/800.css";
 import "./index.css";
 
 const isRecoverableImportError = (value: unknown) => {
@@ -102,6 +114,24 @@ if (SENTRY_DSN) {
   });
 }
 
+// Thème choisi dans la sidebar (clé `konekt-theme`) : appliqué avant le
+// premier rendu pour éviter un flash sombre puis clair au rechargement.
+try {
+  if (localStorage.getItem('konekt-theme') === 'light') {
+    document.documentElement.classList.add('light');
+  }
+} catch {
+  // localStorage indisponible (navigation privée stricte) : thème par défaut
+}
+
+// Lot 3 des Paramètres : le « modèle IA par défaut » n'a plus ni écran ni lecteur.
+// Clé exacte, pas de préfixe : konekt_scoring_model_* sert encore au score par mission (LinkedInSearch.tsx:193-194).
+try {
+  localStorage.removeItem('konekt_ai_model_default');
+} catch {
+  // stockage indisponible : rien à effacer
+}
+
 // Auto-reload on stale chunk errors (after deploys)
 window.addEventListener('error', (e) => {
   if (isRecoverableImportError(e.error ?? e.message)) {
@@ -146,7 +176,11 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
           <ErrorBoundary>
-            <App />
+            {/* Mouvement réduit demandé par le système : framer-motion coupe ses animations partout
+                (les animations CSS le sont par src/index.css). */}
+            <MotionConfig reducedMotion="user">
+              <App />
+            </MotionConfig>
           </ErrorBoundary>
         </QueryClientProvider>
       </BrowserRouter>

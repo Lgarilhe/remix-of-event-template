@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 
 
@@ -286,6 +287,30 @@ const BATCH_SIZE = 5;
 const DELAY_BETWEEN_BATCHES_MS = 200;
 const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 const MAX_LLM_RETRIES = 2;
+
+// Modèles génération 5 (Sonnet 5.5, Opus 5.5) : la température est refusée (400),
+// la réflexion est active par défaut et le premier bloc de la réponse est un
+// bloc "thinking", pas le texte. On règle l'effort à la place, et on lit le bloc
+// texte au lieu de content[0].
+// Effort réglable sans redéploiement : secret Supabase SCORING_EFFORT (low, medium, high).
+function scoringEffort(): string {
+  const v = Deno.env.get("SCORING_EFFORT");
+  return v && ["low", "medium", "high"].includes(v) ? v : "low";
+}
+function isGen5Model(model: string): boolean {
+  return /^claude-(sonnet|opus)-5/.test(model);
+}
+function scoringModelParams(model: string): Record<string, unknown> {
+  return isGen5Model(model) ? { output_config: { effort: scoringEffort() } } : { temperature: 0.1 };
+}
+// Les tokens de réflexion comptent dans max_tokens : sans marge, un JSON de lot peut être tronqué.
+function thinkingHeadroom(model: string): number {
+  return isGen5Model(model) ? 2000 : 0;
+}
+function responseText(data: { content?: Array<{ type?: string; text?: string }> } | null | undefined): string {
+  const block = (data?.content ?? []).find((b) => b?.type === "text");
+  return block?.text || "";
+}
 
 /**
  * SYSTEM prompt — persona, méthode d'inférence, rubric, output schema.
@@ -2094,8 +2119,8 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
             { type: "text", text: profileBlock },
           ],
         }],
-        max_tokens: 800,
-        temperature: 0.1,
+        max_tokens: 800 + thinkingHeadroom(modelOverride || CLAUDE_MODEL_DEFAULT),
+        ...scoringModelParams(modelOverride || CLAUDE_MODEL_DEFAULT),
       }),
     }, 45000); // Slightly longer timeout for richer analysis
 
@@ -2106,6 +2131,8 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
 
     const status = res.status;
     console.error(`[llm] Anthropic error (attempt ${attempt}): ${status}`);
+    // Un 400 est aussi renvoyé pour un paramètre refusé : on garde la cause, sinon elle passe pour des crédits épuisés.
+    if (status === 400) console.error(`[llm] 400 body: ${(await res.text()).slice(0, 300)}`);
 
     if (status === 429 && attempt < MAX_LLM_RETRIES) {
       lastError = new Error("RATE_LIMITED");
@@ -2117,7 +2144,7 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
 
   if (!data) throw lastError || new Error("LLM call failed after retries");
 
-  const rawContent = data.content?.[0]?.text || "";
+  const rawContent = responseText(data);
   if (data.usage) {
     const u = data.usage;
     console.log(`[llm] ${profile.name} tokens: in=${u.input_tokens || 0} out=${u.output_tokens || 0} cache_read=${u.cache_read_input_tokens || 0} cache_create=${u.cache_creation_input_tokens || 0}`);
@@ -2245,8 +2272,8 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
         // 250 tokens de l'ancien budget → réponses tronquées → profils sans
         // résultat ou batch entier non parsable (BATCH_PARSE_FAILED). C'est
         // un plafond, pas une cible : pas de surcoût si le modèle est concis.
-        max_tokens: inputs.length * 600 + 400,
-        temperature: 0.1,
+        max_tokens: inputs.length * 600 + 400 + thinkingHeadroom(modelOverride || CLAUDE_MODEL_DEFAULT),
+        ...scoringModelParams(modelOverride || CLAUDE_MODEL_DEFAULT),
       }),
     }, 90000); // Longer timeout for batch
 
@@ -2257,6 +2284,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
 
     const status = res.status;
     console.error(`[llm-batch] Anthropic error (attempt ${attempt}): ${status}`);
+    if (status === 400) console.error(`[llm-batch] 400 body: ${(await res.text()).slice(0, 300)}`);
     if (status === 429 && attempt < MAX_LLM_RETRIES) {
       lastError = new Error("RATE_LIMITED");
       continue;
@@ -2267,7 +2295,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
 
   if (!data) throw lastError || new Error("LLM batch call failed after retries");
 
-  const rawContent = data.content?.[0]?.text || "";
+  const rawContent = responseText(data);
   if (data.stop_reason === "max_tokens") {
     console.warn(`[llm-batch] Response truncated at max_tokens (${inputs.length} profiles) — tail profiles will fall back to individual scoring`);
   }
@@ -2445,15 +2473,21 @@ function isDegradedResult(result: ScoringResult): boolean {
   return result.skippedLLM === true && result.hardFilterPassed !== false;
 }
 
+// C1 (R8) : le cache est lu et écrit par organisation. Sans organisation
+// connue, ni lecture ni écriture : jamais la notation d'une autre organisation
+// sur le même identifiant de poste.
 async function getCachedScore(
   supabase: SupabaseClient,
   candidateId: string,
   jobId: string,
+  organizationId: string | null,
 ): Promise<ScoringResult | null> {
+  if (!organizationId) return null;
   try {
     const { data, error } = await supabase
       .from("match_scores")
       .select("scoring_result, created_at")
+      .eq("organization_id", organizationId)
       .eq("candidate_id", candidateId)
       .eq("job_id", jobId)
       .maybeSingle();
@@ -2482,17 +2516,19 @@ async function setCachedScore(
   candidateId: string,
   jobId: string,
   result: ScoringResult,
+  organizationId: string | null,
 ): Promise<void> {
   try {
     // 1. Cache in match_scores (for fast lookup) — sauf résultat dégradé :
     // on ne fige pas 48h un score sans passe IA, et on n'écrase pas un
     // éventuel score complet déjà caché (ex: deep scoring dont le LLM a
     // échoué, qui écraserait le score quick complet).
-    if (!isDegradedResult(result)) {
+    if (!isDegradedResult(result) && organizationId) {
       await supabase.from("match_scores").upsert(
         {
           candidate_id: candidateId,
           job_id: jobId,
+          organization_id: organizationId,
           score: result.finalScore,
           confidence: result.confidenceScore,
           scoring_result: result,
@@ -2503,11 +2539,19 @@ async function setCachedScore(
     }
 
     // 2. Also update job_candidate_status with scoring data (for pipeline view)
-    await syncJobCandidateStatus(supabase, candidateId, jobId, result);
+    await syncJobCandidateStatus(supabase, candidateId, jobId, result, organizationId);
   } catch (err) {
     console.error("[cache] Write error:", err);
   }
 }
+
+// Statuts que la notation peut encore réécrire (C1, R8) : profil trouvé, non
+// traité ou déjà noté. Contacté, a répondu, retenu, en entretien, intéressé,
+// qualification… et écarté ne sont jamais réécrits : seule la note change.
+// Depuis le lot 0b, la notation n'écarte plus personne : ces statuts passent
+// à « scored », ce qui ne change pas l'étape du candidat.
+const AI_REWRITABLE_STATUSES = ['new', 'discovered', 'untreated', 'scored'];
+const AI_REWRITABLE_IN = `(${AI_REWRITABLE_STATUSES.join(',')})`;
 
 /**
  * Réécrit job_candidate_status avec le résultat de scoring (vue pipeline).
@@ -2516,16 +2560,25 @@ async function setCachedScore(
  * ligne job_candidate_status a score NULL (ré-ajout au pipeline, ligne d'un
  * autre membre de l'équipe sur la même mission…). Sans cette réécriture, le
  * worker de fond (process-agent-tasks) re-sélectionnait ces lignes à l'infini.
+ * C1, R8 : limité à l'organisation de l'appelant. Deux mises à jour sur des
+ * lignes disjointes (chaque ligne n'est touchée qu'une fois, déclencheurs
+ * compris) : note et statut « scored » sur les lignes encore au stade de la
+ * notation, note seule sur les autres. Lot 0b : jamais d'écart ni d'étape ;
+ * une note basse reste une suggestion (recommendation, score, skip_reason).
  */
 async function syncJobCandidateStatus(
   supabase: SupabaseClient,
   candidateId: string,
   jobId: string,
   result: ScoringResult,
+  organizationId: string | null,
 ): Promise<void> {
+  if (!organizationId) {
+    console.warn('[jcs-sync] organisation inconnue : aucune ligne réécrite');
+    return;
+  }
   try {
-    const status = result.finalScore >= 60 ? 'scored' : 'dismissed';
-    await supabase.from("job_candidate_status").update({
+    const note = {
       score: result.finalScore,
       recommendation: result.recommendation,
       scoring_details: {
@@ -2542,9 +2595,32 @@ async function syncJobCandidateStatus(
         hardFilterPassed: result.hardFilterPassed,
         scoringDepth: result.scoringDepth,
       },
-      status,
       updated_at: new Date().toISOString(),
-    }).eq('candidate_id', candidateId).eq('job_id', jobId);
+    };
+    // Lot 0b : la notation ne décide plus l'écart, quel que soit le score.
+    const status = 'scored';
+
+    // 1. Lignes dont le statut est décidé ailleurs (status est NOT NULL) :
+    //    la note seule, le statut ne bouge pas.
+    const { error: noteError } = await supabase.from("job_candidate_status")
+      .update(note)
+      .eq('organization_id', organizationId)
+      .eq('candidate_id', candidateId)
+      .eq('job_id', jobId)
+      .not('status', 'in', AI_REWRITABLE_IN);
+    if (noteError) console.error("[jcs-sync] Note write error:", noteError.message);
+
+    // 2. Lignes encore au stade de la notation (new, discovered, untreated,
+    //    scored) : note et statut « scored », étape inchangée. La raison d'une
+    //    suggestion d'écart (must-have non satisfait) n'est écrite qu'ici : sur
+    //    les autres lignes, skip_reason est celle de l'utilisateur.
+    const { error: rewritableError } = await supabase.from("job_candidate_status")
+      .update({ ...note, status, ...(result.skipReason ? { skip_reason: result.skipReason } : {}) })
+      .eq('organization_id', organizationId)
+      .eq('candidate_id', candidateId)
+      .eq('job_id', jobId)
+      .in('status', AI_REWRITABLE_STATUSES);
+    if (rewritableError) console.error("[jcs-sync] Status write error:", rewritableError.message);
   } catch (err) {
     console.error("[jcs-sync] Write error:", err);
   }
@@ -3194,6 +3270,47 @@ Deno.serve(async (req) => {
         resolvedUnipile = { apiKey: envKey, dsn: `https://${envDsn.replace(/^https?:\/\//, '')}` };
       }
     }
+
+    // C1 (R8) : un poste de mission (« project:<uuid> » ou l'uuid de la
+    // mission) ne se note que depuis l'organisation de la mission, ou par un
+    // membre de son équipe. Sans ce contrôle, un membre d'une autre
+    // organisation lisait et remplissait le cache de notation de ce poste.
+    // Un identifiant sans mission (poste Notion) passe : cache et écritures
+    // restent bornés à l'organisation de l'appelant.
+    const JOB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const rawJobProjectId = job.id.startsWith("project:") ? job.id.slice("project:".length) : job.id;
+    const jobProjectId = JOB_UUID_RE.test(rawJobProjectId) ? rawJobProjectId : null;
+    if (jobProjectId) {
+      const { data: jobProject, error: jobProjectError } = await supabase
+        .from("sourcing_projects")
+        .select("organization_id")
+        .eq("id", jobProjectId)
+        .maybeSingle();
+      if (jobProjectError) {
+        console.error("[score-profile-job] Mission lookup failed:", jobProjectError.message);
+        return new Response(JSON.stringify({ error: "Internal server error" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (jobProject && jobProject.organization_id !== resolvedOrgId) {
+        const { data: teamRows } = effectiveUserId
+          ? await supabase
+            .from("mission_team")
+            .select("id")
+            .eq("project_id", jobProjectId)
+            .eq("user_id", effectiveUserId)
+            .limit(1)
+          : { data: null };
+        if (!teamRows || teamRows.length === 0) {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     let enrichmentCtx: EnrichmentContext | null = null;
 
     if (accountId && resolvedUnipile) {
@@ -3263,7 +3380,7 @@ Deno.serve(async (req) => {
 
       // Mode deep : on ignore le cache (le but est justement de re-scorer avec
       // le profil complet fraîchement récupéré).
-      const cached = isDeepScoring ? null : await getCachedScore(supabase, candidateId, job.id);
+      const cached = isDeepScoring ? null : await getCachedScore(supabase, candidateId, job.id, resolvedOrgId);
       if (cached) {
         console.log(`[cache] HIT for ${p.name} → score=${cached.finalScore}`);
         return { profile: p, startTime, cached, needsLLM: false };
@@ -3294,7 +3411,7 @@ Deno.serve(async (req) => {
           processingTimeMs: Date.now() - startTime,
           tokensUsed: null,
         };
-        await setCachedScore(supabase, candidateId, job.id, koResult);
+        await setCachedScore(supabase, candidateId, job.id, koResult, resolvedOrgId);
         return { profile: p, startTime, hardFilterResult: { passed: false, result: koResult }, needsLLM: false };
       }
 
@@ -3302,6 +3419,95 @@ Deno.serve(async (req) => {
     }));
 
     const passing = stageA.filter(ps => ps.needsLLM);
+
+    // Garde crédits : après l'étape A, avant l'étape B.
+    // L'étape A (cache + filtres durs) ne consomme aucun token et écrit déjà
+    // ses résultats en base : la placer sous le garde ferait payer un chemin
+    // gratuit. L'étape B pousse les profils dans profile_enrichment_queue, où
+    // le worker les consommera : garder plus bas laissait ces lignes de file
+    // écrites pour un lot jamais noté.
+    // Une seule vérification pour tout le lot, pas une par vague de dix : un
+    // refus en cours de route laisserait un lot à moitié noté et des lignes
+    // job_candidate_status incohérentes.
+    // En service-role (worker process-agent-tasks), on exempte : ce worker
+    // traite un 402 comme un échec de lot, réduit la taille des lots jusqu'à
+    // un profil, puis met les candidats de côté définitivement et fait échouer
+    // la tâche. Une org à sec y perdrait ses candidats, pas seulement son
+    // scoring. Le décompte a posteriori continue de s'appliquer.
+    if (passing.length > 0) {
+      const gate = await assertCredits({
+        userId: effectiveUserId,
+        organizationId: resolvedOrgId,
+        aiAction: aiParams.aiAction,
+        modelId: aiParams.modelId,
+        // L'exemption ne vaut que pour un vrai traitement automatique, sans
+        // utilisateur. process-agent-tasks appelle en service-role mais fournit
+        // user_id et organization_id : l'utilisateur est connu, son solde doit
+        // donc être lu comme depuis le navigateur.
+        systemCall: isServiceRole && !effectiveUserId,
+        // Client service-role déjà construit plus haut, le garde en
+        // reconstruisait un à chaque appel.
+        adminClient: supabase,
+      });
+
+      if (!gate.ok) {
+        // Refus : 200 avec ce que l'étape A a produit, pas 402. Un 402
+        // perdrait aussi les profils servis par le cache et ceux éliminés par
+        // les filtres durs, qui n'ont rien coûté. Le champ credit_stop porte
+        // l'arrêt et le nombre de profils restés sans note.
+        const servedResults: ScoringResult[] = [];
+        let servedHardFiltered = 0;
+        for (const ps of stageA) {
+          if (ps.cached) {
+            servedResults.push({ ...ps.cached, profile_id: ps.profile.id });
+            // Même resynchronisation que le chemin nominal : la ligne du
+            // demandeur peut avoir score NULL alors que le cache est frais.
+            await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
+          } else if (ps.hardFilterResult?.result) {
+            servedResults.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
+            servedHardFiltered++;
+          }
+        }
+
+        // Rien à rendre : le 402 ne perd rien. C'est le seul cas possible pour
+        // une requête à profil unique (un profil déjà servi par l'étape A ne
+        // passe pas par ce garde), donc la forme « lot » ci-dessous ne répond
+        // jamais à une requête qui attend { result }.
+        if (servedResults.length === 0) return creditGateResponse(gate, corsHeaders);
+
+        const servedAvg = Math.round(
+          servedResults.reduce((sum, r) => sum + r.finalScore, 0) / servedResults.length,
+        );
+        console.warn(
+          `[score-profile-job] arrêt crédits : ${servedResults.length} profils rendus, ${passing.length} non notés (org=${gate.organizationId})`,
+        );
+        return new Response(
+          JSON.stringify({
+            success: true,
+            results: servedResults,
+            stats: {
+              total: servedResults.length,
+              hardFiltered: servedHardFiltered,
+              llmSkipped: servedResults.length,
+              llmCalled: 0,
+              escalated: 0,
+              escalationModel: null,
+              avgScore: servedAvg,
+              totalTokens: 0,
+            },
+            credit_stop: {
+              error_code: "INSUFFICIENT_CREDITS",
+              message: gate.body.message,
+              remaining: gate.remaining,
+              credits_required: gate.estimated,
+              profiles_scored: servedResults.length,
+              profiles_skipped: passing.length,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     // Étape B : Phase 2 — hydratation cache + ENQUEUE (AUCUN fetch inline).
     // maybeEnrichProfile lit le cache d'enrichissement (hydrate le profil si
@@ -3468,7 +3674,7 @@ Deno.serve(async (req) => {
       // boucle sur ces profils.
       if (ps.cached) {
         results.push({ ...ps.cached, profile_id: ps.profile.id });
-        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached);
+        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
         continue;
       }
 
@@ -3515,7 +3721,7 @@ Deno.serve(async (req) => {
             tokensUsed: llmResult.tokensUsed,
             skipReason: llmResult.mustHaveDetails,
           };
-          await setCachedScore(supabase, ps.profile.id, job.id, koResult);
+          await setCachedScore(supabase, ps.profile.id, job.id, koResult, resolvedOrgId);
           results.push(koResult);
           hardFilteredCount++;
           continue;
@@ -3564,7 +3770,7 @@ Deno.serve(async (req) => {
       // sur la même card). Le LLM est parfois optimiste sur le potentiel,
       // mais les recruteurs préfèrent un Maybe explicite à un Go trompeur.
       if (weighted.experienceMatchKind === 'trop_junior' || weighted.experienceMatchKind === 'trop_senior') {
-        const xp = profile.yearsOfExperience ?? 0;
+        const xp = ps.profile.yearsOfExperience ?? 0;
         const xpMin = job.xpMin || 0;
         const xpMax = job.xpMax || xpMin + 5;
         const gap = weighted.experienceMatchKind === 'trop_junior'
@@ -3682,7 +3888,7 @@ Deno.serve(async (req) => {
         tokensUsed: llmResult?.tokensUsed ?? null,
       };
 
-      await setCachedScore(supabase, ps.profile.id, job.id, result);
+      await setCachedScore(supabase, ps.profile.id, job.id, result, resolvedOrgId);
       results.push(result);
     }
 

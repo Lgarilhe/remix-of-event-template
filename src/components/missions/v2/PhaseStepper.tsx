@@ -20,8 +20,9 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MISSION_PHASES, type MissionPhaseId } from '@/lib/missionViews';
 
-export type PhaseId = 1 | 2 | 3;
+export type PhaseId = MissionPhaseId;
 export type PhaseState = 'done' | 'active' | 'todo';
 
 export interface Phase {
@@ -30,11 +31,8 @@ export interface Phase {
   desc: string;
 }
 
-const PHASES: Phase[] = [
-  { id: 1, label: 'Cadrage', desc: 'Brief & process' },
-  { id: 2, label: 'Sourcing & Outreach', desc: 'Recherche & contact' },
-  { id: 3, label: 'Pipeline', desc: 'Entretiens & embauche' },
-];
+// Libellés partagés avec la page et la barre latérale (src/lib/missionViews.ts).
+const PHASES: Phase[] = MISSION_PHASES.map(({ id, label, desc }) => ({ id, label, desc }));
 
 export interface PhaseStepperProps {
   /** Phase courante (1, 2, ou 3). */
@@ -86,7 +84,7 @@ export const PhaseStepper: React.FC<PhaseStepperProps> = ({
                 aria-current={state === 'active' ? 'step' : undefined}
               >
                 <span
-                  className="h-5 w-5 rounded-full grid place-items-center text-[10px] font-bold flex-shrink-0 transition-all duration-300"
+                  className="h-5 w-5 rounded-full grid place-items-center text-2xs font-bold flex-shrink-0 transition-all duration-300"
                   style={{
                     background:
                       state === 'done'
@@ -105,7 +103,7 @@ export const PhaseStepper: React.FC<PhaseStepperProps> = ({
                 </span>
                 <p
                   className={cn(
-                    'text-[12.5px] font-semibold leading-tight',
+                    'text-xs font-semibold leading-tight',
                     state === 'todo' && 'text-muted-foreground',
                   )}
                 >

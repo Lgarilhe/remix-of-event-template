@@ -25,6 +25,20 @@ import { SENDER_ROLE_LABELS, RECRUITMENT_MODE_LABELS } from '@/types/jobDetails'
 interface MissionConfigV2Props {
   project: SourcingProject;
   readOnly?: boolean;
+  /** Masque le statut (champ et carte) : la nouvelle page mission le gère dans son en-tête, avec confirmation. */
+  hideStatus?: boolean;
+  /**
+   * Masque la configuration des messages et le lien de prise de rendez-vous
+   * (champ et raccourci) : la nouvelle page mission les présente dans Le poste.
+   */
+  hideMessageSettings?: boolean;
+  /**
+   * Rendu intégré à la nouvelle page mission (Réglages de Cadrage) : sans
+   * en-tête, sans bandeau de lecture seule ni colonne latérale (indicateur
+   * d'enregistrement, conseil), sans emoji, textes vouvoyés, et un champ
+   * Client qui dit ce qu'il nomme. Défaut : le rendu actuel.
+   */
+  embedded?: boolean;
 }
 
 const STATUS_OPTIONS: { value: SourcingProject['status']; label: string; color: string }[] = [
@@ -36,7 +50,7 @@ const STATUS_OPTIONS: { value: SourcingProject['status']; label: string; color: 
 
 // ──────────────────────────────────────────────────────────────────
 
-export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readOnly = false }) => {
+export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readOnly = false, hideStatus = false, hideMessageSettings = false, embedded = false }) => {
   const { updateProject } = useSourcingProjects();
   const { isAgency } = useOrganization();
 
@@ -65,21 +79,23 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
   const currentStatus = STATUS_OPTIONS.find(s => s.value === project.status) || STATUS_OPTIONS[0];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 pb-8">
+    <div className={embedded ? 'grid grid-cols-1 gap-6 pb-2' : 'grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 pb-8'}>
       {/* Form principal */}
       <div className="min-w-0">
         {/* Header */}
+        {!embedded && (
         <div className="mb-5">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">
             Étape 1 · Cadrage
           </p>
-          <h2 className="font-display text-[24px] font-bold leading-tight">Configuration</h2>
-          <p className="text-[12px] text-muted-foreground mt-0.5">
+          <h2 className="font-display text-2xl font-bold leading-tight">Configuration</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
             Paramètres généraux de la mission, hunt mode et portail client.
           </p>
         </div>
+        )}
 
-        {readOnly && (
+        {readOnly && !embedded && (
           <div className="mb-4 px-4 py-3 rounded-lg border border-border bg-muted/30 inline-flex items-center gap-2">
             <Eye className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
@@ -88,35 +104,53 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           </div>
         )}
 
-        <div className="space-y-4">
+        {/* Rendu intégré : pas de colonne latérale, l'état d'enregistrement des
+            Réglages s'affiche ici, seulement quand il y a quelque chose à dire. */}
+        {embedded && (
+          <div aria-live="polite" className="mb-2 min-h-4 text-xs text-muted-foreground">
+            {saveStatus === 'saving' && 'Enregistrement des réglages…'}
+            {saveStatus === 'saved' && 'Réglages enregistrés'}
+            {saveStatus === 'error' && <span className="text-destructive">Échec de l'enregistrement des réglages</span>}
+          </div>
+        )}
+
+        <div className={embedded ? 'space-y-6' : 'space-y-4'}>
           {/* Section Infos mission */}
           <SectionCard
-            emoji="⚙️"
+            bare={embedded}
+            emoji={embedded ? undefined : '⚙️'}
             title="Infos mission"
-            subtitle="Identité et statut"
+            subtitle={embedded ? 'Nom, client affiché et notes internes' : 'Identité et statut'}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Nom de la mission" required>
+              <Field label="Nom de la mission" required plain={embedded}>
                 <DebouncedInput
                   defaultValue={project.name}
                   onCommit={(v) => handleUpdate({ name: v.trim() || project.name })}
                   placeholder="Ex: Lead Engineer @ Doctolib"
                   readOnly={readOnly}
+                  touch={embedded}
                 />
               </Field>
 
               {isAgency && (
-                <Field label="Client">
+                <Field
+                  label={embedded ? 'Client affiché dans vos listes' : 'Client'}
+                  hint={embedded ? "Nom affiché dans l'en-tête et la liste des missions. Les messages utilisent le client du poste." : undefined}
+                  plain={embedded}
+                >
                   <DebouncedInput
                     defaultValue={project.client_name || ''}
                     onCommit={(v) => handleUpdate({ client_name: v || null })}
                     placeholder="Ex: Doctolib"
                     readOnly={readOnly}
+                    touch={embedded}
                   />
                 </Field>
               )}
 
-              <Field label="Statut">
+              {!hideStatus && (
+              <Field label="Statut" plain={embedded}>
                 <select
                   value={project.status}
                   onChange={(e) => handleUpdate({ status: e.target.value as SourcingProject['status'] })}
@@ -132,10 +166,13 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                   ))}
                 </select>
               </Field>
+              )}
 
+              {!hideMessageSettings && (
               <Field
                 label="Lien Calendly"
                 hint="Le lien sera utilisé pour le bouton 'Programmer un RDV' sur les conversations candidat"
+                plain={embedded}
               >
                 <DebouncedInput
                   defaultValue={project.calendly_link || ''}
@@ -143,12 +180,18 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                   placeholder="https://calendly.com/..."
                   type="url"
                   readOnly={readOnly}
+                  touch={embedded}
                 />
               </Field>
+              )}
             </div>
 
-            <div className="pt-3 border-t border-border">
-              <Field label="Notes internes" hint="Notes privées sur cette mission (visibles uniquement par ton équipe)">
+            <div className={embedded ? undefined : 'pt-3 border-t border-border'}>
+              <Field
+                label="Notes internes"
+                hint={embedded ? 'Notes privées sur cette mission, visibles par votre équipe seulement.' : 'Notes privées sur cette mission (visibles uniquement par ton équipe)'}
+                plain={embedded}
+              >
                 <DebouncedTextarea
                   defaultValue={project.notes || ''}
                   onCommit={(v) => handleUpdate({ notes: v || null })}
@@ -161,7 +204,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           </SectionCard>
 
           {/* Section Configuration outreach — incarnation IA pour les messages */}
-          {!readOnly && (
+          {!readOnly && !hideMessageSettings && (
             <OutreachConfigSection
               project={project}
               onUpdate={handleUpdate}
@@ -169,12 +212,13 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           )}
 
           {/* Mode Hunt et Portail client — composants déjà cards rounded-xl */}
-          {!readOnly && <MissionHuntMode project={project} />}
-          {!readOnly && <MissionClientPortal project={project} />}
+          {!readOnly && <MissionHuntMode project={project} embedded={embedded} />}
+          {!readOnly && <MissionClientPortal project={project} embedded={embedded} />}
         </div>
       </div>
 
       {/* Sidebar */}
+      {!embedded && (
       <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
         {/* Save indicator */}
         <div className="bg-card border border-border rounded-lg p-3">
@@ -182,33 +226,34 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
             {saveStatus === 'saving' && (
               <>
                 <CloudUpload className="w-3.5 h-3.5 text-info animate-pulse" />
-                <span className="text-[11px] text-muted-foreground">Enregistrement…</span>
+                <span className="text-2xs text-muted-foreground">Enregistrement…</span>
               </>
             )}
             {saveStatus === 'saved' && (
               <>
                 <Check className="w-3.5 h-3.5" style={{ color: 'hsl(var(--status-success))' }} />
-                <span className="text-[11px]" style={{ color: 'hsl(var(--status-success))' }}>Enregistré</span>
+                <span className="text-2xs" style={{ color: 'hsl(var(--status-success))' }}>Enregistré</span>
               </>
             )}
             {saveStatus === 'idle' && (
               <>
                 <Cloud className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-[11px] text-muted-foreground">Auto-sauvegarde activée</span>
+                <span className="text-2xs text-muted-foreground">Auto-sauvegarde activée</span>
               </>
             )}
             {saveStatus === 'error' && (
               <>
                 <AlertCircle className="w-3.5 h-3.5 text-destructive" />
-                <span className="text-[11px] text-destructive">Erreur de sauvegarde</span>
+                <span className="text-2xs text-destructive">Erreur de sauvegarde</span>
               </>
             )}
           </div>
         </div>
 
         {/* Statut actuel */}
+        {!hideStatus && (
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
             Statut actuel
           </p>
           <div className="flex items-center gap-2 mb-3">
@@ -216,19 +261,21 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
               className="h-2 w-2 rounded-full"
               style={{ background: currentStatus.color }}
             />
-            <span className="font-display text-[16px] font-bold">{currentStatus.label}</span>
+            <span className="font-display text-base font-bold">{currentStatus.label}</span>
           </div>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <p className="text-2xs text-muted-foreground leading-relaxed">
             {project.status === 'active' && 'Sourcing, outreach et pipeline disponibles.'}
             {project.status === 'paused' && 'Aucune nouvelle action — la mission peut être réactivée.'}
             {project.status === 'completed' && 'Mission terminée — consultez le pipeline pour le bilan.'}
             {project.status === 'archived' && 'Mission archivée — accès en lecture seule.'}
           </p>
         </div>
+        )}
 
         {/* Quick links */}
+        {!hideMessageSettings && (
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
             Raccourcis
           </p>
           <div className="space-y-2">
@@ -237,30 +284,32 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                 href={project.calendly_link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors group"
+                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors group"
               >
                 <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="truncate group-hover:underline">Ouvrir Calendly</span>
               </a>
             )}
             {!project.calendly_link && (
-              <p className="text-[11px] text-muted-foreground/70 italic">
+              <p className="text-2xs text-muted-foreground/70 italic">
                 Configure ton Calendly pour activer le bouton RDV dans l'inbox
               </p>
             )}
           </div>
         </div>
+        )}
 
         {/* Tips */}
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
             💡 Conseil
           </p>
-          <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Le <strong className="text-foreground">portail client</strong> permet à ton client de voir uniquement les candidats que tu as présentés, sans accès au reste de Konekt.
           </p>
         </div>
       </aside>
+      )}
     </div>
   );
 };
@@ -268,17 +317,21 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
 // ─── Sub-components ───────────────────────────────────────────────
 
 const SectionCard: React.FC<{
-  emoji: string;
+  emoji?: string;
   title: string;
   subtitle?: string;
+  /** Rendu intégré : ni carte ni titre, la section qui l'accueille porte le sien. */
+  bare?: boolean;
   children: React.ReactNode;
-}> = ({ emoji, title, subtitle, children }) => (
+}> = ({ emoji, title, subtitle, bare, children }) => bare ? (
+  <div className="space-y-4">{children}</div>
+) : (
   <div className="bg-card border border-border rounded-xl overflow-hidden">
     <div className="px-5 py-3 border-b border-border flex items-center gap-3">
-      <span className="text-base">{emoji}</span>
+      {emoji && <span className="text-base">{emoji}</span>}
       <div>
-        <h3 className="font-display text-[14px] font-bold leading-tight">{title}</h3>
-        {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
+        <h3 className="font-display text-md font-bold leading-tight">{title}</h3>
+        {subtitle && <p className="text-2xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </div>
     </div>
     <div className="p-5 space-y-3">{children}</div>
@@ -289,15 +342,17 @@ const Field: React.FC<{
   label: string;
   required?: boolean;
   hint?: string;
+  /** Rendu intégré à la nouvelle page mission : libellé et aide à 14 px, sans majuscules. */
+  plain?: boolean;
   children: React.ReactNode;
-}> = ({ label, required, hint, children }) => (
-  <div>
-    <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+}> = ({ label, required, hint, plain, children }) => (
+  <div className={plain ? 'flex flex-col gap-1.5' : undefined}>
+    <label className={plain ? 'text-sm text-muted-foreground' : 'text-2xs uppercase tracking-wider text-muted-foreground font-semibold'}>
       {label}
       {required && <span className="text-destructive ml-0.5">*</span>}
     </label>
-    <div className="mt-1">{children}</div>
-    {hint && <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-snug">{hint}</p>}
+    <div className={plain ? undefined : 'mt-1'}>{children}</div>
+    {hint && <p className={plain ? 'text-sm text-muted-foreground' : 'text-2xs text-muted-foreground mt-1.5 leading-snug'}>{hint}</p>}
   </div>
 );
 
@@ -308,7 +363,9 @@ const DebouncedInput: React.FC<{
   placeholder?: string;
   type?: string;
   readOnly?: boolean;
-}> = ({ defaultValue, onCommit, placeholder, type = 'text', readOnly }) => (
+  /** Rendu intégré : 44 px de haut sur téléphone (cible tactile). */
+  touch?: boolean;
+}> = ({ defaultValue, onCommit, placeholder, type = 'text', readOnly, touch }) => (
   <input
     type={type}
     defaultValue={defaultValue}
@@ -321,6 +378,7 @@ const DebouncedInput: React.FC<{
       'w-full h-9 px-3 rounded-md border border-border bg-background text-sm',
       'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
       readOnly && 'bg-muted/30 cursor-not-allowed',
+      touch && 'max-sm:h-11',
     )}
   />
 );
@@ -400,7 +458,7 @@ const OutreachConfigSection: React.FC<{
                 )}
               >
                 <div className="font-medium">{RECRUITMENT_MODE_LABELS[mode]}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
+                <div className="text-2xs text-muted-foreground mt-0.5">
                   {mode === 'internal'
                     ? 'L\'IA parle en "on / nous / chez nous"'
                     : 'L\'IA mentionne "ton client" / cabinet externe'}
@@ -424,7 +482,7 @@ const OutreachConfigSection: React.FC<{
               <option key={val} value={val}>{label}</option>
             ))}
           </select>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
+          <p className="text-2xs text-muted-foreground mt-1.5">
             Adapte le ton, le wording et la posture des messages générés.
             Ex : un CTO parle tech, un Talent parle people, un Founder parle vision.
           </p>
@@ -437,7 +495,7 @@ const OutreachConfigSection: React.FC<{
               <label className="text-xs font-medium text-foreground block">
                 Anonymiser le client dans les messages
               </label>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
+              <p className="text-2xs text-muted-foreground mt-0.5">
                 {clientName
                   ? <>Cache le nom <span className="font-mono">"{clientName}"</span> et le remplace par un alias générique</>
                   : <span className="italic">Renseigne d'abord le client dans le brief pour activer cette option</span>}
@@ -473,7 +531,7 @@ const OutreachConfigSection: React.FC<{
                 onCommit={(v) => updateConfig({ anonymized_alias: v.trim() })}
                 placeholder="Ex: une scale-up tech française, un acteur du paiement, etc."
               />
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-2xs text-muted-foreground mt-1">
                 Si vide, l'IA utilisera "une entreprise tech française" par défaut.
               </p>
             </div>
@@ -482,7 +540,7 @@ const OutreachConfigSection: React.FC<{
 
         {/* Note d'avertissement si pas configuré */}
         {!config.recruitment_mode && (
-          <div className="p-3 rounded-lg bg-warning/5 border border-warning/30 text-[12px] text-foreground">
+          <div className="p-3 rounded-lg bg-warning/5 border border-warning/30 text-xs text-foreground">
             <strong>⚠ Pas encore configuré</strong> : par défaut, l'IA considère que c'est
             un recrutement pour un client externe. Configure ci-dessus pour adapter le ton.
           </div>

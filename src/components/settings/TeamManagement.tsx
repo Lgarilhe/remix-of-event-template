@@ -1,37 +1,44 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
-  Gauge, Link2, Unlink, UserCog, Users,
-  Trash2, Activity, Crown, Shield, User as UserIcon,
+  Sliders, ChevronDown, Loader2,
+  Gauge, Link2, Unlink, Users, Trash2,
 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
-import { useJobAssignments } from '@/hooks/useJobAssignments';
-import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
+import {
+  useMemberQuotas, DEFAULT_QUOTAS,
+  MAX_ACTIONS_PER_DAY_MIN, MAX_ACTIONS_PER_DAY_MAX, isValidMaxActionsPerDay,
+} from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
-import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
-import { useMemberStats } from '@/hooks/useMemberStats';
-import { useOrganization, OrganizationMember } from '@/hooks/useOrganization';
+import { useOrganization, type OrganizationMember } from '@/hooks/useOrganization';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { plural } from '@/lib/plural';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 
 interface TeamManagementProps {
   members: OrganizationMember[];
   getDisplayName: (userId: string) => string;
+  /** E-mail du membre (get_org_member_emails), null si inconnu. */
+  getEmail?: (userId: string) => string | null;
   isAdmin: boolean;
   isOwner: boolean;
   isLoading?: boolean;
-  onUpdateRole: (params: { memberId: string; role: string }) => void;
-  onRemove: (memberId: string) => void;
+  /** Rejette en cas d'échec (message affiché par le hook) : la confirmation reste ouverte. */
+  onUpdateRole: (params: { memberId: string; role: string }) => Promise<unknown>;
+  /** Arrête les envois du membre puis le retire (rejette en cas d'échec, rien n'est retiré). */
+  onRemove: (params: { memberId: string; userId: string }) => Promise<unknown>;
 }
 
 // Seul quota EFFECTIVEMENT câblé côté backend (process-sequences /
@@ -45,17 +52,10 @@ const QUOTA_FIELDS = [
     key: 'max_actions_per_day' as const,
     label: 'Actions visibles / jour',
     icon: Gauge,
-    max: 200,
-    hint: 'InMails + messages + invitations envoyés depuis le compte LinkedIn de ce membre',
+    max: MAX_ACTIONS_PER_DAY_MAX,
+    hint: 'InMails, messages et invitations envoyés depuis le compte LinkedIn de ce membre',
   },
 ];
-
-const roleIcons: Record<string, typeof Crown> = {
-  owner: Crown,
-  admin: Shield,
-  member: UserIcon,
-  collaborator: UserCog,
-};
 
 const roleLabels: Record<string, string> = {
   owner: 'Propriétaire',
@@ -64,63 +64,57 @@ const roleLabels: Record<string, string> = {
   collaborator: 'Collaborateur',
 };
 
+/** Revue design (F-09) : ce que le nouveau rôle ouvre ou ferme, lu dans la confirmation. */
+const ORG_SETTINGS = 'les réglages de l’organisation (invitations et quotas de l’équipe, abonnement et crédits, règles de l’assistant)';
+const roleConsequence = (role: string, name: string): string => {
+  if (role === 'admin') return `${name} aura les droits d’un administrateur : en plus des missions et des candidats, ${ORG_SETTINGS}.`;
+  if (role === 'member') return `${name} aura les droits d’un membre : les missions et les candidats, sans ${ORG_SETTINGS}.`;
+  return `${name} aura le rôle ${roleLabels[role] || role}.`;
+};
+
 export const TeamManagement: React.FC<TeamManagementProps> = ({
   members,
   getDisplayName,
+  getEmail,
   isAdmin,
   isOwner,
   isLoading,
   onUpdateRole,
   onRemove,
 }) => {
-  const { organizationId } = useOrganization();
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [selectedLinkedInId, setSelectedLinkedInId] = useState<string>('');
   const [removeConfirm, setRemoveConfirm] = useState<OrganizationMember | null>(null);
-  const [unlinkConfirm, setUnlinkConfirm] = useState<{ mappingId: string; name: string } | null>(null);
-  const { assignments, assign, unassign, isAssigning } = useJobAssignments();
-  const { upsertQuota, isSaving, getQuotaForUser } = useMemberQuotas();
-  const { linkAccount, unlinkAccount, isLinking, getMappingForUser, getMappingForAccount } = useMemberLinkedInAccounts();
+  const [isRemoving, setIsRemoving] = useState(false);
+  // accountId : compte affiché à l'ouverture de la confirmation, transmis au
+  // serveur qui refuse une liaison repointée entre-temps.
+  const [unlinkConfirm, setUnlinkConfirm] = useState<{ mappingId: string; accountId: string; name: string } | null>(null);
+  // Changement de rôle confirmé (F-09) : il ouvre ou ferme les réglages de l'organisation.
+  const [roleConfirm, setRoleConfirm] = useState<{ member: OrganizationMember; role: string } | null>(null);
+  const [isChangingRole, setIsChangingRole] = useState(false);
+  const {
+    upsertQuota, isSaving, getQuotaForUser, isReady: quotasReady, isError: quotasError, refetch: refetchQuotas,
+  } = useMemberQuotas();
+  const {
+    linkAccount, unlinkAccount, isLinking, isUnlinking, isReady: mappingsReady,
+    isError: mappingsError, refetch: refetchMappings,
+    getMappingForUser, getMappingForAccount,
+  } = useMemberLinkedInAccounts();
   const { accounts: linkedInAccounts } = useLinkedInAccounts();
-  // Liste des missions internes (sourcing_projects) — remplace Notion comme
-  // source primaire des "postes" depuis la migration de Lovable vers Supabase.
-  const { projects } = useSourcingProjects();
-  const jobs = React.useMemo(
-    () => projects.map(p => ({ id: p.id, title: p.name })),
-    [projects],
-  );
-  const userIds = members.map(m => m.user_id);
-  const { data: statsMap = {} } = useMemberStats(organizationId, userIds);
+  const { organizationId } = useOrganization();
   const [editingQuotas, setEditingQuotas] = useState<Record<string, Partial<typeof DEFAULT_QUOTAS>>>({});
-
-  const getMemberAssignments = (userId: string) =>
-    assignments.filter(a => a.user_id === userId);
-
-  const handleAssignJob = (member: OrganizationMember) => {
-    if (!selectedJobId) return;
-    const job = jobs.find(j => j.id === selectedJobId);
-    assign({
-      memberId: member.id,
-      userId: member.user_id,
-      jobId: selectedJobId,
-      jobTitle: job?.title || selectedJobId,
-    });
-    setSelectedJobId('');
-  };
 
   const handleLinkLinkedIn = (member: OrganizationMember) => {
     if (!selectedLinkedInId) return;
-    const account = linkedInAccounts.find(a => a.id === selectedLinkedInId);
-    linkAccount({
-      userId: member.user_id,
-      linkedinAccountId: selectedLinkedInId,
-      linkedinAccountName: account?.name || account?.identifier || selectedLinkedInId,
-    });
+    // Liaison par le serveur (claim_linkedin_account), qui prend le nom du
+    // compte chez le prestataire ; le hook vérifie le résultat et l'annonce.
+    linkAccount({ userId: member.user_id, linkedinAccountId: selectedLinkedInId });
     setSelectedLinkedInId('');
   };
 
   const startEditingQuotas = (userId: string) => {
+    // Quotas non lus : l'éditeur partirait de 80 et écraserait la valeur enregistrée.
+    if (!quotasReady) return;
     const existing = getQuotaForUser(userId);
     setEditingQuotas(prev => ({
       ...prev,
@@ -132,13 +126,81 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   const handleSaveQuotas = (userId: string) => {
     const q = editingQuotas[userId];
-    if (!q) return;
-    upsertQuota({ userId, quotas: q });
-    setEditingQuotas(prev => {
-      const next = { ...prev };
-      delete next[userId];
-      return next;
+    if (!q || !isValidMaxActionsPerDay(q.max_actions_per_day)) return;
+    // L'éditeur ne se ferme qu'après l'enregistrement confirmé (ligne relue) :
+    // sur erreur, il reste ouvert avec la saisie.
+    upsertQuota({ userId, quotas: q }, {
+      onSuccess: () => setEditingQuotas(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      }),
     });
+  };
+
+  // Retrait d'un membre : ses inscriptions en cours depuis son compte LinkedIn
+  // relié, comptées pour la confirmation (le serveur les met en pause avant
+  // le retrait).
+  const removeAccountId = removeConfirm
+    ? getMappingForUser(removeConfirm.user_id)?.linkedin_account_id ?? null
+    : null;
+  const activeEnrollments = useQuery({
+    queryKey: ['member-active-enrollments', organizationId, removeAccountId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId!)
+        .eq('account_id', removeAccountId!)
+        .eq('status', 'active');
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!organizationId && !!removeAccountId,
+    staleTime: 0,
+  });
+
+  // Le serveur met ses inscriptions en pause (jamais un arrêt définitif) et
+  // annule ses InMails programmés. « Reprendre » échouera ensuite (compte plus
+  // relié) : la seule voie pour recontacter ces candidats est une autre
+  // séquence, avec la dérogation « Inscrire quand même » (propriétaire ou
+  // administrateur, seuls à lire cette confirmation).
+  const sendingStopSentence = (): string => {
+    const reenroll = ' Ses candidats resteront en pause : pour les recontacter, inscrivez-les dans une autre séquence depuis votre compte (option « Inscrire quand même »).';
+    const generic = `Ses séquences en cours seront mises en pause et ses InMails programmés annulés.${reenroll}`;
+    if (mappingsError || !mappingsReady) return generic;
+    if (!removeAccountId) return "Aucun compte LinkedIn n'est relié à ce membre : aucun envoi LinkedIn n'est à arrêter.";
+    if (!activeEnrollments.isSuccess) return generic;
+    const n = activeEnrollments.data;
+    return n > 0
+      ? `Ses séquences en cours (${n} candidat${n > 1 ? 's' : ''}) seront mises en pause et ses InMails programmés annulés.${reenroll}`
+      : "Aucune séquence n'est en cours depuis son compte LinkedIn ; ses InMails programmés seront annulés.";
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!removeConfirm || isRemoving) return;
+    setIsRemoving(true);
+    try {
+      await onRemove({ memberId: removeConfirm.id, userId: removeConfirm.user_id });
+      setRemoveConfirm(null);
+    } catch {
+      // Erreur annoncée par le hook ; la confirmation reste ouverte pour réessayer.
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const handleConfirmRole = async () => {
+    if (!roleConfirm || isChangingRole) return;
+    setIsChangingRole(true);
+    try {
+      await onUpdateRole({ memberId: roleConfirm.member.id, role: roleConfirm.role });
+      setRoleConfirm(null);
+    } catch {
+      // Erreur annoncée par le hook ; la confirmation reste ouverte pour réessayer.
+    } finally {
+      setIsChangingRole(false);
+    }
   };
 
   // Available LinkedIn accounts = those not already linked to another member
@@ -151,271 +213,222 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-          <Users className="w-4 h-4" />
-          Équipe
-          <Badge variant="secondary" className="ml-auto text-xs">
-            {members.length} membre{members.length > 1 ? 's' : ''}
-          </Badge>
+      {/* Revue design (F-01) : titre en casse de phrase, nombre de membres en texte discret à droite.
+          Design simplifié : « Membres », la rubrique s'appelle déjà « Équipe ». */}
+      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Membres
         </CardTitle>
+        {!isLoading && (
+          <span className="text-xs text-muted-foreground">{plural(members.length, 'membre')}</span>
+        )}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <BrutalLoader compact />
+          <div className="space-y-3 py-3">
+            <p role="status" className="sr-only">Chargement de l’équipe…</p>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3" aria-hidden="true">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="divide-y divide-border">
             {members.map((member) => {
               const isExpanded = expandedMember === member.user_id;
-              const memberJobs = getMemberAssignments(member.user_id);
               const memberQuota = getQuotaForUser(member.user_id);
               const linkedInMapping = getMappingForUser(member.user_id);
               const isEditingQ = !!editingQuotas[member.user_id];
-              const stats = statsMap[member.user_id] || { active_sequences: 0, candidates_30d: 0 };
-              const RoleIcon = roleIcons[member.role] || UserIcon;
               const canManage = isOwner && member.role !== 'owner';
+              const memberName = getDisplayName(member.user_id);
+              const memberEmail = getEmail?.(member.user_id) ?? null;
+              const panelId = `membre-${member.id}-details`;
+              const quotaInputId = `membre-${member.id}-quota`;
 
               return (
                 <div key={member.id}>
-                  {/* Collapsed row */}
-                  <div
-                    className={cn(
-                      'flex items-center justify-between gap-3 px-4 py-3 transition-colors',
-                      isExpanded ? 'bg-muted' : 'hover:bg-muted/50',
-                    )}
-                  >
-                    <button
+                  {/* Collapsed row. Revue design (F-16) : sous sm, rôle et retrait passent sous l'identité.
+                      Design simplifié : liste à plat, la ligne part du bord du titre ; ouverte, le chevron
+                      et le panneau suffisent, sans fond. */}
+                  <div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3">
+                    <Button
                       type="button"
+                      variant="ghost"
                       onClick={() => setExpandedMember(isExpanded ? null : member.user_id)}
-                      className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                      className="-mx-2 h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal px-2 py-1.5 text-left font-normal active:scale-100"
                       aria-expanded={isExpanded}
+                      aria-controls={isExpanded ? panelId : undefined}
                     >
-                      <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center shrink-0 text-xs font-bold uppercase rounded">
-                        {getDisplayName(member.user_id).charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-sm font-medium text-foreground truncate">{getDisplayName(member.user_id)}</p>
-                          <Badge variant="outline" className="text-xs px-1.5 py-0 gap-1 font-medium">
-                            <RoleIcon className="w-2.5 h-2.5" />
-                            {roleLabels[member.role] || member.role}
-                          </Badge>
-                          {member.role === 'collaborator' && (
-                            <Badge variant="outline" className="text-xs px-1.5 py-0 border-info text-info font-semibold uppercase tracking-wider">
-                              Externe
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                          {linkedInMapping ? (
-                            <span className="inline-flex items-center gap-1">
-                              <img src={linkedinLogo} alt="" className="w-3 h-3 object-contain" />
-                              <span className="truncate max-w-[120px]">{linkedInMapping.linkedin_account_name || 'Connecté'}</span>
-                            </span>
-                          ) : (
-                            <span className="italic text-muted-foreground/50">Pas de LinkedIn</span>
-                          )}
-                          <Badge variant="secondary" className="text-xs px-1.5 py-0 gap-1 font-normal">
-                            <Activity className="w-2.5 h-2.5" />
-                            {stats.active_sequences} séq
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs px-1.5 py-0 gap-1 font-normal">
-                            <Briefcase className="w-2.5 h-2.5" />
-                            {stats.candidates_30d} cand/30j
-                          </Badge>
-                        </div>
-                      </div>
-                    </button>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {canManage && (
-                        <>
-                          <Select
-                            value={member.role}
-                            onValueChange={(value) => onUpdateRole({ memberId: member.id, role: value })}
-                          >
-                            <SelectTrigger className="w-28 h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="admin">Admin</SelectItem>
-                              <SelectItem value="member">Membre</SelectItem>
-                              <SelectItem value="collaborator">Collaborateur</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => setRemoveConfirm(member)}
-                            aria-label={`Supprimer ${getDisplayName(member.user_id)}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        onClick={() => setExpandedMember(isExpanded ? null : member.user_id)}
-                        aria-label={isExpanded ? 'Réduire' : 'Détails'}
+                      {/* Revue design (F-18) : avatar rond et neutre, comme partout ailleurs. */}
+                      <span
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-foreground-secondary"
+                        aria-hidden="true"
                       >
-                        <ChevronDown className={cn('w-4 h-4 transition-transform', isExpanded && 'rotate-180')} />
-                      </Button>
-                    </div>
+                        {memberName.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className="truncate text-sm font-medium text-foreground">{memberName}</span>
+                          {/* Design simplifié : le rôle en texte, sans pastille. Quand le sélecteur de la
+                              ligne l'affiche déjà, il n'est pas répété. */}
+                          {!canManage && (
+                            <span className="text-xs text-muted-foreground">{roleLabels[member.role] || member.role}</span>
+                          )}
+                        </span>
+                        {/* Pas d'e-mail en double quand le nom affiché est déjà l'e-mail */}
+                        {memberEmail && memberEmail !== memberName && (
+                          <span className="block truncate text-xs text-muted-foreground">{memberEmail}</span>
+                        )}
+                        <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {linkedInMapping ? (
+                            <span className="inline-flex min-w-0 items-center gap-1">
+                              <img src={linkedinLogo} alt="" className="h-3 w-3 shrink-0 object-contain" />
+                              <span className="max-w-40 truncate">{linkedInMapping.linkedin_account_name || 'Connecté'}</span>
+                            </span>
+                          ) : mappingsError ? (
+                            // Lecture ratée : un compte relié ne doit pas paraître absent
+                            <span>Liaison LinkedIn non chargée</span>
+                          ) : !mappingsReady ? (
+                            // Lecture en cours (y compris un nouvel essai) : rien n'est encore su
+                            <span>Chargement de la liaison LinkedIn…</span>
+                          ) : (
+                            <span>Pas de LinkedIn</span>
+                          )}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={cn('text-muted-foreground transition-transform', isExpanded && 'rotate-180')}
+                        aria-hidden="true"
+                      />
+                    </Button>
+
+                    {canManage ? (
+                      <div className="flex shrink-0 items-center gap-1.5 pl-11 sm:w-48 sm:justify-end sm:pl-0">
+                        <Select
+                          value={member.role}
+                          onValueChange={(value) => {
+                            // Revue design (F-09) : le rôle ne change qu'après une confirmation qui dit la conséquence.
+                            if (value !== member.role) setRoleConfirm({ member, role: value });
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-auto min-w-28 gap-2 text-xs max-md:h-11" aria-label={`Rôle de ${memberName}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="member">Membre</SelectItem>
+                            {/* Jusqu'au lot C2, « Collaborateur » n'est proposé qu'au membre
+                                qui l'a déjà : ce rôle garde tous les accès d'un membre (C1, R11). */}
+                            {member.role === 'collaborator' && (
+                              <SelectItem value="collaborator">Collaborateur</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                              onClick={() => setRemoveConfirm(member)}
+                              aria-label={`Retirer ${memberName} de l'équipe`}
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Retirer de l’équipe</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    ) : isOwner ? (
+                      // Même colonne vide sur la ligne du propriétaire : les chevrons restent alignés.
+                      <div className="hidden sm:block sm:w-48 sm:shrink-0" aria-hidden="true" />
+                    ) : null}
                   </div>
 
                   {/* Expanded panel (admin only) */}
                   {isExpanded && isAdmin && (
-                    <div className="bg-muted/30 border-t border-border">
-                      {/* Stats détaillées */}
-                      <div className="px-4 py-4 grid grid-cols-2 gap-3">
-                        <Card>
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
-                              <Activity className="w-3 h-3" />
-                              Séquences actives
-                            </div>
-                            <p className="text-2xl font-bold tabular-nums mt-1">{stats.active_sequences}</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
-                              <Briefcase className="w-3 h-3" />
-                              Candidats (30j)
-                            </div>
-                            <p className="text-2xl font-bold tabular-nums mt-1">{stats.candidates_30d}</p>
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                      <div className="border-t border-border" />
-
+                    <div id={panelId} className="border-t border-border bg-muted/30">
                       {/* LinkedIn Account */}
                       <SectionRow
-                        icon={<img src={linkedinLogo} alt="" className="w-4 h-4 object-contain" />}
+                        icon={<img src={linkedinLogo} alt="" className="h-4 w-4 object-contain" />}
                         label="Compte LinkedIn"
                       >
                         {linkedInMapping ? (
-                          <div className="flex items-center justify-between p-2.5 bg-background border border-border rounded">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <img src={linkedinLogo} alt="" className="w-6 h-6 object-contain shrink-0" />
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background p-2.5">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <img src={linkedinLogo} alt="" className="h-6 w-6 shrink-0 object-contain" />
                               <div className="min-w-0">
-                                <p className="text-xs font-medium truncate">{linkedInMapping.linkedin_account_name}</p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…
+                                <p className="truncate text-xs font-medium">{linkedInMapping.linkedin_account_name}</p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  ID : {linkedInMapping.linkedin_account_id.slice(0, 12)}…
                                 </p>
                               </div>
                             </div>
                             <Button
+                              type="button"
                               variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              size="xs"
+                              className="text-muted-foreground hover:bg-danger-muted hover:text-danger max-md:h-11"
                               onClick={() => setUnlinkConfirm({
                                 mappingId: linkedInMapping.id,
+                                accountId: linkedInMapping.linkedin_account_id,
                                 name: linkedInMapping.linkedin_account_name || 'ce compte',
                               })}
+                              disabled={isUnlinking}
                             >
-                              <Unlink className="w-3 h-3" />
+                              <Unlink aria-hidden="true" />
                               Dissocier
                             </Button>
                           </div>
+                        ) : mappingsError ? (
+                          <ErrorBox title="Impossible de charger les comptes LinkedIn liés." onRetry={() => { void refetchMappings(); }} />
+                        ) : !mappingsReady ? (
+                          <div className="space-y-2">
+                            <p role="status" className="sr-only">Chargement des comptes LinkedIn liés…</p>
+                            <Skeleton className="h-8 w-full rounded-lg" aria-hidden="true" />
+                          </div>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Select value={selectedLinkedInId} onValueChange={setSelectedLinkedInId}>
-                              <SelectTrigger className="h-8 text-xs flex-1">
+                              <SelectTrigger className="h-8 min-w-48 flex-1 text-xs max-md:h-11" aria-label={`Compte LinkedIn à associer à ${memberName}`}>
                                 <SelectValue placeholder="Associer un compte LinkedIn…" />
                               </SelectTrigger>
                               <SelectContent>
                                 {getAvailableLinkedInAccounts(member.user_id).map(acc => (
                                   <SelectItem key={acc.id} value={acc.id} className="text-xs">
                                     <span className="flex items-center gap-1.5">
-                                      <img src={linkedinLogo} alt="" className="w-3 h-3 object-contain" />
-                                      {(acc as any).name || (acc as any).identifier || acc.id}
-                                      {(acc as any).status === 'OK' && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                                      <img src={linkedinLogo} alt="" className="h-3 w-3 object-contain" />
+                                      {acc.name || acc.identifier || acc.id}
+                                      {acc.status === 'OK' && (
+                                        <>
+                                          <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+                                          <span className="sr-only">(connecté)</span>
+                                        </>
                                       )}
                                     </span>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
+                            {/* Liaisons non lues : « Pas de LinkedIn » peut être faux, et le
+                                serveur remplacerait la liaison existante du membre. */}
                             <Button
+                              type="button"
                               size="sm"
                               variant="outline"
-                              className="h-8 gap-1"
+                              className="max-md:h-11"
                               onClick={() => handleLinkLinkedIn(member)}
-                              disabled={!selectedLinkedInId || isLinking}
+                              disabled={!selectedLinkedInId || isLinking || !mappingsReady}
                             >
-                              {isLinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
+                              {isLinking ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
                               Lier
-                            </Button>
-                          </div>
-                        )}
-                      </SectionRow>
-
-                      <div className="border-t border-border" />
-
-                      {/* Mission Assignments */}
-                      <SectionRow
-                        icon={<Briefcase className="w-3.5 h-3.5 text-muted-foreground" />}
-                        label="Missions assignées"
-                      >
-                        {memberJobs.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mb-3">
-                            {memberJobs.map(a => (
-                              <Badge
-                                key={a.id}
-                                variant="default"
-                                className="gap-1 font-medium"
-                              >
-                                {a.job_title || a.job_id}
-                                <button
-                                  type="button"
-                                  onClick={() => unassign(a.id)}
-                                  className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
-                                  aria-label="Retirer"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-
-                        {jobs.length === 0 ? (
-                          <p className="text-xs text-muted-foreground italic px-2 py-1.5">
-                            Aucune mission créée. Créez d'abord une mission depuis l'onglet Missions pour pouvoir y assigner ce membre.
-                          </p>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                              <SelectTrigger className="h-8 text-xs flex-1">
-                                <SelectValue placeholder="Sélectionner une mission…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {jobs
-                                  .filter(j => !memberJobs.some(a => a.job_id === j.id))
-                                  .map(j => (
-                                    <SelectItem key={j.id} value={j.id} className="text-xs">
-                                      {j.title}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1"
-                              onClick={() => handleAssignJob(member)}
-                              disabled={!selectedJobId || isAssigning}
-                            >
-                              {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                              Assigner
                             </Button>
                           </div>
                         )}
@@ -425,19 +438,30 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                       {/* Quotas */}
                       <SectionRow
-                        icon={<Sliders className="w-3.5 h-3.5 text-muted-foreground" />}
+                        icon={<Sliders className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />}
                         label="Quota journalier"
-                        trailing={!isEditingQ && (
+                        trailing={!isEditingQ && !quotasError && quotasReady && (
                           <Button
+                            type="button"
                             variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
+                            size="xs"
+                            className="max-md:h-11"
                             onClick={() => startEditingQuotas(member.user_id)}
                           >
                             Modifier
                           </Button>
                         )}
                       >
+                        {quotasError ? (
+                          // Lecture ratée : pas de 80 par défaut affiché comme la vraie valeur
+                          <ErrorBox title="Impossible de charger les quotas." onRetry={() => { void refetchQuotas(); }} />
+                        ) : !quotasReady ? (
+                          // Lecture en cours : ni 80 par défaut affiché comme la vraie valeur, ni « Modifier »
+                          <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            Chargement du quota…
+                          </div>
+                        ) : (
                         <div className="space-y-3">
                           {QUOTA_FIELDS.map(({ key, label, icon: Icon, max, hint }) => {
                             const value = isEditingQ
@@ -447,17 +471,18 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                             return (
                               <div key={key}>
-                                <div className="flex items-center justify-between mb-1">
+                                <div className="mb-1 flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-1.5">
-                                    <Icon className="w-3 h-3 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground">{label}</span>
+                                    <Icon className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                                    <label htmlFor={isEditingQ ? quotaInputId : undefined} className="text-xs text-muted-foreground">{label}</label>
                                   </div>
                                   {isEditingQ ? (
                                     <Input
+                                      id={quotaInputId}
                                       type="number"
-                                      min={0}
+                                      min={MAX_ACTIONS_PER_DAY_MIN}
                                       max={max}
-                                      className="h-6 w-16 text-xs text-right px-1.5"
+                                      className="h-7 w-20 px-1.5 text-right text-xs max-md:h-11"
                                       value={value}
                                       onChange={e => setEditingQuotas(prev => ({
                                         ...prev,
@@ -468,38 +493,45 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                       }))}
                                     />
                                   ) : (
-                                    <span className="text-xs font-bold tabular-nums">{value}</span>
+                                    <span className="text-xs font-semibold tabular-nums">{value}</span>
                                   )}
                                 </div>
-                                <div className="h-1 bg-border w-full rounded">
+                                <div className="h-1 w-full rounded-full bg-border" aria-hidden="true">
                                   <div
-                                    className={cn(
-                                      'h-full transition-all duration-300 rounded',
-                                      pct >= 80 ? 'bg-accent' : 'bg-foreground/40',
-                                    )}
+                                    className="h-full rounded-full bg-muted-foreground transition-all duration-300"
                                     style={{ width: `${pct}%` }}
                                   />
                                 </div>
-                                <p className="text-[10px] text-muted-foreground/80 mt-1">{hint}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+                                {isEditingQ && !isValidMaxActionsPerDay(value) && (
+                                  <p className="mt-1 text-xs text-danger">
+                                    Valeur entre {MAX_ACTIONS_PER_DAY_MIN} et {MAX_ACTIONS_PER_DAY_MAX}.
+                                  </p>
+                                )}
                               </div>
                             );
                           })}
                         </div>
+                        )}
 
-                        {isEditingQ && (
-                          <div className="flex gap-2 mt-4 pt-3 border-t border-border">
+                        {isEditingQ && !quotasError && quotasReady && (
+                          <div className="mt-4 flex gap-2 border-t border-border pt-3">
                             <Button
+                              type="button"
+                              variant="primary"
                               size="sm"
-                              className="gap-1.5"
+                              className="max-md:h-11"
                               onClick={() => handleSaveQuotas(member.user_id)}
-                              disabled={isSaving}
+                              disabled={isSaving || !isValidMaxActionsPerDay(editingQuotas[member.user_id]?.max_actions_per_day)}
                             >
-                              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                              Sauvegarder
+                              {isSaving && <Loader2 className="animate-spin" aria-hidden="true" />}
+                              Enregistrer
                             </Button>
                             <Button
+                              type="button"
                               size="sm"
                               variant="ghost"
+                              className="max-md:h-11"
                               onClick={() => setEditingQuotas(prev => {
                                 const next = { ...prev };
                                 delete next[member.user_id];
@@ -516,8 +548,8 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                   {/* Non-admin expanded note */}
                   {isExpanded && !isAdmin && (
-                    <div className="bg-muted/30 border-t border-border px-4 py-4 text-xs text-muted-foreground italic">
-                      Les détails de gestion (LinkedIn, missions, quota) sont visibles uniquement par les administrateurs.
+                    <div id={panelId} className="border-t border-border bg-muted/30 px-4 py-4 text-xs text-muted-foreground">
+                      Les détails de gestion (LinkedIn, quota) sont visibles uniquement par les administrateurs.
                     </div>
                   )}
                 </div>
@@ -527,33 +559,64 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         )}
       </CardContent>
 
-      {/* AlertDialog : suppression de membre */}
-      <AlertDialog open={!!removeConfirm} onOpenChange={(open) => !open && setRemoveConfirm(null)}>
+      {/* AlertDialog : changement de rôle */}
+      <AlertDialog open={!!roleConfirm} onOpenChange={(open) => !open && !isChangingRole && setRoleConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer ce membre ?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {roleConfirm && `Donner le rôle ${roleLabels[roleConfirm.role] || roleConfirm.role} à ${getDisplayName(roleConfirm.member.user_id)} ?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {roleConfirm && roleConsequence(roleConfirm.role, getDisplayName(roleConfirm.member.user_id))}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isChangingRole}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isChangingRole}
+              onClick={(e) => {
+                // Fermée au succès seulement : en cas d'échec, le rôle n'a pas changé.
+                e.preventDefault();
+                void handleConfirmRole();
+              }}
+            >
+              {isChangingRole && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Changer le rôle
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AlertDialog : suppression de membre */}
+      <AlertDialog open={!!removeConfirm} onOpenChange={(open) => !open && !isRemoving && setRemoveConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retirer ce membre de l'équipe ?</AlertDialogTitle>
             <AlertDialogDescription>
               {removeConfirm && (
                 <>
-                  <strong>{getDisplayName(removeConfirm.user_id)}</strong> sera retiré de l'équipe.
-                  Cette personne perd l'accès à tous les missions, candidats et données de l'agence.
-                  Cette action est irréversible (vous pouvez réinviter ensuite).
+                  <strong>{getDisplayName(removeConfirm.user_id)}</strong> sera retiré de l'équipe et perdra
+                  l'accès aux missions, candidats et données de l'organisation.
+                  {' '}{sendingStopSentence()}
+                  {' '}Vous pourrez le réinviter plus tard.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={isRemoving}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() => {
-                if (removeConfirm) {
-                  onRemove(removeConfirm.id);
-                  setRemoveConfirm(null);
-                }
+              className="bg-destructive"
+              disabled={isRemoving}
+              onClick={(e) => {
+                // La confirmation reste ouverte jusqu'au résultat : fermée au
+                // succès, gardée en cas d'échec (rien n'a été retiré).
+                e.preventDefault();
+                void handleConfirmRemove();
               }}
             >
-              Supprimer
+              {isRemoving && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Retirer de l'équipe
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -568,7 +631,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
               {unlinkConfirm && (
                 <>
                   Le compte <strong>{unlinkConfirm.name}</strong> ne sera plus rattaché à ce membre.
-                  Le compte LinkedIn lui-même n'est pas affecté côté LinkedIn.
+                  Les relances qui partent de ce compte seront mises en pause et ses InMails programmés annulés.
+                  La session LinkedIn reste ouverte : si le compte est relié de nouveau, les relances pourront
+                  être reprises depuis la liste des inscrits.
                 </>
               )}
             </AlertDialogDescription>
@@ -576,10 +641,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive"
               onClick={() => {
                 if (unlinkConfirm) {
-                  unlinkAccount(unlinkConfirm.mappingId);
+                  unlinkAccount({ mappingId: unlinkConfirm.mappingId, expectedAccountId: unlinkConfirm.accountId });
                   setUnlinkConfirm(null);
                 }
               }}
@@ -601,12 +666,13 @@ interface SectionRowProps {
   children: React.ReactNode;
 }
 
+// Revue design (F-05) : intitulé en casse de phrase, plus de capitales espacées.
 const SectionRow: React.FC<SectionRowProps> = ({ icon, label, trailing, children }) => (
   <div className="px-4 py-4">
-    <div className="flex items-center justify-between mb-3">
+    <div className="mb-3 flex items-center justify-between gap-2">
       <div className="flex items-center gap-2">
         {icon}
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-sm font-medium text-foreground">
           {label}
         </span>
       </div>

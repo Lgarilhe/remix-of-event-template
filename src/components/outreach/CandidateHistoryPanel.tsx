@@ -1,5 +1,5 @@
 import React from 'react';
-import { CandidateHistoryData, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
+import { CandidateHistoryData } from '@/hooks/useCandidateHistory';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -16,31 +16,20 @@ import {
   Phone,
   Clock,
   User,
-  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import airtableLogo from '@/assets/airtable-logo.svg';
-import notionLogo from '@/assets/notion-logo.webp';
 
 interface CandidateHistoryPanelProps {
   data: CandidateHistoryData | null;
   loading: boolean;
   compact?: boolean;
-  notionShortlists?: NotionShortlistHistoryItem[];
 }
 
 export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
   data,
   loading,
   compact = false,
-  notionShortlists: externalNotionShortlists,
 }) => {
-  // Merge notion shortlists from prop and from data
-  const allNotionShortlists = [
-    ...(data?.notionShortlists || []),
-    ...(externalNotionShortlists || []),
-  ];
-
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-3 justify-center text-muted-foreground text-xs">
@@ -50,34 +39,20 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
     );
   }
 
-  if (!data && allNotionShortlists.length === 0) return null;
+  if (!data) return null;
 
-  const hasAirtableHistory = data && (data.shortlists.length > 0 || data.placements.length > 0 || data.notes.length > 0 || data.appointments.length > 0);
-  const hasNotionHistory = allNotionShortlists.length > 0;
-  const hasHistory = hasAirtableHistory || hasNotionHistory;
+  const hasHistory = data.shortlists.length > 0 || data.placements.length > 0 || data.notes.length > 0 || data.appointments.length > 0;
 
-  if (!hasHistory && !data?.candidate) return null;
+  const hasContact = !!(data?.candidate?.email || data?.candidate?.phone);
+  if (!hasHistory && !hasContact) return null;
 
   if (compact) {
-    return <CompactHistory data={data} notionShortlists={allNotionShortlists} />;
+    return <CompactHistory data={data} />;
   }
 
   return (
     <div className="border-t border-border">
       <div className="p-3 space-y-2">
-        {/* Airtable Header */}
-        {data && (data.candidate || hasAirtableHistory) && (
-          <div className="flex items-center gap-2">
-            <img src={airtableLogo} alt="Airtable" className="w-4 h-4" />
-            <span className="text-xs font-semibold text-foreground">Historique Airtable</span>
-            {data.candidate?.status && (
-              <Badge variant="outline" className="text-xs h-4 px-1.5">
-                {data.candidate.status}
-              </Badge>
-            )}
-          </div>
-        )}
-
         {/* Contact info */}
         {(data?.candidate?.email || data?.candidate?.phone) && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -211,45 +186,6 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
             ))}
           </HistorySection>
         )}
-
-        {!hasAirtableHistory && data?.candidate && (
-          <p className="text-xs text-muted-foreground text-center py-2">
-            Candidat trouvé dans Airtable mais aucun historique de shortlist, placement ou note.
-          </p>
-        )}
-
-        {/* Notion Shortlists */}
-        {allNotionShortlists.length > 0 && (
-          <>
-            <div className="flex items-center gap-2 pt-2 border-t border-border">
-              <img src={notionLogo} alt="Notion" className="w-4 h-4 object-contain" />
-              <span className="text-xs font-semibold text-foreground">Historique Notion</span>
-            </div>
-            <HistorySection
-              icon={<BookOpen className="w-3.5 h-3.5 text-muted-foreground" />}
-              title="Shortlists Notion"
-              count={allNotionShortlists.length}
-              color="gray"
-            >
-              {allNotionShortlists.map((s, i) => (
-                <div key={s.id || i} className="flex items-start gap-2 py-1.5 border-b border-border/30 last:border-0">
-                  <Briefcase className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-foreground truncate">{s.name}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                      {s.positions?.map(p => (
-                        <span key={p.id}>{p.name}</span>
-                      ))}
-                      {s.stage && <Badge variant="outline" className="text-xs h-3.5 px-1">{s.stage}</Badge>}
-                      {s.entity && <span>{s.entity}</span>}
-                      {s.createdAt && <span>{formatShortDate(s.createdAt)}</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </HistorySection>
-          </>
-        )}
       </div>
     </div>
   );
@@ -272,7 +208,7 @@ function getMostRecentDate(dates: (string | null | undefined)[]): string | null 
 }
 
 // Compact summary for search result cards
-const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortlists: NotionShortlistHistoryItem[] }> = ({ data, notionShortlists }) => {
+const CompactHistory: React.FC<{ data: CandidateHistoryData | null }> = ({ data }) => {
   const items: React.ReactNode[] = [];
 
   if (data && data.placements.length > 0) {
@@ -314,17 +250,6 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
       <Badge key="notes" variant="outline" className="border-success/40 bg-success/10 text-success text-xs px-1.5 py-0 h-4 gap-0.5">
         <FileText className="w-2.5 h-2.5" />
         {data.notes.length} note{data.notes.length > 1 ? 's' : ''}
-        {date && <span className="opacity-70">· {date}</span>}
-      </Badge>
-    );
-  }
-
-  if (notionShortlists.length > 0) {
-    const date = getMostRecentDate(notionShortlists.map(s => s.createdAt));
-    items.push(
-      <Badge key="notion-shortlists" variant="outline" className="border-border bg-muted text-muted-foreground text-xs px-1.5 py-0 h-4 gap-0.5">
-        <img src={notionLogo} alt="Notion" className="w-2.5 h-2.5 object-contain" />
-        {notionShortlists.length} shortlist{notionShortlists.length > 1 ? 's' : ''} Notion
         {date && <span className="opacity-70">· {date}</span>}
       </Badge>
     );

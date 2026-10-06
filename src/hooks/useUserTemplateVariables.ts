@@ -31,7 +31,7 @@ export function useUserTemplateVariables() {
   const queryClient = useQueryClient();
   const queryKey = ['user-template-variables', user?.id];
 
-  const { data: variables = [], isLoading } = useQuery({
+  const { data: variables = [], isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: async (): Promise<UserTemplateVariable[]> => {
       if (!user?.id) return [];
@@ -124,6 +124,8 @@ export function useUserTemplateVariables() {
     variables,
     asMap,
     isLoading,
+    isError,
+    refetch,
     create: create.mutate,
     update: update.mutate,
     remove: remove.mutate,

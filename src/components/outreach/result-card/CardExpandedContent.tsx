@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
@@ -8,12 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Briefcase, GraduationCap, Zap, ThumbsUp,
-  MessageSquare, Newspaper, CalendarDays, Building2, Loader2,
+  MessageSquare, Newspaper, Loader2,
 } from 'lucide-react';
 import { CardMessageThread } from './CardMessageThread';
 import { ProfileData } from './types';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 /**
  * Tab supplémentaire injecté après les tabs standard. Permet aux
@@ -35,6 +36,8 @@ interface CardExpandedContentProps {
   selectedJob?: Job | null;
   jobScore?: JobMatchResult;
   accountId?: string;
+  /** Mission des envois du fil de messages (uuid), passée à CardMessageThread. */
+  projectId?: string;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
   airtableMatch?: any;
   historyData?: any;
@@ -52,7 +55,20 @@ interface CardExpandedContentProps {
   hideStandardTabs?: boolean;
   /** Tab à activer par défaut à l'ouverture (clé d'un extraTab ou tab standard). */
   initialTab?: string;
+  /** Masque l'onglet Posts (pas encore branché) : la nouvelle page mission le retire. */
+  hidePosts?: boolean;
+  /** Onglet imposé par le parent (la note de l'en-tête ouvre Évaluation) ; absent, `initialTab` puis le choix de l'utilisateur. */
+  activeTab?: string;
+  /** Appelé à chaque changement d'onglet, par un clic ou au clavier. */
+  onActiveTabChange?: (tab: string) => void;
 }
+
+/** Un onglet de la barre : texte seul, soulignement de la couleur de marque pour l'onglet ouvert. */
+const TAB_TRIGGER_CLASS =
+  'relative h-10 shrink-0 gap-1.5 rounded-none px-2 text-sm font-normal text-muted-foreground shadow-none transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:after:bg-brand';
+
+/** Marge, en px, laissée à gauche ou à droite quand l'onglet ouvert est ramené dans la barre. */
+const TAB_SCROLL_MARGIN = 24;
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
   if (!start?.year) return null;
@@ -71,12 +87,16 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   profile,
   profileData,
   accountId,
+  projectId,
   onOpenMessage,
   onMessageSent,
   onProfileTreated,
   extraTabs,
   hideStandardTabs,
   initialTab,
+  hidePosts = false,
+  activeTab,
+  onActiveTabChange,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
@@ -87,6 +107,50 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   // Sauf si initialTab explicite (ex: deep-link "?tab=evaluation").
   const fallbackTab = extraTabs && extraTabs.length > 0 ? extraTabs[0].key : 'experience';
   const defaultTab = initialTab || fallbackTab;
+
+  // L'onglet est toujours tenu ici ; le parent peut le forcer (`activeTab`) et le suivre.
+  const [chosenTab, setChosenTab] = useState(defaultTab);
+  const tab = activeTab ?? chosenTab;
+  const changeTab = (next: string) => {
+    setChosenTab(next);
+    onActiveTabChange?.(next);
+  };
+
+  // Barre d'onglets : sans barre de défilement visible. Un fondu marque le côté
+  // où d'autres onglets attendent, et l'onglet ouvert est ramené dans la vue.
+  const barRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const syncEdges = useCallback(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const next = {
+      start: bar.scrollLeft > 4,
+      end: bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 4,
+    };
+    setEdges((prev) => (prev.start === next.start && prev.end === next.end ? prev : next));
+  }, []);
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    syncEdges();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(syncEdges);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [syncEdges, extraTabs?.length]);
+  useEffect(() => {
+    const bar = barRef.current;
+    const active = bar?.querySelector<HTMLElement>('[data-state="active"]');
+    if (!bar || !active) return;
+    const left = active.offsetLeft;
+    const right = left + active.offsetWidth;
+    if (left < bar.scrollLeft) bar.scrollLeft = Math.max(0, left - TAB_SCROLL_MARGIN);
+    else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth + TAB_SCROLL_MARGIN;
+  }, [tab]);
+  const fade = (stop: string) => `linear-gradient(to right, ${stop})`;
+  const barMask = edges.start || edges.end
+    ? fade(`${edges.start ? 'transparent' : 'black'} 0, black 28px, black calc(100% - 28px), ${edges.end ? 'transparent' : 'black'} 100%`)
+    : undefined;
 
   // 🔧 Ordre des tabs (fix 2026-05-06) :
   // Si extraTabs présents (pipeline mode) → ils sont rendus EN PREMIER,
@@ -106,161 +170,139 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
     { value: 'skills', icon: Zap, label: 'Compétences', shortLabel: 'Skills' },
     { value: 'messages', icon: MessageSquare, label: 'Messages', shortLabel: 'Msg' },
     { value: 'posts', icon: Newspaper, label: 'Posts', shortLabel: 'Posts' },
-  ];
+  ].filter((tab) => !(hidePosts && tab.value === 'posts'));
 
   return (
-    <div className="bg-background rounded-lg border border-border overflow-hidden">
-      <Tabs defaultValue={defaultTab} className="w-full">
-        <div className="border-b border-border overflow-x-auto bg-background">
-          <TabsList className="w-max min-w-full h-10 bg-transparent p-1 px-1.5 rounded-none gap-1">
-            {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
-                que l'onglet par défaut (premier extraTab = "Aperçu")
-                soit aussi visuellement en position 1. */}
-            {extraTabs?.map(tab => {
-              const Icon = tab.icon;
-              return (
-                <TabsTrigger
-                  key={tab.key}
-                  value={tab.key}
-                  className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium relative"
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="sm:hidden">{tab.shortLabel || tab.label}</span>
-                  {tab.count != null && tab.count > 0 && (
-                    <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 rounded-full bg-foreground/10 text-foreground text-3xs font-bold tabular-nums">
-                      {tab.count}
-                    </span>
+    <div className="overflow-hidden">
+      <Tabs value={tab} onValueChange={changeTab} className="w-full">
+        <div className={cn('border-b border-border', !extraTabs?.length && 'border-t')}>
+          <div
+            ref={barRef}
+            onScroll={syncEdges}
+            className="no-scrollbar relative overflow-x-auto"
+            style={{ maskImage: barMask, WebkitMaskImage: barMask }}
+          >
+            <TabsList className="h-10 w-max min-w-full justify-start gap-0 rounded-none bg-transparent p-0">
+              {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
+                  que l'onglet par défaut (premier extraTab = "Aperçu")
+                  soit aussi visuellement en position 1. */}
+              {extraTabs?.map(extra => (
+                <TabsTrigger key={extra.key} value={extra.key} className={TAB_TRIGGER_CLASS}>
+                  {extra.label}
+                  {extra.count != null && extra.count > 0 && (
+                    <span className="text-xs tabular-nums text-muted-foreground">{extra.count}</span>
                   )}
                 </TabsTrigger>
-              );
-            })}
-            {/* Onglets standards LinkedIn — masqués en mode pipeline
-                (les infos sont reformulées dans extraTabs : Profil =
-                Exp+Form+Skills, Messages = LinkedIn DMs). */}
-            {!hideStandardTabs && standardTabs.map(tab => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium"
-              >
-                <tab.icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.shortLabel}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+              ))}
+              {/* Onglets standards LinkedIn — masqués en mode pipeline
+                  (les infos sont reformulées dans extraTabs : Profil =
+                  Exp+Form+Skills, Messages = LinkedIn DMs). */}
+              {!hideStandardTabs && standardTabs.map(standard => (
+                <TabsTrigger key={standard.value} value={standard.value} className={TAB_TRIGGER_CLASS}>
+                  {standard.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
         </div>
 
-        {/* Experience Tab */}
-        <TabsContent value="experience" className="mt-0 p-2 sm:p-4">
+        {/* Contenus des onglets standards : absents en mode pipeline. Sinon le contenu
+            « Messages » standard s'affiche en double de celui de l'onglet Messages
+            du pipeline (même valeur d'onglet). */}
+        {!hideStandardTabs && (
+        <>
+        {/* Experience Tab : une ligne par poste, séparées par des filets (docs/design/06-simplicite.md, règle 3) */}
+        <TabsContent value="experience" className="mt-0 px-0 py-2">
           {workExperience.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3">
+            <ul className="divide-y divide-border">
               {workExperience.map((exp: any, index: number) => {
                 const isCurrent = !exp.end;
                 const tenure = getTenureLabel(exp.start, exp.end);
                 return (
-                  <div
-                    key={index}
-                    className={`relative p-3 sm:p-4 border transition-colors ${
-                      isCurrent
-                       ? 'bg-accent/5 border-border rounded-lg'
-                       : 'bg-background border-border hover:border-border rounded-lg'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2.5 sm:gap-3">
-                      {exp.logo ? (
-                        <img
-                          src={exp.logo}
-                          alt={exp.company || ''}
-                          className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5"
-                         style={{ borderRadius: '0.5rem' }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
-                        />
-                      ) : null}
-                      <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 border ${
-                        isCurrent ? 'bg-foreground text-background border-border rounded-lg' : 'bg-muted/60 border-border rounded-lg'
-                      } ${exp.logo ? 'hidden' : ''}`}>
-                        <Briefcase className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-bold text-foreground text-sm leading-tight">{exp.role}</p>
-                          {isCurrent && (
-                            <span className="text-xs bg-foreground text-background px-1.5 py-0.5 font-bold uppercase tracking-wider shrink-0">
-                              En poste
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
-                          <Building2 className="w-3 h-3 shrink-0" />
-                          {exp.company}
-                        </p>
-                        {(exp.start?.year || exp.end?.year) && (
-                          <div className="flex items-center gap-2 mt-1 text-xs sm:text-xs text-muted-foreground/60">
-                            <CalendarDays className="w-3 h-3 shrink-0" />
-                            <span>{exp.start?.year || '?'} → {exp.end?.year || 'Présent'}</span>
-                            {tenure && <span className="text-muted-foreground/40">• {tenure}</span>}
-                          </div>
-                        )}
-                        {exp.description && (
-                          <div className="text-xs text-muted-foreground/70 mt-2 leading-relaxed whitespace-pre-line">{exp.description}</div>
-                        )}
-                      </div>
+                  <li key={index} className="flex items-start gap-3 py-4 first:pt-2">
+                    {exp.logo ? (
+                      <img
+                        src={exp.logo}
+                        alt={exp.company || ''}
+                        className="mt-0.5 h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
+                      />
+                    ) : null}
+                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary ${exp.logo ? 'hidden' : ''}`}>
+                      <Briefcase className="h-4 w-4" aria-hidden="true" />
                     </div>
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-md font-semibold leading-tight text-foreground">{exp.role}</p>
+                        {isCurrent && (
+                          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground-secondary">
+                            En poste
+                          </span>
+                        )}
+                      </div>
+                      {exp.company && <p className="mt-0.5 text-sm text-foreground-secondary">{exp.company}</p>}
+                      {(exp.start?.year || exp.end?.year) && (
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {exp.start?.year || '?'} → {exp.end?.year || 'Présent'}
+                          {tenure && <span> · {tenure}</span>}
+                        </p>
+                      )}
+                      {exp.description && (
+                        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">{exp.description}</p>
+                      )}
+                    </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           ) : (
             <EmptyState icon={Briefcase} text="Aucune expérience disponible" />
           )}
         </TabsContent>
 
         {/* Education Tab */}
-        <TabsContent value="education" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="education" className="mt-0 px-0 py-2">
           {education.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3">
+            <ul className="divide-y divide-border">
               {education.map((edu: any, index: number) => {
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
-                <div key={index} className="p-3 sm:p-4 border border-border bg-background rounded-lg transition-colors">
-                  <div className="flex items-start gap-2.5 sm:gap-3">
+                  <li key={index} className="flex items-start gap-3 py-4 first:pt-2">
                     {schoolLogo ? (
                       <img
                         src={schoolLogo}
                         alt={edu.school || ''}
-                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5 rounded-lg"
+                        className="mt-0.5 h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border border-border rounded-lg ${schoolLogo ? 'hidden' : ''}`}>
-                      <GraduationCap className="w-4 h-4 text-foreground" />
+                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary ${schoolLogo ? 'hidden' : ''}`}>
+                      <GraduationCap className="h-4 w-4" aria-hidden="true" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-foreground text-sm">{edu.school}</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                        {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-md font-semibold leading-tight text-foreground">{edu.school}</p>
+                      {(edu.degree || edu.field_of_study) && (
+                        <p className="mt-0.5 text-sm text-foreground-secondary">
+                          {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
+                        </p>
+                      )}
                       {(edu.start?.year || edu.end?.year) && (
-                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground/60">
-                          <CalendarDays className="w-3 h-3" />
-                          <span>{edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}</span>
-                        </div>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}
+                        </p>
                       )}
                     </div>
-                  </div>
-                </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           ) : (
             <EmptyState icon={GraduationCap} text="Aucune formation disponible" />
           )}
         </TabsContent>
 
         {/* Skills Tab */}
-        <TabsContent value="skills" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="skills" className="mt-0 px-0 py-4">
           {skills.length > 0 ? (
             <SkillsWithEndorse
               skills={skills}
@@ -273,34 +315,36 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Messages Tab */}
-        <TabsContent value="messages" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="messages" className="mt-0 px-0 py-4">
           <CardMessageThread
             accountId={accountId}
             profileId={profile.id}
             profileName={fullName}
+            projectId={projectId}
             onMessageSent={onMessageSent}
             onProfileTreated={onProfileTreated}
           />
         </TabsContent>
 
         {/* Posts Tab */}
-        <TabsContent value="posts" className="mt-0 p-2 sm:p-4">
-          <div className="text-center py-12 text-muted-foreground">
-            <Newspaper className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-xs font-bold mb-1 uppercase tracking-wider">Publications LinkedIn</p>
-            <p className="text-xs text-muted-foreground mb-4">
-              Consultez les dernières publications de ce candidat
+        <TabsContent value="posts" className="mt-0 px-0 py-4">
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+            <p className="text-sm text-foreground">Publications LinkedIn</p>
+            <p className="mb-4 mt-1 text-xs text-muted-foreground">
+              Consultez les dernières publications de ce candidat.
             </p>
-            <Button variant="outline" size="sm" className="rounded-lg border border-border text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
-              <Newspaper className="w-4 h-4 mr-2" />
+            <Button variant="outline" size="sm">
+              <Newspaper aria-hidden="true" />
               Voir les posts
             </Button>
           </div>
         </TabsContent>
+        </>
+        )}
 
         {/* Extra tabs (pipeline-only) — leur contenu est rendu via la prop. */}
         {extraTabs?.map(tab => (
-          <TabsContent key={tab.key} value={tab.key} className="mt-0 p-2 sm:p-4">
+          <TabsContent key={tab.key} value={tab.key} className="mt-0 px-0 py-4">
             {tab.content}
           </TabsContent>
         ))}
@@ -310,9 +354,8 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
 };
 
 const EmptyState: React.FC<{ icon: React.FC<any>; text: string }> = ({ icon: Icon, text }) => (
-  <div className="text-center py-12 text-muted-foreground">
-    <Icon className="w-10 h-10 mx-auto mb-3 opacity-30" />
-    <p className="text-xs font-bold uppercase tracking-wider">{text}</p>
+  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+    <p className="text-sm text-muted-foreground">{text}</p>
   </div>
 );
 
@@ -360,7 +403,7 @@ const SkillsWithEndorse: React.FC<{
         return (
           <span
             key={index}
-              className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-border font-medium hover:border-border transition-colors inline-flex items-center gap-1.5 rounded-md"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
           >
             {skill.name || skill}
             {skill.endorsement_count != null && (

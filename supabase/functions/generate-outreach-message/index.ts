@@ -1,7 +1,10 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
+import { detectSequenceViolations } from "../_shared/sequence-send-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,6 +45,8 @@ interface CandidateHistoryData {
 }
 
 interface JobData {
+  /** Identifiant de la mission (« project:{uuid} » pour un job synthétique du sourcing). */
+  id?: string;
   title: string;
   client?: { name: string; sector: string } | null;
   skills?: string[];
@@ -51,6 +56,9 @@ interface JobData {
   seniority?: string;
   xpMin?: number;
   xpMax?: number;
+  // Rémunération : reçue de navigateurs anciens, jamais mise dans le prompt.
+  // Un aperçu validé part tel quel, et le moteur interdit toute mention de
+  // salaire ou de TJM (correctif 2 du plan du lot 5).
   salaryMin?: number;
   salaryMax?: number;
   tjmMin?: number;
@@ -233,6 +241,23 @@ function detectViolations(args: {
   }
 
   return v;
+}
+
+/** Code d'erreur d'un aperçu refusé par les garde-fous bloquants du moteur. */
+const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';
+
+/**
+ * Phrase française d'un aperçu refusé, à partir des libellés de
+ * detectSequenceViolations (sequence-send-rules.ts). Aucun code ni jeton
+ * technique : le navigateur l'affiche telle quelle sous l'aperçu.
+ */
+function previewRefusalMessage(labels: string[]): string {
+  const reasons: string[] = [];
+  if (labels.some((l) => l.startsWith('mention de salaire'))) reasons.push('mentionne une rémunération');
+  if (labels.some((l) => l.startsWith('signature'))) reasons.push('est signé « Recruteur »');
+  if (labels.some((l) => l.startsWith('RPO'))) reasons.push('emploie une formulation de cabinet');
+  const why = reasons.length > 0 ? reasons.join(' et ') : 'ne respecte pas les règles d\'envoi';
+  return `Aperçu refusé : le message proposé ${why}, il ne peut pas partir. Régénérez l'aperçu.`;
 }
 
 function sanitizeMessage(message: string): string {
@@ -436,7 +461,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
     const _body = await req.json();
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig, sequenceContext, messageTemplate, subjectTemplate } = _body as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig: bodyOutreachConfig, missionId, sequenceContext, messageTemplate, subjectTemplate } = _body as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -463,6 +488,9 @@ Deno.serve(async (req) => {
         anonymize_client?: boolean;
         anonymized_alias?: string;
       };
+      /** Mission (sourcing_projects.id ou job_id, préfixe « project: » accepté) :
+       *  sa configuration d'approche est relue quand outreachConfig est absent. */
+      missionId?: string;
       /** Contexte de séquence : si présent, on utilise le shared module
        *  computeMessageTypeContext pour piquer le bon ton (PREMIER MESSAGE
        *  vs RELANCE 1 vs INMAIL DE RELANCE etc.). Sans ça on génère par
@@ -539,6 +567,64 @@ Deno.serve(async (req) => {
       console.warn('[generate-outreach-message] Could not fetch org_id:', e);
     }
 
+    // Un seul garde à l'entrée, pas un par appel : la passe de correction
+    // (callAnthropic une 2e fois) fait partie du même message. La refuser en
+    // cours de route renverrait un message qui a échoué à sa propre
+    // validation. Placé après orgId pour ne pas relire l'org dans le garde,
+    // et avant le RAG et les identifiants LinkedIn, inutiles si on refuse.
+    const gate = await assertCredits({
+      userId,
+      organizationId: orgId,
+      aiAction: _aiParams.aiAction,
+      modelId: _aiParams.modelId,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+
+    // Organisation vérifiée de l'appelant (membre de son organisation active) :
+    // son nom porte l'identité de l'expéditeur (SEQ-097, jamais « Konekt »), et
+    // la mission n'est relue que dans cette organisation (SEQ-051).
+    let verifiedOrgId: string | null = null;
+    let organizationName = '';
+    if (orgId) {
+      try {
+        // Même contrôle que verifyOrgMembership (require-auth.ts), sur ce client.
+        const { data: membership, error: memberError } = await svc.from('organization_members')
+          .select('id').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+        if (memberError) console.warn('[generate-outreach-message] membership check failed:', memberError.message);
+        if (membership) {
+          verifiedOrgId = orgId;
+          const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
+          if (orgError) console.warn('[generate-outreach-message] organization name read failed:', orgError.message);
+          organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim();
+        }
+      } catch (e) {
+        console.warn('[generate-outreach-message] organization check failed:', e);
+      }
+    }
+
+    // SEQ-051 : configuration d'approche absente du body mais mission connue →
+    // relue sur la mission (job_details.outreach_config), pour que le mode
+    // interne ou cabinet et l'anonymisation du client s'appliquent toujours.
+    let outreachConfig: typeof bodyOutreachConfig = bodyOutreachConfig;
+    if (!outreachConfig && verifiedOrgId) {
+      const { normalizeMissionId } = await import('../_shared/outreach-context.ts');
+      const missionKey = normalizeMissionId(missionId ?? job?.id);
+      if (missionKey) {
+        try {
+          const base = svc.from('sourcing_projects').select('job_details').eq('organization_id', verifiedOrgId);
+          const { data: mission, error: missionError } = await (missionKey.kind === 'uuid'
+            ? base.or(`id.eq.${missionKey.id},job_id.eq.${missionKey.id}`)
+            : base.eq('job_id', missionKey.id)
+          ).limit(1).maybeSingle();
+          if (missionError) console.warn('[generate-outreach-message] mission outreach_config read failed:', missionError.message);
+          const cfg = ((mission as { job_details?: Record<string, unknown> | null } | null)?.job_details)?.outreach_config;
+          if (cfg && typeof cfg === 'object') outreachConfig = cfg as typeof bodyOutreachConfig;
+        } catch (e) {
+          console.warn('[generate-outreach-message] mission outreach_config read failed:', e);
+        }
+      }
+    }
+
     // Load AI context (Settings → Contexte IA) for prompt injection
     const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
 
@@ -598,15 +684,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build salary info for the prompt
-    const salaryInfo: string[] = [];
-    if (job.salaryMin || job.salaryMax) {
-      salaryInfo.push(`Salaire: ${job.salaryMin || '?'}k€ - ${job.salaryMax || '?'}k€`);
-    }
-    if (job.tjmMin || job.tjmMax) {
-      salaryInfo.push(`TJM: ${job.tjmMin || '?'}€ - ${job.tjmMax || '?'}€/jour`);
-    }
-
     // Build criteria context
     const criteriaContext: string[] = [];
     if (job.mustHave) criteriaContext.push(`Must-have: ${job.mustHave}`);
@@ -649,11 +726,6 @@ Accroche + présentation + CTA.`
     
     // Client-specific rules
     const clientNameRaw = job.client?.name || '';
-    const clientNameLower = clientNameRaw.toLowerCase().trim();
-    
-    // Clients where salary/TJM must NEVER be mentioned in messages
-    const NO_SALARY_CLIENTS = ['numspot'];
-    const hideSalary = NO_SALARY_CLIENTS.some(c => clientNameLower.includes(c));
     
     // Different positioning based on engagement type
     const clientName = clientNameRaw || 'nous';
@@ -670,6 +742,7 @@ Accroche + présentation + CTA.`
           outreachConfig as any,
           clientName,
           senderName || 'Recruteur',
+          organizationName || null,
         );
       } catch (e) {
         console.warn('[generate-outreach-message] outreach-context import failed:', e);
@@ -923,8 +996,7 @@ POSTE À POURVOIR:
 - Localisation: ${job.location || 'Non spécifié'}
 - Télétravail: ${job.remote || 'Non spécifié'}
 - Type contrat: ${job.contractType || 'Non spécifié'}
-${salaryInfo.length > 0 && !hideSalary ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
-${hideSalary ? `⛔ RÈGLE CLIENT: Ne JAMAIS mentionner de salaire, TJM, rémunération ou fourchette salariale dans le message pour ${clientName}. C'est un sujet à aborder uniquement en call.` : ''}
+⛔ RÈGLE : ne JAMAIS mentionner de salaire, TJM, rémunération, package ou fourchette dans le message. C'est un sujet à aborder uniquement en call.
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
 ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : ''}
 
@@ -1115,7 +1187,8 @@ Réponds UNIQUEMENT en JSON valide:
           },
           body: JSON.stringify({
             model: _resolvedAnthropicModel,
-            max_tokens: 2048,
+            max_tokens: withThinkingHeadroom(_resolvedAnthropicModel, 2048),
+            ...gen5Params(_resolvedAnthropicModel),
             system: [
               { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
               ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
@@ -1129,7 +1202,7 @@ Réponds UNIQUEMENT en JSON valide:
           const data = await response.json();
           _totalTokensIn += data.usage?.input_tokens || 0;
           _totalTokensOut += data.usage?.output_tokens || 0;
-          let content = data.content?.[0]?.text || "";
+          let content = textFromContent(data.content);
           content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           return { ok: true, content };
         }
@@ -1204,9 +1277,18 @@ Réponds UNIQUEMENT en JSON valide:
       message: parsed.message,
       subject: parsed.subject,
     });
+    // Garde-fous bloquants du moteur (detectSequenceViolations : salaire ou
+    // montant, signature « Recruteur », formulations cabinet en RPO). Un aperçu
+    // validé part tel quel : corrigés ici une fois, puis revérifiés sur le
+    // texte final (correctif 2 du plan du lot 5).
+    for (const v of detectSequenceViolations(isRPO, parsed.message, parsed.subject)) {
+      if (v.blocking && !violations.includes(v.label)) violations.push(v.label);
+    }
     if (violations.length > 0) {
       console.warn(`[generate-outreach-message] ${violations.length} violations detected:`, violations);
       const correctionRules: string[] = [
+        '- JAMAIS de salaire, de TJM, de rémunération, de package ni de montant.',
+        '- Signature : ton prénom, jamais "Recruteur".',
         '- Aucun tiret (—, –, -) nulle part dans le texte.',
         '- Aucune flatterie ("parfait", "exactement le profil", "rare", "précieux").',
         '- JAMAIS mentionner le statut LinkedIn ("on est connectés", "on est en contact", "vu qu\'on est en lien"). Le candidat le voit déjà sur LinkedIn, c\'est une accroche faible. Va DIRECT à l\'observation personnalisée du profil.',
@@ -1261,6 +1343,15 @@ Réponds UNIQUEMENT en JSON valide:
       }
     }
 
+    // Revérification sur le texte FINAL (après correction, nettoyage et
+    // anonymisation), avec la règle du moteur : une violation bloquante
+    // restante refuse l'aperçu, à régénérer. Les crédits consommés sont
+    // débités plus bas comme pour tout appel au modèle.
+    const remainingBlocking = detectSequenceViolations(isRPO, parsed.message, parsed.subject).filter((v) => v.blocking);
+    if (remainingBlocking.length > 0) {
+      console.warn('[generate-outreach-message] Aperçu non conforme, refusé :', remainingBlocking.map((v) => v.label));
+    }
+
     // Settle credits based on actual token usage (fire-and-forget)
     if (_totalTokensIn + _totalTokensOut > 0) {
       try {
@@ -1283,6 +1374,17 @@ Réponds UNIQUEMENT en JSON valide:
           }
         }
       } catch (e) { console.warn("[generate-outreach-message] settle skipped:", e); }
+    }
+
+    if (remainingBlocking.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: previewRefusalMessage(remainingBlocking.map((v) => v.label)),
+          error_code: PREVIEW_NOT_COMPLIANT_CODE,
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     return new Response(

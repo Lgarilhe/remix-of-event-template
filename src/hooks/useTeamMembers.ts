@@ -1,26 +1,27 @@
 /**
  * useTeamMembers — liste enrichie des membres de l'organisation courante.
  *
- * Joint `organization_members` + `profiles` pour avoir display_name + email
- * pour chaque user. Utilisé pour le sélecteur de manager dans CreateEventModal,
- * pour les @mentions, etc.
+ * Joint `organization_members` + `profiles` (display_name) et
+ * get_org_member_emails (e-mail, membres internes seulement) pour chaque user.
+ * Utilisé pour le sélecteur de manager dans CreateEventModal, pour les
+ * @mentions, etc.
  *
  * Inclut le user courant (Laurent voit son propre nom dans la liste).
  *
  * Cache React Query 5min (stable, change rarement).
  */
 
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export interface TeamMember {
   userId: string;
   displayName: string | null;
   email: string | null;
   role: 'owner' | 'admin' | 'member' | 'collaborator' | string;
-  /** Avatar custom upload — null si non fourni */
-  avatarUrl: string | null;
 }
 
 const ROLE_ORDER: Record<string, number> = {
@@ -45,15 +46,21 @@ const fetchTeamMembers = async (orgId: string): Promise<TeamMember[]> => {
 
   const userIds = members.map((m: any) => m.user_id);
 
-  // 2. Récupère les profiles correspondants
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('user_id, display_name, email, avatar_url')
-    .in('user_id', userIds);
+  // 2. Récupère les profiles (colonnes réelles seulement : pas d'e-mail ni
+  // d'avatar dans profiles) et les e-mails, qui vivent dans auth.users et
+  // passent par get_org_member_emails. Collaborateur externe : aucun e-mail,
+  // sans erreur. Un échec de l'une des deux lectures laisse l'autre s'afficher.
+  const [{ data: profiles, error: profilesErr }, { data: emails, error: emailsErr }] = await Promise.all([
+    supabase.from('profiles').select('user_id, display_name').in('user_id', userIds),
+    supabase.rpc('get_org_member_emails', { p_organization_id: orgId }),
+  ]);
+  if (profilesErr) console.warn('[useTeamMembers] profiles error:', profilesErr);
+  if (emailsErr) console.warn('[useTeamMembers] emails error:', emailsErr);
 
   const profileMap = new Map<string, any>(
     (profiles || []).map((p: any) => [p.user_id, p]),
   );
+  const emailMap = new Map((emails ?? []).map(e => [e.user_id, e.email]));
 
   // 3. Merge
   return members.map((m: any) => {
@@ -61,9 +68,8 @@ const fetchTeamMembers = async (orgId: string): Promise<TeamMember[]> => {
     return {
       userId: m.user_id,
       displayName: p?.display_name ?? null,
-      email: p?.email ?? null,
+      email: emailMap.get(m.user_id) ?? null,
       role: m.role,
-      avatarUrl: p?.avatar_url ?? null,
     };
   }).sort((a, b) => {
     // Tri : owners > admins > members > collaborators, puis par display_name
@@ -85,4 +91,20 @@ export function useTeamMembers() {
   });
 
   return { members, isLoading };
+}
+
+/**
+ * Nom affiché d'un membre de l'organisation (nom, sinon e-mail), « vous » pour
+ * la personne connectée sans nom connu, null s'il est inconnu. Sert au statut
+ * d'un arrêt manuel (« Arrêtée par Claire Dubois le 05/10 », lot 5b).
+ */
+export function useMemberName(): (userId: string | null | undefined) => string | null {
+  const { members } = useTeamMembers();
+  const { user } = useAuthReady();
+  const currentUserId = user?.id ?? null;
+  return useCallback((userId: string | null | undefined) => {
+    if (!userId) return null;
+    const member = members.find((m) => m.userId === userId);
+    return member?.displayName || member?.email || (userId === currentUserId ? 'vous' : null);
+  }, [members, currentUserId]);
 }

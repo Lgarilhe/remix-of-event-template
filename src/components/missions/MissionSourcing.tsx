@@ -4,6 +4,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
+import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { countBriefFields } from '@/lib/missionUtils';
 import { useAgent } from '@/contexts/AgentContext';
@@ -12,9 +13,19 @@ import type { JobDetails } from '@/types/jobDetails';
 
 interface MissionSourcingProps {
   project: SourcingProject;
+  /**
+   * Nouvelle page mission (SourcingScreen seulement) : sans le bandeau « Aller
+   * au brief », recherche en trois groupes. Défaut : le rendu actuel.
+   */
+  layout?: 'default' | 'mission-v3';
+  /** Phrase déjà saisie (recherche créée depuis /sourcing), lancée à l'ouverture. */
+  initialPhrase?: string;
+  /** Recherche créée depuis /sourcing avec « Configurer les filtres » : ouvre la fenêtre des filtres. */
+  startWithFilters?: boolean;
 }
 
-export const MissionSourcing = ({ project }: MissionSourcingProps) => {
+export const MissionSourcing = ({ project, layout = 'default', initialPhrase, startWithFilters }: MissionSourcingProps) => {
+  const isV3 = layout === 'mission-v3';
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
 
   const jd = (project.job_details || {}) as JobDetails;
@@ -92,6 +103,12 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
     );
   }
 
+  // Un rechargement en échec ne doit pas démonter une recherche en cours :
+  // l'état vide ne s'affiche que si aucun compte n'a jamais été sélectionné ici.
+  if (accounts.length === 0 && !selectedAccount) {
+    return <EmptyLinkedInAccountState message="Pour lancer le sourcing, connectez d'abord un compte LinkedIn." />;
+  }
+
   return (
     <div>
       {/* Brief rempli mais pas encore de filtres → renvoie au brief où vit
@@ -99,7 +116,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           Avant : on avait un bouton ici qui dupliquait l'appel sans review.
           Supprimé pour éviter les divergences et garantir qu'il n'y a qu'1
           seul point de génération avec validation user. */}
-      {showBriefToFiltersPrompt && (
+      {showBriefToFiltersPrompt && !isV3 && (
         <div className="border border-border bg-accent/10 px-3 py-2 mb-2 rounded-lg flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-foreground">
@@ -128,6 +145,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           activeProject={project}
           searchSource="linkedin"
           onOpenSearchAgent={handleOpenSearchAgent}
+          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase, startWithFilters } : {})}
         />
       </OutreachSearchProvider>
     </div>

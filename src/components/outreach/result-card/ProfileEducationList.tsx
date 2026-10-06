@@ -92,13 +92,13 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
   const remaining = sorted.length - defaultLimit;
 
   return (
-    <section className="mt-1.5 pt-1.5 border-t border-border/40">
-      <header className="flex items-center gap-1 mb-0.5">
-        <GraduationCap className="w-2.5 h-2.5 text-muted-foreground/70" aria-hidden="true" />
-        <h4 className="text-3xs font-bold uppercase tracking-wider text-muted-foreground/80">
+    <section className="mt-2 border-t border-border/50 pt-2">
+      <header className="mb-1 flex items-center gap-1.5">
+        <GraduationCap className="w-2.5 h-2.5 text-muted-foreground" aria-hidden="true" />
+        <h4 className="text-xs font-medium text-muted-foreground">
           Formation
         </h4>
-        <span className="text-3xs text-muted-foreground/50 font-mono tabular-nums">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {sorted.length}
         </span>
       </header>

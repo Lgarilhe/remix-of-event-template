@@ -1,5 +1,7 @@
 -- ============================================================================
 -- VÉRIFICATION PARTIE 2
+-- ⚠️ RÉSERVÉ À UNE BASE LOCALE (supabase start), après les scripts de données
+-- de test. Lecture seule.
 -- ============================================================================
 
 -- VUE D'ENSEMBLE

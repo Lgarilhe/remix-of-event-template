@@ -1,154 +1,80 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Check, Rocket, ArrowUpRight, Circle } from 'lucide-react';
-import { NumberTicker } from '@/components/magicui/number-ticker';
-import { ConfettiBurst } from './ConfettiBurst';
+import { ArrowRight, Check, Circle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
+import { cn } from '@/lib/utils';
 
 export interface LaunchChecklistItem {
   key: string;
   label: string;
   done: boolean;
-  /** Lien Réglages pour terminer plus tard (affiché si non fait) */
+  /** Rubrique des Paramètres où terminer plus tard (affichée si non fait) */
   settingsPath?: string;
 }
 
 interface Props {
   items: LaunchChecklistItem[];
-  scorePercent: number;
   orgName?: string;
   onFinish: () => void;
 }
 
-export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onFinish }) => {
-  const isHighScore = scorePercent >= 70;
-  const circumference = 2 * Math.PI * 44;
-  const strokeDashoffset = circumference - (scorePercent / 100) * circumference;
+function configuredLabel(done: number, total: number): string {
+  return done > 1 ? `${done} éléments configurés sur ${total}` : `${done} élément configuré sur ${total}`;
+}
+
+/**
+ * Fin du tunnel : une coche, ce qui est fait et ce qui reste, une action.
+ * Plus de confettis ni de compteur qui défile (B-65).
+ */
+export const SceneLaunch: React.FC<Props> = ({ items, orgName, onFinish }) => {
   const doneCount = items.filter((i) => i.done).length;
-  const remaining = items.filter((i) => !i.done);
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-lg px-2">
-      <ConfettiBurst />
-
-      {/* Score ring */}
-      <motion.div
-        initial={{ scale: 0.5, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 18 }}
-        className="relative flex items-center justify-center w-32 h-32"
-      >
-        <svg width="128" height="128" viewBox="0 0 100 100" className="absolute inset-0 rotate-[-90deg]">
-          <circle cx="50" cy="50" r="44" fill="none" stroke="hsl(var(--foreground) / 0.08)" strokeWidth="3" />
-          <motion.circle
-            cx="50" cy="50" r="44" fill="none"
-            stroke="hsl(var(--success))" strokeWidth="3" strokeLinecap="round"
-            strokeDasharray={circumference}
-            initial={{ strokeDashoffset: circumference }}
-            animate={{ strokeDashoffset }}
-            transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
-          />
-        </svg>
-        <div className="text-center">
-          <span
-            className="text-3xl font-bold text-foreground tabular-nums"
-            style={{ fontFamily: "'Space Mono', monospace" }}
-          >
-            <NumberTicker value={scorePercent} delay={0.4} />%
-          </span>
-          <span
-            className="block text-3xs uppercase tracking-wider text-muted-foreground"
-            style={{ fontFamily: "'Space Mono', monospace" }}
-          >
-            configuré
-          </span>
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <IconTile icon={Check} tone="success" size="lg" aria-hidden="true" />
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Votre espace est prêt</h1>
+          <p className="text-sm text-muted-foreground">
+            {orgName ? `${orgName} : ` : ''}
+            {configuredLabel(doneCount, items.length)}.
+          </p>
         </div>
-      </motion.div>
-
-      {/* Titre */}
-      <div className="text-center space-y-1.5">
-        <motion.h1
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="font-editorial font-normal italic text-4xl md:text-5xl leading-[1.08] text-foreground"
-        >
-          {isHighScore ? 'Configuration parfaite.' : 'Votre espace est prêt.'}
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="text-sm text-muted-foreground"
-        >
-          {orgName ? `${orgName} est prêt à sourcer.` : 'Tout est en place pour votre premier sourcing.'}{' '}
-          {doneCount}/{items.length} éléments configurés.
-        </motion.p>
       </div>
 
-      {/* Récap checklist */}
-      <div className="w-full divide-y divide-border/40">
-        {items.map((item, i) => (
-          <motion.div
-            key={item.key}
-            initial={{ opacity: 0, x: -14 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 + i * 0.08, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center gap-3 py-2.5"
-          >
+      <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+        {items.map((item) => (
+          <li key={item.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
             {item.done ? (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.6 + i * 0.08, type: 'spring', stiffness: 400, damping: 18 }}
-                className="w-5 h-5 flex items-center justify-center shrink-0 rounded-md bg-success/15 text-success"
-              >
-                <Check className="w-3 h-3" strokeWidth={3.5} />
-              </motion.span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-success-muted text-success">
+                <Check className="h-3 w-3" aria-hidden="true" />
+              </span>
             ) : (
-              <span className="w-5 h-5 flex items-center justify-center shrink-0 text-muted-foreground/40">
-                <Circle className="w-3 h-3" />
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">
+                <Circle className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
             )}
-            <span className={`flex-1 text-sm ${item.done ? 'text-foreground' : 'text-muted-foreground'}`}>
+            <span className={cn('min-w-0 flex-1 text-sm', item.done ? 'text-foreground' : 'text-muted-foreground')}>
               {item.label}
+              <span className="sr-only">{item.done ? ' : fait' : ' : à faire'}</span>
             </span>
             {!item.done && item.settingsPath && (
               <Link
                 to={item.settingsPath}
-                className="inline-flex items-center gap-0.5 text-2xs font-semibold text-muted-foreground hover:text-foreground underline-offset-2 hover:underline shrink-0"
+                className="inline-flex min-h-11 shrink-0 items-center rounded-md text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
               >
-                Terminer plus tard <ArrowUpRight className="w-3 h-3" />
+                Terminer dans les Paramètres
               </Link>
             )}
-          </motion.div>
+          </li>
         ))}
-      </div>
+      </ul>
 
-      {remaining.length > 0 && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.9 }}
-          className="text-xs text-muted-foreground text-center -mt-2"
-        >
-          Pas d’inquiétude : tout se termine en 2 clics depuis les Réglages.
-        </motion.p>
-      )}
-
-      {/* CTA */}
-      <motion.button
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8 }}
-        whileHover={{ scale: 1.02, y: -1 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={onFinish}
-        className="konekt-shine relative w-full py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 overflow-hidden bg-foreground text-background hover:bg-foreground/90 transition-colors"
-      >
-        <Rocket className="w-4 h-4" />
-        Lancer Konekt
-      </motion.button>
+      <Button variant="primary" size="lg" onClick={onFinish} className="min-h-11 w-full md:min-h-0">
+        Créer une mission
+        <ArrowRight aria-hidden="true" />
+      </Button>
     </div>
   );
 };

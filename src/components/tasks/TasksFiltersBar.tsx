@@ -1,38 +1,27 @@
 /**
- * TasksFiltersBar — barre de filtres pills pour la page /tasks.
+ * TasksFiltersBar — barre de filtres de la page /tasks.
  *
- * Filtres :
- * - Catégorie (multi) : general / follow_up / interview_prep / debrief /
- *   admin / client / sourcing
- * - Mission (multi) : dérivée des reminders ayant un job_title
- * - Type (toggle) : tâches manuelles vs auto-générées
- *
- * Pattern Linear/Calendar : pills avec popover + count badges.
+ * - Périmètre (Mes tâches / Équipe) et affichage (En cours / Toutes) : pilotés
+ *   par la page, hors TasksFilters, pour que « Effacer les filtres » ne les
+ *   réinitialise pas.
+ * - Catégorie, mission, origine (automatique ou manuelle) : un seul menu
+ *   « Filtres », comme la messagerie (design simplifié, lot T).
  */
 
 import React, { useMemo } from 'react';
-import {
-  Filter,
-  Briefcase,
-  Sparkles,
-  X,
-  CheckCircle2,
-} from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
-import { cn } from '@/lib/utils';
-import type { Reminder, TaskCategory } from '@/hooks/useAllReminders';
+import { ListFilter, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { FilterOption, FilterPill } from '@/components/ui/filter-pill';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { TASK_CATEGORIES } from '@/lib/taskCategories';
+import type { Reminder, TaskCategory, TaskScope } from '@/hooks/useAllReminders';
 
 export interface TasksFilters {
   /** Catégories autorisées. Vide = toutes. */
   categories: TaskCategory[];
   /** job_titles autorisés. Vide = tous. */
   jobTitles: string[];
-  /** Si true, n'affiche que les auto-générées. Si null, ignore. */
+  /** true : seulement les automatiques ; false : seulement les manuelles ; null : toutes. */
   autoOnly: boolean | null;
 }
 
@@ -42,174 +31,130 @@ export const DEFAULT_TASKS_FILTERS: TasksFilters = {
   autoOnly: null,
 };
 
+export type TasksView = 'active' | 'all';
+
 interface TasksFiltersBarProps {
   filters: TasksFilters;
   onFiltersChange: (filters: TasksFilters) => void;
-  /** Tous les reminders — sert à dériver les options uniques (jobs) */
+  /** Périmètre : tâches de l'utilisateur ou de toute l'équipe */
+  scope: TaskScope;
+  onScopeChange: (scope: TaskScope) => void;
+  /** Tâches en cours seulement, ou toutes (terminées comprises) */
+  view: TasksView;
+  onViewChange: (view: TasksView) => void;
+  /** Tous les reminders — sert à dériver les options uniques (missions) */
   allReminders: Reminder[];
 }
 
-const CATEGORY_OPTIONS: { value: TaskCategory; label: string; emoji: string }[] = [
-  { value: 'general', label: 'Général', emoji: '📌' },
-  { value: 'follow_up', label: 'Relance', emoji: '🔁' },
-  { value: 'interview_prep', label: 'Prép. entretien', emoji: '🎯' },
-  { value: 'debrief', label: 'Débrief', emoji: '📝' },
-  { value: 'admin', label: 'Admin', emoji: '📂' },
-  { value: 'client', label: 'Client', emoji: '🤝' },
-  { value: 'sourcing', label: 'Sourcing', emoji: '🔍' },
-];
-
-const FilterPill: React.FC<{
-  label: string;
-  count: number;
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ label, count, icon, children }) => (
-  <Popover>
-    <PopoverTrigger asChild>
-      <button
-        className={cn(
-          'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0',
-          count > 0
-            ? 'bg-foreground text-background border-foreground'
-            : 'border-border bg-background hover:bg-accent text-foreground',
-        )}
-      >
-        {icon}
-        {label}
-        {count > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-background text-foreground text-[10px] font-bold tabular-nums">
-            {count}
-          </span>
-        )}
-      </button>
-    </PopoverTrigger>
-    <PopoverContent className="w-56 p-3 rounded-xl border-border" align="start">
-      {children}
-    </PopoverContent>
-  </Popover>
-);
+const toggle = <T,>(list: T[], value: T, on: boolean): T[] =>
+  on ? [...list, value] : list.filter((v) => v !== value);
 
 export const TasksFiltersBar: React.FC<TasksFiltersBarProps> = ({
   filters,
   onFiltersChange,
+  scope,
+  onScopeChange,
+  view,
+  onViewChange,
   allReminders,
 }) => {
-  // Dérive les jobs uniques depuis les reminders
+  // Missions citées par les tâches
   const jobs = useMemo(() => {
     const set = new Set<string>();
     for (const r of allReminders) {
       if (r.job_title) set.add(r.job_title);
     }
+    // Une mission cochée reste décochable même si le périmètre ne la montre plus.
+    for (const j of filters.jobTitles) set.add(j);
     return Array.from(set).sort();
-  }, [allReminders]);
+  }, [allReminders, filters.jobTitles]);
 
-  const activeCount =
-    filters.categories.length +
-    filters.jobTitles.length +
-    (filters.autoOnly !== null ? 1 : 0);
-
-  const clearAll = () => onFiltersChange(DEFAULT_TASKS_FILTERS);
+  const filterCount =
+    filters.categories.length + filters.jobTitles.length + (filters.autoOnly !== null ? 1 : 0);
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-wrap">
-      {/* Catégorie */}
-      <FilterPill
-        label="Catégorie"
-        count={filters.categories.length}
-        icon={<Filter className="w-3.5 h-3.5" />}
-      >
-        <div className="space-y-2">
-          {CATEGORY_OPTIONS.map((opt) => (
-            <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm">
-              <Checkbox
-                checked={filters.categories.includes(opt.value)}
-                onCheckedChange={(checked) =>
-                  onFiltersChange({
-                    ...filters,
-                    categories: checked
-                      ? [...filters.categories, opt.value]
-                      : filters.categories.filter((c) => c !== opt.value),
-                  })
-                }
-              />
-              <span className="mr-1">{opt.emoji}</span>
-              {opt.label}
-            </label>
+    <div className="flex flex-wrap items-center gap-2">
+      <SegmentedControl
+        aria-label="Périmètre des tâches"
+        value={scope}
+        onValueChange={onScopeChange}
+        options={[
+          { value: 'mine', label: 'Mes tâches', title: 'Les tâches que vous avez créées' },
+          { value: 'team', label: 'Équipe', title: "Les tâches de toute l'équipe" },
+        ]}
+      />
+      <SegmentedControl
+        aria-label="Tâches affichées"
+        value={view}
+        onValueChange={onViewChange}
+        options={[
+          { value: 'active', label: 'En cours' },
+          { value: 'all', label: 'Toutes' },
+        ]}
+      />
+
+      <FilterPill label="Filtres" icon={ListFilter} count={filterCount} contentClassName="w-64 max-h-[70vh] overflow-y-auto">
+        <div role="group" aria-labelledby="tasks-filter-category">
+          <p id="tasks-filter-category" className="eyebrow px-2 pb-1 pt-1.5">Catégorie</p>
+          {TASK_CATEGORIES.map((c) => (
+            <FilterOption
+              key={c.value}
+              checked={filters.categories.includes(c.value)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, categories: toggle(filters.categories, c.value, on) })}
+            >
+              {c.label}
+            </FilterOption>
           ))}
         </div>
-      </FilterPill>
 
-      {/* Mission */}
-      {jobs.length > 0 && (
-        <FilterPill
-          label="Mission"
-          count={filters.jobTitles.length}
-          icon={<Briefcase className="w-3.5 h-3.5" />}
-        >
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+        {jobs.length > 0 && (
+          <div role="group" aria-labelledby="tasks-filter-mission" className="mt-1 border-t border-border pt-1">
+            <p id="tasks-filter-mission" className="eyebrow px-2 pb-1 pt-1.5">Mission</p>
             {jobs.map((job) => (
-              <label key={job} className="flex items-center gap-2 cursor-pointer text-sm">
-                <Checkbox
-                  checked={filters.jobTitles.includes(job)}
-                  onCheckedChange={(checked) =>
-                    onFiltersChange({
-                      ...filters,
-                      jobTitles: checked
-                        ? [...filters.jobTitles, job]
-                        : filters.jobTitles.filter((j) => j !== job),
-                    })
-                  }
-                />
-                <span className="truncate">{job}</span>
-              </label>
+              <FilterOption
+                key={job}
+                checked={filters.jobTitles.includes(job)}
+                onCheckedChange={(on) => onFiltersChange({ ...filters, jobTitles: toggle(filters.jobTitles, job, on) })}
+              >
+                {job}
+              </FilterOption>
             ))}
           </div>
-        </FilterPill>
-      )}
-
-      {/* Auto / Manuelle toggle 3-states */}
-      <button
-        onClick={() => {
-          const next: boolean | null =
-            filters.autoOnly === null ? true : filters.autoOnly === true ? false : null;
-          onFiltersChange({ ...filters, autoOnly: next });
-        }}
-        className={cn(
-          'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0',
-          filters.autoOnly !== null
-            ? 'bg-foreground text-background border-foreground'
-            : 'border-border bg-background hover:bg-accent text-foreground',
         )}
-      >
-        {filters.autoOnly === true ? (
-          <>
-            <Sparkles className="w-3.5 h-3.5" />
-            Auto seulement
-          </>
-        ) : filters.autoOnly === false ? (
-          <>
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Manuel seulement
-          </>
-        ) : (
-          <>
-            <Sparkles className="w-3.5 h-3.5" />
-            Source
-          </>
-        )}
-      </button>
 
-      {/* Clear all */}
-      {activeCount > 0 && (
-        <button
-          onClick={clearAll}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-destructive/40 bg-destructive/5 hover:bg-destructive/10 text-destructive text-[11.5px] font-medium transition-colors shrink-0"
-        >
-          <X className="w-3.5 h-3.5" />
-          Effacer ({activeCount})
-        </button>
-      )}
+        <div role="group" aria-labelledby="tasks-filter-origin" className="mt-1 border-t border-border pt-1">
+          <p id="tasks-filter-origin" className="eyebrow px-2 pb-1 pt-1.5">Origine</p>
+          <FilterOption
+            checked={filters.autoOnly === true}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, autoOnly: on ? true : null })}
+            description="Créées depuis une suggestion"
+          >
+            Automatiques
+          </FilterOption>
+          <FilterOption
+            checked={filters.autoOnly === false}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, autoOnly: on ? false : null })}
+            description="Créées à la main"
+          >
+            Manuelles
+          </FilterOption>
+        </div>
+
+        {filterCount > 0 && (
+          <div className="mt-1 border-t border-border pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start max-md:min-h-11"
+              onClick={() => onFiltersChange(DEFAULT_TASKS_FILTERS)}
+            >
+              <X aria-hidden="true" />
+              Effacer les filtres
+            </Button>
+          </div>
+        )}
+      </FilterPill>
     </div>
   );
 };

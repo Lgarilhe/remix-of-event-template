@@ -1,0 +1,403 @@
+/**
+ * Audit des séquences (2026-09-25), lot F5 : équipe, désinscription,
+ * notifications, suivi des messages directs, agenda, fiche poste, historiques
+ * du candidat, types générés et brouillons d'éditeur.
+ *
+ * Les modules purs (jobSequenceStats, sequenceActionLabels, notificationKinds,
+ * sidebarSignals, editorDraft) sont transpilés en mémoire par esbuild, sans
+ * fichier intermédiaire ni navigateur. Les écrans et les hooks sont vérifiés
+ * par inspection de source, dans le style des autres tests de tests/ux.
+ *
+ * Lancer : npm run test:ux
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
+
+const ROOT = new URL('../../', import.meta.url);
+const read = (rel) => readFileSync(new URL(rel, ROOT), 'utf8');
+const load = async (source) => {
+  const { code } = transformSync(source, { loader: 'ts', format: 'esm' });
+  return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+};
+
+/** Tranche de source entre deux repères (le second cherché après le premier). */
+const block = (src, start, end) => {
+  const from = src.indexOf(start);
+  assert.ok(from >= 0, `repère introuvable : ${start}`);
+  const to = end ? src.indexOf(end, from + start.length) : src.length;
+  assert.ok(to > from, `repère de fin introuvable : ${end}`);
+  return src.slice(from, to);
+};
+
+const useOrg = read('src/hooks/useOrganization.ts');
+const team = read('src/components/settings/TeamManagement.tsx');
+const teamSection = read('src/components/settings/shell/TeamSection.tsx');
+const unsubscribe = read('src/pages/Unsubscribe.tsx');
+const outreachModal = read('src/components/outreach/OutreachMessageModal.tsx');
+const safety = read('src/components/settings/LinkedInSafetySettings.tsx');
+const calendarHook = read('src/hooks/useCalendarEvents.ts');
+const calendarPage = read('src/pages/Calendar.tsx');
+const todayPanel = read('src/components/dashboard/DashboardTodayPanel.tsx');
+const jobSheet = read('src/components/ats/JobDetailSheet.tsx');
+const profileActivity = read('src/hooks/useProfileActivity.ts');
+const candidateProfile = read('src/hooks/useCandidateFullProfile.ts');
+const types = read('src/integrations/supabase/types.ts');
+const app = read('src/App.tsx');
+
+const kinds = await load(read('src/lib/notificationKinds.ts'));
+const signals = await load(read('src/lib/sidebarSignals.ts'));
+const stats = await load(read('src/lib/jobSequenceStats.ts'));
+const labels = await load(read('src/lib/sequenceActionLabels.ts'));
+
+// ------------------------------------------------------------ SEQ-042 (high)
+test('SEQ-042 — retirer un membre arrête d’abord ses envois, côté serveur', () => {
+  const remove = block(useOrg, 'const removeMember = useMutation', 'return {');
+  const stopAt = remove.indexOf("action: 'stop_member_linkedin'");
+  const deleteAt = remove.indexOf(".from('organization_members')");
+  assert.ok(stopAt !== -1, 'l’action serveur stop_member_linkedin doit être appelée');
+  assert.ok(deleteAt !== -1, 'la suppression du membre doit suivre');
+  assert.ok(stopAt < deleteAt, 'l’arrêt des envois doit précéder la suppression');
+  assert.match(remove, /member_user_id: userId/);
+  // Arrêt en échec : exception avant la suppression, le membre reste.
+  const guard = remove.indexOf('if (stopError || !stopped?.success)');
+  assert.ok(guard !== -1 && guard < deleteAt, 'un arrêt en échec doit empêcher la suppression');
+  assert.match(remove.slice(guard, deleteAt), /throw new Error\(/);
+  // Suppression vérifiée (refus RLS = 0 ligne).
+  assert.match(remove, /\.select\('id'\)/);
+  assert.match(remove, /if \(!data\?\.length\) throw/);
+  // Échec de la suppression après l'arrêt : phrase française, détail en console seulement.
+  const deleteError = block(remove, 'if (error) {', '}');
+  assert.match(deleteError, /console\.error\(/);
+  assert.match(deleteError, /throw new Error\("Ses envois sont arrêtés, mais le membre n'a pas été retiré\. Réessayez\."\)/);
+  assert.doesNotMatch(remove, /\$\{error\.message\}/, 'message brut de la base affiché');
+});
+
+test('SEQ-042 — la confirmation annonce l’arrêt des envois et attend le résultat', () => {
+  assert.match(team, /onRemove: \(params: \{ memberId: string; userId: string \}\) => Promise<unknown>;/);
+  assert.match(team, /await onRemove\(\{ memberId: removeConfirm\.id, userId: removeConfirm\.user_id \}\)/);
+  // Le serveur met en pause (pause_reason manual), il n'arrête pas : « arrêter »
+  // est réservé à l'arrêt définitif (contrat §1).
+  assert.doesNotMatch(team, /seront arrêtés/);
+  assert.match(team, /\$\{n > 1 \? 's' : ''\}\) seront mises en pause et ses InMails programmés annulés\.\$\{reenroll\}`/);
+  assert.match(team, /const generic = `Ses séquences en cours seront mises en pause et ses InMails programmés annulés\.\$\{reenroll\}`;/);
+  // Promesse réalisable : « Reprendre » échoue (compte plus relié), la même
+  // séquence refuse un doublon ; seule une autre séquence avec la dérogation
+  // « Inscrire quand même » permet de recontacter ces candidats.
+  assert.doesNotMatch(team, /Vous pourrez réinscrire ses candidats depuis votre compte/);
+  assert.match(team, /Ses candidats resteront en pause : pour les recontacter, inscrivez-les dans une autre séquence depuis votre compte \(option « Inscrire quand même »\)\./);
+  assert.match(read('src/components/outreach/SequenceEnrollModal.tsx'), /Inscrire quand même \(\{duplicateProfiles\.length\}\)/);
+  assert.match(team, /\{' '\}Vous pourrez le réinviter plus tard\./);
+  // Ancien comportement : fermeture immédiate, promesse rejetée non gérée.
+  assert.doesNotMatch(team, /onRemove\(removeConfirm\.id\);\s*setRemoveConfirm\(null\);/);
+  const dialog = block(team, '<AlertDialog open={!!removeConfirm}', '</AlertDialog>');
+  assert.match(dialog, /e\.preventDefault\(\);/, 'la confirmation reste ouverte jusqu’au résultat');
+  assert.match(dialog, /disabled=\{isRemoving\}/);
+  assert.match(teamSection, /onRemove=\{removeMember\}/);
+});
+
+// ------------------------------------------------------------ SEQ-104
+test('SEQ-104 — désinscription en échec : message distinct et nouvel essai', () => {
+  // Revue design : un écran par état, pages sans issue du socle (PublicDeadEnd).
+  assert.match(unsubscribe, /if \(status === 'invalid'\) \{/);
+  assert.doesNotMatch(unsubscribe, /status === 'invalid' \|\| status === 'error'/);
+  const errorBlock = block(unsubscribe, "if (status === 'error') {", "if (status === 'invalid') {");
+  assert.match(errorBlock, /kind="network"/);
+  assert.match(errorBlock, /onRetry=\{retry\}/);
+  assert.doesNotMatch(errorBlock, /n'est plus valide|Lien invalide/);
+  // Échec de la confirmation : le lien reste bon, nouvel essai sur place.
+  assert.match(unsubscribe, /La désinscription n'a pas abouti\. Vérifiez votre connexion, puis réessayez\./);
+  assert.match(unsubscribe, /'Réessayer la désinscription'/);
+});
+
+test('désinscription : français sans anglicisme, un seul verbe, tournures neutres', () => {
+  assert.doesNotMatch(unsubscribe, /emails/);
+  assert.doesNotMatch(unsubscribe, /désabonn/i);
+  assert.doesNotMatch(unsubscribe, /désinscrit avec succès|Déjà désinscrit|déjà désinscrit de/);
+  // Revue design : l'expéditeur est nommé (e-mails envoyés par l'intermédiaire de Konekt).
+  assert.match(unsubscribe, />Se désinscrire des e-mails</);
+  assert.match(unsubscribe, /Votre adresse ne recevra plus d'e-mails envoyés par l'intermédiaire de Konekt\./);
+  assert.match(unsubscribe, />Désinscription confirmée</);
+  assert.match(unsubscribe, />Désinscription déjà enregistrée</);
+  assert.match(unsubscribe, /Votre adresse ne reçoit déjà plus d'e-mails envoyés par l'intermédiaire de Konekt\./);
+  assert.match(unsubscribe, /Confirmer la désinscription/);
+});
+
+// ------------------------------------------------------------ SEQ-115
+test('SEQ-115 — rebond et rendez-vous (type « action ») comptent dans À traiter', () => {
+  const bounce = { type: 'action', link: '/missions/p1?tab=outreach', metadata: { source: 'email_bounce', enrollment_id: 'e1' } };
+  const booking = { type: 'action', link: '/qualification/q1', metadata: { source: 'calendly', enrollment_ids: ['e1'] } };
+  assert.equal(kinds.notificationKind(bounce), 'action');
+  assert.equal(kinds.isActionable(bounce), true);
+  assert.equal(kinds.notificationKind(booking), 'action');
+});
+
+test('SEQ-115 — une réponse par e-mail sans conversation reste une réponse de candidat', () => {
+  const row = {
+    id: 'n1',
+    title: 'Nouveau message de Marie Dupont',
+    link: '/missions/p1?tab=outreach',
+    created_at: '2026-09-25T10:00:00.000Z',
+    metadata: { is_candidate: true, channel: 'email', profile_name: 'Marie Dupont', project_id: 'p1' },
+  };
+  assert.equal(kinds.notificationKind({ type: 'new_message', link: row.link, metadata: row.metadata }), 'message');
+  const grouped = signals.groupReplies([row], new Date('2026-09-20T00:00:00.000Z'));
+  assert.equal(grouped.candidates.length, 1);
+  assert.equal(grouped.candidates[0].chatId, null);
+  assert.equal(grouped.candidates[0].name, 'Marie Dupont');
+  assert.equal(grouped.candidates[0].counted, true);
+});
+
+// ------------------------------------------------------------ SEQ-118
+test('SEQ-118 — suivi d’un message direct : organisation écrite, erreur lue', () => {
+  const tracking = block(outreachModal, ".from('inmail_queue').insert(", '} catch (trackErr)');
+  assert.match(tracking, /organization_id: organizationId,/);
+  assert.match(tracking, /status: 'sent',/);
+  assert.match(tracking, /created_by: user\.id,/);
+  assert.match(outreachModal, /const \{ error: trackError \} = await supabase\.from\('inmail_queue'\)\.insert\(/);
+  assert.match(outreachModal, /if \(trackError\) throw trackError;/);
+  assert.match(outreachModal, /const \{ organizationId \} = useOrganization\(\);/);
+});
+
+// ------------------------------------------------------------ SEQ-125
+test('SEQ-125 — les réglages décrivent l’anti-doublon sur les InMails groupés', () => {
+  const line = safety.split('\n').find((l) => l.includes('Anti-doublon'));
+  assert.ok(line, 'ligne anti-doublon introuvable');
+  assert.match(line, /InMail groupé/);
+  assert.match(line, /90 derniers jours/);
+});
+
+// ------------------------------------------------------------ SEQ-181
+test('SEQ-181 — agenda : seules les inscriptions actives, étapes internes écartées avant la limite', () => {
+  const steps = block(calendarHook, '// 3. Étapes de séquence visibles', '.limit(100)');
+  assert.match(steps, /sequence_enrollments!inner\(status/);
+  assert.match(steps, /\.eq\('sequence_enrollments\.status', 'active'\)/);
+  assert.match(steps, /sequence_steps!inner\(action_type\)/);
+  assert.match(steps, /\.not\('sequence_steps\.action_type', 'in'/);
+  assert.match(calendarHook, /if \(stepExecsError\) throw stepExecsError;/);
+  assert.match(calendarHook, /if \(inmailsError\) throw inmailsError;/);
+  assert.match(calendarHook, /if \(qualifsError\) throw qualifsError;/);
+  for (const internal of ['wait_connection', 'wait_reply', 'condition_branch']) {
+    assert.ok(block(calendarHook, 'const HIDDEN_SEQUENCE_ACTIONS', '];').includes(`'${internal}'`), internal);
+  }
+});
+
+test('SEQ-181 — agenda en erreur : bloc d’erreur, pas de semaine vide', () => {
+  // Revue design : états du socle (ErrorState, EmptyState) dans une seule chaîne de rendu.
+  assert.match(calendarPage, /isFetching,\s*isError,\s*error,\s*refetch,\s*\} = useCalendarEvents/);
+  // Panne sans données : bloc d'erreur, jamais l'agenda vide qui suit dans la chaîne.
+  assert.match(calendarPage, /\) : isError && rawEvents\.length === 0 \? \(\s*<ErrorState[\s\S]*?onRetry=\{\(\) => refetch\(\)\}[\s\S]*?\/>\s*\) : rawEvents\.length === 0 \? \(\s*<EmptyState/);
+  // Panne d'une nouvelle lecture : les événements déjà chargés restent, signalés.
+  assert.match(calendarPage, /\{!isLoading && isError && rawEvents\.length > 0 && \(\s*<ErrorState/);
+  // Le tableau de bord ne lit que les entretiens : une panne des envois ne les lui retire pas.
+  assert.match(todayPanel, /useCalendarEvents\(\{ from: today, days: 1, outreach: false \}\)/);
+  assert.match(todayPanel, /todayEventsError \? null : <EmptyState/);
+});
+
+// ------------------------------------------------------------ SEQ-182
+test('SEQ-182 — fiche poste : réponses sur le statut, envois réels, libellé « Inscrits »', () => {
+  const sentStep = (action_type, status = 'sent') => ({ status, sequence_steps: { action_type } });
+  const rows = [
+    { sequence_id: 's1', status: 'replied', outreach_sequences: { name: 'Relance' }, sequence_step_executions: [sentStep('message')] },
+    { sequence_id: 's1', status: 'completed', sequence_step_executions: [] },
+    // Active avec une invitation partie : comptée comme envoyée.
+    { sequence_id: 's1', status: 'active', sequence_step_executions: [sentStep('connection_request')] },
+    // Active sans envoi réel (condition « sent », visite, échec) : pas comptée.
+    { sequence_id: 's1', status: 'active', sequence_step_executions: [sentStep('condition_branch'), sentStep('profile_visit'), sentStep('inmail', 'failed')] },
+    { sequence_id: 's1', status: 'active', sequence_step_executions: null },
+  ];
+  const [stat] = stats.computeJobSequenceStats(rows);
+  assert.deepEqual(stat, { id: 's1', name: 'Relance', enrolledCount: 5, sentCount: 3, repliedCount: 1 });
+  assert.equal(stats.responseRatePercent(stat), 33);
+  assert.match(jobSheet, /computeJobSequenceStats\(enrollments \?\? \[\]\)/);
+  assert.doesNotMatch(jobSheet, /connection_status === 'replied'/);
+  assert.doesNotMatch(jobSheet, /Enrollés/);
+  assert.match(jobSheet, />Inscrits</);
+  assert.match(jobSheet, /Impossible de charger les séquences de ce poste\./);
+});
+
+// ------------------------------------------------------------ SEQ-183
+test('SEQ-183 — messagerie : plus de rapprochement par inclusion partielle du nom', () => {
+  assert.doesNotMatch(profileActivity, /\.ilike\('profile_name'/);
+  assert.match(profileActivity, /\.eq\('profile_name', exactName\)/);
+  assert.match(profileActivity, /enrollments = people\.size === 1 \? rows : \[\];/);
+});
+
+test('SEQ-183 — nom de repli générique ou incomplet : aucun rapprochement', async () => {
+  const fn = block(profileActivity, 'export function usableProfileName', '\n}\n') + '\n}\n';
+  const { usableProfileName } = await load(fn);
+  assert.equal(usableProfileName('Marie Dupont'), 'Marie Dupont');
+  assert.equal(usableProfileName('  Jean-Paul   Martinez '), 'Jean-Paul Martinez');
+  assert.equal(usableProfileName('Marie'), null);
+  assert.equal(usableProfileName('Conversation'), null);
+  assert.equal(usableProfileName('Conversation du 12/09/2026'), null);
+  assert.equal(usableProfileName(''), null);
+  assert.equal(usableProfileName(null), null);
+});
+
+// ------------------------------------------------------------ SEQ-184
+test('SEQ-184 — historique : libellés des vraies étapes, échecs et étapes sautées signalés', () => {
+  assert.equal(labels.sequenceExecutionTitle('connection_request', 'sent'), 'Invitation envoyée');
+  assert.equal(labels.sequenceExecutionTitle('message', 'replied'), 'Message envoyé');
+  assert.equal(labels.sequenceExecutionTitle('inmail', 'opened'), 'InMail envoyé');
+  assert.equal(labels.sequenceExecutionTitle('profile_visit', 'sent'), 'Profil visité');
+  assert.equal(labels.sequenceExecutionTitle('email', 'clicked'), 'E-mail envoyé');
+  assert.equal(labels.sequenceExecutionTitle('inmail', 'failed'), 'InMail : échec');
+  assert.equal(labels.sequenceExecutionTitle('connection_request', 'skipped'), 'Invitation : étape sautée');
+  assert.doesNotMatch(labels.sequenceExecutionTitle('inconnu', 'sent'), /inconnu/);
+  assert.equal(labels.stepNumberLabel(0), 'Étape 1');
+  assert.equal(labels.stepNumberLabel(2), 'Étape 3');
+  assert.equal(labels.isInternalSequenceAction('wait_connection'), true);
+  assert.equal(labels.isInternalSequenceAction('inmail'), false);
+});
+
+test('SEQ-245 — historique : le nom d’une étape non partie est celui de l’éditeur', async () => {
+  const graphSrc = read('src/components/outreach/sequence/sequenceGraph.ts');
+  const { STEP_TYPE_LABELS } = await load(block(graphSrc, 'export const STEP_TYPE_LABELS', '\n};') + '\n};');
+  for (const [key, { noun }] of Object.entries(labels.SEQUENCE_ACTION_LABELS)) {
+    // L'invitation garde « Invitation » tant que seq-audit-f4c (lot F4) attend
+    // « Invitation : étape sautée ».
+    if (key === 'connection_request') continue;
+    assert.equal(noun, STEP_TYPE_LABELS[key], key);
+  }
+  assert.equal(labels.sequenceExecutionTitle('message', 'failed'), 'Message LinkedIn : échec');
+  assert.equal(labels.sequenceExecutionTitle('smart_message', 'skipped'), 'Message IA : étape sautée');
+  assert.equal(labels.sequenceExecutionTitle('whatsapp_message', 'skipped'), 'WhatsApp : étape sautée');
+  // Le module reste pur, sans import (chargé tel quel par les tests).
+  assert.doesNotMatch(read('src/lib/sequenceActionLabels.ts'), /^import /m);
+});
+
+test('SEQ-184 — la frise de la fiche candidat utilise ces libellés', () => {
+  for (const legacy of ['send_connection', 'send_message', 'send_inmail', 'visit_profile', 'Action : ']) {
+    assert.ok(!candidateProfile.includes(legacy), `${legacy} encore présent`);
+  }
+  assert.match(candidateProfile, /title: sequenceExecutionTitle\(step\.actionType, step\.status\)/);
+  assert.match(candidateProfile, /stepNumberLabel\(step\.stepOrder\)/);
+  assert.match(candidateProfile, /stepNumberLabel\(se\.currentStep\)/);
+  assert.match(candidateProfile, /!isInternalSequenceAction\(stepMap\.get\(ex\.step_id\)\)/);
+});
+
+// ------------------------------------------------------------ SEQ-219
+test('SEQ-219 — types générés : RPC des séquences et colonne ends_sequence', () => {
+  const functions = block(types, '    Functions: {', '    Enums: {');
+  const save = block(functions, '      save_sequence_steps: {', '\n      }\n');
+  assert.match(save, /Args: \{ p_sequence_id: string; p_steps: Json \}/);
+  assert.match(save, /to: "sequence_steps"/);
+  assert.match(functions, /increment_sequence_analytics: \{\n\s+Args: \{ p_field: string; p_increment\?: number; p_sequence_id: string \}/);
+  const steps = block(types, '      sequence_steps: {', 'Relationships: [');
+  assert.equal((steps.match(/ends_sequence\??: boolean/g) ?? []).length, 3, 'Row, Insert et Update');
+});
+
+// ------------------------------------------------------------ SEQ-231
+test('SEQ-231 — les brouillons d’éditeur sont purgés à la déconnexion', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    get length() { return store.size; },
+    key: (i) => [...store.keys()][i] ?? null,
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+  };
+  const drafts = await load(read('src/lib/editorDraft.ts'));
+  drafts.saveEditorDraft('sequence-new:u1:o1', { name: 'Brouillon' });
+  drafts.saveEditorDraft('mission-new', { title: 'Mission' });
+  store.set('sb-auth-token', 'garde');
+  drafts.clearAllEditorDrafts();
+  assert.deepEqual([...store.keys()], ['sb-auth-token']);
+  assert.equal(drafts.loadEditorDraft('mission-new'), null);
+  delete globalThis.localStorage;
+
+  const signedOut = block(app, "if (event === 'SIGNED_OUT'", "} else if (event === 'SIGNED_IN'");
+  assert.match(signedOut, /clearAllEditorDrafts\(\);/);
+  const userSwitch = block(app, 'if (prevUserIdRef.current && prevUserIdRef.current !== newUserId)', 'prevUserIdRef.current = newUserId;');
+  assert.match(userSwitch, /clearAllEditorDrafts\(\);/);
+});
+
+// ------------------------------------------------ Demandes croisées (passe 2)
+
+/**
+ * Objet de notification écrit autour d'un repère de sa metadata (source,
+ * canal) : du `user_id:` qui ouvre l'objet jusqu'au repère.
+ */
+const notificationAround = (rel, needle) => {
+  const src = read(rel);
+  const at = src.indexOf(needle);
+  assert.ok(at >= 0, `${rel} : repère introuvable : ${needle}`);
+  const open = src.lastIndexOf('user_id:', at);
+  assert.ok(open >= 0 && at - open < 1500, `${rel} : objet de notification introuvable avant ${needle}`);
+  return src.slice(open, at + needle.length);
+};
+
+test('SEQ-115 — les écrivains réels (rebond, RDV, réponse e-mail) gardent la forme inventoriée', () => {
+  const bounce = notificationAround('supabase/functions/unipile-webhook/index.ts', "source: 'email_bounce',");
+  assert.match(bounce, /type: 'action',/);
+  assert.match(bounce, /title: 'Adresse e-mail invalide, séquence arrêtée',/);
+  const booking = notificationAround('supabase/functions/calendly-webhook/index.ts', "source: 'calendly',");
+  assert.match(booking, /type: 'action',/);
+  assert.match(booking, /title: 'RDV pris, séquence arrêtée',/);
+  // Réponse par e-mail : une réponse de candidat, sans chat_id.
+  const reply = notificationAround('supabase/functions/unipile-webhook/index.ts', "channel: 'email',");
+  assert.match(reply, /type: 'new_message',/);
+  assert.match(reply, /is_candidate: true,/);
+  assert.doesNotMatch(reply, /chat_id/);
+  // Inventaire tenu à jour.
+  const header = block(read('src/lib/notificationKinds.ts'), '/**', '*/');
+  assert.match(header, /\| unipile-webhook \(rebond d'e-mail\)\s+\| action\s+\|/);
+  assert.match(header, /\| calendly-webhook \(RDV pris\)\s+\| action\s+\|/);
+  assert.match(header, /\| unipile-webhook \(réponse par e-mail, sans chat_id\)\| new_message/);
+  assert.match(header, /account_status_updated au passage de OK vers CREDENTIALS, ERROR ou\n \* PERMISSIONS/);
+});
+
+test('SEQ-073 — l’auto-pause d’une séquence est inventoriée et compte dans À traiter', () => {
+  const autoPause = notificationAround('supabase/functions/process-sequences/index.ts', "source: 'sequence_auto_pause'");
+  assert.match(autoPause, /type: 'error',/);
+  assert.match(autoPause, /title: 'Séquence mise en pause automatiquement',/);
+  const header = block(read('src/lib/notificationKinds.ts'), '/**', '*/');
+  assert.match(header, /\| process-sequences \(auto-pause, trop d'échecs\)\s+\| error\s+\| Séquence mise en pause automatiquement \| \/missions\/…\?tab=outreach ou \/missions \| sequence_auto_pause \| action \|/);
+  const row = { type: 'error', link: '/missions/p1?tab=outreach', metadata: { source: 'sequence_auto_pause', sequence_id: 's1' } };
+  assert.equal(kinds.notificationKind(row), 'action');
+  assert.equal(kinds.isActionable({ ...row, link: '/missions' }), true);
+});
+
+test('SEQ-165 — types générés : compteurs d’inscriptions et rôle collaborateur', () => {
+  const functions = block(types, '    Functions: {', '    Enums: {');
+  const counts = block(functions, '      get_sequence_enrollment_counts: {', '\n      }\n');
+  assert.match(counts, /Args: \{ p_sequence_ids: string\[\] \}/);
+  // B6 : la RPC renvoie aussi pause_reason (RETURNS TABLE à quatre colonnes).
+  assert.match(counts, /count: number\n\s+pause_reason: string(?: \| null)?\n\s+sequence_id: string\n\s+status: string\n\s+\}\[\]/);
+  const collaborator = block(functions, '      is_active_org_collaborator: {', '\n      }\n');
+  assert.match(collaborator, /Args: \{ _user_id: string \}/);
+  assert.match(collaborator, /Returns: boolean/);
+  // Colonne passée en text : reste une chaîne.
+  const enrollments = block(types, '      sequence_enrollments: {', 'Relationships: [');
+  assert.equal((enrollments.match(/assigned_sender_id\??: string \| null/g) ?? []).length, 3, 'Row, Insert et Update');
+});
+
+test('SEQ-043 / SEQ-044 — « inscrire », jamais « enrôler », dans les libellés de l’assistant', () => {
+  const files = {
+    'src/components/assistant-ui/tool-uis.tsx': "enroll_in_sequence: 'Inscription en séquence',",
+    'src/components/agent/AgentToolApprovalCard.tsx': "enroll_in_sequence: 'Inscrire dans une séquence',",
+    'src/components/settings/AgentActionsSettings.tsx': "enroll_in_sequence: 'Inscrire dans une séquence',",
+    // Lot 5a : inscription jamais automatique (NEVER_AUTO_TOOLS), libellé inchangé.
+    'src/components/settings/AgentPoliciesSettings.tsx': "{ name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: false,",
+  };
+  for (const [rel, expected] of Object.entries(files)) {
+    const src = read(rel);
+    assert.ok(src.includes(expected), `${rel} : libellé attendu absent`);
+    assert.doesNotMatch(src, /nrôl/i, `${rel} : « enrôler » encore présent`);
+  }
+});
+
+test('SEQ-161 — agenda du jour : une étape reportée ou en cours d’envoi affiche son statut réel', () => {
+  const item = block(todayPanel, '// ─── Envoi prévu', '<li className');
+  assert.match(item, /!isDone && msg\.type === 'sequence' && \(msg\.status === 'quota_blocked' \|\| msg\.status === 'sending'\)/);
+  assert.match(item, /\? msg\.statusLabel \|\| null/);
+  assert.match(item, /const subtitle = pendingStatusLabel \? `\$\{pendingStatusLabel\} · \$\{baseSubtitle\}` : baseSubtitle;/);
+  assert.match(todayPanel, /\{subtitle && <span className="block truncate text-xs text-muted-foreground">\{subtitle\}<\/span>\}/);
+  // Le hook fournit bien ce libellé, sur le statut réel de l'exécution.
+  const hook = read('src/hooks/useTodayScheduledMessages.ts');
+  assert.match(hook, /statusLabel\?: string;/);
+  assert.match(hook, /status: sent \? 'sent' : exec\.status,/);
+  assert.match(hook, /statusLabel: executionStatusLabel\(exec\.status\),/);
+});

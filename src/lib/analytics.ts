@@ -17,12 +17,16 @@ type PlausibleOptions = {
 
 declare global {
   interface Window {
-    plausible?: (eventName: string, options?: PlausibleOptions) => void;
+    // `q` : file d'attente des événements émis avant le chargement du script
+    // (shim officiel Plausible).
+    plausible?: ((eventName: string, options?: PlausibleOptions) => void) & { q?: unknown[] };
   }
 }
 
-const PLAUSIBLE_DOMAIN = import.meta.env.VITE_PLAUSIBLE_DOMAIN as string | undefined;
-const PLAUSIBLE_SRC = (import.meta.env.VITE_PLAUSIBLE_SRC as string | undefined)
+// import.meta.env peut manquer hors de Vite (tests Node qui chargent un module
+// appelant trackEvent) : la mesure ne doit jamais empêcher le chargement.
+const PLAUSIBLE_DOMAIN = import.meta.env?.VITE_PLAUSIBLE_DOMAIN as string | undefined;
+const PLAUSIBLE_SRC = (import.meta.env?.VITE_PLAUSIBLE_SRC as string | undefined)
   || 'https://plausible.io/js/script.js';
 
 let loaded = false;
@@ -50,7 +54,7 @@ export function loadAnalytics(): void {
   // Shim Plausible (queue events avant que le script soit chargé)
   window.plausible = window.plausible || function (...args: unknown[]) {
     (window.plausible!.q = window.plausible!.q || []).push(args);
-  } as typeof window.plausible & { q?: unknown[] };
+  } as NonNullable<typeof window.plausible>;
 
   loaded = true;
 }

@@ -148,6 +148,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Conversation de l'assistant : son auteur seul (R3), y compris sans
+    // organisation (aucun contrôle jusqu'ici dans ce cas).
+    if (conv.created_by !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Verify user belongs to the conversation's organization
     if (conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
@@ -169,6 +177,16 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    // Décision 15 : seul l'auteur de la conversation lance sa recherche, qui
+    // écrit dans la conversation (statut, messages de progression). La RLS
+    // d'écriture de agent_conversations dit la même chose ; la clé de service
+    // la contourne, d'où le contrôle explicite.
+    if (conv.created_by !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const searchPlan = conv.search_config as any;
@@ -196,6 +214,43 @@ Deno.serve(async (req) => {
     const orgId = conv.organization_id;
     const jobId = conv.job_id;
 
+    // Notification « résultats prêts » pour l'utilisateur qui a lancé l'agent :
+    // la recherche tourne en tâche de fond (lancée depuis le chat), il faut
+    // le prévenir que des profils l'attendent. Même écriture que
+    // process-agent-tasks ; un échec est journalisé sans bloquer la réponse.
+    async function notifyResultsReady(goCount: number, body: string) {
+      try {
+        // Nom de la mission d'origine pour le titre : colonne de la
+        // conversation, sinon le plan de recherche. Relue dans l'organisation
+        // pour ne pas exposer le nom d'un projet d'une autre organisation.
+        // Le lien mène à /agents : les profils retenus sont dans la
+        // conversation, pas dans la page de la mission.
+        const projectRef = conv.project_id || searchPlan.project_id || null;
+        let label: string | null = conv.title || conv.job_title || null;
+        if (projectRef && orgId) {
+          const { data: project } = await supabase
+            .from("sourcing_projects")
+            .select("name")
+            .eq("id", projectRef)
+            .eq("organization_id", orgId)
+            .maybeSingle();
+          if (project?.name) label = project.name;
+        }
+        const { error: notifError } = await supabase.from("notifications").insert({
+          user_id: user!.id,
+          organization_id: orgId,
+          type: "success",
+          title: label ? `Recherche terminée : ${label}` : "Recherche terminée",
+          body,
+          link: "/agents",
+          metadata: { source: "agent_search", conversation_id, go_count: goCount },
+        });
+        if (notifError) console.warn("[run-agent-search] notif insert failed:", notifError.message);
+      } catch (e) {
+        console.warn("[run-agent-search] notif failed:", e instanceof Error ? e.message : e);
+      }
+    }
+
     // ── 1. Load existing data for deduplication & cache ──
 
     // 1a. Load already-treated candidates for this job (from job_candidate_status)
@@ -221,11 +276,14 @@ Deno.serve(async (req) => {
     }
 
     // 1b. Load cached scores from match_scores for this job
+    // C1 (R8) : cache lu dans l'organisation de la conversation seulement,
+    // jamais la notation d'une autre organisation sur le même identifiant.
     const cachedScores = new Map<string, any>();
-    if (jobId) {
+    if (jobId && orgId) {
       const { data: scores } = await supabase
         .from("match_scores")
         .select("candidate_id, score, scoring_result")
+        .eq("organization_id", orgId)
         .eq("job_id", jobId);
       
       if (scores) {
@@ -600,6 +658,9 @@ Deno.serve(async (req) => {
     const scoredProfiles: Array<{ profile: any; score: any; fromCache: boolean }> = [];
     const goProfiles: Array<{ profile: any; score: any }> = [];
     let cacheHits = 0;
+    // Renseigné quand score-profile-job refuse faute de crédits. Coupe les
+    // vagues suivantes : le solde ne remonte pas pendant une recherche.
+    let creditStopMessage: string | null = null;
 
     // Separate cached from uncached profiles first
     const profilesToScore: Array<{ profile: any; index: number }> = [];
@@ -677,7 +738,27 @@ Deno.serve(async (req) => {
             }),
           }, { timeoutMs: 30000, maxRetries: 2 });
 
+          // Un refus n'est pas un verdict sur le profil. Sans ce test,
+          // scoreData vaut le corps de l'erreur, score.recommendation est
+          // indéfini, et le résumé annonce « Aucun profil n'a passé les
+          // critères » alors que le scoring n'a pas tourné.
+          if (!scoreRes.ok) {
+            const errBody = await scoreRes.json().catch(() => null);
+            if (scoreRes.status === 402) {
+              creditStopMessage = typeof errBody?.message === "string"
+                ? errBody.message
+                : "Crédits IA insuffisants.";
+            }
+            console.error(`[run-agent-search] score-profile-job ${scoreRes.status} pour ${profile.name}`);
+            return { profile, score: null };
+          }
+
           const scoreData = await scoreRes.json();
+          // Arrêt en cours de lot : le scoring rend 200 avec ce qu'il a déjà
+          // noté et signale l'arrêt dans credit_stop.
+          if (typeof scoreData?.credit_stop?.message === "string") {
+            creditStopMessage = scoreData.credit_stop.message;
+          }
           return { profile, score: scoreData };
         } catch (err) {
           console.error(`[run-agent-search] Scoring failed for ${profile.name}:`, err);
@@ -715,6 +796,9 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Les vagues suivantes seraient refusées de la même façon.
+        if (creditStopMessage) break;
+
         // Progress update every batch
         if (batchStart + CONCURRENCY < profilesToScore.length) {
           await postStatus(`⏳ ${scoredProfiles.length}/${filteredProfiles.length} profils analysés — ${goProfiles.length} Go trouvés${cacheHits > 0 ? ` (${cacheHits} scores en cache)` : ""}...`);
@@ -737,9 +821,11 @@ Deno.serve(async (req) => {
     const goCount = goProfiles.length;
     const totalScored = scoredProfiles.length;
 
-    let summaryMsg = timedOut
-      ? `⏱️ **Recherche partielle** (temps max atteint)\n\n`
-      : `✅ **Recherche terminée !**\n\n`;
+    let summaryMsg = creditStopMessage
+      ? `⚠️ **Recherche interrompue : crédits IA insuffisants**\n\n`
+      : timedOut
+        ? `⏱️ **Recherche partielle** (temps max atteint)\n\n`
+        : `✅ **Recherche terminée !**\n\n`;
     summaryMsg += `- 📊 **${totalScored}** profils analysés${timedOut ? ` sur ${Math.min(filteredProfiles.length, maxProfiles)}` : ""}\n`;
     summaryMsg += `- ✅ **${goCount}** profils qualifiés "Go"\n`;
     if (cacheHits > 0) summaryMsg += `- ⚡ **${cacheHits}** scores récupérés du cache\n`;
@@ -764,8 +850,14 @@ Deno.serve(async (req) => {
         if (summary) summaryMsg += `> ${summary.slice(0, 120)}…\n`;
         summaryMsg += `\n`;
       }
-    } else {
+    } else if (!creditStopMessage) {
       summaryMsg += `Aucun profil n'a passé les critères. Tu veux que j'élargisse la recherche ?`;
+    }
+
+    // Un solde épuisé n'est pas un verdict sur les profils : on le dit, plutôt
+    // que de laisser croire qu'aucun ne convenait.
+    if (creditStopMessage) {
+      summaryMsg += `${creditStopMessage}\n\nLes profils restants n'ont pas été analysés. Relancez la recherche une fois le solde rechargé.`;
     }
 
     // Post results
@@ -801,6 +893,20 @@ Deno.serve(async (req) => {
         },
       })
       .eq("id", conversation_id);
+
+    // Seulement quand des profils attendent l'utilisateur. Pas sur un arrêt
+    // faute de crédits (interruption, pas une fin). Sans profil retenu, on ne
+    // sait pas distinguer « rien trouvé » d'un appel de recherche ou de scoring
+    // en échec : pas de notification de succès dans ce cas.
+    if (!creditStopMessage && goCount > 0) {
+      const s = goCount > 1 ? "s" : "";
+      const body = `${goCount} profil${s} retenu${s} sur ${totalScored} analysé${totalScored > 1 ? "s" : ""}. ` +
+        "Les résultats sont dans la conversation avec l'assistant.";
+      await notifyResultsReady(
+        goCount,
+        timedOut ? `${body} Résultats partiels : le temps maximal a été atteint.` : body,
+      );
+    }
 
     return new Response(JSON.stringify({
       success: true,

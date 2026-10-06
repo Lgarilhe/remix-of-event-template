@@ -1,7 +1,14 @@
 /**
  * useAllReminders — hook global pour la page /tasks (B6).
  *
- * Agrège tous les `candidate_reminders` de l'utilisateur (RLS scope déjà par user).
+ * La RLS de `candidate_reminders` ouvre toute l'organisation (policy
+ * `org_members_all` : organization_id = get_user_org_id(auth.uid())) : la
+ * requête ramène donc les tâches de toute l'équipe, pas seulement celles de
+ * l'utilisateur. Le périmètre se choisit via `scope` :
+ * - 'mine' (défaut) : tâches créées par l'utilisateur courant (created_by),
+ *   pour que la page Tâches, le tableau de bord et la barre comptent pareil ;
+ * - 'team' : toute l'organisation.
+ * Les compteurs (`counts`, dont `counts.overdue`) suivent ce périmètre.
  * Fournit filtres + bucketing par urgence (overdue / today / week / later / done).
  */
 
@@ -9,7 +16,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { isPast, isToday, isThisWeek, parseISO } from 'date-fns';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export type TaskCategory =
   | 'general'
@@ -32,10 +40,14 @@ export interface Reminder {
   due_at: string;
   completed_at: string | null;
   created_at: string;
+  created_by: string;
   category: TaskCategory;
   auto_generated: boolean;
   source_event_id: string | null;
 }
+
+/** Périmètre des tâches : celles de l'utilisateur ou celles de l'équipe. */
+export type TaskScope = 'mine' | 'team';
 
 export type ReminderBucket = 'overdue' | 'today' | 'week' | 'later' | 'done';
 
@@ -66,22 +78,36 @@ async function fetchAllReminders(): Promise<Reminder[]> {
     .select('*')
     .order('due_at', { ascending: true });
 
-  if (error) {
-    console.warn('[useAllReminders] fetch error:', error);
-    return [];
-  }
+  // Une lecture en échec ne doit pas se lire « aucune tâche » : l'erreur remonte
+  // à la page, qui affiche un état d'erreur avec « Réessayer » (revue A-34).
+  if (error) throw error;
   return (data ?? []) as Reminder[];
 }
 
-export function useAllReminders() {
+export function useAllReminders({ scope = 'mine' }: { scope?: TaskScope } = {}) {
   const qc = useQueryClient();
+  const { isReady: authReady, user } = useAuthReady();
+  const userId = user?.id ?? null;
 
-  const { data: reminders = [], isLoading, refetch } = useQuery({
+  const { data: teamReminders = [], isLoading: queryLoading, isError, error, refetch } = useQuery({
     queryKey: ['all-reminders'],
     queryFn: fetchAllReminders,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: false,
+    // La page Tâches n'a plus de bouton « Actualiser » (design simplifié, lot T) :
+    // la liste se relit au retour sur l'onglet, une fois les 30 s écoulées.
+    refetchOnWindowFocus: true,
   });
+
+  // Filtre côté client : le cache ['all-reminders'] reste partagé (mêmes
+  // invalidations et mises à jour optimistes quel que soit le périmètre).
+  const reminders = useMemo(
+    () => (scope === 'mine'
+      ? teamReminders.filter((r) => userId !== null && r.created_by === userId)
+      : teamReminders),
+    [teamReminders, scope, userId],
+  );
+  // Tant que l'utilisateur n'est pas connu, « mes tâches » n'est pas calculable.
+  const isLoading = queryLoading || (scope === 'mine' && !authReady);
 
   const grouped: GroupedReminders = {
     overdue: [],
@@ -112,6 +138,8 @@ export function useAllReminders() {
         r.id === reminder.id ? { ...r, completed_at: nextCompletedAt } : r,
       ),
     );
+    // Chiffre gris de la barre (tâches en retard) : clé à part, non couverte par setQueryData.
+    void qc.invalidateQueries({ queryKey: ['all-reminders', 'overdue-count'] });
 
     toast.success(nextCompletedAt ? 'Tâche terminée' : 'Tâche réactivée');
   }, [qc]);
@@ -130,6 +158,7 @@ export function useAllReminders() {
     qc.setQueryData<Reminder[]>(['all-reminders'], (prev) =>
       (prev ?? []).filter((r) => r.id !== reminderId),
     );
+    void qc.invalidateQueries({ queryKey: ['all-reminders', 'overdue-count'] });
     toast.success('Tâche supprimée');
   }, [qc]);
 
@@ -137,6 +166,9 @@ export function useAllReminders() {
     reminders,
     grouped,
     isLoading,
+    isError,
+    // Message technique (PostgrestError ou Error), montré replié par ErrorState.
+    error: error ? ((error as { message?: string }).message ?? String(error)) : null,
     refetch,
     toggleComplete,
     deleteReminder,

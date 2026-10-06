@@ -45,7 +45,7 @@ export function useMessageTemplates() {
   const queryClient = useQueryClient();
   const queryKey = ['message-templates', user?.id];
 
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates = [], isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: async (): Promise<MessageTemplate[]> => {
       if (!user?.id) return [];
@@ -79,10 +79,10 @@ export function useMessageTemplates() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      toast.success('Template créé');
+      toast.success('Modèle créé');
     },
     onError: (err: Error) => {
-      toast.error('Erreur création template', { description: err.message });
+      toast.error('Le modèle n’a pas été créé', { description: err.message });
     },
   });
 
@@ -100,10 +100,10 @@ export function useMessageTemplates() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      toast.success('Template mis à jour');
+      toast.success('Modèle enregistré');
     },
     onError: (err: Error) => {
-      toast.error('Erreur modification', { description: err.message });
+      toast.error('Le modèle n’a pas été enregistré', { description: err.message });
     },
   });
 
@@ -114,10 +114,10 @@ export function useMessageTemplates() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      toast.success('Template supprimé');
+      toast.success('Modèle supprimé');
     },
     onError: (err: Error) => {
-      toast.error('Erreur suppression', { description: err.message });
+      toast.error('Le modèle n’a pas été supprimé', { description: err.message });
     },
   });
 
@@ -149,6 +149,8 @@ export function useMessageTemplates() {
   return {
     templates,
     isLoading,
+    isError,
+    refetch,
     create: create.mutate,
     update: update.mutate,
     remove: remove.mutate,

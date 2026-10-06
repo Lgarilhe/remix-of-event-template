@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSubscriptionGate } from "../_shared/subscription-gate.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -11,33 +12,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const DEFAULT_APP_ORIGIN = "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
-
-const resolveAppOrigin = (req: Request) => {
-  const directOrigin = req.headers.get("origin");
-  if (directOrigin) {
-    try {
-      const hostname = new URL(directOrigin).hostname;
-      if (!hostname.endsWith(".lovableproject.com")) return directOrigin;
-    } catch {
-      // noop
-    }
-  }
-
-  const referer = req.headers.get("referer");
-  if (referer) {
-    try {
-      const refererUrl = new URL(referer);
-      if (!refererUrl.hostname.endsWith(".lovableproject.com")) {
-        return refererUrl.origin;
-      }
-    } catch {
-      // noop
-    }
-  }
-
-  return DEFAULT_APP_ORIGIN;
-};
+// Le lien d'invitation est toujours construit depuis APP_URL : jamais depuis
+// l'en-tête Origin ou Referer (un appelant pourrait y glisser son propre site).
+const resolveAppOrigin = (_req: Request) =>
+  (Deno.env.get("APP_URL") || "https://konekt-app-navy.vercel.app").replace(/\/+$/, "");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -77,6 +55,15 @@ Deno.serve(async (req) => {
     if (!ALLOWED_INVITE_ROLES.includes(normalizedRole)) {
       throw new Error("Rôle d'invitation invalide");
     }
+    // C1 (R11) : « collaborator » est aujourd'hui un membre complet de
+    // l'organisation (lecture, écriture et suppression de tout), pas un accès
+    // restreint. Refusé à l'invitation, renvoi compris, jusqu'au lot C2 ;
+    // l'écran ne le propose plus.
+    if (normalizedRole === "collaborator") {
+      throw new Error(
+        "Le rôle Collaborateur n'est pas encore disponible. Invitez cette personne comme membre ou administrateur.",
+      );
+    }
     const isResend = Boolean(resend);
 
     const { data: callerMembership } = await supabase
@@ -114,6 +101,34 @@ Deno.serve(async (req) => {
     let invitationToken = existingInvitation?.token;
 
     if (!invitationId) {
+      // Sièges (lot P0-C) : un siège = une ligne organization_members, et une
+      // invitation en attente réserve un siège. Le renvoi d'une invitation déjà
+      // en attente n'en consomme pas de nouveau, d'où le contrôle ici seulement.
+      // Seules les invitations encore valides réservent un siège : aucun
+      // traitement ne fait sortir une invitation périmée du statut « pending »,
+      // et une invitation jamais ouverte bloquait donc un siège à vie.
+      const gate = await getSubscriptionGate(supabase, organization_id);
+      const { count: pendingCount, error: pendingError } = await supabase
+        .from("organization_invitations")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organization_id)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString());
+      if (pendingError) {
+        console.error("[send-team-invitation] pending invitations count failed:", pendingError.message);
+        throw new Error("Impossible de vérifier les sièges disponibles");
+      }
+      if (gate.seatCount + (pendingCount ?? 0) >= gate.seatLimit) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: "seats_exceeded",
+            error: "Tous vos sièges sont utilisés. Ajoutez un siège dans Abonnement.",
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
       // expires_at + token + status explicits car la table organization_invitations
       // a une contrainte NOT NULL sur "token" sans default value en BDD.
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

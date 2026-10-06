@@ -14,6 +14,7 @@
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
 
     // Auth — requireAuth throw une Response si auth fail, le catch outer
     // la propage tel quel (cf catch en bas).
-    const { userId } = await requireAuth(req, corsHeaders);
+    const { userId, method: authMethod } = await requireAuth(req, corsHeaders);
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -342,6 +343,22 @@ Génère maintenant la réponse JSON.`;
       : action === 'cta_reply' ? 'cta_reply'
       : 'translate_text';
     const _aiParams = extractAIParams(body, aiAction);
+
+    // Placé après le ping warmup et les validations (action inconnue, texte ou
+    // historique manquant) : ces retours ne consomment pas de modèle, les
+    // refuser rendrait payant un chemin gratuit. Le settle plus bas s'exécute
+    // après la réponse du modèle, il constate le dépassement sans l'empêcher.
+    const gate = await assertCredits({
+      userId,
+      organizationId: body.organization_id ?? null,
+      aiAction,
+      modelId: _aiParams.modelId,
+      systemCall: authMethod === "service_role",
+      // Client service-role déjà construit plus haut, le garde en
+      // reconstruisait un à chaque appel.
+      adminClient,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Load AI context (Settings → Contexte IA)
     let aiContext = await loadAndBuildAiContext(adminClient, {

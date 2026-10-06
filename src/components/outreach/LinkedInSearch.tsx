@@ -4,8 +4,11 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel, type FilterSuggestions } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { LinkedInReconnectBanner } from './search/LinkedInReconnectBanner';
+import { SmartOverlays } from './search/SmartOverlays';
+import { quickChipV3 } from '@/components/missions/v3/sourcing/quickChip';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
+import { refreshProjectEnrollments } from '@/hooks/useProjectEnrollments';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useClientCompetitors } from '@/hooks/useClientCompetitors';
 import { usePedigreeAugmentation } from '@/hooks/usePedigreeAugmentation';
@@ -17,16 +20,24 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile, LinkedInFiltersState, INITIAL_FILTERS } from './types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
+import { plural } from '@/lib/plural';
+import { skippedStageMessage } from '@/lib/candidateStage';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
+import { SearchHero, SearchPlan, FilterChipBar, chipsFromUpdate, countFilterChips, type PlanChip, type PlanStage } from './search/SourcingFlow';
+import { SourcingTopBar } from '@/components/missions/v3/sourcing/SourcingTopBar';
+import { buildAugmentedJob, generateFiltersFromJob } from './search/generateFiltersFromJob';
+import { nlFilterEdit } from './search/nlFilterEdit';
 import { FilterWizard } from './filter-wizard';
 import type { JobDetails } from '@/types/jobDetails';
 import { SKILL_SYNONYMS } from '@/hooks/linkedin/skillSynonyms';
+import { PageBackdrop } from '@/components/layout/PageBackdrop';
+import { cn } from '@/lib/utils';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -38,6 +49,20 @@ interface LinkedInSearchProps {
   searchSource?: 'linkedin' | 'database';
   /** Opens the contextual sourcing agent with brief pre-filled. */
   onOpenSearchAgent?: () => void;
+  /**
+   * Nouvelle page mission (SourcingScreen seulement) : rangée « Affiner,
+   * Filtres, Nouvelle recherche » et résultats en trois groupes. Défaut : le
+   * rendu actuel, inchangé (ancienne page mission, /sourcing/:id).
+   */
+  layout?: 'default' | 'mission-v3';
+  /**
+   * Recherche créée depuis /sourcing : la phrase déjà saisie est lancée une
+   * fois, dès que le brief synthétique et le compte sont prêts (layout
+   * mission-v3 seulement).
+   */
+  initialPhrase?: string;
+  /** Ouvre la fenêtre des filtres à l'arrivée, sans passer par le prompt (layout mission-v3 seulement). */
+  startWithFilters?: boolean;
 }
 
 type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
@@ -159,7 +184,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onProjectChange,
   searchSource: initialSearchSource = 'linkedin',
   onOpenSearchAgent,
+  layout = 'default',
+  initialPhrase,
+  startWithFilters,
 }) => {
+  const isV3 = layout === 'mission-v3' && !!activeProject;
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
@@ -340,10 +369,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   );
 
-  // Auto-relaunch search when source toggle changes
+  // Relance automatique au changement de source. Deux exceptions : passer sur
+  // la Base Konekt consommerait une unité du forfait ou des crédits sans clic
+  // sur « Rechercher » ; en revenir peut être une correction automatique (accès
+  // coupé), qui ne doit pas lancer de recherche LinkedIn à l'insu de l'user.
   useEffect(() => {
     if (prevSearchSourceRef.current !== searchSource) {
+      const previous = prevSearchSourceRef.current;
       prevSearchSourceRef.current = searchSource;
+      if (searchSource === 'database') return;
+      if (previous === 'database') return;
       // Small delay to let the api type effect fire first
       const timer = setTimeout(() => {
         handleSearch();
@@ -380,7 +415,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setStatusFilter: search.setStatusFilter,
     autoHideTreatedRef: search.autoHideTreatedRef,
     candidateStatus: {
-      batchDismiss: search.candidateStatus.batchDismiss,
       saveScore: search.candidateStatus.saveScore,
       batchSaveScores: search.candidateStatus.batchSaveScores,
     },
@@ -397,7 +431,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Scored sort
   const [scoredSortBy, setScoredSortBy] = useLocalState<ScoredSortBy>('score_desc');
 
-  const missionCacheKey = activeProject?.id ? `mission-sourcing:${activeProject.id}` : null;
+  // Nouvelle page mission : clé à part, pour que l'ancienne page ne relise
+  // jamais un état écrit par la nouvelle (sélection, vue, filtres d'affichage).
+  const missionCacheKey = activeProject?.id
+    ? `${isV3 ? 'mission-sourcing-v3' : 'mission-sourcing'}:${activeProject.id}`
+    : null;
   const hydratedCacheKeyRef = useRef<string | null>(null);
   const restoredScrollKeyRef = useRef<string | null>(null);
   const skipNextCacheWriteRef = useRef(false);
@@ -517,7 +555,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     selectedProfiles: search.selectedProfiles,
     calculatedExperienceMin: search.filters.calculated_experience_min,
     calculatedExperienceMax: search.filters.calculated_experience_max,
-    showPoolView,
+    // Nouvelle page : profils connus de la mission lisibles par la notation
+    // (un profil remis à trier hors de la recherche en cours), sans toucher à
+    // l'état de la vue ni au cache.
+    showPoolView: isV3 || showPoolView,
     scoredSortBy,
   });
 
@@ -631,8 +672,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const handleBulkDismiss = useCallback(async () => {
     if (!search.selectedJob) return;
     
+    // La liste affichée mélange les résultats de la recherche courante et les
+    // profils réhydratés du vivier (`mergedResults`). Résoudre la sélection sur
+    // `search.results` seul laissait tomber les profils du vivier en silence
+    // (audit UX du 09/09/2026, constat UX02).
     const profilesToDismiss = Array.from(search.selectedProfiles)
-      .map(id => search.results.find(p => p.id === id))
+      .map(id => mergedResults.find(p => p.id === id))
       .filter((p): p is LinkedInProfile => !!p)
       .map(profile => ({
         id: profile.id,
@@ -641,24 +686,32 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         profileUrl: profile.public_profile_url || profile.profile_url,
       }));
     
-    await search.candidateStatus.batchDismiss(profilesToDismiss);
-    search.setSelectedProfiles(new Set());
-    toast.success(`${profilesToDismiss.length} profil(s) archivé(s)`);
-  }, [search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles]);
+    // Lot 0b-4 (N7) : bilan réel de la base ; les erreurs sont annoncées par
+    // batchDismiss, et la sélection est gardée s'il reste des profils à archiver.
+    const { dismissed, failed } = await search.candidateStatus.batchDismiss(profilesToDismiss);
+    if (failed === 0) search.setSelectedProfiles(new Set());
+    if (dismissed > 0) {
+      toast.success(`${plural(dismissed, 'profil')} ${dismissed > 1 ? 'archivés' : 'archivé'}`);
+    }
+  }, [search.selectedJob, search.selectedProfiles, mergedResults, search.candidateStatus, search.setSelectedProfiles]);
 
   const handleBulkAddToProject = useCallback(async () => {
     if (!activeProject || !search.selectedJob) return;
 
-    const profilesToAdd = Array.from(search.selectedProfiles)
-      .map(id => search.results.find(p => p.id === id))
+    // Résolution sur la liste affichée, vivier compris (constat UX02).
+    const selectedIds = Array.from(search.selectedProfiles);
+    const profilesToAdd = selectedIds
+      .map(id => mergedResults.find(p => p.id === id))
       .filter((p): p is LinkedInProfile => !!p);
+    const introuvables = selectedIds.length - profilesToAdd.length;
 
-    // 🐛 BUG CRITIQUE FIX (Opus audit) : avant, ce handler appelait
-    // `dismissCandidate` (=archive) alors que le toast disait "ajouté au projet".
-    // Résultat : l'user cliquait "Ajouter au projet" et ses profils étaient archivés
-    // silencieusement. Fix : utiliser `batchDiscover` qui persiste en status='discovered'
-    // sans écraser les statuts existants (cas d'un profil déjà scored/messaged).
-    await search.candidateStatus.batchDiscover(
+    // Historique : ce handler archivait les profils tout en annonçant un ajout
+    // (corrigé), puis les écrivait en `discovered` tout en annonçant une
+    // shortlist (constat UX01). Il retient maintenant les profils (statut
+    // `shortlisted`, celui que le filtre Shortlist cherche réellement), par
+    // set_candidate_stages depuis le lot 0b-4 : un candidat déjà contacté ou
+    // plus loin reste à son étape, et c'est annoncé.
+    const bilan = await search.candidateStatus.batchShortlist(
       profilesToAdd.map(profile => ({
         id: profile.id,
         name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
@@ -668,23 +721,130 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }))
     );
 
+    // Un échec conserve la sélection : l'utilisateur peut réessayer sans
+    // reconstituer son lot. On ne confirme que ce que la base a accepté.
+    if (bilan.failed > 0) {
+      if (bilan.added > 0 || bilan.skipped > 0) {
+        queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+      }
+      toast.error(
+        bilan.error
+          ? `Shortlist impossible : ${bilan.error.replace(/\.\s*$/, '')}. Votre sélection est conservée.`
+          : 'Shortlist impossible. Votre sélection est conservée, réessayez.'
+      );
+      return;
+    }
+
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-    toast.success(`${profilesToAdd.length} profil(s) shortlisté(s)`);
-  }, [activeProject, search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles, queryClient]);
+
+    const parts: string[] = [];
+    if (bilan.added > 0) parts.push(`${plural(bilan.added, 'profil')} ${bilan.added > 1 ? 'ajoutés' : 'ajouté'} à la shortlist`);
+    if (bilan.already > 0) parts.push(`${bilan.already} déjà en shortlist`);
+    if (introuvables > 0) parts.push(`${introuvables} ${introuvables > 1 ? 'introuvables' : 'introuvable'}`);
+    const skipped = skippedStageMessage(bilan.skipped);
+    const summary = parts.length > 0 ? `${parts.join(', ')}.` : '';
+    if (summary) toast.success(skipped ? `${summary} ${skipped}` : summary);
+    else if (skipped) toast.info(skipped);
+    else toast.success('Aucun profil à ajouter');
+  }, [activeProject, search.selectedJob, search.selectedProfiles, mergedResults, search.candidateStatus, search.setSelectedProfiles, queryClient]);
 
   // Handle archive for single profile
   const handleArchive = useCallback(async (profile: LinkedInProfile) => {
     if (!search.selectedJob) return;
     
-    await search.candidateStatus.dismissCandidate(profile.id, {
+    const archived = await search.candidateStatus.dismissCandidate(profile.id, {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
       headline: profile.headline,
       profileUrl: profile.public_profile_url || profile.profile_url,
     });
     
-    toast.success('Profil archivé');
+    if (archived) toast.success('Profil archivé');
   }, [search.selectedJob, search.candidateStatus]);
+
+  // Nouvelle page mission (trois groupes) : retenir ou écarter une liste donnée
+  // (une ligne, la sélection, les suggestions de l'IA), par les mêmes
+  // écritures que les actions groupées ci-dessus (useJobCandidateStatus, qui
+  // passe par candidateStage.ts). Un échec garde la sélection.
+  const dropFromSelection = useCallback((ids: string[]) => {
+    search.setSelectedProfiles(prev => {
+      if (!ids.some(id => prev.has(id))) return prev;
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, [search.setSelectedProfiles]);
+
+  const handleRetainProfiles = useCallback(async (profiles: LinkedInProfile[]) => {
+    if (!activeProject || !search.selectedJob || profiles.length === 0) return;
+    const nameOf = (p: LinkedInProfile) => p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    const bilan = await search.candidateStatus.batchShortlist(
+      profiles.map(profile => ({
+        id: profile.id,
+        name: nameOf(profile),
+        headline: profile.headline,
+        profileUrl: profile.public_profile_url || profile.profile_url,
+        linkedinProfileData: profile as unknown as Record<string, unknown>,
+      }))
+    );
+    if (bilan.added > 0 || bilan.skipped > 0) queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+    if (bilan.failed > 0) {
+      toast.error(bilan.error
+        ? `Impossible de retenir : ${bilan.error.replace(/\.\s*$/, '')}. Votre sélection est conservée.`
+        : 'Impossible de retenir ces profils. Votre sélection est conservée, réessayez.');
+      return;
+    }
+    dropFromSelection(profiles.map(p => p.id));
+    const parts: string[] = [];
+    if (bilan.added > 0) {
+      parts.push(bilan.added === 1 && profiles.length === 1 && nameOf(profiles[0])
+        ? `${nameOf(profiles[0])} passe dans Retenus.`
+        : `${plural(bilan.added, 'profil passe', 'profils passent')} dans Retenus.`);
+    }
+    if (bilan.already > 0) parts.push(bilan.already > 1 ? `${bilan.already} profils étaient déjà retenus.` : '1 profil était déjà retenu.');
+    const skipped = skippedStageMessage(bilan.skipped);
+    if (skipped) parts.push(skipped);
+    if (parts.length === 0) return;
+    if (bilan.added > 0) toast.success(parts.join(' '));
+    else toast.info(parts.join(' '));
+  }, [activeProject, search.selectedJob, search.candidateStatus, queryClient, dropFromSelection]);
+
+  const handleDismissProfiles = useCallback(async (profiles: LinkedInProfile[]) => {
+    if (!search.selectedJob || profiles.length === 0) return;
+    const nameOf = (p: LinkedInProfile) => p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    // Les erreurs sont annoncées par batchDismiss ; la sélection est gardée s'il en reste.
+    const { dismissed, failed } = await search.candidateStatus.batchDismiss(
+      profiles.map(profile => ({
+        id: profile.id,
+        name: nameOf(profile),
+        headline: profile.headline,
+        profileUrl: profile.public_profile_url || profile.profile_url,
+      }))
+    );
+    if (dismissed > 0) queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+    if (failed === 0) dropFromSelection(profiles.map(p => p.id));
+    if (dismissed > 0) {
+      toast.success(dismissed === 1 && profiles.length === 1 && nameOf(profiles[0])
+        ? `${nameOf(profiles[0])} passe dans Écartés.`
+        : `${plural(dismissed, 'profil passe', 'profils passent')} dans Écartés.`);
+    }
+  }, [search.selectedJob, search.candidateStatus, queryClient, dropFromSelection]);
+
+  // Nouvelle page mission : « Remettre à trier » par la même écriture
+  // (restoreCandidate), puis la note affichée est retirée (elle est effacée en
+  // base) et les statuts sont relus, pour que la ligne quitte Écartés même
+  // quand l'état local gardait l'ancienne colonne du /pipeline. Si la remise a
+  // échoué, la relecture ramène la note gardée en base.
+  const handleRestoreProfileV3 = useCallback(async (candidateId: string) => {
+    await search.candidateStatus.restoreCandidate(candidateId);
+    search.setJobScores(prev => {
+      if (!(candidateId in prev)) return prev;
+      const next = { ...prev };
+      delete next[candidateId];
+      return next;
+    });
+    await search.candidateStatus.refresh();
+  }, [search.candidateStatus, search.setJobScores]);
 
   // Handle profile treated (messaged, sequenced, etc.)
   const handleProfileTreated = useCallback((profileId: string) => {
@@ -696,12 +856,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
   }, [queryClient]);
 
-  // Handle sequence enrollment success
+  // Handle sequence enrollment success. Pas de toast ici : la fenêtre
+  // d'inscription (ou « Ajouter à la shortlist sans message ») a déjà donné le
+  // bilan exact. L'inscription n'écrit rien dans le pipeline : « Contacté »
+  // est posé par le serveur au premier envoi réel. On recharge les statuts
+  // (« Retenu » de la shortlist sans message) et les badges « En séquence »,
+  // dont les lectures ne passent pas par React Query.
   const handleSequenceEnrollSuccess = useCallback(() => {
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
-    toast.success('Profils inscrits à la séquence');
-  }, [search.setSelectedProfiles, queryClient]);
+    void search.candidateStatus.refresh();
+    refreshProjectEnrollments();
+  }, [search.setSelectedProfiles, search.candidateStatus.refresh, queryClient]);
 
   // Refine search state and handler
   const [refineLoading, setRefineLoading] = useState(false);
@@ -901,6 +1067,214 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  // ── Machine à états V3 (contexte mission uniquement) ──
+  // hero = décrire · plan = l'IA travaille (étapes visibles) · results = piloter
+  const [flowMode, setFlowMode] = useState<'hero' | 'plan' | 'results'>('results');
+  const [flowQuery, setFlowQuery] = useState('');
+  const [planStage, setPlanStage] = useState<PlanStage>('analyze');
+  const [planChips, setPlanChips] = useState<PlanChip[]>([]);
+  const [chipsDirty, setChipsDirty] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const flowBusyRef = useRef(false);
+
+  // Initialisation par mission : hero si rien (recherche/résultats), sinon
+  // pilotage. Ensuite on ne fait que MONTER (hero → results, hydratation
+  // tardive du cache) — jamais redescendre : un échec de recherche doit
+  // laisser l'utilisateur sur la barre de chips pour corriger et relancer.
+  const flowInitProjectRef = useRef<string | null>(null);
+  const hasSearchedRef = useRef(search.hasSearched);
+  useEffect(() => { hasSearchedRef.current = search.hasSearched; }, [search.hasSearched]);
+  useEffect(() => {
+    if (!activeProject) return;
+    if (flowMode === 'plan' || flowBusyRef.current) return;
+    const empty = !search.hasSearched && search.results.length === 0 && !search.loading;
+    if (flowInitProjectRef.current !== activeProject.id) {
+      flowInitProjectRef.current = activeProject.id;
+      setFlowMode(empty ? 'hero' : 'results');
+    } else if (!empty && flowMode === 'hero') {
+      setFlowMode('results');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject?.id, search.hasSearched, search.results.length, search.loading, flowMode]);
+
+  // Exception à « jamais redescendre » : une recherche lancée depuis le hero
+  // qui échoue avant tout résultat (compte indisponible, quota, erreur réseau)
+  // ramène au hero avec un message, pas sur un panneau vide. handleSearch
+  // avale ses erreurs (toast) : on observe l'état (plus de chargement, rien
+  // trouvé). Layout effect pour éviter l'affichage d'un panneau vide.
+  const heroLaunchRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!activeProject?.id || !heroLaunchRef.current || search.loading) return;
+    if (search.hasSearched || search.results.length > 0) { heroLaunchRef.current = false; return; }
+    if (flowMode !== 'results') return;
+    heroLaunchRef.current = false;
+    setFlowError('La recherche n\'a pas abouti. Vérifiez votre connexion LinkedIn et vos filtres, puis relancez.');
+    setFlowMode('hero');
+  }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length]);
+
+  // Édition de filtres depuis la barre de chips : synchronise le ref (lu par
+  // handleSearch) et marque la vue « modifiée » — la recherche ne repart que
+  // sur action explicite (Relancer), l'exploration est gratuite.
+  const handleChipsEdit = useCallback((updater: (prev: LinkedInFiltersState) => LinkedInFiltersState) => {
+    search.setFilters(prev => {
+      const next = updater(prev);
+      search.filtersRef.current = next;
+      return next;
+    });
+    setChipsDirty(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.setFilters]);
+
+  // Phrase (hero ou affinage) → filtres via IA Konekt. runSearch=false pour
+  // l'affinage : les chips se mettent à jour, l'user choisit quand relancer.
+  const applyPhrase = useCallback(async (phrase: string, runSearch: boolean) => {
+    if (!search.selectedJob) throw new Error('Brief mission manquant.');
+    if (!selectedAccount && searchSource !== 'database') throw new Error('Connectez votre compte LinkedIn pour lancer une recherche.');
+    const job = buildAugmentedJob(search.selectedJob, phrase);
+    const { update, suggestions } = await generateFiltersFromJob({
+      job,
+      accountId: selectedAccount,
+      searchSource: searchSource === 'database' ? 'database' : 'linkedin',
+      currentLocation: search.filtersRef.current.location,
+    });
+    setPlanChips(chipsFromUpdate(update));
+    const merged = { ...search.filtersRef.current, ...update };
+    search.setFilters(merged);
+    search.filtersRef.current = merged;
+    handleSuggestionsGenerated(suggestions ?? null);
+    if (runSearch) {
+      setPlanStage('search');
+      await handleSearch(false);
+      setChipsDirty(false);
+      // handleSearch avale ses erreurs (toast) : si hasSearched n'est pas
+      // passé à true, la recherche a échoué → marquer la vue « à relancer ».
+      setTimeout(() => { if (!hasSearchedRef.current) setChipsDirty(true); }, 150);
+    } else {
+      setChipsDirty(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.selectedJob, selectedAccount, searchSource, handleSuggestionsGenerated, handleSearch]);
+
+  // Affinage par phrase (barre de chips) : édition DIFF des filtres courants
+  // via nl-filter-edit — permet les retraits (« retire Lyon ») et les ajouts
+  // ciblés (« ajoute anglais courant ») sans régénérer depuis le brief.
+  const refineByPhrase = useCallback(async (phrase: string, successFallback?: string) => {
+    try {
+      const { next, note, changed } = await nlFilterEdit({
+        instruction: phrase,
+        filters: search.filtersRef.current,
+        accountId: selectedAccount,
+        searchSource: searchSource === 'database' ? 'database' : 'linkedin',
+      });
+      if (changed) {
+        search.setFilters(next);
+        search.filtersRef.current = next;
+        setChipsDirty(true);
+        toast.success(note || successFallback || 'Filtres mis à jour — relance quand tu es prêt.');
+      } else {
+        toast.info(note || 'Aucun changement à appliquer pour cette instruction.');
+      }
+    } catch (error: any) {
+      const msg = error?.message || '';
+      // Refus de crédits : test sur le code, le message est déjà traduit.
+      toast.error(isInsufficientCreditsError(error) ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : "L'affinage a échoué, réessayez.");
+      throw error;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount, searchSource]);
+
+  // Nouvelle page mission : même affinage, message vouvoyé si le serveur n'en donne pas.
+  const refineByPhraseV3 = useCallback(
+    (phrase: string) => refineByPhrase(phrase, 'Filtres mis à jour. Relancez la recherche pour voir les nouveaux profils.'),
+    [refineByPhrase],
+  );
+  const rerunFromChips = useCallback(() => { setChipsDirty(false); handleSearch(false); }, [handleSearch]);
+
+  const launchFlow = useCallback(async (phrase: string) => {
+    if (flowBusyRef.current) return;
+    flowBusyRef.current = true;
+    setFlowError(null);
+    heroLaunchRef.current = true;
+    setFlowQuery(phrase || `Généré depuis le brief — ${search.selectedJob?.title || activeProject?.name || ''}`);
+    setPlanChips([]);
+    setPlanStage('analyze');
+    setFlowMode('plan');
+    try {
+      await applyPhrase(phrase, true);
+      // Updater fonctionnel : si l'effet de retour au hero est déjà passé
+      // (recherche échouée), on ne l'écrase pas.
+      setFlowMode(prev => (prev === 'plan' ? 'results' : prev));
+    } catch (error: any) {
+      const msg = error?.message || '';
+      const shown = isInsufficientCreditsError(error) ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : 'La génération a échoué, réessayez.';
+      toast.error(shown);
+      setFlowError(shown);
+      setFlowMode(hasSearchedRef.current ? 'results' : 'hero');
+    } finally {
+      flowBusyRef.current = false;
+    }
+  }, [applyPhrase, search.selectedJob, activeProject?.name]);
+
+  // « Configurer les filtres » depuis /sourcing : on saute le prompt et la
+  // fenêtre des filtres s'ouvre, prête à lancer la recherche.
+  const startFiltersDoneRef = useRef(false);
+  useEffect(() => {
+    if (!isV3 || !startWithFilters || startFiltersDoneRef.current) return;
+    if (!activeProject || flowInitProjectRef.current !== activeProject.id || flowMode !== 'hero') return;
+    startFiltersDoneRef.current = true;
+    setFlowMode('results');
+    setFiltersOpen(true);
+  }, [isV3, startWithFilters, activeProject, flowMode]);
+
+  // Phrase venue de /sourcing : lancée une seule fois, comme un clic sur
+  // « Générer les filtres et chercher » (l'écran de plan s'affiche).
+  const initialPhraseDoneRef = useRef(false);
+  useEffect(() => {
+    if (!isV3 || !initialPhrase?.trim() || initialPhraseDoneRef.current) return;
+    if (flowMode !== 'hero' || !search.selectedJob || search.loading) return;
+    if (!selectedAccount && searchSource !== 'database') return;
+    initialPhraseDoneRef.current = true;
+    void launchFlow(initialPhrase.trim());
+  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow]);
+
+  // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
+  // aucune recherche : recherche directe, sans repasser par la génération IA
+  // (un appel IA de 5 à 15 s évité). Le passage hero → results se fait par
+  // l'effet d'initialisation dès que search.loading passe à true.
+  const briefFiltersReady = !!activeProject
+    && Object.keys(activeProject.filters_snapshot || {}).length > 0
+    && !!(search.filters.keywords?.trim() || (search.filters.role?.length ?? 0) > 0);
+  const launchWithBriefFilters = useCallback(() => {
+    if (flowBusyRef.current || search.loading) return;
+    if (!selectedAccount && searchSource !== 'database') {
+      const msg = 'Connectez votre compte LinkedIn pour lancer une recherche.';
+      toast.error(msg);
+      setFlowError(msg);
+      return;
+    }
+    setFlowError(null);
+    setChipsDirty(false);
+    heroLaunchRef.current = true;
+    handleSearch(false);
+  }, [selectedAccount, searchSource, search.loading, handleSearch]);
+
+  const resumeFromHistory = useCallback((entry: { filters_snapshot: LinkedInFiltersState }) => {
+    const merged = { ...INITIAL_FILTERS, ...entry.filters_snapshot };
+    search.setFilters(merged);
+    search.filtersRef.current = merged;
+    search.setResults([]);
+    search.setHasSearched(false);
+    search.setCursor(null);
+    search.setTotal(null);
+    // Pas de setFlowMode('results') ici : l'effet d'initialisation y passe dès
+    // que le chargement démarre, et un échec ramène au hero (heroLaunchRef).
+    setFlowError(null);
+    setChipsDirty(false);
+    heroLaunchRef.current = true;
+    queueMicrotask(() => handleSearch(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSearch]);
+
   const filtersPanel = (
     <SearchFiltersPanel
       accounts={accounts}
@@ -939,6 +1313,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             projectId: activeProject?.id || null,
           });
         }
+        if (isV3) setChipsDirty(false);
         handleSearch(false);
         setFiltersOpen(false);
       }}
@@ -966,40 +1341,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onScoringInstructionsChange={setScoringInstructions}
       suggestions={activeProject ? effectiveSuggestions : null}
       onSuggestionsGenerated={handleSuggestionsGenerated}
+      hidePromptBar={isV3}
     />
   );
 
-  return (
-    <div className="w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]">
-{/* Note merge: l'ancien FilterWizard ajouté en haut par design-audit-6EE0c est ignoré
-    car HEAD a déjà un FilterWizard ligne ~1024 avec une signature plus complète
-    (job, accountId, onApplyFilters). On garde la version HEAD. */}
-      {/* Filters bar — always visible */}
-      <AppliedFiltersBar
-        filters={search.filters}
-        selectedJob={search.selectedJob}
-        searchSource={searchSource}
-        onSearchSourceChange={handleSearchSourceChange}
-        onOpenFilters={() => setFiltersOpen(true)}
-        onSearch={() => handleSearch(false)}
-        loading={search.loading}
-        hasSearched={search.hasSearched}
-        onOpenSearchAgent={onOpenSearchAgent}
-      />
-
-      {/* Bannière « compte à reconnecter » — conflits de session répétés
-          détectés par la boîte noire search_failure_log */}
-      <LinkedInReconnectBanner />
-
-      {/* Bandeau pedigree : info des IDs auto-injectés dans la recherche */}
-      {pedigreeAug && (
-        pedigreeAug.counts.schools
-          + pedigreeAug.counts.companies
-          + pedigreeAug.counts.excludedCompanies
-          + pedigreeAug.counts.seniorityLevels
-          > 0
-        || (pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0
-      ) && (
+  // Bandeau pedigree : info des IDs auto-injectés dans la recherche. Même
+  // bloc pour les deux rendus ; la nouvelle page le range dans « Filtres ».
+  const pedigreeBanner = pedigreeAug && (
+    pedigreeAug.counts.schools
+      + pedigreeAug.counts.companies
+      + pedigreeAug.counts.excludedCompanies
+      + pedigreeAug.counts.seniorityLevels
+      > 0
+    || (pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0
+  ) ? (
         <div className="mx-2 sm:mx-0 mb-2 flex flex-wrap items-center gap-2 px-3 py-2 border border-foreground/15 bg-foreground/[0.03] rounded-md text-xs">
           <span className="font-bold uppercase tracking-wider text-3xs">
             {restrictMode ? 'Mode chirurgical' : 'Filtres ICP'}
@@ -1036,7 +1391,121 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             </span>
           )}
         </div>
+  ) : null;
+
+  // Fond animé du héros et du plan (nouvelle page mission) ; les résultats, denses, restent sans fond.
+  const showBackdrop = isV3 && !!activeProject && (flowMode === 'hero' || flowMode === 'plan');
+
+  return (
+    <div className={cn('w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]', showBackdrop && 'relative konekt-on-backdrop')}>
+      {showBackdrop && <PageBackdrop follow contained />}
+{/* Note merge: l'ancien FilterWizard ajouté en haut par design-audit-6EE0c est ignoré
+    car HEAD a déjà un FilterWizard ligne ~1024 avec une signature plus complète
+    (job, accountId, onApplyFilters). On garde la version HEAD. */}
+      {/* ── V3 (mission) : hero → plan → barre de chips. Hors mission : barre historique. ── */}
+      {!activeProject && (
+        <AppliedFiltersBar
+          filters={search.filters}
+          selectedJob={search.selectedJob}
+          searchSource={searchSource}
+          onSearchSourceChange={handleSearchSourceChange}
+          onOpenFilters={() => setFiltersOpen(true)}
+          onSearch={() => handleSearch(false)}
+          loading={search.loading}
+          hasSearched={search.hasSearched}
+          onOpenSearchAgent={onOpenSearchAgent}
+        />
       )}
+      {activeProject && flowMode === 'hero' && (
+        <SearchHero
+          jobTitle={search.selectedJob?.title || activeProject.name}
+          clientName={(search.selectedJob as any)?.client?.name || null}
+          history={searchHistory.history}
+          onLaunch={launchFlow}
+          onResumeHistory={resumeFromHistory}
+          onLaunchWithBriefFilters={briefFiltersReady ? launchWithBriefFilters : undefined}
+          errorMessage={flowError}
+          disabled={search.loading}
+          variant={isV3 ? 'mission-v3' : 'default'}
+        />
+      )}
+      {activeProject && flowMode === 'plan' && (
+        <SearchPlan query={flowQuery} stage={planStage} chips={planChips} withBrief={activeProject.kind !== 'search'} />
+      )}
+      {isV3 && flowMode === 'results' && (
+        <SourcingTopBar
+          filterCount={countFilterChips(search.filters)}
+          onRefine={refineByPhraseV3}
+          onNewSearch={() => setFiltersOpen(true)}
+          disabled={search.loading}
+        >
+          <div className="flex flex-col gap-3">
+            <FilterChipBar
+              variant="mission-v3"
+              filters={search.filters}
+              onFiltersEdit={handleChipsEdit}
+              total={search.total}
+              loading={search.loading}
+              dirty={chipsDirty}
+              onRerun={rerunFromChips}
+              onOpenAdvanced={() => setFiltersOpen(true)}
+              onFollowUp={refineByPhraseV3}
+              accountId={selectedAccount}
+              searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
+            />
+            <SmartOverlays
+              variant="mission-v3"
+              filters={search.filters}
+              onFiltersEdit={handleChipsEdit}
+              suggestedCompanies={effectiveSuggestions?.alt_companies || []}
+              searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
+              trailing={openToWorkSupported ? (
+                // Même puce que les filtres rapides : elle rejoint leur rangée au lieu de rester seule sur une ligne.
+                <button
+                  type="button"
+                  onClick={handleToggleOpenToWork}
+                  disabled={search.loading}
+                  aria-pressed={openToWorkActive}
+                  title="Relance la recherche limitée aux profils à l'écoute"
+                  className={quickChipV3(openToWorkActive)}
+                >
+                  À l'écoute
+                </button>
+              ) : undefined}
+            />
+            {pedigreeBanner}
+          </div>
+        </SourcingTopBar>
+      )}
+      {activeProject && !isV3 && flowMode === 'results' && (
+        <>
+          <FilterChipBar
+            filters={search.filters}
+            onFiltersEdit={handleChipsEdit}
+            total={search.total}
+            loading={search.loading}
+            dirty={chipsDirty}
+            onRerun={() => { setChipsDirty(false); handleSearch(false); }}
+            onOpenAdvanced={() => setFiltersOpen(true)}
+            onFollowUp={refineByPhrase}
+            accountId={selectedAccount}
+            searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
+          />
+          <SmartOverlays
+            filters={search.filters}
+            onFiltersEdit={handleChipsEdit}
+            suggestedCompanies={effectiveSuggestions?.alt_companies || []}
+            searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
+          />
+        </>
+      )}
+
+      {/* Bannière « compte à reconnecter » — conflits de session répétés
+          détectés par la boîte noire search_failure_log */}
+      <LinkedInReconnectBanner />
+
+      {/* Bandeau pedigree : info des IDs auto-injectés dans la recherche */}
+      {!isV3 && (!activeProject || flowMode === 'results') && pedigreeBanner}
 
       {/* Filters modal — taille raisonnable (max 3xl ~768 px). Avant : 90vw
           qui prenait toute la largeur de l'écran → form column unique
@@ -1050,7 +1519,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Results panel — full width */}
+      {/* Results panel — full width (masqué pendant hero/plan en mission) */}
+      {(!activeProject || flowMode === 'results') && (
       <div className="min-w-0 min-h-0 flex-1">
         <SearchResultsPanel
           results={search.results}
@@ -1103,6 +1573,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               : undefined
           }
           onBatchScore={scoring.handleBatchScore}
+          canBatchScore={!scoringDisabledReason}
           onBulkDismiss={handleBulkDismiss}
           onBulkAddToProject={handleBulkAddToProject}
           onSetAutoHideTreated={search.setAutoHideTreated}
@@ -1126,8 +1597,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onClearBatchReport={scoring.clearBatchReport}
           scoringModel={scoringModel}
           onScoringModelChange={handleScoringModelChange}
+          {...(isV3 ? {
+            layout: 'mission-v3' as const,
+            chipsDirty,
+            onRerun: rerunFromChips,
+            onSetSelection: (ids: string[]) => search.setSelectedProfiles(new Set(ids)),
+            onRetainProfiles: handleRetainProfiles,
+            onDismissProfiles: handleDismissProfiles,
+            onRestoreProfile: handleRestoreProfileV3,
+          } : {})}
         />
       </div>
+      )}
 
       {search.selectedJob ? (
         <FilterWizard

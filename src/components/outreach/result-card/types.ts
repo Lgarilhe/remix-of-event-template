@@ -20,7 +20,6 @@ export interface LinkedInResultCardProps {
   onArchive?: () => void;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
   airtableMatch?: { airtable_id: string; source_base: string; full_name: string | null; status: string | null; match_type?: 'url' | 'fuzzy' } | null;
-  notionMatch?: { id: string; name: string } | null;
   /** Info enrollment séquence pour ce profil sur la mission courante.
    *  Si présent, on affiche un badge "En séquence X · Étape N" et on
    *  prévient le user avant un re-enrôlement. */

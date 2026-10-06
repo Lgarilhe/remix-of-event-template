@@ -81,6 +81,31 @@ Deno.serve(async (req) => {
       return json({ error: "Cette invitation ne correspond pas à votre adresse email" }, 403);
     }
 
+    // Le projet doit appartenir à l'organisation de l'invitation, et l'inviteur
+    // à cette organisation (SEC-003) : sinon un membre d'une org quelconque
+    // s'auto-invite sur le projet d'une autre org.
+    const { data: project, error: projectErr } = await admin
+      .from("sourcing_projects")
+      .select("id, organization_id")
+      .eq("id", invitation.project_id)
+      .maybeSingle();
+    if (projectErr) {
+      console.error("[accept-mission-invitation] project lookup failed:", projectErr);
+      return json({ error: "Erreur serveur" }, 500);
+    }
+    if (!project || project.organization_id !== invitation.organization_id) {
+      return json({ error: "Cette invitation ne correspond à aucune mission de l'organisation" }, 403);
+    }
+    const { data: inviterMembership } = await admin
+      .from("organization_members")
+      .select("id")
+      .eq("organization_id", invitation.organization_id)
+      .eq("user_id", invitation.invited_by)
+      .maybeSingle();
+    if (!inviterMembership) {
+      return json({ error: "Invitation invalide" }, 403);
+    }
+
     // Ajout à l'équipe mission (idempotent grâce au UNIQUE(project_id, user_id))
     let alreadyMember = false;
     const { error: teamErr } = await admin.from("mission_team").insert({

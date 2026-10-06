@@ -2,7 +2,7 @@
  * EnrichContactButton — Bouton pour récupérer email + téléphone d'un candidat.
  *
  * Workflow :
- *   1. Clic → modal de confirmation (informer du coût)
+ *   1. Clic → modal de confirmation (forfait de contacts inclus, coût hors forfait)
  *   2. Confirmation → useCandidateEnrichment.enrich()
  *   3. Pendant le polling → spinner + texte "Recherche en cours..."
  *   4. Résultat → affichage email + téléphone (cliquables) ou "Non trouvé"
@@ -19,11 +19,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { Mail, Phone, Loader2, Sparkles, Check, X, AlertTriangle } from 'lucide-react';
+import { Mail, Phone, Loader2, Check, X, AlertTriangle, AtSign } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
 import { useAICredits } from '@/hooks/useAICredits';
-import { useEnrichmentPermission } from '@/hooks/useEnrichmentPermission';
+import { useEnrichmentPermission, formatResetDay } from '@/hooks/useEnrichmentPermission';
+import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import type { PipelineProfile } from '@/lib/atsCandidateToProfile';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -72,6 +73,8 @@ interface EnrichContactButtonProps {
    * est déjà géré ailleurs (block CONTACT INFO).
    */
   mode?: 'auto' | 'button-only';
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
 }
 
 function getCurrentCompany(profile: LinkedInProfile): string | undefined {
@@ -85,6 +88,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   compact = false,
   className = '',
   mode = 'auto',
+  quiet = false,
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -97,11 +101,16 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const [withPhone, setWithPhone] = useState(false);
   const { enrich, status, contact, isLoading } = useCandidateEnrichment();
   const elapsed = useElapsed(isLoading);
-  const { creditsRemaining, invalidateBalance } = useAICredits();
-  const { canEnrich, quotaMonthly, quotaUsed, quotaRemaining, isQuotaExhausted, refetchQuota } = useEnrichmentPermission();
+  const { creditsRemaining, invalidateBalance, hasBalance: hasCredits } = useAICredits();
+  const {
+    canEnrich, quotaMonthly, quotaUsed, isQuotaExhausted,
+    includedMonthly, includedUsed, includedRemaining, periodEnd, refetchQuota,
+  } = useEnrichmentPermission();
+  // Plan effectif gratuit : l'enrichissement de contact nécessite un abonnement.
+  const { isFree: isFreePlan } = useSubscriptionState();
   const navigate = useNavigate();
 
-  // Invalidate balance + quota cache après settle (quand BC retourne terminated avec contact trouvé)
+  // Invalidate balance + quota cache après settle (quand le service retourne terminated avec contact trouvé)
   useEffect(() => {
     if (status === 'terminated' && (contact?.email || contact?.phone)) {
       invalidateBalance();
@@ -109,13 +118,24 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     }
   }, [status, contact, invalidateBalance, refetchQuota]);
 
-  // Coût total demandé selon les checkboxes cochées
-  const totalCost = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
-  const insufficientCredits = totalCost > creditsRemaining;
+  // Forfait : un email = 1 unité, un mobile = 10, même rapport que le coût en
+  // crédits hors forfait. Le serveur couvre la demande entière ou pas du tout
+  // (reste >= unités demandées) : compter le mobile pour une unité annonçait
+  // « inclus » sur une demande que le serveur facturait.
+  const requestedUnits = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
+  const coveredByPlan = requestedUnits > 0 && includedRemaining >= requestedUnits;
+  // Coût en crédits, seulement pour la part hors forfait
+  const totalCost = coveredByPlan ? 0 : (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
+  // Solde non chargé : il vaut 0 par défaut, ce qui bloquerait la recherche
+  // alors que le solde est peut-être intact. Le serveur tranche de son côté.
+  const insufficientCredits = hasCredits && totalCost > creditsRemaining;
+  const resetDay = formatResetDay(periodEnd);
 
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
   const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
   const company = getCurrentCompany(profile);
+  // Profil issu du pipeline : identifiant candidat pour rattacher le résultat à la fiche
+  const candidateId = (profile as PipelineProfile).candidateId;
 
   // Pre-existing emails/phones from profile (Unipile contact_info)
   const existingEmail = profile.contact_info?.emails?.[0];
@@ -124,7 +144,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   // Si on a déjà des contacts dans le profil, on les affiche directement (pas besoin d'enrich)
   const hasExisting = !!(existingEmail || existingPhone);
 
-  // Si enrichment terminé, on affiche le résultat enrichi
+  // Si enrichissement terminé, on affiche le résultat enrichi
   const enrichedEmail = contact?.email || existingEmail;
   const enrichedPhone = contact?.phone || existingPhone;
   const hasEnrichedResult = status === 'terminated' && (contact?.email || contact?.phone);
@@ -136,7 +156,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     setBackgrounded(false);
     try {
       if (!linkedinUrl) {
-        toast.error('URL LinkedIn manquante pour cet enrichment');
+        toast.error("URL LinkedIn manquante pour cet enrichissement de contact");
         return;
       }
       if (!withEmail && !withPhone) {
@@ -154,13 +174,14 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           emails: profile.contact_info.emails || [],
           phones: profile.contact_info.phones || [],
         } : null,
+        candidateId,
       });
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Quand l'enrichment se termine en arrière-plan, on remet le bouton visible
+  // Quand l'enrichissement se termine en arrière-plan, on remet le bouton visible
   // (avec le résultat affiché). Si l'user était backgrounded, toast notification.
   useEffect(() => {
     if (status === 'terminated' && backgrounded) {
@@ -200,7 +221,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           <button
             type="button"
             onClick={() => copy(enrichedEmail, 'email')}
-            className="inline-flex items-center gap-1 text-[11px] text-info hover:text-info/80 transition-colors"
+            className="inline-flex items-center gap-1 text-2xs text-info hover:text-info/80 transition-colors"
             title={`Copier ${enrichedEmail}`}
           >
             {emailCopied ? <Check className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
@@ -211,7 +232,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           <button
             type="button"
             onClick={() => copy(enrichedPhone, 'phone')}
-            className="inline-flex items-center gap-1 text-[11px] text-info hover:text-info/80 transition-colors"
+            className="inline-flex items-center gap-1 text-2xs text-info hover:text-info/80 transition-colors"
             title={`Copier ${enrichedPhone}`}
           >
             {phoneCopied ? <Check className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
@@ -222,7 +243,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     );
   }
 
-  // ─── Affichage : pendant l'enrichment (polling) ──
+  // ─── Affichage : pendant l'enrichissement (polling) ──
   // Si l'user a cliqué "Continuer en arrière-plan" → on affiche le bouton initial
   // mais avec un petit indicateur que le polling continue (pour qu'il puisse
   // garder un œil sur le profil).
@@ -231,7 +252,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       <button
         type="button"
         onClick={() => setBackgrounded(false)}
-        className={`inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors ${className}`}
+        className={`inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors ${className}`}
         title="Recherche en arrière-plan, cliquer pour rouvrir"
       >
         <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
@@ -251,7 +272,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         >
           <Loader2 className={compact ? 'w-3 h-3 animate-spin' : 'w-4 h-4 animate-spin'} aria-hidden="true" />
           <span className="text-xs">{progressMessage(elapsed)}</span>
-          <span className="text-[10px] text-muted-foreground tabular-nums ml-1">
+          <span className="text-2xs text-muted-foreground tabular-nums ml-1">
             {formatDuration(elapsed)}
           </span>
         </Button>
@@ -259,7 +280,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           variant="ghost"
           size={compact ? 'sm' : 'default'}
           onClick={() => setBackgrounded(true)}
-          className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-2xs text-muted-foreground hover:text-foreground"
           title="Continuer en arrière-plan (vous pouvez fermer cette card)"
         >
           <X className="w-3 h-3" aria-hidden="true" />
@@ -269,10 +290,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     );
   }
 
-  // ─── Affichage : résultat vide après enrichment
+  // ─── Affichage : résultat vide après enrichissement
   if (status === 'terminated' && !hasEnrichedResult) {
     return (
-      <span className={`text-[11px] text-muted-foreground italic ${className}`}>
+      <span className={`text-2xs text-muted-foreground italic ${className}`}>
         Aucun contact trouvé
       </span>
     );
@@ -285,14 +306,29 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   if (!canEnrich) {
     return (
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title="Demandez à votre administrateur d'activer la récupération de coordonnées"
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>Coordonnées</span>
+      </Button>
+    );
+  }
+
+  if (isFreePlan) {
+    return (
+      <Button
+        variant={quiet ? 'ghost' : 'outline'}
+        size={compact ? 'sm' : 'default'}
+        disabled
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
+        title="L'enrichissement de contact nécessite un abonnement"
+      >
+        <AtSign aria-hidden="true" />
+        <span>{compact ? 'Coordonnées' : 'Coordonnées (abonnement requis)'}</span>
       </Button>
     );
   }
@@ -300,13 +336,13 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   return (
     <>
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`gap-1.5 font-medium bg-muted border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all ${compact ? 'h-7 px-2.5 text-xs rounded-lg border-2' : 'text-xs'} ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title={`Récupérer email & téléphone de ${fullName}`}
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>{compact ? 'Coordonnées' : 'Récupérer email & téléphone'}</span>
       </Button>
 
@@ -331,7 +367,9 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
               <Mail className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Email professionnel</div>
-                <div className="text-[11px] text-muted-foreground">1 crédit si trouvé · ~30s à 1 min</div>
+                <div className="text-2xs text-muted-foreground">
+                  {coveredByPlan ? 'Inclus dans votre forfait' : '1 crédit si trouvé'} · ~30 s à 1 min
+                </div>
               </div>
             </label>
 
@@ -344,50 +382,71 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
               <Phone className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
-                <div className="text-[11px] text-muted-foreground">10 crédits si trouvé · jusqu'à 3 min · plus rare</div>
+                <div className="text-2xs text-muted-foreground">
+                  {coveredByPlan ? 'Inclus dans votre forfait' : '10 crédits si trouvé'} · jusqu'à 3 min · plus rare
+                </div>
               </div>
             </label>
           </div>
 
-          {/* Coût + solde + quota live */}
+          {/* Forfait + coût hors forfait + solde + plafond membre */}
           <div className={`border rounded-lg px-3 py-2 text-xs space-y-1 ${
             insufficientCredits || isQuotaExhausted ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-muted/40'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Coût maximum :</span>
+              <span className="text-muted-foreground">Forfait du mois (1 par email, 10 par mobile) :</span>
               <span className="font-bold tabular-nums text-foreground">
-                {totalCost} crédit{totalCost > 1 ? 's' : ''}
+                {includedUsed} / {includedMonthly}
+                {resetDay && <span className="font-normal text-muted-foreground"> (reset le {resetDay})</span>}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Solde Konekt :</span>
-              <span className={`font-bold tabular-nums ${
-                insufficientCredits ? 'text-destructive' : 'text-foreground'
-              }`}>
-                {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Quota mensuel :</span>
-              <span className={`font-bold tabular-nums ${
-                isQuotaExhausted ? 'text-destructive' : 'text-foreground'
-              }`}>
-                {quotaUsed}/{quotaMonthly}
-              </span>
-            </div>
+            {!coveredByPlan && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Coût hors forfait :</span>
+                  <span className="font-bold tabular-nums text-foreground">
+                    {totalCost} crédit{totalCost > 1 ? 's' : ''}
+                  </span>
+                </div>
+                {hasCredits && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Solde Konekt :</span>
+                    <span className={`font-bold tabular-nums ${
+                      insufficientCredits ? 'text-destructive' : 'text-foreground'
+                    }`}>
+                      {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+            {quotaMonthly !== null && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Plafond de votre compte :</span>
+                <span className={`font-bold tabular-nums ${
+                  isQuotaExhausted ? 'text-destructive' : 'text-foreground'
+                }`}>
+                  {quotaUsed} / {quotaMonthly}
+                </span>
+              </div>
+            )}
             {isQuotaExhausted ? (
               <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
                 <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>Quota mensuel atteint. Demandez à votre admin de l'augmenter.</span>
+                <span>Plafond mensuel de votre compte atteint. Demandez à un administrateur de l'augmenter dans Paramètres &gt; Équipe.</span>
               </div>
             ) : insufficientCredits ? (
               <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
                 <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>Crédits insuffisants. Achetez un pack pour continuer.</span>
+                <span>Forfait du mois épuisé et crédits insuffisants. Achetez un pack ou changez de forfait dans Paramètres › Abonnement et crédits.</span>
+              </div>
+            ) : coveredByPlan ? (
+              <div className="text-2xs text-muted-foreground">
+                Cette recherche est comprise dans votre forfait, aucun crédit ne sera débité.
               </div>
             ) : (
-              <div className="text-[10px] text-muted-foreground">
-                ✓ Aucun crédit consommé si rien n'est trouvé
+              <div className="text-2xs text-muted-foreground">
+                Forfait du mois épuisé : la recherche est facturée en crédits, seulement si un contact est trouvé.
               </div>
             )}
           </div>
@@ -399,11 +458,11 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
                 onClick={() => setConfirmOpen(false)}
                 disabled
               >
-                Quota mensuel atteint
+                Plafond mensuel atteint
               </AlertDialogAction>
             ) : insufficientCredits ? (
               <AlertDialogAction
-                onClick={() => { setConfirmOpen(false); navigate('/settings?tab=credits'); }}
+                onClick={() => { setConfirmOpen(false); navigate('/settings/org/billing#credits'); }}
                 className="bg-info hover:bg-info/90"
               >
                 Acheter des crédits
@@ -411,7 +470,8 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
             ) : (
               <AlertDialogAction
                 onClick={handleConfirm}
-                disabled={!withEmail && !withPhone}
+                disabled={(!withEmail && !withPhone) || isFreePlan}
+                title={isFreePlan ? "L'enrichissement de contact nécessite un abonnement" : undefined}
               >
                 Lancer la recherche
               </AlertDialogAction>

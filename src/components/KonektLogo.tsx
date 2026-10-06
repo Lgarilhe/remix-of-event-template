@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { useAppTheme } from '@/lib/theme';
 
 type Variant = 'full' | 'mark';
 type Theme = 'auto' | 'dark' | 'light';
@@ -7,10 +8,9 @@ interface KonektLogoProps {
   /** "full" = mark + wordmark "Konekt" / "mark" = cercle seul */
   variant?: Variant;
   /**
-   * "auto" : utilise konekt-logo.svg (bleu navy) — convient pour fond clair.
-   *          Pour fond sombre, passer explicitement "light" (logo blanc).
-   * "dark" : alias de "auto" — logo bleu navy.
-   * "light" : logo blanc, pour fond sombre (sidebar, hero dark mode).
+   * "auto" : suit le thème de l'application (blanc en sombre, bleu marine en clair).
+   * "dark" : logo bleu marine, pour un fond clair fixe.
+   * "light" : logo blanc, pour un fond sombre fixe.
    */
   theme?: Theme;
   /** Hauteur en px (la largeur s'adapte au ratio). Défaut : 32 pour mark, 36 pour full. */
@@ -24,7 +24,8 @@ interface KonektLogoProps {
  * Logo Konekt officiel.
  *
  * Usage :
- *   <KonektLogo />                          // full, bleu navy (fond clair)
+ *   <KonektLogo theme="auto" />             // suit le thème de l'application
+ *   <KonektLogo />                          // full, bleu marine (fond clair)
  *   <KonektLogo theme="light" />            // full, blanc (fond sombre)
  *   <KonektLogo variant="mark" size={28} /> // mark seul (favicon-style)
  *
@@ -39,7 +40,8 @@ export const KonektLogo = ({
   className,
   ariaLabel = 'Konekt',
 }: KonektLogoProps) => {
-  const useWhite = theme === 'light';
+  const appTheme = useAppTheme();
+  const useWhite = theme === 'light' || (theme === 'auto' && appTheme === 'dark');
   const base = variant === 'mark' ? 'konekt-mark' : 'konekt-logo';
   const src = `/${base}${useWhite ? '-white' : ''}.png`;
   const defaultSize = variant === 'mark' ? 32 : 36;

@@ -18,16 +18,29 @@
  *    = event.id → suggère "Préparer l'entretien {candidat}" pour 1h
  *    avant le début.
  *
- * 3. **Candidat stagnant sans relance active** : candidat à un stage
- *    actif depuis > guide_time + 2 jours, aucune task category='follow_up'
- *    active liée → suggère "Relancer {candidat} stagnant depuis {N}j".
+ * 3. **Candidat stagnant sans relance active** : candidat engagé (Contacté,
+ *    A répondu, En entretien) depuis plus de guide_time + 2 jours dans son
+ *    étape (stage_entered_at), aucune task category='follow_up' active liée
+ *    → suggère "Relancer {candidat}". À trier, Retenu, Embauché et Écarté
+ *    n'en proposent jamais (plan 0c, section 6.4).
  */
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
-import { differenceInDays, differenceInHours, parseISO } from 'date-fns';
+import { differenceInHours, parseISO } from 'date-fns';
+import { atsColumnOf, atsColumnTitle, stageAgeDays } from '@/lib/stageDisplay';
+
+/**
+ * Nom de l'entretien pour une phrase : « Entretien final », « Qualification ».
+ * Évite « Entretien Entretien final » quand le nom commence déjà par le mot.
+ */
+const eventLabel = (eventName: string | null | undefined): string => {
+  const name = eventName?.trim();
+  if (!name) return "L'entretien";
+  return /^entretien\b/i.test(name) ? name : `L'entretien « ${name} »`;
+};
 
 export interface AutoTaskSuggestion {
   /** Clé unique pour dédup côté UI (pas d'id DB tant que pas créée) */
@@ -64,23 +77,26 @@ interface RawEvent {
   status: string;
 }
 
+/** Ligne de mission_candidate_rows : un candidat par mission, doublons réunis. */
 interface RawCandidateStatus {
-  id: string;
-  candidate_id: string;
+  id: string | null;
+  candidate_id: string | null;
   candidate_name: string | null;
   candidate_headline: string | null;
-  job_id: string | null;
+  project_id: string | null;
+  mission_name: string | null;
+  general_stage: string | null;
   pipeline_stage: string | null;
-  status: string;
-  updated_at: string;
+  stage_entered_at: string | null;
+  updated_at: string | null;
+  created_at: string | null;
 }
 
-// Guide times par stage (jours) — au-delà du guide + 2j on flag stagnant
+// Délais par colonne du /pipeline (jours) : au-delà du délai + 2 j on flag
+// stagnant. Pas de Nouveau ni de Pressenti : À trier et Retenu sont exemptés.
 const GUIDE_TIMES: Record<string, number> = {
-  Nouveau: 3,
   Contacté: 5,
   Répondu: 3,
-  Pressenti: 5,
   'Pré-qualif': 7,
   'CV envoyé': 5,
   'ITW en cours': 10,
@@ -151,12 +167,12 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
       suggestions.push({
         key: `debrief-${ev.id}`,
         category: 'debrief',
-        title: `Débrief de l'entretien ${ev.candidate_name}`,
+        title: `Compte rendu de l'entretien avec ${ev.candidate_name}`,
         description: [
-          `Entretien ${ev.event_name || 'qualif'} terminé il y a ${hoursSince}h.`,
+          `${eventLabel(ev.event_name)} terminé il y a ${hoursSince} h.`,
           ev.client_name ? `Client : ${ev.client_name}.` : null,
           ev.job_title ? `Poste : ${ev.job_title}.` : null,
-          'Note tes observations + envoie le retour client.',
+          'Notez vos observations, puis envoyez le retour au client.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -169,7 +185,7 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
         },
         projectId: ev.project_id,
         sourceEventId: ev.id,
-        reason: `Entretien terminé il y a ${hoursSince}h sans débrief enregistré`,
+        reason: `Entretien terminé il y a ${hoursSince} h, sans compte rendu enregistré`,
       });
     }
 
@@ -184,12 +200,12 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
       suggestions.push({
         key: `prep-${ev.id}`,
         category: 'interview_prep',
-        title: `Préparer l'entretien ${ev.candidate_name}`,
+        title: `Préparer l'entretien avec ${ev.candidate_name}`,
         description: [
-          `RDV ${ev.event_name || 'qualif'} dans ${hoursUntil}h.`,
+          `${eventLabel(ev.event_name)} dans ${hoursUntil} h.`,
           ev.client_name ? `Client : ${ev.client_name}.` : null,
           ev.job_title ? `Poste : ${ev.job_title}.` : null,
-          'Relire CV + scoring + questions à creuser.',
+          'Relisez le CV et le score, puis préparez vos questions.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -202,43 +218,44 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
         },
         projectId: ev.project_id,
         sourceEventId: ev.id,
-        reason: `RDV dans ${hoursUntil}h sans tâche de prep enregistrée`,
+        reason: `Entretien dans ${hoursUntil} h, sans tâche de préparation`,
       });
     }
   }
 
   // ─── 3. FOLLOW_UP candidats stagnants ────────────────────────────────
-  // On flag les candidats actifs (pas Gagné/Perdu) dont updated_at est
-  // antérieur au guide_time + tolerance jours.
+  // Candidats engagés (ni À trier, ni Retenu, ni Embauché, ni Écarté) dont
+  // l'entrée dans l'étape (stage_entered_at) est antérieure au délai de la
+  // colonne + tolérance. Retenu est exclu dans la requête : les retenus
+  // repris ont une date approchée ancienne et rempliraient les 50 lignes lues.
   // On limite à 8 suggestions stagnant pour pas spammer
   const { data: candidates } = await supabase
-    .from('job_candidate_status')
+    .from('mission_candidate_rows')
     .select(
-      'id, candidate_id, candidate_name, candidate_headline, job_id, pipeline_stage, status, updated_at',
+      'id, candidate_id, candidate_name, candidate_headline, project_id, mission_name, general_stage, pipeline_stage, stage_entered_at, updated_at, created_at',
     )
     .eq('organization_id', orgId)
     .not('candidate_name', 'is', null)
-    .neq('pipeline_stage', 'Gagné')
-    .neq('pipeline_stage', 'Perdu')
-    .neq('status', 'dismissed')
-    .order('updated_at', { ascending: true })
+    .not('candidate_id', 'is', null)
+    .not('general_stage', 'in', '(hired,rejected,to_sort,retained)')
+    .order('stage_entered_at', { ascending: true })
     .limit(50);
 
-  const stagnantCandidates: RawCandidateStatus[] = [];
+  const stagnantCandidates: { row: RawCandidateStatus; column: string; days: number }[] = [];
   for (const c of (candidates || []) as RawCandidateStatus[]) {
-    const stage = c.pipeline_stage || 'Nouveau';
-    const guide = GUIDE_TIMES[stage];
-    if (!guide) continue;
-    const days = differenceInDays(now, parseISO(c.updated_at));
+    const column = atsColumnOf(c);
+    const guide = GUIDE_TIMES[column];
+    const days = stageAgeDays(c, now);
+    if (!guide || days === null) continue;
     if (days > guide + STAGNANT_TOLERANCE_DAYS) {
-      stagnantCandidates.push(c);
+      stagnantCandidates.push({ row: c, column, days });
     }
     if (stagnantCandidates.length >= 8) break;
   }
 
   // Dédup : check si task follow_up active déjà créée pour ce candidat
   if (stagnantCandidates.length > 0) {
-    const stagCandidateIds = stagnantCandidates.map((c) => c.candidate_id);
+    const stagCandidateIds = stagnantCandidates.map((s) => s.row.candidate_id as string);
     const { data: existingFollowUps } = await supabase
       .from('candidate_reminders')
       .select('candidate_id')
@@ -246,18 +263,18 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
       .eq('category', 'follow_up')
       .is('completed_at', null);
 
-    const followedUp = new Set((existingFollowUps || []).map((r: any) => r.candidate_id));
-    for (const c of stagnantCandidates) {
+    const followedUp = new Set((existingFollowUps || []).map((r: { candidate_id: string | null }) => r.candidate_id));
+    for (const { row: c, column, days } of stagnantCandidates) {
       if (followedUp.has(c.candidate_id)) continue;
-      const stage = c.pipeline_stage || 'Nouveau';
-      const days = differenceInDays(now, parseISO(c.updated_at));
+      const stageName = atsColumnTitle(column);
       suggestions.push({
         key: `followup-${c.id}`,
         category: 'follow_up',
         title: `Relancer ${c.candidate_name}`,
         description: [
-          `Stagnant en "${stage}" depuis ${days}j (guide ${GUIDE_TIMES[stage] || '?'}j).`,
-          'Renvoie un message ou propose une nouvelle action.',
+          `À l'étape « ${stageName} » depuis ${days} jours (délai prévu : ${GUIDE_TIMES[column]} jours).`,
+          c.mission_name ? `Mission : ${c.mission_name}.` : null,
+          'Envoyez un message ou proposez une prochaine étape.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -268,9 +285,9 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
           avatarUrl: null,
           headline: c.candidate_headline,
         },
-        projectId: null, // job_id !== project_id, on garde null
+        projectId: c.project_id,
         sourceEventId: null,
-        reason: `Stagnant depuis ${days}j en "${stage}"`,
+        reason: `Dans l'étape « ${stageName} » depuis ${days} jours`,
       });
     }
   }

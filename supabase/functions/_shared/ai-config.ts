@@ -81,6 +81,34 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     supportsThinking: true,
     description: "Le plus intelligent",
   },
+  // Génération 5 : moins chers que leurs équivalents 4.6 et plus capables.
+  // Multiplicateur proportionnel au prix d'entrée (Sonnet 4.6 à 3 $ = 1.0), avec la
+  // même marge que les lignes existantes. Température refusée (400) et réflexion
+  // active par défaut : voir scoringModelParams dans score-profile-job.
+  "claude-sonnet-5-5": {
+    id: "claude-sonnet-5-5",
+    name: "Claude Sonnet 5.5",
+    provider: "anthropic",
+    tier: "balanced",
+    inputPricePerMTok: 2.00,
+    outputPricePerMTok: 10.00,
+    multiplier: 0.7,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Équilibré, nouvelle génération",
+  },
+  "claude-opus-5-5": {
+    id: "claude-opus-5-5",
+    name: "Claude Opus 5.5",
+    provider: "anthropic",
+    tier: "premium",
+    inputPricePerMTok: 4.00,
+    outputPricePerMTok: 20.00,
+    multiplier: 1.5,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Le plus intelligent, nouvelle génération",
+  },
 };
 
 // ─── Action Cost Catalog ────────────────────────────────────────────────────
@@ -124,11 +152,12 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 4_000,
     routingTier: "default",
     category: "sourcing",
-    // Auto mode → Haiku 4.5. Scoring est une tâche bien structurée
-    // (rubric explicite, output JSON, contexte fourni) → Haiku suffit pour
-    // 80-90 % des cas. Les orgs qui ont mis Sonnet/Opus en default
-    // gardent leur choix (orgDefault override autoDefault).
-    autoDefault: "claude-haiku-4-5",
+    // Auto mode → Sonnet 5.5 (décision Laurent du 2026-10-05 : la qualité du
+    // scoring prime). Avant : Haiku 4.5 en 1re passe puis Sonnet 4.6 sur les
+    // profils limites, deux appels à la suite. Sonnet 5.5 note en une passe : plus
+    // d'escalation (TIER_ESCALATION_MAP n'a pas d'entrée pour lui). Les orgs qui ont
+    // mis un autre modèle en default gardent leur choix (orgDefault > autoDefault).
+    autoDefault: "claude-sonnet-5-5",
   },
   outreach_message: {
     action: "outreach_message",
@@ -176,6 +205,14 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "qualification",
   },
+  interview_followup: {
+    action: "interview_followup",
+    label: "Message après un entretien",
+    floor: 1,
+    typicalTokens: 3_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
   live_coaching: {
     action: "live_coaching",
     label: "Coaching live (par minute)",
@@ -188,9 +225,49 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     action: "agent_search_calibration",
     label: "Agent — calibration",
     floor: 3,
-    typicalTokens: 6_000,
+    typicalTokens: 3_000,
     routingTier: "thinking",
     category: "agent",
+    providers: ["anthropic"],
+  },
+  conversation_title: {
+    action: "conversation_title",
+    label: "Assistant, titre de conversation",
+    floor: 1,
+    typicalTokens: 1_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+    providers: ["anthropic"],
+  },
+  intent_routing: {
+    action: "intent_routing",
+    label: "Assistant, routage d'intention",
+    floor: 1,
+    typicalTokens: 2_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+    providers: ["anthropic"],
+  },
+  context_compaction: {
+    action: "context_compaction",
+    label: "Assistant, résumé de conversation",
+    floor: 1,
+    typicalTokens: 4_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+    providers: ["anthropic"],
+  },
+  memory_extract: {
+    action: "memory_extract",
+    label: "Assistant, mémorisation",
+    floor: 1,
+    typicalTokens: 3_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
     providers: ["anthropic"],
   },
   agent_search_run: {
@@ -204,9 +281,9 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   },
   agent_chat: {
     action: "agent_chat",
-    label: "Copilot — chat (par message)",
+    label: "Assistant, chat (par message)",
     floor: 1,
-    typicalTokens: 4_000,
+    typicalTokens: 2_500,
     routingTier: "thinking",
     category: "agent",
     providers: ["anthropic"],
@@ -244,6 +321,22 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 4_000,
     routingTier: "default",
     category: "sourcing",
+  },
+  // Analyse d'une fiche de poste à la création d'une mission (Brief IA). Action
+  // à part de filter_generation : celle-ci est partagée avec nl-filter-edit et
+  // d'autres appelants qui lisent content[0].text, ce que le bloc "thinking"
+  // des modèles 5.5 casse. Sonnet 5.5 par défaut (décision du 2026-10-05, comme
+  // le scoring) ; un modèle choisi par l'organisation ou l'utilisateur l'emporte.
+  // typicalTokens : le prompt système pèse déjà ~7 000 tokens, plus la fiche
+  // (12 000 caractères au plus) et la réponse JSON.
+  brief_analysis: {
+    action: "brief_analysis",
+    label: "Analyse d'une fiche de poste",
+    floor: 2,
+    typicalTokens: 10_000,
+    routingTier: "default",
+    category: "sourcing",
+    autoDefault: "claude-sonnet-5-5",
   },
   filter_assistant_msg: {
     action: "filter_assistant_msg",
@@ -327,6 +420,17 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "outreach",
   },
+  auto_categorize_chats: {
+    action: "auto_categorize_chats",
+    label: "Classement des conversations",
+    floor: 1,
+    // Le front envoie des lots de 30 conversations (useChatCategories), avec
+    // jusqu'à 6 messages de 300 caractères chacune : l'entrée pèse bien plus
+    // que la sortie. 10 000 jetons = un lot moyen, pas un lot plein.
+    typicalTokens: 10_000,
+    routingTier: "fast",
+    category: "outreach",
+  },
   scorecard_chat: {
     action: "scorecard_chat",
     label: "Chat scorecard",
@@ -350,6 +454,33 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 5_000,
     routingTier: "default",
     category: "qualification",
+  },
+  generate_client_competitors: {
+    action: "generate_client_competitors",
+    label: "Concurrents client",
+    floor: 1,
+    typicalTokens: 2_000,
+    routingTier: "fast",
+    category: "sourcing",
+    // Valeurs reprises telles quelles du catalogue navigateur
+    // (src/types/aiCredits.ts) : deux barèmes différents feraient diverger
+    // l'estimation affichée et le refus serveur.
+    autoDefault: "claude-haiku-4-5",
+  },
+  enrich_company: {
+    action: "enrich_company",
+    label: "Fiche société",
+    // Le plancher reste à 1 : enrich-company règle CHAQUE extraction
+    // séparément (site, offres, actualités, synthèse), un plancher plus haut
+    // multiplierait la facture par le nombre d'appels.
+    floor: 1,
+    // L'estimation, elle, couvre la requête entière. Le fichier compte sept
+    // appels réglés séparément (site, offres, contacts, actualités, synthèse) :
+    // à 6 000 jetons, le seul cumul des planchers dépassait déjà le seuil du
+    // garde, qui laissait donc passer un enrichissement froid sur un solde bas.
+    typicalTokens: 20_000,
+    routingTier: "fast",
+    category: "sourcing",
   },
   // ─── Enrichment de contact (Better Contact) ─────────────────────────────
   // Pas de tokens consommés (c'est un appel API externe, pas Anthropic).
@@ -415,6 +546,22 @@ const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
 // ─── Credit Calculation ─────────────────────────────────────────────────────
 
 /**
+ * Ramène un identifiant de modèle vers la clé du catalogue.
+ * Le settle est appelé partout avec l'id renvoyé par l'API (ex.
+ * "claude-haiku-4-5-20251001", cf. call-claude.ts mapModel) alors que
+ * MODEL_CATALOG est indexé par id interne ("claude-haiku-4-5"). Sans cette
+ * normalisation, Haiku était facturé au multiplicateur par défaut 1.0
+ * (tarif Sonnet, soit 2,86 fois trop) et cost_usd valait 0.
+ */
+export function normalizeModelId(modelId: string): string {
+  if (!modelId) return modelId;
+  if (MODEL_CATALOG[modelId]) return modelId;
+  const stripped = modelId.replace(/-\d{8}$/, "");
+  if (MODEL_CATALOG[stripped]) return stripped;
+  return modelId;
+}
+
+/**
  * Calculate credits from actual token usage.
  * Formula: max(floor, ceil(totalTokens / 1000 × multiplier))
  * Thinking tokens count as output tokens (per Anthropic billing).
@@ -425,7 +572,7 @@ export function calculateTokenCredits(
   modelId: string,
   actionId: string
 ): { credits: number; breakdown: { totalTokens: number; multiplier: number; floor: number; raw: number } } {
-  const model = MODEL_CATALOG[modelId];
+  const model = MODEL_CATALOG[normalizeModelId(modelId)];
   const action = ACTION_COSTS[actionId];
 
   const multiplier = model?.multiplier ?? 1.0;
@@ -447,7 +594,7 @@ export function calculateTokenCredits(
  */
 export function estimateCredits(actionId: string, modelId: string): number {
   const action = ACTION_COSTS[actionId];
-  const model = MODEL_CATALOG[modelId];
+  const model = MODEL_CATALOG[normalizeModelId(modelId)];
 
   if (!action) return 1;
 
@@ -464,7 +611,7 @@ export function calculateUSDCost(
   tokensOutput: number,
   modelId: string
 ): number {
-  const model = MODEL_CATALOG[modelId];
+  const model = MODEL_CATALOG[normalizeModelId(modelId)];
   if (!model) return 0;
 
   const inputCost = (tokensInput / 1_000_000) * model.inputPricePerMTok;

@@ -1,15 +1,22 @@
+/**
+ * Page d'accueil publique. Repères mis à jour après le passage sous la marque
+ * Konekt : seul le nom du fichier de page a gardé l'ancien nom, ce qui avait
+ * masqué le décalage. La spec ne porte pas de tag, elle ne tourne donc que
+ * dans la suite nocturne.
+ */
 import { test, expect } from '@playwright/test';
 
 test.describe('Landing page', () => {
-  test('renders the Skalr landing hero and exposes primary CTAs', async ({ page }) => {
+  test('affiche le hero Konekt et ses deux appels à l\'action', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page).toHaveTitle(/Skalr/i);
+    await expect(page).toHaveTitle(/Konekt/i);
 
-    const brand = page.getByRole('heading', { name: /^Skalr\.?$/, level: 1 }).first();
-    await expect(brand).toBeVisible();
+    const hero = page.getByRole('heading', { level: 1 }).first();
+    await expect(hero).toContainText(/Le recrutement/i);
 
-    const dashboardPreview = page.getByAltText(/Skalr dashboard preview/i);
-    await expect(dashboardPreview).toBeVisible();
+    // Design, lot 8 : l'essai est l'action principale ; la démo mène au formulaire de contact.
+    await expect(page.getByRole('link', { name: /Demander une démo/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Commencer l'essai gratuit/i }).first()).toBeVisible();
   });
 });

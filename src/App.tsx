@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, lazy, Suspense } from "react";
 import * as Sentry from "@sentry/react";
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,13 +10,17 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
+import { CandidatePhotosProvider } from "@/components/CandidatePhotosProvider";
 import { AgentDrawer } from "@/components/agent";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { LegacySettingsRedirect } from "@/components/settings/shell/LegacySettingsRedirect";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
+import { SequencesGate } from "@/components/sequences/SequencesGate";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { clearOnboardingProgress } from "@/components/onboarding/onboardingStorage";
+import { clearAllEditorDrafts } from "@/lib/editorDraft";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
 import { loadAnalytics } from "@/lib/analytics";
 import Auth from "./pages/Auth";
@@ -33,7 +37,8 @@ const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
-const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
+// Mission (/missions/:id et ses écrans) : ancienne ou nouvelle page selon l'interrupteur (src/pages/MissionEntry.tsx).
+const MissionEntry = lazy(() => import("./pages/MissionEntry"));
 const Inbox = lazy(() => import("./pages/Inbox"));
 const SourcingSearches = lazy(() => import("./pages/SourcingSearches"));
 const SourcingSearchPage = lazy(() => import("./pages/SourcingSearch"));
@@ -49,7 +54,11 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 const AgentsPage = lazy(() => import("./pages/Agents"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
-const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
+// Séquences de l'organisation (lot 5c-2) : derrière l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts).
+const SequencesPage = lazy(() => import("./pages/SequencesPage"));
+const SequenceDetailPage = lazy(() => import("./pages/SequenceDetailPage"));
+const CallsPage = lazy(() => import("./pages/Calls"));
+const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client', '/pricing'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -94,6 +103,9 @@ const AppContent = () => {
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
         clearOrgIdCache();
         clearOnboardingProgress();
+        // Brouillons de séquence et de mission : jamais visibles par la
+        // personne qui se connecte ensuite sur ce navigateur.
+        clearAllEditorDrafts();
         queryClient.clear();
         prevUserIdRef.current = null;
         Sentry.setUser(null);
@@ -111,6 +123,7 @@ const AppContent = () => {
         if (prevUserIdRef.current && prevUserIdRef.current !== newUserId) {
           clearOrgIdCache();
           clearOnboardingProgress();
+          clearAllEditorDrafts();
           queryClient.clear();
         }
         prevUserIdRef.current = newUserId;
@@ -133,19 +146,13 @@ const AppContent = () => {
   };
 
   const suspenseFallback = (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="w-9 h-9 rounded-full border border-border border-t-foreground animate-spin" />
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Chargement en cours
-        </p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-background px-6">
+      <Spinner size="lg" />
     </div>
   );
 
   return (
     <>
-      <Toaster />
       <Sonner />
       <Suspense fallback={suspenseFallback}>
         <Routes>
@@ -165,7 +172,7 @@ const AppContent = () => {
           {/* Authenticated routes — with sidebar layout */}
           <Route path="/candidates" element={<Navigate to="/pipeline" replace />} />
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/missions/:id/*" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionEntry /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           {/* Recherche autonome (sourcing sans mission) */}
           <Route path="/sourcing" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearches /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/sourcing/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearchPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
@@ -174,6 +181,12 @@ const AppContent = () => {
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><OrganizationGuard><AppLayout><CalendarPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><OrganizationGuard><AppLayout><TasksPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+            {/* Séquences (lot 5c-2) : interrupteur éteint, SequencesGate renvoie vers /missions */}
+            <Route path="/sequences" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequencesPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            {/* Nouvelle séquence (lot 5d-2) : avant /sequences/:id, même garde ; rien n'est écrit avant « Enregistrer » */}
+            <Route path="/sequences/nouvelle" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage creating /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/sequences/:id" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/calls" element={<ProtectedRoute><OrganizationGuard><AppLayout><CallsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Legacy redirects */}
             <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
             <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
@@ -184,15 +197,16 @@ const AppContent = () => {
               ProtectedRoute + OrganizationGuard restent pour la sécurité. */}
           <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><AppLayout><Pricing /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/settings/*" element={<LegacySettingsRedirect><ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute></LegacySettingsRedirect>} />
+          {/* Tarifs : page publique (sans session ni organisation), la page gère elle-même l'état connecté */}
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><AppLayout><Marketplace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
       {/* AgentDrawer wrapped in error boundary — un crash du chat IA ne doit
           pas faire planter toute l'app (audit I8). */}
-      <SectionErrorBoundary fallbackTitle="Erreur dans le copilot IA">
+      <SectionErrorBoundary fallbackTitle="L'assistant a rencontré une erreur" floating>
         <AgentDrawer />
       </SectionErrorBoundary>
       {/* NavigationPalette — Cmd+J / Ctrl+J pour navigation rapide + actions */}
@@ -210,7 +224,9 @@ const App = () => {
     <TooltipProvider>
       <LinkedInAccountsProvider>
         <AgentProvider>
-          <AppContent />
+          <CandidatePhotosProvider>
+            <AppContent />
+          </CandidatePhotosProvider>
         </AgentProvider>
       </LinkedInAccountsProvider>
     </TooltipProvider>

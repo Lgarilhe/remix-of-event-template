@@ -10,6 +10,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -678,6 +679,24 @@ Deno.serve(async (req) => {
     } else {
       console.log(`[enrich] Force refresh for "${cacheKey}" — skipping cache`);
     }
+
+    // Refus avant l'appel, et APRÈS le cache : une fiche déjà enrichie dans les
+    // 24 heures ne consomme rien et ne doit donc jamais être refusée. Un
+    // enrichissement froid enchaîne deux à quatre extractions, toutes réglées
+    // séparément ; le garde estime la requête entière (typicalTokens de
+    // enrich_company) sans toucher au plancher par appel.
+    // Aucun champ model n'est passé aux appels ci-dessous : mapModel route sur
+    // le modèle rapide, c'est lui qu'on estime.
+    const gate = await assertCredits({
+      userId: auth.userId,
+      aiAction: 'enrich_company',
+      modelId: 'claude-haiku-4-5',
+      systemCall: auth.method === 'service_role' && !auth.userId,
+      // Pas de adminClient ici : ce fichier importe supabase-js par npm: et le
+      // garde par esm.sh, deux spécificateurs dont les types ne se recoupent
+      // pas. Le garde construit le sien depuis l'environnement.
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');

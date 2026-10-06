@@ -132,11 +132,11 @@ export function buildJobBriefForCta(jd: JobDetails | null | undefined): JobBrief
 }
 
 /**
- * Variante : prend un JobData (format Notion utilisé dans l'inbox via
- * fetch-notion-jobs) et retourne le même format que buildJobBriefForCta.
+ * Variante : prend un JobData (format de l'inbox, construit depuis la mission
+ * par missionToJobData dans useMessagesInbox) et retourne le même format que
+ * buildJobBriefForCta.
  *
- * `JobData` a une shape différente de `JobDetails` (vient d'une autre
- * source : Notion vs sourcing_projects.job_details), donc on mappe.
+ * `JobData` a une shape différente de `JobDetails`, donc on mappe.
  */
 export interface JobDataLike {
   title?: string;

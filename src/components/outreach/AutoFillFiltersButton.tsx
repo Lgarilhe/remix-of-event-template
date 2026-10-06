@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -348,7 +349,8 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       // Extract error message
       let errorMessage = 'Erreur lors de la génération des filtres';
       const msg = error?.message || '';
-      if (msg.includes('insufficient_credits')) {
+      // Refus de crédits : test sur le code, le message est déjà traduit.
+      if (isInsufficientCreditsError(error)) {
         errorMessage = 'Crédits IA insuffisants';
       } else if (error?.context?.json?.error) {
         errorMessage = error.context.json.error;
@@ -402,7 +404,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                 disabled={isDisabled}
                 className={`gap-2 text-xs h-8 ${
                   selectedJob 
-                    ? 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white' 
+                    ? 'bg-brand-solid hover:bg-brand-solid/90 text-brand-solid-foreground' 
                     : ''
                 }`}
               >
@@ -439,7 +441,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         <DialogContent className="max-w-3xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="w-5 h-5 text-violet-500" />
+              <Wand2 className="w-5 h-5 text-brand" />
               Debug Auto-Fill: {selectedJob?.title}
             </DialogTitle>
             <DialogDescription>

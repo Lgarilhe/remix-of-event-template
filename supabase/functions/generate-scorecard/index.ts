@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -84,12 +85,27 @@ RÈGLES :
 - Pour chaque critère : 2-3 questions d'entretien + rubric notation 1-5 + 1-2 red flags
 - weight : 1=nice-to-have, 2=important, 3=critique/éliminatoire${stageContext}`;
 
+    // Étapes d'entretien de la mission (envoyées par la fiche) : l'étape du
+    // candidat et la suite du process, en texte court et borné.
+    const clip = (value: unknown, max: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const stepNames: string[] = Array.isArray(jobContext.processSteps)
+      ? jobContext.processSteps.slice(0, 10).map((step: { name?: unknown }) => clip(step?.name, 80)).filter(Boolean)
+      : [];
+    const currentStepName = clip(jobContext.currentStepName, 80);
+    const currentStepObjectives = clip(jobContext.currentStepObjectives, 300);
+    const processLines = [
+      currentStepName
+        ? `- Étape d'entretien : ${currentStepName}${currentStepObjectives ? ` (${currentStepObjectives})` : ''}${jobContext.currentStepIsEliminatory === true ? ', éliminatoire' : ''}`
+        : '',
+      stepNames.length > 0 ? `- Étapes du process : ${stepNames.join(' > ')}` : '',
+    ].filter(Boolean).join('\n');
+
     const userPrompt = `CONTEXTE DU POSTE:
 - Titre: ${jobContext.title || 'Non spécifié'}
 - Client: ${jobContext.client || 'Non spécifié'}
 - Description: ${jobContext.description || 'Non disponible'}
 - Critères/Requirements: ${jobContext.requirements || 'Non disponible'}
-- Compétences recherchées: ${(jobContext.skills || []).join(', ') || 'Non spécifié'}
+- Compétences recherchées: ${(jobContext.skills || []).join(', ') || 'Non spécifié'}${processLines ? `\n${processLines}` : ''}
 
 PROFIL DU CANDIDAT:
 - Nom: ${candidateProfile.name || 'Non spécifié'}
@@ -120,6 +136,19 @@ Génère la scorecard d'évaluation sur mesure.`;
     // L'user peut toujours forcer un autre modèle via le ModelPicker.
     const modelToUse = _aiParams.modelId || 'claude-haiku-4-5';
     console.log('[generate-scorecard] Using model:', modelToUse);
+
+    // Refus avant l'appel : la scorecard consomme jusqu'à 4 000 jetons de
+    // sortie, déjà facturés par le fournisseur quand settleCredits découvre le
+    // solde vide. L'organisation est celle du profil, la même que celle du
+    // règlement plus bas.
+    const gate = await assertCredits({
+      userId,
+      aiAction: _aiParams.aiAction,
+      modelId: modelToUse,
+      systemCall: auth.method === "service_role" && !userId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     let aiResult;
     try {

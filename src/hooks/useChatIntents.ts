@@ -12,7 +12,8 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import { autoAnalyzeKey, hasAutoAnalyzed, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from './useAuthReady';
 import type { Chat } from './useMessagesInbox';
@@ -38,48 +39,24 @@ export interface IntentInfo {
   isStale?: boolean;
 }
 
+/**
+ * Libellé et ton de badge d'une intention (variante de `Badge` : fond teinté,
+ * texte de la couleur du statut, lisible dans les deux thèmes ; revue design
+ * D-04). Le mot porte l'information, la couleur ne fait que la doubler.
+ */
 export interface ChatIntentMetadata {
-  emoji: string;
   label: string;
-  color: string;
+  tone: 'success' | 'warning' | 'info' | 'danger' | 'muted';
 }
 
 export const INTENT_META: Record<ChatIntent, ChatIntentMetadata> = {
-  interested: {
-    emoji: '🟢',
-    label: 'Intéressé',
-    color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  },
-  not_interested: {
-    emoji: '🔴',
-    label: 'Décline',
-    color: 'bg-red-500/10 text-red-700 dark:text-red-400',
-  },
-  needs_info: {
-    emoji: '💬',
-    label: 'Demande info',
-    color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
-  },
-  wants_call: {
-    emoji: '📞',
-    label: 'Veut appel',
-    color: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
-  },
-  timing_issue: {
-    emoji: '⏰',
-    label: 'Timing pas bon',
-    color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-  },
-  already_placed: {
-    emoji: '🚫',
-    label: 'Déjà placé',
-    color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400',
-  },
-  neutral: {
-    emoji: '⚪',
-    label: 'Neutre',
-    color: 'bg-muted/40 text-muted-foreground',
-  },
+  interested: { label: 'Intéressé', tone: 'success' },
+  not_interested: { label: 'Décline', tone: 'danger' },
+  needs_info: { label: "Demande d'infos", tone: 'info' },
+  wants_call: { label: 'Veut un appel', tone: 'success' },
+  timing_issue: { label: 'Pas le bon moment', tone: 'warning' },
+  already_placed: { label: 'Déjà placé', tone: 'muted' },
+  neutral: { label: 'Neutre', tone: 'muted' },
 };
 
 export function useChatIntents(chats: Chat[], accountId: string | null) {
@@ -115,13 +92,17 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
 
         const intent = a.intent as ChatIntent | undefined;
         if (!intent || !(intent in INTENT_META)) continue;
+        // Marqueur « aucun message du candidat » écrit par auto-analyze-message
+        // (neutral / confiance 0) : pas de badge dans la sidebar
+        if (intent === 'neutral' && a.intentConfidence === 0) continue;
 
-        // Détecte si le cache est stale (dernier message plus récent que l'analyse)
+        // Détecte si le cache est stale (dernier message plus récent que l'analyse).
+        // Pas stale si le dernier message est le nôtre : le candidat n'a rien ajouté.
         const chat = chatById.get(row.chat_id);
         const lastMsgTs = chat?.last_message?.timestamp;
         const cacheTs = row.updated_at;
         let isStale = false;
-        if (lastMsgTs && cacheTs) {
+        if (lastMsgTs && cacheTs && chat?.last_message?.is_sender !== true) {
           try {
             isStale = new Date(lastMsgTs).getTime() > new Date(cacheTs).getTime();
           } catch { /* ignore */ }
@@ -147,15 +128,14 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
   // Quand un chat a un last_message plus récent que son analyse cached,
   // on déclenche auto-analyze-message en background (max 2 concurrent,
   // 1.5s entre chaque pour ne pas hammer Anthropic).
-  const reanalyzedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!query.data || !accountId) return;
 
     const staleChats: Chat[] = [];
     for (const chat of chats) {
       const intent = query.data.get(chat.id);
-      // Cas 1 : analyse existante mais stale
-      if (intent?.isStale && !reanalyzedRef.current.has(chat.id)) {
+      // Cas 1 : analyse existante mais stale — une fois par version du chat et par session
+      if (intent?.isStale && !hasAutoAnalyzed(autoAnalyzeKey(chat))) {
         staleChats.push(chat);
       }
     }
@@ -167,16 +147,14 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
       await new Promise(r => setTimeout(r, delayMs));
       if (cancelled) return;
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      reanalyzedRef.current.add(chat.id);
+      const guardKey = autoAnalyzeKey(chat);
+      const senderId = chat.attendees?.[0]?.id || null;
+      const pending = runAutoAnalyzeOnce(guardKey, () => supabase.functions.invoke('auto-analyze-message', {
+        body: { chat_id: chat.id, account_id: chat.account_id, sender_id: senderId },
+      }));
+      if (!pending) return;
       try {
-        const senderId = chat.attendees?.[0]?.id || null;
-        await supabase.functions.invoke('auto-analyze-message', {
-          body: {
-            chat_id: chat.id,
-            account_id: chat.account_id,
-            sender_id: senderId,
-          },
-        });
+        await pending;
         // Invalide la query pour forcer re-fetch des intents
         if (!cancelled) {
           queryClient.invalidateQueries({ queryKey: ['chat-intents', accountId] });

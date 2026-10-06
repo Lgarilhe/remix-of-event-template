@@ -96,36 +96,6 @@ export const LINKEDIN_LIMITS = {
   MAX_DELAY_MS: 90000,
 } as const;
 
-/**
- * Warm-up schedule: new accounts start with low quotas and ramp up over 4 weeks.
- * Based on LinkedIn automation best practices (2026):
- * - Week 1: ~10 invitations/day
- * - Week 2: ~15/day
- * - Week 3: ~20/day
- * - Week 4+: full safe mode limits
- *
- * Returns a multiplier (0.0 to 1.0) applied to safe mode limits.
- */
-export function getWarmupMultiplier(accountConnectedDays: number): number {
-  if (accountConnectedDays <= 0) return 0.1;
-  if (accountConnectedDays <= 3) return 0.3;   // Day 1-3: ~30% (~8 invites)
-  if (accountConnectedDays <= 7) return 0.5;   // Day 4-7: ~50% (~12 invites)
-  if (accountConnectedDays <= 14) return 0.7;  // Week 2: ~70% (~17 invites)
-  if (accountConnectedDays <= 21) return 0.85; // Week 3: ~85% (~21 invites)
-  return 1.0;                                   // Week 4+: full safe limits
-}
-
-/**
- * Cool-down: if a LinkedIn account received a warning, block all automation
- * for 48 hours. Returns true if the account is in cool-down.
- */
-export function isInCooldown(lastWarningAt: string | null): boolean {
-  if (!lastWarningAt) return false;
-  const warningTime = new Date(lastWarningAt).getTime();
-  const cooldownMs = 48 * 60 * 60 * 1000; // 48 hours
-  return Date.now() - warningTime < cooldownMs;
-}
-
 interface QuotaState {
   searchResultsFetched: number;
   profileVisits: number;

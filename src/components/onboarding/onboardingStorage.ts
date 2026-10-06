@@ -2,25 +2,32 @@ import type { OrgType, SceneKey } from './onboardingMeta';
 import type { OrgDetailsData } from './SceneOrgDetails';
 
 // ⚠️ Bumper la version à chaque changement de forme du flow (ajout/retrait
-// d'étapes) : un step index persisté sur l'ancien flow pointerait sur la
-// mauvaise scène et ferait sauter les nouvelles étapes.
-const STORAGE_KEY = 'konekt_onboarding_progress_v4';
+// d'étapes) : une progression persistée sur l'ancien flow serait ignorée
+// plutôt que de pointer sur la mauvaise scène.
+// v5 : tunnel raccourci (orgtype → org | orgdetails + specializations → linkedin → launch).
+const STORAGE_KEY = 'konekt_onboarding_progress_v5';
+const LEGACY_STORAGE_KEYS = ['konekt_onboarding_progress_v4'];
 
 export interface PersistedProgress {
   step: number;
+  /** Clé de la scène courante — permet un repli sûr si la scène n'existe plus. */
+  scene: SceneKey | null;
   orgType: OrgType | null;
-  goal?: string;
-  stack?: string[];
-  icp?: { roles: string; seniorities: string[]; locations: string };
   orgDetails: OrgDetailsData | null;
-  discoverySource: string;
   specializations: string[];
   completed: SceneKey[];
-  profileBasics: { displayName: string; jobTitle: string; linkedinUrl: string } | null;
+  /**
+   * Id de l'espace créé par ce tunnel. Gardé seulement en mémoire, il se perdait
+   * au rechargement : un indépendant dont l'activité n'avait pas pu être écrite
+   * restait bloqué (« déjà membre d'un espace ») ou, avec ?new=1, créait un
+   * second espace. Facultatif : absent des progressions déjà enregistrées.
+   */
+  createdOrgId?: string | null;
 }
 
 export function loadOnboardingProgress(): PersistedProgress | null {
   try {
+    for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedProgress;
