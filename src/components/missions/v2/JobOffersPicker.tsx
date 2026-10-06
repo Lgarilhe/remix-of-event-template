@@ -3,7 +3,9 @@
  *
  * Deux états, sans cadre autour de la liste (docs/design/06-simplicite.md) :
  *  - choix : toutes les offres, une case par ligne, au plus MAX_BATCH_OFFERS
- *    cochées ; une offre déjà importée comme mission n'est pas cochable ;
+ *    cochées ; une offre déjà importée comme mission n'est pas cochable ; un lien
+ *    « Voir l'offre » ouvre la page source ; au-delà de FILTER_FROM offres, un
+ *    champ filtre la liste (la sélection, elle, reste celle de toute la liste) ;
  *  - lecture et analyse : les offres choisies, chacune avec son état.
  *
  * Présentation seule : la sélection, l'analyse et la création vivent dans
@@ -11,10 +13,11 @@
  */
 
 import React from 'react';
-import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { AlertCircle, Check, ExternalLink, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
@@ -36,6 +39,12 @@ interface JobOffersPickerProps {
 }
 
 const metaOf = (job: SourceJob): string => [job.location, job.contract].filter(Boolean).join(' · ');
+
+/** Au-delà de ce nombre d'offres, un champ filtre la liste. */
+export const FILTER_FROM = 8;
+
+/** Sans accent ni casse : « ingenieur » trouve « Ingénieur ». */
+const fold = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 const STATUS_LABELS: Record<BulkItem['status'], string> = {
   pending: 'En attente',
@@ -69,6 +78,8 @@ const ItemStatus: React.FC<{ item: BulkItem }> = ({ item }) => {
 export const JobOffersPicker: React.FC<JobOffersPickerProps> = ({
   company, jobs, truncated, importedUrls, selected, maxSelectable, items, onToggle, onToggleAll,
 }) => {
+  const [query, setQuery] = React.useState('');
+
   if (items) {
     return (
       <div className="px-6 py-4">
@@ -88,6 +99,12 @@ export const JobOffersPicker: React.FC<JobOffersPickerProps> = ({
   }
 
   const selectable = jobs.filter((j) => !importedUrls.has(j.url)).length;
+  const filtering = jobs.length > FILTER_FROM;
+  const needle = fold(query.trim());
+  // L'indice d'origine garde des identifiants stables quand la liste est filtrée.
+  const rows = jobs
+    .map((job, i) => ({ job, i }))
+    .filter(({ job }) => !filtering || !needle || fold(`${job.title} ${metaOf(job)}`).includes(needle));
   const allLabel = selected.size > 0
     ? 'Tout désélectionner'
     : selectable > maxSelectable
@@ -100,7 +117,7 @@ export const JobOffersPicker: React.FC<JobOffersPickerProps> = ({
         <p className="text-sm text-foreground-secondary">
           {plural(jobs.length, 'offre')} en cours chez {company}. {plural(maxSelectable, 'offre')} au plus à la fois.
         </p>
-        {selectable > 0 && (
+        {selectable > 0 && (!needle || selected.size > 0) && (
           <Button variant="ghost" size="xs" onClick={onToggleAll}>
             {allLabel}
           </Button>
@@ -109,8 +126,22 @@ export const JobOffersPicker: React.FC<JobOffersPickerProps> = ({
       {truncated && (
         <p className="mt-1 text-xs text-muted-foreground">Seules les premières offres sont affichées.</p>
       )}
+      {filtering && (
+        <div className="mt-3">
+          <Label htmlFor="offers-filter" className="sr-only">Filtrer les offres</Label>
+          <Input
+            id="offers-filter"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filtrer par intitulé ou par lieu"
+            autoComplete="off"
+          />
+        </div>
+      )}
+      {rows.length === 0 && <p className="mt-4 text-sm text-muted-foreground">Aucune offre ne correspond.</p>}
       <ul className="mt-2 divide-y divide-border">
-        {jobs.map((job, i) => {
+        {rows.map(({ job, i }) => {
           const imported = importedUrls.has(job.url);
           const checked = selected.has(job.url);
           const full = !checked && selected.size >= maxSelectable;
@@ -129,6 +160,17 @@ export const JobOffersPicker: React.FC<JobOffersPickerProps> = ({
                 {metaOf(job) && <span className="block text-xs text-muted-foreground">{metaOf(job)}</span>}
               </Label>
               {imported && <Badge variant="muted">Déjà importée</Badge>}
+              <Button
+                asChild
+                variant="ghost"
+                size="xs"
+                className="shrink-0 text-muted-foreground hover:text-foreground max-sm:min-h-11 max-sm:min-w-11"
+              >
+                <a href={job.url} target="_blank" rel="noopener noreferrer" aria-label={`Voir l'offre ${job.title} (nouvel onglet)`}>
+                  <span className="max-sm:sr-only">Voir l'offre</span>
+                  <ExternalLink aria-hidden="true" />
+                </a>
+              </Button>
             </li>
           );
         })}

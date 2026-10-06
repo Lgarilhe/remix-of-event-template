@@ -9,12 +9,17 @@
  * - Private candidate photo copies (candidate_photos, lot P): state and storage path, not the files
  * - Qualification sessions (qualification_sessions: interviews read from a connected calendar or booked through Calendly)
  * - Connected calendars (member_calendar_accounts): member, provider, address and state, no provider identifier
+ * - Phone calls (phone_calls, lot A1), their analyses (phone_call_insights) and transcriptions
+ *   (phone_call_transcripts, lot A5, the most recent ones: the cap is reported in _meta)
  * - Messages sent (from Unipile logs if available)
  *
  * Only admins can trigger this export.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+
+/** Une transcription pèse plusieurs ko : au-delà, l'export dépasserait la mémoire de la fonction. */
+const TRANSCRIPTS_EXPORT_LIMIT = 3000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,6 +90,8 @@ Deno.serve(async (req) => {
       { data: qualificationSessions, error: qualificationSessionsError },
       { data: calendarAccounts, error: calendarAccountsError },
       { data: phoneCalls, error: phoneCallsError },
+      { data: phoneCallInsights, error: phoneCallInsightsError },
+      { data: phoneCallTranscripts, error: phoneCallTranscriptsError },
     ] = await Promise.all([
       adminClient
         .from("job_candidate_status")
@@ -136,12 +143,28 @@ Deno.serve(async (req) => {
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(10000),
+      // Analyses des appels (lot A5) : petites, exportées comme les appels.
+      adminClient
+        .from("phone_call_insights")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(10000),
+      // Transcriptions : volumineuses (plusieurs ko par appel), donc bornées aux plus récentes.
+      // Le plafond est annoncé dans _meta quand il est atteint : jamais tronqué en silence.
+      adminClient
+        .from("phone_call_transcripts")
+        .select("call_id, utterances, language, created_at")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(TRANSCRIPTS_EXPORT_LIMIT),
     ]);
 
     // RGPD art. 20 : un export incomplet doit échouer explicitement, jamais
     // renvoyer un jeu de données tronqué en silence.
     const queryError = candidatesError || projectsError || transactionsError || membersError
-      || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError || phoneCallsError;
+      || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError
+      || phoneCallsError || phoneCallInsightsError || phoneCallTranscriptsError;
     if (queryError) {
       console.error("[export-org-data] query failed:", queryError);
       return new Response(
@@ -163,7 +186,11 @@ Deno.serve(async (req) => {
       qualification_sessions: qualificationSessions || [],
       calendar_accounts: calendarAccounts || [],
       phone_calls: phoneCalls || [],
+      phone_call_insights: phoneCallInsights || [],
+      phone_call_transcripts: phoneCallTranscripts || [],
       _meta: {
+        phone_call_transcripts_count: (phoneCallTranscripts || []).length,
+        phone_call_transcripts_truncated: (phoneCallTranscripts || []).length >= TRANSCRIPTS_EXPORT_LIMIT,
         candidates_count: (candidates || []).length,
         projects_count: (projects || []).length,
         transactions_count: (transactions || []).length,

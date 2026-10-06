@@ -186,8 +186,8 @@ test('0c-2 : rgpd-purge passe par rgpd_purge_candidate_rows, compte seulement pa
   for (const q of chunks) assert.match(q, /\.eq\("organization_id", orgId\)/);
   // Aucune suppression en compte seulement.
   assert.match(purge, /for \(let i = 0; !dryRun && i < ids\.length; i \+= 100\) \{/);
-  // Quatre boucles de suppression : inscriptions, InMails, liens de conversation, séances de qualification.
-  assert.equal(purge.match(/!dryRun && i < ids\.length/g)?.length, 4);
+  // 3 boucles d'avant, les 2 du lot A6 (transcriptions d'appels, appels) et celle des séances de qualification (agenda Outlook), toutes gardées.
+  assert.equal(purge.match(/!dryRun && i < ids\.length/g)?.length, 6);
   assert.match(purge, /if \(oldFiles\.length > 0 && dryRun\) \{/);
   assert.match(purge, /dry_run: dryRun,\n\s+purge_date:/);
 });

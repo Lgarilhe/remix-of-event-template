@@ -269,6 +269,37 @@ test('choix : offre déjà importée non cochable, plafond atteint, bascule « t
   assert.doesNotMatch(render({ jobs: [] }), /Tout sélectionner/);
 });
 
+test('choix : « Voir l\'offre » ouvre la page source dans un nouvel onglet, sur chaque ligne', () => {
+  const jobs = [job(1), job(2), job(3)];
+  const html = render({ jobs });
+  const links = html.match(/<a [^>]*>/g) || [];
+  assert.equal(links.length, 3);
+  jobs.forEach((j, i) => {
+    assert.ok(links[i].includes(`href="${j.url}"`), 'adresse de l\'offre');
+    assert.match(links[i], /target="_blank"/);
+    assert.match(links[i], /rel="noopener noreferrer"/);
+    assert.match(links[i], new RegExp(`aria-label="Voir l&#x27;offre ${j.title} \\(nouvel onglet\\)"`));
+  });
+  // Sur téléphone seule l'icône reste, avec une cible de 44 px ; le texte reste pour les lecteurs d'écran.
+  assert.match(html, /<span class="max-sm:sr-only">Voir l&#x27;offre<\/span>/);
+  assert.match(html, /max-sm:min-h-11 max-sm:min-w-11/);
+});
+
+test('choix : un champ filtre la liste au-delà de 8 offres, pas avant', () => {
+  const nine = Array.from({ length: 9 }, (_, i) => job(i + 1));
+  const withFilter = render({ jobs: nine });
+  assert.match(withFilter, /<input[^>]*id="offers-filter"[^>]*type="search"|<input[^>]*type="search"[^>]*id="offers-filter"/);
+  assert.match(withFilter, /Filtrer par intitulé ou par lieu/);
+  assert.match(withFilter, /<label[^>]*sr-only[^>]*for="offers-filter"/, 'le champ a son libellé, caché');
+  assert.doesNotMatch(render({ jobs: nine.slice(0, 8) }), /offers-filter/);
+  // Le filtre ne change pas la sélection (elle vit dans CreateMissionV2) et garde les identifiants des cases.
+  const src = code(picker);
+  assert.match(src, /\.map\(\(job, i\) => \(\{ job, i \}\)\)/, 'l\'indice d\'origine suit chaque offre');
+  assert.match(src, /const id = `offer-\$\{i\}`/);
+  assert.match(src, /fold\(`\$\{job\.title\} \$\{metaOf\(job\)\}`\)\.includes\(needle\)/, 'intitulé et lieu, sans accent ni casse');
+  assert.match(src, /Aucune offre ne correspond\./);
+});
+
 test('analyse : l\'état de chaque offre choisie, sans case à cocher', () => {
   const items = [
     { job: job(1), status: 'done' },

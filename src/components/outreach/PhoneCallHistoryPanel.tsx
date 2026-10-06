@@ -2,6 +2,7 @@ import React from 'react';
 import type { PhoneCall } from '@/lib/phoneCalls';
 import { RecruiterTag } from '@/components/calls/RecruiterTag';
 import { useCallRecruiter } from '@/hooks/useCallRecruiter';
+import { useCallInsightSummaries } from '@/hooks/useCallInsights';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Phone, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
@@ -49,6 +50,8 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
   totalTalkSeconds,
 }) => {
   const resolveRecruiter = useCallRecruiter();
+  // Résumé et étiquettes de l'analyse de chaque appel (lot A5) : sans analyse, rien de plus que l'appel.
+  const insights = useCallInsightSummaries(calls.map((c) => c.id));
 
   if (loading) {
     return (
@@ -116,6 +119,26 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                   <p className="text-xs text-foreground/70 line-clamp-2">{call.notes}</p>
                 </div>
               )}
+
+              {/* Analyse de la transcription : ce qui s'est dit, en deux ou trois lignes */}
+              {(() => {
+                const insight = insights.data?.get(call.id);
+                if (!insight || insight.status !== 'done' || !insight.summary) return null;
+                return (
+                  <div className="mt-1 space-y-1">
+                    <p className="text-xs text-foreground line-clamp-3">{insight.summary}</p>
+                    {insight.tags.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {insight.tags.map(tag => (
+                          <Badge key={tag} variant="outline" className="text-xs px-1.5 py-0">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Tags */}
               {call.tags.length > 0 && (

@@ -40,6 +40,9 @@ verify_jwt = false
 [functions.aircall-connect]
 verify_jwt = false
 
+[functions.analyze-phone-call]
+verify_jwt = false
+
 [functions.analyze-response]
 verify_jwt = false
 

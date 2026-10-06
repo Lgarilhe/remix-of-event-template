@@ -6,7 +6,7 @@
  * Fonctions pures, sans importation à l'exécution : lues telles quelles par
  * les tests Node (tests/c1/telephonie-appels-a-rattacher.test.mjs).
  */
-import type { PhoneCall } from './phoneCalls';
+import type { AttachedCandidate, PhoneCall } from './phoneCalls';
 
 export interface UnattachedCallGroup {
   numberE164: string;
@@ -24,6 +24,11 @@ export function formatPhoneNumber(e164: string): string {
   const fr = /^\+33(\d{9})$/.exec(e164);
   if (!fr) return e164;
   return `0${fr[1]}`.replace(/(\d{2})(?=\d)/g, '$1 ');
+}
+
+/** Le titre d'un appel : le candidat rattaché, sinon le nom connu de l'opérateur, sinon le numéro. */
+export function callTitle(call: PhoneCall, attached: AttachedCandidate | undefined): string {
+  return attached?.name ?? call.contactName ?? (call.numberE164 ? formatPhoneNumber(call.numberE164) : 'Numéro masqué');
 }
 
 const time = (call: PhoneCall): number => (call.startedAt ? Date.parse(call.startedAt) : Number.NEGATIVE_INFINITY);

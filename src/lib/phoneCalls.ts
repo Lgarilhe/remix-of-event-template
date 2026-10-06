@@ -133,13 +133,18 @@ const CONTACTS_PAGE = 1000;
  * Un numéro de la base qui ne se normalise pas sûrement est ignoré (jamais de faux rapprochement).
  */
 export async function fetchOrgContactNumbers(): Promise<Set<string>> {
+  return new Set((await fetchOrgContactMap()).keys());
+}
+
+/** Numéro E.164 → candidat de l'organisation active qui l'a enregistré (le premier, si deux candidats le partagent). */
+export async function fetchOrgContactMap(): Promise<Map<string, string>> {
   const organizationId = await getActiveOrganizationId();
-  if (!organizationId) return new Set();
-  const numbers = new Set<string>();
+  const map = new Map<string, string>();
+  if (!organizationId) return map;
   for (let from = 0; ; from += CONTACTS_PAGE) {
     const { data, error } = await supabase
       .from('candidate_contacts')
-      .select('phone')
+      .select('candidate_id, phone')
       .eq('organization_id', organizationId)
       .not('phone', 'is', null)
       .order('candidate_id', { ascending: true })
@@ -147,9 +152,61 @@ export async function fetchOrgContactNumbers(): Promise<Set<string>> {
     if (error) throw error;
     for (const row of data ?? []) {
       const e164 = toE164(row.phone);
-      if (e164) numbers.add(e164);
+      if (e164 && !map.has(e164)) map.set(e164, row.candidate_id);
     }
     if ((data?.length ?? 0) < CONTACTS_PAGE) break;
   }
-  return numbers;
+  return map;
+}
+
+const MAX_PERIOD_ROWS = 5000;
+
+/** Les appels depuis `sinceIso` (le plus récent d'abord), 5 000 au plus : la RLS limite à l'organisation active. */
+export async function fetchPhoneCallsSince(sinceIso: string): Promise<PhoneCall[]> {
+  const calls: PhoneCall[] = [];
+  for (let from = 0; from < MAX_PERIOD_ROWS; from += CONTACTS_PAGE) {
+    const { data, error } = await supabase
+      .from('phone_calls')
+      .select(COLUMNS)
+      .gte('started_at', sinceIso)
+      .order('started_at', { ascending: false })
+      .range(from, from + CONTACTS_PAGE - 1);
+    if (error) throw error;
+    calls.push(...(data ?? []).map(rowToPhoneCall));
+    if ((data?.length ?? 0) < CONTACTS_PAGE) break;
+  }
+  return calls;
+}
+
+export interface AttachedCandidate {
+  candidateId: string;
+  /** Null : le candidat a un numéro enregistré mais aucune ligne de mission ou de recherche ne porte son nom. */
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+const NAME_CHUNK = 200;
+
+/** Nom et photo des candidats de l'organisation active, pour des identifiants donnés. */
+export async function fetchCandidateNames(candidateIds: ReadonlyArray<string>): Promise<Map<string, { name: string | null; avatarUrl: string | null }>> {
+  const organizationId = await getActiveOrganizationId();
+  const names = new Map<string, { name: string | null; avatarUrl: string | null }>();
+  if (!organizationId || candidateIds.length === 0) return names;
+  const ids = Array.from(new Set(candidateIds));
+  for (let i = 0; i < ids.length; i += NAME_CHUNK) {
+    const { data, error } = await supabase
+      .from('job_candidate_status')
+      .select('candidate_id, candidate_name, linkedin_profile_data')
+      .eq('organization_id', organizationId)
+      .in('candidate_id', ids.slice(i, i + NAME_CHUNK))
+      .not('candidate_name', 'is', null);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      if (names.has(row.candidate_id)) continue;
+      const profile = (row.linkedin_profile_data ?? {}) as Record<string, unknown>;
+      const picture = profile.profile_picture_url ?? profile.profile_picture_url_large;
+      names.set(row.candidate_id, { name: row.candidate_name, avatarUrl: typeof picture === 'string' ? picture : null });
+    }
+  }
+  return names;
 }

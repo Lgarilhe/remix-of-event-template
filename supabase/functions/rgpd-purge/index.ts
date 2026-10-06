@@ -12,7 +12,11 @@
  *    finished InMails with no activity for > 24 months — never active or
  *    paused enrollments, never pending InMails
  * 5. Conversation–mission links (lot 0b) with no event for > 24 months
- * 6. Qualification sessions (agenda Outlook, Calendly) whose event ended
+ * 6. Phone call transcriptions (lot A6) more than 6 months after the call (the
+ *    summary and tags of the analysis stay until step 7)
+ * 7. Phone calls (lot A6) more than 24 months after the call, with their
+ *    transcription and analysis by cascade
+ * 8. Qualification sessions (agenda Outlook, Calendly) whose event ended
  *    more than 24 months ago, with the knowledge chunks derived from them
  *
  * Lignes candidat (1 et 3) : sélection et suppression par la fonction SQL
@@ -31,6 +35,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { CALL_RETENTION_MONTHS, TRANSCRIPT_RETENTION_MONTHS, retentionCutoff } from "../_shared/phone-call-erasure.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,6 +77,8 @@ Deno.serve(async (req) => {
       sequence_enrollments_purged: 0,
       inmails_purged: 0,
       conversation_links_purged: 0,
+      call_transcripts_purged: 0,
+      phone_calls_purged: 0,
       qualification_sessions_purged: 0,
       knowledge_chunks_purged: 0,
       errors: [] as string[],
@@ -327,7 +334,83 @@ Deno.serve(async (req) => {
       stats.errors.push(`conversation links purge: ${e}`);
     }
 
-    // ── 6. Séances de qualification après 24 mois (agenda Outlook) ───
+    // ── 6. Transcriptions d'appels après 6 mois (lot A6) ───────────────
+    // Durée comptée depuis l'appel, pas depuis la copie de la transcription : une
+    // transcription récupérée plus tard pour un vieil appel ne gagne pas six mois.
+    // Seul le texte intégral part ; le résumé et les étiquettes de l'analyse
+    // restent jusqu'à l'étape 7.
+    const transcriptCutoffIso = retentionCutoff(now, TRANSCRIPT_RETENTION_MONTHS).toISOString();
+    try {
+      const { data: oldTranscripts, error: transcriptsError } = await adminClient
+        .from("phone_call_transcripts")
+        .select("call_id, phone_calls!inner(started_at)")
+        .lt("phone_calls.started_at", transcriptCutoffIso)
+        .limit(500);
+      if (transcriptsError) {
+        stats.errors.push(`call transcripts query: ${transcriptsError.message}`);
+      } else {
+        const ids = (oldTranscripts ?? []).map((t: { call_id: string }) => t.call_id);
+        if (dryRun) stats.call_transcripts_purged = ids.length;
+        for (let i = 0; !dryRun && i < ids.length; i += 100) {
+          const { data: deleted, error: deleteError } = await adminClient
+            .from("phone_call_transcripts")
+            .delete()
+            .in("call_id", ids.slice(i, i + 100))
+            .select("call_id");
+          if (deleteError) {
+            stats.errors.push(`delete call transcripts: ${deleteError.message}`);
+            break;
+          }
+          stats.call_transcripts_purged += (deleted ?? []).length;
+        }
+        if (stats.call_transcripts_purged > 0) {
+          console.log(`[rgpd-purge] (${mode}) ${stats.call_transcripts_purged} call transcripts (> ${TRANSCRIPT_RETENTION_MONTHS} months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`call transcripts purge: ${e}`);
+    }
+
+    // ── 7. Appels et analyses après 24 mois (lot A6) ───────────────────
+    // Un appel porte le numéro et le nom du correspondant, ses notes et le lien de
+    // l'enregistrement ; sa transcription et son analyse suivent par ON DELETE
+    // CASCADE. Date de l'appel, à défaut sa date de réception.
+    const callCutoffIso = retentionCutoff(now, CALL_RETENTION_MONTHS).toISOString();
+    const OLD_CALL_FILTER = `started_at.lt."${callCutoffIso}",and(started_at.is.null,created_at.lt."${callCutoffIso}")`;
+    try {
+      const { data: oldCalls, error: callsError } = await adminClient
+        .from("phone_calls")
+        .select("id")
+        .or(OLD_CALL_FILTER)
+        .limit(500);
+      if (callsError) {
+        stats.errors.push(`phone calls query: ${callsError.message}`);
+      } else {
+        const ids = (oldCalls ?? []).map((c: { id: string }) => c.id);
+        if (dryRun) stats.phone_calls_purged = ids.length;
+        for (let i = 0; !dryRun && i < ids.length; i += 100) {
+          // Le même filtre est rejoué à la suppression.
+          const { data: deleted, error: deleteError } = await adminClient
+            .from("phone_calls")
+            .delete()
+            .in("id", ids.slice(i, i + 100))
+            .or(OLD_CALL_FILTER)
+            .select("id");
+          if (deleteError) {
+            stats.errors.push(`delete phone calls: ${deleteError.message}`);
+            break;
+          }
+          stats.phone_calls_purged += (deleted ?? []).length;
+        }
+        if (stats.phone_calls_purged > 0) {
+          console.log(`[rgpd-purge] (${mode}) ${stats.phone_calls_purged} phone calls with their analysis (> ${CALL_RETENTION_MONTHS} months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`phone calls purge: ${e}`);
+    }
+
+    // ── 8. Séances de qualification après 24 mois (agenda Outlook) ───
     // Une séance porte le nom, le titre et l'adresse du candidat, et les notes
     // de l'entretien. Âge : fin de l'événement, sinon début, sinon création.
     // Les extraits de connaissance tirés de la séance partent avec elle (par

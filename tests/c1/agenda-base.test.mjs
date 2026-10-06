@@ -103,7 +103,7 @@ test('agenda A : effacement RGPD, les séances du candidat sont supprimées dans
   assert.match(src, /\/\*\* Séances de qualification \(agenda, Calendly\) supprimées\. \*\/\s+deletedSessions: number;/);
   assert.match(src, /cancelledInmails: 0,\s+deletedSessions: 0,/);
 
-  const step = between(src, '  // 11. Séances de qualification', '  return { ...result, success: true };');
+  const step = between(src, '  // 12. Séances de qualification', '  return { ...result, success: true };');
   // Trois lectures (identifiant, adresse du profil, adresse e-mail) et une suppression.
   assert.equal((step.match(/\.from\('qualification_sessions'\)/g) ?? []).length, 4);
   assert.match(step, /\.in\('candidate_profile_id', knownIds\.slice\(i, i \+ 100\)\)/);
@@ -128,7 +128,7 @@ test('agenda A : effacement RGPD, les séances du candidat sont supprimées dans
 test('agenda A : purge RGPD, séances de plus de 24 mois, comptées seulement sans dry_run: false', () => {
   const src = read(PURGE);
   assert.match(src, /qualification_sessions_purged: 0,/);
-  const step = between(src, '// ── 6. Séances de qualification', '// ── Summary');
+  const step = between(src, '// ── 8. Séances de qualification', '// ── Summary');
   assert.match(step, /event_end_at\.lt\."\$\{cutoff24mIso\}"/);
   assert.match(step, /\.from\("qualification_sessions"\)\s+\.select\("id, organization_id"\)\s+\.or\(SESSION_AGE_FILTER\)/);
   // En « compte seulement », seule la lecture a lieu : toute suppression est dans la boucle gardée par !dryRun.
@@ -149,7 +149,7 @@ test('agenda A : export de l\'organisation, séances et agendas reliés', () => 
   assert.doesNotMatch(calendars, /account_id/, 'l\'identifiant du compte chez le prestataire n\'est pas exporté');
   assert.match(calendars, /\.eq\("organization_id", organizationId\)/);
   // Un export incomplet échoue (art. 20) : les deux erreurs sont dans le contrôle commun.
-  assert.match(src, /\|\| qualificationSessionsError \|\| calendarAccountsError( \|\| phoneCallsError)?;/);
+  assert.match(src, /\|\| qualificationSessionsError \|\| calendarAccountsError\s+\|\| phoneCallsError/);
   assert.match(src, /qualification_sessions: qualificationSessions \|\| \[\],/);
   assert.match(src, /calendar_accounts: calendarAccounts \|\| \[\],/);
   assert.match(src, /qualification_sessions_count: \(qualificationSessions \|\| \[\]\)\.length,/);

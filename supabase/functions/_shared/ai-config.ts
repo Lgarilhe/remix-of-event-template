@@ -213,6 +213,14 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "qualification",
   },
+  phone_call_analysis: {
+    action: "phone_call_analysis",
+    label: "Analyse d'un appel",
+    floor: 1,
+    typicalTokens: 6_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
   live_coaching: {
     action: "live_coaching",
     label: "Coaching live (par minute)",
