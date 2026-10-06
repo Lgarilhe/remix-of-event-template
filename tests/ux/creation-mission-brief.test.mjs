@@ -386,3 +386,9 @@ test('edge function : le brief structuré demandé au modèle est renvoyé, et u
   assert.match(server, /success: true,\s*degraded,/);
   assert.match(server, /degraded = true;/);
 });
+
+test('design : les tuiles de choix sont des cartes à coin de carte, pas des pilules', () => {
+  const choose = dialog.slice(dialog.indexOf('const ChooseMode'), dialog.indexOf('// ─── Mode Brief IA'));
+  assert.match(choose, /className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl p-5 text-left"/);
+  assert.doesNotMatch(choose, /rounded-full/);
+});

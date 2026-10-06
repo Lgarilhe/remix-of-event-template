@@ -895,7 +895,8 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
         type="button"
         variant="outline"
         onClick={() => onPick(opt.value)}
-        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal p-5 text-left"
+        // Une tuile de choix est une carte (coin de carte), pas une pilule : sinon son texte touche la courbe.
+        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl p-5 text-left"
       >
         <IconTile icon={opt.icon} tone={opt.recommended ? 'brand' : 'default'} size="md" />
         <span className="block space-y-1">

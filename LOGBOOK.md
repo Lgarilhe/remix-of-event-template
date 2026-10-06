@@ -32,6 +32,15 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-06 — SHIP — Brief IA : les deux tuiles du premier écran redeviennent des cartes
+
+**Contexte** : depuis « tous les boutons sont des pilules » (#279), les deux tuiles « Coller une fiche de poste » et « Saisir à la main » (des `Button` à contenu empilé) s'affichaient en capsules, le texte touchant la courbe.
+**Décision / Fait** : coin de carte (`rounded-xl`) posé sur ces deux tuiles, qui restent des `Button` de la primitive (focus, clavier et survol inchangés).
+**Impact** : `src/components/missions/v2/CreateMissionV2.tsx` (`ChooseMode`), `tests/ux/creation-mission-brief.test.mjs`. Rendu vérifié sur le vrai composant, sombre, clair et téléphone.
+**Refs** : `docs/design/01-direction.md`, § 6.
+
+---
+
 ## 2026-10-06 — SHIP — Cadrage : « Aller au sourcing »
 
 **Contexte** : après la création d'une mission, l'écran d'arrivée est le Cadrage (`?tab=brief` vers `cadrage?section=poste`). Les trois écrans ne se rejoignent que par les onglets de l'en-tête, en texte discret et dans l'ordre Pipeline, Sourcing, Cadrage : le propriétaire n'a trouvé aucun moyen de passer au Sourcing.
