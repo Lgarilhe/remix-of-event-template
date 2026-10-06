@@ -315,6 +315,14 @@ phone_call_insights        — analyse d'un appel (lot A5), une ligne par appel 
                              L'analyse n'écrit rien d'autre : aucune étape, aucune note, aucun message vers le candidat (les suites sont
                              des suggestions affichées). Contexte donné au modèle : le candidat dont le numéro est le seul à correspondre
                              (candidateIdForNumber, même prudence qu'à l'écran) et au plus 3 de ses missions (kind = mission).
+                             Conservation et effacement (lot A6, décisions du 06/10/2026 proposées par Claude et déléguées par Laurent,
+                             À CONFIRMER par un avis juridique) : transcription 6 mois après l'APPEL (la CNIL plafonne à 6 mois
+                             l'enregistrement des appels au travail), appel + analyse 24 mois après l'appel, par rgpd-purge (étapes 6 et 7,
+                             « compte seulement » par défaut, `_shared/phone-call-erasure.ts` : durées et `retentionCutoff`). Effacement d'un
+                             candidat : `recordGdprErasure` étape 11 supprime les appels de ses numéros (candidate_contacts, par
+                             identifiants connus ou adresse e-mail), transcriptions et analyses par cascade, SAUF un numéro qu'un autre
+                             candidat de l'organisation porte aussi (`planCallErasure`, rendu dans `keptSharedNumbers`). Les coordonnées
+                             (candidate_contacts) ne sont pas effacées par ce chemin, ni l'enregistrement chez Aircall (réglage Aircall).
 candidate_photos           : copie privée de la photo LinkedIn d'un candidat (design simplifié, lot P). Une ligne par
                              (organisation, candidat) : status (pending, stored, expired, failed, skipped, erased),
                              storage_path (seulement en stored). Fichier dans le bucket privé candidate-photos
