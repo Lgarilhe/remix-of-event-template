@@ -7,17 +7,21 @@
  * Chaque affichage a ses états : squelette, erreur avec « Réessayer », vide
  * avec l'action qui le remplit, vide dû aux filtres avec « Effacer les
  * filtres » (01-direction, § 8).
+ *
+ * Design simplifié (lot Suite, docs/design/06-simplicite.md) : une phrase
+ * chiffrée sous le titre, les chiffres dans l'Analyse seulement, la recherche
+ * et un seul menu « Filtres » sur la même ligne que la bascule d'affichage
+ * (celle de la page mission), plus de bouton « Actualiser » : la liste se relit
+ * au retour sur l'onglet (useATSData, refetchOnWindowFocus).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BarChart3, Bell, Columns3, History, RefreshCw, Rows3, SearchX } from 'lucide-react';
+import { BarChart3, Bell, Columns3, History, Rows3, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
 import { EmptyState, ErrorState, PageHeader, PageLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
-import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
 import { ATSKanban } from '@/components/ats/ATSKanban';
 import { ATSTable } from '@/components/ats/ATSTable';
 import { ATSTimeline, ATSTimelineSkeleton } from '@/components/ats/ATSTimeline';
@@ -26,19 +30,17 @@ import { ATSFilters, type ATSFiltersValue } from '@/components/ats/ATSFilters';
 import { ATSStats } from '@/components/ats/ATSStats';
 import { ATSKanbanSkeleton } from '@/components/ats/ATSKanbanSkeleton';
 import { ATSTableSkeleton } from '@/components/ats/ATSTableSkeleton';
-import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { BulkActionsBar, type BulkMoveResult } from '@/components/ats/BulkActionsBar';
-import { useATSData, ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
-import { cn } from '@/lib/utils';
+import { useATSData, ATS_STAGES, countPeople, type ATSCandidate } from '@/hooks/useATSData';
 import { plural } from '@/lib/plural';
 
 type PipelineView = 'kanban' | 'table' | 'timeline' | 'analytics';
 
 /** Affichages de la page ; la valeur est celle de `?view=` (liens et favoris existants). */
-const VIEWS: { value: PipelineView; label: string; icon: React.ElementType }[] = [
+const VIEWS: SegmentedOption<PipelineView>[] = [
   { value: 'kanban', label: 'Colonnes', icon: Columns3 },
   { value: 'table', label: 'Tableau', icon: Rows3 },
   { value: 'timeline', label: 'Chronologie', icon: History },
@@ -239,6 +241,16 @@ export default function ATS() {
   const hasCandidates = candidates.length > 0;
   const showError = !!error && !hasCandidates;
 
+  // « 28 candidats dans 4 missions » : personnes distinctes, missions des lignes de mission.
+  const subtitle = useMemo(() => {
+    if (!hasCandidates) return 'Tous vos candidats, toutes missions confondues.';
+    const people = countPeople(candidates);
+    const missions = new Set(candidates.map((c) => c.projectId).filter(Boolean)).size;
+    return missions > 0
+      ? `${plural(people, 'candidat')} dans ${plural(missions, 'mission')}`
+      : plural(people, 'candidat');
+  }, [candidates, hasCandidates]);
+
   const renderSkeleton = () => {
     switch (activeView) {
       case 'table': return <ATSTableSkeleton />;
@@ -269,7 +281,7 @@ export default function ATS() {
           headingLevel={2}
           description="Les candidats apparaissent ici dès que vous les triez dans une mission ou que vous les contactez. Les profils trouvés par une recherche restent dans le Sourcing de la mission tant qu'ils ne sont pas triés."
           action={
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
               <Link to="/missions">Aller aux missions</Link>
             </Button>
           }
@@ -284,7 +296,7 @@ export default function ATS() {
           headingLevel={2}
           description={`${plural(candidates.length, 'candidat masqué', 'candidats masqués')} par les filtres.`}
           action={
-            <Button type="button" variant="outline" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => setFilters(EMPTY_FILTERS)} className="min-h-11 md:min-h-0">
               Effacer les filtres
             </Button>
           }
@@ -295,9 +307,14 @@ export default function ATS() {
       case 'table':
         return <ATSTable candidates={filteredCandidates} onCandidateClick={handleCandidateClick} onJobClick={handleJobClick} resetKey={filters} />;
       case 'timeline':
-        return <ATSTimeline candidates={filteredCandidates} onCandidateClick={handleCandidateClick} onJobClick={handleJobClick} />;
+        return <ATSTimeline candidates={filteredCandidates} onCandidateClick={handleCandidateClick} onJobClick={handleJobClick} resetKey={filters} />;
       case 'analytics':
-        return <ATSPipelineAnalytics candidates={filteredCandidates} />;
+        return (
+          <div className="space-y-8">
+            <ATSStats candidates={filteredCandidates} />
+            <ATSPipelineAnalytics candidates={filteredCandidates} />
+          </div>
+        );
       default:
         return (
           <ATSKanban
@@ -322,63 +339,30 @@ export default function ATS() {
 
       <PageHeader
         title="Pipeline"
-        subtitle="Tous vos candidats, toutes missions confondues."
+        subtitle={subtitle}
         actions={
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={refresh}
-                  disabled={refreshing || loading}
-                  aria-label="Actualiser le pipeline"
-                  className="max-md:h-11 max-md:w-11"
-                >
-                  <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Actualiser</TooltipContent>
-            </Tooltip>
-            <Button type="button" variant="outline" onClick={() => setRemindersOpen(true)} className="max-md:h-11">
-              <Bell aria-hidden="true" />
-              Rappels
-            </Button>
-          </>
+          <Button type="button" variant="ghost" onClick={() => setRemindersOpen(true)} className="max-md:h-11">
+            <Bell aria-hidden="true" />
+            Rappels
+          </Button>
         }
       />
 
-      {loading ? <ATSStatsSkeleton /> : hasCandidates && <ATSStats candidates={filteredCandidates} />}
-
-      <div className="mb-3">
-        <SegmentedControl
-          aria-label="Affichage du pipeline"
-          value={activeView}
-          onValueChange={setActiveView}
-          options={VIEWS}
-          className="hidden xl:inline-flex"
-        />
-        <Select value={activeView} onValueChange={(value) => setActiveView(value as PipelineView)}>
-          <SelectTrigger aria-label="Affichage du pipeline" className="w-full sm:w-56 xl:hidden max-md:h-11">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {VIEWS.map(({ value, label, icon: Icon }) => (
-              <SelectItem key={value} value={value}>
-                <span className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                  {label}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {hasCandidates && (
-        <div className="mb-4">
-          <ATSFilters filters={filters} onFiltersChange={setFilters} options={filterOptions} />
+      {/* Sans candidat, ni filtres ni bascule : les quatre affichages diraient la même chose. */}
+      {(loading || hasCandidates) && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {/* contents : recherche, « Filtres » et bascule de vue dans la même rangée. */}
+          {hasCandidates && <ATSFilters filters={filters} onFiltersChange={setFilters} options={filterOptions} className="contents" />}
+          {/* Bascule d'affichage de la page mission ; sur téléphone, les icônes seules. */}
+          <SegmentedControl
+            aria-label="Affichage du pipeline"
+            variant="quiet"
+            iconsOnlyOnPhone
+            value={activeView}
+            onValueChange={setActiveView}
+            options={VIEWS}
+            className="ml-auto"
+          />
         </div>
       )}
 

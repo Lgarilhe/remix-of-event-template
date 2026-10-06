@@ -17,7 +17,10 @@ const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'ut
 
 const builder = read('src/components/outreach/SequenceBuilder.tsx');
 const selector = read('src/components/outreach/SequenceTemplateSelector.tsx');
-const list = read('src/components/outreach/SequencesList.tsx');
+// Lot 5c-1 : enregistrement de l'éditeur sorti de SequencesList dans useSequenceSave.ts,
+// règle de création désactivée selon l'offre dans sequenceActions.ts.
+const saveHook = read('src/hooks/useSequenceSave.ts');
+const actions = read('src/lib/sequenceActions.ts');
 
 /** Extrait le corps d'une fonction déclarée `const nom = ... => {` jusqu'à `};` au même niveau. */
 function body(src, start) {
@@ -62,8 +65,10 @@ test('SEQ-154 — séquence créée désactivée faute d’offre : l’éditeur 
   // Même condition que la liste (qui n'affiche alors aucun message).
   assert.match(save, /const savedInactiveForPlan = !sequence\.id && sequence\.isActive && !canSendSequences;/);
   // Décision 32 : abonnement pas encore lu, la séquence est aussi créée désactivée.
-  assert.match(list, /const createInactiveForPlan = !sequence\.id && sequence\.isActive && \(!canSendSequences \|\| planStateUnknown\);/);
-  assert.match(list, /if \(!createInactiveForPlan\) \{\s*toast\.success\('Séquence créée'/);
+  // Lot 5c-1 : règle sortie dans sequenceActions.ts, formule inchangée.
+  assert.match(actions, /export const shouldCreateInactiveForPlan = \([\s\S]*?\): boolean => !sequence\.id && sequence\.isActive && \(!canSendSequences \|\| planStateUnknown\);/);
+  assert.match(saveHook, /const createInactiveForPlan = shouldCreateInactiveForPlan\(sequence, canSendSequences, planStateUnknown\);/);
+  assert.match(saveHook, /if \(!createInactiveForPlan\) \{\s*toast\.success\('Séquence créée'/);
   // Annoncé seulement après un enregistrement réussi.
   const apres = save.slice(save.indexOf('await onSave(sequence);'));
   assert.ok(save.indexOf('await onSave(sequence);') !== -1);

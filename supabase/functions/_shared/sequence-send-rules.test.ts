@@ -1,6 +1,9 @@
 // deno test --no-check supabase/functions/_shared/sequence-send-rules.test.ts
 import { deepStrictEqual as assertEquals, ok as assert } from "node:assert";
 import {
+  AI_REVIEW_DEFER_MS,
+  AI_REVIEW_REQUIRED_MESSAGE,
+  aiReviewRequired,
   allowsNewChatFallback,
   chooseRotationSender,
   classifySendStatus,
@@ -136,4 +139,31 @@ Deno.test("SEQ-095 : un Message IA parti en direct compte comme message direct, 
   assertEquals(directFollowUpType(0), "RELANCE 1");
   assertEquals(directFollowUpType(1), "RELANCE 1");
   assertEquals(directFollowUpType(2), "RELANCE 2");
+});
+
+Deno.test("Lot 5a-2 : une étape IA ne part qu'avec un texte relu (retouche de l'inscription ou correction du Journal)", () => {
+  const base = { useAi: true, actionType: "message", editedMessage: false, usedOverride: false };
+  // IA et message sans retouche : relecture requise.
+  assertEquals(aiReviewRequired(base), true);
+  for (const actionType of ["inmail", "smart_message", "email", "whatsapp_message"]) {
+    assertEquals(aiReviewRequired({ ...base, actionType }), true, actionType);
+  }
+  // Retouche validée à l'inscription (message_overrides).
+  assertEquals(aiReviewRequired({ ...base, usedOverride: true }), false);
+  // Correction du Journal (final_message d'une exécution programmée).
+  assertEquals(aiReviewRequired({ ...base, editedMessage: true }), false);
+  // Invitation (jamais rédigée par l'IA), visite, attente : aucune relecture.
+  for (const actionType of ["connection_request", "profile_visit", "wait_reply", "", null, undefined]) {
+    assertEquals(aiReviewRequired({ ...base, actionType }), false, String(actionType));
+  }
+  // IA désactivée.
+  assertEquals(aiReviewRequired({ ...base, useAi: false }), false);
+  assertEquals(aiReviewRequired({ ...base, useAi: null }), false);
+  // Copie périmée du modèle posée au verrou d'un ancien essai : pas un texte relu.
+  assertEquals(aiReviewRequired({ ...base, editedMessage: true, staleTemplateSnapshot: true }), true);
+  // ... sauf si l'inscription porte une retouche.
+  assertEquals(aiReviewRequired({ ...base, editedMessage: true, staleTemplateSnapshot: true, usedOverride: true }), false);
+  // Raison lisible, report d'une heure.
+  assertEquals(AI_REVIEW_REQUIRED_MESSAGE, "Message rédigé par l'IA à relire avant l'envoi.");
+  assertEquals(AI_REVIEW_DEFER_MS, 3_600_000);
 });

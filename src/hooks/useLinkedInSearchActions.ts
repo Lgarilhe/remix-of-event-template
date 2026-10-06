@@ -997,6 +997,7 @@ export function useLinkedInSearchActions(
             current_positions: p.current_positions,
             past_positions: p.past_positions,
             profile_picture_url: p.profile_picture_url,
+            profile_picture_url_large: p.profile_picture_url_large,
             network_distance: p.network_distance,
             connections_count: p.connections_count,
             industry: p.industry,

@@ -23,8 +23,9 @@ const scorecard = code('src/components/ats/ScorecardTab.tsx');
 const fullPage = code('src/pages/ScorecardFullPage.tsx');
 const coaching = code('src/components/ats/LiveCoachingPanel.tsx');
 const guide = code('src/components/ats/AudioSetupGuide.tsx');
+const followUp = code('src/components/ats/InterviewFollowUp.tsx');
 const fraud = code('src/components/ats/FraudDetectionTab.tsx');
-const all = [scorecard, fullPage, coaching, guide, fraud].join('\n');
+const all = [scorecard, fullPage, coaching, guide, fraud, followUp].join('\n');
 
 test('E-04 : tous les champs partent seuls, le statut est visible et annoncé', () => {
   assert.match(scorecard, /AUTOSAVE_DELAY_MS = \d+/);
@@ -66,7 +67,9 @@ test('E-09 : plus aucune action sans effet dans l’assistant d’entretien', ()
   for (const fake of ['Avancer dans le pipeline', 'Écarter', 'Entretien suivant à planifier', 'lancer le coaching']) {
     assert.ok(!all.includes(fake), `« ${fake} » encore présent`);
   }
-  assert.match(coaching, /Programmer l'entretien suivant/);
+  // Le bouton vit dans la suite de l'entretien ; le panneau l'ouvre sur la même fenêtre.
+  assert.match(followUp, /Programmer l'entretien suivant/);
+  assert.match(coaching, /onScheduleNext=\{\(\) => setScheduleOpen\(true\)\}/);
   // La vraie fenêtre « Programmer un entretien », candidat et mission préremplis.
   assert.match(coaching, /<CreateEventModal\s+open\s+onOpenChange=\{setScheduleOpen\}/);
   assert.match(coaching, /defaultCandidate=\{\{\s*candidateId,/);

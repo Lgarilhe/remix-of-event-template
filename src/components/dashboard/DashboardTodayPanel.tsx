@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { IconTile } from '@/components/ui/IconTile';
 import { AlarmIcon } from '@/components/ui/animated-icons';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -204,7 +205,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
     return (
       <div className="space-y-2 py-4" role="status" aria-label="Chargement de la journée">
         {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-12 rounded-lg" />
+          <Skeleton key={i} className="h-12 rounded-xl" />
         ))}
       </div>
     );
@@ -233,17 +234,19 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
             </IconTile>
             {plural(lateTasks.length, 'tâche')} en retard
           </h3>
-          <ul className="divide-y divide-border border-y border-border">
-            {lateTasks.map((r) => (
-              <TaskRow
-                key={r.id}
-                reminder={r}
-                visual={taskVisual(r)}
-                when={format(parseISO(r.due_at), 'd MMM', { locale: fr })}
-                onToggle={onToggleReminder}
-              />
-            ))}
-          </ul>
+          <Card>
+            <ul className="divide-y divide-border px-5">
+              {lateTasks.map((r) => (
+                <TaskRow
+                  key={r.id}
+                  reminder={r}
+                  visual={taskVisual(r)}
+                  when={format(parseISO(r.due_at), 'd MMM', { locale: fr })}
+                  onToggle={onToggleReminder}
+                />
+              ))}
+            </ul>
+          </Card>
         </section>
       )}
 
@@ -299,18 +302,20 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
             }
           />
         ) : (
-          <ul className="divide-y divide-border border-y border-border">
-            {combined.map((item) => (
-              <TodayItem
-                key={item.id}
-                item={item}
-                now={now}
-                taskVisual={taskVisual}
-                onClickEvent={openEvent}
-                onToggleReminder={onToggleReminder}
-              />
-            ))}
-          </ul>
+          <Card>
+            <ul className="divide-y divide-border px-5">
+              {combined.map((item) => (
+                <TodayItem
+                  key={item.id}
+                  item={item}
+                  now={now}
+                  taskVisual={taskVisual}
+                  onClickEvent={openEvent}
+                  onToggleReminder={onToggleReminder}
+                />
+              ))}
+            </ul>
+          </Card>
         )}
       </section>
 

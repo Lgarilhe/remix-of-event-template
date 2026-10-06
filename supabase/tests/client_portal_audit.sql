@@ -4,7 +4,7 @@
 -- reconstruite (jamais en prod) :
 --   BEGIN; \i supabase/tests/client_portal_audit.sql; ROLLBACK;
 -- Vérifie les blocs R4-a et R4-b de 20260927233806_c1_reparations_fuites.sql,
--- et le bloc 6 de 20261005155516_scorecard_live_lot1_rattachement.sql :
+-- et le bloc 6 de 20261006144618_scorecard_live_lot1_rattachement.sql :
 --  * client_portal_candidates(token) ne renvoie que les candidats retenus
 --    ou au-delà des missions du lien, jamais « À trier », seulement
 --    contactés ni écartés, et traduit l'étape dans le vocabulaire du

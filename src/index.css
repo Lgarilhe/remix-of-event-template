@@ -14,18 +14,20 @@
     color-scheme: dark;
 
     /* ── Surfaces ── */
+    /* Échelle de relief : fond 11, carte 16, menu 18, zone en retrait 20, survol 22.
+       Une carte se détache du fond de 5 points de luminosité, sans dépendre de son filet. */
     --background: 40 3% 11%;
-    --card: 40 3% 14%;
-    --popover: 40 3% 16%;
-    --secondary: 40 3% 18%;
-    --muted: 40 3% 18%;
+    --card: 40 3% 16%;
+    --popover: 40 3% 18%;
+    --secondary: 40 3% 20%;
+    --muted: 40 3% 20%;
     /* Gris de survol hérité de shadcn (hover:bg-accent). La couleur de marque est --brand. */
-    --accent: 40 3% 20%;
+    --accent: 40 3% 22%;
 
     /* ── Texte ── */
     --foreground: 0 0% 98%;
     --foreground-secondary: 40 4% 74%;
-    --muted-foreground: 40 3% 62%;
+    --muted-foreground: 40 3% 64%;
     --card-foreground: 0 0% 98%;
     --popover-foreground: 0 0% 98%;
     --secondary-foreground: 0 0% 90%;
@@ -55,9 +57,9 @@
     --border-strong-hsl: 0 0% 100%;
     --border-strong-alpha: 0.18;
     /* Bord de champ, de case et d'interrupteur : 3:1 sur toutes les surfaces (WCAG 1.4.11). */
-    --input: 0 0% 100% / 36%;
+    --input: 0 0% 100% / 40%;
     --input-hsl: 0 0% 100%;
-    --input-alpha: 0.36;
+    --input-alpha: 0.40;
     --ring: 179 32% 62%;
 
     --radius: 0.5rem;
@@ -160,7 +162,7 @@
   .light {
     color-scheme: light;
 
-    --background: 40 14% 98%;
+    --background: 40 12% 97%;
     --card: 0 0% 100%;
     --popover: 0 0% 100%;
     --secondary: 40 8% 95%;
@@ -287,6 +289,181 @@
   .eyebrow {
     @apply text-2xs font-semibold uppercase text-muted-foreground;
     letter-spacing: 0.08em;
+  }
+
+  /* Fond de l'accueil et de la recherche (PageBackdrop, décision du propriétaire du
+     05/10/2026, 01-direction.md § 1) : trois taches de dégradé qui dérivent, un grain
+     fixe par-dessus, le tout fondu vers le fond de page. Les couleurs restent assez
+     sombres (thème sombre) ou assez claires (thème clair) pour que le texte secondaire
+     garde 4,5:1 : si on les pousse, relire les contrastes avant de livrer. */
+  .konekt-backdrop {
+    --backdrop-a: 184 62% 24%;
+    --backdrop-b: 226 66% 34%;
+    --backdrop-c: 205 60% 28%;
+    --backdrop-grain: 0.16;
+    /* Position du curseur de -1 à 1, posée par PageBackdrop (option follow) ; 0 au repos. */
+    --konekt-mx: 0;
+    --konekt-my: 0;
+    --backdrop-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1.6 0 0 0 -.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 28rem;
+    overflow: hidden;
+    pointer-events: none;
+    contain: paint;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 28%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 28%, transparent 100%);
+  }
+  .light .konekt-backdrop {
+    --backdrop-a: 186 66% 84%;
+    --backdrop-b: 222 80% 88%;
+    --backdrop-c: 200 70% 86%;
+    --backdrop-grain: 0.06;
+    --backdrop-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.6 0 0 0 -.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .konekt-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--backdrop-noise);
+    background-size: 180px 180px;
+    opacity: var(--backdrop-grain);
+  }
+  .konekt-backdrop__blob {
+    position: absolute;
+    border-radius: 9999px;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+  }
+  .konekt-backdrop__blob--a {
+    left: -12%;
+    top: -70%;
+    width: 62%;
+    height: 150%;
+    background: radial-gradient(closest-side, hsl(var(--backdrop-a) / 0.68), transparent);
+    animation-name: konektBackdropA;
+    animation-duration: 23s;
+  }
+  .konekt-backdrop__blob--b {
+    right: -14%;
+    top: -80%;
+    width: 68%;
+    height: 160%;
+    background: radial-gradient(closest-side, hsl(var(--backdrop-b) / 0.62), transparent);
+    animation-name: konektBackdropB;
+    animation-duration: 29s;
+  }
+  .konekt-backdrop__blob--c {
+    left: 24%;
+    top: -90%;
+    width: 52%;
+    height: 140%;
+    background: radial-gradient(closest-side, hsl(var(--backdrop-c) / 0.5), transparent);
+    animation-name: konektBackdropC;
+    animation-duration: 37s;
+  }
+  /* Option contained : fondu aussi sur les côtés (conteneur à marges). Sans prise en charge de
+     mask-composite, le fondu du haut reste seul et les côtés restent nets. */
+  .konekt-backdrop--contained {
+    -webkit-mask-image:
+      linear-gradient(to bottom, #000 0%, #000 28%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to bottom, #000 0%, #000 28%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
+    mask-composite: intersect;
+  }
+  /* Option follow : les taches se penchent vers le curseur. La propriété `translate` se compose
+     avec l'animation `transform` sans la gêner ; --konekt-mx et --konekt-my (de -1 à 1) sont posées
+     par PageBackdrop. Le fond (c) bouge le plus, comme un plan plus proche. */
+  .konekt-backdrop--follow .konekt-backdrop__blob {
+    transition: translate 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .konekt-backdrop--follow .konekt-backdrop__blob--a {
+    translate: calc(var(--konekt-mx) * 6%) calc(var(--konekt-my) * 8%);
+  }
+  .konekt-backdrop--follow .konekt-backdrop__blob--b {
+    translate: calc(var(--konekt-mx) * 9%) calc(var(--konekt-my) * 8%);
+  }
+  .konekt-backdrop--follow .konekt-backdrop__blob--c {
+    translate: calc(var(--konekt-mx) * 13%) calc(var(--konekt-my) * 10%);
+  }
+  @keyframes konektBackdropA {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(18%, 14%, 0) scale(1.15); }
+  }
+  @keyframes konektBackdropB {
+    from { transform: translate3d(0, 6%, 0) scale(1.1); }
+    to { transform: translate3d(-20%, -4%, 0) scale(0.95); }
+  }
+  @keyframes konektBackdropC {
+    from { transform: translate3d(-12%, 0, 0) scale(0.95); }
+    to { transform: translate3d(14%, 12%, 0) scale(1.2); }
+  }
+  /* Page qui porte le fond : le texte gris se règle un cran plus lisible (plus clair en
+     sombre, plus foncé en clair) pour tenir 4,5:1 sous les taches. Jetons globaux inchangés. */
+  .konekt-on-backdrop {
+    --muted-foreground: 40 3% 72%;
+    --k-text-muted: hsl(var(--muted-foreground));
+  }
+  .light .konekt-on-backdrop {
+    --muted-foreground: 40 4% 36%;
+  }
+
+  /* Carte texturée (texturedCard, décision du propriétaire du 05/10/2026, 01-direction.md § 7) :
+     dégradé et grain fixes, sans mouvement. La carte porte ses propres couleurs de texte, claires
+     dans les deux thèmes (une île sombre en thème clair), pour que son contenu garde 4,5:1 sur le
+     dégradé. Si on éclaircit un dégradé, refaire la mesure avant de livrer. */
+  .konekt-card-tex {
+    --foreground: 0 0% 98%;
+    --foreground-secondary: 0 0% 93%;
+    --muted-foreground: 0 0% 88%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 40 3% 11%;
+    --muted: 0 0% 100% / 16%;
+    /* Survol d'un bouton discret : il assombrit au lieu d'éclaircir, pour que le texte garde son contraste. */
+    --accent: 0 0% 0% / 22%;
+    --accent-foreground: 0 0% 98%;
+    --border-hsl: 0 0% 100%;
+    --border-alpha: 0.16;
+    --border-strong-hsl: 0 0% 100%;
+    --border-strong-alpha: 0.28;
+    --ring: 0 0% 100%;
+    --tex-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1.6 0 0 0 -.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    color: hsl(var(--foreground));
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.12);
+  }
+  .konekt-card-tex::before,
+  .konekt-card-tex::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+  }
+  .konekt-card-tex::before {
+    background: var(--tex-gradient);
+  }
+  .konekt-card-tex::after {
+    background-image: var(--tex-noise);
+    background-size: 180px 180px;
+    opacity: 0.14;
+  }
+  .konekt-card-tex--teal {
+    --tex-gradient:
+      radial-gradient(110% 160% at 0% 0%, hsl(184 60% 28%), transparent 56%),
+      radial-gradient(110% 170% at 100% 100%, hsl(226 66% 44%), transparent 62%),
+      hsl(208 46% 15%);
+  }
+  .konekt-card-tex--warm {
+    --tex-gradient:
+      radial-gradient(110% 160% at 0% 0%, hsl(12 66% 34%), transparent 62%),
+      radial-gradient(110% 170% at 100% 100%, hsl(34 70% 28%), transparent 62%),
+      hsl(10 38% 14%);
   }
 }
 

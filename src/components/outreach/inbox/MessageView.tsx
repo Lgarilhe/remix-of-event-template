@@ -9,7 +9,9 @@
  *   l'inscription ou « Mission probable » quand elle n'est que déduite des
  *   messages ; actions sur ordinateur comme sur téléphone : sommeil, archive,
  *   « Inscrire dans une séquence », menu « Plus d'actions » (D-02, D-03,
- *   D-08, D-18) ;
+ *   D-08, D-18). Design simplifié (lot Suite) : le statut s'écrit en mots à
+ *   côté du nom, « Inscrire dans une séquence » en bouton discret, le logo
+ *   LinkedIn ne se pose plus sur le visage ;
  * - fil : frise d'activité tirée du catalogue des séquences, bulles sans ombre
  *   ni ressort, réagir et supprimer au doigt, au survol et au clavier (D-01,
  *   D-12, D-15) ;
@@ -29,6 +31,10 @@ import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMemberName } from '@/hooks/useTeamMembers';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
+import { pauseToastTitle } from '@/lib/sequenceErrorMessages';
+import { readManualStop } from '@/lib/sequenceLabels';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft, readChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
@@ -47,7 +53,7 @@ import { EmptyState } from '@/components/layout';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import {
   Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock, ExternalLink,
-  FileText, ListPlus, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
+  FileText, GitBranch, ListPlus, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
@@ -408,8 +414,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // les relances automatiques ne partent plus. Les inscriptions actives du
   // candidat sont lues à l'ouverture de la conversation (pas dans la carte des
   // 500 dernières inscriptions, ni déduites du statut d'une mission).
-  const [stopSeqConfirm, setStopSeqConfirm] = useState(false);
+  // Lot 5b : sans fenêtre, « Annuler » dans le toast (reprise serveur).
   const [stoppingSeq, setStoppingSeq] = useState(false);
+  const { offerUndoPause } = useUndoableEnrollmentAction();
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
   const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
   const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
@@ -491,22 +498,30 @@ export const MessageView: React.FC<MessageViewProps> = ({
       setSeqStoppedLocal(true);
       setActiveEnrollmentsKey(k => k + 1);
       onEnrollmentsChanged?.();
-      const name = getChatDisplayName(selectedChat) || 'Le candidat';
-      if (pausedCount < ids.length) {
-        toast.warning(`${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`, {
-          description: 'Les autres n’ont pas pu être mises en pause. Réessayez.',
-        });
-      } else {
-        toast.success(`${name} est en pause`, {
-          description: 'Aucune relance ne partira tant que vous ne reprenez pas la séquence.',
-        });
-      }
+      const name = getChatDisplayName(selectedChat) || null;
+      const partial = pausedCount < ids.length;
+      // « Annuler » ne reprend que les inscriptions que cette pause a touchées,
+      // y compris quand elle n'en a touché qu'une partie (le titre le dit).
+      offerUndoPause({
+        title: partial
+          ? `${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`
+          : pausedCount > 1
+            ? `${pausedCount} séquences mises en pause pour ${name || 'ce candidat'}.`
+            : pauseToastTitle(name),
+        ...(partial ? { description: 'Les autres n’ont pas pu être mises en pause. Réessayez.', tone: 'warning' as const } : {}),
+        enrollmentIds: (paused ?? []).map(e => e.id),
+        candidateName: name,
+        onSettled: () => {
+          setSeqStoppedLocal(false);
+          setActiveEnrollmentsKey(k => k + 1);
+          onEnrollmentsChanged?.();
+        },
+      });
     } catch (err) {
       console.error('[MessageView] pause sequence error:', err);
       toast.error('Mise en pause impossible', { description: 'Réessayez dans un instant.' });
     } finally {
       setStoppingSeq(false);
-      setStopSeqConfirm(false);
     }
   };
 
@@ -553,6 +568,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     setSummaryOpen(false);
   }, [selectedChat?.id]);
   const { organization } = useOrganization();
+  const memberName = useMemberName();
   const { asMap: customVariablesMap } = useUserTemplateVariables();
 
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
@@ -665,7 +681,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           illustration="conversation"
           title="Sélectionnez une conversation"
           description="Vos messages LinkedIn et vos InMails s'affichent ici."
-          className="w-full max-w-sm"
+          className="w-full max-w-sm border-0"
         />
       </div>
     );
@@ -690,6 +706,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
           : jobInfo.status
         : null;
   const enrollmentPauseReason = seqStoppedLocal ? 'manual' : jobInfo?.pause_reason ?? null;
+  // Lot 5b : « Arrêtée par Claire Dubois le 05/10 » pour un arrêt manuel.
+  const enrollmentManualStop = jobInfo ? readManualStop(enrollmentStatus, jobInfo.completion_reason, jobInfo.manual_stop) : null;
   // Mise en pause seulement si une inscription ACTIVE du candidat a été lue en
   // base (jamais d'après le statut d'une mission, ni d'une mission déduite).
   const canStopSequence = hasActiveEnrollment;
@@ -789,7 +807,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <ChevronLeft aria-hidden="true" />
           </Button>
 
-          {/* Avatar et pastille du canal */}
+          {/* Avatar ; la pastille du canal seulement hors LinkedIn */}
           <span className="relative mt-0.5 shrink-0">
             <Avatar className="h-10 w-10">
               <AvatarImage src={avatar} alt="" />
@@ -797,23 +815,32 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {getInitials(displayName)}
               </AvatarFallback>
             </Avatar>
-            <span
-              aria-hidden="true"
-              className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
-            >
-              <ChannelIcon channel={channel} size="xs" />
-            </span>
+            {channel !== 'linkedin' && (
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
+              >
+                <ChannelIcon channel={channel} size="xs" />
+              </span>
+            )}
           </span>
 
           <div className="min-w-0 flex-1 py-0.5">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {/* Le nom, puis l'état de l'inscription en mots, sans pastille (design simplifié) */}
+            <div className="flex min-w-0 items-baseline gap-x-2">
               <h2 className="min-w-0 truncate text-md font-semibold text-foreground">{displayName}</h2>
               {enrollmentStatus && (
-                <EnrollmentStatusBadge
-                  status={enrollmentStatus}
-                  pauseReason={enrollmentPauseReason}
-                  className="px-1.5 py-0 text-2xs"
-                />
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <GitBranch className="h-3 w-3 self-center" aria-hidden="true" />
+                  <span className="sr-only">Séquence : </span>
+                  <EnrollmentStatusBadge
+                    status={enrollmentStatus}
+                    pauseReason={enrollmentPauseReason}
+                    manualStop={enrollmentManualStop}
+                    stoppedByName={memberName(enrollmentManualStop?.by)}
+                    plain
+                  />
+                </span>
               )}
             </div>
             {headline && <p className="truncate text-xs text-muted-foreground">{headline}</p>}
@@ -844,7 +871,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
           {/* Actions : visibles sur ordinateur et sur téléphone */}
           <div className="flex shrink-0 items-center gap-0.5 md:gap-1">
-            <Button variant="outline" size="sm" onClick={onEnrollInSequence} className="hidden lg:inline-flex">
+            <Button variant="ghost" size="sm" onClick={onEnrollInSequence} className="hidden lg:inline-flex">
               <ListPlus aria-hidden="true" />
               Inscrire dans une séquence
             </Button>
@@ -907,9 +934,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {canStopSequence && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className={MENU_ITEM} onSelect={() => setStopSeqConfirm(true)}>
+                    {/* Lot 5b : pause immédiate, « Annuler » dans le toast. */}
+                    <DropdownMenuItem className={MENU_ITEM} disabled={stoppingSeq} onSelect={() => { void handleStopSequence(); }}>
                       <CircleStop className="mr-2 h-4 w-4" aria-hidden="true" />
-                      Mettre la séquence en pause
+                      Mettre en pause pour ce candidat
                     </DropdownMenuItem>
                   </>
                 )}
@@ -1330,36 +1358,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Mettre la séquence en pause */}
-      <AlertDialog open={stopSeqConfirm} onOpenChange={(open) => !open && setStopSeqConfirm(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mettre la séquence en pause ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {displayName || 'Ce candidat'} ne recevra plus de messages de la séquence tant que vous ne la reprenez pas.
-              Vous pourrez la reprendre depuis le suivi de la séquence.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={stoppingSeq}
-              onClick={(e) => {
-                // La fenêtre reste ouverte pendant l'écriture ; elle se ferme à la fin.
-                e.preventDefault();
-                void handleStopSequence();
-              }}
-            >
-              {stoppingSeq ? (
-                <Loader2 className="animate-spin" aria-hidden="true" />
-              ) : (
-                <CircleStop aria-hidden="true" />
-              )}
-              Mettre en pause
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

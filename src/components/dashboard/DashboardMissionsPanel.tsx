@@ -20,6 +20,7 @@ import { Link } from 'react-router-dom';
 import { Briefcase, Plus } from 'lucide-react';
 import { EmptyState, ErrorState } from '@/components/layout';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AvatarStack } from '@/components/ui/person-avatar';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -66,7 +67,7 @@ const MissionRow: React.FC<{ project: SourcingProject; interviewing?: Interviewi
     <li>
       <Link
         to={`/missions/${project.id}`}
-        className={`-mx-2 grid grid-cols-1 items-center gap-x-6 gap-y-2 rounded-lg px-2 py-3.5 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ROW_GRID}`}
+        className={`-mx-3 grid grid-cols-1 items-center gap-x-6 gap-y-2 rounded-lg px-3 py-3.5 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ROW_GRID}`}
       >
         <span className="flex min-w-0 items-center gap-3.5">
           <MissionCompanyLogo company={clientName || project.name} logoUrl={project.jd_client_logo} size={40} />
@@ -81,7 +82,7 @@ const MissionRow: React.FC<{ project: SourcingProject; interviewing?: Interviewi
         {interviewing && interviewing.total > 0 ? (
           <span className="flex min-h-7 items-center gap-2.5 pl-[3.375rem] md:pl-0">
             <span className="text-sm text-muted-foreground md:sr-only">En entretien</span>
-            <AvatarStack people={interviewing.people} total={interviewing.total} size={30} />
+            <AvatarStack people={interviewing.people} total={interviewing.total} size={30} ringClassName="ring-card" />
           </span>
         ) : (
           // Sur téléphone, rien à dire : la ligne s'arrête au nom.
@@ -131,7 +132,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
       {isLoading ? (
         <div className="space-y-2" role="status" aria-label="Chargement des missions">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-14 rounded-lg" />
+            <Skeleton key={i} className="h-14 rounded-xl" />
           ))}
         </div>
       ) : error ? (
@@ -161,19 +162,21 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
         />
       ) : (
         <>
-          {/* En-tête de colonnes à partir de 768 px ; chaque cellule se lit aussi seule. */}
-          <div aria-hidden="true" className={`hidden gap-x-6 pb-2.5 text-xs font-medium text-muted-foreground md:grid ${ROW_GRID}`}>
-            <span>Mission</span>
-            <span>En entretien</span>
-            <NumberHeader label="Sourcés" />
-            <NumberHeader label="Retenus au total" />
-            <NumberHeader label="Contactés au total" />
-          </div>
-          <ul className="divide-y divide-border border-y border-border">
-            {activeProjects.map((project) => (
-              <MissionRow key={project.id} project={project} interviewing={interviewing?.[project.id]} />
-            ))}
-          </ul>
+          <Card className="px-5 pb-1 pt-4">
+            {/* En-tête de colonnes à partir de 768 px ; chaque cellule se lit aussi seule. */}
+            <div aria-hidden="true" className={`hidden gap-x-6 pb-2.5 text-xs font-medium text-muted-foreground md:grid ${ROW_GRID}`}>
+              <span>Mission</span>
+              <span>En entretien</span>
+              <NumberHeader label="Sourcés" />
+              <NumberHeader label="Retenus au total" />
+              <NumberHeader label="Contactés au total" />
+            </div>
+            <ul className="divide-y divide-border md:border-t md:border-border">
+              {activeProjects.map((project) => (
+                <MissionRow key={project.id} project={project} interviewing={interviewing?.[project.id]} />
+              ))}
+            </ul>
+          </Card>
           <p className="pt-2.5 text-xs text-muted-foreground">Chiffres depuis le début de chaque mission.</p>
         </>
       )}

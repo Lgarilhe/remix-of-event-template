@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
@@ -14,6 +14,7 @@ import { CardMessageThread } from './CardMessageThread';
 import { ProfileData } from './types';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 /**
  * Tab supplémentaire injecté après les tabs standard. Permet aux
@@ -56,7 +57,18 @@ interface CardExpandedContentProps {
   initialTab?: string;
   /** Masque l'onglet Posts (pas encore branché) : la nouvelle page mission le retire. */
   hidePosts?: boolean;
+  /** Onglet imposé par le parent (la note de l'en-tête ouvre Évaluation) ; absent, `initialTab` puis le choix de l'utilisateur. */
+  activeTab?: string;
+  /** Appelé à chaque changement d'onglet, par un clic ou au clavier. */
+  onActiveTabChange?: (tab: string) => void;
 }
+
+/** Un onglet de la barre : texte seul, soulignement de la couleur de marque pour l'onglet ouvert. */
+const TAB_TRIGGER_CLASS =
+  'relative h-10 shrink-0 gap-1.5 rounded-none px-2 text-sm font-normal text-muted-foreground shadow-none transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:after:bg-brand';
+
+/** Marge, en px, laissée à gauche ou à droite quand l'onglet ouvert est ramené dans la barre. */
+const TAB_SCROLL_MARGIN = 24;
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
   if (!start?.year) return null;
@@ -83,6 +95,8 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   hideStandardTabs,
   initialTab,
   hidePosts = false,
+  activeTab,
+  onActiveTabChange,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
@@ -93,6 +107,50 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   // Sauf si initialTab explicite (ex: deep-link "?tab=evaluation").
   const fallbackTab = extraTabs && extraTabs.length > 0 ? extraTabs[0].key : 'experience';
   const defaultTab = initialTab || fallbackTab;
+
+  // L'onglet est toujours tenu ici ; le parent peut le forcer (`activeTab`) et le suivre.
+  const [chosenTab, setChosenTab] = useState(defaultTab);
+  const tab = activeTab ?? chosenTab;
+  const changeTab = (next: string) => {
+    setChosenTab(next);
+    onActiveTabChange?.(next);
+  };
+
+  // Barre d'onglets : sans barre de défilement visible. Un fondu marque le côté
+  // où d'autres onglets attendent, et l'onglet ouvert est ramené dans la vue.
+  const barRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const syncEdges = useCallback(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const next = {
+      start: bar.scrollLeft > 4,
+      end: bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 4,
+    };
+    setEdges((prev) => (prev.start === next.start && prev.end === next.end ? prev : next));
+  }, []);
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    syncEdges();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(syncEdges);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [syncEdges, extraTabs?.length]);
+  useEffect(() => {
+    const bar = barRef.current;
+    const active = bar?.querySelector<HTMLElement>('[data-state="active"]');
+    if (!bar || !active) return;
+    const left = active.offsetLeft;
+    const right = left + active.offsetWidth;
+    if (left < bar.scrollLeft) bar.scrollLeft = Math.max(0, left - TAB_SCROLL_MARGIN);
+    else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth + TAB_SCROLL_MARGIN;
+  }, [tab]);
+  const fade = (stop: string) => `linear-gradient(to right, ${stop})`;
+  const barMask = edges.start || edges.end
+    ? fade(`${edges.start ? 'transparent' : 'black'} 0, black 28px, black calc(100% - 28px), ${edges.end ? 'transparent' : 'black'} 100%`)
+    : undefined;
 
   // 🔧 Ordre des tabs (fix 2026-05-06) :
   // Si extraTabs présents (pipeline mode) → ils sont rendus EN PREMIER,
@@ -116,41 +174,43 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
 
   return (
     <div className="overflow-hidden">
-      <Tabs defaultValue={defaultTab} className="w-full">
-        <div className="overflow-x-auto border-y border-border">
-          <TabsList className="h-10 w-max min-w-full justify-start gap-1 rounded-none bg-transparent p-0 px-1">
-            {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
-                que l'onglet par défaut (premier extraTab = "Aperçu")
-                soit aussi visuellement en position 1. */}
-            {extraTabs?.map(tab => {
-              return (
-                <TabsTrigger
-                  key={tab.key}
-                  value={tab.key}
-                  className="relative h-10 shrink-0 gap-1.5 rounded-none px-2.5 text-sm font-normal text-muted-foreground shadow-none transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:after:bg-brand"
-                >
-                  {tab.label}
-                  {tab.count != null && tab.count > 0 && (
-                    <span className="text-xs tabular-nums text-muted-foreground">{tab.count}</span>
+      <Tabs value={tab} onValueChange={changeTab} className="w-full">
+        <div className={cn('border-b border-border', !extraTabs?.length && 'border-t')}>
+          <div
+            ref={barRef}
+            onScroll={syncEdges}
+            className="no-scrollbar relative overflow-x-auto"
+            style={{ maskImage: barMask, WebkitMaskImage: barMask }}
+          >
+            <TabsList className="h-10 w-max min-w-full justify-start gap-0 rounded-none bg-transparent p-0">
+              {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
+                  que l'onglet par défaut (premier extraTab = "Aperçu")
+                  soit aussi visuellement en position 1. */}
+              {extraTabs?.map(extra => (
+                <TabsTrigger key={extra.key} value={extra.key} className={TAB_TRIGGER_CLASS}>
+                  {extra.label}
+                  {extra.count != null && extra.count > 0 && (
+                    <span className="text-xs tabular-nums text-muted-foreground">{extra.count}</span>
                   )}
                 </TabsTrigger>
-              );
-            })}
-            {/* Onglets standards LinkedIn — masqués en mode pipeline
-                (les infos sont reformulées dans extraTabs : Profil =
-                Exp+Form+Skills, Messages = LinkedIn DMs). */}
-            {!hideStandardTabs && standardTabs.map(tab => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="relative h-10 shrink-0 gap-1.5 rounded-none px-2.5 text-sm font-normal text-muted-foreground shadow-none transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:after:bg-brand"
-              >
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+              ))}
+              {/* Onglets standards LinkedIn — masqués en mode pipeline
+                  (les infos sont reformulées dans extraTabs : Profil =
+                  Exp+Form+Skills, Messages = LinkedIn DMs). */}
+              {!hideStandardTabs && standardTabs.map(standard => (
+                <TabsTrigger key={standard.value} value={standard.value} className={TAB_TRIGGER_CLASS}>
+                  {standard.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
         </div>
 
+        {/* Contenus des onglets standards : absents en mode pipeline. Sinon le contenu
+            « Messages » standard s'affiche en double de celui de l'onglet Messages
+            du pipeline (même valeur d'onglet). */}
+        {!hideStandardTabs && (
+        <>
         {/* Experience Tab : une ligne par poste, séparées par des filets (docs/design/06-simplicite.md, règle 3) */}
         <TabsContent value="experience" className="mt-0 px-0 py-2">
           {workExperience.length > 0 ? (
@@ -279,6 +339,8 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
             </Button>
           </div>
         </TabsContent>
+        </>
+        )}
 
         {/* Extra tabs (pipeline-only) — leur contenu est rendu via la prop. */}
         {extraTabs?.map(tab => (

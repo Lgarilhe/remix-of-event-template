@@ -3,6 +3,7 @@ import { UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SettingsAnchor } from './SettingsAnchor';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
@@ -60,39 +61,43 @@ export function TeamSection() {
 
   return (
     <>
-      <TeamManagement
-        members={members}
-        getDisplayName={getDisplayName}
-        getEmail={getMemberEmail}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        isLoading={isLoading}
-        onUpdateRole={updateRole}
-        onRemove={removeMember}
-      />
+      <SettingsAnchor id="membres">
+        <TeamManagement
+          members={members}
+          getDisplayName={getDisplayName}
+          getEmail={getMemberEmail}
+          isAdmin={isAdmin}
+          isOwner={isOwner}
+          isLoading={isLoading}
+          onUpdateRole={updateRole}
+          onRemove={removeMember}
+        />
+      </SettingsAnchor>
 
       {isAdmin && !isCollaborator && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <UserPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              Invitations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PendingInvitations
-              invitations={pendingInvitations}
-              onCancel={cancelInvitation}
-              onResend={async (email, role) => { await resendInvitation({ email, role }); }}
-              canManage={isAdmin}
-              isResending={isResendingInvitation}
-            />
-            <InviteMemberForm
-              onInvite={async (email, role) => { await inviteMember({ email, role }); }}
-              isLoading={isInviting}
-            />
-          </CardContent>
-        </Card>
+        <SettingsAnchor id="invitations">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <UserPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                Invitations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PendingInvitations
+                invitations={pendingInvitations}
+                onCancel={cancelInvitation}
+                onResend={async (email, role) => { await resendInvitation({ email, role }); }}
+                canManage={isAdmin}
+                isResending={isResendingInvitation}
+              />
+              <InviteMemberForm
+                onInvite={async (email, role) => { await inviteMember({ email, role }); }}
+                isLoading={isInviting}
+              />
+            </CardContent>
+          </Card>
+        </SettingsAnchor>
       )}
     </>
   );

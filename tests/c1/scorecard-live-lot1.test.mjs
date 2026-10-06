@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
-const MIGRATION = 'supabase/migrations/20261005155516_scorecard_live_lot1_rattachement.sql';
+const MIGRATION = 'supabase/migrations/20261006144618_scorecard_live_lot1_rattachement.sql';
 const AUDIT = 'supabase/tests/scorecard_live_lot1_audit.sql';
 const REPORT = 'supabase/functions/generate-call-report/index.ts';
 const PORTAL = 'supabase/functions/client-portal-data/index.ts';

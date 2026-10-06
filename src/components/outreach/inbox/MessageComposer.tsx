@@ -1,12 +1,13 @@
 /**
  * MessageComposer — rédaction d'un message, avec mise en forme et outils IA.
  *
- * - Barre d'outils : mise en forme (gras, italique, lien, listes), puis
- *   « Reformuler », « Traduire », « Proposer une suite », emoji. Chaque bouton
- *   a un nom accessible ; sous 640 px, la mise en forme passe dans un menu et
- *   les outils IA gardent leur icône (revue design D-13).
+ * - Barre d'outils : le menu « Mise en forme » (gras, italique, lien, listes),
+ *   puis « Reformuler », « Traduire », « Proposer une suite », emoji. Chaque
+ *   bouton a un nom accessible ; sous 640 px, les outils IA gardent leur icône
+ *   (revue design D-13). Design simplifié (lot Suite) : la mise en forme tient
+ *   dans son menu à toutes les tailles, ses raccourcis restent.
  * - Un seul bouton principal : « Envoyer ». « Suggestions » reste discret, son
- *   nombre en accent (D-13, D-19).
+ *   nombre en texte neutre (D-13, D-19, règle 7 du design simplifié).
  * - Raccourcis : ⌘/Ctrl + B, I, K, et ⌘/Ctrl + Entrée pour envoyer ; « / »
  *   ouvre les modèles.
  *
@@ -26,7 +27,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -46,6 +47,8 @@ import { MESSAGE_EMOJIS } from '@/lib/messageEmojis';
 // Outils de la barre : 44 px au doigt, 28 px à la souris (01-direction.md, § 5)
 const TOOL_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground sm:h-7 sm:w-7';
 const TOOL_TEXT = 'h-11 w-11 px-0 text-muted-foreground hover:text-foreground sm:h-7 sm:w-auto sm:px-2';
+// Ligne du menu « Mise en forme » : 44 px au doigt.
+const FORMAT_ITEM = 'min-h-11 md:min-h-0';
 
 export interface MessageComposerProps {
   value: string;
@@ -83,23 +86,6 @@ export interface MessageComposerProps {
   /** Ton sélectionné pour le prompt CTA. */
   ctaTone?: string;
 }
-
-/** Bouton icône de la barre : nom accessible, infobulle avec le raccourci. */
-const ToolIconButton: React.FC<{ label: string; hint?: string; onClick: () => void; children: React.ReactNode }> = ({
-  label,
-  hint,
-  onClick,
-  children,
-}) => (
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Button type="button" variant="ghost" size="icon-xs" onClick={onClick} aria-label={label} className={TOOL_ICON}>
-        {children}
-      </Button>
-    </TooltipTrigger>
-    <TooltipContent side="top">{hint ? `${label} (${hint})` : label}</TooltipContent>
-  </Tooltip>
-);
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   value,
@@ -345,45 +331,35 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
           {/* Barre d'outils */}
           <div className="flex items-center gap-0.5 border-b border-border px-1.5 py-1">
-            {/* Mise en forme : boutons à partir de 640 px, menu en dessous */}
-            <div className="hidden items-center gap-0.5 sm:flex">
-              <ToolIconButton label="Gras" hint={`${cmd}+B`} onClick={handleBold}>
-                <Bold aria-hidden="true" />
-              </ToolIconButton>
-              <ToolIconButton label="Italique" hint={`${cmd}+I`} onClick={handleItalic}>
-                <Italic aria-hidden="true" />
-              </ToolIconButton>
-              <ToolIconButton label="Insérer un lien" hint={`${cmd}+K`} onClick={() => void handleLink()}>
-                <LinkIcon aria-hidden="true" />
-              </ToolIconButton>
-              <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
-              <ToolIconButton label="Liste à puces" onClick={handleBulletList}>
-                <List aria-hidden="true" />
-              </ToolIconButton>
-              <ToolIconButton label="Liste numérotée" onClick={handleNumberedList}>
-                <ListOrdered aria-hidden="true" />
-              </ToolIconButton>
-            </div>
+            {/* Mise en forme : un menu à toutes les tailles ; ses raccourcis restent actifs */}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon-xs" aria-label="Mise en forme" className={cn(TOOL_ICON, 'sm:hidden')}>
-                  <Type aria-hidden="true" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-52">
-                <DropdownMenuItem className="min-h-11" onSelect={handleBold}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Mise en forme" className={TOOL_ICON}>
+                      <Type aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">Mise en forme</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent side="top" align="start" className="w-56">
+                <DropdownMenuItem className={FORMAT_ITEM} onSelect={handleBold}>
                   <Bold className="mr-2 h-4 w-4" aria-hidden="true" />Gras
+                  <DropdownMenuShortcut>{cmd}+B</DropdownMenuShortcut>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="min-h-11" onSelect={handleItalic}>
+                <DropdownMenuItem className={FORMAT_ITEM} onSelect={handleItalic}>
                   <Italic className="mr-2 h-4 w-4" aria-hidden="true" />Italique
+                  <DropdownMenuShortcut>{cmd}+I</DropdownMenuShortcut>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="min-h-11" onSelect={() => void handleLink()}>
+                <DropdownMenuItem className={FORMAT_ITEM} onSelect={() => void handleLink()}>
                   <LinkIcon className="mr-2 h-4 w-4" aria-hidden="true" />Insérer un lien
+                  <DropdownMenuShortcut>{cmd}+K</DropdownMenuShortcut>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="min-h-11" onSelect={handleBulletList}>
+                <DropdownMenuItem className={FORMAT_ITEM} onSelect={handleBulletList}>
                   <List className="mr-2 h-4 w-4" aria-hidden="true" />Liste à puces
                 </DropdownMenuItem>
-                <DropdownMenuItem className="min-h-11" onSelect={handleNumberedList}>
+                <DropdownMenuItem className={FORMAT_ITEM} onSelect={handleNumberedList}>
                   <ListOrdered className="mr-2 h-4 w-4" aria-hidden="true" />Liste numérotée
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -556,9 +532,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                       <Lightbulb aria-hidden="true" />
                       Suggestions
                       {hasAISuggestions && aiSuggestionsCount ? (
-                        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand/15 px-1 text-3xs font-semibold tabular-nums text-brand">
-                          {aiSuggestionsCount}
-                        </span>
+                        <span className="tabular-nums text-muted-foreground">{aiSuggestionsCount}</span>
                       ) : null}
                     </Button>
                   </TooltipTrigger>

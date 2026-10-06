@@ -14,14 +14,20 @@
  * déplacer au clavier. La case de sélection apparaît au survol, au focus et
  * dès qu'une carte est cochée ; « Déplacer vers… » remplace le glisser au
  * doigt.
+ *
+ * Design simplifié (lot Suite) : la carte du kanban de la page mission (fond
+ * doux, visage, note en anneau), la mission en texte discret au lieu d'une
+ * étiquette encadrée, l'état de la séquence écrit en mots au lieu d'une
+ * pastille colorée. Seul l'orange de « Dans cette étape depuis N j » reste :
+ * il signale un candidat qui attend.
  */
 import React from 'react';
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
-import { ArrowRightLeft, Bell, Briefcase, GitBranch } from 'lucide-react';
+import { ArrowRightLeft, Bell, GitBranch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PersonAvatar } from '@/components/ui/person-avatar';
-import { ScoreBadge } from '@/components/ui/score-badge';
+import { ScoreRing } from '@/components/ui/score-ring';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -32,8 +38,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import { type ATSCandidate, daysInStage, stagnantDays } from '@/hooks/useATSData';
+import { enrollmentStatusLabel, manualStopLabel, pausedLabel } from '@/lib/sequenceLabels';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/relativeTime';
 
@@ -119,9 +125,12 @@ const CONTROL = 'relative z-10';
 const STRETCHED_BUTTON =
   'h-auto max-w-full justify-start p-0 text-left hover:no-underline active:scale-100 after:absolute after:inset-0 after:rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2 focus-visible:after:ring-offset-background';
 
-/** Puce du poste : un bouton du kit à la taille d'une puce, cible élargie au doigt. */
-const JOB_CHIP =
-  'flex h-auto w-fit max-w-full gap-1 rounded-full px-2 py-0.5 font-normal text-foreground-secondary hover:text-foreground [&_svg]:size-3 after:absolute after:inset-0 [@media(pointer:coarse)]:after:-inset-y-3';
+/** La mission : un bouton du kit rendu comme un texte discret, cible élargie au doigt. */
+const JOB_LINK =
+  'flex h-auto w-fit max-w-full justify-start p-0 text-left text-sm font-normal text-foreground-secondary hover:text-foreground after:absolute after:-inset-y-1 after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3';
+
+/** État d'une inscription en séquence, en mots (« En cours », « En pause »…). */
+const sequenceStatusText = (status: string) => (status === 'paused' ? pausedLabel(null) : enrollmentStatusLabel(status));
 
 /** Révélé au survol et au focus ; toujours visible sur un écran tactile. */
 const REVEAL =
@@ -170,8 +179,12 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           <span className="sr-only">
             {candidate.sequenceName ? `Séquence « ${candidate.sequenceName} » :` : 'Séquence :'}
           </span>
-          <EnrollmentStatusBadge status={signal.status} className="shrink-0" />
-          {signal.ago && <span className="truncate">{signal.ago}</span>}
+          <span className="truncate">
+            {signal.status === 'completed' && candidate.sequenceManualStop
+              ? manualStopLabel(candidate.sequenceManualStop, candidate.sequenceStoppedByName)
+              : sequenceStatusText(signal.status)}
+            {signal.ago && `, ${signal.ago}`}
+          </span>
         </>
       ) : (
         <span className="truncate">{signal.text}</span>
@@ -181,14 +194,14 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
   if (overlay) {
     return (
-      <div className="w-[264px] rounded-lg border border-border-strong bg-card p-3 shadow-lg">
+      <div className="w-[256px] cursor-grabbing rounded-lg border border-border bg-muted p-2.5 shadow-lg">
         <div className="flex items-center gap-2">
-          <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} />
+          <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} className="bg-background" />
           <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{candidate.name}</p>
-          <ScoreBadge score={candidate.score} className="shrink-0" />
+          <ScoreRing score={candidate.score} />
         </div>
         {(candidate.jobTitle || candidate.headline) && (
-          <p className="mt-1 truncate text-xs text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
+          <p className="mt-1 truncate text-sm text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
         )}
         {stepName && <p className="mt-1 truncate text-xs text-muted-foreground">{stepName}</p>}
         {signalLine && <div className="mt-2">{signalLine}</div>}
@@ -203,9 +216,9 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       onPointerDown={drag ? handlePointerDown : undefined}
       onKeyDown={drag ? handleKeyDown : undefined}
       className={cn(
-        'group relative rounded-lg border bg-card p-3 transition-colors duration-150',
-        selected ? 'border-brand' : 'border-border hover:border-border-strong',
-        isDragging && 'opacity-50',
+        'group relative rounded-lg border bg-muted p-2.5 transition-colors duration-150',
+        selected ? 'border-brand ring-1 ring-brand' : 'border-border hover:border-border-strong',
+        isDragging && 'opacity-30',
       )}
     >
       {/* Case de sélection posée sur le coin de la carte : elle n'occupe pas de place dans les lignes. */}
@@ -223,7 +236,8 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         />
       )}
       <div className="flex items-center gap-2">
-        <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} />
+        {/* Fond de la page : la pastille ne se confond pas avec la carte (même ton que bg-muted). */}
+        <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} className="bg-background" />
         <h3 className="min-w-0 flex-1 text-sm font-medium text-foreground">
           <Button
             ref={drag?.setActivatorNodeRef}
@@ -240,29 +254,27 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         {candidate.hasReminder && (
           <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
         )}
-        <ScoreBadge score={candidate.score} className="shrink-0" />
+        <ScoreRing score={candidate.score} />
       </div>
 
       {jobClickable ? (
         <Button
           type="button"
-          variant="outline"
-          size="xs"
+          variant="link"
           data-no-drag
           onClick={() => onJobClick?.(candidate.jobId as string)}
-          className={cn(CONTROL, JOB_CHIP, 'mt-1.5')}
+          className={cn(CONTROL, JOB_LINK, 'mt-1')}
         >
-          <Briefcase aria-hidden="true" />
           <span className="sr-only">Voir la mission </span>
           <span className="truncate">{candidate.jobTitle}</span>
         </Button>
       ) : candidate.jobTitle || candidate.headline ? (
-        <p className="mt-1 truncate text-xs text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
+        <p className="mt-1 truncate text-sm text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
       ) : null}
       {stepName && <p className="mt-1 truncate text-xs text-muted-foreground">{stepName}</p>}
 
       {(signalLine || (stages && onMove)) && (
-        <div className="mt-2 flex min-h-7 items-center justify-between gap-2">
+        <div className="mt-1 flex min-h-7 items-center justify-between gap-2">
           {signalLine ?? <span />}
           {stages && onMove && (
             <DropdownMenu>

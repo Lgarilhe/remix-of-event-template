@@ -8,6 +8,8 @@
  * le focus clavier le suit.
  * Onglets : À traiter (par défaut), Missions, Assistant ; l'onglet est mémorisé.
  * Panneau : celui de l'onglet actif, seul monté ; masqué en mode replié.
+ * Dessous, sur les trois onglets : « Événements à venir » (entretiens des 3
+ * prochains jours), et l'alerte de début d'entretien (useInterviewAlerts).
  * Bas : rangée Tâches, Agenda, Marketplace, Paramètres, Aide ; menu de l'avatar ;
  * marque Konekt.
  *
@@ -41,6 +43,7 @@ import { useAgentSignals } from '@/hooks/sidebar/useAgentSignals';
 import { useOverdueTasksCount } from '@/hooks/sidebar/useOverdueTasksCount';
 import { useSidebarRealtime } from '@/hooks/sidebar/useSidebarRealtime';
 import { useSidebarOffline } from '@/hooks/sidebar/useSidebarOffline';
+import { useInterviewAlerts } from '@/hooks/sidebar/useInterviewAlerts';
 import { SidebarUserMenu } from './sidebar/SidebarUserMenu';
 import { SidebarTabs } from './sidebar/SidebarTabs';
 import { SidebarBottomRow } from './sidebar/SidebarBottomRow';
@@ -51,6 +54,7 @@ import { TodoPanel } from './sidebar/todo/TodoPanel';
 import { MissionsPanel } from './sidebar/missions/MissionsPanel';
 import { MissionVisitTracker } from './sidebar/missions/MissionVisitTracker';
 import { AssistantPanel } from './sidebar/assistant/AssistantPanel';
+import { UpcomingEvents } from './sidebar/UpcomingEvents';
 import { TutorialVideoDialog } from './help/TutorialVideoDialog';
 import { tutorialForRoute, type Tutorial } from './help/tutorials';
 import { KonektLogo } from './KonektLogo';
@@ -72,6 +76,8 @@ export function AppSidebar() {
   const { running } = useAgentSignals();
   const overdueCount = useOverdueTasksCount();
   useSidebarRealtime();
+  // Alerte à l'heure d'un entretien : toujours montée, barre repliée ou non.
+  useInterviewAlerts();
   const { offline } = useSidebarOffline();
 
   // Fenêtres du menu Aide : état tenu ici, rendu hors de <Sidebar>.
@@ -241,6 +247,8 @@ export function AppSidebar() {
               </>
             )}
           </div>
+          {/* Événements à venir : sous le panneau, sur les trois onglets */}
+          {!collapsed && <UpcomingEvents />}
         </SidebarContent>
 
         {/* Bas : rangée basse, menu de l'avatar, marque Konekt */}

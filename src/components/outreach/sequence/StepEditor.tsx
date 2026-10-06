@@ -389,7 +389,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 <SelectTrigger id={`${id}-tone`} className="mt-1 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{MESSAGE_TONES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
               </Select>
-              <p className="mt-1.5 text-2xs text-muted-foreground">L'IA rédige le message au moment de l'envoi, à partir du profil du candidat et du brief.</p>
+              <p className="mt-1.5 text-2xs text-muted-foreground">L'IA rédige un message pour chaque candidat, à partir de son profil et du brief.</p>
             </div>
           ) : (
             <>
