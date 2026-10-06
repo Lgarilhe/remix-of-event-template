@@ -266,6 +266,17 @@ subscription_plans         — plans (price_monthly/yearly per seat, limits.ai_c
 organization_subscriptions — plan_id, status (trialing/active/...), seats, trial_ends_at, stripe_* ids
 subscription_trial_grants  — un essai par utilisateur créateur (user_id PRIMARY KEY)
 candidate_enrichments      — .included = demande couverte par le forfait du plan
+phone_calls                — appels de l'opérateur relié (téléphonie, lot A1 : Aircall d'abord, Ringover ensuite), une ligne par
+                             (organisation, fournisseur, identifiant du fournisseur). Lue par les membres de l'organisation active,
+                             écrite seulement par record_phone_call (service_role, rejouable, un événement plus ancien est sans effet).
+                             contact_number_e164 = clé du rapprochement avec candidate_contacts.phone, fait À LA LECTURE
+                             (src/lib/phoneCalls.ts), jamais figé à l'écriture. talk_seconds = décroche → fin (la durée brute du
+                             fournisseur compte la sonnerie). Normalisation : supabase/functions/_shared/phone.ts, copie exacte dans
+                             src/lib/phone.ts (un test garde les deux identiques) ; un numéro ambigu rend null, jamais un faux rapprochement.
+                             Remplace aircall_calls (morte, 0 appel : retrait au lot I0).
+telephony_connections      — liaison d'une organisation à son opérateur : empreinte SHA-256 du jeton de webhook (c'est elle qui
+                             retrouve l'organisation, sans jeton partagé) et id du webhook chez le fournisseur. Illisible et
+                             inécrivable par tout rôle client ; l'état passe par get_telephony_status(org) (owner/admin).
 candidate_photos           : copie privée de la photo LinkedIn d'un candidat (design simplifié, lot P). Une ligne par
                              (organisation, candidat) : status (pending, stored, expired, failed, skipped, erased),
                              storage_path (seulement en stored). Fichier dans le bucket privé candidate-photos
@@ -403,13 +414,13 @@ LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
 Missions / pipeline: add-to-shortlist, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
                     accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin, resolve-client-logo (logo du client enregistré dans le brief, copie dans org-logos/{org}/clients/, appelée à l'affichage de la liste et de la mission)
 Notion:             notion-mcp-oauth (connexion Notion de l'assistant)
-Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook, calendly-webhook,
+Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook (reçoit les appels, organisation retrouvée par le jeton de la liaison), aircall-connect (relier ou délier le compte Aircall d'une organisation, owner/admin), calendly-webhook,
                     setup-calendly-webhook, backfill-calendly
 Extension Chrome:   extension-token, extension-quick-add, extension-pipeline-status
 RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge (compte seulement par défaut, lot 0c-2)
 Photos:             capture-candidate-photos (copie privée des photos LinkedIn des candidats, cron toutes les 2 min, lot P)
 ```
-72 fonctions (2026-10-05, resolve-client-logo puis capture-candidate-photos ajoutées ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
+73 fonctions (2026-10-05, aircall-connect ajoutée par la téléphonie lot A1 ; 72 après resolve-client-logo puis capture-candidate-photos ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
 
 ---
 
@@ -444,7 +455,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `BETTERCONTACT_CREDIT_COST_USD` | get-enrichment-status — prix d'un crédit fournisseur en dollars, pour renseigner `cost_usd` sur les débits d'enrichissement (sans jeton, le calcul par jetons donnerait zéro). Défaut 0.045, à remplacer par le tarif contracté |
 | `UNIPILE_V2_API_KEY` + `UNIPILE_V2_WEBHOOK_TOKEN` | `_shared/unipile-v2.ts` (importé par unipile-webhook, unipile-manage-webhooks) — API v2 activée seulement si la clé est posée |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
-| `AIRCALL_WEBHOOK_TOKEN` | aircall-webhook |
+| `AIRCALL_WEBHOOK_TOKEN` | **Retiré (téléphonie, lot A1)** : plus lu par aucune fonction, chaque liaison a son jeton propre (empreinte dans `telephony_connections`). À supprimer des secrets existants |
 | `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook (vérifie la signature), setup-calendly-webhook (la pose sur l'abonnement, refus s'il manque) |
 | `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, unipile-accounts, sequence-webhooks-handler, `_shared/unipile-v2.ts` |
 | `SEQUENCE_WEBHOOK_SECRET` | sequence-webhooks-handler |
