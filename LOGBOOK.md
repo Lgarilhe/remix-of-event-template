@@ -32,6 +32,28 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — SHIP — Design simplifié, fin du lot M : l'état vide de /missions
+
+**Contexte** : dernier reste du lot M de `docs/design/06-simplicite.md`. Sans mission, /missions montrait l'ancien langage : titre en capitales, chiffres publicitaires (« 200M+ profils accessibles », « 45s », « 3x plus rapide »), deux grandes cartes animées (réseau de neurones, particules, bouton scintillant), une rangée de logos d'outils que Konekt ne relie pas (Slack, HubSpot, Salesforce), un lien « page carrières » sans action, et pas de titre de page.
+**Décision / Fait** :
+- `EmptyMissionState` devient l'état vide du kit : dessin « dossier » (01-direction.md, § Illustrations), « Lancez votre première mission » en casse de phrase, une phrase (« Une mission, c'est un poste à pourvoir. Collez la fiche de poste : l'assistant en tire le brief et les filtres de recherche. »).
+- Deux entrées, les mêmes qu'avant : « Coller une fiche de poste » (seul bouton plein, mode brief de `CreateMissionV2`) et « Saisir le poste à la main » (bouton discret, mode manuel), 44 px au doigt.
+- La page garde son titre « Missions » (`PageHeader`, sans second bouton) ; les missions confiées par une entreprise restent au-dessus.
+- `src/components/magicui/shimmer-button.tsx` retiré : ce bouton n'avait plus d'autre lecteur.
+**Raison** : règles 2, 7 et 8 du design simplifié, et des chiffres ou des logos que rien ne soutient. Mesures du banc (compte vide), ordinateur 1 440 px : 23 icônes puis 0, hauteur 1 113 puis 900 px ; téléphone : hauteur 1 655 puis 844 px. Cliquet design : effets décoratifs 34 puis 33, boutons faits main 301 puis 300, texte atténué 163 puis 151.
+**Impact** : `src/components/missions/EmptyMissionState.tsx` (réécrit, 578 lignes puis 36), `src/components/outreach/projects/ProjectsListV2.tsx` (titre de page dans l'état vide), `src/components/magicui/shimmer-button.tsx` (supprimé). Aucune lecture ni écriture ne change. Test : `tests/ux/missions-vide-simplicite.test.mjs` (4 tests, nouveau, rendu statique de l'état vide).
+**Recette `qa.md`** (banc local, rien d'enregistré) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Titre « Missions » ; « Coller une fiche de poste » à la souris ouvre la création sur la fiche de poste (nom, client, fiche) ; « Saisir le poste à la main » au clavier l'ouvre sur la saisie (titre, client, description) ; rien de créé | PASS |
+| Claire | Aucun nom de fournisseur, terme technique ni chiffre publicitaire ; un seul bouton plein, « Coller une fiche de poste » | PASS |
+| Théo | Lecture des missions en échec : erreur avec « Réessayer », jamais l'état vide ; compte avec missions : la liste, jamais l'état vide | PASS |
+| Sophie | Téléphone 390 px tactile : deux boutons, aucun sous 44 px, aucun débordement | PASS |
+**Reste à faire** :
+- [ ] Fenêtre de création de mission (`CreateMissionV2`) : libellés en capitales et tutoiement (« Choisis comment tu veux décrire la mission »), contraire au § 9 de 01-direction.md.
+- [ ] Bandeau d'essai (`TrialBanner`, `src/components/ui/banner.tsx`) : « Choisir un plan » (20 px) et la croix (36 px) sous 44 px au doigt, sur toutes les pages.
+**Refs** : docs/design/06-simplicite.md (lot M), #292.
+
 ## 2026-10-05 — SHIP — Design simplifié, lot Suite 3 : les Paramètres, première partie
 
 **Contexte** : troisième écran du lot « Suite » de `docs/design/06-simplicite.md`, après le Pipeline global (#286) et la messagerie (#288). Les Paramètres empilaient des cartes bordées (dix sur Abonnement et crédits), affichaient des compteurs à zéro (« 0 / 40 » sur les plafonds LinkedIn, « 0 / 100 » sur la Base Konekt, « 0 / 200 » sur le forfait de contacts, « 0/200 » et « (0/10) » sur les consignes de rédaction), des pastilles de couleur (« Actif », « Populaire », « -20 % »), « Dissocier » en rouge au repos et deux longues listes dépliées (coût de 39 actions, sept protections du compte LinkedIn). Les PR #260 et #262 touchent la coquille, le Journal et les Règles de l'assistant : ce lot n'y entre pas.
