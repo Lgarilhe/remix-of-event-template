@@ -209,6 +209,18 @@ test('R8 — catalogues front et serveur identiques', () => {
   assert.ok(front.length >= 39, `catalogue front incomplet (${front.length})`);
   assert.deepEqual(front, server);
   assert.ok(!front.includes('notion_job_skills'), 'notion_job_skills a quitté les deux catalogues');
+  // Lot 5e : rédaction d'une séquence depuis le poste, même barème des deux côtés
+  // (plancher 3, environ 7 000 jetons, palier par défaut).
+  assert.ok(front.includes('sequence_draft'), 'clé sequence_draft dans les deux catalogues');
+  const serverCatalog = read('supabase/functions/_shared/ai-config.ts');
+  const serverEntry = serverCatalog.slice(serverCatalog.indexOf('sequence_draft: {'), serverCatalog.indexOf('},', serverCatalog.indexOf('sequence_draft: {')));
+  const frontEntry = frontCatalog.slice(frontCatalog.indexOf('sequence_draft: {'), frontCatalog.indexOf('},', frontCatalog.indexOf('sequence_draft: {')));
+  for (const entry of [serverEntry, frontEntry]) {
+    assert.match(entry, /floor: 3,/);
+    assert.match(entry, /typicalTokens: 7_000,/);
+    assert.match(entry, /routingTier: "default",/);
+    assert.match(entry, /label: "Rédaction d'une séquence"/);
+  }
   // Ses débits passés restent lisibles dans l'historique.
   assert.equal(extraLabels.notion_job_skills, "Compétences extraites d'un poste");
 });

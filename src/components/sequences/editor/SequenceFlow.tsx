@@ -6,6 +6,7 @@
 // (buildEditorFlow, src/lib/sequenceEditor.ts).
 import { useMemo } from 'react';
 import type { SequenceStep } from '@/types/sequence';
+import { stepNotes, type AiDraftNotes } from '@/lib/sequenceDraft';
 import type { StepPosition } from '@/components/outreach/sequence/sequenceGraph';
 import {
   MAX_VERSIONS,
@@ -36,6 +37,8 @@ export interface SequenceFlowProps {
   removing: boolean;
   /** Panneau d'étape ouvert à côté : branches plus étroites, pour que le tronc et la branche ouverte tiennent dans la zone. */
   compact?: boolean;
+  /** Notes d'une séquence rédigée par l'IA (lot 5e) : une étape dont le texte a été retiré affiche « À rédiger ». */
+  aiNotes?: AiDraftNotes;
 }
 
 export function SequenceFlow(props: SequenceFlowProps) {
@@ -86,6 +89,7 @@ export function SequenceFlow(props: SequenceFlowProps) {
                     node={node}
                     selected={selectedPrimary === node.id}
                     issues={issues.get(step.order)}
+                    toWrite={props.aiNotes ? stepNotes(props.aiNotes, step).toWrite : undefined}
                     actions={{
                       onSelect: () => props.onSelect(node.id),
                       onAddVersion: canHaveVersions(node.actionType) && versions < MAX_VERSIONS ? () => props.onAddVersion(node.id) : undefined,

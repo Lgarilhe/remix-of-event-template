@@ -675,10 +675,10 @@ test.describe('Séquences v2 — éditeur unique (lot 5d-2)', () => {
     const missionId = await seedMission(org.orgId, owner.userId, { name: 'Contrôleur de gestion' });
     const page = await openAt(browser, owner, account, `/missions/${missionId}?tab=outreach&sequences-v2=1`);
 
-    await page.getByRole('button', { name: 'Créer une séquence' }).click({ timeout: 30_000 });
-    const dialog = page.getByRole('dialog', { name: 'Nouvelle séquence' });
-    await expect(dialog.getByRole('button', { name: /Partir de zéro/ })).toBeVisible();
-    await dialog.getByRole('button', { name: /Partir d’un modèle/ }).click();
+    // Mission sans séquence : l'état vide du panneau porte les départs (lot 5e), « Depuis un modèle » ouvre la galerie.
+    await expect(page.getByText('Cette mission n’a pas encore de séquence.')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Partir de zéro' })).toBeVisible();
+    await page.getByRole('button', { name: 'Depuis un modèle' }).click();
     const gallery = page.getByRole('dialog', { name: 'Choisir un modèle' });
     await gallery.getByRole('button', { name: 'Utiliser ce modèle : Invitation puis message' }).click();
     await expect(page).toHaveURL(new RegExp(`/sequences/nouvelle\\?mission=${missionId}&depart=modele:invitation-message$`));

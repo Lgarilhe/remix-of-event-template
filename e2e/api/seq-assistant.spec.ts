@@ -24,6 +24,15 @@
  * appelle. La sonde Deno e2e/helpers/agent-tool-probe.ts l'appelle comme le
  * chat le fait pour un appel d'outil du modèle (proposeLikeChat).
  *
+ * Lot 5e : create_sequence rédige la séquence d'une mission sur la forme
+ * commune de la rédaction par l'IA (invitation ou InMail, 1 à 3 relances),
+ * jamais automatique, textes contrôlés à la proposition et à l'approbation
+ * (blocs « create_sequence » et « create_sequence réaligné »). Le modèle de la
+ * conversation rédige à partir des seuls faits de get_sequence_draft_facts ;
+ * un texte qui reprend la rémunération, un critère d'évaluation, un contact
+ * ou une entreprise ciblée du poste est refusé. draft_outreach_message
+ * (correctif 3) : client anonymisé sous alias, brouillon qui tutoie refusé.
+ *
  * Ignoré sans la stack locale (e2e/local-stack/up.sh).
  */
 import { createHash } from 'node:crypto';
@@ -59,6 +68,7 @@ import {
   runCycle,
   runEngine,
   sendingOrg,
+  sentInvites,
   setMockMode,
   webhook,
   type MockCall,
@@ -939,6 +949,29 @@ test.describe('Assistant : get_candidate_outreach', () => {
 
 // ═══ create_sequence + enroll_in_sequence ════════════════════════════════════
 
+// Lot 5e : create_sequence rédige la séquence de la mission sur la forme commune
+// (serveur : invitation avec note, attente de l'acceptation pendant 14 jours,
+// messages « Si connecté » à 0, 4 puis 7 jours ; ou InMail). L'assistant
+// n'écrit que les textes, contrôlés comme ceux de la rédaction par l'IA.
+const CS_NOTE = "Bonjour {{prenom}}, je recrute pour un poste de {{poste_recherche}}. Votre parcours m'a donné envie d'échanger. {{mon_prenom}}";
+const CS_FIRST = "Bonjour {{prenom}},\n\nJe vous écris au sujet d'un poste de {{poste_recherche}} dans une équipe en croissance. Cela vous parlerait-il ?\n\n{{mon_prenom}}";
+const CS_RELANCE_1 = "Bonjour {{prenom}}, je reviens vers vous au sujet du poste de {{poste_recherche}}. Seriez-vous curieux d'en savoir plus ?\n\n{{mon_prenom}}";
+const CS_RELANCE_2 = "Bonjour {{prenom}}, un dernier mot sur ce poste de {{poste_recherche}} : je reste disponible si le sujet vous intéresse.\n\n{{mon_prenom}}";
+
+function csParams(missionId: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    mission_id: missionId,
+    first_contact: 'invitation',
+    relances: 2,
+    profile_visit: false,
+    invitation_note: CS_NOTE,
+    first_message: CS_FIRST,
+    relance_1: CS_RELANCE_1,
+    relance_2: CS_RELANCE_2,
+    ...over,
+  };
+}
+
 test.describe('Assistant : create_sequence', () => {
   test.describe('cs-offre-gratuite-desactivee', () => {
     test.describe.configure({ mode: 'serial' });
@@ -951,14 +984,15 @@ test.describe('Assistant : create_sequence', () => {
       if (error) throw new Error(`organization_subscriptions: ${error.message}`);
       const { org: paid } = await sendingOrg('E2E CS payant');
       track(paid);
-      const params = () => ({ name: `Séquence e2e ${rand()}`, steps: [{ type: 'message', message: 'Bonjour {{first_name}}' }] });
+      const freeMission = await seedMission(free.orgId, free.owner.userId);
+      const paidMission = await seedMission(paid.orgId, paid.owner.userId);
 
-      const paidRes = await approve(await tokenOf(paid.owner), await propose(paid.orgId, paid.owner.userId, 'create_sequence', params()));
+      const paidRes = await approve(await tokenOf(paid.owner), await propose(paid.orgId, paid.owner.userId, 'create_sequence', csParams(paidMission)));
       expect(paidRes.body.success, JSON.stringify(paidRes.body)).toBe(true);
       const paidSeq = await admin().from('outreach_sequences').select('is_active').eq('id', (paidRes.body.data as Record<string, unknown>).sequence_id).single();
       expect(paidSeq.data?.is_active, 'offre payante : séquence active').toBe(true);
 
-      const freeRes = await approve(await tokenOf(free.owner), await propose(free.orgId, free.owner.userId, 'create_sequence', params()));
+      const freeRes = await approve(await tokenOf(free.owner), await propose(free.orgId, free.owner.userId, 'create_sequence', csParams(freeMission)));
       expect(freeRes.body.success, JSON.stringify(freeRes.body)).toBe(true);
       const freeData = freeRes.body.data as Record<string, unknown>;
       const freeSeq = await admin().from('outreach_sequences').select('is_active').eq('id', freeData.sequence_id).single();
@@ -971,22 +1005,19 @@ test.describe('Assistant : create_sequence', () => {
   test.describe('cs-premiere-etape-envoyee', () => {
     test.describe.configure({ mode: 'serial' });
     // cs-premiere-etape-envoyee
-    test('séquence créée puis inscription par l’assistant : l’étape 0 est planifiée et part au cycle où elle est due, sans variable brute', async () => {
+    test('séquence rédigée puis inscription par l’assistant : l’invitation (étape 0) est planifiée et part avec sa note au cycle où elle est due, sans variable brute', async () => {
       const { org, accountId } = await sendingOrg('E2E CS première étape');
       track(org);
+      // Candidat pas encore en relation : l'invitation part vraiment.
+      await setMockMode(accountId, { distance: 'SECOND_DEGREE' });
       const token = await tokenOf(org.owner);
       const mission = await seedMission(org.orgId, org.owner.userId);
-      const created = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', {
-        name: `Relance e2e ${rand()}`, mission_id: mission,
-        steps: [
-          { type: 'message', message: 'Bonjour {{first_name}}' },
-          { type: 'wait_reply', delay_days: 2 },
-          { type: 'message', message: 'Relance {{first_name}}' },
-        ],
-      }));
+      const created = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', csParams(mission)));
       expect(created.body.success, JSON.stringify(created.body)).toBe(true);
       const sequenceId = (created.body.data as Record<string, unknown>).sequence_id as string;
-      expect((await stepsOf(sequenceId)).map((s) => s.step_order)).toEqual([0, 1, 2]);
+      expect((await stepsOf(sequenceId)).map((s) => [s.step_order, s.action_type])).toEqual([
+        [0, 'connection_request'], [1, 'wait_connection'], [2, 'message'], [3, 'message'], [4, 'message'],
+      ]);
 
       const candidate = newProfileId();
       const enrolled = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
@@ -1005,59 +1036,63 @@ test.describe('Assistant : create_sequence', () => {
       await pullDue([enrollmentId]);
       await runCycle();
       expect((await executionsOf(enrollmentId))[0].status).toBe('sent');
-      const sent = await newChatsTo(accountId, candidate);
-      expect(sent).toHaveLength(1);
-      const text = String((sent[0].body as Record<string, unknown>).text);
-      expect(text.startsWith('Bonjour')).toBe(true);
-      expect(text).not.toMatch(/[{}]/);
+      const invites = (await sentInvites(accountId)).filter((c) => (c.body as Record<string, unknown>)?.provider_id === candidate);
+      expect(invites).toHaveLength(1);
+      const note = String((invites[0].body as Record<string, unknown>).message ?? '');
+      expect(note.startsWith('Bonjour')).toBe(true);
+      expect(note).not.toMatch(/[{}]/);
     });
   });
 
   test.describe('cs-attente-reponse', () => {
     test.describe.configure({ mode: 'serial' });
     // cs-attente-reponse
-    test('l’étape « attendre une réponse » attend vraiment : délai réglé (3 jours par défaut), sans réponse la relance part, avec réponse l’inscription se clôt et rien ne part', async () => {
+    test('les délais de la séquence rédigée attendent vraiment : la relance part 4 jours après le premier message sans réponse ; avec réponse l’inscription se clôt et rien ne part', async () => {
       const { org, accountId } = await sendingOrg('E2E CS attente');
       track(org);
       const token = await tokenOf(org.owner);
       const mission = await seedMission(org.orgId, org.owner.userId);
-      const create = async (wait: Record<string, unknown>) => {
-        const res = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', {
-          name: `Attente e2e ${rand()}`, mission_id: mission,
-          steps: [{ type: 'message', message: 'Bonjour {{first_name}}' }, { type: 'wait_reply', ...wait }, { type: 'message', message: 'Relance {{first_name}}' }],
-        }));
-        expect(res.body.success, JSON.stringify(res.body)).toBe(true);
-        return (res.body.data as Record<string, unknown>).sequence_id as string;
-      };
+      const res = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', csParams(mission, { relances: 1 })));
+      expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+      const sequenceId = (res.body.data as Record<string, unknown>).sequence_id as string;
 
-      // Délai par défaut.
-      const defaultSteps = await stepsOf(await create({}));
-      expect(defaultSteps[1]).toMatchObject({ action_type: 'wait_reply', wait_for_event: 'reply_received', timeout_days: 3, delay_days: 0 });
-
-      const sequenceId = await create({ delay_days: 2 });
-      expect((await stepsOf(sequenceId))[1]).toMatchObject({ wait_for_event: 'reply_received', timeout_days: 2, delay_days: 0 });
+      // Forme fixée par le serveur : attente de l'acceptation avec son événement et son délai.
+      expect((await stepsOf(sequenceId)).map((s) => [s.step_order, s.action_type, s.wait_for_event, s.timeout_days, s.delay_days])).toEqual([
+        [0, 'connection_request', null, null, 0],
+        [1, 'wait_connection', 'connection_accepted', 14, 0],
+        [2, 'message', null, null, 0],
+        [3, 'message', null, null, 4],
+      ]);
 
       const enrollOne = async () => {
         const candidate = newProfileId();
-        const res = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
+        const enrolled = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
           sequence_id: sequenceId, candidate_id: candidate, profile_name: 'Marie Martin', job_id: mission,
         }));
-        expect(res.body.success, JSON.stringify(res.body)).toBe(true);
-        return { candidate, enrollmentId: (res.body.data as Record<string, unknown>).enrollment_id as string };
+        expect(enrolled.body.success, JSON.stringify(enrolled.body)).toBe(true);
+        return { candidate, enrollmentId: (enrolled.body.data as Record<string, unknown>).enrollment_id as string };
       };
       const silent = await enrollOne();
       const answering = await enrollOne();
       const ids = [silent.enrollmentId, answering.enrollmentId];
 
-      // Étape 0 envoyée, puis l'étape d'attente commence.
-      await pullDue(ids);
-      await runCycle();
-      for (const id of ids) expect((await executionsOf(id))[0].status).toBe('sent');
-      await pullDue(ids);
-      await runCycle();
+      // Candidats déjà en relation (faux LinkedIn par défaut) : invitation sautée,
+      // attente franchie, puis le premier message part.
+      const firstSent = async (id: string) => (await executionsOf(id)).find((e) => e.step_order === 2)?.status === 'sent';
+      for (let attempt = 0; attempt < 8; attempt++) {
+        if ((await firstSent(silent.enrollmentId)) && (await firstSent(answering.enrollmentId))) break;
+        await pullDue(ids);
+        await runCycle();
+      }
+      for (const id of ids) expect(await firstSent(id), `premier message de ${id}`).toBe(true);
+      expect(await sentInvites(accountId), 'invitation sautée pour un candidat déjà en relation').toEqual([]);
+      for (const who of [silent, answering]) expect(await newChatsTo(accountId, who.candidate)).toHaveLength(1);
+
+      // La relance attend 4 jours après le premier message.
       for (const id of ids) {
-        const wait = (await executionsOf(id)).find((e) => e.step_order === 1);
-        expect(wait?.status, `attente de ${id}`).toBe('waiting_event');
+        const relance = (await executionsOf(id)).find((e) => e.step_order === 3);
+        expect(relance?.status, `relance de ${id}`).toBe('scheduled');
+        expect(new Date(relance!.scheduled_at).getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 3600_000);
       }
 
       // Le candidat répond : inscription « répondue », plus rien en attente.
@@ -1069,20 +1104,15 @@ test.describe('Assistant : create_sequence', () => {
       expect((await enrollmentRow(answering.enrollmentId)).status).toBe('replied');
       const answeringPending = (await executionsOf(answering.enrollmentId))
         .filter((e) => ['scheduled', 'waiting_event', 'quota_blocked'].includes(e.status));
-      expect(answeringPending, 'attente et relance annulées').toEqual([]);
+      expect(answeringPending, 'relance annulée').toEqual([]);
 
-      // Sans réponse : le délai de 2 jours passe, la relance part.
-      await admin().from('sequence_step_executions').update({ scheduled_at: minutesFromNow(-3 * 24 * 60) })
-        .eq('enrollment_id', silent.enrollmentId).eq('status', 'waiting_event');
-      await runEngine({ action: 'check_timeouts' });
-      const afterTimeout = await executionsOf(silent.enrollmentId);
-      expect(afterTimeout.find((e) => e.step_order === 1)?.status).toBe('skipped');
-      expect(afterTimeout.find((e) => e.step_order === 2)?.status).toBe('scheduled');
+      // Sans réponse : le délai passe, la relance part.
       await pullDue(ids);
       await runCycle();
       const silentTexts = (await newChatsTo(accountId, silent.candidate)).map((c) => String((c.body as Record<string, unknown>).text));
       expect(silentTexts).toHaveLength(2);
-      expect(silentTexts[1].startsWith('Relance')).toBe(true);
+      expect(silentTexts[1]).toContain('je reviens vers vous');
+      expect(silentTexts[1]).not.toMatch(/[{}]/);
       expect(await newChatsTo(accountId, answering.candidate), 'aucune relance après la réponse').toHaveLength(1);
     });
   });
@@ -1310,5 +1340,182 @@ test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
       expect(await enrollmentsOfSequence(sequenceId), 'aucune inscription').toEqual([]);
       expect(await postsFrom(accountId), 'aucun envoi').toEqual([]);
     });
+  });
+});
+
+// ═══ Lot 5e : create_sequence réaligné ══════════════════════════════════════
+
+/** dry_run_result.details de create_sequence : étapes au format de l'éditeur, textes entiers. */
+interface CreateSequenceDetails {
+  name: string;
+  mission_id: string;
+  steps: Array<{ actionType: string; conditionType: string; delayDays: number; messageTemplate: string; useAiPersonalization: boolean }>;
+  flags: unknown[];
+}
+
+test.describe('@critical Assistant : create_sequence réaligné (lot 5e)', () => {
+  test.describe('5e-cs-jamais-automatique', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical politique « auto » enregistrée : la séquence est proposée avec ses textes entiers, rien n’est créé avant l’approbation', async () => {
+      const { org } = await sendingOrg('E2E 5e cs auto');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      await setToolPolicy(org.orgId, 'create_sequence', 'auto');
+      // Premier message long : la carte le porte en entier.
+      const longFirst = `${CS_FIRST.replace('\n\n{{mon_prenom}}', '')} L’équipe compte douze personnes, le produit sert des milliers de clients et la feuille de route des deux prochaines années est ambitieuse, avec une refonte complète de la plateforme. Votre parcours m’a donné envie de vous en parler.\n\n{{mon_prenom}}`;
+      expect(longFirst.length).toBeGreaterThan(350);
+
+      const proposed = proposeLikeChat(org.orgId, org.owner, 'create_sequence', csParams(mission, { first_message: longFirst }));
+      expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
+      expect((await execRow(proposed.executionId!)).status).toBe('proposed');
+      expect((await admin().from('outreach_sequences').select('id').eq('organization_id', org.orgId)).data ?? [], 'rien de créé sans clic').toEqual([]);
+      // La carte : forme du serveur, textes entiers, jamais d'IA à l'envoi.
+      const { data: stored } = await admin().from('agent_tool_executions').select('dry_run_result').eq('id', proposed.executionId!).single();
+      const details = (stored?.dry_run_result as { details?: CreateSequenceDetails } | null)?.details;
+      expect(details?.mission_id).toBe(mission);
+      expect(details?.steps.map((s) => [s.actionType, s.conditionType, s.delayDays])).toEqual([
+        ['connection_request', 'always', 0], ['wait_connection', 'always', 0],
+        ['message', 'if_connected', 0], ['message', 'if_connected', 4], ['message', 'if_connected', 7],
+      ]);
+      expect(details?.steps.map((s) => s.messageTemplate)).toEqual([CS_NOTE, '', longFirst, CS_RELANCE_1, CS_RELANCE_2]);
+      expect(details?.steps.every((s) => s.useAiPersonalization === false)).toBe(true);
+
+      // Le clic « Approuver » crée la séquence, par save_sequence_steps, avec ces textes.
+      const approved = await approve(token, proposed.executionId!);
+      expect(approved.body.success, JSON.stringify(approved.body)).toBe(true);
+      const sequenceId = (approved.body.data as Record<string, unknown>).sequence_id as string;
+      expect((await stepsOf(sequenceId)).map((s) => s.message_template ?? '')).toEqual([CS_NOTE, '', longFirst, CS_RELANCE_1, CS_RELANCE_2]);
+      expect((await enrollmentsOfSequence(sequenceId)), 'aucune inscription').toEqual([]);
+    });
+  });
+
+  test.describe('5e-cs-textes-controles', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical texte refusé par les contrôles de la rédaction : raison rendue au modèle avec le champ ; un texte modifié à l’approbation est contrôlé de nouveau', async () => {
+      const { org } = await sendingOrg('E2E 5e cs contrôles');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+
+      // Chemin du chat : refus, raison rendue au modèle, aucune ligne proposée.
+      const refused = proposeLikeChat(org.orgId, org.owner, 'create_sequence', csParams(mission, {
+        first_message: 'Bonjour {{prenom}}, poste de {{poste_recherche}} à 75 k€ fixe. Cela vous parlerait-il ?\n\n{{mon_prenom}}',
+        relance_2: 'Bonjour {{prenom}}, je reviens vers vous pour {{client}}.\n\n{{mon_prenom}}',
+      }));
+      expect(refused.outcome).toBe('denied');
+      const reason = String(refused.payload.error);
+      expect(reason).toMatch(/^Séquence refusée : corrigez ces textes puis proposez-la de nouveau\./);
+      expect(reason).toContain('- first_message : il citait une rémunération.');
+      expect(reason).toContain('- relance_2 : la variable {{client}} pourrait révéler le nom du client.');
+      expect(refused.executionId).toBeUndefined();
+
+      // Ligne proposée puis modifiée (« Modifier ») avec une rémunération : l'approbation la refuse.
+      const res = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', csParams(mission, {
+        relance_1: 'Bonjour {{prenom}}, le salaire de 75 k€ est négociable.\n\n{{mon_prenom}}',
+      })));
+      expect(res.body.success, JSON.stringify(res.body)).toBe(false);
+      expect(String(res.body.error ?? '')).toContain('- relance_1 : il citait une rémunération.');
+      expect((await admin().from('outreach_sequences').select('id').eq('organization_id', org.orgId)).data ?? [], 'aucune séquence').toEqual([]);
+    });
+  });
+
+  test.describe('5e-cs-faits-fermes', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical brief avec rémunération et critères : la lecture ne rend que les faits fermés, les textes qui les citent sont refusés', async () => {
+      const { org } = await sendingOrg('E2E 5e cs faits');
+      track(org);
+      const mission = await seedMission(org.orgId, org.owner.userId, {
+        name: 'Directeur financier',
+        job_details: {
+          title: 'Directeur financier',
+          mission_description: 'Piloter deux acquisitions et structurer la direction financière du groupe.',
+          skills_must_have: ['Consolidation', 'IFRS'],
+          salary_min: 55000,
+          salary_max: 65000,
+          evaluation_criteria: [{ id: 'c1', label: 'Gestion de crise bancaire', description: 'Rédhibitoire', category: 'experience', weight: 3, deal_breaker: true }],
+          client: { name: 'Acme Industries', hiring_manager: { name: 'Hélène Martinez', email: 'h.martinez@acme.fr', phone: '06 11 22 33 44' } },
+          target_companies: [{ category: 'Concurrents', companies: [{ name: 'Durand Métallurgie' }] }],
+          outreach_config: { recruitment_mode: 'client', anonymize_client: true, anonymized_alias: 'un groupe industriel' },
+        },
+      });
+
+      // Lecture du modèle de la conversation : liste fermée, alias du client.
+      const read = proposeLikeChat(org.orgId, org.owner, 'get_sequence_draft_facts', { mission_id: mission });
+      expect(read.outcome, JSON.stringify(read.payload)).toBe('executed_inline');
+      const facts = JSON.stringify(read.payload);
+      expect(read.payload.company).toBe('un groupe industriel');
+      expect(facts).toContain('Piloter deux acquisitions');
+      for (const secret of ['55000', '65000', 'Gestion de crise bancaire', 'Hélène Martinez', 'h.martinez', '0611223344', 'Durand Métallurgie', 'Acme']) {
+        expect(facts, secret).not.toContain(secret);
+      }
+
+      // Textes qui reprennent ce que le modèle aurait lu dans le brief complet : refusés.
+      const refused = proposeLikeChat(org.orgId, org.owner, 'create_sequence', csParams(mission, {
+        first_message: 'Bonjour {{prenom}},\n\nPoste ouvert entre 55 000 et 65 000 selon le profil, dans une équipe en croissance. Cela vous parlerait-il ?\n\n{{mon_prenom}}',
+        relance_1: 'Bonjour {{prenom}}, la Gestion de crise bancaire est au cœur du poste. Seriez-vous curieux d’en savoir plus ?\n\n{{mon_prenom}}',
+        relance_2: 'Bonjour {{prenom}}, Hélène Martinez serait ravie d’échanger avec vous sur ce poste.\n\n{{mon_prenom}}',
+      }));
+      expect(refused.outcome).toBe('denied');
+      const reason = String(refused.payload.error);
+      expect(reason).toContain('- first_message : il citait une rémunération.');
+      expect(reason).toContain("- relance_1 : il reprenait une information interne du poste (contact, entreprise ciblée, critère d'évaluation ou profil de référence).");
+      expect(reason).toContain("- relance_2 : il reprenait une information interne du poste (contact, entreprise ciblée, critère d'évaluation ou profil de référence).");
+      expect(refused.executionId).toBeUndefined();
+      expect((await admin().from('outreach_sequences').select('id').eq('organization_id', org.orgId)).data ?? [], 'aucune séquence').toEqual([]);
+    });
+  });
+});
+
+// ═══ draft_outreach_message (correctif 3, lot 5e) ═══════════════════════════
+
+test.describe('Assistant : draft_outreach_message (correctif 3)', () => {
+  test('client anonymisé : le vrai nom n’atteint pas le modèle ; un brouillon qui tutoie est refusé, jetons débités', async () => {
+    const { org } = await sendingOrg('E2E 5e brouillon');
+    track(org);
+    const token = await tokenOf(org.owner);
+    cleanups.push(() => admin().from('ai_credit_transactions').delete().eq('organization_id', org.orgId));
+    cleanups.push(() => admin().from('ai_credit_balances').delete().eq('organization_id', org.orgId));
+    const end = new Date(Date.now() + 20 * 86_400_000).toISOString();
+    const { error: creditsError } = await admin().from('ai_credit_balances').upsert({
+      organization_id: org.orgId, plan_credits: 60, topup_credits: 0, credits_total: 60, credits_remaining: 60,
+      period_start: new Date().toISOString(), period_end: end,
+    }, { onConflict: 'organization_id' });
+    expect(creditsError).toBeNull();
+    const mission = await seedMission(org.orgId, org.owner.userId, {
+      name: 'Directeur financier',
+      client_name: 'Acme Holding',
+      job_details: {
+        title: 'Directeur financier',
+        mission_description: 'Structurer la direction financière d’Acme Holding et piloter deux acquisitions.',
+        skills_must_have: ['Consolidation'],
+        salary_min: 55000,
+        client: { name: 'Acme Industries' },
+        outreach_config: { recruitment_mode: 'client', anonymize_client: true, anonymized_alias: 'un groupe industriel' },
+      },
+    });
+    const marker = `Brouillon${rand()}`;
+    const candidateId = await seedCandidate(org.orgId, org.owner.userId, { name: `Camille ${marker}`, projectId: mission });
+    const key = `ai-${marker}`;
+    await setMockMode(key, { ai_markers: { [marker]: JSON.stringify({ subject: null, body: 'Salut Camille, tu serais parfait pour ce poste de directeur financier. On en parle ?' }) } });
+    cleanups.push(() => setMockMode(key, { ai_markers: {} }));
+
+    const res = await approve(token, await propose(org.orgId, org.owner.userId, 'draft_outreach_message', {
+      candidate_id: candidateId, job_id: mission, tone: 'casual', channel: 'linkedin_dm',
+    }));
+    expect(res.body.success, JSON.stringify(res.body)).toBe(false);
+    expect(String(res.body.error ?? '')).toBe('Brouillon refusé : le texte tutoie le candidat ; les messages vouvoient. Demandez une nouvelle proposition.');
+
+    // La consigne envoyée au modèle : alias du client, ni ses deux noms ni la rémunération ; ton vouvoyé.
+    const calls = (await mockCalls()).filter((c) => c.method === 'POST' && c.path === '/v1/messages' && JSON.stringify(c.body).includes(marker));
+    expect(calls).toHaveLength(1);
+    const prompt = JSON.stringify(calls[0].body);
+    expect(prompt).toContain('un groupe industriel');
+    for (const secret of ['Acme Holding', 'Acme Industries', '55000']) expect(prompt, secret).not.toContain(secret);
+    expect(prompt).toContain('chaleureux');
+    expect(prompt).not.toMatch(/Ton: casual|en casual/);
+    // Jetons consommés débités, brouillon refusé ou non.
+    const { data: debits } = await admin().from('ai_credit_transactions').select('id').eq('organization_id', org.orgId).eq('action', 'outreach_message');
+    expect(debits ?? []).toHaveLength(1);
   });
 });

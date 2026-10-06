@@ -874,6 +874,18 @@ export interface SequenceValidationOptions {
   unknownVariables?: 'ignore' | 'block';
   /** Variables personnelles de l'expéditeur : le moteur les remplit aussi. */
   customKeys?: Iterable<string>;
+  /**
+   * Séquence rédigée par l'IA à partir du poste (lot 5e). `toWrite` : étapes
+   * dont les contrôles ont retiré le texte (« À rédiger ») ; vide, il bloque
+   * l'enregistrement, note d'invitation comprise (facultative ailleurs).
+   * `toReview` : formulations signalées, en recommandation tant que le texte
+   * rédigé n'a pas changé. Absente par défaut : aucun contrôle de plus, comme
+   * l'ancien éditeur.
+   */
+  aiDraft?: {
+    toWrite?: Iterable<string>;
+    toReview?: ReadonlyMap<string, { messages: readonly string[]; text: string; subject: string }>;
+  };
 }
 
 /** Au-delà, un expéditeur reçoit beaucoup de nouveaux candidats par jour. */
@@ -904,6 +916,8 @@ export function validateSequence(
   const steps = sequence.steps;
   const checkVariables = options?.unknownVariables === 'block';
   const knownKeys = new Set<string>([...SEQUENCE_TEMPLATE_KEYS, ...[...(options?.customKeys ?? [])].map((k) => k.trim().toLowerCase())]);
+  const aiToWrite = new Set(options?.aiDraft?.toWrite ?? []);
+  const aiToReview = options?.aiDraft?.toReview;
 
   if (!sequence.name.trim()) err('name', 'Donnez un nom à la séquence.', 'info');
   if (steps.length === 0) err('steps', 'Ajoutez au moins une étape.');
@@ -921,6 +935,14 @@ export function validateSequence(
     }
     if (s.actionType === 'connection_request' && (s.messageTemplate?.length || 0) > 300) {
       err('invite_length', `${label} : note d'invitation trop longue (300 caractères au plus).`);
+    }
+    // Rédaction par l'IA : la note retirée par les contrôles est à écrire (les messages et objets vides sont déjà bloquants).
+    if (s.actionType === 'connection_request' && aiToWrite.has(s.id) && !s.messageTemplate?.trim()) {
+      err('ai_to_write', `${label} : note d'invitation à rédiger.`);
+    }
+    const aiReview = aiToReview?.get(s.id);
+    if (aiReview && (s.messageTemplate ?? '') === aiReview.text && (s.subjectTemplate ?? '') === aiReview.subject) {
+      for (const message of aiReview.messages) warn('ai_to_review', `${label} : ${message}`);
     }
     if (s.conditionType === 'if_score_above' && !s.conditionValue?.trim()) {
       err('score', `${label} : indiquez le seuil de score.`);
