@@ -14,10 +14,11 @@
  * 5 candidats une seule case pour les deux (sendConfirmation).
  */
 import React, { useId } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { recipientsConfirmRequired, sendConfirmation } from '@/lib/contactRecipientsGuard';
 
@@ -35,6 +36,12 @@ export interface FirstMessagePreviewItem {
   /** Génère l'aperçu de ce message rédigé par l'IA (génération existante). */
   onGenerate?: () => void;
   isGenerating?: boolean;
+  /** Lot 5d-1 : message écrit en préparation (valeurs du serveur) : squelette, jamais un texte faux. */
+  loading?: boolean;
+  /** Lot 5d-1 : aucun aperçu pour ce candidat, la raison à la place du texte. */
+  unavailable?: string | null;
+  /** Relance la préparation de l'aperçu quand un nouvel essai peut aboutir. */
+  onRetry?: () => void;
 }
 
 export interface FirstMessagePreview {
@@ -107,7 +114,24 @@ export function FirstMessagePreviewBlock({
               <p className="text-2xs font-medium text-muted-foreground">
                 {item.condition ? `${item.condition} · ${item.label}` : item.label}
               </p>
-              {item.aiPending ? (
+              {item.loading ? (
+                <div className="space-y-1.5" role="status">
+                  <span className="sr-only">Préparation de l'aperçu en cours</span>
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-5/6" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              ) : item.unavailable ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-muted-foreground">{item.unavailable}</p>
+                  {item.onRetry && (
+                    <Button type="button" variant="outline" size="xs" onClick={item.onRetry} className="max-md:h-11">
+                      <RefreshCw aria-hidden="true" />
+                      Réessayer
+                    </Button>
+                  )}
+                </div>
+              ) : item.aiPending ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-xs text-muted-foreground">
                     Message rédigé par l'IA Konekt pour ce candidat : générez-le pour le relire.
