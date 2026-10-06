@@ -61,6 +61,7 @@ import {
   type FirstMessagePreviewItem,
 } from './enrollment-preview/RecipientsConfirm';
 import { useRecipientsConfirm } from './enrollment-preview/useRecipientsConfirm';
+import { aiReviewMissingMessage } from '@/lib/contactRecipientsGuard';
 import { firstMessagePath } from './enrollment-preview/firstMessagePath';
 import {
   alreadyInSequenceLabel,
@@ -291,6 +292,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const [focusRequest, setFocusRequest] = useState(0);
   // Candidat montré par « Aperçu du premier message » du Récapitulatif (null : le premier prêt).
   const [summaryCandidateIndex, setSummaryCandidateIndex] = useState<number | null>(null);
+  // Lot 5a-2 : candidat montré par « Messages rédigés par l'IA » du Récapitulatif (null : le premier à générer).
+  const [aiSummaryIndex, setAiSummaryIndex] = useState<number | null>(null);
 
   // ── Candidate states (remove/skip) ──
   const [candidateStates, setCandidateStates] = useState<CandidateStatesMap>(new Map());
@@ -479,6 +482,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const sessionKey = `${sequence.id}|${job?.id ?? ''}|${accountId}`;
   const {
     previews, messageSteps, hasMessageSteps, hasAiSteps,
+    aiReviewSteps, aiReviewMissingCount, aiGenerationVersion,
     generatedCount, totalToGenerate, isBulkGenerating,
     estimatedCredits, creditsPerMessage, senderName, candidateAnalysis,
     getPreview, generateForCandidateById, regenerateStep,
@@ -578,7 +582,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       return;
     }
     // Lot 5a : dès 5 candidats, rien ne part sans la case des destinataires.
-    if (recipients.blocked) return;
+    // Lot 5a-2 : séquence à message IA, rien ne part sans chaque texte généré
+    // et la case de relecture.
+    if (recipients.blocked || aiReviewMissingCount > 0) return;
 
     setIsEnrolling(true);
     setEnrollResults(null);
@@ -998,7 +1004,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // N = activeProfiles.length, le nombre du bouton « Inscrire N candidats » :
   // retraits, exclusions et dérogations déjà appliqués. Case décochée dès que
   // la liste change.
-  const recipients = useRecipientsConfirm(activeProfiles.map(p => p.id));
+  // Lot 5a-2 : séquence à message rédigé par l'IA, la case vaut relecture,
+  // obligatoire quel que soit N, décochée par toute génération ou
+  // régénération ; dès 5, une seule case pour les deux.
+  const hasAiReview = aiReviewSteps.length > 0;
+  const recipients = useRecipientsConfirm(activeProfiles.map(p => p.id), { aiReview: hasAiReview, aiGenerationVersion });
   // Premier message que recevra le candidat : parcours du moteur depuis la
   // première étape (firstMessagePath), étape rédigée par l'IA sans modèle
   // comprise. À « Vérifier la relation », la branche du candidat si sa
@@ -1069,6 +1079,40 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   }));
   const summaryIndex = Math.min(summaryCandidateIndex ?? firstReadyIndex(), Math.max(activeProfiles.length - 1, 0));
   const summaryProfile = activeProfiles[summaryIndex] ?? null;
+
+  // Lot 5a-2 : messages rédigés par l'IA d'un candidat, étape par étape, pour
+  // les relire dans le Récapitulatif (‹ › d'un candidat à l'autre).
+  const aiMessagesFor = (profile: LinkedInProfile): FirstMessagePreview => ({
+    candidateName: profile.name || 'ce candidat',
+    items: aiReviewSteps.map((step): FirstMessagePreviewItem => {
+      const preview = getPreview(profile.id, step.stepId);
+      const label = sequenceActionLabel(step.actionType);
+      const condition = `Étape ${steps.findIndex(s => s.stepId === step.stepId) + 1}`;
+      if (isReady(profile.id, step.stepId)) {
+        return {
+          key: step.stepId,
+          label,
+          condition,
+          subject: SUBJECT_ACTIONS.includes(step.actionType) ? preview?.subject || null : null,
+          text: (preview?.message || '').replace(/<br\s*\/?>/gi, '\n'),
+        };
+      }
+      return {
+        key: step.stepId,
+        label,
+        condition,
+        text: '',
+        aiPending: true,
+        onGenerate: () => regenerateStep(profile.id, step.stepId),
+        isGenerating: !!preview?.isGenerating,
+      };
+    }),
+    generateCost: creditsLabel(creditsPerMessage),
+  });
+  const firstAiMissingIndex = () => Math.max(0, activeProfiles.findIndex(p =>
+    aiReviewSteps.some(step => !isReady(p.id, step.stepId))));
+  const aiIndex = Math.min(aiSummaryIndex ?? firstAiMissingIndex(), Math.max(activeProfiles.length - 1, 0));
+  const aiSummaryProfile = hasAiReview ? activeProfiles[aiIndex] ?? null : null;
 
   // ── Clavier de la liste des candidats (revue design D-44) ──
   const listRef = useRef<HTMLDivElement>(null);
@@ -1292,6 +1336,13 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                     total: activeProfiles.length,
                     onPrevious: () => setSummaryCandidateIndex(Math.max(0, summaryIndex - 1)),
                     onNext: () => setSummaryCandidateIndex(Math.min(activeProfiles.length - 1, summaryIndex + 1)),
+                  }}
+                  aiMessages={aiSummaryProfile ? aiMessagesFor(aiSummaryProfile) : null}
+                  aiMessagesNavigation={{
+                    index: aiIndex,
+                    total: activeProfiles.length,
+                    onPrevious: () => setAiSummaryIndex(Math.max(0, aiIndex - 1)),
+                    onNext: () => setAiSummaryIndex(Math.min(activeProfiles.length - 1, aiIndex + 1)),
                   }}
                   renderText={renderSendTimeVariables}
                 />
@@ -1567,14 +1618,48 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           {!enrollResults && (
             <div className="shrink-0 space-y-2 border-t border-border px-4 py-3 sm:px-6">
               <SendingAccountNotice state={sendingAccount} />
+              {/* Lot 5a-2 : messages rédigés par l'IA à générer avant
+                  d'inscrire. Le bouton de génération groupée est ici quand la
+                  barre du haut n'est pas affichée (Récapitulatif, un seul
+                  candidat). */}
+              {hasAiReview && aiReviewMissingCount > 0 && activeProfiles.length > 0 && (
+                <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2">
+                  <p className="flex min-w-0 flex-1 items-start gap-2 text-xs text-foreground">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                    <span>{aiReviewMissingMessage(aiReviewMissingCount, activeProfiles.length)}</span>
+                  </p>
+                  {(mode === 'summary' || isSingle) && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => generateAll(3)}
+                        loading={isBulkGenerating}
+                        disabled={isBusy}
+                        className="max-md:h-11"
+                      >
+                        Générer tous les aperçus
+                      </Button>
+                      {!isBulkGenerating && (
+                        <span className="text-2xs tabular-nums text-muted-foreground">
+                          {creditsLabel(bulkMissingAi * creditsPerMessage)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Dès 5 candidats : premier message puis case obligatoire. Le
-                  Récapitulatif montre déjà le premier message juste au-dessus. */}
+                  Récapitulatif montre déjà le premier message juste au-dessus.
+                  Séquence à message IA : case de relecture, quel que soit N. */}
               <RecipientsConfirm
                 count={activeProfiles.length}
                 confirmed={recipients.confirmed}
                 onConfirmedChange={recipients.setConfirmed}
                 preview={mode !== 'summary' && footerProfile ? firstMessageFor(footerProfile) : null}
                 renderText={renderSendTimeVariables}
+                aiReview={hasAiReview}
+                disabled={aiReviewMissingCount > 0}
               />
               {isEnrolling && (
                 <p role="status" className="text-xs text-muted-foreground">
@@ -1602,7 +1687,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                     variant="primary"
                     onClick={handleEnroll}
                     loading={isEnrolling}
-                    disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason || recipients.blocked}
+                    disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason || recipients.blocked || aiReviewMissingCount > 0}
                     className="max-md:h-11"
                   >
                     {isEnrolling ? enrollProgressLabel(enrollProgress) : enrollLabel}
@@ -1942,7 +2027,7 @@ function MessageStepCard({
 
 function SummaryMode({
   activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, firstAction, onSwitchToPreview,
-  firstMessage, firstMessageNavigation, renderText,
+  firstMessage, firstMessageNavigation, aiMessages, aiMessagesNavigation, renderText,
 }: {
   activeProfiles: LinkedInProfile[];
   steps: SequenceStepPreview[];
@@ -1955,6 +2040,9 @@ function SummaryMode({
   /** Lot 5a : premier message d'un candidat inscrit, ‹ › pour passer aux suivants. */
   firstMessage: FirstMessagePreview | null;
   firstMessageNavigation: { index: number; total: number; onPrevious: () => void; onNext: () => void };
+  /** Lot 5a-2 : messages rédigés par l'IA d'un candidat, ‹ › pour les relire un par un. */
+  aiMessages: FirstMessagePreview | null;
+  aiMessagesNavigation: { index: number; total: number; onPrevious: () => void; onNext: () => void };
   renderText: (text: string) => React.ReactNode;
 }) {
   // Canaux fermés (D2) : leurs étapes sont sautées même avec une adresse ou
@@ -1989,6 +2077,15 @@ function SummaryMode({
           preview={firstMessage}
           title="Aperçu du premier message"
           navigation={firstMessageNavigation}
+          renderText={renderText}
+        />
+      )}
+
+      {aiMessages && (
+        <FirstMessagePreviewBlock
+          preview={aiMessages}
+          title="Messages rédigés par l'IA"
+          navigation={aiMessagesNavigation}
           renderText={renderText}
         />
       )}

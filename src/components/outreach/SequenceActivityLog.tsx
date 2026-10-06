@@ -10,9 +10,11 @@ import {
   formatSkipReason,
   heldExecutionNotice,
   HIDDEN_ACTION_TYPES,
+  isAiReviewPending,
   isSentExecutionStatus,
   missionEnrollmentJobIds,
   shouldShowExecutionError,
+  scheduledExecutionError,
   skipConflictMessage,
   type HeldExecutionNotice,
 } from '@/lib/sequenceErrorMessages';
@@ -53,6 +55,7 @@ import {
   Pencil,
   Ban,
   Pause,
+  Sparkles,
 } from 'lucide-react';
 import { format, isAfter, isBefore, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -197,6 +200,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const [scope, setScope] = useState<Scope>('mission');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [editingExecution, setEditingExecution] = useState<StepExecution | null>(null);
+  // Lot 5a-2 : l'étape ouverte l'est pour « Relire le message » (IA reportée).
+  const [reviewingExecution, setReviewingExecution] = useState(false);
   const [skippingId, setSkippingId] = useState<string | null>(null);
   const [skipConfirm, setSkipConfirm] = useState<{ id: string; candidateName: string } | null>(null);
   // D3 : un collaborateur ne saute que les étapes des candidats qu'il a
@@ -630,7 +635,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           const candidateName = exec.enrollment?.profile_name || 'Candidat';
                           const preview = exec.preview;
                           const hasMessage = !!preview.message || preview.source === 'ai';
-                          const showError = !!exec.error_message && shouldShowExecutionError(exec.status);
+                          // Lot 5a-2 : étape rédigée par l'IA reportée par le moteur
+                          // faute de texte relu ; sa raison a sa propre ligne, et
+                          // disparaît dès que le message est relu.
+                          const aiReview = isAiReviewPending(exec);
+                          const showError = !!exec.error_message && shouldShowExecutionError(exec.status)
+                            && !aiReview && (exec.status !== 'scheduled' || !!scheduledExecutionError(exec));
                           const showReason = !!exec.skip_reason && !isSentExecutionStatus(exec.status);
                           const held = exec.held;
                           const isPast = isBefore(new Date(exec.scheduled_at), new Date());
@@ -641,7 +651,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           const ownRow = !isCollaborator || (!!userId && exec.enrollment?.created_by === userId);
                           const canSkip = SKIPPABLE_STATUSES.has(exec.status) && !held && ownRow;
                           // Le texte reste modifiable pendant la pause, avant la reprise.
-                          const canEdit = exec.status === 'scheduled' && !!preview.message;
+                          const canEdit = exec.status === 'scheduled' && !!preview.message && !aiReview;
+                          // « Relire le message » : un collaborateur, ses inscriptions seulement.
+                          const canReview = aiReview && ownRow;
 
                           return (
                             <li key={exec.id}>
@@ -698,6 +710,11 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                         {exec.status === 'failed' ? 'Échec' : 'Tentative précédente'} : {formatSequenceError(exec.error_message)}
                                       </p>
                                     )}
+                                    {aiReview && (
+                                      <p className="rounded-lg bg-warning-muted px-3 py-2 text-xs text-foreground">
+                                        {formatSequenceError(exec.error_message)}
+                                      </p>
+                                    )}
                                     {showReason && (
                                       <p className="text-xs text-muted-foreground">
                                         Raison : {formatSkipReason(exec.skip_reason)}
@@ -707,7 +724,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     {hasMessage && (
                                       <div className="rounded-lg border border-border bg-background p-3">
                                         <p className="mb-2 text-xs font-medium text-foreground-secondary">
-                                          {PREVIEW_TITLES[preview.source]}
+                                          {aiReview
+                                            ? (preview.message ? "Modèle de l'étape, à relire avant l'envoi" : "Message rédigé par l'IA, pas encore relu")
+                                            : PREVIEW_TITLES[preview.source]}
                                         </p>
                                         {preview.subject && (
                                           <p className="mb-2 border-b border-border pb-2 text-xs text-muted-foreground">
@@ -734,14 +753,25 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       )}
                                     </div>
 
-                                    {(canEdit || canSkip || exec.enrollment?.profile_url) && (
+                                    {(canEdit || canReview || canSkip || exec.enrollment?.profile_url) && (
                                       <div className="flex flex-wrap items-center gap-2">
+                                        {canReview && (
+                                          <Button
+                                            variant="primary"
+                                            size="xs"
+                                            className="max-md:h-11"
+                                            onClick={() => { setReviewingExecution(true); setEditingExecution(exec); }}
+                                          >
+                                            <Sparkles aria-hidden="true" />
+                                            Relire le message
+                                          </Button>
+                                        )}
                                         {canEdit && (
                                           <Button
                                             variant="outline"
                                             size="xs"
                                             className="max-md:h-11"
-                                            onClick={() => setEditingExecution(exec)}
+                                            onClick={() => { setReviewingExecution(false); setEditingExecution(exec); }}
                                           >
                                             <Pencil aria-hidden="true" />
                                             Modifier
@@ -791,6 +821,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         onClose={() => setEditingExecution(null)}
         execution={editingExecution}
         onSaved={fetchExecutions}
+        aiReview={reviewingExecution}
       />
 
       {/* Confirmation avant de retirer une étape programmée */}

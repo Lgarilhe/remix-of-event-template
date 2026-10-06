@@ -16,7 +16,12 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { Sparkles } from 'lucide-react';
 import { sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
+import { estimateActionCredits } from '@/lib/invokeWithCredits';
+import { plural } from '@/lib/plural';
+import { useSenderFirstName } from '@/hooks/useEnrollmentPreview';
+import { proposeAiMessage } from './proposeAiMessage';
 
 interface EditScheduledMessageModalProps {
   isOpen: boolean;
@@ -41,6 +46,14 @@ interface EditScheduledMessageModalProps {
     };
   } | null;
   onSaved: () => void;
+  /**
+   * Lot 5a-2 : « Relire le message » d'une étape rédigée par l'IA reportée
+   * par le moteur. Prérempli avec le modèle de l'étape, « Proposer avec
+   * l'IA » (coût annoncé, résultat modifiable) ; « Enregistrer » n'écrit que
+   * final_message et final_subject d'une étape encore programmée, et le
+   * moteur l'envoie au premier passage, au plus une heure plus tard.
+   */
+  aiReview?: boolean;
 }
 
 export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps> = ({
@@ -48,18 +61,24 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   onClose,
   execution,
   onSaved,
+  aiReview = false,
 }) => {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const subjectId = useId();
   const messageId = useId();
   const helpId = useId();
+  const senderName = useSenderFirstName();
 
   const actionType = execution?.step?.action_type;
   // Un e-mail a un objet comme un InMail : sans ce champ, l'enregistrement
   // écrivait final_subject = null et l'objet personnalisé était perdu.
   const needsSubject = actionType === 'inmail' || actionType === 'email';
+  // Message IA (smart_message) : il part en InMail hors relation directe, qui
+  // exige un objet. Champ proposé, facultatif.
+  const showsSubject = needsSubject || actionType === 'smart_message';
 
   useEffect(() => {
     if (execution) {
@@ -73,6 +92,22 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       );
     }
   }, [execution]);
+
+  // Lot 5a-2 : même génération que l'aperçu de la préparation, pour ce
+  // candidat et cette étape. Rien n'est écrit avant « Enregistrer ».
+  const handlePropose = async () => {
+    if (!execution) return;
+    setProposing(true);
+    try {
+      const proposal = await proposeAiMessage(execution.id, senderName);
+      setMessage(proposal.message);
+      if (showsSubject && proposal.subject) setSubject(proposal.subject);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "La proposition de l'IA a échoué. Réessayez, ou écrivez le message vous-même.");
+    } finally {
+      setProposing(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!execution) return;
@@ -96,7 +131,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       const { data: updated, error } = await supabase
         .from('sequence_step_executions')
         .update({
-          final_subject: needsSubject ? subject.trim() : null,
+          final_subject: showsSubject ? subject.trim() || null : null,
           final_message: message.trim(),
         })
         .eq('id', execution.id)
@@ -112,7 +147,11 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
         return;
       }
 
-      toast.success('Message mis à jour', { description: 'La nouvelle version partira à l’heure prévue.' });
+      if (aiReview) {
+        toast.success('Message relu', { description: 'Il partira au prochain passage, dans l’heure.' });
+      } else {
+        toast.success('Message mis à jour', { description: 'La nouvelle version partira à l’heure prévue.' });
+      }
       onSaved();
       onClose();
     } catch (err) {
@@ -133,18 +172,40 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Modifier le message planifié</DialogTitle>
+          <DialogTitle>{aiReview ? 'Relire le message' : 'Modifier le message planifié'}</DialogTitle>
           <DialogDescription>
-            {sequenceActionLabel(actionType)} · envoi prévu pour {execution.enrollment?.profile_name || 'le candidat'} le{' '}
-            {format(scheduledAt, 'EEEE d MMMM', { locale: fr })} à {format(scheduledAt, 'HH:mm')}.
+            {aiReview ? (
+              <>
+                {sequenceActionLabel(actionType)} pour {execution.enrollment?.profile_name || 'le candidat'} : ce message est
+                rédigé par l'IA pour chaque candidat. Relisez-le, faites-le proposer par l'IA ou écrivez-le : il partira tel
+                quel au prochain passage, dans l'heure.
+              </>
+            ) : (
+              <>
+                {sequenceActionLabel(actionType)} · envoi prévu pour {execution.enrollment?.profile_name || 'le candidat'} le{' '}
+                {format(scheduledAt, 'EEEE d MMMM', { locale: fr })} à {format(scheduledAt, 'HH:mm')}.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Objet (InMail et e-mail) */}
-          {needsSubject && (
+          {aiReview && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handlePropose} loading={proposing} disabled={saving} className="max-md:h-11">
+                {!proposing && <Sparkles aria-hidden="true" />}
+                Proposer avec l'IA
+              </Button>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                environ {plural(estimateActionCredits('outreach_message'), 'crédit')}
+              </span>
+            </div>
+          )}
+
+          {/* Objet (InMail et e-mail ; Message IA, facultatif) */}
+          {showsSubject && (
             <div className="space-y-2">
-              <Label htmlFor={subjectId}>Objet</Label>
+              <Label htmlFor={subjectId}>{needsSubject ? 'Objet' : 'Objet, si le message part en InMail'}</Label>
               <Input
                 id={subjectId}
                 value={subject}
@@ -175,7 +236,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
           <Button variant="outline" onClick={onClose}>
             Annuler
           </Button>
-          <Button variant="primary" onClick={handleSave} loading={saving}>
+          <Button variant="primary" onClick={handleSave} loading={saving} disabled={proposing}>
             Enregistrer le message
           </Button>
         </DialogFooter>

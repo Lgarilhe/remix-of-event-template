@@ -137,17 +137,25 @@ test('5a — module pur : la case cochée ne vaut que pour la liste affichée', 
 
 test('5a — RecipientsConfirm : case, aide reliée par aria-describedby, rien sous 5', () => {
   const component = between(confirm, 'export function RecipientsConfirm(', '\n}\n');
-  assert.match(component, /if \(!recipientsConfirmRequired\(count\)\) return null;/);
+  // Lot 5a-2 : libellé, aide et seuil viennent de sendConfirmation (case de
+  // relecture des messages IA). Sans étape IA : la case des destinataires, rien sous 5.
+  assert.match(component, /const \{ required, label, help \} = sendConfirmation\(count, aiReview\);/);
+  assert.match(component, /if \(!required\) return null;/);
+  assert.match(component, /aiReview = false,/);
+  assert.equal(guard.sendConfirmation(4, false).required, false);
+  assert.deepEqual(guard.sendConfirmation(5, false), { required: true, label: guard.RECIPIENTS_CONFIRM_LABEL, help: guard.RECIPIENTS_CONFIRM_HELP });
   assert.match(component, /aria-describedby=\{helpId\}/);
-  assert.match(component, /<p id=\{helpId\}[^>]*>\{RECIPIENTS_CONFIRM_HELP\}<\/p>/);
-  assert.match(component, /<Label htmlFor=\{checkboxId\}[\s\S]*?\{RECIPIENTS_CONFIRM_LABEL\}/);
-  // Premier message au-dessus de la case.
+  assert.match(component, /<p id=\{helpId\}[^>]*>\{help\}<\/p>/);
+  assert.match(component, /<Label htmlFor=\{checkboxId\}[\s\S]*?\{label\}/);
+  // Premier message au-dessus de la case, réservé au seuil de 5.
   assert.ok(component.indexOf('<FirstMessagePreviewBlock') < component.indexOf('<Checkbox'));
+  assert.match(component, /\{preview && recipientsConfirmRequired\(count\) && <FirstMessagePreviewBlock/);
   // Décochée dès que la liste change.
   const hook = between(confirmHook, 'export function useRecipientsConfirm(', '\n}\n');
-  assert.match(hook, /const signature = recipientsSignature\(recipientIds\);/);
+  assert.match(hook, /const signature = sendConfirmSignature\(recipientIds, aiReview, options\.aiGenerationVersion \?\? 0\);/);
+  assert.equal(guard.sendConfirmSignature(['b', 'a'], false), guard.recipientsSignature(['a', 'b']));
   assert.match(hook, /useEffect\(\(\) => \{\s*setConfirmedFor\(null\);\s*\}, \[signature\]\);/);
-  assert.match(hook, /blocked: recipientsConfirmBlocks\(recipientIds, confirmedFor\),/);
+  assert.match(hook, /blocked: required && confirmedFor !== signature,/);
 });
 
 test('5a — premier message en entier, dans un bloc qui défile ; IA annoncée avec sa génération', () => {
@@ -165,13 +173,14 @@ test('5a — premier message en entier, dans un bloc qui défile ; IA annoncée 
 // ─── Trois fenêtres ─────────────────────────────────────────────────────
 
 test('5a — préparation avec aperçu : case sur activeProfiles.length, bouton désactivé sans elle', () => {
-  assert.match(previewModal, /const recipients = useRecipientsConfirm\(activeProfiles\.map\(p => p\.id\)\);/);
+  // Lot 5a-2 : la même case vaut relecture des messages IA.
+  assert.match(previewModal, /const recipients = useRecipientsConfirm\(activeProfiles\.map\(p => p\.id\), \{ aiReview: hasAiReview, aiGenerationVersion \}\);/);
   assert.match(previewModal, /<RecipientsConfirm\s+count=\{activeProfiles\.length\}\s+confirmed=\{recipients\.confirmed\}\s+onConfirmedChange=\{recipients\.setConfirmed\}/);
   // Même nombre que le bouton « Inscrire N candidats ».
   assert.match(previewModal, /`Inscrire \$\{plural\(activeProfiles\.length, 'candidat'\)\}`/);
-  assert.match(previewModal, /disabled=\{isBusy \|\| activeProfiles\.length === 0 \|\| duplicatesUnchecked \|\| !!sendingAccount\.blockReason \|\| recipients\.blocked\}/);
+  assert.match(previewModal, /disabled=\{isBusy \|\| activeProfiles\.length === 0 \|\| duplicatesUnchecked \|\| !!sendingAccount\.blockReason \|\| recipients\.blocked \|\| aiReviewMissingCount > 0\}/);
   const enroll = between(previewModal, 'const handleEnroll = async () => {', 'setIsEnrolling(true);');
-  assert.match(enroll, /if \(recipients\.blocked\) return;/);
+  assert.match(enroll, /if \(recipients\.blocked \|\| aiReviewMissingCount > 0\) return;/);
   // La case est dans le pied, avant les boutons.
   const footer = between(previewModal, '<SendingAccountNotice state={sendingAccount} />', 'Présélectionner sans message');
   assert.match(footer, /<RecipientsConfirm/);

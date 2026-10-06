@@ -196,8 +196,9 @@ test('SEQ-127 — vérification des contacts récents en échec : blocage et « 
     assert.match(source, /if \(!cancelled\) setDuplicateCheckFailed\(true\);/, name);
     assert.match(source, /\{DUPLICATE_CHECK_FAILED_MESSAGE\}/, name);
     assert.match(source, /setDuplicateCheckAttempt\(a => a \+ 1\)/, `${name} : bouton « Réessayer »`);
-    // Lot 5a : la case des destinataires (dès 5 candidats) s'ajoute à la condition.
-    assert.match(source, /duplicatesUnchecked \|\| !!sendingAccount\.blockReason \|\| recipients\.blocked\}/, `${name} : inscription désactivée tant que la vérification n'a pas abouti`);
+    // Lot 5a : la case des destinataires (dès 5 candidats) s'ajoute à la condition ;
+    // lot 5a-2 : dans l'aperçu, les messages IA manquants aussi.
+    assert.match(source, /duplicatesUnchecked \|\| !!sendingAccount\.blockReason \|\| recipients\.blocked( \|\| aiReviewMissingCount > 0)?\}/, `${name} : inscription désactivée tant que la vérification n'a pas abouti`);
   }
   assert.equal(helpers.DUPLICATE_CHECK_FAILED_MESSAGE, "Impossible de vérifier les contacts récents de votre organisation. Réessayez avant d'inscrire.");
 });

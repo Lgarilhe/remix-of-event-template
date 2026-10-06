@@ -8,17 +8,18 @@
  * puis la case, obligatoire, avec son aide reliée par aria-describedby. La
  * case se décoche dès que la liste change (état : useRecipientsConfirm).
  * Sous 5, rien n'est affiché.
+ *
+ * Lot 5a-2 : séquence à message rédigé par l'IA (`aiReview`), case « J'ai relu
+ * les messages rédigés par l'IA » obligatoire quel que soit le nombre, et dès
+ * 5 candidats une seule case pour les deux (sendConfirmation).
  */
 import React, { useId } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import {
-  RECIPIENTS_CONFIRM_HELP,
-  RECIPIENTS_CONFIRM_LABEL,
-  recipientsConfirmRequired,
-} from '@/lib/contactRecipientsGuard';
+import { cn } from '@/lib/utils';
+import { recipientsConfirmRequired, sendConfirmation } from '@/lib/contactRecipientsGuard';
 
 export interface FirstMessagePreviewItem {
   key: string;
@@ -152,7 +153,9 @@ export function FirstMessagePreviewBlock({
 
 /**
  * Premier message puis case obligatoire, dès 5 destinataires. `count` est le
- * nombre affiché sur le bouton d'envoi.
+ * nombre affiché sur le bouton d'envoi. Avec `aiReview` (lot 5a-2), la case
+ * de relecture est montrée quel que soit le nombre ; le premier message
+ * reste réservé au seuil de 5.
  */
 export function RecipientsConfirm({
   count,
@@ -160,6 +163,8 @@ export function RecipientsConfirm({
   onConfirmedChange,
   preview,
   renderText,
+  aiReview = false,
+  disabled = false,
 }: {
   count: number;
   confirmed: boolean;
@@ -167,26 +172,32 @@ export function RecipientsConfirm({
   /** Premier message montré au-dessus de la case ; omis quand il est déjà affiché juste au-dessus. */
   preview?: FirstMessagePreview | null;
   renderText?: (text: string) => React.ReactNode;
+  /** La séquence a une étape à message rédigée par l'IA : la case vaut relecture. */
+  aiReview?: boolean;
+  /** Case grisée tant qu'un message IA reste à générer. */
+  disabled?: boolean;
 }) {
   const checkboxId = useId();
   const helpId = useId();
-  if (!recipientsConfirmRequired(count)) return null;
+  const { required, label, help } = sendConfirmation(count, aiReview);
+  if (!required) return null;
   return (
     <div className="space-y-2">
-      {preview && <FirstMessagePreviewBlock preview={preview} renderText={renderText} />}
+      {preview && recipientsConfirmRequired(count) && <FirstMessagePreviewBlock preview={preview} renderText={renderText} />}
       <div className="flex items-start gap-2">
         <Checkbox
           id={checkboxId}
           checked={confirmed}
           onCheckedChange={(checked) => onConfirmedChange(checked === true)}
           aria-describedby={helpId}
+          disabled={disabled}
           className="mt-0.5"
         />
         <div className="min-w-0">
-          <Label htmlFor={checkboxId} className="cursor-pointer text-sm font-medium text-foreground max-md:py-3">
-            {RECIPIENTS_CONFIRM_LABEL}
+          <Label htmlFor={checkboxId} className={cn('text-sm font-medium text-foreground max-md:py-3', disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer')}>
+            {label}
           </Label>
-          <p id={helpId} className="text-xs text-muted-foreground">{RECIPIENTS_CONFIRM_HELP}</p>
+          <p id={helpId} className="text-xs text-muted-foreground">{help}</p>
         </div>
       </div>
     </div>
