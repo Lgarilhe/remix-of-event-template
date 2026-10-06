@@ -103,6 +103,18 @@ test('fond : aucun clic, transform seul, pas de flou, mouvement réduit toujours
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation-duration: 0\.01ms !important;[^@]*animation-iteration-count: 1 !important;/);
 });
 
+test('fond : le mouvement reste assez ample et assez rapide pour se voir', () => {
+  // Avec 23 à 37 s et des trajets de 14 à 26 %, les taches ne bougeaient que de 5 à 7 px en 5 s : personne ne voyait l'animation.
+  const durations = [...backdropCss.matchAll(/animation-duration: (\d+)s/g)].map((m) => Number(m[1]));
+  assert.equal(durations.length, 3);
+  for (const d of durations) assert.ok(d <= 22, `${d} s : un aller de plus de 22 s ne se voit plus`);
+  for (const [name, minTravel] of [['A', 35], ['B', 35], ['C', 35]]) {
+    const frames = backdropCss.match(new RegExp(`@keyframes konektBackdrop${name} \\{([\\s\\S]*?)\\n  \\}`))[1];
+    const [from, to] = [/from \{ transform: translate3d\((-?\d+)%?/, /to \{ transform: translate3d\((-?\d+)%?/].map((re) => Number(frames.match(re)[1]));
+    assert.ok(Math.abs(to - from) >= minTravel, `tache ${name} : trajet de ${Math.abs(to - from)} % (35 % au moins)`);
+  }
+});
+
 test('fond : thème clair dessiné à part, texte gris réglé pour la page qui le porte', () => {
   assert.match(css, /\.light \.konekt-backdrop \{[^}]*--backdrop-a:/);
   assert.match(css, /\.konekt-on-backdrop \{[^}]*--muted-foreground:[^}]*--k-text-muted: hsl\(var\(--muted-foreground\)\)/);

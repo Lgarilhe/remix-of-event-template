@@ -1,7 +1,7 @@
 /**
  * PageBackdrop : fond décoratif du haut de l'accueil, de la recherche hors mission et des écrans de sourcing.
  *
- * Trois taches de dégradé qui dérivent lentement et un grain fixe, fondus vers
+ * Trois taches de dégradé qui dérivent (13 à 21 s l'aller, assez pour se voir) et un grain fixe, fondus vers
  * le fond de page sur 28 rem (styles `.konekt-backdrop` de src/index.css).
  * Décision du propriétaire du 05/10/2026 : exception à « pas de fonds animés »
  * de docs/design/01-direction.md, limitée à ces écrans.

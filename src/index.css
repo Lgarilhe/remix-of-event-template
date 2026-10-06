@@ -343,7 +343,7 @@
     height: 150%;
     background: radial-gradient(closest-side, hsl(var(--backdrop-a) / 0.68), transparent);
     animation-name: konektBackdropA;
-    animation-duration: 23s;
+    animation-duration: 13s;
   }
   .konekt-backdrop__blob--b {
     right: -14%;
@@ -352,7 +352,7 @@
     height: 160%;
     background: radial-gradient(closest-side, hsl(var(--backdrop-b) / 0.62), transparent);
     animation-name: konektBackdropB;
-    animation-duration: 29s;
+    animation-duration: 17s;
   }
   .konekt-backdrop__blob--c {
     left: 24%;
@@ -361,7 +361,7 @@
     height: 140%;
     background: radial-gradient(closest-side, hsl(var(--backdrop-c) / 0.5), transparent);
     animation-name: konektBackdropC;
-    animation-duration: 37s;
+    animation-duration: 21s;
   }
   /* Option contained : fondu aussi sur les côtés (conteneur à marges). Sans prise en charge de
      mask-composite, le fondu du haut reste seul et les côtés restent nets. */
@@ -392,15 +392,15 @@
   }
   @keyframes konektBackdropA {
     from { transform: translate3d(0, 0, 0) scale(1); }
-    to { transform: translate3d(18%, 14%, 0) scale(1.15); }
+    to { transform: translate3d(46%, 8%, 0) scale(1.25); }
   }
   @keyframes konektBackdropB {
-    from { transform: translate3d(0, 6%, 0) scale(1.1); }
-    to { transform: translate3d(-20%, -4%, 0) scale(0.95); }
+    from { transform: translate3d(0, 4%, 0) scale(1.1); }
+    to { transform: translate3d(-50%, 8%, 0) scale(0.9); }
   }
   @keyframes konektBackdropC {
-    from { transform: translate3d(-12%, 0, 0) scale(0.95); }
-    to { transform: translate3d(14%, 12%, 0) scale(1.2); }
+    from { transform: translate3d(-34%, 0, 0) scale(0.92); }
+    to { transform: translate3d(36%, 10%, 0) scale(1.3); }
   }
   /* Page qui porte le fond : le texte gris se règle un cran plus lisible (plus clair en
      sombre, plus foncé en clair) pour tenir 4,5:1 sous les taches. Jetons globaux inchangés. */
