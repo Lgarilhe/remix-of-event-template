@@ -81,7 +81,7 @@ function combinedStatus(a: JobDetailsSaveStatus, b: JobDetailsSaveStatus): JobDe
 }
 
 export function CadrageScreen(): JSX.Element | null {
-  const { project, location, canEditBrief, canEditProcess } = useMissionV3();
+  const { project, location, canEditBrief, canEditProcess, goToScreen } = useMissionV3();
   const { steps, loadingSteps, stepsError } = useMissionProcess(project.id);
   const autosave = useJobDetailsAutosave(project, !canEditBrief);
   const link = useCalendlyLinkSave(project.id, !canEditBrief);
@@ -129,6 +129,7 @@ export function CadrageScreen(): JSX.Element | null {
         onRetry={retry}
         canDictate={canEditBrief}
         updateField={updateField}
+        onContinue={() => goToScreen('sourcing')}
       />
 
       <SectionErrorBoundary fallbackTitle="Erreur dans les Critères">

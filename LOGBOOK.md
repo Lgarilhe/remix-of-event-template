@@ -32,6 +32,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-06 — SHIP — Cadrage : « Aller au sourcing »
+
+**Contexte** : après la création d'une mission, l'écran d'arrivée est le Cadrage (`?tab=brief` vers `cadrage?section=poste`). Les trois écrans ne se rejoignent que par les onglets de l'en-tête, en texte discret et dans l'ordre Pipeline, Sourcing, Cadrage : le propriétaire n'a trouvé aucun moyen de passer au Sourcing.
+**Décision / Fait** : un bouton « Aller au sourcing » termine la ligne du bandeau d'état du Cadrage (`CadrageReadiness`, prop `onContinue`, `goToScreen('sourcing')` dans `CadrageScreen`). Plein (`primary`) quand le poste est prêt, teinté (`secondary`) sinon : jamais verrouillé, jamais masqué en lecture seule (conception 3.1, écrans sans verrou). Un seul bouton plein par écran reste vrai : aucun autre n'existe sur le Cadrage.
+**Impact** : `src/components/missions/v3/cadrage/CadrageReadiness.tsx`, `CadrageScreen.tsx`, `tests/ux/lot12-cadrage.test.mjs` (nouveau test, mutation « bouton sous la condition de la dictée » détectée). Rendu vérifié sur le vrai composant (sombre et clair, 1100 et 390 px, 44 px de haut sur téléphone).
+**Reste à faire** :
+- [ ] Le Sourcing n'a pas de sortie vers le Pipeline autre que l'onglet : à décider avec le propriétaire.
+**Refs** : `docs/refonte-mission/conception.md` 3.1.
+
+---
+
+## 2026-10-06 — INSIGHT — Brief IA : une page société de Welcome to the Jungle ne se lit pas en lecture directe
+
+**Contexte** : essai en réel de `fetch-job-source` sur `…/fr/companies-v1/numspot/jobs`.
+**Fait** : la page reçue par le serveur (68 086 caractères, 32 liens) ne contenait ni donnée `JobPosting`, ni `__NEXT_DATA__`, ni aucune occurrence de `/jobs` : la liste d'offres est construite par le navigateur après l'ouverture. Seule la lecture de secours (rendu JavaScript par Firecrawl, `FIRECRAWL_API_KEY`) peut la voir ; sans clé, le journal note `firecrawl: "not_configured"`. Une page d'offre, elle, porte son `JobPosting` et son texte dans le HTML. Les adresses `companies-v1` existent comme `companies`.
+**Impact** : le journal `[fetch-job-source] resolve` porte désormais, quand rien n'est lu, le relevé de chaque niveau (`trace` : taille de la page, données `JobPosting`, liens, mentions de `/jobs`, `__NEXT_DATA__`, état de Firecrawl). La recherche des adresses d'offres dans les données intégrées de la page (`wttjLinksFromRawHtml`) est en place pour les sites qui les y écrivent.
+**Refs** : PR #275, commits f4bbd55 et 2540814.
+
+---
+
 ## 2026-10-05 — SHIP — Brief IA : lire une offre, ou toutes les offres d'une société, depuis une adresse web
 
 **Contexte** : « Une adresse web » du Brief IA ne lisait que le texte de l'adresse (poste, société, lieu d'une adresse Welcome to the Jungle) et demandait de coller la fiche. La fonction qui lisait les pages (`scrape-job-url`) avait été retirée le 06/09 faute d'appelant.
