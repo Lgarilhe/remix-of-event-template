@@ -126,7 +126,7 @@ interface SequenceActivityLogProps {
 
 type MessageOverride = { subject?: string; message?: string };
 
-/** Types d'étape dont le texte est rédigé par l'IA au moment de l'envoi. */
+/** Types d'étape dont le texte est rédigé par l'IA pour chaque candidat. */
 const AI_ACTION_TYPES = new Set(['smart_message']);
 
 type FilterStatus = 'all' | 'scheduled' | 'sent' | 'failed' | 'skipped';
@@ -148,7 +148,8 @@ const PREVIEW_TITLES: Record<PreviewSource, string> = {
   edited: 'Message modifié',
   override: "Message validé à l'inscription",
   template: "Modèle, personnalisé au moment de l'envoi",
-  ai: "Message rédigé par l'IA au moment de l'envoi",
+  // Source rendue sans texte (computePreview : rien de généré ni de modèle) : le titre le dit.
+  ai: "Message de l'IA Konekt pour ce candidat, pas encore généré",
   template_unverified: "Modèle de l'étape (aperçu personnalisé indisponible)",
 };
 

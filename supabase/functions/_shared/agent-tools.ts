@@ -140,6 +140,10 @@ const NEVER_AUTO_TOOLS = new Set([
   'update_candidate_stage',
   'add_to_shortlist',
   'bulk_update_stage',
+  // Lot 5a : rien ne part sans le clic d'une personne (décision 1 du lot 5).
+  // L'inscription et la reprise déclenchent des envois de la séquence.
+  'enroll_in_sequence',
+  'resume_sequence',
 ]);
 
 const policyCache = new Map<string, { at: number; policies: Map<string, ToolPolicy> }>();

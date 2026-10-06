@@ -161,7 +161,8 @@ test('SEQ-043 — le compte d’envoi est affiché et bloque s’il est déconne
   for (const [name, source] of [['aperçu', previewModal], ['inscription simple', enrollModal]]) {
     assert.match(source, /const sendingAccount = useSendingAccount\(accountId\);/, name);
     assert.match(source, /<SendingAccountNotice state=\{sendingAccount\} \/>/, name);
-    assert.match(source, /!!sendingAccount\.blockReason\}/, `${name} : bouton d'inscription désactivé si le compte bloque`);
+    // Lot 5a : la case des destinataires (dès 5 candidats) s'ajoute à la condition.
+    assert.match(source, /!!sendingAccount\.blockReason \|\| recipients\.blocked\}/, `${name} : bouton d'inscription désactivé si le compte bloque`);
     assert.match(source, /if \(sendingAccount\.blockReason\) \{\s*toast\.error\(sendingAccount\.blockReason\);\s*return;/, name);
   }
 });

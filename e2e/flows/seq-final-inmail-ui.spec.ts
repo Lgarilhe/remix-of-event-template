@@ -347,3 +347,45 @@ test.describe('InMail groupé : décisions 14 et 24 dans la fenêtre', () => {
     expect(await queuedRecipients(ws)).toEqual([fresh.id]);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+
+test.describe('InMail groupé : case des destinataires (lot 5a, décision 7 du lot 5)', () => {
+  test('dès 5 InMails : case « Je confirme les destinataires » obligatoire et premier InMail (objet et texte) affiché ; planifiés après la case', async ({ browser }) => {
+    const ws = await workspace('E2E InMail 5a cinq');
+    const five = ['Alice', 'Bruno', 'Chloe', 'David', 'Emma'].map((first, i) => candidate(`F${i}`, `${first} Cinq`));
+    const { page, queued } = await openSearchResults(browser, ws, five);
+    const dialog = await openBulkInMail(page);
+    await dialog.getByRole('button', { name: /^Générer 5 messages/ }).click();
+    await expect(toast(page, '5 messages générés')).toBeVisible({ timeout: 20_000 });
+
+    const box = dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' });
+    await expect(box).toBeVisible();
+    await expect(box).toHaveAccessibleDescription('Obligatoire à partir de 5 candidats.');
+    const firstInMail = dialog.getByRole('region', { name: /^Premier message, pour / });
+    await expect(firstInMail).toContainText('InMail');
+    await expect(firstInMail).toContainText('Objet : Une mission pour vous');
+    await expect(firstInMail).toContainText('Bonjour, une mission pourrait vous intéresser.');
+
+    const plan = dialog.getByRole('button', { name: 'Planifier 5 InMails' });
+    await expect(plan).toBeDisabled();
+    await box.check();
+    await expect(plan).toBeEnabled();
+    await plan.click();
+    await page.getByRole('alertdialog', { name: 'Planifier 5 InMails ?' }).getByRole('button', { name: 'Planifier', exact: true }).click();
+    await expect(toast(page, '5 InMails planifiés pour envoi')).toBeVisible({ timeout: 20_000 });
+    expect(queued).toHaveLength(1);
+    expect(await queuedRecipients(ws)).toEqual(five.map((c) => c.id).sort());
+  });
+
+  test('4 InMails : pas de case, « Planifier 4 InMails » actif', async ({ browser }) => {
+    const ws = await workspace('E2E InMail 5a quatre');
+    const four = ['Alice', 'Bruno', 'Chloe', 'David'].map((first, i) => candidate(`Q${i}`, `${first} Quatre`));
+    const { page } = await openSearchResults(browser, ws, four);
+    const dialog = await openBulkInMail(page);
+    await dialog.getByRole('button', { name: /^Générer 4 messages/ }).click();
+    await expect(toast(page, '4 messages générés')).toBeVisible({ timeout: 20_000 });
+    await expect(dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Planifier 4 InMails' })).toBeEnabled();
+  });
+});

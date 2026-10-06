@@ -7,7 +7,7 @@
  *
  * - Défaut (aucune row en base) : « Avec approbation ».
  * - Les actions sensibles (envois externes, destructives, changements d'étape
- *   d'un candidat) ne peuvent PAS passer en automatique — le sélecteur est
+ *   d'un candidat, inscription et reprise de séquence) ne peuvent PAS passer en automatique — le sélecteur est
  *   bridé ET le serveur clampe de toute façon (agent-tools.ts,
  *   resolveEffectivePolicy).
  * - Ligne spéciale « Résumé du matin » (ex-« Digest matinal ») : pseudo-tool daily_digest (auto = activé).
@@ -57,10 +57,10 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'update_mission_brief', label: 'Modifier le brief de la mission', autoEligible: true },
   { name: 'regenerate_search_filters', label: 'Régénérer les filtres LinkedIn', autoEligible: true },
   { name: 'apply_search_filters_to_mission', label: 'Appliquer les filtres de recherche', autoEligible: true },
-  { name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: true },
+  { name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: false, description: 'Peut déclencher des envois : approbation obligatoire' },
   { name: 'create_sequence', label: 'Créer une séquence', autoEligible: true },
   { name: 'pause_sequence', label: 'Mettre en pause une séquence', autoEligible: true },
-  { name: 'resume_sequence', label: 'Reprendre une séquence', autoEligible: true },
+  { name: 'resume_sequence', label: 'Reprendre une séquence', autoEligible: false, description: 'Peut déclencher des envois : approbation obligatoire' },
   { name: 'draft_outreach_message', label: "Rédiger un message d'approche", autoEligible: true },
   { name: 'enrich_candidate_contact', label: 'Enrichir un contact', autoEligible: true },
   { name: 'schedule_interview', label: 'Planifier un entretien', autoEligible: true },
@@ -153,7 +153,8 @@ export function AgentPoliciesSettings() {
           <p className="text-xs text-muted-foreground mt-1">
             Pour chaque action, choisissez si l'assistant l'exécute directement
             (visible dans le journal de l’assistant) ou attend votre approbation. Les envois externes, les actions
-            destructives et les changements d'étape d'un candidat exigent toujours une approbation.
+            destructives, les changements d'étape d'un candidat, l'inscription dans une séquence et sa reprise
+            exigent toujours une approbation.
             {' '}Un changement s’enregistre aussitôt et s’applique en moins d’une minute.
             {!isAdmin && ' Réservé aux administrateurs.'}
           </p>
