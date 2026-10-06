@@ -48,7 +48,7 @@ export interface LegacySettingsTarget { pathname: string; search: string; hash: 
  * Ancienne adresse /settings?tab=… (e-mails envoyés, notifications en base, retours de paiement
  * et d'OAuth, extension installée) → nouvelle adresse. null si ce n'en est pas une.
  * - tab retiré ; tous les autres paramètres gardés (checkout, kind, notion_*, __lovable_token…) ;
- * - notion_oauth / notion_error : Connexions #notion, quel que soit l'onglet (seul lecteur : NotionConnectionCard) ;
+ * - notion_oauth / notion_error : Connexions #applications, quel que soit l'onglet (seul lecteur : NotionConnectorRow) ;
  * - checkout sans kind : kind déduit de l'onglet (le repli de checkoutReturn.ts:34-36 lisait tab) ;
  * - un hash déjà présent passe avant l'ancre de la table.
  */
@@ -62,7 +62,7 @@ export function resolveLegacySettingsUrl(pathname: string, search: string, hash:
   // hasOwnProperty : ?tab=constructor ou ?tab=__proto__ ne doivent pas lire le prototype.
   const legacy = Object.prototype.hasOwnProperty.call(LEGACY_SETTINGS_TABS, key) ? LEGACY_SETTINGS_TABS[key] : undefined;
   const target: LegacyTab = notionReturn
-    ? { pathname: SETTINGS_PATHS.connections, hash: '#notion' }
+    ? { pathname: SETTINGS_PATHS.connections, hash: '#applications' }
     : legacy ?? { pathname: '/settings' };
   params.delete('tab');
   if (legacy?.kind && params.has('checkout') && !params.has('kind')) params.set('kind', legacy.kind);

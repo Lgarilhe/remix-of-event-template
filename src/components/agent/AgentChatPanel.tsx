@@ -16,6 +16,7 @@ import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
 import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
 import { ConnectorMenu, type ChatConnectorOption } from '@/components/assistant-ui/connector-menu';
+import { RESERVED_BUILTIN_CONNECTORS, connectorLabel } from '@/lib/assistantConnectors';
 import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
@@ -85,7 +86,6 @@ const ChatThread: React.FC<{
 
 const CONNECTOR_PREFERENCES_KEY = 'konekt:assistant:disabled-connectors:v2';
 const CONNECTOR_NAME_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
-const RESERVED_BUILTIN_CONNECTORS = new Set(['notion', 'email', 'gmail', 'outlook']);
 
 type ConnectorPreferences = Record<string, string[]>;
 
@@ -105,14 +105,6 @@ function loadConnectorPreferences(): ConnectorPreferences {
   } catch {
     return {};
   }
-}
-
-function connectorLabel(name: string): string {
-  return name
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 }
 
 function emailConnectorLabel(provider: EmailConnectorProvider): string {
@@ -210,6 +202,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         kind: 'notion',
         connected: notionConnected,
         enabled: notionConnected && !disabled.has('notion'),
+        manageHref: '/settings/account/connections#applications',
         status: notionStatusQuery.isLoading
           ? 'checking'
           : notionStatusQuery.isError

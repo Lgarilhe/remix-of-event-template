@@ -147,7 +147,7 @@ test('L3-10 — Calendly retiré du menu, Aircall relié depuis les réglages, p
   assert.doesNotMatch(integrations, /notion_api_key|notion_connected|_db_id|notionLogo/, 'plus de champ Notion par clé');
   assert.doesNotMatch(read('src/hooks/useOrganizationIntegrations.ts'), /notion_api_key/, 'plus de secret Notion à écrire');
   const connections = between(read('src/components/settings/shell/sections.tsx'), 'function ConnectionsSection()', '\n}\n');
-  assert.ok(connections.includes('<SettingsAnchor id="notion"><NotionConnectionCard /></SettingsAnchor>'), 'la carte Notion de l’assistant doit rester dans Connexions');
+  assert.ok(connections.includes('<SettingsAnchor id="applications"><AssistantConnectorsCard /></SettingsAnchor>'), 'la connexion Notion de l’assistant doit rester dans Connexions, dans la liste des applications');
   assert.ok(integrations.includes('!config.retired'));
   // Une clé encore enregistrée garde la carte visible (retirée du menu : pour la retirer ; Aircall : pour finir la liaison).
   assert.match(between(integrations, 'const visibleIntegrations', '});'), /return config\.fields\.some\(f => f\.secret && !!values\[`\$\{f\.key\}_hint`\]\)/);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { useEnrollmentPreview, SequenceStepPreview, missionIdOfJob } from '@/hooks/useEnrollmentPreview';
+import { useEnrollmentPreview, SequenceStepPreview, missionIdOfJob, resolveVariables, hasMessage } from '@/hooks/useEnrollmentPreview';
 import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -50,10 +50,18 @@ import {
   RECENT_CONTACT_WINDOW_DAYS,
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
-import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, pickFirstStep } from '@/lib/sequenceCompatibility';
+import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, normalizeNetworkDistance, pickFirstStep } from '@/lib/sequenceCompatibility';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
 import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
+import {
+  FirstMessagePreviewBlock,
+  RecipientsConfirm,
+  type FirstMessagePreview,
+  type FirstMessagePreviewItem,
+} from './enrollment-preview/RecipientsConfirm';
+import { useRecipientsConfirm } from './enrollment-preview/useRecipientsConfirm';
+import { firstMessagePath } from './enrollment-preview/firstMessagePath';
 import {
   alreadyInSequenceLabel,
   alreadyPassedLabel,
@@ -103,6 +111,11 @@ interface EnrollmentPreviewModalProps {
 function creditsLabel(n: number): string {
   return n > 0 ? `environ ${plural(n, 'crédit')}` : 'aucun crédit';
 }
+
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+/** Types d'étape dont l'objet part avec le message (InMail, e-mail, message IA en InMail). */
+const SUBJECT_ACTIONS = ['inmail', 'email', 'smart_message'];
 
 /** « +1 j 2 h » : délai avant une étape. */
 function delayLabel(days?: number, hours?: number, minutes?: number): string | null {
@@ -156,19 +169,20 @@ function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
     ifTrueGotoStep: s.if_true_goto_step || s.ifTrueGotoStep || null,
     ifFalseGotoStep: s.if_false_goto_step || s.ifFalseGotoStep || null,
     nextStepId: s.next_step_id || s.nextStepId || null,
+    // Parcours du premier message (versions A/B, fin de séquence).
+    variantGroup: s.variant_group ?? s.variantGroup ?? null,
+    endsSequence: s.ends_sequence ?? s.endsSequence ?? null,
   })).sort((a, b) => a.stepOrder - b.stepOrder);
 }
 
-const MESSAGE_ACTIONS = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
-
 /**
- * Étape dont le message est préparé ici. Un canal fermé (e-mail, WhatsApp, D2)
- * est sauté par le moteur : pas de carte d'aperçu, l'arbre le montre compact.
+ * Étape dont le message est préparé ici : même règle que la génération
+ * (hasMessage : modèle écrit, ou rédaction par l'IA même sans modèle). Un
+ * canal fermé (e-mail, WhatsApp, D2) est sauté par le moteur : pas de carte
+ * d'aperçu, l'arbre le montre compact.
  */
 function isPreviewedMessageStep(step: SequenceStepPreview): boolean {
-  return MESSAGE_ACTIONS.includes(step.actionType)
-    && !isClosedChannelStep(step.actionType)
-    && !!step.messageTemplate?.trim();
+  return !isClosedChannelStep(step.actionType) && hasMessage(step);
 }
 
 /**
@@ -275,6 +289,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const pageSize = 10;
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
+  // Candidat montré par « Aperçu du premier message » du Récapitulatif (null : le premier prêt).
+  const [summaryCandidateIndex, setSummaryCandidateIndex] = useState<number | null>(null);
 
   // ── Candidate states (remove/skip) ──
   const [candidateStates, setCandidateStates] = useState<CandidateStatesMap>(new Map());
@@ -464,7 +480,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const {
     previews, messageSteps, hasMessageSteps, hasAiSteps,
     generatedCount, totalToGenerate, isBulkGenerating,
-    estimatedCredits, creditsPerMessage, candidateAnalysis,
+    estimatedCredits, creditsPerMessage, senderName, candidateAnalysis,
     getPreview, generateForCandidateById, regenerateStep,
     editMessage, generateAll, cancelBulkGeneration, getMessageOverrides, discardSessionPreviews,
     getStepConfig, setStepConfig, getStepConfigOverrides,
@@ -561,6 +577,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       toast.error(sendingAccount.blockReason);
       return;
     }
+    // Lot 5a : dès 5 candidats, rien ne part sans la case des destinataires.
+    if (recipients.blocked) return;
 
     setIsEnrolling(true);
     setEnrollResults(null);
@@ -976,6 +994,82 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   );
   const bulkMissingCandidates = activeProfiles.filter(p => messageSteps.some(s => !isReady(p.id, s.stepId))).length;
 
+  // ── Lot 5a : case des destinataires et premier message ──
+  // N = activeProfiles.length, le nombre du bouton « Inscrire N candidats » :
+  // retraits, exclusions et dérogations déjà appliqués. Case décochée dès que
+  // la liste change.
+  const recipients = useRecipientsConfirm(activeProfiles.map(p => p.id));
+  // Premier message que recevra le candidat : parcours du moteur depuis la
+  // première étape (firstMessagePath), étape rédigée par l'IA sans modèle
+  // comprise. À « Vérifier la relation », la branche du candidat si sa
+  // relation est connue, sinon les deux avec leur condition.
+  const firstMessagesOf = (profile: LinkedInProfile) => {
+    const distance = normalizeNetworkDistance(profile.network_distance);
+    const connected = distance === 'FIRST_DEGREE'
+      ? true
+      : distance === 'SECOND_DEGREE' || distance === 'THIRD_DEGREE' || distance === 'OUT_OF_NETWORK' ? false : null;
+    return firstMessagePath(steps, isPreviewedMessageStep, connected);
+  };
+  // Texte rendu comme aujourd'hui : l'aperçu généré ou retouché, sinon le
+  // modèle aux variables résolues ; un message rédigé par l'IA non généré
+  // s'annonce, avec sa génération à la demande (coût annoncé).
+  const firstMessageFor = (profile: LinkedInProfile): FirstMessagePreview => {
+    const candidateName = profile.name || 'ce candidat';
+    const { messages, firstAction: pathFirstAction } = firstMessagesOf(profile);
+    if (messages.length === 0) {
+      const actionLabel = pathFirstAction ? sequenceActionLabel(pathFirstAction.actionType) : null;
+      return {
+        candidateName,
+        items: [],
+        emptyLabel: actionLabel
+          ? `Aucun message écrit. Première action : ${lowerFirst(actionLabel)}.`
+          : 'Aucun message écrit.',
+      };
+    }
+    const items = messages.map(({ step, condition }): FirstMessagePreviewItem => {
+      const preview = getPreview(profile.id, step.stepId);
+      const withSubject = SUBJECT_ACTIONS.includes(step.actionType);
+      const label = sequenceActionLabel(step.actionType);
+      if (isReady(profile.id, step.stepId)) {
+        return {
+          key: step.stepId,
+          label,
+          condition,
+          subject: withSubject ? preview?.subject || null : null,
+          text: (preview?.message || '').replace(/<br\s*\/?>/gi, '\n'),
+        };
+      }
+      if (step.useAiPersonalization && step.actionType !== 'connection_request') {
+        return {
+          key: step.stepId,
+          label,
+          condition,
+          text: '',
+          aiPending: true,
+          onGenerate: () => regenerateStep(profile.id, step.stepId),
+          isGenerating: !!preview?.isGenerating,
+        };
+      }
+      return {
+        key: step.stepId,
+        label,
+        condition,
+        subject: withSubject ? resolveVariables(step.subjectTemplate, profile, senderName) || null : null,
+        text: resolveVariables(step.messageTemplate, profile, senderName),
+      };
+    });
+    return { candidateName, items, generateCost: creditsLabel(creditsPerMessage) };
+  };
+  // Pied : le candidat affiché s'il est inscrit, sinon le premier inscrit.
+  const footerProfile = activeProfiles.find(p => p.id === selectedCandidateId) ?? activeProfiles[0] ?? null;
+  // Récapitulatif : premier candidat dont le premier message est prêt, puis ‹ › pour passer aux suivants.
+  const firstReadyIndex = () => Math.max(0, activeProfiles.findIndex(p => {
+    const { messages } = firstMessagesOf(p);
+    return messages.length > 0 && messages.every(m => isReady(p.id, m.step.stepId));
+  }));
+  const summaryIndex = Math.min(summaryCandidateIndex ?? firstReadyIndex(), Math.max(activeProfiles.length - 1, 0));
+  const summaryProfile = activeProfiles[summaryIndex] ?? null;
+
   // ── Clavier de la liste des candidats (revue design D-44) ──
   const listRef = useRef<HTMLDivElement>(null);
   const focusCandidateRef = useRef<string | null>(null);
@@ -1192,6 +1286,14 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   hasMessageSteps={hasMessageSteps}
                   firstAction={firstAction}
                   onSwitchToPreview={() => setMode('preview')}
+                  firstMessage={summaryProfile ? firstMessageFor(summaryProfile) : null}
+                  firstMessageNavigation={{
+                    index: summaryIndex,
+                    total: activeProfiles.length,
+                    onPrevious: () => setSummaryCandidateIndex(Math.max(0, summaryIndex - 1)),
+                    onNext: () => setSummaryCandidateIndex(Math.min(activeProfiles.length - 1, summaryIndex + 1)),
+                  }}
+                  renderText={renderSendTimeVariables}
                 />
               </div>
             ) : (
@@ -1465,6 +1567,15 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           {!enrollResults && (
             <div className="shrink-0 space-y-2 border-t border-border px-4 py-3 sm:px-6">
               <SendingAccountNotice state={sendingAccount} />
+              {/* Dès 5 candidats : premier message puis case obligatoire. Le
+                  Récapitulatif montre déjà le premier message juste au-dessus. */}
+              <RecipientsConfirm
+                count={activeProfiles.length}
+                confirmed={recipients.confirmed}
+                onConfirmedChange={recipients.setConfirmed}
+                preview={mode !== 'summary' && footerProfile ? firstMessageFor(footerProfile) : null}
+                renderText={renderSendTimeVariables}
+              />
               {isEnrolling && (
                 <p role="status" className="text-xs text-muted-foreground">
                   Inscription en cours, ne fermez pas cette fenêtre.
@@ -1491,7 +1602,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                     variant="primary"
                     onClick={handleEnroll}
                     loading={isEnrolling}
-                    disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
+                    disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason || recipients.blocked}
                     className="max-md:h-11"
                   >
                     {isEnrolling ? enrollProgressLabel(enrollProgress) : enrollLabel}
@@ -1831,6 +1942,7 @@ function MessageStepCard({
 
 function SummaryMode({
   activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, firstAction, onSwitchToPreview,
+  firstMessage, firstMessageNavigation, renderText,
 }: {
   activeProfiles: LinkedInProfile[];
   steps: SequenceStepPreview[];
@@ -1840,6 +1952,10 @@ function SummaryMode({
   hasMessageSteps: boolean;
   firstAction: string | null;
   onSwitchToPreview: () => void;
+  /** Lot 5a : premier message d'un candidat inscrit, ‹ › pour passer aux suivants. */
+  firstMessage: FirstMessagePreview | null;
+  firstMessageNavigation: { index: number; total: number; onPrevious: () => void; onNext: () => void };
+  renderText: (text: string) => React.ReactNode;
 }) {
   // Canaux fermés (D2) : leurs étapes sont sautées même avec une adresse ou
   // un numéro, donc aucun appel à l'enrichissement payant, un seul avis. Les
@@ -1866,6 +1982,15 @@ function SummaryMode({
           <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span>{firstAction}</span>
         </p>
+      )}
+
+      {firstMessage && (
+        <FirstMessagePreviewBlock
+          preview={firstMessage}
+          title="Aperçu du premier message"
+          navigation={firstMessageNavigation}
+          renderText={renderText}
+        />
       )}
 
       {closedChannels.length > 0 && (
