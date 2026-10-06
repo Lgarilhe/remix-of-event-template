@@ -35,6 +35,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { scoreReasons } from '@/components/missions/v3/panels/candidateAdapters';
+import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
+import { cn } from '@/lib/utils';
+import { HEADER_ACTION_CLASS } from './headerActions';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
@@ -284,6 +287,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   asPanel,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
+  // Onglet choisi : absent tant que personne n'a cliqué (l'onglet d'ouverture
+  // vient de `initialTab`), posé aussi par la note de l'en-tête (Évaluation).
+  const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
   // Décision en cours : les boutons attendent la fin de l'écriture, pas de double clic.
   const [deciding, setDeciding] = useState(false);
   const decide = useCallback(async (action: (() => Promise<void> | void) | undefined) => {
@@ -963,7 +969,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[600px] p-0 flex flex-col overflow-hidden border-l border-border bg-background" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onKeyDown={handleArrowKeys}>
+        <SheetContent side="right" className={cn('!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] p-0 flex flex-col overflow-hidden border-l border-border bg-background', pipelineMeta ? 'sm:!max-w-[720px]' : 'sm:!max-w-[600px]')} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onKeyDown={handleArrowKeys}>
           {/* ─── SWIPE HINT ─── */}
           {showSwipeHint && (
             <div className="sm:hidden flex items-center justify-center gap-3 py-1.5 bg-primary/10 text-primary text-xs font-medium animate-fade-in shrink-0">
@@ -976,7 +982,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           {/* ─── HEADER ─── */}
           <SheetHeader className="shrink-0 space-y-0 border-b border-border bg-background py-4 pl-4 pr-3 text-left sm:pl-5">
             <div className="flex items-start gap-3">
-              <PersonAvatar name={fullName} src={displayProfile.profile_picture_url} size={40} className="mt-0.5" />
+              <PersonAvatar name={fullName} src={displayProfile.profile_picture_url} size={48} className="mt-0.5" />
               <div className="min-w-0 flex-1">
                 {/* Rangée du nom : la place dans la liste et les flèches, à gauche de la croix de la fenêtre (pr-10). */}
                 <div className="flex items-center gap-0.5 pr-10">
@@ -1058,7 +1064,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </div>
             </div>
 
-            {/* Statuts et note */}
+            {/* Statuts */}
             <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
               <CardStatusBadges
                 candidateStatus={candidateStatus}
@@ -1070,26 +1076,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 historyLoading={historyLoading}
                 historyLatestDateLabel={historyLatestDateLabel}
               />
-              {/* Mode pipeline : la note ouvre l'onglet Évaluation */}
-              {pipelineMeta?.score != null && pipelineMeta.score > 0 && (
-                <button
-                  type="button"
-                  onClick={pipelineMeta.onScoreClick}
-                  className="rounded-md text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  title={`Note ${pipelineMeta.score} sur 100, voir l'évaluation`}
-                  aria-label={`Note ${pipelineMeta.score}, voir l'évaluation`}
-                >
-                  Note {pipelineMeta.score}
-                </button>
-              )}
             </div>
 
-            {/* ─── PIPELINE META : étape et étiquettes (mode pipeline seulement) ─── */}
+            {/* ─── PIPELINE META : étape, note en anneau, étiquettes et Portail (mode pipeline seulement) ─── */}
             {pipelineMeta && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="hidden text-xs text-muted-foreground sm:inline">Étape</span>
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
                 <Select value={pipelineMeta.stage} onValueChange={(value) => pipelineMeta.onStageChange(value)}>
-                  <SelectTrigger aria-label="Étape" className="h-8 w-auto min-w-[10rem] gap-2 text-sm">
+                  <SelectTrigger aria-label="Étape du candidat" className="h-9 w-auto min-w-[10.5rem] gap-2 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1098,6 +1091,21 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     ))}
                   </SelectContent>
                 </Select>
+                {/* La note ouvre l'onglet Évaluation */}
+                {pipelineMeta.score != null && pipelineMeta.score > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (extraTabs?.some(tab => tab.key === 'evaluation')) setActiveTab('evaluation');
+                      pipelineMeta.onScoreClick?.();
+                    }}
+                    className="inline-flex items-center rounded-full transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title={`Note ${Math.round(pipelineMeta.score)} sur 100, voir l'évaluation`}
+                    aria-label={`Note ${Math.round(pipelineMeta.score)} sur 100, voir l'évaluation`}
+                  >
+                    <ScorePill score={pipelineMeta.score} />
+                  </button>
+                )}
                 {pipelineMeta.tags?.map(tag => (
                   <button
                     key={tag}
@@ -1116,7 +1124,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={pipelineMeta.onCreatePortalLink}
-                    className="ml-auto"
+                    className={cn('ml-auto', HEADER_ACTION_CLASS)}
                     title="Générer un lien à partager au client"
                   >
                     <Link2 aria-hidden="true" />
@@ -1126,11 +1134,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </div>
             )}
 
-            {/* ─── COORDONNÉES ─── */}
-            {/* En mode pipeline, la ligne reste affichée même vide pour garder
-                l'accès à « Ajouter contacts ». En Sourcing, elle apparaît
-                seulement si des coordonnées existent. */}
-            {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0 || pipelineMeta?.manualEmail || pipelineMeta?.manualPhone || pipelineMeta?.contactsEditor) && (
+            {/* ─── COORDONNÉES : seulement celles qui existent, à copier d'un clic ─── */}
+            {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0 || pipelineMeta?.manualEmail || pipelineMeta?.manualPhone) && (
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {pipelineMeta?.manualEmail && (
                   <ContactChip icon={Mail} value={pipelineMeta.manualEmail} title="Saisi manuellement, cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(pipelineMeta.manualEmail!); toast.success('Adresse e-mail copiée.'); }} />
@@ -1144,14 +1149,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 {contactInfo.phones.map((phone) => (
                   <ContactChip key={phone} icon={Phone} value={phone} title="Cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(phone); toast.success('Numéro copié.'); }} />
                 ))}
-                {pipelineMeta?.contactsEditor && (
-                  <div className="ml-auto">{pipelineMeta.contactsEditor}</div>
-                )}
               </div>
             )}
 
             {/* ─── ACTIONS ─── */}
-            <div className="mt-3 flex flex-wrap items-center gap-2" data-no-swipe>
+            <div className="mt-3 flex flex-wrap items-center gap-2 empty:hidden" data-no-swipe>
               {selectedJob && onScoreProfile && (!jobScore || isDegradedScore(jobScore)) && (
                 <Button
                   variant="primary"
@@ -1172,6 +1174,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   accountId={accountId}
                   selectedJob={selectedJob ?? undefined}
                   onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
+                  className={pipelineMeta ? HEADER_ACTION_CLASS : undefined}
                 />
               )}
 
@@ -1210,8 +1213,12 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   profile={profile}
                   compact
                   mode="button-only"
+                  className={pipelineMeta ? HEADER_ACTION_CLASS : ''}
                 />
               )}
+
+              {/* Pipeline : saisie manuelle de l'e-mail et du téléphone. */}
+              {pipelineMeta?.contactsEditor}
 
               {onArchive && (
                 <Button
@@ -1229,7 +1236,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           {/* ─── CONTENT ─── */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="min-w-0 max-w-full space-y-4 px-4 py-4 sm:px-5">
+            <div className={cn('min-w-0 max-w-full space-y-4 px-4 pb-4 sm:px-5', pipelineMeta ? 'pt-1' : 'pt-4')}>
               {/* Job Score */}
               {jobScore && (
                 <div className="overflow-hidden rounded-xl border border-border">
@@ -1369,6 +1376,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 extraTabs={extraTabs}
                 hideStandardTabs={hideStandardTabs}
                 initialTab={initialTab}
+                activeTab={activeTab}
+                onActiveTabChange={setActiveTab}
               />
             </div>
           </div>

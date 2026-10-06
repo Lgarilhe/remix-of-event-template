@@ -1389,7 +1389,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
                                 <div className="min-w-0">
                                   <Label htmlFor={fieldId('ai')} className="cursor-pointer">Rédaction par l'IA</Label>
-                                  <p className="mt-1 text-xs text-muted-foreground">L'IA écrit le message pour chaque candidat au moment de l'envoi.</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">L'IA écrit un message pour chaque candidat.</p>
                                 </div>
                                 <Switch id={fieldId('ai')} checked={step.useAiPersonalization} onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })} />
                               </div>

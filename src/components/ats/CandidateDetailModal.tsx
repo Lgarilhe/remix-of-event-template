@@ -36,6 +36,7 @@ import { ManualContactsEditor } from './candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMyLinkedInAccountId } from '@/hooks/useMyLinkedInAccountId';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { getCandidateContacts, type CandidateContacts } from '@/lib/candidateContacts';
 import { toast } from 'sonner';
@@ -85,8 +86,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const { openAgent } = useAgent();
   const { organizationId } = useOrganization();
+  const myLinkedInAccountId = useMyLinkedInAccountId();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
+  // Compte d'envoi du candidat (séquences, InMails), sinon le compte relié de la
+  // personne : l'onglet Messages et le bouton Séquence existent aussi pour un
+  // candidat contacté à la main.
+  const accountId = fullProfile.accountId || myLinkedInAccountId || undefined;
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
 
@@ -389,7 +395,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       icon: MessageSquare,
       content: (
         <CardMessageThread
-          accountId={fullProfile.accountId || undefined}
+          accountId={accountId}
           profileId={candidate.candidateId}
           profileName={candidate.name}
           projectId={missionIdOfJob(candidate.jobId)}
@@ -440,7 +446,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
-    reminders, loading, activeRemindersCount, openAgent, organizationId,
+    reminders, loading, activeRemindersCount, openAgent, organizationId, accountId,
   ]);
 
   return (
@@ -449,19 +455,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
       selectedJob={null}
-      accountId={fullProfile.accountId || undefined}
+      accountId={accountId}
       airtableMatch={fullProfile.airtableMatch}
       pipelineMeta={{
         stage: candidate.stage,
         stageOptions: stageOptions ?? ATS_STAGES.map(s => ({ key: s.key, label: s.label })),
         onStageChange: (newStage) => onStageChange(candidate.id, newStage),
         score: candidate.score,
-        onScoreClick: () => {
-          // Switch sur l'onglet Évaluation (handled par CardExpandedContent
-          // via defaultValue, pas de programmatic switch ici — on pourrait
-          // exposer un setActiveTab plus tard si besoin).
-          toast.info("Voir l'onglet Évaluation");
-        },
+        // Pas de onScoreClick : la note de l'en-tête ouvre elle-même l'onglet Évaluation.
         tags: candidate.tags || [],
         onTagsChange: (tags) => onTagsChange?.(candidate.id, tags),
         onCreatePortalLink: handleCreatePortalLink,

@@ -4,7 +4,7 @@ import { Link2, PenLine, History, Building2, Users, CreditCard, Bot, type Lucide
 import { EXTENSION_REVEAL_STORAGE_KEY, SETTINGS_PATHS, SETTINGS_DOOR, type SettingsDoor, type SettingsSectionId } from '@/lib/settingsRoutes';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
-import { NotionConnectionCard } from '@/components/settings/NotionConnectionCard';
+import { AssistantConnectorsCard } from '@/components/settings/AssistantConnectorsCard';
 import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
 import { UserContextCard, OrgContextCard } from '@/components/settings/AiContextSettings';
 import { MessageTemplatesSettings } from '@/components/settings/MessageTemplatesSettings';
@@ -56,7 +56,7 @@ function ConnectionsSection() {
     <>
       <SettingsAnchor id="linkedin"><MyLinkedInAccount /></SettingsAnchor>
       <SettingsAnchor id="email"><MyEmailAccount /></SettingsAnchor>
-      <SettingsAnchor id="notion"><NotionConnectionCard /></SettingsAnchor>
+      <SettingsAnchor id="applications"><AssistantConnectorsCard /></SettingsAnchor>
       <SettingsAnchor id="extension"><ExtensionTokens revealWhenEmpty={revealExtension} /></SettingsAnchor>
     </>
   );

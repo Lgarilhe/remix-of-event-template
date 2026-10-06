@@ -1298,6 +1298,9 @@ test.describe('Sourcing : écritures et bilan de l\'inscription', () => {
     const page = await openSearchResults(browser, ws, candidates);
     await selectCandidates(page, candidates.map((c) => c.name));
     const dialog = await openEnrollment(page, seq.name);
+    // Lot 5a : dès 5 candidats, l'inscription attend la case des destinataires.
+    await expect(enrollButton(dialog, 20)).toBeDisabled();
+    await dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' }).check();
     await enrollButton(dialog, 20).click();
     await expect(previewOutcome(dialog)).toHaveText('20 candidats inscrits', { timeout: 90_000 });
 

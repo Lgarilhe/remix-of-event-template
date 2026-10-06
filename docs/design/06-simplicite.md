@@ -25,8 +25,8 @@ Mesures du banc local (`05-banc-visuel.md`) sur `main` du 30 septembre 2026 :
 Elles valent pour chaque écran repris. La maquette « Konekt simplifié » (canevas privé du propriétaire, https://claude.ai/artifact/3yeUQL7xF851WAnmDjsajw) montre l'avant et l'après de l'accueil, de la page mission, des tâches et du cadrage.
 
 1. Le texte courant passe à 14 et 15 px, les titres de page à 28 px, rien sous 12 px (`01-direction.md`, § 3).
-2. Un seul bouton plein par écran, noir (`primary`). Le reste devient du texte ou un bouton discret (`ghost`).
-3. Plus de cadres autour des listes : des filets fins et de l'espace.
+2. Un seul bouton plein par zone, noir (`primary`) : l'en-tête de page, un bandeau d'alerte, une carte de décision. Une action propre à une ligne est un bouton `secondary`. Le reste devient du texte ou un bouton discret (`ghost`). Précisé le 05/10/2026 (voir « Relief »).
+3. Des filets fins et de l'espace entre les lignes ; les listes qui demandent une décision sont posées sur une carte (voir « Relief »).
 4. Chaque ligne montre de qui ou de quoi elle parle : le visage du candidat (`PersonAvatar`, `AvatarStack`), ou le logo de la mission.
 5. Une pastille d'icône (`IconTile`) annonce chaque chose à faire. Elle bouge seulement quand quelque chose attend l'utilisateur (`01-direction.md`, § 7), et reste fixe quand le mouvement est réduit.
 6. La note d'un candidat devient un anneau, son avancement une barre à cinq crans.
@@ -44,6 +44,22 @@ Elles valent pour chaque écran repris. La maquette « Konekt simplifié » (can
 | M · Page mission | En-tête avec logo, visages, note en anneau, avancement en cinq crans, bandeau « à trier », point qui pulse ; cadrage avec pastilles de section et anneau d'avancement. Avec la session de la refonte mission | Pipeline, Cadrage, Sourcing, en-tête de mission et liste des missions livrés le 04/10/2026 (carte « Maintenant » allégée, puces sur une rangée, liste avec visages et anneau de note, boutons discrets ; Cadrage sans cartes avec bandeau d'état en une ligne ; Sourcing en puces sans cadre et tableau réduit) ; en-tête avec logo du client et statut sans cadre ; liste des missions avec logo, visages en entretien et sans zéro. État vide de /missions en revue (05/10/2026) : dessin « dossier », une phrase, « Coller une fiche de poste » seul bouton plein, titre « Missions » gardé ; plus de chiffres publicitaires ni de logos d'outils non reliés. Reste la fenêtre de création de mission (`CreateMissionV2` : libellés en capitales, tutoiement) |
 | P · Photos | Copie privée des photos LinkedIn : capture (recherche, notation, messagerie, extension, assistant), effacement RGPD, purge, export, rattrapage des candidats sans photo | affichage livré pour la page mission le 05/10/2026 (liste du Pipeline, À trier, kanban, fiche) et pour le /pipeline global le 05/10/2026 (kanban, tableau, chronologie). Copie privée en revue (05/10/2026) : copie de la photo enregistrée sur la ligne du candidat, quelle que soit son origine, toutes les deux minutes ; effacement RGPD, copies supprimées avec la ligne (purge comprise), export. Les visages lus en base (page mission, /pipeline, accueil, liste des missions, Tâches, agenda, scorecard) montrent la copie, sinon le lien LinkedIn, sinon les initiales. Rattrapage des candidats sans photo enregistrée : plus tard, avec l'accord du propriétaire |
 | Suite | Pipeline global, messagerie, Paramètres, mêmes règles | Pipeline global livré le 05/10/2026 (#286) : phrase chiffrée sous le titre, recherche et un seul menu « Filtres », bascule d'affichage de la page mission, colonnes et cartes du kanban de mission, note en anneau (`ScoreRing`), tableau à six colonnes, chronologie et analyse sans cadre, pagination sous un filet, chiffres dans l'Analyse seulement, aucun zéro, cibles de 44 px au doigt. Messagerie livrée le 05/10/2026 (#288) : titre à 28 px, plus d'« Actualiser », bascule de la page mission, filtres sans compte, étiquettes et intentions en texte, « À répondre » en orange, non-lus en gras sans pastille, plus de logo LinkedIn sur chaque visage, état de séquence en mots, mise en forme dans un menu, panneau vide sans cadre. Paramètres en revue (05/10/2026) : cartes à plat sous chaque rubrique (`CardPlainProvider` posé par `SettingsAnchor`), plus de « 0 / N » (plafonds LinkedIn, Base Konekt, forfait de contacts, compteurs de rédaction), états en mots, « Dissocier » neutre au repos, coût par action et protections LinkedIn à la demande, listes à plat. La coquille, le Journal et les politiques et connecteurs des Règles de l'assistant suivront #260 et #262 |
+
+## Relief
+
+Le 5 octobre 2026, le propriétaire trouve l'application encore un peu plate et demande de faire ressortir certaines choses : des fonds qui se détachent, des boutons mieux choisis. Sa référence est de nouveau Qonto (accueil, liste des transactions, comptes, en sombre).
+
+Cause relevée sur le banc : depuis le lot A, tout est posé directement sur le fond, les actions des lignes sont de simples mots (« Lire », « Voir ») et la panne LinkedIn pèse autant qu'une ligne ordinaire.
+
+Ce qui change, dans cet ordre de portée :
+
+- Jetons (`index.css`) : en sombre, la carte passe de 14 à 16 %, le menu de 16 à 18 %, `muted` et `secondary` de 18 à 20 %, le survol de 20 à 22 %, `muted-foreground` de 62 à 64 %, le bord de champ de 36 à 40 % (contrastes recalculés, voir `01-direction.md` § 2). En clair, le fond de page passe à 97 %.
+- Rayon des surfaces : `rounded-xl` vaut 16 px au lieu de 12 (`tailwind.config.ts`). Aucune classe ne change dans le code.
+- `Button` : pilule, `secondary` en fond teinté, `outline` et `default` à filet appuyé. Deux surcharges de coin à 8 px retirées (`InvitationsPanel`).
+- `Card` : ombre légère (`shadow-sm`), visible surtout en clair.
+- Accueil : lignes « À faire », journée et tableau des missions sur des cartes ; panne LinkedIn en bandeau texturé (carte chaude du § 7 de `01-direction.md`) avec bouton plein ; « Lire », « Répondre », « Voir » en boutons `secondary`. `AvatarStack` prend `ringClassName` pour que l'anneau des visages suive la surface.
+
+Pas encore repris, à faire au fil des lots suivants : liste des missions, Pipeline, messagerie, Paramètres, page mission (écrans de la session « refonte mission », livrés sans cartes le 04/10/2026).
 
 ## Points ouverts
 
