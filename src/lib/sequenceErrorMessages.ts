@@ -114,8 +114,49 @@ function rateLimitLabel(actionType: string | undefined, retryIso: string | undef
   return when ? `${channel}, nouvel essai le ${when}` : `${channel}, nouvel essai automatique`;
 }
 
+// ─── Lot 5a-2 : message rédigé par l'IA à relire ───────────────────────────
+
+/**
+ * Raison posée par le moteur sur une étape à message rédigée par l'IA sans
+ * texte relu (AI_REVIEW_REQUIRED_MESSAGE de
+ * supabase/functions/_shared/sequence-send-rules.ts) : l'étape reste
+ * programmée et se reporte d'heure en heure jusqu'à la relecture.
+ */
+export const AI_REVIEW_REQUIRED_REASON = "Message rédigé par l'IA à relire avant l'envoi.";
+export const AI_REVIEW_REQUIRED_LABEL = "Message rédigé par l'IA à relire avant l'envoi : il partira après votre relecture.";
+
+interface ReviewableExecution {
+  status: string | null | undefined;
+  error_message: string | null | undefined;
+  final_message: string | null | undefined;
+}
+
+const isAiReviewReason = (error: string | null | undefined): boolean => (error ?? '').trim() === AI_REVIEW_REQUIRED_REASON;
+
+/**
+ * Étape reportée par le moteur faute de texte relu, et pas encore relue :
+ * « Relire le message » (suivi, Journal). Relue = final_message écrit.
+ */
+export function isAiReviewPending(exec: ReviewableExecution): boolean {
+  return exec.status === 'scheduled' && isAiReviewReason(exec.error_message) && !exec.final_message?.trim();
+}
+
+/**
+ * Raison d'une étape programmée à afficher. Une étape IA relue depuis le
+ * report n'en a plus : le moteur efface la raison à l'envoi, au plus une
+ * heure plus tard.
+ */
+export function scheduledExecutionError(exec: ReviewableExecution): string | null {
+  if (exec.status !== 'scheduled' || !exec.error_message) return null;
+  if (isAiReviewReason(exec.error_message) && exec.final_message?.trim()) return null;
+  return exec.error_message;
+}
+
 export function formatSequenceError(error: string | null | undefined): string {
   if (!error) return '';
+
+  // Lot 5a-2 : étape IA reportée tant qu'elle n'est pas relue.
+  if (isAiReviewReason(error)) return AI_REVIEW_REQUIRED_LABEL;
 
   // Code d'erreur générique connu → label FR
   if (ERROR_CODE_LABELS[error]) return ERROR_CODE_LABELS[error];

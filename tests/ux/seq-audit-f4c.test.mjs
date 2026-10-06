@@ -192,9 +192,10 @@ test('SEQ-245 — aperçu d’inscription : un seul nom par type d’étape, cel
     assert.match(source, /import \{ sequenceActionLabel, formatStepDelay \} from '@\/lib\/sequenceCatalog';/, name);
   }
   // Les endroits de l'aperçu qui nomment une étape passent par le catalogue
-  // (lot 5a : le premier message au-dessus de la case des destinataires aussi).
+  // (lot 5a : le premier message au-dessus de la case des destinataires aussi ;
+  // lot 5a-2 : les messages rédigés par l'IA du Récapitulatif).
   assert.equal((previewModal.match(/<SequenceActionLabel type=\{step\.actionType\}/g) ?? []).length, 2);
-  assert.equal((previewModal.match(/sequenceActionLabel\(step\.actionType\)/g) ?? []).length, 2);
+  assert.equal((previewModal.match(/sequenceActionLabel\(step\.actionType\)/g) ?? []).length, 3);
   assert.match(previewModal, /sequenceActionLabel\(pathFirstAction\.actionType\)/);
   assert.match(treeView, /<SequenceActionLabel type=\{step\.actionType\}/);
   // Nœud de décision : « Étape N · décision », nom lu au catalogue (repli neutre pour un type inconnu).
