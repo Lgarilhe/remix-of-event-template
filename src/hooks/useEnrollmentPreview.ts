@@ -9,9 +9,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { invokeWithCredits, estimateActionCredits } from '@/lib/invokeWithCredits';
+import type { EdgeFunctionError } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { isClosedChannelStep } from '@/lib/sequenceCompatibility';
+import { requiresAiReview } from '@/lib/contactRecipientsGuard';
 
 export interface SequenceStepPreview {
   stepId: string;
@@ -115,6 +117,19 @@ export function otherBranchStepIds(steps: readonly SequenceStepPreview[], stepId
 /** Texte affiché quand la génération IA d'un aperçu a échoué. */
 export const PREVIEW_GENERATION_FAILED_MESSAGE =
   "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le.";
+
+/**
+ * Code d'un aperçu refusé par generate-outreach-message : le texte proposé
+ * porte encore une violation bloquante du moteur (rémunération, signature
+ * « Recruteur », formulation de cabinet). Correctif 2 du plan du lot 5.
+ */
+export const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';
+
+/** Texte affiché sous un aperçu en échec : la phrase du serveur pour un aperçu refusé, sinon l'échec générique. */
+export function previewErrorMessage(err: unknown): string {
+  const e = err as EdgeFunctionError | null | undefined;
+  return e?.code === PREVIEW_NOT_COMPLIANT_CODE && e.message ? e.message : PREVIEW_GENERATION_FAILED_MESSAGE;
+}
 
 export interface GeneratedMessage {
   subject: string;
@@ -428,6 +443,9 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   const previewsRef = useRef<PreviewMap>(previews);
   useEffect(() => { previewsRef.current = previews; }, [previews]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  // Lot 5a-2 : numéro de la dernière génération IA réussie. Toute génération
+  // ou régénération le change, ce qui décoche la case de relecture.
+  const [aiGenerationVersion, setAiGenerationVersion] = useState(0);
   const abortRef = useRef(false);
   // Préparation fermée : plus aucune génération ne part (celles en cours
   // arrivent quand même et sont conservées pour la session).
@@ -755,6 +773,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           // steps suivants).
           localPreviews.set(step.stepId, generatedMsg);
           setPreview(profile.id, step.stepId, generatedMsg);
+          setAiGenerationVersion(v => v + 1);
           // Écrit aussi pour la session : si la préparation a été fermée
           // pendant l'appel, le message payé n'est pas perdu.
           keep(step, profile.id, generatedMsg);
@@ -767,7 +786,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             isGenerated: false,
             isGenerating: false,
             isEdited: false,
-            error: PREVIEW_GENERATION_FAILED_MESSAGE,
+            error: previewErrorMessage(err),
           };
           localPreviews.set(step.stepId, fallbackMsg);
           setPreview(profile.id, step.stepId, fallbackMsg);
@@ -936,14 +955,15 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           isEdited: false,
         };
         setPreview(candidateId, stepId, regenerated);
+        setAiGenerationVersion(v => v + 1);
         keep(step, candidateId, regenerated);
-      } catch {
+      } catch (err) {
         setPreview(candidateId, stepId, {
           subject: resolveVariables(step.subjectTemplate, profile, senderName),
           message: resolveVariables(step.messageTemplate, profile, senderName),
           isGenerated: false,
           isGenerating: false,
-          error: PREVIEW_GENERATION_FAILED_MESSAGE,
+          error: previewErrorMessage(err),
         });
       }
     } else {
@@ -1067,11 +1087,29 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
         return !!msg && (msg.isGenerated || msg.isEdited);
       })).length;
 
+  // Lot 5a-2 : étapes dont le message partirait rédigé par l'IA (jamais une
+  // invitation). Le moteur ne les envoie plus sans texte relu : chaque
+  // candidat à inscrire doit avoir leur texte généré (ou écrit à la main).
+  // Compte des candidats visés à qui il en manque au moins un.
+  const aiReviewSteps = messageSteps.filter(requiresAiReview);
+  const aiReviewMissingCount = aiReviewSteps.length === 0
+    ? 0
+    : targets.filter(p => aiReviewSteps.some(s => {
+        const msg = previews.get(p.id)?.get(s.stepId);
+        return !msg || msg.isGenerating || !(msg.isGenerated || msg.isEdited);
+      })).length;
+
   return {
     previews,
     messageSteps,
     hasMessageSteps: messageSteps.length > 0,
     hasAiSteps,
+    /** Lot 5a-2 : étapes à message rédigées par l'IA, à générer et relire avant l'inscription. */
+    aiReviewSteps,
+    /** Lot 5a-2 : candidats visés dont un message rédigé par l'IA manque encore. */
+    aiReviewMissingCount,
+    /** Lot 5a-2 : change à chaque génération ou régénération IA (décoche la case de relecture). */
+    aiGenerationVersion,
     generatedCount,
     totalToGenerate,
     isBulkGenerating,

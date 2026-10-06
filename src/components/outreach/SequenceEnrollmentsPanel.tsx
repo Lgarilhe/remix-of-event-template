@@ -12,9 +12,12 @@ import {
   isSentExecutionStatus,
   actionTypeLabel,
   isHiddenActionType,
+  isAiReviewPending,
+  scheduledExecutionError,
   summarizeResumeResponse,
   type ResumeResponse,
 } from '@/lib/sequenceErrorMessages';
+import { EditScheduledMessageModal } from './activity-log/EditScheduledMessageModal';
 import { ENROLLMENT_STATUSES, executionStatusMeta, formatStepDelay, type StatusTone } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +66,7 @@ import {
   Clock,
   Search,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -278,6 +282,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   // Échec du dernier chargement complet (message technique, montré replié) :
   // affiché avec « Réessayer » au lieu de « Aucun candidat inscrit ».
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Lot 5a-2 : « Relire le message » d'une étape rédigée par l'IA reportée par
+  // le moteur. Seule écriture : final_message (et final_subject) de cette
+  // étape encore programmée, par EditScheduledMessageModal.
+  const [reviewing, setReviewing] = useState<{ exec: StepExecution; profileName: string | null } | null>(null);
 
   const fetchStatusCounts = async () => {
     const countFor = (statuses: string[]) => supabase
@@ -1233,10 +1241,23 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                     Nouvel essai prévu le {formatWhen(exec.scheduled_at)}
                                                   </p>
                                                 )}
-                                                {exec.status === 'scheduled' && exec.error_message && (
+                                                {/* Raison d'une étape programmée ; celle d'un message IA
+                                                    relu depuis le report n'est plus affichée (lot 5a-2). */}
+                                                {scheduledExecutionError(exec) && (
                                                   <p className="text-warning">
                                                     {formatErrorMessage(exec.error_message)}
                                                   </p>
+                                                )}
+                                                {isAiReviewPending(exec) && ownRow && (
+                                                  <Button
+                                                    variant="outline"
+                                                    size="xs"
+                                                    className="max-md:h-11"
+                                                    onClick={() => setReviewing({ exec, profileName: enrollment.profile_name })}
+                                                  >
+                                                    <Sparkles aria-hidden="true" />
+                                                    Relire le message
+                                                  </Button>
                                                 )}
                                                 {isSent && exec.executed_at && (
                                                   <p className="text-muted-foreground">Envoyée le {formatWhen(exec.executed_at)}</p>
@@ -1384,6 +1405,21 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <EditScheduledMessageModal
+      isOpen={!!reviewing}
+      onClose={() => setReviewing(null)}
+      execution={reviewing ? {
+        id: reviewing.exec.id,
+        scheduled_at: reviewing.exec.scheduled_at,
+        final_subject: reviewing.exec.final_subject,
+        final_message: reviewing.exec.final_message,
+        step: reviewing.exec.step,
+        enrollment: { profile_name: reviewing.profileName },
+      } : null}
+      onSaved={() => fetchEnrollments()}
+      aiReview
+    />
     </>
   );
 };
