@@ -13,7 +13,9 @@ const MODEL_LABELS: Record<string, string> = {
   'claude-haiku-4-5': 'IA rapide',
   'claude-sonnet-4-6': 'IA équilibrée',
   'claude-sonnet-4-5': 'IA équilibrée',
+  'claude-sonnet-5-5': 'IA équilibrée',
   'claude-opus-4-6': 'IA premium',
+  'claude-opus-5-5': 'IA premium',
 };
 
 export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, durationMs }) => {
@@ -32,7 +34,7 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground pl-6 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <Brain className="w-3 h-3 text-purple-400" />
+          <Brain className="w-3 h-3 text-brand" />
           <span>{stats.llmCalled} scorés par l'IA</span>
         </div>
         <div className="flex items-center gap-1.5">

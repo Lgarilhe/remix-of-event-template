@@ -37,6 +37,9 @@ verify_jwt = false
 [functions.aircall-webhook]
 verify_jwt = false
 
+[functions.aircall-connect]
+verify_jwt = false
+
 [functions.analyze-response]
 verify_jwt = false
 
@@ -53,6 +56,11 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.calendly-webhook]
+verify_jwt = false
+
+# Copie privée des photos des candidats (lot P) : appelée par pg_cron avec le
+# secret partagé, comparé dans la fonction.
+[functions.capture-candidate-photos]
 verify_jwt = false
 
 [functions.client-portal-data]
@@ -73,6 +81,9 @@ verify_jwt = false
 [functions.detect-profile-fraud]
 verify_jwt = false
 
+[functions.draft-sequence]
+verify_jwt = false
+
 [functions.enrich-company]
 verify_jwt = false
 
@@ -82,16 +93,13 @@ verify_jwt = false
 [functions.export-org-data]
 verify_jwt = false
 
-[functions.fetch-notion-candidates]
-verify_jwt = false
-
-[functions.fetch-notion-jobs]
-verify_jwt = false
-
 [functions.generate-call-report]
 verify_jwt = false
 
 [functions.generate-embedding]
+verify_jwt = false
+
+[functions.generate-interview-followup]
 verify_jwt = false
 
 [functions.generate-outreach-message]
@@ -101,6 +109,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.generate-scorecard]
+verify_jwt = false
+
+[functions.fetch-job-source]
 verify_jwt = false
 
 [functions.generate-search-filters]
@@ -125,9 +136,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.marketplace-admin]
-verify_jwt = false
-
-[functions.notify-notion]
 verify_jwt = false
 
 [functions.process-agent-tasks]
@@ -166,6 +174,9 @@ verify_jwt = false
 [functions.nl-filter-edit]
 verify_jwt = false
 
+[functions.resolve-client-logo]
+verify_jwt = false
+
 [functions.resolve-pedigree-directory]
 verify_jwt = false
 
@@ -185,6 +196,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.search-agent-chat]
+verify_jwt = false
+
+[functions.send-candidate-email]
 verify_jwt = false
 
 [functions.send-team-invitation]
@@ -208,8 +222,11 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+# submit-application : neutralisée (C1, R2), en attente de suppression.
+# Exception à la règle verify_jwt = false ci-dessus : aucun appelant, la
+# passerelle refuse donc tout appel sans jeton.
 [functions.submit-application]
-verify_jwt = false
+verify_jwt = true
 
 [functions.unipile-accounts]
 verify_jwt = false
@@ -221,12 +238,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.unipile-webhook]
-verify_jwt = false
-
-[functions.update-candidate-stage]
-verify_jwt = false
-
-[functions.update-notion-job]
 verify_jwt = false
 
 # OAuth callback is a public GET from Notion. POST actions still enforce the

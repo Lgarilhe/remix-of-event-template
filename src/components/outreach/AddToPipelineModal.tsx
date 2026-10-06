@@ -1,19 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+/**
+ * AddToPipelineModal — ajouter le candidat d'une conversation au pipeline
+ * d'une mission active de l'organisation (shortlist).
+ *
+ * Revue design D-19 : bouton principal monochrome, mission choisie en accent
+ * (sélection), toasts sans emoji qui disent ce qui a été fait ; une panne de
+ * chargement des missions s'affiche avec « Réessayer », jamais comme une
+ * liste vide.
+ */
+
+import React, { useState, useEffect, useId, useMemo } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useSourcingProjects, type SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -22,29 +25,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  Briefcase, 
-  Building2, 
-  Loader2,
+import { EmptyState, ErrorState } from '@/components/layout';
+import {
+  Briefcase,
+  Building2,
   Search,
-  MapPin,
   Check,
-  AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-interface JobData {
-  id: string;
-  title: string;
-  client?: { id: string; name: string; sector: string } | null;
-  skills: string[];
-  seniority?: string;
-  location?: string;
-  remote?: string;
-  contractType?: string;
-  entity?: string;
-}
 
 interface CandidateProfile {
   name: string;
@@ -61,8 +50,6 @@ interface AddToPipelineModalProps {
   onSuccess?: () => void;
 }
 
-const ENTITIES = ['Konekt', 'Konekt', 'Autre'];
-
 export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   open,
   onOpenChange,
@@ -70,21 +57,20 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   preSelectedJobId,
   onSuccess,
 }) => {
-  const [jobs, setJobs] = useState<JobData[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { organizationId } = useOrganization();
+  const { projects, isLoading: loading, isError: loadFailed, refetch } = useSourcingProjects('mission');
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
-  
-  // Form fields
-  const [entity, setEntity] = useState('Konekt');
+  const [selectedJob, setSelectedJob] = useState<SourcingProject | null>(null);
+  const jobsLabelId = useId();
+  const searchId = useId();
 
-  // Fetch jobs when modal opens
-  useEffect(() => {
-    if (open) {
-      fetchJobs();
-    }
-  }, [open]);
+  // Missions actives de l'organisation
+  const jobs = useMemo(() => projects.filter(p => p.status === 'active'), [projects]);
+
+  const reloadMissions = () => {
+    void refetch();
+  };
 
   // Auto-select job if preSelectedJobId is provided
   useEffect(() => {
@@ -96,90 +82,56 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
     }
   }, [preSelectedJobId, jobs]);
 
-  const fetchJobs = async () => {
-    setLoading(true);
-    try {
-      const response = await invokeEdgeFunction('fetch-notion-jobs', {
-        status: 'Publié',
-      });
-      
-      if (response.error) throw response.error;
-      
-      if ((response.data as any)?.jobs) {
-        setJobs(((response.data as any).jobs).map((job: any) => ({
-          id: job.id,
-          title: job.title || 'Poste',
-          client: job.client,
-          skills: job.skills || [],
-          seniority: job.seniority,
-          location: job.location,
-          remote: job.remote,
-          contractType: job.contractType,
-          entity: job.entity,
-        })));
-      }
-    } catch (error) {
-      console.error('Error fetching jobs:', error);
-      toast.error('Erreur lors du chargement des postes');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
   const filteredJobs = jobs.filter(job => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
-      job.title.toLowerCase().includes(query) ||
-      job.client?.name.toLowerCase().includes(query) ||
-      job.location?.toLowerCase().includes(query) ||
-      job.skills.some(s => s.toLowerCase().includes(query))
+      job.name.toLowerCase().includes(query) ||
+      job.job_title?.toLowerCase().includes(query) ||
+      job.client_name?.toLowerCase().includes(query)
     );
   });
 
   const handleSubmit = async () => {
     if (!selectedJob) {
-      toast.error('Veuillez sélectionner un poste');
+      toast.error('Choisissez une mission', { description: 'Le candidat est ajouté au pipeline de la mission choisie.' });
+      return;
+    }
+    if (!organizationId) {
+      toast.error('Organisation en cours de chargement', { description: 'Réessayez dans un instant.' });
       return;
     }
 
     setSubmitting(true);
     try {
-      const response = await invokeEdgeFunction('add-to-shortlist', {
+      const response = await invokeEdgeFunction<{ alreadyExists?: boolean }>('add-to-shortlist', {
+        organization_id: organizationId,
         name: candidate.name,
         headline: candidate.headline,
         linkedinUrl: candidate.linkedinUrl,
         linkedinId: candidate.linkedinId,
         jobId: selectedJob.id,
-        jobTitle: selectedJob.title,
-        clientName: selectedJob.client?.name,
-        clientId: selectedJob.client?.id,
-        entity: entity,
-        source: 'linkedin_inbox',
       });
 
       if (response.error) throw response.error;
-      
+
       if (!response.data?.success) {
         throw new Error(response.data?.error || 'Erreur inconnue');
       }
 
+      const viewPipeline = {
+        label: 'Voir le pipeline',
+        onClick: () => window.open('/pipeline', '_blank'),
+      };
       if (response.data?.alreadyExists) {
-        toast.success('✅ Candidat déjà dans le pipeline', {
-          description: `${candidate.name} est déjà shortlisté pour "${selectedJob.title}"`,
-          action: {
-            label: 'Voir pipeline',
-            onClick: () => window.open('/pipeline', '_blank'),
-          },
+        toast.success('Candidat déjà dans le pipeline', {
+          description: `${candidate.name} est déjà suivi sur la mission « ${selectedJob.name} », son étape n'a pas changé.`,
+          action: viewPipeline,
         });
       } else {
-        toast.success('🎯 Candidat ajouté au pipeline !', {
-          description: `${candidate.name} ajouté pour "${selectedJob.title}" chez ${selectedJob.client?.name || 'N/A'}`,
-          action: {
-            label: 'Voir pipeline',
-            onClick: () => window.open('/pipeline', '_blank'),
-          },
+        toast.success('Candidat ajouté au pipeline', {
+          description: `${candidate.name} rejoint la shortlist de la mission « ${selectedJob.name} ».`,
+          action: viewPipeline,
         });
       }
 
@@ -187,130 +139,113 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       onSuccess?.();
     } catch (error) {
       console.error('Error adding to pipeline:', error);
-      toast.error('Erreur lors de l\'ajout au pipeline', {
-        description: error instanceof Error ? error.message : 'Erreur inconnue',
+      toast.error("Le candidat n'a pas été ajouté au pipeline", {
+        description: 'Réessayez dans un instant.',
       });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleJobSelect = (job: JobData) => {
+  const handleJobSelect = (job: SourcingProject) => {
     setSelectedJob(job);
-    // Auto-fill entity if job has one
-    if (job.entity) {
-      setEntity(job.entity);
-    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Briefcase className="w-5 h-5 text-blue-600" />
-            Shortlister
-          </DialogTitle>
+          <DialogTitle>Ajouter au pipeline</DialogTitle>
           <DialogDescription>
-            Associez <strong>{candidate.name}</strong> à un poste pour compléter la shortlist.
+            Choisissez la mission pour laquelle {candidate.name} rejoint la shortlist.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4 py-4">
-          {/* Job Selection */}
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden py-2">
+          {/* Mission */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Briefcase className="w-4 h-4" />
-              Poste *
-            </Label>
-            
-            {/* Search */}
+            <p id={jobsLabelId} className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Briefcase className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              Mission
+            </p>
+
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Label htmlFor={searchId} className="sr-only">Rechercher une mission</Label>
               <Input
-                placeholder="Rechercher un poste..."
+                id={searchId}
+                placeholder="Mission, poste ou client"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
               />
             </div>
 
-            {/* Jobs List */}
-            <ScrollArea className="h-48 border rounded-lg">
+            <ScrollArea className="h-48 rounded-lg border border-border">
               {loading ? (
-                <div className="p-4 space-y-2">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
+                <div className="space-y-2 p-3" role="status" aria-label="Chargement des missions">
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+              ) : loadFailed ? (
+                <div className="p-3">
+                  <ErrorState
+                    variant="compact"
+                    title="Impossible de charger les missions"
+                    description="Vérifiez votre connexion, puis réessayez."
+                    onRetry={reloadMissions}
+                  />
                 </div>
               ) : filteredJobs.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">
-                  <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Aucun poste trouvé</p>
+                <div className="p-3">
+                  <EmptyState
+                    variant="compact"
+                    icon={Briefcase}
+                    title={searchQuery.trim() ? 'Aucune mission ne correspond' : 'Aucune mission active'}
+                    description={
+                      searchQuery.trim()
+                        ? 'Modifiez la recherche pour élargir la liste.'
+                        : 'Les missions actives de votre organisation apparaissent ici.'
+                    }
+                  />
                 </div>
               ) : (
-                <div className="p-2 space-y-1">
-                  {filteredJobs.map((job) => (
-                    <button
-                      key={job.id}
-                      onClick={() => handleJobSelect(job)}
-                      className={cn(
-                        "w-full p-3 text-left rounded-lg border transition-all",
-                        selectedJob?.id === job.id
-                          ? "border-blue-500 bg-info/10 ring-1 ring-blue-500"
-                          : "border-border hover:border-border hover:bg-accent"
-                      )}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{job.title}</p>
-                          {job.client?.name && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <Building2 className="w-3 h-3" />
-                              {job.client.name}
-                            </p>
+                <ul className="space-y-1 p-2" aria-labelledby={jobsLabelId}>
+                  {filteredJobs.map((job) => {
+                    const selected = selectedJob?.id === job.id;
+                    return (
+                      <li key={job.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleJobSelect(job)}
+                          aria-pressed={selected}
+                          className={cn(
+                            'w-full rounded-lg border p-3 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            selected
+                              ? 'border-brand bg-brand/10'
+                              : 'border-border hover:border-border-strong hover:bg-accent',
                           )}
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {job.location && (
-                              <Badge variant="secondary" className="text-xs h-4">
-                                <MapPin className="w-2.5 h-2.5 mr-0.5" />
-                                {job.location}
-                              </Badge>
-                            )}
-                            {job.contractType && (
-                              <Badge variant="outline" className="text-xs h-4">
-                                {job.contractType}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        {selectedJob?.id === job.id && (
-                          <Check className="w-5 h-5 text-blue-600 shrink-0" />
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                        >
+                          <span className="flex items-start justify-between gap-2">
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-foreground">{job.name}</span>
+                              {job.client_name && (
+                                <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Building2 className="h-3 w-3" aria-hidden="true" />
+                                  {job.client_name}
+                                </span>
+                              )}
+                            </span>
+                            {selected && <Check className="h-5 w-5 shrink-0 text-brand" aria-hidden="true" />}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </ScrollArea>
-          </div>
-
-          {/* Entity Selection - Simple single field */}
-          <div className="space-y-1.5">
-            <Label className="text-sm flex items-center gap-1">
-              <Building2 className="w-4 h-4" />
-              Entité
-            </Label>
-            <Select value={entity} onValueChange={setEntity}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Sélectionner" />
-              </SelectTrigger>
-              <SelectContent>
-                {ENTITIES.map((e) => (
-                  <SelectItem key={e} value={e}>{e}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -318,22 +253,9 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={!selectedJob || submitting}
-            className="bg-info hover:bg-info/90"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Ajout en cours...
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Shortlister
-              </>
-            )}
+          <Button variant="primary" onClick={handleSubmit} disabled={!selectedJob} loading={submitting}>
+            {!submitting && <Check aria-hidden="true" />}
+            {submitting ? 'Ajout en cours…' : 'Ajouter au pipeline'}
           </Button>
         </DialogFooter>
       </DialogContent>

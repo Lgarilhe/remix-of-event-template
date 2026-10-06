@@ -6,20 +6,26 @@
  *
  * UX :
  * - Génération : modal de création avec label optionnel
- * - Affichage du clair : alerte verte avec bouton Copy + warning "ne sera plus affiché"
+ * - Affichage du clair : bloc avec bouton Copier + rappel « ne sera plus affiché »
  * - Liste : préfixe + label + dernière utilisation + bouton revoke
  *
  * Lot 3 des Paramètres : carte masquée tant qu'aucun jeton n'est actif, sauf si
  * `revealWhenEmpty` la demande (lien #extension, ancien ?tab=account de
  * l'extension installée). Une fois affichée, elle reste pendant la visite.
+ *
+ * Lot 12 du chantier design : plus de procédure d'installation de développeur
+ * (F-10), une phrase dit que l'extension sera proposée ici à sa publication ;
+ * une lecture ratée s'affiche dans la carte avec « Réessayer » (F-06) ; « jeton »
+ * plutôt que « token » à l'écran (F-20).
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -28,14 +34,15 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { ErrorState } from '@/components/layout/ErrorState';
 import {
-  Puzzle, Plus, Copy, CheckCircle2, Trash2, Loader2, AlertTriangle, ExternalLink, KeyRound,
+  Puzzle, Plus, Copy, Check, CheckCircle2, Trash2, AlertTriangle, Info, KeyRound,
 } from 'lucide-react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { plural } from '@/lib/plural';
+import { timeAgo } from '@/lib/relativeTime';
 import { toast } from 'sonner';
-import { formatDistanceToNow, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
 
 interface ExtensionToken {
   id: string;
@@ -62,14 +69,18 @@ interface ListResponse {
   error?: string;
 }
 
+/** « il y a 3 h », « à l'instant », ou « le 12 sept. » au-delà d'un mois. */
+function since(iso: string): string {
+  const text = timeAgo(iso) ?? '';
+  return text.startsWith('il y a') || text === "à l'instant" ? text : `le ${text}`;
+}
+
 export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revealWhenEmpty = false }) => {
   const [tokens, setTokens] = useState<ExtensionToken[]>([]);
   // Carte révélée : demandée par l'appelant, ou un jeton actif existe. Ne se referme plus.
   const [revealed, setRevealed] = useState(revealWhenEmpty);
-  // Lu par loadTokens sans en faire une dépendance (le chargement ne se rejoue pas).
-  const revealedRef = useRef(revealWhenEmpty);
-  useEffect(() => { revealedRef.current = revealed; }, [revealed]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -82,10 +93,12 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
     try {
       const { data, error } = await invokeEdgeFunction<ListResponse>('extension-token', { action: 'list' });
       if (error || !data?.success) {
-        // Pas de toast pour une carte cachée : l'erreur ne concernerait rien de visible.
-        if (revealedRef.current) toast.error(data?.error || error?.message || 'Erreur de chargement');
+        // Lecture ratée : dite dans la carte, avec « Réessayer », jamais un faux « aucun jeton ».
+        // Pas de toast : une carte cachée n'a rien à signaler.
+        setLoadError(true);
         return;
       }
+      setLoadError(false);
       const list = data.tokens || [];
       setTokens(list);
       if (list.some((t) => !t.revoked_at)) setRevealed(true);
@@ -106,7 +119,7 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
         label: newLabel.trim() || undefined,
       });
       if (error || !data?.success || !data?.token) {
-        toast.error(data?.error || error?.message || 'Erreur de création');
+        toast.error(data?.error || error?.message || 'La création du jeton a échoué.');
         return;
       }
       setJustCreatedToken(data.token);
@@ -126,10 +139,10 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
         token_id: tokenId,
       });
       if (error || !data?.success) {
-        toast.error(data?.error || error?.message || 'Erreur lors de la révocation');
+        toast.error(data?.error || error?.message || 'La révocation du jeton a échoué.');
         return;
       }
-      toast.success('Token révoqué');
+      toast.success('Jeton révoqué');
       await loadTokens();
     } finally {
       setRevoking(null);
@@ -141,10 +154,10 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
     try {
       await navigator.clipboard.writeText(justCreatedToken);
       setCopied(true);
-      toast.success('Token copié dans le presse-papiers');
+      toast.success('Jeton copié dans le presse-papiers');
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Impossible de copier — sélectionnez manuellement le token');
+      toast.error('Copie impossible : sélectionnez le jeton à la main.');
     }
   };
 
@@ -155,268 +168,184 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Puzzle className="w-5 h-5 text-info" aria-hidden="true" />
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Puzzle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Extension Chrome Konekt
         </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="text-sm text-muted-foreground space-y-2">
-          <p>
-            L'extension Chrome Konekt vous permet de :
-          </p>
-          <ul className="text-xs space-y-1 ml-4 list-disc">
-            <li>Reconnecter votre compte LinkedIn en 1 clic (capture le cookie automatiquement)</li>
-            <li>Voir le statut Konekt de chaque profil dans vos recherches LinkedIn (badges overlay)</li>
-            <li>Ajouter un profil au pipeline d'une mission depuis n'importe quelle page LinkedIn</li>
-            <li>Prendre des notes rapides sans quitter LinkedIn</li>
-          </ul>
-        </div>
-
-        {/* Token nouvellement créé — affichage unique */}
-        {justCreatedToken && (
-          <div className="border-2 border-success bg-success/5 p-3 space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-200">
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="flex-1">
-                <p className="text-sm font-bold uppercase tracking-wider text-success">Token créé !</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  ⚠️ Copiez ce token <strong>maintenant</strong> — il ne sera <strong>plus jamais ré-affiché</strong> pour des raisons de sécurité.
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" className="max-md:h-11">
+              <Plus aria-hidden="true" />
+              Créer un jeton
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Créer un jeton pour l'extension</DialogTitle>
+              <DialogDescription>
+                Ce jeton autorise l'extension Chrome à se connecter à votre compte Konekt.
+                Il ne s'affiche qu'une fois : copiez-le dès sa création.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="token-label" className="text-xs font-medium">
+                  Étiquette (facultatif)
+                </Label>
+                <Input
+                  id="token-label"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="Ex. : Chrome du bureau"
+                  maxLength={100}
+                  aria-describedby="token-label-aide"
+                />
+                <p id="token-label-aide" className="text-xs text-muted-foreground">
+                  Pour reconnaître ce jeton dans la liste, si vous installez l'extension sur plusieurs ordinateurs.
+                </p>
+              </div>
+              <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning-muted p-2.5 text-xs">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                <p className="text-foreground">
+                  Ce jeton vaut un mot de passe : ne le partagez avec personne.
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 p-2 bg-background border border-border">
-              <code className="flex-1 text-xs font-mono break-all select-all">{justCreatedToken}</code>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCopy}
-                className="shrink-0 gap-1.5"
-              >
-                {copied ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-success" aria-hidden="true" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                )}
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
+                Annuler
+              </Button>
+              <Button variant="primary" onClick={handleCreate} loading={creating}>
+                Créer le jeton
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>L'extension Chrome Konekt vous permet de :</p>
+          <ul className="ml-4 list-disc space-y-1 text-xs">
+            <li>reconnecter votre compte LinkedIn en un clic (elle récupère le cookie pour vous) ;</li>
+            <li>voir le statut Konekt de chaque profil dans vos recherches LinkedIn ;</li>
+            <li>ajouter un profil au pipeline d'une mission depuis n'importe quelle page LinkedIn ;</li>
+            <li>prendre des notes sans quitter LinkedIn.</li>
+          </ul>
+        </div>
+
+        {/* Plus de procédure d'installation pour développeur (F-10) : une phrase neutre. */}
+        <p className="flex items-start gap-2 rounded-lg bg-muted p-3 text-xs text-foreground-secondary">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          L'extension Chrome vous sera proposée ici dès sa publication. Les jetons ci-dessous la relient à votre compte Konekt.
+        </p>
+
+        {/* Jeton tout juste créé : affiché une seule fois */}
+        {justCreatedToken && (
+          <div role="status" className="space-y-3 rounded-lg border border-border bg-muted p-3">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">Jeton créé</p>
+                <p className="mt-0.5 text-xs text-foreground-secondary">
+                  Copiez-le maintenant : pour votre sécurité, il ne sera plus jamais affiché.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-2 sm:flex-row sm:items-center">
+              {/* Police à chasse fixe : un secret à copier. */}
+              <code className="min-w-0 flex-1 select-all break-all font-mono text-xs text-foreground">{justCreatedToken}</code>
+              <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0 max-md:h-11">
+                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 {copied ? 'Copié' : 'Copier'}
               </Button>
             </div>
-            <div className="flex items-start gap-2 text-xs text-muted-foreground">
-              <KeyRound className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
-              <p>
-                Collez ce token dans l'extension Chrome lors du premier setup, puis cliquez sur "OK je l'ai copié" ci-dessous.
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setJustCreatedToken(null)}
-              className="w-full"
-            >
-              OK, je l'ai copié
+            <p className="text-xs text-muted-foreground">
+              Collez-le dans les réglages de l'extension Chrome, puis masquez-le.
+            </p>
+            <Button variant="ghost" size="sm" onClick={() => setJustCreatedToken(null)} className="w-full max-md:h-11">
+              Masquer le jeton
             </Button>
           </div>
         )}
 
-        {/* Liste des tokens actifs */}
+        {/* Jetons actifs */}
         {loading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+          <div role="status" className="space-y-2">
+            <Skeleton className="h-14 w-full rounded-lg" aria-hidden="true" />
+            <Skeleton className="h-14 w-full rounded-lg" aria-hidden="true" />
+            <span className="sr-only">Chargement des jetons…</span>
           </div>
+        ) : loadError ? (
+          <ErrorState
+            variant="compact"
+            title="Impossible de charger vos jetons."
+            description="Vérifiez votre connexion, puis réessayez."
+            onRetry={() => { void loadTokens(); }}
+          />
         ) : activeTokens.length === 0 ? (
-          <div className="text-center py-6 border border-dashed border-border">
-            <Puzzle className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" aria-hidden="true" />
-            <p className="text-xs text-muted-foreground">Aucun token actif</p>
-            <p className="text-[11px] text-muted-foreground/70 mt-1">Créez un token pour activer l'extension Chrome</p>
-          </div>
+          <EmptyState
+            variant="compact"
+            icon={KeyRound}
+            title="Aucun jeton actif"
+            headingLevel={4}
+            description="Créez un jeton pour relier l'extension Chrome à votre compte."
+          />
         ) : (
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {activeTokens.length} token{activeTokens.length > 1 ? 's' : ''} actif{activeTokens.length > 1 ? 's' : ''}
+            <p className="text-xs font-medium text-foreground">
+              {plural(activeTokens.length, 'jeton actif', 'jetons actifs')}
             </p>
-            {activeTokens.map(token => (
-              <div key={token.id} className="flex items-center gap-3 p-2.5 bg-muted/30 border border-border">
-                <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{token.label}</p>
-                  <p className="text-[11px] text-muted-foreground font-mono">{token.token_prefix}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {token.last_used_at
-                      ? `Utilisé ${formatDistanceToNow(parseISO(token.last_used_at), { locale: fr, addSuffix: true })}`
-                      : 'Jamais utilisé'}
-                    {' · '}créé {formatDistanceToNow(parseISO(token.created_at), { locale: fr, addSuffix: true })}
-                  </p>
-                </div>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                      disabled={revoking === token.id}
-                      aria-label={`Révoquer le token ${token.label}`}
-                    >
-                      {revoking === token.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                      )}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Révoquer ce token ?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        L'extension utilisant ce token cessera immédiatement de fonctionner et devra être reconfigurée avec un nouveau token. Cette action est irréversible.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Annuler</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => handleRevoke(token.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Révoquer
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            ))}
+            <ul className="space-y-2">
+              {activeTokens.map(token => (
+                <li key={token.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5">
+                  <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{token.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Commence par {token.token_prefix}
+                      {' · '}
+                      {token.last_used_at ? `utilisé ${since(token.last_used_at)}` : 'jamais utilisé'}
+                      {' · '}créé {since(token.created_at)}
+                    </p>
+                  </div>
+                  <AlertDialog>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            loading={revoking === token.id}
+                            className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                            aria-label={`Révoquer le jeton ${token.label}`}
+                          >
+                            {revoking !== token.id && <Trash2 aria-hidden="true" />}
+                          </Button>
+                        </AlertDialogTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>Révoquer</TooltipContent>
+                    </Tooltip>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Révoquer ce jeton ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          L'extension qui l'utilise cessera aussitôt de fonctionner et devra être reliée avec un nouveau jeton. Cette action est irréversible.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleRevoke(token.id)} className="bg-destructive">
+                          Révoquer
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
-
-        {/* Bouton créer + lien install */}
-        <div className="flex items-center gap-2 pt-2 border-t border-border">
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
-                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-                Nouveau token
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Créer un nouveau token extension</DialogTitle>
-                <DialogDescription>
-                  Ce token autorisera votre extension Chrome à se connecter à votre compte Konekt.
-                  Il sera affiché une seule fois — copiez-le immédiatement.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="token-label" className="text-xs font-medium">
-                    Étiquette (optionnel)
-                  </Label>
-                  <Input
-                    id="token-label"
-                    value={newLabel}
-                    onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="ex: Mon Chrome au bureau"
-                    className="text-sm"
-                    maxLength={100}
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Pour identifier ce token dans la liste (utile si vous installez l'extension sur plusieurs ordinateurs).
-                  </p>
-                </div>
-                <div className="flex items-start gap-2 p-2 bg-warning/5 border border-warning/30 text-xs">
-                  <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-foreground">
-                    Le token est équivalent à un mot de passe — ne le partagez pas et ne le commitez pas dans git.
-                  </p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
-                  Annuler
-                </Button>
-                <Button onClick={handleCreate} disabled={creating} className="gap-1.5">
-                  {creating ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  )}
-                  Créer le token
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Puzzle className="w-3.5 h-3.5" aria-hidden="true" />
-                Comment installer l'extension
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Installer l'extension Chrome Konekt</DialogTitle>
-                <DialogDescription>
-                  L'extension n'est pas encore publiée sur le Chrome Web Store. Pour l'instant, installez-la en <strong>mode développeur</strong> depuis le code source.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étape 1 : build l'extension</p>
-                  <p className="text-xs text-muted-foreground">
-                    Ouvre PowerShell dans le dossier du projet Konekt et lance :
-                  </p>
-                  <pre className="bg-muted/50 border border-border p-2.5 text-[11px] font-mono overflow-x-auto">
-                    <code>{`cd C:\\Users\\Hugo\\dev\\remix-of-event-template\\extensions\\chrome
-npm install
-npm run build`}</code>
-                  </pre>
-                  <p className="text-[10px] text-muted-foreground">
-                    Résultat : un dossier <code className="text-[10px] bg-muted px-1">dist/</code> est créé avec l'extension prête à charger.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étape 2 : charger dans Chrome</p>
-                  <ol className="text-xs space-y-1 ml-4 list-decimal">
-                    <li>Ouvre Chrome → <code className="text-[10px] bg-muted px-1">chrome://extensions/</code></li>
-                    <li>Active le toggle <strong>"Mode développeur"</strong> en haut à droite</li>
-                    <li>Clique <strong>"Charger l'extension non empaquetée"</strong></li>
-                    <li>Sélectionne le dossier <code className="text-[10px] bg-muted px-1">extensions/chrome/dist</code> (pas le dossier parent)</li>
-                    <li>L'icône Konekt 🧩 apparaît dans la barre Chrome</li>
-                  </ol>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étape 3 : configurer le token</p>
-                  <ol className="text-xs space-y-1 ml-4 list-decimal">
-                    <li>Ci-dessus, clique <strong>"Nouveau token"</strong> → copie le token (kekt_...)</li>
-                    <li>Clique sur l'icône Konekt dans Chrome → <strong>"Ouvrir les réglages"</strong></li>
-                    <li>Colle le token → <strong>"Sauvegarder"</strong></li>
-                  </ol>
-                </div>
-
-                <div className="flex items-start gap-2 p-2.5 bg-info/5 border border-info/30 text-xs">
-                  <Puzzle className="w-3.5 h-3.5 text-info shrink-0 mt-0.5" aria-hidden="true" />
-                  <div className="text-foreground">
-                    <p className="font-medium">Mode "non empaquetée" = pas un danger</p>
-                    <p className="text-muted-foreground mt-0.5">
-                      C'est la méthode standard pour tester une extension avant publication. L'extension reste active tant que Chrome est ouvert. Chrome affichera un bandeau d'avertissement au démarrage (normal) — ignore-le.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2 p-2.5 bg-warning/5 border border-warning/30 text-xs">
-                  <Puzzle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
-                  <div className="text-foreground">
-                    <p className="font-medium">Chrome Web Store publication à venir</p>
-                    <p className="text-muted-foreground mt-0.5">
-                      Une fois publiée sur le Web Store, tout ça sera remplacé par un bouton <em>"Ajouter à Chrome"</em> classique.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
       </CardContent>
     </Card>
   );

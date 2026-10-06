@@ -275,7 +275,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
               <IconTile icon={FileText} size="md" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <p className="text-[13px] font-semibold truncate">{activeCV.fileName}</p>
+                  <p className="text-sm font-semibold truncate">{activeCV.fileName}</p>
                   {activeCV.isPrimary && (
                     <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
                       <Star className="w-2.5 h-2.5" /> Principal
@@ -331,7 +331,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                     value={editingNotes.value}
                     onChange={(e) => setEditingNotes({ ...editingNotes, value: e.target.value })}
                     placeholder="Note libre (ex: v3 envoyée par mail le 12/04, manque les diplômes)"
-                    className="min-h-[60px] text-[12px]"
+                    className="min-h-[60px] text-xs"
                     autoFocus
                   />
                   <div className="flex items-center gap-1.5 justify-end">
@@ -347,7 +347,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                 <button
                   type="button"
                   onClick={() => setEditingNotes({ cvId: activeCV.id, value: activeCV.notes || '' })}
-                  className="w-full flex items-start gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-full flex items-start gap-2 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <Pencil className="w-3 h-3 shrink-0 mt-0.5" />
                   {activeCV.notes
@@ -471,7 +471,7 @@ function DropZone({
         <p className="font-display text-base font-bold text-foreground tracking-tight">
           {uploading ? 'Upload en cours…' : dragActive ? 'Lâche le fichier ici' : 'Aucun CV pour ce candidat'}
         </p>
-        <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed">
+        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
           Glisse-dépose un PDF ici, ou clique pour parcourir.
           <br />
           <span className="opacity-70">PDF uniquement · max 10 MB</span>
@@ -513,7 +513,7 @@ function CVListItem({
       <IconTile icon={FileText} size="sm" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <p className="text-[12px] font-semibold truncate">{cv.fileName}</p>
+          <p className="text-xs font-semibold truncate">{cv.fileName}</p>
           {cv.isPrimary && (
             <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
               Principal

@@ -81,7 +81,11 @@ export function unipileV2Fetch(
  *   account_status (source) → account.add / account.reconnect / account.remove /
  *     account.status.* / account.locked / account.unlocked / account.initial_sync.*
  *   mail_received → email.new
- *   mail_opened → tracking.open (+ tracking.click, email.new.bounce : nouveaux)
+ *
+ * email.new.bounce, tracking.open et tracking.click ne sont PAS abonnés tant
+ * qu'unipile-webhook ne les traite pas (ils tombaient dans « Unknown event
+ * type ») : les rebonds arrivent déjà comme e-mails entrants (email.new,
+ * détection du NDR dans handleNewMail). Audit séquences 2026-09-25, SEQ-210.
  *
  * Chaque valeur doit figurer dans l'enum `trigger_events` de
  * `POST /v2/webhooks/endpoints/` (sinon la création de l'endpoint est refusée).
@@ -108,9 +112,6 @@ export const V2_TRIGGER_EVENTS = [
   "account.initial_sync.completed",
   "account.initial_sync.failed",
   "email.new",
-  "email.new.bounce",
-  "tracking.open",
-  "tracking.click",
 ] as const;
 
 /**

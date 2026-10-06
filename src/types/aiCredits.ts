@@ -65,6 +65,28 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     supportsThinking: true,
     description: "Le plus avancé, pour les raisonnements complexes",
   },
+  // Nouvelle génération : même rôle que Avancé et Expert, moins chers et plus
+  // capables (miroir du multiplicateur serveur, _shared/ai-config.ts).
+  "claude-sonnet-5-5": {
+    id: "claude-sonnet-5-5",
+    name: "Avancé (nouveau)",
+    provider: "anthropic",
+    tier: "balanced",
+    multiplier: 0.7,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Équilibré, nouvelle génération. Choisi automatiquement pour l'évaluation des candidats",
+  },
+  "claude-opus-5-5": {
+    id: "claude-opus-5-5",
+    name: "Expert (nouveau)",
+    provider: "anthropic",
+    tier: "premium",
+    multiplier: 1.5,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Le plus avancé, nouvelle génération, pour les raisonnements complexes",
+  },
 };
 
 // ─── Action Cost Types ──────────────────────────────────────────────────────
@@ -91,60 +113,63 @@ export interface AIActionCost {
   autoDefault?: string;
 }
 
+// Libellés affichés dans les Paramètres, rubrique Abonnement et crédits (coût
+// par action, historique). Le miroir serveur (_shared/ai-config.ts) garde les
+// anciens tant qu'aucun changement de _shared ne part : il ne s'affiche nulle part.
 export const ACTION_COSTS: Record<string, AIActionCost> = {
-  scoring: { action: "scoring", label: "Scoring candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-haiku-4-5" },
+  scoring: { action: "scoring", label: "Évaluation d'un candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-sonnet-5-5" },
   outreach_message: { action: "outreach_message", label: "Message d'approche", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "outreach" },
-  analyze_response: { action: "analyze_response", label: "Analyse réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
-  screen_candidate: { action: "screen_candidate", label: "Screening rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
-  generate_scorecard: { action: "generate_scorecard", label: "Scorecard", floor: 2, typicalTokens: 4_000, routingTier: "fast", category: "qualification" },
+  analyze_response: { action: "analyze_response", label: "Analyse d'une réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
+  screen_candidate: { action: "screen_candidate", label: "Présélection rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
+  generate_scorecard: { action: "generate_scorecard", label: "Création d'une scorecard", floor: 2, typicalTokens: 4_000, routingTier: "fast", category: "qualification" },
   call_report: { action: "call_report", label: "Compte-rendu d'appel", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
-  live_coaching: { action: "live_coaching", label: "Coaching live (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
-  agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 3_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
+  interview_followup: { action: "interview_followup", label: "Message après un entretien", floor: 1, typicalTokens: 3_000, routingTier: "fast", category: "qualification" },
+  live_coaching: { action: "live_coaching", label: "Coaching en direct (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
+  agent_search_calibration: { action: "agent_search_calibration", label: "Agent, calibrage de la recherche", floor: 3, typicalTokens: 3_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
   conversation_title: { action: "conversation_title", label: "Assistant, titre de conversation", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   intent_routing: { action: "intent_routing", label: "Assistant, routage d'intention", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   context_compaction: { action: "context_compaction", label: "Assistant, résumé de conversation", floor: 1, typicalTokens: 4_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   memory_extract: { action: "memory_extract", label: "Assistant, mémorisation", floor: 1, typicalTokens: 3_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
-  agent_search_run: { action: "agent_search_run", label: "Agent — recherche", floor: 10, typicalTokens: 25_000, routingTier: "default", category: "agent", providers: ["anthropic"] },
+  agent_search_run: { action: "agent_search_run", label: "Agent, recherche", floor: 10, typicalTokens: 25_000, routingTier: "default", category: "agent", providers: ["anthropic"] },
   agent_chat: { action: "agent_chat", label: "Assistant, chat (par message)", floor: 1, typicalTokens: 2_500, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
-  ai_chat: { action: "ai_chat", label: "Assistant texte inline", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
-  rag_rerank: { action: "rag_rerank", label: "Recherche sémantique — re-ranking", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
+  ai_chat: { action: "ai_chat", label: "Aide à la rédaction", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
+  rag_rerank: { action: "rag_rerank", label: "Recherche dans les documents : tri des résultats", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
   file_ingest: { action: "file_ingest", label: "Lecture de fichier joint", floor: 1, typicalTokens: 8_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
-  filter_generation: { action: "filter_generation", label: "Filtres IA auto", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing" },
-  filter_assistant_msg: { action: "filter_assistant_msg", label: "Chat filtres", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
-  refine_search: { action: "refine_search", label: "Affiner recherche", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
-  nurturing_analysis: { action: "nurturing_analysis", label: "Analyse nurturing", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "outreach" },
-  vivier_enrichment: { action: "vivier_enrichment", label: "Enrichissement profil", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
+  filter_generation: { action: "filter_generation", label: "Filtres de recherche proposés", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing" },
+  brief_analysis: { action: "brief_analysis", label: "Analyse d'une fiche de poste", floor: 2, typicalTokens: 10_000, routingTier: "default", category: "sourcing", autoDefault: "claude-sonnet-5-5" },
+  filter_assistant_msg: { action: "filter_assistant_msg", label: "Filtres modifiés en langage courant", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
+  refine_search: { action: "refine_search", label: "Affiner une recherche", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
+  nurturing_analysis: { action: "nurturing_analysis", label: "Analyse du suivi des candidats", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "outreach" },
+  vivier_enrichment: { action: "vivier_enrichment", label: "Enrichissement d'un profil", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   reply_suggestion: { action: "reply_suggestion", label: "Suggestion de réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   rewrite_text: { action: "rewrite_text", label: "Reformuler un texte", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
   translate_text: { action: "translate_text", label: "Traduire un texte", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "outreach" },
   summarize_conversation: { action: "summarize_conversation", label: "Résumer une conversation", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
-  auto_analyze_message: { action: "auto_analyze_message", label: "Classification message", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "outreach" },
+  auto_analyze_message: { action: "auto_analyze_message", label: "Classement d'un message", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "outreach" },
   // CTA "job_details" peut générer ~2k tokens (message long + JSON wrap), les
   // autres CTA sont autour de 800-1200 tokens : 1.5k typique (miroir ai-config).
-  cta_reply: { action: "cta_reply", label: "Suggérer une réponse + CTA", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
+  cta_reply: { action: "cta_reply", label: "Proposer une suite", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
   // Lots de 30 conversations (useChatCategories), jusqu'à 6 messages de 300
   // caractères chacune : l'entrée pèse bien plus que la sortie.
   auto_categorize_chats: { action: "auto_categorize_chats", label: "Classement des conversations", floor: 1, typicalTokens: 10_000, routingTier: "fast", category: "outreach" },
-  scorecard_chat: { action: "scorecard_chat", label: "Chat scorecard", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "qualification" },
+  scorecard_chat: { action: "scorecard_chat", label: "Questions sur une scorecard", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "qualification" },
   debrief: { action: "debrief", label: "Débrief rapide", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
-  meeting_minutes: { action: "meeting_minutes", label: "Compte-rendu réunion", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "qualification" },
-  generate_client_competitors: { action: "generate_client_competitors", label: "Concurrents client", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing", autoDefault: "claude-haiku-4-5" },
+  meeting_minutes: { action: "meeting_minutes", label: "Compte-rendu de réunion", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "qualification" },
+  generate_client_competitors: { action: "generate_client_competitors", label: "Concurrents d'un client", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing", autoDefault: "claude-haiku-4-5" },
   // Plancher à 1 : enrich-company règle CHAQUE extraction séparément (site,
   // offres, actualités, synthèse). L'estimation, elle, couvre la requête
   // entière, soit deux à quatre appels rapides sur des pages récupérées.
   enrich_company: { action: "enrich_company", label: "Fiche société", floor: 1, typicalTokens: 20_000, routingTier: "fast", category: "sourcing" },
-  // Un seul appel groupé pour tous les postes absents du cache de compétences.
-  notion_job_skills: { action: "notion_job_skills", label: "Compétences extraites d'un poste", floor: 1, typicalTokens: 6_000, routingTier: "fast", category: "sourcing" },
   // Base Konekt (recherche base de données) — pas de tokens LLM, floor = coût réel
   // provider. Doc Coresignal : /search/es_dsl ET /search/es_dsl/preview = 2 crédits
   // par requête (une page ≈ 20 profils) ; collect = 2 crédits par profil.
-  coresignal_preview: { action: "coresignal_preview", label: "Base Konekt — aperçu", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
-  coresignal_collect: { action: "coresignal_collect", label: "Base Konekt — fiche complète", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  coresignal_preview: { action: "coresignal_preview", label: "Base Konekt : aperçu", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  coresignal_collect: { action: "coresignal_collect", label: "Base Konekt : fiche complète", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
   web_search: { action: "web_search", label: "Recherche web", floor: 1, typicalTokens: 0, routingTier: "fast", category: "agent" },
   // Enrichissement de contact — pas de tokens LLM, le floor = coût hors forfait
   // (un email = 1 crédit, un téléphone = 10 crédits ; miroir de ai-config.ts).
-  enrich_contact_email: { action: "enrich_contact_email", label: "Email pro candidat", floor: 1, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
-  enrich_contact_phone: { action: "enrich_contact_phone", label: "Téléphone mobile candidat", floor: 10, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  enrich_contact_email: { action: "enrich_contact_email", label: "E-mail professionnel d'un candidat", floor: 1, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  enrich_contact_phone: { action: "enrich_contact_phone", label: "Téléphone mobile d'un candidat", floor: 10, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
 };
 
 // ─── Credit Calculation (frontend) ──────────────────────────────────────────
@@ -265,7 +290,7 @@ export interface CreditPack {
 export const CREDIT_PACKS: CreditPack[] = [
   { id: "pack_400", credits: 400, price_eur: 12, price_per_credit_cents: 3.0, badge: null, stripe_price_id: null },
   { id: "pack_1500", credits: 1_500, price_eur: 39, price_per_credit_cents: 2.6, badge: "Populaire", stripe_price_id: null },
-  { id: "pack_5000", credits: 5_000, price_eur: 119, price_per_credit_cents: 2.38, badge: "-20%", stripe_price_id: null },
+  { id: "pack_5000", credits: 5_000, price_eur: 119, price_per_credit_cents: 2.38, badge: "-20 %", stripe_price_id: null },
 ];
 
 // ─── Tier Display Helpers ───────────────────────────────────────────────────
@@ -276,8 +301,3 @@ export const TIER_LABELS: Record<ModelTier, string> = {
   premium: "Premium",
 };
 
-export const TIER_ICONS: Record<ModelTier, string> = {
-  budget: "⚡",
-  balanced: "🧠",
-  premium: "✨",
-};

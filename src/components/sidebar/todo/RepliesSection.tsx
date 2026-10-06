@@ -55,7 +55,7 @@ export function RepliesSection() {
     >
       {shown.map((r) => {
         const common = {
-          leading: <span className="text-[9.5px] font-semibold leading-none">{initialsOf(r.name)}</span>,
+          leading: <span className="text-3xs font-semibold leading-none">{initialsOf(r.name)}</span>,
           title: r.name,
           sub: missionName(r.projectId) ?? r.headline,
           right: formatShortTime(r.lastAt, now),

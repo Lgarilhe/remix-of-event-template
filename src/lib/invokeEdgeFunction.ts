@@ -58,7 +58,7 @@ function humanizeError(err: Error | string): string {
   const lower = msg.toLowerCase();
 
   if (lower.includes('not found') || lower.includes('404') || lower.includes('function not found')) {
-    return "Cette fonctionnalité n'est pas encore déployée sur le serveur. Contacte le support.";
+    return "Cette fonctionnalité n'est pas encore déployée sur le serveur. Contactez le support.";
   }
   if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
     return 'Problème de connexion réseau. Vérifiez votre connexion internet et réessayez.';

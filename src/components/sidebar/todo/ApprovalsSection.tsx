@@ -13,6 +13,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAgent } from '@/contexts/AgentContext';
@@ -28,10 +30,10 @@ import { useMissionNames } from '@/hooks/sidebar/useMyMissions';
 import { formatShortTime } from '@/lib/sidebarSignals';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
+import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
-const ACTION_BUTTON_CLASS =
-  'inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-sidebar-foreground ' +
-  'hover:bg-sidebar-accent/60 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
+/** Classes ajoutées au Button du kit (taille icon-xs) ; SidebarRow pose les 44 px sur téléphone. */
+const ACTION_BUTTON_CLASS = cn(SIDEBAR_GHOST_CLASS, 'rounded-md text-muted-foreground');
 
 /** Résumé du dry-run (chaîne), lu avec une garde de type. */
 function actionSummary(action: ProposedAction): string | null {
@@ -154,15 +156,17 @@ export const ApprovalsSection: React.FC<{ variant: 'todo' | 'assistant' }> = ({ 
             strong
             onSelect={() => openPlan(plan)}
             action={
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label="Retirer ce plan"
                 title="Retirer ce plan"
                 onClick={() => void withdraw(plan)}
                 className={ACTION_BUTTON_CLASS}
               >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
-              </button>
+                <X aria-hidden="true" />
+              </Button>
             }
           />
         );

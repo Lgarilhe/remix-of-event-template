@@ -33,7 +33,7 @@ const MissionInvitationEmail = ({ inviterName, organizationName, missionName, ro
           </Text>
         )}
         <Text style={text}>
-          Connectez-vous à {SITE_NAME} pour accepter l'invitation et commencer à sourcer des candidats.
+          Connectez-vous à {SITE_NAME} pour accepter l'invitation : vous verrez la fiche du poste et ses étapes d'entretien.
         </Text>
         <Section style={buttonContainer}>
           <Button style={button} href={inviteUrl || '#'}>

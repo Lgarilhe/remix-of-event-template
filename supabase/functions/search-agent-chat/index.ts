@@ -33,6 +33,7 @@ import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
 import { resolveNotionMcpConnectorRow } from "../_shared/notion-mcp-connection.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { calculateTokenCredits, normalizeModelId } from "../_shared/ai-config.ts";
+import { gen5Params, isGen5Model, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 // Register tools at module load (idempotent)
@@ -599,6 +600,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Conversation de l'assistant : son auteur seul (R3), avec ou sans
+    // organisation. Le client service-role contourne la RLS, le contrôle doit
+    // être explicite.
+    if (conv.created_by !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!createdConversation && conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
@@ -619,12 +629,6 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    } else if (conv.created_by !== user.id) {
-      // Conversation sans organisation : seul son créateur peut y accéder
-      // (le client service-role bypasse la RLS, le check doit être explicite).
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     // Barrière de crédits. Dernier point où une réponse ordinaire est encore
@@ -1073,9 +1077,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `et récentes : actualité/levée de fonds d'une entreprise, tendances marché, salaires, ` +
         `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
         `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
-        `Des CONNECTEURS EXTERNES configurés par l'organisation (Notion, Slack, calendrier, ` +
+        `Des CONNECTEURS EXTERNES configurés par l'organisation ou le membre (wiki, messagerie d'équipe, calendrier, ` +
         `outils internes…) peuvent exposer des outils supplémentaires. Ces connecteurs sont ` +
-        `STRICTEMENT EN LECTURE SEULE et limités à une liste blanche validée par un administrateur. ` +
+        `STRICTEMENT EN LECTURE SEULE et limités à une liste d'outils de lecture (fixée par Konekt pour une connexion personnelle, validée par un administrateur pour un connecteur de l'organisation). ` +
         `N'essaie JAMAIS d'écrire, créer, modifier, supprimer ou envoyer quoi que ce soit via un ` +
         `connecteur MCP. Toute action d'écriture doit passer par un outil Konekt avec sa politique ` +
         `d'approbation serveur ; si aucun outil Konekt équivalent n'existe, explique la limite. ` +
@@ -1424,7 +1428,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               const activeMcpServers = activeMcpConfigurations.map((configuration) => configuration.server);
               const apiBody: Record<string, unknown> = {
                 model: resolvedModel,
-                max_tokens: 16000,
+                max_tokens: withThinkingHeadroom(resolvedModel, 16000),
+                // Agent à outils : effort moyen sur la génération 5, pas "low" des tâches courtes.
+                ...gen5Params(resolvedModel, "medium"),
                 system: [
                   ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
                   // Breakpoint cache sur le prompt opérationnel : cache TOUT le
@@ -1549,6 +1555,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                           const toolOutcome = cb.is_error === true ? "error" : "ok";
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "tool", state: "done", outcome: toolOutcome } })}\n\n`));
                         }
+                      } else if (cb.type === "thinking" || cb.type === "redacted_thinking") {
+                        // Réflexion (active par défaut sur la génération 5). Le bloc
+                        // DOIT revenir inchangé, signature comprise, dans le tour
+                        // assistant qui suit un tool_use : l'API refuse (400) un tour
+                        // d'outil sans lui. Le texte est vide par défaut ; redacted_thinking
+                        // arrive complet dans le start.
+                        partials.set(event.index, { ...cb });
                       } else {
                         partials.set(event.index, { type: "text", text: "" });
                       }
@@ -1562,6 +1575,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
                       } else if (event.delta?.type === "input_json_delta" && typeof event.delta.partial_json === "string") {
                         p._json += event.delta.partial_json;
+                      } else if (event.delta?.type === "thinking_delta" && typeof event.delta.thinking === "string") {
+                        p.thinking = (p.thinking ?? "") + event.delta.thinking;
+                      } else if (event.delta?.type === "signature_delta" && typeof event.delta.signature === "string") {
+                        p.signature = event.delta.signature;
                       }
                     } else if (event.type === "content_block_stop") {
                       const p = partials.get(event.index);
@@ -1604,7 +1621,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // tool_use) : l'API rejette un message assistant avec text:"" (400).
               // Les blocs server-side (server_tool_use + *_tool_result) sont
               // conservés : ils DOIVENT être ré-émis dans l'historique assistant.
+              // Les blocs de réflexion aussi, tels quels (même ordre, même signature).
               const roundContent = roundBlocks.filter((b: any) => b && (
+                b.type === 'thinking' ||
+                b.type === 'redacted_thinking' ||
                 b.type === 'tool_use' ||
                 b.type === 'server_tool_use' ||
                 b.type === 'mcp_tool_use' ||
@@ -1836,11 +1856,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       },
       body: JSON.stringify({
         model: resolvedModel,
-        max_tokens: 32000,
-        thinking: {
-          type: "enabled",
-          budget_tokens: 16000,
-        },
+        max_tokens: withThinkingHeadroom(resolvedModel, 32000),
+        // Génération 5 : budget_tokens est refusé (400), la réflexion adaptative le remplace
+        // (effort moyen) et display "summarized" garde un texte de réflexion à relayer
+        // à l'interface, vide par défaut.
+        thinking: isGen5Model(resolvedModel)
+          ? { type: "adaptive", display: "summarized" }
+          : { type: "enabled", budget_tokens: 16000 },
+        ...gen5Params(resolvedModel, "medium"),
         system: [
           ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
           { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },

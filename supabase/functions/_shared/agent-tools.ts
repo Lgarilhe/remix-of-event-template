@@ -44,6 +44,12 @@ export interface ToolContext {
    * launch_search → run-agent-search), sans élargir l'auth de la cible.
    */
   userBearer?: string | null;
+  /**
+   * Détails de l'aperçu approuvé (dry_run_result.details), posés seulement
+   * sur le chemin cron (executeScheduledAction) : un tool y relit ce que
+   * l'utilisateur a vu au moment d'approuver (ex. compte d'envoi, décision 34).
+   */
+  approvedDetails?: Record<string, unknown> | null;
 }
 
 export interface DryRunResult {
@@ -118,7 +124,7 @@ export function getAnthropicToolDefinitions(): AnthropicToolDefinition[] {
 // ============================================================================
 // Table agent_tool_policies : une row (org, tool) → 'auto' | 'approve' | 'off'.
 // Défaut sans row : reads → auto, mutations → approve (comportement historique).
-// GARDE-FOU : les tools mutation_external et la liste destructive ci-dessous ne
+// GARDE-FOU : les tools mutation_external et la liste ci-dessous ne
 // peuvent JAMAIS être 'auto' — le clamp est appliqué ICI, côté serveur, quelle
 // que soit la valeur en base (le frontend propose, le serveur tranche).
 
@@ -130,6 +136,14 @@ const NEVER_AUTO_TOOLS = new Set([
   'invite_team_member',
   'update_member_quota',
   'update_mission_status',
+  // Lot 0a : l'assistant ne change une étape qu'avec un clic (conception 3.3).
+  'update_candidate_stage',
+  'add_to_shortlist',
+  'bulk_update_stage',
+  // Lot 5a : rien ne part sans le clic d'une personne (décision 1 du lot 5).
+  // L'inscription et la reprise déclenchent des envois de la séquence.
+  'enroll_in_sequence',
+  'resume_sequence',
 ]);
 
 const policyCache = new Map<string, { at: number; policies: Map<string, ToolPolicy> }>();
@@ -402,6 +416,8 @@ async function recheckAccess(
   }
 }
 
+const ALREADY_HANDLED_MESSAGE = 'Action déjà traitée';
+
 export async function confirmToolExecution(
   executionId: string,
   ctx: ToolContext,
@@ -416,18 +432,16 @@ export async function confirmToolExecution(
     return { success: false, error: 'Execution not found', executionId };
   }
 
-  // Idempotency: si déjà executed, retourner le résultat sans re-exécuter
-  if (row.status === 'executed') {
-    return {
-      success: true,
-      data: (row.real_result as Record<string, unknown>) ?? {},
-      executionId,
-    };
-  }
-
   // Sécurité : seul l'user qui a la row peut approuver, et l'org doit matcher
   if (row.user_id !== ctx.userId || row.organization_id !== ctx.organizationId) {
     return { success: false, error: 'Forbidden — execution belongs to another user/org', executionId };
+  }
+
+  // Décision 33 : un second « Approuver » sur une action déjà exécutée est
+  // refusé (avant : le résultat relu revenait comme un nouveau succès, et la
+  // vérification de propriété venait après, ce qui le livrait à un tiers).
+  if (row.status === 'executed' || row.status === 'auto_executed') {
+    return { success: false, error: ALREADY_HANDLED_MESSAGE, executionId };
   }
 
   if (row.status !== 'proposed' && row.status !== 'approved') {
@@ -594,12 +608,17 @@ export async function executeScheduledAction(
   // Build a ctx scoped to the original user/org so the tool's verifyAccess
   // checks (and any service-role queries it makes) target the correct
   // organization.
+  const approvedDryRun = (row.dry_run_result as Record<string, unknown> | null) ?? {};
+  const approvedDetails = approvedDryRun.details;
   const scopedCtx: ToolContext = {
     ...ctx,
     userId: row.user_id,
     organizationId: row.organization_id,
     conversationId: row.conversation_id,
     messageId: row.message_id,
+    approvedDetails: approvedDetails && typeof approvedDetails === 'object' && !Array.isArray(approvedDetails)
+      ? approvedDetails as Record<string, unknown>
+      : null,
   };
 
   // Réservation atomique (BUG-016) : deux ticks de cron concurrents ne

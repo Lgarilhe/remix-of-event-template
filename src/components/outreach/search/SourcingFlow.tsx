@@ -17,8 +17,10 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   LinkedInFiltersState, SENIORITY_LEVELS, PROFILE_LANGUAGES,
@@ -70,6 +72,8 @@ interface SearchHeroProps {
   /** Recherche échouée avant tout résultat : message affiché sous le prompt. */
   errorMessage?: string | null;
   disabled?: boolean;
+  /** Nouvelle page mission : sans pastille de mission (le nom est dans l'en-tête), textes vouvoyés. */
+  variant?: 'default' | 'mission-v3';
 }
 
 const HERO_EXAMPLES = [
@@ -79,7 +83,9 @@ const HERO_EXAMPLES = [
 
 export const SearchHero: React.FC<SearchHeroProps> = ({
   jobTitle, clientName, history, onLaunch, onResumeHistory, onLaunchWithBriefFilters, errorMessage, disabled,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -99,16 +105,20 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
 
   return (
     <div className="flex-1 flex flex-col items-center justify-start pt-10 sm:pt-16 pb-10 px-4 relative min-h-[480px]">
+      {!isV3 && (
       <div className="absolute top-[-60px] left-1/2 -translate-x-1/2 w-[560px] max-w-full h-[300px] pointer-events-none opacity-50"
         style={{ background: 'radial-gradient(ellipse at center, var(--k-accent-tint), transparent 70%)' }} />
+      )}
 
+      {!isV3 && (
       <div className="relative inline-flex items-center gap-2 rounded-full border border-[var(--k-hairline)] bg-[var(--k-surface)] pl-1.5 pr-3 py-1 text-xs text-[var(--k-text-2)] mb-5">
         <span className="w-5 h-5 grid place-items-center rounded-full border border-[var(--k-hairline)] bg-[var(--k-surface-2)]"><Target /></span>
         Mission · <b className="font-medium text-[var(--k-text)]">{jobTitle}</b>
         {clientName && <span className="text-[var(--k-text-muted)]">· {clientName}</span>}
       </div>
+      )}
 
-      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">Qui cherches-tu ?</h2>
+      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">{isV3 ? 'Qui cherchez-vous ?' : 'Qui cherches-tu ?'}</h2>
 
       <div className={cn(
         'relative w-full max-w-[640px] rounded-xl border bg-[var(--k-surface)] px-4 py-3.5 transition-[border-color,box-shadow] duration-150',
@@ -125,21 +135,49 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (armed) onLaunch(value.trim()); } }}
-            placeholder="Décris le profil idéal — rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que tu pourras piloter."
-            className="flex-1 min-w-0 resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none min-h-[52px]"
+            aria-label={isV3 ? 'Décrivez le profil recherché' : undefined}
+            placeholder={isV3
+              ? "Décrivez le profil idéal : rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que vous pourrez modifier."
+              : "Décris le profil idéal — rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que tu pourras piloter."}
+            className={cn(
+              'flex-1 min-w-0 resize-none border-0 bg-transparent p-0 text-base leading-relaxed text-[var(--k-text)] focus:outline-none min-h-[52px]',
+              // Nouvelle page : la consigne reste lisible (contraste AA), sans l'opacité du jeton de consigne.
+              isV3 ? 'placeholder:text-muted-foreground max-sm:min-h-[108px]' : 'placeholder:text-[var(--k-text-placeholder)]',
+            )}
           />
         </div>
         <div className="flex items-center gap-2.5 mt-1.5">
-          <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px] text-[var(--k-text-muted)]">
+          {isV3 ? (
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-[var(--k-text-muted)]">
+            Entrée pour lancer
+          </span>
+          ) : (
+          <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-2xs text-[var(--k-text-muted)]">
             <kbd className="px-1.5 py-0.5 rounded border border-[var(--k-hairline)]">⏎</kbd> lancer ·
             <kbd className="px-1.5 py-0.5 rounded border border-[var(--k-hairline)]">/</kbd> focus
           </span>
+          )}
+          {isV3 ? (
+          // Nouvelle page : le bouton plein de l'écran (noir), seulement quand une phrase est écrite ou que le
+          // poste a déjà ses filtres ; sinon discret (le lien « depuis le poste » fait la même chose).
+          <Button
+            type="button"
+            size="sm"
+            variant={(armed || onLaunchWithBriefFilters) ? 'primary' : 'ghost'}
+            disabled={disabled}
+            onClick={() => { if (!armed && onLaunchWithBriefFilters) onLaunchWithBriefFilters(); else onLaunch(value.trim()); }}
+            className="ml-auto max-sm:min-h-11"
+          >
+            <svg viewBox="0 0 24 24" {...svgProps} strokeWidth={1.6} className="w-3.5 h-3.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
+            {!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : 'Générer les filtres et chercher'}
+          </Button>
+          ) : (
           <button
             type="button"
             disabled={disabled}
             onClick={() => { if (!armed && onLaunchWithBriefFilters) onLaunchWithBriefFilters(); else onLaunch(value.trim()); }}
             className={cn(
-              'ml-auto inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors duration-150 disabled:opacity-60',
+              'ml-auto inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors duration-150 disabled:opacity-60',
               (armed || onLaunchWithBriefFilters)
                 ? 'bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border border-transparent'
                 : 'bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)] hover:text-[var(--k-text)] hover:border-[var(--k-hairline-hover)]',
@@ -148,6 +186,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             <svg viewBox="0 0 24 24" {...svgProps} strokeWidth={1.6} className="w-3.5 h-3.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
             {!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : <>Générer &amp; chercher</>}
           </button>
+          )}
         </div>
       </div>
 
@@ -155,18 +194,36 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         <p role="alert" className="relative w-full max-w-[640px] mt-2 text-xs text-[var(--k-warn)]">{errorMessage}</p>
       )}
 
-      <div className="relative flex flex-wrap justify-center gap-1.5 mt-4 max-w-[660px]">
-        <span className="w-full text-center font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mb-0.5">
+      <div className={cn('relative flex flex-wrap justify-center mt-4 max-w-[660px]', isV3 ? 'gap-x-4 gap-y-0.5' : 'gap-1.5')}>
+        {isV3 ? (
+        <span className="w-full text-center text-sm text-[var(--k-text-muted)] mb-0.5">
+          Exemples : rôle, séniorité, contexte, lieu
+        </span>
+        ) : (
+        <span className="w-full text-center font-mono text-2xs uppercase tracking-wider text-[var(--k-text-muted)] mb-0.5">
           Exemples — rôle + séniorité + contexte + lieu
         </span>
+        )}
         {HERO_EXAMPLES.map(ex => (
           <button key={ex} type="button" onClick={() => { setValue(ex); taRef.current?.focus(); }}
-            className="rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors">
+            className={isV3
+              ? 'rounded-sm px-1 py-1.5 text-sm text-[var(--k-text-2)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
+              : 'rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors'}>
             {ex}
           </button>
         ))}
       </div>
 
+      {isV3 ? (
+      <p className="relative mt-6 text-center text-sm text-[var(--k-text-muted)]">
+        ou{' '}
+        <button type="button" onClick={() => onLaunch('')} disabled={disabled}
+          className="font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] underline underline-offset-4 decoration-[var(--k-hairline-focus)] max-sm:inline-block max-sm:py-3">
+          {onLaunchWithBriefFilters ? 'régénérer les filtres depuis le poste' : 'générer les filtres depuis le poste'}
+        </button>
+        , sans rien écrire
+      </p>
+      ) : (
       <div className="relative flex items-center gap-3 mt-6 text-xs text-[var(--k-text-muted)]">
         <span className="w-10 h-px bg-[var(--k-hairline)]" />
         ou
@@ -177,18 +234,25 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         — sans rien taper
         <span className="w-10 h-px bg-[var(--k-hairline)]" />
       </div>
+      )}
 
       {history.length > 0 && (
         <div className="relative w-full max-w-[640px] mt-8">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mb-2">Reprendre une recherche</div>
+          {isV3
+            ? <div className="mb-1 text-sm font-medium text-[var(--k-text-2)]">Reprendre une recherche</div>
+            : <div className="font-mono text-2xs uppercase tracking-wider text-[var(--k-text-muted)] mb-2">Reprendre une recherche</div>}
           {history.slice(0, 3).map(entry => (
             <button key={entry.id} type="button" onClick={() => onResumeHistory(entry)}
-              className="flex items-center gap-2.5 w-full text-left rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-3 py-2 mb-1.5 hover:border-[var(--k-hairline-hover)] transition-colors">
+              className={isV3
+                ? 'flex items-center gap-2.5 w-full text-left border-t border-[var(--k-hairline)] px-1 py-2.5 transition-colors hover:bg-[var(--k-surface)] max-sm:min-h-11 first:border-t-0'
+                : 'flex items-center gap-2.5 w-full text-left rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-3 py-2 mb-1.5 hover:border-[var(--k-hairline-hover)] transition-colors'}>
               <svg viewBox="0 0 24 24" {...svgProps} className="w-3.5 h-3.5 shrink-0 text-[var(--k-text-muted)]"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l2.5 1.5" /></svg>
-              <span className="flex-1 min-w-0 truncate text-[13px] text-[var(--k-text-2)]">
+              <span className="flex-1 min-w-0 truncate text-sm text-[var(--k-text-2)]">
                 {entry.filters_snapshot?.role?.map(r => r.keywords).join(', ') || entry.filters_snapshot?.keywords || entry.job_title || 'Recherche'}
               </span>
-              <span className="font-mono text-[11px] text-[var(--k-text-muted)] shrink-0">{entry.results_count} profils</span>
+              {isV3
+                ? entry.results_count > 0 && <span className="text-sm text-[var(--k-text-muted)] shrink-0">{plural(entry.results_count, 'profil', 'profils')}</span>
+                : <span className="font-mono text-2xs text-[var(--k-text-muted)] shrink-0">{entry.results_count} profils</span>}
             </button>
           ))}
         </div>
@@ -216,7 +280,11 @@ export function chipsFromUpdate(u: Partial<LinkedInFiltersState>): PlanChip[] {
   return chips;
 }
 
-interface SearchPlanProps { query: string; stage: PlanStage; chips: PlanChip[] }
+interface SearchPlanProps {
+  query: string; stage: PlanStage; chips: PlanChip[];
+  /** Faux pour une recherche hors mission : pas de brief à analyser. */
+  withBrief?: boolean;
+}
 
 const StepIcon: React.FC<{ state: 'wait' | 'active' | 'done' }> = ({ state }) => (
   <span className={cn(
@@ -229,14 +297,14 @@ const StepIcon: React.FC<{ state: 'wait' | 'active' | 'done' }> = ({ state }) =>
   </span>
 );
 
-export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) => {
+export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips, withBrief = true }) => {
   const steps: { title: string; state: 'wait' | 'active' | 'done'; meta?: string }[] = [
-    { title: 'Analyse de la demande + brief mission', state: 'done' },
-    { title: 'Extraction des filtres', state: stage === 'analyze' ? 'active' : 'done', meta: stage !== 'analyze' ? `${chips.length} filtres — éditables juste après` : undefined },
+    { title: withBrief ? 'Analyse de la demande + brief mission' : 'Analyse de la demande', state: 'done' },
+    { title: 'Extraction des filtres', state: stage === 'analyze' ? 'active' : 'done', meta: stage !== 'analyze' ? `${chips.length} filtres, modifiables juste après` : undefined },
     { title: 'Recherche des profils', state: stage === 'search' ? 'active' : 'wait' },
   ];
   return (
-    <div className="flex-1 px-4 py-6 min-h-[420px]">
+    <div className="flex-1 px-4 py-6 min-h-[420px] relative">
       <div className="max-w-[720px] mx-auto">
         <div className="flex items-center gap-2.5 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-3 py-2.5">
           <AiBurst className="w-[15px] h-[15px] shrink-0 text-[var(--k-accent)]" />
@@ -251,10 +319,10 @@ export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) =
             <div key={i} className={cn('flex items-start gap-2.5 px-1 py-1.5 transition-opacity duration-200', s.state === 'wait' && 'opacity-45')}>
               <StepIcon state={s.state} />
               <div className="flex-1 min-w-0">
-                <span className={cn('text-[13.5px] font-medium', s.state === 'done' ? 'text-[var(--k-text)]' : 'text-[var(--k-text-2)]', s.state === 'active' && 'konekt-shimmer-text')}>
+                <span className={cn('text-sm font-medium', s.state === 'done' ? 'text-[var(--k-text)]' : 'text-[var(--k-text-2)]', s.state === 'active' && 'konekt-shimmer-text')}>
                   {s.title}
                 </span>
-                {s.meta && <span className="ml-2 font-mono text-[11px] text-[var(--k-text-muted)]">{s.meta}</span>}
+                {s.meta && <span className="ml-2 font-mono text-2xs text-[var(--k-text-muted)]">{s.meta}</span>}
                 {i === 1 && chips.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {chips.map((c, k) => (
@@ -264,7 +332,7 @@ export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) =
                         style={{ animationDelay: `${Math.min(k, 8) * 50}ms`, animationFillMode: 'backwards' }}
                       >
                         {c.must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)]" />}
-                        <span className="font-mono text-[9px] uppercase tracking-wide text-[var(--k-text-muted)]">{c.field}</span>
+                        <span className="text-2xs text-muted-foreground">{c.field}</span>
                         {c.label}
                       </span>
                     ))}
@@ -468,6 +536,11 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
   return chips;
 }
 
+/** Nombre de pilules de filtres (bouton « Filtres (N) » de la nouvelle page mission). */
+export function countFilterChips(f: LinkedInFiltersState): number {
+  return buildChips(f).length;
+}
+
 function advancedCount(f: LinkedInFiltersState): number {
   return f.function.length + f.degree.length + f.groups.length
     + f.network_distance.length + f.past_company.length + f.past_job_title.length
@@ -485,11 +558,18 @@ interface FilterChipBarProps {
   onFollowUp: (phrase: string) => Promise<void>;
   accountId: string | null;
   searchSource: 'linkedin' | 'database';
+  /**
+   * Nouvelle page mission : pilules et « + Filtre » seulement. L'affinage,
+   * la fenêtre de filtres, le total et « Relancer » vivent au-dessus du tableau.
+   */
+  variant?: 'default' | 'mission-v3';
 }
 
 export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   filters, onFiltersEdit, total, loading, dirty, onRerun, onOpenAdvanced, onFollowUp, accountId, searchSource,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const chips = buildChips(filters);
   const advCount = advancedCount(filters);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -632,7 +712,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         try {
           item = await resolveParam(type, v);
           if (!item) { toast.error(`${noun} « ${v} » introuvable`); return; }
-        } catch { toast.error(`Résolution impossible — réessaie`); return; }
+        } catch { toast.error('Résolution impossible. Réessayez.'); return; }
         finally { setResolving(false); }
       } else {
         item = { id: v, name: v };
@@ -684,7 +764,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   const weightLabel: Record<Weight, string> = { must: 'Indispensable', should: 'Souhaité', exclude: 'Exclure' };
 
   return (
-    <div className="mb-2">
+    <div className={isV3 ? undefined : 'mb-2'}>
       {/* Barre unique : phrase d'affinage repliée + pilules + ajout + compteur */}
       <div ref={barRef} className="relative flex flex-wrap items-center gap-1.5">
         {fuOpen && (
@@ -698,8 +778,8 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 if (e.key === 'Enter') { e.preventDefault(); submitFollowUp(); }
                 if (e.key === 'Escape') { setFuOpen(false); setFuValue(''); }
               }}
-              placeholder="Affiner en une phrase — ex. « ajoute anglais courant, retire Lyon » (⏎ · esc)"
-              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px] text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)]"
+              placeholder="Affiner en une phrase, par exemple « ajoutez anglais courant, retirez Lyon » (Entrée pour valider)"
+              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)]"
             />
             {fuLoading
               ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--k-text-muted)]" />
@@ -710,31 +790,49 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
           const displayVals = chip.tokens.map(t => t.state === 'exclude' ? `⌀ ${t.label}` : t.label);
           return (
           <span key={chip.key} className={cn(
-            'relative inline-flex items-stretch rounded-lg border bg-[var(--k-surface)] overflow-visible text-xs font-medium transition-colors',
-            chip.weight === 'must' ? 'border-[color-mix(in_srgb,var(--k-accent)_35%,var(--k-hairline))]' : 'border-[var(--k-hairline)] hover:border-[var(--k-hairline-hover)]',
+            'relative inline-flex items-stretch overflow-visible font-medium transition-colors',
+            isV3
+              // Nouvelle page : pilule sans cadre, sur fond neutre ; texte de 14 px.
+              ? 'rounded-lg bg-muted/60 text-sm'
+              : cn(
+                'rounded-lg border bg-[var(--k-surface)] text-xs',
+                chip.weight === 'must' ? 'border-[color-mix(in_srgb,var(--k-accent)_35%,var(--k-hairline))]' : 'border-[var(--k-hairline)] hover:border-[var(--k-hairline-hover)]',
+              ),
           )}>
             <button
               type="button"
               data-chip-seg
               onClick={() => chip.canCycle && cycleWeight(chip.key)}
-              title={chip.canCycle ? `${weightLabel[chip.weight]} — clic pour basculer` : chip.field}
+              title={chip.canCycle ? `${weightLabel[chip.weight]}, cliquez pour basculer` : chip.field}
               className={cn(
                 'inline-flex items-center gap-1.5 px-2 py-1',
-                chip.op && 'border-r border-[var(--k-hairline)]',
-                chip.weight === 'must' ? 'text-[var(--k-text)]' : chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-[var(--k-text-muted)]',
+                isV3 && 'rounded-l-lg py-1.5 max-sm:min-h-11',
+                !isV3 && chip.op && 'border-r border-[var(--k-hairline)]',
+                isV3
+                  ? chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-foreground-secondary'
+                  : chip.weight === 'must' ? 'text-[var(--k-text)]' : chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-[var(--k-text-muted)]',
                 chip.canCycle ? 'cursor-pointer hover:bg-[var(--k-surface-2)]' : 'cursor-default',
               )}
             >
-              {chip.weight === 'must' && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)]" />}
+              {chip.weight === 'must' && <span className={cn('w-[5px] h-[5px] rounded-full', isV3 ? 'bg-foreground' : 'bg-[var(--k-accent)]')} />}
               {FIELD_ICONS[chip.field]}
               {chip.field}
             </button>
-            {chip.op && <span className="inline-flex items-center px-1.5 py-1 text-[11.5px] font-normal text-[var(--k-text-muted)] border-r border-[var(--k-hairline)]">{chip.op}</span>}
+            {/* « booléen » est du jargon : sur la nouvelle page, « Mots-clés » se lit seul. */}
+            {chip.op && !(isV3 && chip.op === 'booléen') && (
+              <span className={cn(
+                'inline-flex items-center px-1.5 py-1 font-normal text-[var(--k-text-muted)]',
+                isV3 ? 'text-sm' : 'text-2xs border-r border-[var(--k-hairline)]',
+              )}>{chip.op}</span>
+            )}
             <button
               type="button"
               data-chip-seg
               onClick={() => setOpenKey(openKey === chip.key ? null : chip.key)}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] max-w-[220px]"
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-1 text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] max-w-[220px]',
+                isV3 && 'py-1.5 max-sm:min-h-11',
+              )}
             >
               <span className="truncate">
                 {displayVals.length > 2 ? `${displayVals.slice(0, 2).join(', ')} +${displayVals.length - 2}` : displayVals.join(', ')}
@@ -747,8 +845,11 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 type="button"
                 data-chip-seg
                 onClick={() => setOpenKey(openKey === `${chip.key}@scope` ? null : `${chip.key}@scope`)}
-                title="Portée — poste/entreprise actuel(le), passé(e)…"
-                className="inline-flex items-center gap-0.5 px-1.5 py-1 border-l border-[var(--k-hairline)] text-[11px] font-normal text-[var(--k-text-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text-2)]"
+                title="Portée : poste ou entreprise actuel(le), passé(e)…"
+                className={cn(
+                  'inline-flex items-center gap-0.5 px-1.5 py-1 font-normal text-[var(--k-text-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text-2)]',
+                  isV3 ? 'text-sm py-1.5 max-sm:min-h-11' : 'border-l border-[var(--k-hairline)] text-2xs',
+                )}
               >
                 {chip.scopeLabel}
                 <svg viewBox="0 0 24 24" {...svgProps} className="w-2.5 h-2.5"><path d="m7 10 5 5 5-5" /></svg>
@@ -758,15 +859,18 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               type="button"
               onClick={() => removeFacet(chip.key)}
               aria-label={`Retirer ${chip.field}`}
-              className="inline-flex items-center px-1.5 py-1 border-l border-[var(--k-hairline)] text-[var(--k-text-muted)] hover:text-[var(--k-text)] hover:bg-[var(--k-surface-2)]"
+              className={cn(
+                'inline-flex items-center px-1.5 py-1 text-[var(--k-text-muted)] hover:text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
+                isV3 ? 'rounded-r-lg px-2 max-sm:min-h-11 max-sm:min-w-11 max-sm:justify-center' : 'border-l border-[var(--k-hairline)]',
+              )}
             >
-              <XIcon className="w-2.5 h-2.5" />
+              <XIcon className={isV3 ? 'w-3 h-3' : 'w-2.5 h-2.5'} />
             </button>
 
             {/* Popover portée */}
             {openKey === `${chip.key}@scope` && (chip.key === 'poste' || chip.key === 'boite') && (
               <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
-                <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Portée</div>
+                <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Portée</div>
                 {(chip.key === 'poste' ? ROLE_SCOPE_OPTIONS : COMPANY_SCOPE_OPTIONS).map(opt => {
                   const current = chip.key === 'poste' ? filters.role[0]?.scope : filters.company_keywords[0]?.scope;
                   return (
@@ -774,7 +878,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                       key={opt.value}
                       type="button"
                       onClick={() => { setFacetScope(chip.key as 'poste' | 'boite', opt.value); setOpenKey(null); }}
-                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                     >
                       <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                       {current === opt.value && <span className="text-[var(--k-accent)]"><Check /></span>}
@@ -787,7 +891,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             {/* Popover valeurs */}
             {openKey === chip.key && (
               <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[240px] max-w-[310px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
-                <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">{chip.field} — valeurs</div>
+                <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">{chip.field} : valeurs</div>
                 {chip.key === 'exp' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={50} value={filters.calculated_experience_min ?? ''} placeholder="min"
@@ -818,7 +922,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                     ]).map(opt => (
                       <button key={opt.v} type="button"
                         onClick={() => onFiltersEdit(f => ({ ...f, activity_messages: opt.v }))}
-                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
+                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
                         <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                         {filters.activity_messages === opt.v && <span className="text-[var(--k-accent)]"><Check /></span>}
                       </button>
@@ -834,12 +938,12 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           {CONTACT_TIMESPANS.map(o => <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>)}
                         </select>
                       </label>
-                      <p className="mt-1.5 text-[11px] leading-snug text-[var(--k-text-muted)]">Messages LinkedIn envoyés par l'équipe.</p>
+                      <p className="mt-1.5 text-2xs leading-snug text-[var(--k-text-muted)]">Messages LinkedIn envoyés par l'équipe.</p>
                     </div>
                   </>
                 ) : chip.key === 'keywords' ? (
                   <button type="button" onClick={() => { setOpenKey(null); onOpenAdvanced(); }}
-                    className="w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
+                    className="w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
                     Éditer la requête booléenne dans le panneau avancé →
                   </button>
                 ) : (chip.key === 'seniorite' || chip.key === 'langue' || chip.key === 'taille') ? (
@@ -857,7 +961,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           role="checkbox"
                           aria-checked={checked}
                           onClick={() => toggleOption(chip.key as 'seniorite' | 'langue' | 'taille', opt.value)}
-                          className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                          className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                         >
                           <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                           {checked && <span className="text-[var(--k-accent)]"><Check /></span>}
@@ -868,7 +972,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 ) : (
                   <>
                     {chip.tokens.map(t => (
-                      <div key={t.label} className="group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)]">
+                      <div key={t.label} className="group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)]">
                         {t.state === 'must' && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" />}
                         <span className={cn('flex-1 min-w-0 truncate', t.state === 'exclude' && 'line-through text-[var(--k-bad,#e06666)]')}>{t.label}</span>
                         {t.mutable && t.state !== 'plain' && chip.key !== 'ecole' && (
@@ -901,7 +1005,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                     ))}
                     <input
                       autoFocus
-                      placeholder={resolving ? 'Résolution…' : 'Ajouter — ⏎'}
+                      placeholder={resolving ? 'Résolution…' : 'Ajouter puis Entrée'}
                       disabled={resolving}
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
@@ -952,16 +1056,18 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             type="button"
             data-chip-seg
             onClick={() => { setOpenKey(openKey === '__add' ? null : '__add'); setAddField(null); }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+            className={isV3
+              ? 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-foreground-secondary transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
+              : 'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors'}
           >
-            <svg viewBox="0 0 24 24" {...svgProps} className="w-3 h-3"><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
+            <svg viewBox="0 0 24 24" {...svgProps} className={isV3 ? 'w-3.5 h-3.5' : 'w-3 h-3'}><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
             Filtre
           </button>
           {openKey === '__add' && (
             <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
               {addField === null ? (
                 <>
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Ajouter un filtre</div>
+                  <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Ajouter un filtre</div>
                   {ADDABLE_FIELDS.filter(fd => {
                     // Aligné sur ce que le payload honore réellement par licence :
                     // contact = recruiting_activity (Recruiter only), ancienneté =
@@ -983,10 +1089,10 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         }
                         setAddField(fd.key as FacetKey);
                       }}
-                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                     >
                       <span className="flex-1">{fd.label}</span>
-                      {fd.hint && <span className="font-mono text-[10px] text-[var(--k-text-muted)]">{fd.hint}</span>}
+                      {fd.hint && <span className="font-mono text-2xs text-[var(--k-text-muted)]">{fd.hint}</span>}
                     </button>
                   ))}
                 </>
@@ -1014,7 +1120,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 </div>
               ) : (addField === 'seniorite' || addField === 'langue' || addField === 'taille') ? (
                 <>
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">
+                  <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">
                     {addField === 'seniorite' ? 'Séniorité' : addField === 'taille' ? "Taille d'entreprise" : 'Langue du profil'}
                   </div>
                   {(addField === 'seniorite' ? SENIORITY_LEVELS : addField === 'taille' ? COMPANY_HEADCOUNT_OPTIONS : PROFILE_LANGUAGES).map(opt => {
@@ -1030,7 +1136,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         role="checkbox"
                         aria-checked={checked}
                         onClick={() => toggleOption(addField as 'seniorite' | 'langue' | 'taille', opt.value)}
-                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                       >
                         <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                         {checked && <span className="text-[var(--k-accent)]"><Check /></span>}
@@ -1040,12 +1146,12 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 </>
               ) : (
                 <>
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">
+                  <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">
                     {ADDABLE_FIELDS.find(fd => fd.key === addField)?.label}
                   </div>
                   <input
                     autoFocus
-                    placeholder={resolving ? 'Résolution…' : 'Valeur — ⏎'}
+                    placeholder={resolving ? 'Résolution…' : 'Valeur puis Entrée'}
                     disabled={resolving}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
@@ -1063,10 +1169,11 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         </span>
 
         {/* Phrase d'affinage — repliée en bouton (dé-densification) */}
+        {!isV3 && (<>
         <button
           type="button"
           onClick={() => setFuOpen(o => !o)}
-          title="Affiner en une phrase — l'IA la traduit en chips visibles"
+          title="Affiner en une phrase : l'IA la traduit en filtres visibles"
           className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
         >
           <AiBurst className="w-3 h-3" />
@@ -1086,7 +1193,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         <div className="ml-auto flex items-center gap-2.5">
           {total != null && (
             <span className="inline-flex items-baseline gap-1.5">
-              <span className="font-mono text-[15px] font-medium text-[var(--k-text)] [font-feature-settings:'tnum'_1]">{total.toLocaleString('fr-FR')}</span>
+              <span className="font-mono text-base font-medium text-[var(--k-text)] [font-feature-settings:'tnum'_1]">{total.toLocaleString('fr-FR')}</span>
               <span className="text-xs text-[var(--k-text-muted)]">candidats</span>
             </span>
           )}
@@ -1095,7 +1202,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             onClick={() => dirty && !loading && onRerun()}
             disabled={loading}
             className={cn(
-              'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-150',
+              'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-150',
               dirty
                 ? 'bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border border-transparent'
                 : 'bg-[var(--k-surface-2)] text-[var(--k-text-muted)] border border-[var(--k-hairline)] cursor-default',
@@ -1105,6 +1212,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             {loading ? 'Recherche…' : dirty ? 'Relancer la recherche' : 'À jour'}
           </button>
         </div>
+        </>)}
       </div>
     </div>
   );

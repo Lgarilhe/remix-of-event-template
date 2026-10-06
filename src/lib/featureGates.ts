@@ -103,13 +103,3 @@ export function getOrgTypeLabel(orgType: OrgType | null | undefined): string {
     default: return 'Organisation';
   }
 }
-
-/** Emoji for org type */
-export function getOrgTypeEmoji(orgType: OrgType | null | undefined): string {
-  switch (orgType) {
-    case 'enterprise': return '🏢';
-    case 'agency': return '🏛️';
-    case 'freelance': return '👤';
-    default: return '🏢';
-  }
-}

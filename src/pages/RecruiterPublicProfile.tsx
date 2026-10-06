@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Linkedin, ArrowLeft, Briefcase, Award, Star, Clock, TrendingUp, Play, Quote } from 'lucide-react';
+import { Award, Briefcase, Clock, Linkedin, Quote, Star, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { SEOHead } from '@/components/SEOHead';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { StatTile } from '@/components/layout';
+import { PublicHeader } from '@/components/public/PublicHeader';
+import { PublicDeadEnd } from '@/components/public/PublicDeadEnd';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 
 interface Testimonial {
   client_name: string;
@@ -30,51 +35,88 @@ interface RecruiterProfile {
   testimonials: Testimonial[] | null;
 }
 
+type LoadState = 'loading' | 'ready' | 'missing' | 'error';
+
+const percent = (rate: number) => `${Math.round(rate * 100)} %`;
+
 const RecruiterPublicProfile: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [profile, setProfile] = useState<RecruiterProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
+  const [status, setStatus] = useState<LoadState>('loading');
+  const [retrying, setRetrying] = useState(false);
 
-  useEffect(() => {
-    if (!slug) { setNotFound(true); setLoading(false); return; }
-
-    Promise.resolve(supabase
-      .from('profiles')
-      .select('display_name, recruiter_bio, recruiter_headline, linkedin_url, linkedin_skills, years_experience, job_title, specializations, rating, placements_count, avg_time_to_fill_days, first_round_rate, mid_round_rate, intro_video_url, testimonials')
-      .eq('public_slug', slug)
-      .maybeSingle())
-      .then(({ data, error }) => {
-        if (error || !data || !data.recruiter_bio) {
-          setNotFound(true);
-        } else {
-          setProfile(data as unknown as RecruiterProfile);
-        }
-        setLoading(false);
-      })
-      .catch((e: unknown) => console.error('[RecruiterPublicProfile] Load error:', e));
+  const loadProfile = useCallback(async () => {
+    if (!slug) {
+      setStatus('missing');
+      return;
+    }
+    try {
+      // Colonnes publiques uniquement : le rôle anonyme n'a le droit de lire qu'elles.
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('display_name, recruiter_bio, recruiter_headline, linkedin_url, linkedin_skills, years_experience, job_title, specializations, rating, placements_count, avg_time_to_fill_days, first_round_rate, mid_round_rate, intro_video_url, testimonials')
+        .eq('public_slug', slug)
+        .maybeSingle();
+      if (error) {
+        console.error('[RecruiterPublicProfile] Load error:', error);
+        setStatus('error');
+        return;
+      }
+      if (!data || !data.recruiter_bio) {
+        setStatus('missing');
+        return;
+      }
+      setProfile(data as unknown as RecruiterProfile);
+      setStatus('ready');
+    } catch (e: unknown) {
+      console.error('[RecruiterPublicProfile] Load error:', e);
+      setStatus('error');
+    }
   }, [slug]);
 
-  if (loading) {
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  const retry = () => {
+    setRetrying(true);
+    void loadProfile().finally(() => setRetrying(false));
+  };
+
+  if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Spinner size="lg" label="Chargement du profil" />
       </div>
     );
   }
 
-  if (notFound || !profile) {
+  if (status === 'error') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold text-foreground uppercase tracking-wider">Profil introuvable</h1>
-          <p className="text-muted-foreground text-sm">Ce profil n'existe pas ou n'est plus disponible.</p>
-          <Link to="/" className="text-sm underline text-foreground/60 hover:text-foreground">
-            Retour à l'accueil
-          </Link>
-        </div>
-      </div>
+      <PublicDeadEnd
+        kind="network"
+        title="Impossible d'afficher ce profil"
+        description="La connexion au service a échoué. Vérifiez votre connexion internet, puis réessayez."
+        onRetry={retry}
+        retrying={retrying}
+        seo={{ title: 'Profil de recruteur', description: 'Profil public de recruteur sur Konekt.' }}
+      />
+    );
+  }
+
+  if (status === 'missing' || !profile) {
+    return (
+      <PublicDeadEnd
+        kind="missing"
+        title="Profil introuvable"
+        description="Ce profil n'existe pas ou n'est plus public."
+        action={
+          <Button asChild variant="outline" className="max-md:h-11">
+            <Link to={withPreviewAccessToken('/')}>Aller à l'accueil de Konekt</Link>
+          </Button>
+        }
+        seo={{ title: 'Profil introuvable', description: 'Profil public de recruteur sur Konekt.' }}
+      />
     );
   }
 
@@ -82,217 +124,155 @@ const RecruiterPublicProfile: React.FC = () => {
   const initials = name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
   const allSkills = [...(profile.specializations || []), ...(profile.linkedin_skills || [])].filter((v, i, a) => a.indexOf(v) === i);
   const testimonials = (profile.testimonials || []) as Testimonial[];
-  const hasStats = profile.placements_count || profile.rating || profile.avg_time_to_fill_days || profile.first_round_rate;
+  const stats = [
+    profile.placements_count != null && profile.placements_count > 0 && { label: 'Placements', value: String(profile.placements_count), icon: Award },
+    profile.avg_time_to_fill_days != null && profile.avg_time_to_fill_days > 0 && { label: 'Délai moyen de recrutement', value: `${profile.avg_time_to_fill_days} jours`, icon: Clock },
+    profile.first_round_rate != null && profile.first_round_rate > 0 && { label: 'Passage au 1er tour', value: percent(profile.first_round_rate), icon: TrendingUp },
+    profile.mid_round_rate != null && profile.mid_round_rate > 0 && { label: 'Passage aux tours intermédiaires', value: percent(profile.mid_round_rate), icon: Star },
+  ].filter(Boolean) as { label: string; value: string; icon: React.ElementType }[];
 
   return (
     <>
       <SEOHead
-        title={`${name} — Recruteur | Konekt`}
+        title={`${name}, recruteur`}
         description={profile.recruiter_bio?.slice(0, 160) || `Profil de ${name}, recruteur professionnel.`}
       />
-      <div className="min-h-screen bg-background">
-        {/* Top bar */}
-        <div className="border-b-2 border-border px-4 py-3">
-          <div className="max-w-2xl mx-auto flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              Konekt
-            </Link>
-            {profile.linkedin_url && (
-              <a href={profile.linkedin_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
-                <Linkedin className="w-3.5 h-3.5" /> LinkedIn
-              </a>
-            )}
-          </div>
-        </div>
+      <div className="flex min-h-screen flex-col bg-background">
+        <PublicHeader
+          width="narrow"
+          actions={
+            profile.linkedin_url && (
+              <Button asChild variant="ghost" size="sm" className="max-md:h-11">
+                <a href={profile.linkedin_url} target="_blank" rel="noopener noreferrer">
+                  <Linkedin aria-hidden="true" />
+                  LinkedIn
+                  <span className="sr-only">(s'ouvre dans un nouvel onglet)</span>
+                </a>
+              </Button>
+            )
+          }
+        />
 
-        {/* Profile */}
-        <div className="max-w-2xl mx-auto px-4 py-12 space-y-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="border border-border p-6 md:p-8 space-y-6"
-            style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
-          >
-            {/* Header */}
-            <div className="flex items-start gap-4">
-              <div
-                className="w-16 h-16 flex items-center justify-center text-xl font-bold text-white border border-border shrink-0"
-                style={{ background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
+          <article className="space-y-8 rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="recruteur-nom">
+            {/* Identité */}
+            <header className="flex items-start gap-4">
+              <span
+                className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-muted text-lg font-semibold text-foreground-secondary"
+                aria-hidden="true"
               >
                 {initials}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-xl md:text-2xl font-bold text-foreground uppercase tracking-tight">{name}</h1>
+              </span>
+              <div className="min-w-0 flex-1">
+                <h1 id="recruteur-nom" className="text-2xl font-semibold tracking-tight text-foreground">{name}</h1>
                 {profile.recruiter_headline && (
-                  <p className="text-sm text-muted-foreground mt-0.5">{profile.recruiter_headline}</p>
+                  <p className="mt-0.5 text-sm text-foreground-secondary">{profile.recruiter_headline}</p>
                 )}
-                <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
-                  {profile.years_experience && profile.years_experience > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Briefcase className="w-3 h-3" /> {profile.years_experience} ans
-                    </span>
+                <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {profile.years_experience != null && profile.years_experience > 0 && (
+                    <li className="flex items-center gap-1">
+                      <Briefcase className="h-3.5 w-3.5" aria-hidden="true" /> {profile.years_experience} ans d'expérience
+                    </li>
                   )}
                   {profile.job_title && (
-                    <span className="flex items-center gap-1">
-                      <Award className="w-3 h-3" /> {profile.job_title}
-                    </span>
+                    <li className="flex items-center gap-1">
+                      <Award className="h-3.5 w-3.5" aria-hidden="true" /> {profile.job_title}
+                    </li>
                   )}
                   {profile.rating != null && profile.rating > 0 && (
-                    <span className="flex items-center gap-1 text-foreground font-bold">
-                      <Star className="w-3 h-3" /> {profile.rating.toFixed(1)}/5
-                    </span>
+                    <li className="flex items-center gap-1 font-semibold text-foreground">
+                      <Star className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="sr-only">Note moyenne : </span>
+                      {profile.rating.toLocaleString('fr-FR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}/5
+                    </li>
                   )}
-                </div>
+                </ul>
               </div>
-            </div>
+            </header>
 
-            {/* Intro video */}
+            {/* Vidéo de présentation : pas de lecture automatique, image entière */}
             {profile.intro_video_url && (
-              <div>
-                {showVideo ? (
-                  <div className="border border-border aspect-video bg-accent/50">
-                    <video
-                      src={profile.intro_video_url}
-                      controls
-                      autoPlay
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowVideo(true)}
-                    className="w-full border border-border p-6 flex items-center justify-center gap-3 hover:bg-accent/50 transition-colors group"
-                  >
-                    <div className="w-12 h-12 border border-border flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                      <Play className="w-5 h-5 text-foreground ml-0.5" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-bold uppercase tracking-wider text-foreground">Vidéo d'introduction</p>
-                      <p className="text-xs text-muted-foreground">Découvrez {name} en quelques minutes</p>
-                    </div>
-                  </button>
-                )}
-              </div>
+              <section aria-labelledby="recruteur-video" className="space-y-2">
+                <h2 id="recruteur-video" className="text-sm font-semibold text-foreground">Vidéo de présentation</h2>
+                <div className="aspect-video overflow-hidden rounded-lg border border-border bg-muted">
+                  <video
+                    src={profile.intro_video_url}
+                    controls
+                    preload="metadata"
+                    className="h-full w-full object-contain"
+                    aria-label={`Vidéo de présentation de ${name}`}
+                  />
+                </div>
+              </section>
             )}
 
-            {/* Bio */}
-            <div className="border-l-4 border-border pl-4">
-              <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">{profile.recruiter_bio}</p>
-            </div>
+            {/* Présentation */}
+            <p className="whitespace-pre-wrap text-md leading-relaxed text-foreground-secondary">{profile.recruiter_bio}</p>
 
-            {/* Stats */}
-            {hasStats && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {profile.placements_count != null && profile.placements_count > 0 && (
-                  <StatCard
-                    value={String(profile.placements_count)}
-                    label="Placements"
-                    icon={<Award className="w-4 h-4" />}
-                  />
-                )}
-                {profile.avg_time_to_fill_days != null && profile.avg_time_to_fill_days > 0 && (
-                  <StatCard
-                    value={`${profile.avg_time_to_fill_days}j`}
-                    label="Délai moyen"
-                    icon={<Clock className="w-4 h-4" />}
-                  />
-                )}
-                {profile.first_round_rate != null && profile.first_round_rate > 0 && (
-                  <StatCard
-                    value={`${Math.round(profile.first_round_rate * 100)}%`}
-                    label="Passage 1er tour"
-                    icon={<TrendingUp className="w-4 h-4" />}
-                  />
-                )}
-                {profile.mid_round_rate != null && profile.mid_round_rate > 0 && (
-                  <StatCard
-                    value={`${Math.round(profile.mid_round_rate * 100)}%`}
-                    label="Mid-round rate"
-                    icon={<Star className="w-4 h-4" />}
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Skills */}
-            {allSkills.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Spécialisations
-                </h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {allSkills.slice(0, 20).map((skill) => (
-                    <span
-                      key={skill}
-                      className="px-2.5 py-1 text-xs font-semibold border border-border text-foreground/70"
-                    >
-                      {skill}
-                    </span>
+            {/* Chiffres */}
+            {stats.length > 0 && (
+              <section aria-labelledby="recruteur-chiffres">
+                <h2 id="recruteur-chiffres" className="sr-only">Chiffres clés</h2>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {stats.map((stat) => (
+                    <StatTile key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} className="bg-background" />
                   ))}
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* Testimonials */}
+            {/* Spécialisations */}
+            {allSkills.length > 0 && (
+              <section aria-labelledby="recruteur-specialisations" className="space-y-2">
+                <h2 id="recruteur-specialisations" className="text-sm font-semibold text-foreground">Spécialisations</h2>
+                <ul className="flex flex-wrap gap-1.5">
+                  {allSkills.slice(0, 20).map((skill) => (
+                    <li key={skill}>
+                      <Badge variant="outline">{skill}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* Témoignages */}
             {testimonials.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Témoignages clients
-                </h3>
+              <section aria-labelledby="recruteur-temoignages" className="space-y-3">
+                <h2 id="recruteur-temoignages" className="text-sm font-semibold text-foreground">Témoignages clients</h2>
                 {testimonials.map((t, i) => (
-                  <div key={i} className="border border-border p-4 space-y-2">
-                    <div className="flex items-start gap-2">
-                      <Quote className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
-                      <p className="text-sm text-foreground/80 italic leading-relaxed">{t.text}</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold uppercase tracking-wider text-foreground">{t.client_name}</p>
-                      {t.date && (
-                        <p className="text-xs text-muted-foreground">{t.date}</p>
-                      )}
-                    </div>
-                  </div>
+                  <figure key={i} className="space-y-2 rounded-lg border border-border bg-background p-4">
+                    <blockquote className="flex items-start gap-2">
+                      <Quote className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <p className="text-sm leading-relaxed text-foreground-secondary">{t.text}</p>
+                    </blockquote>
+                    <figcaption className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-semibold text-foreground">{t.client_name}</span>
+                      {t.date && <span className="text-muted-foreground">{t.date}</span>}
+                    </figcaption>
+                  </figure>
                 ))}
-              </div>
+              </section>
             )}
 
-            {/* CTA */}
+            {/* Contact */}
             {profile.linkedin_url && (
-              <div className="pt-2 border-t-2 border-border">
-                <a
-                  href={profile.linkedin_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                  style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
-                >
-                  <Linkedin className="w-4 h-4" />
-                  Contacter sur LinkedIn
-                </a>
+              <div className="border-t border-border pt-6">
+                <Button asChild variant="primary" className="max-md:h-11 max-sm:w-full">
+                  <a href={profile.linkedin_url} target="_blank" rel="noopener noreferrer">
+                    <Linkedin aria-hidden="true" />
+                    Contacter sur LinkedIn
+                    <span className="sr-only">(s'ouvre dans un nouvel onglet)</span>
+                  </a>
+                </Button>
               </div>
             )}
-          </motion.div>
+          </article>
 
-          {/* Footer */}
-          <p className="text-center text-xs text-muted-foreground/50 mt-8">
-            Profil généré par Konekt
-          </p>
-        </div>
+          <p className="mt-8 text-center text-xs text-muted-foreground">Profil publié avec Konekt</p>
+        </main>
       </div>
     </>
   );
 };
-
-/** Stat card sub-component */
-const StatCard = ({ value, label, icon }: { value: string; label: string; icon: React.ReactNode }) => (
-  <div className="border border-border p-3 text-center space-y-1">
-    <div className="flex items-center justify-center text-muted-foreground">{icon}</div>
-    <p className="text-lg font-bold text-foreground">{value}</p>
-    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-  </div>
-);
 
 export default RecruiterPublicProfile;

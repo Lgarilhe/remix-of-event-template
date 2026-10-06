@@ -1,27 +1,20 @@
 /**
- * ProfileDetailedTab — vue détaillée du profil candidat (Expérience +
- * Formation + Compétences + Langues + summary).
- *
- * Refonte 2026-05-06 : avant on réutilisait les ProfileExperienceList /
- * ProfileEducationList qui sont OK pour un cards préview compact en
- * sourcing, mais visuellement étriqués dans un tab plein écran. Ici on
- * fait une version "full presence" avec :
- *   - Logos 40px (vs 24px)
- *   - Titres 15px font-display
- *   - Spacing aéré (gap-4, space-y-5)
- *   - Description du poste affichée si dispo
- *   - Localisation, lieu de travail
- *   - Durée prominente avec puce verte si poste actuel
- *   - Séparateurs visuels nets entre sections
+ * ProfileDetailedTab : vue détaillée du profil candidat (à propos,
+ * expérience, formation, compétences, langues). Design simplifié
+ * (docs/design/06-simplicite.md) : des sections séparées par un filet, sans
+ * cadre ni pastille de couleur ; logos de 40 px, titres de 15 px, la
+ * description du poste quand elle existe.
  */
 
 import React, { useState } from 'react';
 import {
-  Briefcase, GraduationCap, Award, Languages, Sparkles, Building2,
+  Briefcase, GraduationCap, Building2,
   MapPin, Calendar, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/layout/EmptyState';
 
 interface Props {
   /** Le linkedin_profile_data raw (JSONB) du candidat. */
@@ -40,22 +33,21 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
 
   if (!summary && workExperience.length === 0 && education.length === 0 && skills.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-30" />
-        <p className="text-sm font-semibold">Profil LinkedIn non disponible</p>
-        <p className="text-xs mt-1">
-          Ce candidat n'a pas encore de données LinkedIn enrichies.
-        </p>
-      </div>
+      <EmptyState
+        className="border-0 py-8"
+        icon={Briefcase}
+        title="Profil LinkedIn non disponible"
+        description="Ce candidat n'a pas encore de données LinkedIn enrichies."
+      />
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       {/* ═══ À PROPOS ═══ */}
       {summary && (
-        <Section title="À propos" icon={Sparkles}>
-          <p className="text-[13.5px] leading-relaxed text-foreground/90 whitespace-pre-line">
+        <Section title="À propos" first>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
             {summary}
           </p>
         </Section>
@@ -65,8 +57,8 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
       {workExperience.length > 0 && (
         <Section
           title="Expérience"
-          subtitle={`${workExperience.length} position${workExperience.length > 1 ? 's' : ''}`}
-          icon={Briefcase}
+          subtitle={`${workExperience.length} poste${workExperience.length > 1 ? 's' : ''}`}
+          first={!summary}
         >
           <ExperienceList experiences={workExperience} />
         </Section>
@@ -77,52 +69,31 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
         <Section
           title="Formation"
           subtitle={`${education.length} école${education.length > 1 ? 's' : ''}`}
-          icon={GraduationCap}
         >
           <EducationList education={education} />
         </Section>
       )}
 
-      {/* ═══ COMPÉTENCES + LANGUES (2-cols sur lg) ═══ */}
-      {(skills.length > 0 || languages.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
-          {skills.length > 0 && (
-            <Section
-              title="Compétences"
-              subtitle={`${skills.length} skill${skills.length > 1 ? 's' : ''}`}
-              icon={Award}
-            >
-              <div className="flex flex-wrap gap-1.5">
-                {skills.map((skill, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center text-[12px] px-2.5 py-1 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </Section>
-          )}
+      {/* ═══ COMPÉTENCES ═══ */}
+      {skills.length > 0 && (
+        <Section title="Compétences" subtitle={`${skills.length} compétence${skills.length > 1 ? 's' : ''}`}>
+          <div className="flex flex-wrap gap-1.5">
+            {skills.map((skill, i) => (
+              <Badge key={i} variant="muted">{skill}</Badge>
+            ))}
+          </div>
+        </Section>
+      )}
 
-          {languages.length > 0 && (
-            <Section
-              title="Langues"
-              icon={Languages}
-            >
-              <div className="flex flex-wrap gap-1.5">
-                {languages.map((lang, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center text-[12px] px-2.5 py-1 rounded-full bg-info/10 text-info border border-info/30 font-medium"
-                  >
-                    {lang}
-                  </span>
-                ))}
-              </div>
-            </Section>
-          )}
-        </div>
+      {/* ═══ LANGUES ═══ */}
+      {languages.length > 0 && (
+        <Section title="Langues">
+          <div className="flex flex-wrap gap-1.5">
+            {languages.map((lang, i) => (
+              <Badge key={i} variant="muted">{lang}</Badge>
+            ))}
+          </div>
+        </Section>
       )}
     </div>
   );
@@ -132,33 +103,21 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
 // Sub-components — version "rich" avec logos plus gros + plus d'air
 // ═══════════════════════════════════════════════════════════════════
 
+/** Une section : un filet au-dessus (sauf la première), un titre, une ligne d'aide au besoin. */
 function Section({
-  title, subtitle, icon: Icon, children,
+  title, subtitle, first = false, children,
 }: {
   title: string;
   subtitle?: string;
-  icon: React.ComponentType<{ className?: string }>;
+  first?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/15">
-        <div className="h-8 w-8 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-          <Icon className="w-4 h-4 text-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
-            {title}
-          </h3>
-          {subtitle && (
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
-              {subtitle}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
+    <section className={first ? undefined : 'border-t border-border pt-6'}>
+      <h3 className="text-md font-semibold text-foreground">{title}</h3>
+      {subtitle && <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>}
+      <div className="mt-4">{children}</div>
+    </section>
   );
 }
 
@@ -199,22 +158,16 @@ function ExperienceList({ experiences }: { experiences: RawExperience[] }) {
         <ExperienceItem key={i} exp={exp} />
       ))}
       {hidden > 0 && !showAll && (
-        <button
-          onClick={() => setShowAll(true)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground/30 py-2 rounded-lg transition-colors"
-        >
-          <ChevronDown className="w-3.5 h-3.5" />
-          Voir {hidden} expérience{hidden > 1 ? 's' : ''} de plus
-        </button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+          <ChevronDown aria-hidden="true" />
+          Voir {hidden} poste{hidden > 1 ? 's' : ''} de plus
+        </Button>
       )}
       {showAll && sorted.length > 3 && (
-        <button
-          onClick={() => setShowAll(false)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground py-1.5 transition-colors"
-        >
-          <ChevronUp className="w-3.5 h-3.5" />
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+          <ChevronUp aria-hidden="true" />
           Réduire
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -222,7 +175,7 @@ function ExperienceList({ experiences }: { experiences: RawExperience[] }) {
 
 function ExperienceItem({ exp }: { exp: RawExperience }) {
   const role = exp.role || exp.position || exp.title || 'Poste';
-  const company = exp.company || '—';
+  const company = exp.company;
   const logo = exp.company_logo || exp.logo_url || exp.logo || exp.company_picture_url;
   const isCurrent = exp.current || !exp.end;
   const period = formatPeriod(exp.start, exp.end, isCurrent);
@@ -235,44 +188,41 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
         <img
           src={logo}
           alt=""
-          className="w-10 h-10 rounded-lg object-contain bg-card border border-border shrink-0"
+          className="h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
         />
       ) : (
-        <div className="h-10 w-10 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-          <Building2 className="w-4 h-4 text-foreground" />
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+          <Building2 className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
 
       <div className="flex-1 min-w-0">
-        {/* Titre du poste — 14px font-display */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="font-display font-bold text-[14px] text-foreground tracking-tight leading-tight">
+        {/* Titre du poste */}
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="text-md font-semibold leading-tight text-foreground">
             {role}
           </h4>
-          {isCurrent && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/30">
-              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-              Actuel
-            </span>
-          )}
+          {isCurrent && <Badge variant="muted">En poste</Badge>}
         </div>
 
         {/* Entreprise + lieu + période */}
-        <p className="text-[12.5px] text-foreground/70 mt-0.5 font-medium">
-          {company}
-        </p>
+        {company && (
+          <p className="mt-0.5 text-sm text-foreground-secondary">
+            {company}
+          </p>
+        )}
 
-        <div className="flex items-center gap-3 mt-1 text-[11.5px] text-muted-foreground flex-wrap">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           {period && (
             <span className="inline-flex items-center gap-1 tabular-nums">
-              <Calendar className="w-3 h-3" />
+              <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
               {period}
-              {tenure && <span className="opacity-70">· {tenure}</span>}
+              {tenure && <span>· {tenure}</span>}
             </span>
           )}
           {exp.location && (
             <span className="inline-flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
+              <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
               {exp.location}
             </span>
           )}
@@ -280,7 +230,7 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
 
         {/* Description du poste — affichée si présente, line-clamp 4 */}
         {exp.description && (
-          <p className="text-[12px] leading-relaxed text-foreground/75 mt-2 whitespace-pre-line line-clamp-4">
+          <p className="mt-2 line-clamp-4 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
             {exp.description}
           </p>
         )}
@@ -320,22 +270,16 @@ function EducationList({ education }: { education: RawEducation[] }) {
         <EducationItem key={i} edu={edu} />
       ))}
       {hidden > 0 && !showAll && (
-        <button
-          onClick={() => setShowAll(true)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground/30 py-2 rounded-lg transition-colors"
-        >
-          <ChevronDown className="w-3.5 h-3.5" />
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+          <ChevronDown aria-hidden="true" />
           Voir {hidden} formation{hidden > 1 ? 's' : ''} de plus
-        </button>
+        </Button>
       )}
       {showAll && sorted.length > 2 && (
-        <button
-          onClick={() => setShowAll(false)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground py-1.5 transition-colors"
-        >
-          <ChevronUp className="w-3.5 h-3.5" />
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+          <ChevronUp aria-hidden="true" />
           Réduire
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -363,31 +307,31 @@ function EducationItem({ edu }: { edu: RawEducation }) {
         <img
           src={logo}
           alt=""
-          className="w-10 h-10 rounded-lg object-contain bg-card border border-border shrink-0"
+          className="h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
         />
       ) : (
-        <div className="h-10 w-10 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-          <GraduationCap className="w-4 h-4 text-foreground" />
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+          <GraduationCap className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
 
       <div className="flex-1 min-w-0">
-        <h4 className="font-display font-bold text-[14px] text-foreground tracking-tight leading-tight">
+        <h4 className="text-md font-semibold leading-tight text-foreground">
           {schoolName}
         </h4>
         {(degree || field) && (
-          <p className="text-[12.5px] text-foreground/70 mt-0.5 font-medium">
+          <p className="mt-0.5 text-sm text-foreground-secondary">
             {[degree, field].filter(Boolean).join(' · ')}
           </p>
         )}
         {(startYear || endYear) && (
-          <p className="text-[11.5px] text-muted-foreground mt-1 tabular-nums inline-flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {startYear || '?'} — {endYear || 'en cours'}
+          <p className="mt-1 inline-flex items-center gap-1 text-sm tabular-nums text-muted-foreground">
+            <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+            {startYear || '?'} à {endYear || 'en cours'}
           </p>
         )}
         {edu.description && (
-          <p className="text-[12px] leading-relaxed text-foreground/75 mt-2 whitespace-pre-line line-clamp-3">
+          <p className="mt-2 line-clamp-3 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
             {edu.description}
           </p>
         )}
@@ -407,11 +351,11 @@ function formatPeriod(
   const monthNames = ['Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
   const startStr = `${start.month ? monthNames[start.month - 1] : ''} ${start.year}`.trim();
   if (isCurrent) {
-    return `${startStr} → Aujourd'hui`;
+    return `${startStr} à aujourd'hui`;
   }
   if (end?.year) {
     const endStr = `${end.month ? monthNames[end.month - 1] : ''} ${end.year}`.trim();
-    return `${startStr} → ${endStr}`;
+    return `${startStr} à ${endStr}`;
   }
   return startStr;
 }

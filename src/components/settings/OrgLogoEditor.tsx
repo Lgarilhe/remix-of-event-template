@@ -13,7 +13,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Building2, Upload, Trash2, Globe, Loader2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Upload, Trash2, Globe, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { updateOrganization } from '@/lib/organizationUpdate';
@@ -121,7 +122,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
       const previous = ownedLogoPath(logoUrl, organizationId);
       if (previous && previous !== path) removeStoredLogo(previous);
       queryClient.invalidateQueries({ queryKey: ['active-organization'] });
-      toast.success('Logo mis à jour');
+      toast.success('Logo enregistré');
     } catch (err) {
       // URL non écrite : le fichier envoyé n'est référencé nulle part.
       if (uploaded) removeStoredLogo(path);
@@ -150,7 +151,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
       await updateOrganization(organizationId, { website: websiteValue.trim() || null });
       queryClient.invalidateQueries({ queryKey: ['active-organization'] });
       setEditingWebsite(false);
-      toast.success('Site web mis à jour');
+      toast.success('Site web enregistré');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Le site web n’a pas pu être enregistré.');
     } finally {
@@ -160,9 +161,9 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
 
   return (
     <div className="space-y-4">
-      {/* Logo display + actions */}
-      <div className="flex items-center gap-4">
-        <div className="w-16 h-16 border border-border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+      {/* Logo et actions. Revue design (F-18) : vignette arrondie, boutons en casse de phrase. */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
           {logoSrc ? (
             <img
               src={logoSrc}
@@ -171,14 +172,14 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
               onError={() => setFailedSrc(logoSrc)}
             />
           ) : null}
-          <span className={`text-lg font-bold text-muted-foreground ${logoSrc ? 'hidden' : ''}`}>
+          <span className={`text-base font-semibold text-muted-foreground ${logoSrc ? 'hidden' : ''}`}>
             {initials}
           </span>
         </div>
 
         {canEdit && (
-          <div className="flex flex-col gap-1.5">
-            <input
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
               ref={fileInputRef}
               type="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
@@ -186,25 +187,28 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
               onChange={handleUpload}
             />
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              className="h-7 text-xs uppercase tracking-wider gap-1.5"
+              className="max-md:h-11"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
+              loading={uploading}
             >
-              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              {!uploading && <Upload aria-hidden="true" />}
               {uploading ? 'Envoi…' : 'Changer le logo'}
             </Button>
             {logoUrl && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs uppercase tracking-wider gap-1.5 text-destructive hover:text-destructive"
+                    className="text-muted-foreground hover:text-danger max-md:h-11"
                   >
-                    <Trash2 className="w-3 h-3" />
-                    Supprimer
+                    <Trash2 aria-hidden="true" />
+                    Supprimer le logo
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -229,50 +233,62 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
         )}
       </div>
 
-      {/* Website field */}
+      {/* Site web. Revue design (F-09, F-15, F-22) : libellé relié au champ, « Enregistrer », crayon. */}
       <div>
-        <label className="text-sm text-muted-foreground flex items-center gap-1.5">
-          <Globe className="w-3.5 h-3.5" />
+        <label
+          htmlFor={editingWebsite && canEdit ? 'org-website' : undefined}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground"
+        >
+          <Globe className="h-3.5 w-3.5" aria-hidden="true" />
           Site web
         </label>
         {editingWebsite && canEdit ? (
-          <div className="flex items-center gap-2 mt-1">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <Input
+              id="org-website"
+              inputMode="url"
               value={websiteValue}
               onChange={e => setWebsiteValue(e.target.value)}
               placeholder="https://monentreprise.com"
-              className="h-9 text-sm max-w-xs"
+              className="max-w-xs max-md:h-11"
               autoFocus
               onKeyDown={e => e.key === 'Enter' && handleSaveWebsite()}
             />
             <Button
+              type="button"
+              variant="primary"
               size="sm"
-              className="h-9 gap-1"
+              className="max-md:h-11"
               onClick={handleSaveWebsite}
-              disabled={savingWebsite}
+              loading={savingWebsite}
             >
-              {savingWebsite ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '✓'}
-              Sauver
+              Enregistrer
             </Button>
-            <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingWebsite(false)}>
+            <Button type="button" size="sm" variant="ghost" className="max-md:h-11" onClick={() => setEditingWebsite(false)}>
               Annuler
             </Button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <p className="text-foreground text-sm">
-              {website || <span className="text-muted-foreground italic">Non renseigné</span>}
+            <p className="text-sm text-foreground">
+              {website || <span className="text-muted-foreground">Non renseigné</span>}
             </p>
             {canEdit && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground"
-                onClick={() => { setWebsiteValue(website || ''); setEditingWebsite(true); }}
-                aria-label="Modifier le site web"
-              >
-                <Building2 className="w-3.5 h-3.5" aria-hidden="true" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                    onClick={() => { setWebsiteValue(website || ''); setEditingWebsite(true); }}
+                    aria-label="Modifier le site web"
+                  >
+                    <Pencil aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Modifier le site web</TooltipContent>
+              </Tooltip>
             )}
           </div>
         )}

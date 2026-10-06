@@ -7,12 +7,18 @@
  *   - entreprise : ses missions publiées et leurs candidatures ;
  *   - organisation sans type : message neutre.
  * En bas, le panneau d'administration du cercle pour l'équipe Konekt.
+ *
+ * Gel de la Marketplace (décision 17, jusqu'au lot P2) : un cabinet ou un
+ * indépendant ne voit que son adhésion et son état, partenaire actif compris.
  */
 
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Target } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
+import { EmptyState, PageHeader, PageLayout } from '@/components/layout';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { usePartnerState } from '@/hooks/useMarketplace';
 import { PartnerCircleCard } from '@/components/marketplace/PartnerCircleCard';
@@ -20,6 +26,7 @@ import { PartnerMarketplace } from '@/components/marketplace/PartnerMarketplace'
 import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
 import { EnterpriseHuntMissions } from '@/components/marketplace/EnterpriseHuntMissions';
 import { PlatformAdminPanel } from '@/components/marketplace/PlatformAdminPanel';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 
 export default function Marketplace() {
   const { orgType, isLoading: orgLoading } = useOrganization();
@@ -32,21 +39,23 @@ export default function Marketplace() {
   const subtitle = isEnterprise
     ? 'Vos missions proposées aux recruteurs partenaires'
     : isRecruiterOrg
-      ? (isPartner ? 'Missions confiées par les entreprises' : 'Cercle de recruteurs partenaires')
+      ? (isPartner && !MARKETPLACE_FROZEN ? 'Missions confiées par les entreprises' : 'Cercle de recruteurs partenaires')
       : 'Missions en mode chasse';
 
   let body: React.ReactNode;
   if (orgLoading || (isRecruiterOrg && partnerLoading)) {
     body = (
       <div className="flex items-center justify-center py-20">
-        <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
+        <Spinner label="Chargement de la marketplace" />
       </div>
     );
   } else if (isEnterprise) {
     body = <EnterpriseHuntMissions />;
-  } else if (isRecruiterOrg && isPartner) {
+  } else if (isRecruiterOrg && isPartner && !MARKETPLACE_FROZEN) {
     body = <PartnerMarketplace />;
-  } else if (isRecruiterOrg && isSuspended) {
+  } else if (isRecruiterOrg && (isPartner || isSuspended)) {
+    // Suspendu, ou partenaire actif pendant le gel : la carte d'adhésion, et
+    // les missions déjà confiées, qui restent aussi dans Missions.
     body = (
       <div className="space-y-6">
         <div className="max-w-2xl">
@@ -65,46 +74,26 @@ export default function Marketplace() {
     // Organisation sans type : le choix fait à l'inscription manque ou n'a pas
     // été enregistré. Le réglage est dans Paramètres, on y renvoie.
     body = (
-      <div className="border border-border p-12 text-center max-w-2xl mx-auto space-y-3">
-        <Target className="w-8 h-8 text-muted-foreground mx-auto" />
-        <p className="text-sm text-foreground">
-          Indiquez le type de votre organisation pour utiliser la marketplace.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Une entreprise publie ses missions, un cabinet ou un indépendant rejoint le cercle
-          de recruteurs partenaires.
-        </p>
-        <Link
-          to="/settings/org/general"
-          className="inline-flex items-center h-9 px-4 border border-border text-xs font-medium uppercase tracking-wider hover:bg-muted"
-        >
-          Ouvrir les paramètres
-        </Link>
-      </div>
+      <EmptyState
+        icon={Target}
+        title="Indiquez le type de votre organisation"
+        description="Une entreprise publie ses missions, un cabinet ou un indépendant rejoint le cercle de recruteurs partenaires. Le type se choisit dans les paramètres de l'organisation."
+        action={
+          <Button asChild variant="outline" className="min-h-11 md:min-h-0">
+            <Link to="/settings/org/general">Ouvrir les paramètres</Link>
+          </Button>
+        }
+        className="max-w-2xl"
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <PageLayout>
       <SEOHead title="Marketplace | Konekt" description="Missions en mode chasse et cercle de recruteurs partenaires" />
-
-      <div className="py-6 pb-14">
-        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Target className="w-6 h-6 text-foreground" />
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Marketplace</h1>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">{subtitle}</p>
-              </div>
-            </div>
-          </div>
-
-          {body}
-
-          <PlatformAdminPanel />
-        </div>
-      </div>
-    </div>
+      <PageHeader title="Marketplace" subtitle={subtitle} />
+      {body}
+      <PlatformAdminPanel />
+    </PageLayout>
   );
 }

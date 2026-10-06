@@ -58,7 +58,7 @@ const Chip: React.FC<{
     onKeyDown={onToggle ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }) : undefined}
     title={title ?? (onToggle ? 'Clic : obligatoire ↔ souhaité' : undefined)}
     className={cn(
-      'group inline-flex items-center gap-1.5 min-h-6 rounded-full pl-2.5 pr-1.5 py-0.5 text-[13px] font-medium transition-colors duration-150 select-none',
+      'group inline-flex items-center gap-1.5 min-h-6 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium transition-colors duration-150 select-none',
       onToggle && 'cursor-pointer',
       must
         ? 'bg-[var(--k-accent-tint)] border border-transparent text-[var(--k-text)]'
@@ -66,7 +66,7 @@ const Chip: React.FC<{
     )}
   >
     {must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" aria-label="Obligatoire" />}
-    {exclude && <span className="font-mono text-[9px] uppercase tracking-wide text-[var(--k-text-muted)]">Exclure</span>}
+    {exclude && <span className="text-2xs text-muted-foreground">Exclure</span>}
     <span className="max-w-[180px] truncate">{label}</span>
     <button
       type="button"
@@ -116,7 +116,7 @@ const AddChip: React.FC<{ placeholder: string; onAdd: (v: string) => void; busy?
         if (e.key === 'Escape') { setVal(''); setEditing(false); }
       }}
       placeholder={placeholder}
-      className="h-6 w-40 rounded-full border border-[var(--k-hairline-focus)] bg-[var(--k-surface)] px-2.5 text-[13px] text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none"
+      className="h-6 w-40 rounded-full border border-[var(--k-hairline-focus)] bg-[var(--k-surface)] px-2.5 text-sm text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none"
     />
   );
 };
@@ -126,7 +126,7 @@ const FacetRow: React.FC<{ icon: React.ReactNode; label: string; children: React
   <div className="grid grid-cols-[72px_1fr] gap-2.5 items-start">
     <div className="flex items-center gap-1.5 pt-[5px] text-[var(--k-text-muted)]">
       {icon}
-      <span className="text-[11px] font-semibold uppercase tracking-[0.05em]">{label}</span>
+      <span className="text-xs font-medium">{label}</span>
     </div>
     <div className="flex flex-wrap gap-1.5 min-w-0">{children}</div>
   </div>
@@ -140,7 +140,7 @@ const ExpRange: React.FC<{
   const parse = (v: string) => (v === '' ? null : Math.max(0, Math.min(50, parseInt(v, 10) || 0)));
   const box = 'h-6 w-14 rounded-[7px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-[var(--k-text-2)] text-center focus:outline-none focus:border-[var(--k-hairline-focus)] placeholder:text-[var(--k-text-placeholder)]';
   return (
-    <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--k-text-muted)]">
+    <span className="inline-flex items-center gap-1.5 text-sm text-[var(--k-text-muted)]">
       <input type="number" min={0} max={50} value={min ?? ''} placeholder="min" className={box}
         onChange={e => onChange(parse(e.target.value), max)} />
       <span aria-hidden="true">→</span>
@@ -245,7 +245,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
   return (
     <div className="rounded-xl border border-[var(--k-hairline)] bg-[var(--k-surface-2)] p-3">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--k-text-muted)]">
+        <h3 className="text-xs font-medium text-muted-foreground">
           Filtres · éditables
         </h3>
         {hasAny && onClearAll && (
@@ -367,7 +367,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
         )}
       </div>
 
-      <div className="flex gap-4 mt-3 pt-2.5 border-t border-[var(--k-hairline)] text-[11px] text-[var(--k-text-muted)]">
+      <div className="flex gap-4 mt-3 pt-2.5 border-t border-[var(--k-hairline)] text-2xs text-[var(--k-text-muted)]">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)]" /> Obligatoire
         </span>

@@ -2,13 +2,13 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 
-type Tone = 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'muted';
+type Tone = 'default' | 'brand' | 'success' | 'warning' | 'destructive' | 'info' | 'muted';
 type Size = 'xs' | 'sm' | 'md' | 'lg';
 
 interface IconTileProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Icône Lucide à afficher */
   icon?: LucideIcon;
-  /** Tonalité de fond. Défaut "default" = vert Konekt signature (bg-emerald-500/15). */
+  /** Tonalité de fond. Défaut neutre ; le ton porte le sens, jamais l'icône seule (01-direction.md). */
   tone?: Tone;
   /** Taille du tile carré + de l'icône. */
   size?: Size;
@@ -21,11 +21,12 @@ interface IconTileProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const TONE_CLASSES: Record<Tone, string> = {
-  default: 'bg-emerald-500/15 text-foreground',
-  success: 'bg-success/15 text-success',
-  warning: 'bg-warning/15 text-warning',
-  destructive: 'bg-destructive/15 text-destructive',
-  info: 'bg-info/15 text-info',
+  default: 'bg-muted text-foreground-secondary',
+  brand: 'bg-brand/15 text-brand',
+  success: 'bg-success-muted text-success',
+  warning: 'bg-warning-muted text-warning',
+  destructive: 'bg-danger-muted text-danger',
+  info: 'bg-info-muted text-info',
   muted: 'bg-foreground/[0.04] text-foreground',
 };
 
@@ -44,7 +45,7 @@ const SIZE_CLASSES: Record<Size, { tile: string; icon: string; rounded: string }
  * visuelle et permettre un changement de tonalité signature en un seul endroit.
  *
  * @example
- *   <IconTile icon={Search} />                          // default green
+ *   <IconTile icon={Search} />                          // neutre
  *   <IconTile icon={AlertTriangle} tone="warning" />    // jaune ambre
  *   <IconTile icon={Check} tone="success" size="lg" />  // vert succès, gros
  *   <IconTile size="xs">{emoji}</IconTile>              // emoji custom

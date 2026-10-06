@@ -1,10 +1,20 @@
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { X, Clock, Mail, Link, Check, RotateCw } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { X, Mail, Link, Check, RotateCw, Loader2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { timeAgo } from '@/lib/relativeTime';
+import { cn } from '@/lib/utils';
 
 interface Invitation {
   id: string;
@@ -24,7 +34,8 @@ const isExpired = (expiresAt?: string) => {
 
 interface PendingInvitationsProps {
   invitations: Invitation[];
-  onCancel: (id: string) => void;
+  /** Rejette en cas d'échec : la confirmation reste ouverte et le motif s'affiche. */
+  onCancel: (id: string) => Promise<unknown>;
   onResend: (email: string, role: string) => Promise<void>;
   canManage: boolean;
   isResending?: boolean;
@@ -36,32 +47,24 @@ const roleLabels: Record<string, string> = {
   collaborator: 'Collaborateur',
 };
 
-const getInvitationStatus = (invitation: Invitation) => {
-  if (invitation.status === 'accepted') {
-    return {
-      label: 'Acceptée',
-      className: 'border-primary/30 bg-primary/10 text-primary',
-    };
-  }
+/** « envoyée il y a 3 j », ou « envoyée le 12 sept. » au-delà de 30 jours (timeAgo rend alors la date). */
+const sentLabel = (createdAt: string) => {
+  const ago = timeAgo(createdAt);
+  if (!ago) return 'envoyée';
+  return ago.startsWith('il y a') || ago.startsWith('à l') ? `envoyée ${ago}` : `envoyée le ${ago}`;
+};
 
-  if (invitation.status === 'cancelled') {
-    return {
-      label: 'Annulée',
-      className: 'border-border bg-muted/60 text-muted-foreground',
-    };
-  }
-
-  if (isExpired(invitation.expires_at)) {
-    return {
-      label: 'Expirée',
-      className: 'border-border bg-muted/60 text-muted-foreground',
-    };
-  }
-
-  return {
-    label: 'En attente',
-    className: 'border-accent/40 bg-accent/10 text-foreground',
-  };
+/**
+ * Revue design (F-14) : un état en mot, précédé d'une pastille de 6 px. La
+ * couleur ne sert qu'aux écarts : une invitation expirée demande un renvoi.
+ * Design simplifié (règle 7) : une invitation acceptée ne demande rien, sa
+ * pastille reste neutre.
+ */
+const getInvitationStatus = (invitation: Invitation): { label: string; dot: string } => {
+  if (invitation.status === 'accepted') return { label: 'Acceptée', dot: 'bg-muted-foreground' };
+  if (invitation.status === 'cancelled') return { label: 'Annulée', dot: 'bg-muted-foreground' };
+  if (isExpired(invitation.expires_at)) return { label: 'Expirée', dot: 'bg-warning' };
+  return { label: 'En attente', dot: 'bg-muted-foreground' };
 };
 
 export const PendingInvitations = ({
@@ -73,6 +76,9 @@ export const PendingInvitations = ({
 }: PendingInvitationsProps) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  // Revue design (F-21) : annuler une invitation passe par une confirmation.
+  const [cancelTarget, setCancelTarget] = useState<Invitation | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const sortedInvitations = useMemo(() => {
     const priority: Record<string, number> = {
@@ -92,9 +98,14 @@ export const PendingInvitations = ({
 
   const handleCopyLink = async (inv: Invitation) => {
     const link = `${window.location.origin}/auth?invitation=${inv.token ?? inv.id}`;
-    await navigator.clipboard.writeText(link);
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      toast.error('Le lien n’a pas pu être copié. Réessayez.');
+      return;
+    }
     setCopiedId(inv.id);
-    toast.success('Lien d\'invitation copié !');
+    toast.success('Lien d’invitation copié');
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -102,24 +113,34 @@ export const PendingInvitations = ({
     setResendingId(inv.id);
     try {
       await onResend(inv.email, inv.role);
+    } catch {
+      // Échec déjà annoncé par le hook (toast).
     } finally {
       setResendingId(null);
     }
   };
 
-  return (
-    <div className="space-y-2 pt-4 border-t border-border">
-      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-        <Clock className="w-3.5 h-3.5" />
-        Invitations
-      </p>
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await onCancel(cancelTarget.id);
+      setCancelTarget(null);
+    } catch (err) {
+      console.error('[PendingInvitations] cancel failed:', err);
+      toast.error('L’invitation n’a pas pu être annulée. Réessayez.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
-      {!sortedInvitations.length ? (
-        <div className="rounded-md border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-          Aucune invitation envoyée pour le moment.
-        </div>
-      ) : (
-        sortedInvitations.map(inv => {
+  // Design simplifié : sans invitation, rien n'est écrit (le formulaire suit) ; les
+  // invitations forment une liste à plat, séparée par des filets fins.
+  return (
+    <>
+      {sortedInvitations.length > 0 && (
+        <div className="divide-y divide-border">
+        {sortedInvitations.map(inv => {
           const isInvitationResending = isResending && resendingId === inv.id;
           const status = getInvitationStatus(inv);
           const canResend = canManage && inv.status !== 'accepted';
@@ -127,62 +148,110 @@ export const PendingInvitations = ({
           const canDelete = canManage && inv.status !== 'accepted';
 
           return (
-            <div key={inv.id} className="flex items-center justify-between py-2 px-3 bg-muted/50 rounded-md">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 bg-muted rounded-full flex items-center justify-center shrink-0">
-                  <Mail className="w-3.5 h-3.5 text-muted-foreground" />
-                </div>
+            <div
+              key={inv.id}
+              className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted" aria-hidden="true">
+                  <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                </span>
                 <div className="min-w-0">
-                  <p className="text-sm text-foreground truncate">{inv.email}</p>
+                  <p className="truncate text-sm text-foreground">{inv.email}</p>
                   <p className="text-xs text-muted-foreground">
-                    {roleLabels[inv.role] || inv.role} · envoyée {formatDistanceToNow(new Date(inv.created_at), { addSuffix: true, locale: fr })}
+                    {roleLabels[inv.role] || inv.role} · {sentLabel(inv.created_at)}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant="outline" className={`text-xs ${status.className}`}>
+              <div className="flex shrink-0 items-center gap-1.5 pl-9 sm:pl-0">
+                <span className="mr-1 inline-flex items-center gap-1.5 text-xs text-foreground">
+                  <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', status.dot)} aria-hidden="true" />
                   {status.label}
-                </Badge>
+                </span>
                 {canResend && (
                   <Button
+                    type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+                    size="xs"
+                    className="text-muted-foreground hover:text-foreground max-md:h-11"
                     onClick={() => handleResend(inv)}
                     disabled={isResending}
                   >
-                    <RotateCw className={`w-3.5 h-3.5 ${isInvitationResending ? 'animate-spin' : ''}`} />
+                    <RotateCw className={cn(isInvitationResending && 'animate-spin')} aria-hidden="true" />
                     Renvoyer
                   </Button>
                 )}
                 {canCopy && (inv.token || inv.id) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                    onClick={() => handleCopyLink(inv)}
-                    title="Copier le lien d'invitation"
-                    aria-label="Copier le lien d'invitation"
-                  >
-                    {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-primary" aria-hidden="true" /> : <Link className="w-3.5 h-3.5" aria-hidden="true" />}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                        onClick={() => handleCopyLink(inv)}
+                        aria-label={`Copier le lien d'invitation de ${inv.email}`}
+                      >
+                        {copiedId === inv.id ? <Check aria-hidden="true" /> : <Link aria-hidden="true" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copier le lien d’invitation</TooltipContent>
+                  </Tooltip>
                 )}
                 {canDelete && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => onCancel(inv.id)}
-                    aria-label="Annuler l'invitation"
-                  >
-                    <X className="w-3.5 h-3.5" aria-hidden="true" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                        onClick={() => setCancelTarget(inv)}
+                        aria-label={`Annuler l'invitation de ${inv.email}`}
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Annuler l’invitation</TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>
           );
-        })
+        })}
+        </div>
       )}
-    </div>
+
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => !open && !isCancelling && setCancelTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Annuler cette invitation ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelTarget && (
+                <>
+                  Le lien envoyé à <strong>{cancelTarget.email}</strong> ne fonctionnera plus. Vous pourrez
+                  inviter cette personne de nouveau.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Garder l’invitation</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive"
+              disabled={isCancelling}
+              onClick={(e) => {
+                // Fermée au succès seulement : en cas d'échec, l'invitation est toujours valable.
+                e.preventDefault();
+                void handleConfirmCancel();
+              }}
+            >
+              {isCancelling && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Annuler l’invitation
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };

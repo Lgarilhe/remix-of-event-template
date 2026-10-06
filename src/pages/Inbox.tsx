@@ -1,16 +1,12 @@
 /**
- * Inbox — Page messagerie unifiée.
+ * Inbox — page de la messagerie (liste des conversations et conversation).
  *
- * Refonte from scratch — 2026-04-28.
- *
- * Architecture simplifiée :
- *   - Hauteur explicite via 100dvh - (AppHeader 64px + bandeau crédits ~50px)
- *     → indépendant de la propagation flex/min-h-0 fragile
- *   - Pas de h-full en cascade qui peut foirer
- *   - Layout direct CSS Grid 2 cols : sidebar | conversation
+ * Hauteur : l'espace visible sous le bord haut de la messagerie, mesuré au
+ * lieu d'un calcul figé (revue design D-11). Un bandeau d'essai ou de crédits
+ * qui apparaît ou disparaît au-dessus déplace ce bord : la hauteur suit.
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
@@ -23,12 +19,46 @@ import { AttendeePicturesProvider } from '@/contexts/AttendeePicturesContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Hauteur disponible sous le bord haut d'un élément : `100dvh` moins sa
+ * position dans la page. La position vient de offsetTop (la mise en page, sans
+ * la translation de l'entrée de page) et se relit quand la page ou la fenêtre
+ * change de taille.
+ */
+function useAvailableHeight<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [top, setTop] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      let y = 0;
+      for (let node: HTMLElement | null = el; node; node = node.offsetParent as HTMLElement | null) {
+        y += node.offsetTop;
+      }
+      setTop((prev) => (prev === y ? prev : y));
+    };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(document.body);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
+  return { ref, height: top === null ? undefined : `calc(100dvh - ${top}px)` };
+}
+
 export default function Inbox() {
   const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
   const { organizationId } = useOrganization();
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const { user } = useAuthReady();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const { ref: frameRef, height } = useAvailableHeight<HTMLDivElement>();
   // Deep link depuis une notification de nouveau message : /inbox?chatId=<id>
   const [searchParams] = useSearchParams();
   const initialChatId = searchParams.get('chatId');
@@ -79,14 +109,8 @@ export default function Inbox() {
 
   return (
     <>
-      <SEOHead title="Messages — Konekt" description="Messagerie LinkedIn unifiée" />
-      {/* Hauteur explicite : viewport - (AppHeader 64 + bandeau crédits 50 + buffer 10).
-          Si pas de bandeau crédits, ce buffer est juste de la marge OK.
-          Cette approche est robuste : pas de dépendance à la propagation flex. */}
-      <div
-        className="bg-background overflow-hidden"
-        style={{ height: 'calc(100dvh - 124px)' }}
-      >
+      <SEOHead title="Messagerie | Konekt" description="Vos conversations LinkedIn avec les candidats" />
+      <div ref={frameRef} className="min-h-0 overflow-hidden bg-background" style={height ? { height } : undefined}>
         <AttendeePicturesProvider organizationId={organizationId || null}>
           <MessagesInbox
             key={initialChatId ?? 'inbox'}

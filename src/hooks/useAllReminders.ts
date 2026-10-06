@@ -78,10 +78,9 @@ async function fetchAllReminders(): Promise<Reminder[]> {
     .select('*')
     .order('due_at', { ascending: true });
 
-  if (error) {
-    console.warn('[useAllReminders] fetch error:', error);
-    return [];
-  }
+  // Une lecture en échec ne doit pas se lire « aucune tâche » : l'erreur remonte
+  // à la page, qui affiche un état d'erreur avec « Réessayer » (revue A-34).
+  if (error) throw error;
   return (data ?? []) as Reminder[];
 }
 
@@ -90,11 +89,13 @@ export function useAllReminders({ scope = 'mine' }: { scope?: TaskScope } = {}) 
   const { isReady: authReady, user } = useAuthReady();
   const userId = user?.id ?? null;
 
-  const { data: teamReminders = [], isLoading: queryLoading, refetch } = useQuery({
+  const { data: teamReminders = [], isLoading: queryLoading, isError, error, refetch } = useQuery({
     queryKey: ['all-reminders'],
     queryFn: fetchAllReminders,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: false,
+    // La page Tâches n'a plus de bouton « Actualiser » (design simplifié, lot T) :
+    // la liste se relit au retour sur l'onglet, une fois les 30 s écoulées.
+    refetchOnWindowFocus: true,
   });
 
   // Filtre côté client : le cache ['all-reminders'] reste partagé (mêmes
@@ -165,6 +166,9 @@ export function useAllReminders({ scope = 'mine' }: { scope?: TaskScope } = {}) 
     reminders,
     grouped,
     isLoading,
+    isError,
+    // Message technique (PostgrestError ou Error), montré replié par ErrorState.
+    error: error ? ((error as { message?: string }).message ?? String(error)) : null,
     refetch,
     toggleComplete,
     deleteReminder,

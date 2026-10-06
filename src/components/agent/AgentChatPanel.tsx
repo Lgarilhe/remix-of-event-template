@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { History, Bot, ArrowLeft, SquarePen, X, ChevronRight } from 'lucide-react';
+import { History, ArrowLeft, SquarePen, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AgentConversationsList } from './AgentConversationsList';
 import { Job } from '@/types/jobs';
 import { useAgent } from '@/contexts/AgentContext';
@@ -14,6 +16,7 @@ import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
 import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
 import { ConnectorMenu, type ChatConnectorOption } from '@/components/assistant-ui/connector-menu';
+import { RESERVED_BUILTIN_CONNECTORS, connectorLabel } from '@/lib/assistantConnectors';
 import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
@@ -30,6 +33,29 @@ interface AgentChatPanelProps {
   projectId?: string | null;
   accountId?: string | null;
 }
+
+/** Bouton icône de l'en-tête : nom accessible et infobulle, 44 px sur téléphone. */
+const HeaderIconButton: React.FC<{ label: string; onClick: () => void; children: React.ReactNode }> = ({
+  label,
+  onClick,
+  children,
+}) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        onClick={onClick}
+        aria-label={label}
+        className="shrink-0 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+      >
+        {children}
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent side="bottom">{label}</TooltipContent>
+  </Tooltip>
+);
 
 /**
  * Owns the assistant-ui runtime. Isolated in its own component so it can be
@@ -60,7 +86,6 @@ const ChatThread: React.FC<{
 
 const CONNECTOR_PREFERENCES_KEY = 'konekt:assistant:disabled-connectors:v2';
 const CONNECTOR_NAME_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
-const RESERVED_BUILTIN_CONNECTORS = new Set(['notion', 'email', 'gmail', 'outlook']);
 
 type ConnectorPreferences = Record<string, string[]>;
 
@@ -80,14 +105,6 @@ function loadConnectorPreferences(): ConnectorPreferences {
   } catch {
     return {};
   }
-}
-
-function connectorLabel(name: string): string {
-  return name
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 }
 
 function emailConnectorLabel(provider: EmailConnectorProvider): string {
@@ -185,6 +202,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         kind: 'notion',
         connected: notionConnected,
         enabled: notionConnected && !disabled.has('notion'),
+        manageHref: '/settings/account/connections#applications',
         status: notionStatusQuery.isLoading
           ? 'checking'
           : notionStatusQuery.isError
@@ -289,7 +307,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const ensureConversationId = useCallback(async (): Promise<string> => {
     if (conversationIdRef.current) return conversationIdRef.current;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !organizationId) throw new Error('Organisation introuvable. Reconnecte-toi.');
+    if (!user || !organizationId) throw new Error('Organisation introuvable. Reconnectez-vous.');
     const job = selectedJob ?? autoJob ?? null;
     const { data, error } = await supabase
       .from('agent_conversations')
@@ -437,41 +455,34 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     return (
       <div className="flex flex-col h-full bg-background animate-slide-in-left">
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
-          <button
-            onClick={() => setShowList(false)}
-            title="Retour au chat"
-            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 text-foreground" />
-          </button>
-          <AnimatedOrb size={24} speed={4} />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0 bg-background">
+          <HeaderIconButton label="Revenir à la conversation" onClick={() => setShowList(false)}>
+            <ArrowLeft aria-hidden="true" />
+          </HeaderIconButton>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold truncate text-foreground">Conversations</h3>
-            <p className="text-[11px] text-muted-foreground">Historique de l'assistant</p>
+            <p className="text-2xs text-muted-foreground">Historique de l'assistant</p>
           </div>
           {onClose && (
-            <button
-              onClick={onClose}
-              title="Fermer"
-              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <HeaderIconButton label="Fermer l'assistant" onClick={onClose}>
+              <X aria-hidden="true" />
+            </HeaderIconButton>
           )}
         </div>
 
         {/* New conversation */}
         <div className="px-4 pt-4 pb-2 shrink-0">
-          <button
+          <Button
+            type="button"
+            variant="outline"
             onClick={() => handleNewConversation()}
-            className="flex w-full items-center gap-2.5 rounded-2xl border border-border bg-card/40 px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-accent active:scale-[0.99]"
+            className="h-auto w-full justify-start gap-2.5 rounded-xl bg-card px-4 py-3 text-left"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <SquarePen className="h-4 w-4" />
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary" aria-hidden="true">
+              <SquarePen />
             </span>
-            <span className="text-[13px] font-semibold text-foreground">Nouvelle conversation</span>
-          </button>
+            <span className="text-sm font-semibold text-foreground">Nouvelle conversation</span>
+          </Button>
         </div>
 
         {/* Recent conversations */}
@@ -480,18 +491,20 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </div>
 
         {/* Page complète des agents (/agents n'avait aucun lien entrant) */}
-        <div className="px-4 py-3 border-t border-border/60 shrink-0">
-          <button
+        <div className="px-4 py-3 border-t border-border shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
             onClick={() => {
               onClose?.();
               void queryClient.invalidateQueries({ queryKey: ['agent-conversations'] });
               navigate('/agents');
             }}
-            className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="h-auto w-full justify-between px-2 py-2 text-xs text-muted-foreground hover:text-foreground max-md:min-h-11"
           >
             <span>Toutes les conversations</span>
-            <ChevronRight className="w-4 h-4" aria-hidden="true" />
-          </button>
+            <ChevronRight aria-hidden="true" />
+          </Button>
         </div>
       </div>
     );
@@ -501,17 +514,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   return (
     <div className="flex flex-col h-full bg-background relative animate-slide-in-right">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
-        <button
-          onClick={() => setShowList(true)}
-          title="Historique des conversations"
-          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
-        >
-          <History className="w-4 h-4 text-foreground" />
-        </button>
-        <AnimatedOrb size={24} speed={4}>
-          <Bot className="w-3 h-3 text-foreground/70" />
-        </AnimatedOrb>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0 bg-background">
+        <HeaderIconButton label="Historique des conversations" onClick={() => setShowList(true)}>
+          <History aria-hidden="true" />
+        </HeaderIconButton>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold truncate text-foreground">
             {effectiveContextMode === 'sourcing' ? 'Assistant · Sourcing'
@@ -520,17 +526,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               : effectiveContextMode === 'outreach' ? 'Assistant · Outreach'
               : 'Assistant'}
           </h3>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {effectiveContextMode ? 'Mode contextuel' : 'Conversation libre'}
           </p>
         </div>
-        <button
-          onClick={() => handleNewConversation()}
-          title="Nouvelle conversation"
-          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors shrink-0"
-        >
-          <SquarePen className="w-4 h-4 text-foreground" />
-        </button>
+        <HeaderIconButton label="Nouvelle conversation" onClick={() => handleNewConversation()}>
+          <SquarePen aria-hidden="true" />
+        </HeaderIconButton>
         {/* Fermeture. Le tiroir masque la croix native du Sheet
             (`[&>button]:hidden` dans AgentDrawer), et sur mobile il occupe
             toute la largeur : sans ce bouton il n'y a ni zone extérieure à
@@ -538,14 +540,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             « Conversations » a le sien depuis toujours, celle-ci l'avait
             oublié. */}
         {onClose && (
-          <button
-            onClick={onClose}
-            title="Fermer"
-            aria-label="Fermer l'assistant"
-            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <HeaderIconButton label="Fermer l'assistant" onClick={onClose}>
+            <X aria-hidden="true" />
+          </HeaderIconButton>
         )}
       </div>
 
@@ -559,7 +556,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           on history-select / restore, but NOT on model/context change. */}
       {seeding ? (
         <div className="flex-1 flex items-center justify-center">
-          <AnimatedOrb size={32} speed={3} />
+          <Spinner label="Chargement de la conversation" />
         </div>
       ) : (
         <ChatThread

@@ -115,42 +115,11 @@ export function useChatStatus() {
       toast.success(`En sommeil jusqu'au ${formatted}`);
       queryClient.invalidateQueries({ queryKey });
     },
-    onError: (err: Error, vars) => {
-      // Revert optimistic update
-      queryClient.invalidateQueries({ queryKey });
-      toast.error('Impossible de mettre en sommeil', { description: err.message });
-    },
-  });
-
-  const archiveMutation = useMutation({
-    mutationFn: async ({ chatId, accountId }: { chatId: string; accountId: string }) => {
-      if (!user) throw new Error('Utilisateur non authentifié');
-      if (!organizationId) throw new Error('Organisation non chargée');
-      const isoNow = new Date().toISOString();
-      const { error } = await supabase
-        .from('chat_categories')
-        .upsert({
-          chat_id: chatId,
-          account_id: accountId,
-          created_by: user.id,
-          organization_id: organizationId,
-          archived_at: isoNow,
-          snoozed_until: null,
-          updated_at: isoNow,
-        }, { onConflict: 'chat_id,created_by' });
-      if (error) throw error;
-      return { chatId, isoNow };
-    },
-    onMutate: async ({ chatId }) => {
-      optimisticUpdate(chatId, { snoozedUntil: null, archivedAt: new Date().toISOString() });
-    },
-    onSuccess: () => {
-      toast.success('Conversation archivée');
-      queryClient.invalidateQueries({ queryKey });
-    },
     onError: (err: Error) => {
+      // Revert optimistic update
+      console.error('[useChatStatus] snooze failed:', err);
       queryClient.invalidateQueries({ queryKey });
-      toast.error('Impossible d\'archiver', { description: err.message });
+      toast.error("La conversation n'a pas été mise en sommeil", { description: 'Vérifiez votre connexion, puis réessayez.' });
     },
   });
 
@@ -180,8 +149,45 @@ export function useChatStatus() {
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err: Error) => {
+      console.error('[useChatStatus] restore failed:', err);
       queryClient.invalidateQueries({ queryKey });
-      toast.error('Impossible de restaurer', { description: err.message });
+      toast.error("La conversation n'a pas été restaurée", { description: 'Vérifiez votre connexion, puis réessayez.' });
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async ({ chatId, accountId }: { chatId: string; accountId: string }) => {
+      if (!user) throw new Error('Utilisateur non authentifié');
+      if (!organizationId) throw new Error('Organisation non chargée');
+      const isoNow = new Date().toISOString();
+      const { error } = await supabase
+        .from('chat_categories')
+        .upsert({
+          chat_id: chatId,
+          account_id: accountId,
+          created_by: user.id,
+          organization_id: organizationId,
+          archived_at: isoNow,
+          snoozed_until: null,
+          updated_at: isoNow,
+        }, { onConflict: 'chat_id,created_by' });
+      if (error) throw error;
+      return { chatId, isoNow };
+    },
+    onMutate: async ({ chatId }) => {
+      optimisticUpdate(chatId, { snoozedUntil: null, archivedAt: new Date().toISOString() });
+    },
+    onSuccess: (_data, { chatId, accountId }) => {
+      // Archiver se fait sans confirmation : l'annulation reste à portée (D-20).
+      toast.success('Conversation archivée', {
+        action: { label: 'Annuler', onClick: () => restoreMutation.mutate({ chatId, accountId }) },
+      });
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: Error) => {
+      console.error('[useChatStatus] archive failed:', err);
+      queryClient.invalidateQueries({ queryKey });
+      toast.error("La conversation n'a pas été archivée", { description: 'Vérifiez votre connexion, puis réessayez.' });
     },
   });
 

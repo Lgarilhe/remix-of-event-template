@@ -61,10 +61,11 @@ jobs:
       #  B) LOCAL (défaut) : `supabase start` reconstruit la base à partir des
       #     seules migrations. Vérifié le 2026-09-07 sur PostgreSQL 16 vierge :
       #     les 266 fichiers de supabase/migrations/ s'appliquent sans erreur et
-      #     supabase/tests/rls_two_orgs_audit.sql passe ses 10 contrôles.
-      #     Une seule table de l'import Lovable n'est créée par aucune migration,
-      #     notion_api_cache ; le rattrapage 20260903074500 la traite désormais
-      #     sous condition d'existence.
+      #     supabase/tests/rls_two_orgs_audit.sql passe ses deux blocs (10 contrôles généraux, 22 contrôles séquences).
+      #     Une seule table de l'import Lovable n'était créée par aucune
+      #     migration, notion_api_cache (prod seulement) : le rattrapage
+      #     20260903074500 puis le retrait de Notion (étape 2) la traitent sous
+      #     condition d'existence, et aucune étape de ce workflow n'en dépend.
       #     Si cette étape casse à nouveau, l'erreur vient d'une migration qui ne
       #     rejoue pas sur une base neuve : reproduire en local avant de toucher
       #     au workflow.
@@ -128,6 +129,19 @@ jobs:
             -c 'BEGIN;' -f supabase/tests/org_writes_audit.sql -c 'ROLLBACK;'
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/org_member_emails_audit.sql -c 'ROLLBACK;'
+          # Appel anonyme réel, par l'API avec la clé anon : il doit être refusé
+          # (401, code 42501). Pas par psql : sous SET ROLE anon, le refus d'une
+          # fonction fait tomber le Postgres de l'image (voir l'en-tête de l'audit).
+          code=$(curl -sS -o anon_call.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/get_org_member_emails" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_organization_id":"00000000-0000-0000-0000-000000000000"}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' anon_call.json; then
+            echo "::error::appel anonyme de get_org_member_emails : HTTP $code (401 et 42501 attendus)"
+            cat anon_call.json; exit 1
+          fi
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/member_quotas_self_service.sql -c 'ROLLBACK;'
 
@@ -140,6 +154,276 @@ jobs:
           DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/job_favorites_audit.sql -c 'ROLLBACK;'
+
+      # Lot C1 : réparations des fuites (migration 20260927233806). Conversations
+      # de l'assistant lues par leur auteur seul (R3) ; portail client limité
+      # aux candidats retenus et au-delà, liens qui expirent (R4) ; partenaires
+      # et équipe de mission, Marketplace gelée (R6, R7, décision 17) ; audit
+      # générique du schéma public : RLS, lecture et écriture anonymes,
+      # fonctions SECURITY DEFINER (R13). Même forme que les audits précédents.
+      - name: Audits C1 (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/assistant_conversations_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/client_portal_audit.sql -c 'ROLLBACK;'
+          # Appel anonyme réel de la lecture du portail, par l'API avec la clé
+          # anon : refus attendu (401, code 42501). Pas par psql, pour la même
+          # raison que get_org_member_emails ci-dessus.
+          code=$(curl -sS -o portal_anon.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/client_portal_candidates" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_token":"audit-inexistant"}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' portal_anon.json; then
+            echo "::error::appel anonyme de client_portal_candidates : HTTP $code (401 et 42501 attendus)"
+            cat portal_anon.json; exit 1
+          fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/partner_engagements_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/rls_and_definer_audit.sql -c 'ROLLBACK;'
+
+      # Séquences, tests de bout en bout du 2026-09-27 : garde du compte
+      # d'envoi, protection des actions de l'assistant, enregistrement des
+      # étapes, verrou et plafonds du moteur, identités LinkedIn. Même forme :
+      # exception listant les contrôles en échec, écritures annulées.
+      - name: Audits séquences (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          for audit in seq_db_audit seq_scheduled_1_audit seq_steps_1_audit seq_engine_1_audit seq_identity_audit seq_decisions_db_audit; do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 \
+              -c 'BEGIN;' -f "supabase/tests/$audit.sql" -c 'ROLLBACK;'
+          done
+
+      # Refonte mission, lot 0a : modèle des étapes candidat (colonnes, déclencheur de
+      # transition, set_candidate_stage, reprise, statistiques, replace_process_steps).
+      # Même forme que les audits précédents. Appel anonyme réel par l'API : refus
+      # attendu (401, code 42501), pas par psql (voir get_org_member_emails ci-dessus).
+      - name: Audit modèle des étapes (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/candidate_stage_model_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o stage_anon.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/set_candidate_stage" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_id":"00000000-0000-0000-0000-000000000000","p_stage":"to_sort","p_source":"user"}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' stage_anon.json; then
+            echo "::error::appel anonyme de set_candidate_stage : HTTP $code (401 et 42501 attendus)"
+            cat stage_anon.json; exit 1
+          fi
+
+      # Refonte mission, lot 0b : lien conversation–mission, fonctions des écrivains
+      # serveur, garde des écritures directes (observation, refus), reprise des liens
+      # et seconde application de la migration. Même forme que les audits précédents.
+      # Appels anonymes réels par l'API : refus attendu (401, code 42501), pas par
+      # psql (voir get_org_member_emails ci-dessus).
+      - name: Audit des écrivains (lot 0b)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/candidate_stage_writers_audit.sql -c 'ROLLBACK;'
+          for call in \
+            'set_candidate_stages|{"p_ids":[],"p_stage":"to_sort","p_source":"user"}' \
+            'record_candidate_inbound|{"p_organization_id":"00000000-0000-0000-0000-000000000000","p_account_id":"","p_candidate":{}}'; do
+            fn="${call%%|*}"; body="${call#*|}"
+            code=$(curl -sS -o writers_anon.json -w '%{http_code}' -X POST \
+              "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "$body")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' writers_anon.json; then
+              echo "::error::appel anonyme de $fn : HTTP $code (401 et 42501 attendus)"
+              cat writers_anon.json; exit 1
+            fi
+          done
+
+      # Refonte mission, lot 0c-1 : les lectures (vue mission_candidate_rows, comptage
+      # get_mission_stage_counts, compteurs stats_*, annulation undo_candidate_stages,
+      # preuve d'envoi par InMail répondu, purge en compte seulement, reprise des
+      # recommendation libres, application puis seconde application de la migration).
+      # Même forme que les audits précédents. Appels anonymes réels par l'API : refus
+      # attendu (401, code 42501), pas par psql (voir get_org_member_emails ci-dessus).
+      - name: Audit des lectures (lot 0c)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/candidate_stage_readers_audit.sql -c 'ROLLBACK;'
+          for call in \
+            'get_mission_stage_counts|{"p_project_ids":[]}' \
+            'undo_candidate_stages|{"p_moves":[]}' \
+            'rgpd_purge_candidate_rows|{"p_inactive_before":"2000-01-01T00:00:00Z","p_rejected_before":"2000-01-01T00:00:00Z"}'; do
+            fn="${call%%|*}"; body="${call#*|}"
+            code=$(curl -sS -o readers_anon.json -w '%{http_code}' -X POST \
+              "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "$body")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' readers_anon.json; then
+              echo "::error::appel anonyme de $fn : HTTP $code (401 et 42501 attendus)"
+              cat readers_anon.json; exit 1
+            fi
+          done
+          code=$(curl -sS -o readers_anon.json -w '%{http_code}' \
+            "$E2E_SUPABASE_URL/rest/v1/mission_candidate_rows?select=id&limit=1" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+          if [ "$code" != "401" ] || ! grep -q '"42501"' readers_anon.json; then
+            echo "::error::lecture anonyme de mission_candidate_rows : HTTP $code (401 et 42501 attendus)"
+            cat readers_anon.json; exit 1
+          fi
+
+      # Refonte mission, lot 3 : la carte « Maintenant ». get_mission_attention (réponses
+      # sans suite, entretiens sans nouvelles, notés à trier, poste décrit) et ses deux
+      # aides, rejouées sur une base neuve. Appels anonymes réels par l'API : refus
+      # attendu (401, code 42501).
+      - name: Audit de l'attention (lot 3)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/mission_attention_audit.sql -c 'ROLLBACK;'
+          for call in \
+            'get_mission_attention|{"p_project_ids":[]}' \
+            'is_go_recommendation|{"r":"go"}' \
+            'job_details_is_described|{"jd":{}}'; do
+            fn="${call%%|*}"; body="${call#*|}"
+            code=$(curl -sS -o attention_anon.json -w '%{http_code}' -X POST \
+              "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "$body")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' attention_anon.json; then
+              echo "::error::appel anonyme de $fn : HTTP $code (401 et 42501 attendus)"
+              cat attention_anon.json; exit 1
+            fi
+          done
+
+      # Refonte mission, lot 3 : reports « Plus tard » (mission_action_snoozes). Un report
+      # n'est lu et écrit que par son auteur, sur une mission de son organisation.
+      - name: Audit des reports Plus tard (lot 3)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/mission_action_snoozes_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o snoozes_anon.json -w '%{http_code}' \
+            "$E2E_SUPABASE_URL/rest/v1/mission_action_snoozes?select=id&limit=1" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+          if [ "$code" != "401" ] || ! grep -q '"42501"' snoozes_anon.json; then
+            echo "::error::lecture anonyme de mission_action_snoozes : HTTP $code (401 et 42501 attendus)"
+            cat snoozes_anon.json; exit 1
+          fi
+
+      # Design simplifié, lot P : copie privée des photos des candidats (bucket
+      # candidate-photos, table candidate_photos, réclamation et orphelins). Appels
+      # anonymes réels par l'API : refus attendu (401, code 42501).
+      - name: Audit des copies de photos (lot P)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/candidate_photos_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o photos_anon.json -w '%{http_code}' \
+            "$E2E_SUPABASE_URL/rest/v1/candidate_photos?select=candidate_id&limit=1" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+          if [ "$code" != "401" ] || ! grep -q '"42501"' photos_anon.json; then
+            echo "::error::lecture anonyme de candidate_photos : HTTP $code (401 et 42501 attendus)"
+            cat photos_anon.json; exit 1
+          fi
+          for fn in claim_candidate_photos list_candidate_photo_orphans; do
+            code=$(curl -sS -o photos_anon.json -w '%{http_code}' -X POST \
+              "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d '{"p_limit":1}')
+            if [ "$code" != "401" ] || ! grep -q '"42501"' photos_anon.json; then
+              echo "::error::appel anonyme de $fn : HTTP $code (401 et 42501 attendus)"
+              cat photos_anon.json; exit 1
+            fi
+          done
+
+      # Téléphonie, lot A1 : appels reçus par organisation (phone_calls),
+      # connexions (jeton de webhook, illisibles), record_phone_call et
+      # get_telephony_status. Appels anonymes réels par l'API : refus attendu
+      # (401, code 42501).
+      - name: Audit de la téléphonie (lot A1)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/telephony_audit.sql -c 'ROLLBACK;'
+          for table in phone_calls telephony_connections; do
+            code=$(curl -sS -o telephony_anon.json -w '%{http_code}' \
+              "$E2E_SUPABASE_URL/rest/v1/$table?select=organization_id&limit=1" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' telephony_anon.json; then
+              echo "::error::lecture anonyme de $table : HTTP $code (401 et 42501 attendus)"
+              cat telephony_anon.json; exit 1
+            fi
+          done
+          for call in \
+            'record_phone_call|{"p_organization_id":"00000000-0000-0000-0000-000000000000","p_provider":"aircall","p_external_id":"x","p_event_at":"2026-10-05T10:00:00Z","p_call":{}}' \
+            'get_telephony_status|{"p_organization_id":"00000000-0000-0000-0000-000000000000"}'; do
+            fn="${call%%|*}"; payload="${call#*|}"
+            code=$(curl -sS -o telephony_anon.json -w '%{http_code}' -X POST \
+              "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "$payload")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' telephony_anon.json; then
+              echo "::error::appel anonyme de $fn : HTTP $code (401 et 42501 attendus)"
+              cat telephony_anon.json; exit 1
+            fi
+          done
+
+      # Lot P, étape P-0b : rafraîchissement des adresses de photo des candidats
+      # (refresh_candidate_pictures). Lignes de l'appelant seulement, profil existant
+      # seulement, aucune écriture quand l'adresse enregistrée est bonne.
+      - name: Audit du rafraîchissement des photos (lot P, P-0b)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/candidate_pictures_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o pictures_anon.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/refresh_candidate_pictures" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_job_ids":["x"],"p_items":[]}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' pictures_anon.json; then
+            echo "::error::appel anonyme de refresh_candidate_pictures : HTTP $code (401 et 42501 attendus)"
+            cat pictures_anon.json; exit 1
+          fi
+
+      # Refonte scorecard et assistant en direct, lot 1 : rattachement des grilles
+      # et des séances à la mission et à l'étape, écriture par l'auteur seul,
+      # expiration de la transcription et consentement posés par le serveur.
+      - name: Audit des grilles d'entretien et des séances (scorecard lot 1)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/scorecard_live_lot1_audit.sql -c 'ROLLBACK;'
 
       - name: Build front
         run: npm run build

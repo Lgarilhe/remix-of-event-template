@@ -26,11 +26,15 @@ const { classifyLinkedInStatus, resolveMyLinkedInStatus, channelStatusOf } = awa
 );
 
 const dashboardHook = read('src/hooks/useDashboardConnections.ts');
-const dashboardCards = read('src/components/dashboard/DashboardConnections.tsx');
+// Design simplifié (04/10/2026) : plus de cartes des canaux sur l'accueil, une
+// ligne « À faire » quand le compte LinkedIn est à reconnecter.
+const dashboardTodo = read('src/components/dashboard/DashboardFocusPanel.tsx');
+const dashboardPage = read('src/pages/Dashboard.tsx');
 const myAccount = read('src/components/settings/MyLinkedInAccount.tsx');
 const context = read('src/contexts/LinkedInAccountsContext.tsx');
 const memberHook = read('src/hooks/useMemberLinkedInAccounts.ts');
 const accountsFn = read('supabase/functions/unipile-accounts/index.ts');
+const sendingStop = read('supabase/functions/_shared/linkedin-sending-stop.ts');
 
 /** Bloc d'un case du switch de unipile-accounts, jusqu'au case de même niveau suivant. */
 const caseBlock = (name) => {
@@ -189,9 +193,13 @@ test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp retiré'
   assert.match(dashboardHook, /mappingsLoaded: linkedinMappingReady/);
   assert.match(dashboardHook, /const channels = \[linkedin, email\];/, 'WhatsApp ne compte ni pour hasIssue ni pour Tout actif');
   assert.doesNotMatch(dashboardHook, /type !== 'WHATSAPP'/, 'le repli prenait le premier compte de la liste');
-  assert.doesNotMatch(dashboardCards, /whatsapp/i, 'carte WhatsApp retirée au lot 3');
-  assert.match(dashboardCards, /sm:grid-cols-2/);
-  assert.match(dashboardCards, /const needsAction = channel\.status === 'error' \|\| channel\.status === 'disconnected';/);
+  assert.doesNotMatch(dashboardTodo, /whatsapp/i, 'carte WhatsApp retirée au lot 3');
+  assert.doesNotMatch(dashboardPage, /whatsapp/i);
+  // Seul un compte en erreur demande d'agir sur l'accueil ; relier un premier
+  // compte reste dans les premiers pas de la barre latérale.
+  assert.match(dashboardPage, /linkedinIssue=\{connections\.linkedin\.status === 'error'\}/);
+  assert.match(dashboardTodo, /title="Compte LinkedIn à reconnecter"/);
+  assert.match(dashboardTodo, /action=\{\{ label: 'Reconnecter', href: '\/settings\/account\/connections' \}\}/);
 });
 
 test('R6 — Mon compte LinkedIn : état partagé, formulaire qui ne se rouvre plus seul', () => {
@@ -329,11 +337,17 @@ test('R12 — unlink_linkedin_account : liaison vérifiée, envois arrêtés, se
   assert.match(block, /assertCanManageAccount\(/);
   assert.match(block, /expected_account_id/);
   assert.match(block, /row\.linkedin_account_id !== expectedAccountId/);
-  assert.match(block, /pause_reason: 'manual'/);
-  assert.match(block, /'account_disconnected'/, 'les pauses automatiques doivent passer en pause manuelle');
-  assert.match(block, /'waiting_event'/);
-  assert.match(block, /from\('inmail_queue'\)/);
-  assert.match(block, /slice\(i, i \+ 100\)/);
+  // Arrêt des envois extrait dans _shared/linkedin-sending-stop.ts (audit
+  // séquences 2026-09-25, SEQ-041/042), partagé avec le changement de compte
+  // et le retrait d'un membre ; appelé avant la suppression de la liaison.
+  assert.match(block, /stopLinkedInAccountSending\(adminClient/);
+  assert.ok(block.indexOf('stopLinkedInAccountSending(') < block.indexOf('.delete()'));
+  assert.match(sendingStop, /pause_reason: 'manual'/);
+  assert.match(sendingStop, /'account_disconnected'/, 'les pauses automatiques doivent passer en pause manuelle');
+  assert.match(sendingStop, /from\('inmail_queue'\)/);
+  // Contrat des lots (sémantique de la pause) : une mise en pause ne touche
+  // plus aux exécutions en attente ; la reprise serveur les garde à leur date.
+  assert.doesNotMatch(sendingStop, /sequence_step_executions/);
   assert.match(block, /\.delete\(\)[\s\S]*?\.select\('id'\)/);
   // D7 : jamais de fermeture de session chez le prestataire
   assert.doesNotMatch(block, /close_session/);

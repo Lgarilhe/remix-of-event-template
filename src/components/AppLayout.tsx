@@ -6,6 +6,12 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
 import { GoShortcuts } from '@/components/layout/GoShortcuts';
+import { AssistantLauncher } from '@/components/agent/AssistantLauncher';
+import { Spinner } from '@/components/ui/spinner';
+import { LowCreditBanner } from '@/components/ai/LowCreditBanner';
+import { TrialBanner } from '@/components/billing/TrialBanner';
+import { pageTransitionKey } from '@/lib/missionBeta';
+import { useSequencesBetaParamSync } from '@/hooks/useSequencesBeta';
 
 // État replié de la barre, écrit par SidebarProvider dans le cookie sidebar:state.
 function readSidebarOpen(): boolean {
@@ -20,9 +26,8 @@ function readSidebarOpen(): boolean {
 // Chargement d'une page : seule la zone principale attend, la barre et
 // l'en-tête restent affichés (le Suspense global d'App.tsx remplaçait tout l'écran).
 const pageFallback = (
-  <div className="flex-1 flex items-center justify-center py-24" role="status">
-    <div className="w-7 h-7 rounded-full border border-border border-t-foreground animate-spin" aria-hidden="true" />
-    <span className="sr-only">Chargement de la page</span>
+  <div className="flex flex-1 items-center justify-center py-24">
+    <Spinner label="Chargement de la page" />
   </div>
 );
 
@@ -30,8 +35,11 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const location = useLocation();
   const reduceMotion = useReducedMotion();
   const [sidebarDefaultOpen] = React.useState(readSidebarOpen);
+  // ?sequences-v2=1|0 : interrupteur des pages Séquences (src/lib/sequencesBeta.ts).
+  useSequencesBetaParamSync();
   // Les rubriques des Paramètres partagent une clé : changer de rubrique ne remonte ni la coquille ni sa navigation.
-  const transitionKey = location.pathname.startsWith('/settings/') ? '/settings' : location.pathname;
+  // Même règle pour une mission (/missions/:id et ses écrans, src/lib/missionBeta.ts).
+  const transitionKey = location.pathname.startsWith('/settings/') ? '/settings' : pageTransitionKey(location.pathname);
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
@@ -43,6 +51,11 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         <div className="flex-1 flex flex-col min-w-0">
           <AppHeader />
           <main id="main-content" className="flex-1 min-h-0 flex flex-col">
+            {/* Bandeaux de compte (essai, crédits IA) : en haut du contenu (sous l'en-tête sur téléphone), à côté de la barre latérale */}
+            <div className="shrink-0">
+              <LowCreditBanner />
+              <TrialBanner />
+            </div>
             {/* Transition de route enter-only : le contenu fade + glisse de 6px
                 à chaque changement de pathname, la sidebar/header restent
                 stables (AppLayout n'est pas remonté entre les routes). Pas
@@ -66,6 +79,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* G puis une lettre (G D, G M…) : navigation au clavier dans l'application */}
       <GoShortcuts />
+
+      {/* Bulle ronde de l'assistant, en bas à droite (Ctrl K ouvre le même tiroir) */}
+      <AssistantLauncher />
     </SidebarProvider>
   );
 };

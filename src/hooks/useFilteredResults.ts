@@ -30,7 +30,7 @@ interface FilteredResultsOptions {
 }
 
 // Rehydrate a LinkedInProfile from stored DB data
-function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _fromPool?: boolean } {
+export function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _fromPool?: boolean } {
   const data = status.linkedin_profile_data as Record<string, any> | null;
   return {
     id: status.candidate_id,
@@ -219,8 +219,6 @@ export function useFilteredResults({
           case 'messaged':
             return status?.status === 'messaged' || status?.status === 'replied';
           case 'shortlisted':
-            // Le match shortlist Notion est appliqué en aval (SearchResultsPanel,
-            // displayResults) — même mécanique que le filtre 'known'.
             return status?.status === 'shortlisted';
           case 'dismissed':
             return status?.status === 'dismissed';

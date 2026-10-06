@@ -87,9 +87,9 @@ export function useMemberQuotas() {
       // La carte « Plafonds du jour » lit heures et plafond par la RPC
       // get_linkedin_quota_status : l'invalider pour qu'elle suive l'enregistrement.
       queryClient.invalidateQueries({ queryKey: [LINKEDIN_QUOTA_STATUS_QUERY_KEY] });
-      toast.success('Quotas mis à jour');
+      toast.success('Plafonds enregistrés');
     },
-    onError: () => toast.error('Erreur lors de la mise à jour des quotas'),
+    onError: () => toast.error('Les plafonds n’ont pas été enregistrés', { description: 'Réessayez dans un instant.' }),
   });
 
   const getQuotaForUser = (userId: string): MemberQuota | null => {

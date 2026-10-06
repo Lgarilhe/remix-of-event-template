@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LinkedInProfile } from './types';
-import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
+import { useCandidateHistory } from '@/hooks/useCandidateHistory';
 import { computeLikelyToSwitch } from '@/hooks/linkedin/likelyToSwitch';
 import { LikelyToSwitchBadge } from './LikelyToSwitchBadge';
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
-import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobMatchResult } from './JobScoreDisplay';
 
 import { Job } from '@/types/jobs';
@@ -22,6 +21,7 @@ import {
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { classifyFromProfile } from '@/lib/companyClassification';
 import { CompanyLogo } from '@/components/candidates/CompanyLogo';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
@@ -37,6 +37,8 @@ interface ExtendedResultCardProps extends LinkedInResultCardProps {
   /** Mode d'affichage : 'compact' = scan rapide (cache exp/edu/skills),
       'detailed' = mini-CV complet (default). Persisté en localStorage par le parent. */
   viewMode?: 'compact' | 'detailed';
+  /** Nouvelle page mission : une ligne à filet au lieu d'une carte, note en anneau, boutons discrets. */
+  variant?: 'default' | 'mission-v3';
 }
 
 export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
@@ -54,12 +56,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   onArchive,
   candidateStatus,
   airtableMatch,
-  notionMatch,
   enrollmentInfo,
   onOpenDetail,
   isBatchScoring = false,
   viewMode = 'detailed',
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const isCompactMode = viewMode === 'compact';
   const [isScoring, setIsScoring] = useState(false);
   const [scoreFlash, setScoreFlash] = useState<'go' | 'maybe' | 'skip' | null>(null);
@@ -102,6 +105,15 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   }, [onScoreProfile, isScoring]);
 
   const profileData = useProfileData(profile);
+  // Compétences du poste, en minuscules : elles passent en tête des puces du profil.
+  const jobSkillSet = useMemo(
+    () => new Set(
+      ((selectedJob?.skills as unknown[] | undefined) ?? [])
+        .map((skill) => String(typeof skill === 'string' ? skill : (skill as { name?: string })?.name ?? '').trim().toLowerCase())
+        .filter(Boolean),
+    ),
+    [selectedJob],
+  );
   const switchResult = useMemo(() => computeLikelyToSwitch(profile), [profile]);
   const {
     fullName, initials, currentCompany, currentRole, currentJobTenure,
@@ -142,62 +154,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       : null
   );
 
-  // Notion shortlist data for this candidate
-  const { data: notionShortlistData, isLoading: notionShortlistLoading } = useNotionShortlist();
-  const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
-    if (!notionShortlistData) return [];
-
-    const normalizeName = (value?: string | null) =>
-      (value || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const profileNames = [
-      fullName,
-      profile.name,
-      [profile.first_name, profile.last_name].filter(Boolean).join(' '),
-    ]
-      .map(normalizeName)
-      .filter(Boolean);
-
-    const matched = notionShortlistData.filter((s: any) => {
-      if (!s.candidate) return false;
-      if (notionMatch && s.candidate.id === notionMatch.id) return true;
-
-      const candidateName = normalizeName(s.candidate.name);
-      if (!candidateName || profileNames.length === 0) return false;
-
-      return profileNames.some((profileName) =>
-        profileName === candidateName ||
-        profileName.includes(candidateName) ||
-        candidateName.includes(profileName)
-      );
-    });
-
-    const seen = new Set<string>();
-    return matched
-      .filter((s: any) => {
-        if (!s.id || seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      })
-      .map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        stage: s.stage,
-        entity: s.entity,
-        positions: s.positions || [],
-        createdAt: s.createdAt,
-        preQualifDate: s.preQualifDate,
-        cvPresentationDate: s.cvPresentationDate,
-        startDate: s.startDate,
-      }));
-  }, [fullName, notionMatch, notionShortlistData, profile.first_name, profile.last_name, profile.name]);
-
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
     const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -220,8 +176,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
   const showScoringOverlay = isBatchScoring && isSelected;
-  const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
-  const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
   const hasHighScore = jobScore && jobScore.match_score > 80;
   const flashColorMap = {
     go: 'hsl(var(--accent))',
@@ -231,11 +185,15 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-card border-2 transition-all max-w-full cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
-        isSelected
-          ? 'border-primary shadow-lg ring-2 ring-primary/25 bg-primary/[0.04]'
-          : 'border-border shadow hover:shadow-md hover:border-foreground/50'
-      }`}
+      className={isV3
+        ? `group relative max-w-full cursor-pointer border-b border-border/50 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+          isSelected ? 'bg-muted/60' : 'hover:bg-muted/40'
+        }`
+        : `group relative max-w-full cursor-pointer rounded-xl border bg-card transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+          isSelected
+            ? 'border-brand/55 bg-brand/10'
+            : 'border-border hover:border-border-strong'
+        }`}
       style={{ wordBreak: 'break-word' }}
       role="button"
       tabIndex={0}
@@ -260,8 +218,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       }}
     >
       {/* High score indicator — left accent bar */}
-      {hasHighScore && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
+      {hasHighScore && !isV3 && (
+        <div className="absolute bottom-0 left-0 top-0 w-1 rounded-l-xl bg-brand" />
       )}
 
       {/* Score flash overlay */}
@@ -299,7 +257,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       )}
       {/* Main card content — padding reduit (p-2 sm:p-3 au lieu de p-2.5 sm:p-4)
           pour gagner ~8px hauteur globale par card */}
-      <div className={`p-2 sm:p-3 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
+      <div className={`${isV3 ? 'px-2 py-3' : 'p-2 sm:p-3'} transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
         <div className="relative flex items-start gap-2 sm:gap-3 min-w-0 w-full">
           {/* Checkbox - top-right on mobile, left column on desktop.
               Renforcée : h-5 w-5 + border-2 + bg-background pour ressortir
@@ -311,8 +269,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 {jobScore?.recommendation === 'skip' ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className="w-5 h-5 rounded border-2 border-destructive/40 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
-                        <X className="w-3 h-3 text-destructive/50" />
+                      <div className={`flex ${isV3 ? 'h-4 w-4' : 'h-5 w-5'} cursor-not-allowed items-center justify-center rounded border border-border bg-muted`}>
+                        <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="max-w-xs">
@@ -323,41 +281,50 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
-                    className="w-5 h-5 border-2 border-foreground/50 bg-background hover:border-foreground hover:bg-muted shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-colors"
+                    aria-label={`Sélectionner ${fullName || 'ce profil'}`}
                   />
                 )}
               </div>
               {/* Mobile: absolute top-right */}
               <div className="sm:hidden absolute top-1 right-1 z-10" data-no-detail>
                 {jobScore?.recommendation === 'skip' ? (
-                  <div className="w-6 h-6 rounded border-2 border-destructive/40 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
-                    <X className="w-3.5 h-3.5 text-destructive/50" />
+                  <div className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded border border-border bg-muted">
+                    <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                   </div>
                 ) : (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
-                    className="w-6 h-6 border-2 border-foreground/50 bg-background hover:border-foreground shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    aria-label={`Sélectionner ${fullName || 'ce profil'}`}
+                    className={isV3 ? 'relative h-6 w-6 before:absolute before:-inset-2.5' : 'h-6 w-6'}
                   />
                 )}
               </div>
             </>
           )}
 
+          {/* Nouvelle page : un seul visage, de taille fixe, à tous les écrans. */}
+          {isV3 && (
+            <div className="shrink-0">
+              <PersonAvatar name={fullName} src={profile.profile_picture_url} size={40} />
+            </div>
+          )}
           {/* Avatar - separate column on desktop only */}
+          {!isV3 && (
           <div className="relative shrink-0 hidden sm:block">
-            <Avatar className="w-14 h-14 border border-border shadow-md">
+            <Avatar className="h-12 w-12 border border-border">
               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
+              <AvatarFallback className="bg-muted text-base font-semibold text-foreground-secondary">
                 {initials || '?'}
               </AvatarFallback>
             </Avatar>
             {networkDistance && networkDistance <= 3 && (
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-background border-2 border-primary rounded-full flex items-center justify-center text-xs font-bold text-primary">
+              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-2xs tabular-nums text-muted-foreground" title="Degré de relation LinkedIn">
                 {networkDistance}°
               </span>
             )}
           </div>
+          )}
 
           {/* Info */}
           <div className="flex-1 min-w-0">
@@ -366,34 +333,34 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
                   {/* Avatar inline next to name on mobile */}
+                  {!isV3 && (
                   <div className="relative shrink-0 sm:hidden">
-                    <Avatar className="w-8 h-8 border border-border shadow-sm">
+                    <Avatar className="h-8 w-8 border border-border">
                       <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xs font-medium">
+                      <AvatarFallback className="bg-muted text-xs font-semibold text-foreground-secondary">
                         {initials || '?'}
                       </AvatarFallback>
                     </Avatar>
                     {networkDistance && networkDistance <= 3 && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center text-3xs font-bold text-primary">
+                      <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-3xs tabular-nums text-muted-foreground" title="Degré de relation LinkedIn">
                         {networkDistance}°
                       </span>
                     )}
                   </div>
-                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-tight break-words sm:truncate">
+                  )}
+                  <h3 className="break-words text-md font-semibold leading-tight text-foreground sm:truncate">
                     {fullName || 'Profil LinkedIn'}
                   </h3>
                   {(profile as any)._fromPool && (
-                    <Badge variant="outline" className="text-xs px-1.5 py-0 border-muted-foreground/30 text-muted-foreground/70 gap-0.5 shrink-0">
-                      🔄 Pool
-                    </Badge>
+                    <Badge variant="muted" className="shrink-0">Déjà dans la mission</Badge>
                   )}
                   <CardStatusBadges
                     candidateStatus={candidateStatus}
                     profile={profile}
-                    notionMatch={notionMatch}
                     jobScore={jobScore}
                     isLikelyToRespond={isLikelyToRespond}
                     enrollmentInfo={enrollmentInfo}
+                    variant={variant}
                   />
                 </div>
               </div>
@@ -414,12 +381,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
                   onProfileTreated={onProfileTreated}
+                  variant={variant}
                 />
               </div>
             </div>
 
             {/* Row 2: Headline */}
-            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words">
+            <p className={`${isV3 ? 'text-sm' : 'text-xs sm:text-sm'} text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words`}>
               {profile.headline || currentRole || 'Profil LinkedIn'}
             </p>
 
@@ -428,9 +396,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 Après : single line wrapping avec puces • séparatrices,
                 icône uniquement sur le 1er item (Building2/logo), tabular-nums
                 sur chiffres pour alignement vertical entre cards. */}
-            <div className="flex items-center gap-x-1.5 gap-y-0.5 mt-1.5 text-xs text-muted-foreground flex-wrap min-w-0">
+            <div className={`flex items-center gap-x-1.5 gap-y-0.5 mt-1.5 ${isV3 ? 'text-sm' : 'text-xs'} text-muted-foreground flex-wrap min-w-0`}>
               {currentCompany && (
-                <span className="flex items-center gap-1.5 font-medium text-foreground/85 min-w-0">
+                <span className="flex min-w-0 items-center gap-1.5 text-foreground-secondary">
                   {profileData.currentJob?.logo ? (
                     <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                   ) : (
@@ -438,7 +406,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (
-                    <span className="text-3xs font-bold px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
+                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" title={companyType.signals.join(' · ')}>
                       {companyType.label}
                     </span>
                   )}
@@ -446,13 +414,19 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               )}
               {currentJobTenure && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
-                  <span className="text-muted-foreground/80 shrink-0">{currentJobTenure}</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
+                  <span className="shrink-0">{currentJobTenure}</span>
+                </>
+              )}
+              {isV3 && networkDistance && networkDistance <= 3 && (
+                <>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
+                  <span className="shrink-0 tabular-nums" title="Degré de relation LinkedIn">{networkDistance}°</span>
                 </>
               )}
               {profile.location && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
                   <span className="min-w-0 break-words sm:truncate">{profile.location.split(',')[0]}</span>
                 </>
               )}
@@ -460,34 +434,34 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   secteur) — gratuits, ne nécessitent pas de collect. */}
               {(profile as any).seniority_level && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
                   <span className="shrink-0">{(profile as any).seniority_level}</span>
                 </>
               )}
               {(profile as any).department && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
                   <span className="min-w-0 break-words sm:truncate">{(profile as any).department}</span>
                 </>
               )}
               {(profile as any).source === 'database' && (profile as any).industry && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
                   <span className="min-w-0 break-words sm:truncate">{(profile as any).industry}</span>
                 </>
               )}
               {totalExperience && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
-                  <span className="text-success font-medium tabular-nums">{totalExperience}</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
+                  <span className="font-medium tabular-nums text-foreground">{totalExperience}</span>
                 </>
               )}
               {connectionsCount && (
                 <>
-                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
                   <span className="tabular-nums">
                     {connectionsCount >= 1000 ? `${Math.round(connectionsCount / 100) / 10}k` : connectionsCount}
-                    {' '}rel.
+                    {' '}relations
                   </span>
                 </>
               )}
@@ -518,28 +492,33 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <ProfileEducationList education={profile.education} defaultLimit={1} />
                 )}
 
-                {/* Row 7: Skills compacts */}
+                {/* Row 7 : compétences, celles du poste d'abord */}
                 {skills.length > 0 && (
-                  <div className="flex flex-wrap gap-0.5 mt-1.5 pt-1.5 border-t border-border/40">
-                    {skills.slice(0, 6).map((skill: any, index: number) => (
-                      <Badge key={index} variant="secondary" className="text-3xs px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground font-normal leading-none">
-                        {skill.name || skill}
-                      </Badge>
-                    ))}
-                    {skills.length > 6 && (
-                      <Badge variant="secondary" className="text-3xs px-1.5 py-0 h-4 bg-primary/10 text-primary font-medium leading-none">
-                        +{skills.length - 6}
-                      </Badge>
+                  <div className="mt-2 flex flex-wrap gap-1 border-t border-border/50 pt-2">
+                    {[...skills]
+                      .map((skill: any) => {
+                        const label = String(skill?.name || skill);
+                        return { label, matched: jobSkillSet.has(label.trim().toLowerCase()) };
+                      })
+                      .sort((a, b) => Number(b.matched) - Number(a.matched))
+                      .slice(0, 8)
+                      .map(({ label, matched }, index) => (
+                        <Badge key={index} variant={matched ? 'brand' : 'muted'} className="font-normal" title={matched ? 'Compétence du poste' : undefined}>
+                          {label}
+                        </Badge>
+                      ))}
+                    {skills.length > 8 && (
+                      <Badge variant="muted" className="font-normal tabular-nums">+{skills.length - 8}</Badge>
                     )}
                   </div>
                 )}
               </>
             )}
 
-            {/* Row 7: History (Airtable / Notion) */}
-            {(historyData || notionShortlistsForCandidate.length > 0 || historyPanelLoading) && (
+            {/* Row 7: History (Airtable) */}
+            {(historyData || historyLoading) && (
               <div className="mt-2">
-                <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact notionShortlists={notionShortlistsForCandidate} />
+                <CandidateHistoryPanel data={historyData} loading={historyLoading} compact />
               </div>
             )}
 
@@ -560,10 +539,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 onSequenceEnroll={onSequenceEnroll}
                 onProfileTreated={onProfileTreated}
                 compact
+                variant={variant}
               />
             </div>
 
-            {/* "Voir détails" */}
+            {/* "Voir détails" : la ligne entière ouvre déjà la fiche ; pas de lien en plus sur la nouvelle page. */}
+            {!isV3 && (
             <div
               className="mt-1.5 text-xs text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-0.5"
               onClick={(e) => { e.stopPropagation(); onOpenDetail?.(); }}
@@ -571,6 +552,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <ExternalLink className="w-3 h-3" />
               Voir les détails
             </div>
+            )}
           </div>
         </div>
       </div>

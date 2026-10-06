@@ -1,63 +1,74 @@
 /**
- * CreateMissionV2 — Onboarding création de mission refondu.
+ * CreateMissionV2 : création d'une mission.
  *
- * Inspirée du design Claude "Mission Refonte v2" :
- *   ┌── Hero centré ───────────────────────────────────────┐
- *   │  ✨ Brief en 60 secondes                             │
- *   │  Décris la mission, l'IA fait le reste.              │
- *   └──────────────────────────────────────────────────────┘
+ * Trois écrans dans une même fenêtre :
+ *   - choose : coller une fiche de poste (Brief IA) ou saisir à la main ;
+ *   - brief  : la fiche à gauche, ce que l'assistant en retient à droite ;
+ *   - manual : titre, client, description.
  *
- *   ┌── 2 modes d'entrée (cards) ──────────────────────────┐
- *   │  📋 Coller une fiche      ✍️ Manuel                  │
- *   └──────────────────────────────────────────────────────┘
+ * Mise en forme : docs/design/01-direction.md et 06-simplicite.md (un seul
+ * bouton plein, pas de cadre autour des listes, ni emoji ni dégradé, vouvoiement).
  *
- *   ┌── Workspace selon le mode actif ─────────────────────┐
- *   │  - Mode brief : textarea grande + analyse IA live    │
- *   │  - Mode manuel : form classique                       │
- *   └──────────────────────────────────────────────────────┘
- *
- *   ┌── Footer sticky ─────────────────────────────────────┐
- *   │  Brouillon prêt à X% · [Créer la mission →]          │
- *   └──────────────────────────────────────────────────────┘
+ * Analyse : edge function generate-search-filters, action « brief_analysis »
+ * (Sonnet 5.5 par défaut, catalogue _shared/ai-config.ts). Elle renvoie les
+ * filtres de recherche (filters_snapshot) et le brief structuré (job_details).
  *
  * Réutilise :
  *   - useSourcingProjects.createProject
- *   - generate-search-filters edge function (analyse brief)
- *   - Logique de redirection vers /missions/:id
+ *   - la redirection vers /missions/:id
+ *   - editorDraft : la saisie survit à une fermeture (constat UX06)
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   saveEditorDraft,
   loadEditorDraft,
+  clearEditorDraft,
   editorDraftSavedAt,
 } from '@/lib/editorDraft';
 import { useNavigate } from 'react-router-dom';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useSourcingProjects, CreateProjectInput } from '@/hooks/useSourcingProjects';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
+import { estimateActionCredits, invokeWithCredits } from '@/lib/invokeWithCredits';
+import { plural } from '@/lib/plural';
 import { toast } from 'sonner';
 import {
-  Sparkles, Loader2, FileText, Pencil, ArrowRight, ArrowLeft,
-  Check, X, Building2, MapPin, Briefcase, Star, Clock, Layers, Euro,
-  Link2, Paperclip, Upload, Globe,
+  ArrowLeft, ArrowRight, FileText, Globe, Link2, Paperclip, Pencil, Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BriefAnalysisPanel } from './BriefAnalysisPanel';
+import { JobOffersPicker } from './JobOffersPicker';
+import {
+  MIN_BRIEF_CHARS, MAX_BRIEF_CHARS, SHORT_BRIEF_CHARS, CREDITS_EXHAUSTED_MESSAGE,
+  analysisErrorMessage, buildExtractedFields, buildJobDetails, suggestedMissionName,
+  type AnalyzeResponse, type BriefAnalysis, type ExtractedField,
+} from './briefAnalysis';
+import {
+  BULK_MESSAGES, MAX_BATCH_OFFERS, buildBriefText, createMissionsFromItems, readJobSource, resolveJobSource, runBulkAnalysis,
+  type BulkDeps, type BulkItem, type SourceJob,
+} from './jobSource';
 
 // ── URL helpers (détection des sources connues) ──
-function detectUrlSource(url: string): { label: string; emoji: string } | null {
+function detectUrlSource(url: string): { label: string } | null {
   const lower = url.toLowerCase();
-  if (lower.includes('welcometothejungle')) return { label: 'Welcome to the Jungle', emoji: '🌴' };
-  if (lower.includes('linkedin.com/jobs')) return { label: 'LinkedIn Jobs', emoji: '💼' };
-  if (lower.includes('linkedin.com')) return { label: 'LinkedIn', emoji: '💼' };
-  if (lower.includes('lever.co')) return { label: 'Lever', emoji: '⚙️' };
-  if (lower.includes('greenhouse.io')) return { label: 'Greenhouse', emoji: '🌱' };
-  if (lower.includes('workable.com')) return { label: 'Workable', emoji: '⚙️' };
-  if (lower.includes('teamtailor.com')) return { label: 'Teamtailor', emoji: '⚙️' };
-  if (lower.includes('jobteaser.com')) return { label: 'JobTeaser', emoji: '🎓' };
-  if (lower.includes('apec.fr')) return { label: 'APEC', emoji: '🇫🇷' };
+  if (lower.includes('welcometothejungle')) return { label: 'Welcome to the Jungle' };
+  if (lower.includes('linkedin.com/jobs')) return { label: 'LinkedIn Jobs' };
+  if (lower.includes('linkedin.com')) return { label: 'LinkedIn' };
+  if (lower.includes('lever.co')) return { label: 'Lever' };
+  if (lower.includes('greenhouse.io')) return { label: 'Greenhouse' };
+  if (lower.includes('workable.com')) return { label: 'Workable' };
+  if (lower.includes('teamtailor.com')) return { label: 'Teamtailor' };
+  if (lower.includes('jobteaser.com')) return { label: 'JobTeaser' };
+  if (lower.includes('apec.fr')) return { label: 'APEC' };
   if (/career|job|recrutement|emploi|talent|hiring|offre/i.test(url)) {
-    return { label: 'Page carrière', emoji: '🌐' };
+    return { label: 'Page carrière' };
   }
   return null;
 }
@@ -72,7 +83,7 @@ function extractUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
-// ── Parse local URL — pour extraire title/company directement depuis le slug
+// ── Parse local URL : pour extraire title/company directement depuis le slug
 // quand c'est une URL de poste spécifique (sans devoir scraper le HTML).
 // Marche pour : WTTJ /companies/{slug}/jobs/{title-slug}_{location}
 //               LinkedIn /jobs/view/{job_id}/  (titre dans les query params parfois)
@@ -116,7 +127,7 @@ function parseJobUrl(url: string): UrlParsedJob | null {
       }
     }
 
-    // LinkedIn jobs : /jobs/view/{id} — pas de slug dans le path, on doit fetch
+    // LinkedIn jobs : /jobs/view/{id}, pas de slug dans le path, on doit fetch
     if (host.includes('linkedin.com') && path.includes('/jobs/')) {
       return { source: 'LinkedIn Jobs', isJobUrl: true };
     }
@@ -153,37 +164,23 @@ interface CreateMissionV2Props {
   initialMode?: EntryMode;
 }
 
-type EntryMode = 'choose' | 'brief' | 'manual';
+type EntryMode = 'choose' | 'brief' | 'manual' | 'offers';
 
-interface BriefAnalysis {
-  filters: Record<string, unknown>;
-  analysis: {
-    suggested_title?: string;
-    role_keywords?: string[];
-    skills_to_search?: string[];
-    location_hint?: string | null;
-    years_experience_min?: number | null;
-    years_experience_max?: number | null;
-    job_category?: string;
-    detected_company?: string | null;
-    // Champs structurés pour pré-remplir job_details
-    skills_must_have?: string[];
-    skills_should_have?: string[];
-    skills_nice_to_have?: string[];
-    salary_min?: number | null;
-    salary_max?: number | null;
-    contract_type?: 'cdi' | 'cdd' | 'freelance' | 'stage' | 'alternance' | 'interim' | null;
-    remote_policy?: 'onsite' | 'hybrid' | 'full_remote' | null;
-    remote_days?: number | null;
-    start_date?: string | null;
-    mission_description?: string;
-    context?: string | null;
-    seniority?: string | null;
-    evaluation_criteria?: string[];
-  };
-}
+const MODE_TITLES: Record<EntryMode, string> = {
+  choose: 'Nouvelle mission',
+  brief: 'Brief IA',
+  manual: 'Saisie manuelle',
+  offers: 'Offres de la société',
+};
 
-// ── Mode Card (entrée du flow) ──
+const MODE_DESCRIPTIONS: Record<EntryMode, string> = {
+  choose: 'Comment souhaitez-vous décrire la mission ?',
+  brief: "Collez la fiche de poste : l'assistant en tire les informations du brief.",
+  manual: 'Renseignez les champs. Vous complèterez le brief après la création.',
+  offers: 'Choisissez les offres à transformer en missions.',
+};
+
+// ── Choix du mode d'entrée ──
 
 const MODE_OPTIONS: {
   value: Exclude<EntryMode, 'choose'>;
@@ -191,27 +188,26 @@ const MODE_OPTIONS: {
   desc: string;
   icon: typeof FileText;
   recommended?: boolean;
-  badge?: string;
 }[] = [
   {
     value: 'brief',
     label: 'Coller une fiche de poste',
-    desc: 'L\'IA extrait le titre, les compétences, l\'expérience et la localisation en quelques secondes.',
+    desc: "L'assistant en tire le titre, les compétences, l'expérience et le lieu, puis prépare la recherche.",
     icon: FileText,
     recommended: true,
-    badge: '60 secondes',
   },
   {
     value: 'manual',
-    label: 'Saisir manuellement',
-    desc: 'Pour les briefs complexes ou multi-rôles. Tu rempliras les champs un par un.',
+    label: 'Saisir à la main',
+    desc: 'Pour un brief complexe ou à plusieurs rôles. Vous remplissez les champs un par un.',
     icon: Pencil,
-    badge: '5-10 min',
   },
 ];
 
 /** Clé du brouillon de création de mission, une seule par navigateur. */
 const MISSION_DRAFT_KEY = 'create-mission';
+/** Délai entre une saisie et l'enregistrement du brouillon. */
+const DRAFT_SAVE_DELAY_MS = 600;
 
 interface MissionDraft {
   mode?: EntryMode;
@@ -221,13 +217,29 @@ interface MissionDraft {
   description?: string;
 }
 
+/**
+ * Écrit le brouillon seulement s'il diffère de celui déjà stocké : ouvrir puis
+ * fermer la fenêtre sans rien changer ne rafraîchit ni sa date ni sa durée de vie.
+ */
+function persistDraft(brouillon: MissionDraft | null): void {
+  const stocke = loadEditorDraft<MissionDraft>(MISSION_DRAFT_KEY);
+  if (JSON.stringify(stocke) === JSON.stringify(brouillon)) return;
+  saveEditorDraft(MISSION_DRAFT_KEY, brouillon);
+}
+
+function shortcutLabel(): string {
+  return typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+    ? 'Cmd + Entrée'
+    : 'Ctrl + Entrée';
+}
+
 export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   isOpen,
   onClose,
   initialMode = 'choose',
 }) => {
   const navigate = useNavigate();
-  const { createProject } = useSourcingProjects();
+  const { createProject, projects } = useSourcingProjects();
 
   const [mode, setMode] = useState<EntryMode>(initialMode);
   const [briefText, setBriefText] = useState('');
@@ -236,17 +248,46 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const [description, setDescription] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BriefAnalysis | null>(null);
+  // Fiche et client au moment de l'analyse : s'ils changent ensuite, le résultat est périmé.
+  const [analysedKey, setAnalysedKey] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // Import URL state
   const [scanningUrl, setScanningUrl] = useState(false);
   const [urlSuggestion, setUrlSuggestion] = useState<string | null>(null);
   // File upload state
   const [uploadingFile, setUploadingFile] = useState(false);
-  // Passe a vrai quand la mission a ete creee : la fermeture efface alors le
-  // brouillon au lieu de le conserver.
+  // Passe a vrai quand la mission a ete creee : la saisie n'est alors plus conservee.
   const creationReussieRef = useRef(false);
+  // Vrai tant que le nom vient d'une saisie de l'utilisateur : l'analyse n'y touche pas.
+  const userNamedRef = useRef(false);
+  // Adresse de l'offre lue en ligne, conservée avec le brief de la mission créée.
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  // Offres d'une société lues depuis une adresse : choix, analyse et création en lot.
+  const [offers, setOffers] = useState<{ company: string; jobs: SourceJob[]; truncated: boolean } | null>(null);
+  const [selectedUrls, setSelectedUrls] = useState<ReadonlySet<string>>(new Set());
+  const [bulkItems, setBulkItems] = useState<BulkItem[] | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const bulkCancelRef = useRef(false);
+  const importedUrls = useMemo(
+    () => new Set(projects.map((p) => p.jd_source_url).filter((u): u is string => !!u)),
+    [projects],
+  );
+  const creditsPerOffer = estimateActionCredits('brief_analysis');
 
-  // Détecte automatiquement une URL collée dans le brief — propose un scan
+  const analysisKey = `${briefText.trim().slice(0, MAX_BRIEF_CHARS)}\u0000${clientName.trim()}`;
+  const isStale = analysis !== null && analysedKey !== analysisKey;
+  const canAnalyze = briefText.trim().length >= MIN_BRIEF_CHARS;
+  const { fields: extractedFields, missing: missingFields } = analysis
+    ? buildExtractedFields(analysis.analysis, clientName)
+    : { fields: [], missing: [] };
+
+  const onNameChange = useCallback((value: string) => {
+    userNamedRef.current = value.trim() !== '';
+    setBriefName(value);
+  }, []);
+
+  // Détecte automatiquement une URL collée dans le brief, propose de pré-remplir
   useEffect(() => {
     const url = extractUrl(briefText.trim());
     if (url && isValidUrl(url) && detectUrlSource(url)) {
@@ -256,33 +297,35 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     }
   }, [briefText]);
 
-  // Fermeture : le travail en cours est conservé au lieu d'être effacé, puis
-  // proposé à la réouverture. Une fiche de poste collée survit donc à une
+  // Brouillon : la saisie en cours est conservée au lieu d'être effacée, puis
+  // proposée à la réouverture. Une fiche de poste collée survit donc à une
   // fermeture par erreur (audit UX du 09/09/2026, constat UX06).
+  const brouillonCourant = (): MissionDraft | null => {
+    const aDuTexte =
+      briefText.trim() || briefName.trim() || clientName.trim() || description.trim();
+    const aConserver = aDuTexte && !creationReussieRef.current;
+    return aConserver ? { mode: mode === 'offers' ? 'brief' : mode, briefText, briefName, clientName, description } : null;
+  };
+  const brouillonRef = useRef(brouillonCourant);
   useEffect(() => {
-    if (isOpen) return;
-    const t = setTimeout(() => {
-      const aDuTexte =
-        briefText.trim() || briefName.trim() || clientName.trim() || description.trim();
-      const aConserver = aDuTexte && !creationReussieRef.current;
-      saveEditorDraft(
-        MISSION_DRAFT_KEY,
-        aConserver ? { mode, briefText, briefName, clientName, description } : null,
-      );
-      creationReussieRef.current = false;
-      setMode(initialMode);
-      setBriefText('');
-      setBriefName('');
-      setClientName('');
-      setDescription('');
-      setAnalysis(null);
-      setAnalyzing(false);
-      setCreating(false);
-    }, 200);
+    brouillonRef.current = brouillonCourant;
+  });
+
+  // Les parents retirent la fenêtre à la fermeture : le composant est démonté sans
+  // jamais passer par isOpen = false. L'ancien effet de fermeture ne s'exécutait donc
+  // pas, et la saisie était perdue. On conserve au démontage, sans effacer ici : le
+  // double montage du mode strict passe par un état encore vide.
+  useEffect(() => () => {
+    const brouillon = brouillonRef.current();
+    if (brouillon) persistDraft(brouillon);
+  }, []);
+
+  // Enregistrement au fil de la saisie : un rechargement de page ne perd pas la fiche.
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = setTimeout(() => persistDraft(brouillonRef.current()), DRAFT_SAVE_DELAY_MS);
     return () => clearTimeout(t);
-    // Volontairement dépendant de la saisie : c'est sa valeur au moment de la
-    // fermeture qu'il faut conserver.
-  }, [isOpen, initialMode, mode, briefText, briefName, clientName, description]);
+  }, [isOpen, mode, briefText, briefName, clientName, description]);
 
   // Réouverture : on repropose le brouillon, sans écraser une saisie en cours.
   useEffect(() => {
@@ -293,6 +336,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     if (brouillon.mode) setMode(brouillon.mode);
     setBriefText(brouillon.briefText || '');
     setBriefName(brouillon.briefName || '');
+    userNamedRef.current = !!brouillon.briefName?.trim();
     setClientName(brouillon.clientName || '');
     setDescription(brouillon.description || '');
     const quand = editorDraftSavedAt(MISSION_DRAFT_KEY);
@@ -307,57 +351,62 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
 
   // ── Brief IA : analyse + creation ──
   const handleAnalyze = useCallback(async () => {
-    if (briefText.trim().length < 20) {
-      toast.error('Le brief est trop court (minimum 20 caractères)');
-      return;
-    }
+    const text = briefText.trim().slice(0, MAX_BRIEF_CHARS);
+    if (text.length < MIN_BRIEF_CHARS || analyzing) return;
+    const key = analysisKey;
     setAnalyzing(true);
     setAnalysis(null);
+    setAnalysisError(null);
 
     try {
       const syntheticJob = {
         id: 'draft',
-        title: briefText.trim().split('\n')[0].slice(0, 80),
-        description: briefText.trim(),
-        client: clientName ? { name: clientName } : null,
+        title: text.split('\n')[0].slice(0, 80),
+        description: text,
+        client: clientName.trim() ? { name: clientName.trim() } : null,
         location: null,
         skills: [],
         seniority: null,
       };
 
-      const response = await invokeEdgeFunction<any>('generate-search-filters', { job: syntheticJob });
+      const { data, error } = await invokeWithCredits<AnalyzeResponse>(
+        'generate-search-filters',
+        'brief_analysis',
+        { job: syntheticJob },
+        { description: 'Brief IA : analyse de la fiche de poste' },
+      );
 
-      if (response.error) throw new Error(response.error.message || 'Erreur IA');
-      if (!response.data?.success) throw new Error('Analyse échouée');
-
-      const aiTitle = response.data.analysis?.suggested_title;
-      if (aiTitle && !briefName) setBriefName(aiTitle);
-      else if (!briefName) {
-        const roles = response.data.analysis?.role_keywords || [];
-        const loc = response.data.analysis?.location_hint;
-        setBriefName(roles[0] ? `${roles[0]}${loc ? ` — ${loc}` : ''}` : 'Mission');
+      if (error) {
+        if (isInsufficientCreditsError(error)) {
+          // invokeWithCredits vient d'afficher le toast « Crédits IA insuffisants ».
+          setAnalysisError(CREDITS_EXHAUSTED_MESSAGE);
+          return;
+        }
+        throw error;
       }
+      if (!data?.success || data.degraded || !data.analysis) throw new Error('Analyse inexploitable');
 
-      setAnalysis({
-        filters: response.data.filters,
-        analysis: response.data.analysis,
-      });
-
-      toast.success('Analyse terminée — vérifie et crée la mission');
-    } catch (err: any) {
-      toast.error(err.message || "Erreur lors de l'analyse");
+      setAnalysis({ filters: data.filters ?? {}, analysis: data.analysis });
+      setAnalysedKey(key);
+      if (!userNamedRef.current) {
+        setBriefName(data.analysis.suggested_title || suggestedMissionName(data.analysis));
+      }
+    } catch (err) {
+      console.error('[CreateMissionV2] analyse impossible :', err);
+      setAnalysisError(analysisErrorMessage(err));
     } finally {
       setAnalyzing(false);
     }
-  }, [briefText, clientName, briefName]);
+  }, [briefText, clientName, analyzing, analysisKey]);
 
   const handleCreateFromBrief = useCallback(async () => {
+    if (creating) return;
     setCreating(true);
     try {
       const input: CreateProjectInput = {
-        name: briefName || briefText.trim().split('\n')[0].slice(0, 80) || 'Nouvelle mission',
+        name: briefName.trim() || briefText.trim().split('\n')[0].slice(0, 80) || 'Nouvelle mission',
         description: briefText.trim(),
-        client_name: clientName || undefined,
+        client_name: clientName.trim() || undefined,
       };
 
       if (analysis) {
@@ -366,65 +415,20 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
           generated_at: new Date().toISOString(),
           brief_text: briefText.trim(),
         };
-
-        // Pré-remplit job_details avec ce que l'IA a extrait — c'est ce
-        // qui alimente le SCORING IA des candidats (skills_must_have,
-        // mission_description, etc.) et l'affichage du brief structuré.
-        const a = analysis.analysis;
-        const jobDetails: Record<string, unknown> = {
-          title: a.suggested_title || briefName || briefText.trim().split('\n')[0].slice(0, 80),
-          mission_description: a.mission_description || briefText.trim().slice(0, 600),
-          raw_brief: briefText.trim(),
-          brief_source: 'imported',
-        };
-        if (a.context) jobDetails.context = a.context;
-        if (clientName || a.detected_company) {
-          jobDetails.client = {
-            name: clientName || a.detected_company,
-          };
-        }
-        if (a.location_hint) jobDetails.location = a.location_hint;
-        if (a.remote_policy) jobDetails.remote_policy = a.remote_policy;
-        if (typeof a.remote_days === 'number') jobDetails.remote_days = a.remote_days;
-        if (a.contract_type) jobDetails.contract_type = a.contract_type;
-        if (a.start_date) jobDetails.start_date = a.start_date;
-        if (a.seniority) jobDetails.seniority = a.seniority;
-        if (typeof a.years_experience_min === 'number') jobDetails.experience_min = a.years_experience_min;
-        if (typeof a.years_experience_max === 'number') jobDetails.experience_max = a.years_experience_max;
-        if (typeof a.salary_min === 'number') jobDetails.salary_min = a.salary_min;
-        if (typeof a.salary_max === 'number') jobDetails.salary_max = a.salary_max;
-        if (a.salary_min || a.salary_max) {
-          jobDetails.salary_currency = 'EUR';
-          jobDetails.salary_type = 'annual';
-        }
-        if (Array.isArray(a.skills_must_have) && a.skills_must_have.length) {
-          jobDetails.skills_must_have = a.skills_must_have;
-        } else if (Array.isArray(a.skills_to_search) && a.skills_to_search.length) {
-          // Fallback : skills_to_search peut servir de must_have si pas explicite
-          jobDetails.skills_must_have = a.skills_to_search.slice(0, 8);
-        }
-        if (Array.isArray(a.skills_should_have) && a.skills_should_have.length) {
-          jobDetails.skills_should_have = a.skills_should_have;
-        }
-        if (Array.isArray(a.skills_nice_to_have) && a.skills_nice_to_have.length) {
-          jobDetails.skills_nice_to_have = a.skills_nice_to_have;
-        }
-        if (Array.isArray(a.evaluation_criteria) && a.evaluation_criteria.length) {
-          // Convertit en format compatible JobDetails.evaluation_criteria
-          jobDetails.evaluation_criteria = a.evaluation_criteria.map((label, i) => ({
-            id: `auto-${i + 1}`,
-            label,
-            description: '',
-            category: 'technical' as const,
-            weight: 2 as const,
-          }));
-        }
-        (input as any).job_details = jobDetails;
+        // Pré-remplit job_details avec ce que l'IA a extrait : c'est ce qui
+        // alimente le SCORING IA des candidats et le brief structuré.
+        input.job_details = buildJobDetails(analysis.analysis, {
+          briefName: briefName.trim(),
+          briefText,
+          clientName: clientName.trim(),
+          sourceUrl: sourceUrl ?? undefined,
+        });
       }
 
       const project = await createProject(input);
       // La mission existe : le brouillon n'a plus lieu d'etre conserve.
       creationReussieRef.current = true;
+      clearEditorDraft(MISSION_DRAFT_KEY);
       onClose();
       if (project?.id) {
         navigate(`/missions/${project.id}?tab=${analysis ? 'sourcing' : 'brief'}`);
@@ -434,72 +438,207 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [briefName, briefText, clientName, analysis, createProject, onClose, navigate]);
+  }, [creating, briefName, briefText, clientName, analysis, sourceUrl, createProject, onClose, navigate]);
 
-  // ── Scan d'URL — parsing local du slug uniquement.
+  // ── Adresse web : fonction fetch-job-source, qui lit une offre ou les offres d'une société.
   //
-  // Note : on n'essaie PAS de scraper le contenu complet de la page.
-  // Les sites modernes (WTTJ, LinkedIn jobs, ATS) font du Client-Side
-  // Rendering avec anti-bot, ce qui rend le scraping non-fiable.
-  // À la place : parsing rapide du slug pour pré-remplir titre +
-  // entreprise + lieu + contrat, et l'user complète en copiant-collant
-  // le contenu de la fiche.
+  // Si la page ne peut pas être lue (site protégé, adresse inconnue), on retombe sur ce
+  // que l'adresse elle-même dit (poste, entreprise et lieu d'une adresse Welcome to the
+  // Jungle, par exemple) et l'utilisateur colle le texte de la fiche.
+  const applyJob = useCallback((job: SourceJob, url: string) => {
+    const text = buildBriefText(job);
+    setBriefText(prev => {
+      const without = prev.replace(url, '').trim();
+      return without ? `${without}\n\n${text}` : text;
+    });
+    if (!briefName.trim()) setBriefName(job.title);
+    if (!clientName.trim() && job.company) setClientName(job.company);
+    setSourceUrl(url);
+    setUrlSuggestion(null);
+  }, [briefName, clientName]);
+
+  const applyUrlFallback = useCallback((url: string, reason: string) => {
+    const parsed = parseJobUrl(url);
+
+    // Adresse de poste dont le chemin dit quelque chose : on pré-remplit.
+    if (parsed && parsed.isJobUrl && (parsed.title || parsed.company)) {
+      const lines = [
+        parsed.title && `Poste : ${parsed.title}`,
+        parsed.company && `Entreprise : ${parsed.company}`,
+        parsed.location && `Lieu : ${parsed.location}`,
+        `Source : ${parsed.source}`,
+        `URL : ${url}`,
+      ].filter(Boolean).join('\n');
+
+      setBriefText(prev => {
+        const without = prev.replace(url, '').trim();
+        return without ? `${without}\n\n${lines}` : lines;
+      });
+      if (!briefName && parsed.title) setBriefName(parsed.title);
+      if (!clientName && parsed.company) setClientName(parsed.company);
+      setUrlSuggestion(null);
+      toast.info("La page n'a pas pu être lue", {
+        description: `${parsed.source} reconnu : poste, entreprise et lieu repris de l'adresse. Collez ensuite le texte de la fiche sous ces lignes.`,
+        duration: 7000,
+      });
+      return;
+    }
+
+    // Page d'une société, sans liste lisible.
+    if (parsed && !parsed.isJobUrl && parsed.company) {
+      if (!clientName) setClientName(parsed.company);
+      toast.info("La liste des offres n'a pas pu être lue", {
+        description: `Entreprise pré-remplie (${parsed.company}). Collez le texte de la fiche de poste dans la zone prévue.`,
+        duration: 7000,
+      });
+      return;
+    }
+
+    toast.warning('Adresse non lue', {
+      description: reason || 'Collez directement le texte de la fiche dans la zone prévue.',
+      duration: 6000,
+    });
+  }, [briefName, clientName]);
+
   const handleScanUrl = useCallback(async (urlOverride?: string) => {
     const url = (urlOverride || urlSuggestion || '').trim();
     if (!url) return;
     setScanningUrl(true);
-
     try {
-      const parsed = parseJobUrl(url);
-
-      // Cas 1 : URL de poste avec slug parsable → on pré-remplit
-      if (parsed && parsed.isJobUrl && (parsed.title || parsed.company)) {
-        const lines = [
-          parsed.title && `Poste : ${parsed.title}`,
-          parsed.company && `Entreprise : ${parsed.company}`,
-          parsed.location && `Lieu : ${parsed.location}`,
-          `Source : ${parsed.source}`,
-          `URL : ${url}`,
-          '',
-          '— Colle ici le contenu complet de la fiche (Ctrl+A puis Ctrl+C sur la page, puis Ctrl+V ici) —',
-        ].filter(Boolean).join('\n');
-
-        setBriefText(prev => {
-          const without = prev.replace(url, '').trim();
-          return without ? `${without}\n\n${lines}` : lines;
-        });
-        if (!briefName && parsed.title) setBriefName(parsed.title);
-        if (!clientName && parsed.company) setClientName(parsed.company);
-        setUrlSuggestion(null);
-
-        toast.success(`✨ ${parsed.source} reconnu`, {
-          description: 'Titre, entreprise et lieu pré-remplis. Pour le brief complet, copie-colle le contenu de la page sous ces infos.',
+      const outcome = await resolveJobSource(url);
+      if (outcome.status === 'ok' && outcome.data.kind === 'job') {
+        applyJob(outcome.data.job, url);
+        toast.success(`Offre lue : ${outcome.data.job.title}`, {
+          description: "Le texte de la fiche est dans la zone. Relisez-le, puis lancez l'analyse.",
           duration: 6000,
         });
         return;
       }
-
-      // Cas 2 : URL de page entreprise (pas une fiche de poste précise)
-      if (parsed && !parsed.isJobUrl && parsed.company) {
-        if (!clientName) setClientName(parsed.company);
-        toast.info('Page entreprise détectée', {
-          description: `Entreprise pré-remplie (${parsed.company}). Colle le contenu de la fiche de poste dans la zone brief — l'IA fait le reste.`,
-          duration: 7000,
-        });
+      if (outcome.status === 'ok' && outcome.data.kind === 'company') {
+        setBriefText(prev => prev.replace(url, '').trim());
+        setUrlSuggestion(null);
+        setOffers({ company: outcome.data.company.name, jobs: outcome.data.jobs, truncated: outcome.data.truncated });
+        setSelectedUrls(new Set());
+        setBulkItems(null);
+        setMode('offers');
         return;
       }
-
-      // Cas 3 : URL non reconnue
-      toast.warning('URL non reconnue', {
-        description: 'Colle directement le contenu de la fiche dans la zone brief — l\'IA fait le reste.',
-        duration: 5000,
-      });
-    } catch (e: any) {
-      toast.error(e.message || "Erreur lors du scan");
+      applyUrlFallback(url, outcome.status === 'ok' ? (outcome.data.kind === 'unreadable' ? outcome.data.message : '') : outcome.message);
     } finally {
       setScanningUrl(false);
     }
-  }, [urlSuggestion, briefName, clientName]);
+  }, [urlSuggestion, applyJob, applyUrlFallback]);
+
+  // ── Offres d'une société : choix, puis une offre dans le Brief IA, ou une analyse et des missions par lot ──
+  const toggleOffer = useCallback((url: string) => {
+    setSelectedUrls(prev => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else if (next.size < MAX_BATCH_OFFERS) next.add(url);
+      return next;
+    });
+  }, []);
+
+  const toggleAllOffers = useCallback(() => {
+    setSelectedUrls(prev => prev.size > 0
+      ? new Set()
+      : new Set((offers?.jobs ?? []).filter(j => !importedUrls.has(j.url)).slice(0, MAX_BATCH_OFFERS).map(j => j.url)));
+  }, [offers, importedUrls]);
+
+  const leaveOffers = useCallback(() => {
+    bulkCancelRef.current = true;
+    setOffers(null);
+    setBulkItems(null);
+    setSelectedUrls(new Set());
+    setMode('brief');
+  }, []);
+
+  // Une seule offre choisie : on la lit et on l'ouvre dans le Brief IA, à relire avant l'analyse.
+  const openSingleOffer = useCallback(async (job: SourceJob) => {
+    setBulkRunning(true);
+    const read = await readJobSource(job.url);
+    setBulkRunning(false);
+    if (read.status === 'error') {
+      toast.error("Cette offre n'a pas pu être lue", { description: read.message });
+      return;
+    }
+    applyJob({ ...job, ...read.data }, job.url);
+    toast.success(`Offre lue : ${job.title}`, { description: "Relisez la fiche, puis lancez l'analyse.", duration: 6000 });
+    setOffers(null);
+    setSelectedUrls(new Set());
+    setMode('brief');
+  }, [applyJob]);
+
+  const startBulk = useCallback(async () => {
+    if (!offers || bulkRunning) return;
+    const chosen = offers.jobs.filter(j => selectedUrls.has(j.url));
+    if (chosen.length === 0) return;
+    if (chosen.length === 1) {
+      await openSingleOffer(chosen[0]);
+      return;
+    }
+    bulkCancelRef.current = false;
+    setBulkRunning(true);
+    setBulkItems(chosen.map(job => ({ job, status: 'pending' as const })));
+    const deps: BulkDeps = {
+      read: async (job) => {
+        const read = await readJobSource(job.url);
+        // Dans un lot, « collez le texte » n'a pas de sens : l'offre est simplement marquée illisible.
+        return read.status === 'ok' ? { text: buildBriefText({ ...job, ...read.data }) } : { error: BULK_MESSAGES.unreadable };
+      },
+      analyze: async (text, job) => {
+        const client = job.company || offers.company;
+        const { data, error } = await invokeWithCredits<AnalyzeResponse>(
+          'generate-search-filters',
+          'brief_analysis',
+          {
+            job: {
+              id: 'draft',
+              title: text.split('\n')[0].slice(0, 80),
+              description: text.slice(0, MAX_BRIEF_CHARS),
+              client: client ? { name: client } : null,
+              location: null,
+              skills: [],
+              seniority: null,
+            },
+          },
+          { description: 'Brief IA : analyse de plusieurs offres' },
+        );
+        if (error) return isInsufficientCreditsError(error) ? { error: 'credits' as const } : { error: 'failed' as const };
+        if (!data?.success || data.degraded || !data.analysis) return { error: 'failed' as const };
+        return { analysis: { filters: data.filters ?? {}, analysis: data.analysis } };
+      },
+    };
+    try {
+      await runBulkAnalysis(
+        chosen,
+        deps,
+        (index, patch) => setBulkItems(prev => (prev ? prev.map((item, i) => (i === index ? { ...item, ...patch } : item)) : prev)),
+        { isCancelled: () => bulkCancelRef.current },
+      );
+    } finally {
+      setBulkRunning(false);
+    }
+  }, [offers, bulkRunning, selectedUrls, openSingleOffer]);
+
+  const createBulk = useCallback(async () => {
+    if (!bulkItems || creating) return;
+    setCreating(true);
+    try {
+      const result = await createMissionsFromItems(bulkItems, offers?.company ?? '', createProject);
+      if (result.created === 0) {
+        toast.error('Aucune mission créée', { description: 'Réessayez dans un instant.' });
+        return;
+      }
+      toast.success(plural(result.created, 'mission créée', 'missions créées'), {
+        description: result.failed > 0 ? plural(result.failed, 'offre non créée', 'offres non créées') : undefined,
+      });
+      onClose();
+      navigate(result.created === 1 && result.firstId ? `/missions/${result.firstId}?tab=sourcing` : '/missions');
+    } finally {
+      setCreating(false);
+    }
+  }, [bulkItems, creating, offers, createProject, onClose, navigate]);
 
   // ── Upload d'un fichier texte (TXT / Markdown) ──
   const handleFileUpload = useCallback(async (file: File) => {
@@ -515,20 +654,22 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
       ) {
         const text = await file.text();
         setBriefText(prev => {
-          const cleaned = text.trim().slice(0, 12000); // cap raisonnable
+          const cleaned = text.trim().slice(0, MAX_BRIEF_CHARS);
           return prev.trim() ? `${prev.trim()}\n\n${cleaned}` : cleaned;
         });
         if (!briefName) {
           const guessedName = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').slice(0, 60);
           setBriefName(guessedName);
         }
-        toast.success(`📎 Fichier "${file.name}" importé`);
+        toast.success(`Fichier « ${file.name} » importé`);
         return;
       }
 
-      toast.error(`Format ${ext.toUpperCase()} non pris en charge — utilise un fichier TXT ou MD, ou colle le contenu dans la zone brief`);
-    } catch (e: any) {
-      toast.error(e.message || "Erreur lors de la lecture du fichier");
+      toast.error(`Le format ${ext.toUpperCase()} n'est pas pris en charge`, {
+        description: 'Importez un fichier .txt ou .md, ou copiez le texte du document dans la zone de la fiche.',
+      });
+    } catch {
+      toast.error('Le fichier n\'a pas pu être lu.');
     } finally {
       setUploadingFile(false);
     }
@@ -536,6 +677,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
 
   // ── Manuel ──
   const handleCreateManual = useCallback(async () => {
+    if (creating) return;
     if (!briefName.trim()) {
       toast.error('Le titre est requis');
       return;
@@ -545,9 +687,10 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
       const project = await createProject({
         name: briefName.trim(),
         description: description || undefined,
-        client_name: clientName || undefined,
+        client_name: clientName.trim() || undefined,
       });
       creationReussieRef.current = true;
+      clearEditorDraft(MISSION_DRAFT_KEY);
       onClose();
       if (project?.id) {
         navigate(`/missions/${project.id}?tab=brief`);
@@ -557,79 +700,85 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [briefName, description, clientName, createProject, onClose, navigate]);
+  }, [creating, briefName, description, clientName, createProject, onClose, navigate]);
 
-  // Détecte les fields extraits pour le panneau live
-  const extractedFields = analysis?.analysis ? buildExtractedFields(analysis.analysis) : [];
+  // Ctrl + Entrée (Cmd sur Mac) : l'action principale de l'écran.
+  const handleShortcut = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+    e.preventDefault();
+    if (mode === 'brief') {
+      if (analysis) handleCreateFromBrief();
+      else handleAnalyze();
+    } else if (mode === 'manual' && briefName.trim()) {
+      handleCreateManual();
+    } else if (mode === 'offers') {
+      if (bulkItems) createBulk();
+      else startBulk();
+    }
+  };
+
+  const bulkFinished = bulkItems?.filter(i => i.status === 'done' || i.status === 'error' || i.status === 'skipped').length ?? 0;
+  const bulkReady = bulkItems?.filter(i => i.status === 'done').length ?? 0;
+  const offersStatus = bulkItems
+    ? bulkRunning
+      ? `Analyse ${bulkFinished} sur ${bulkItems.length}`
+      : `${plural(bulkReady, 'offre prête', 'offres prêtes')}${bulkReady < bulkItems.length ? ` · ${bulkItems.length - bulkReady} non analysée${bulkItems.length - bulkReady > 1 ? 's' : ''}` : ''}`
+    : selectedUrls.size === 0
+      ? 'Aucune offre sélectionnée'
+      : `${plural(selectedUrls.size, 'offre sélectionnée', 'offres sélectionnées')}${selectedUrls.size > 1 ? ` · environ ${plural(selectedUrls.size * creditsPerOffer, 'crédit')}` : ''}`;
+
+  // Vide pendant une action : le bouton et le panneau disent déjà ce qui se passe.
+  const briefStatus = creating || analyzing
+    ? ''
+    : analysis
+      ? `${extractedFields.length} informations retenues`
+      : canAnalyze
+        ? null
+        : `Collez ou saisissez au moins ${MIN_BRIEF_CHARS} caractères`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[920px] p-0 gap-0 overflow-hidden bg-background border border-border rounded-xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Créer une nouvelle mission</DialogTitle>
-          <DialogDescription>
-            Choisis comment tu veux décrire la mission : coller une fiche de poste ou remplir manuellement.
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Accent gradient bar */}
-        <div className="h-1 konekt-skalr-bg flex-shrink-0" />
-
-        {/* Header (back button visible si mode != choose) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            {mode !== 'choose' ? (
-              <button
-                type="button"
-                onClick={() => setMode('choose')}
-                className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
-                aria-label="Retour"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            ) : (
-              <div className="h-8 w-8 rounded-lg konekt-skalr-bg konekt-shine grid place-items-center flex-shrink-0">
-                <Sparkles className="w-4 h-4 text-white" strokeWidth={2.5} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="font-display text-[16px] font-bold leading-tight truncate">
-                {mode === 'choose' && 'Nouvelle mission'}
-                {mode === 'brief' && 'Brief IA'}
-                {mode === 'manual' && 'Création manuelle'}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {mode === 'choose' && 'Comment veux-tu décrire la mission ?'}
-                {mode === 'brief' && 'Colle ta fiche de poste, l\'IA extrait l\'essentiel'}
-                {mode === 'manual' && 'Remplis les champs un par un'}
-              </p>
-            </div>
+      <DialogContent
+        onKeyDown={handleShortcut}
+        className="flex max-h-[90vh] max-w-[960px] flex-col gap-0 overflow-hidden p-0"
+      >
+        {/* La croix de fermeture est celle du dialogue ; pr-14 lui laisse la place. */}
+        <div className="flex shrink-0 items-center gap-3 border-b border-border py-4 pl-6 pr-14">
+          {mode !== 'choose' && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="-ml-2"
+              aria-label="Retour"
+              onClick={() => (mode === 'offers' ? leaveOffers() : setMode('choose'))}
+            >
+              <ArrowLeft />
+            </Button>
+          )}
+          <div className="min-w-0">
+            <DialogTitle>{mode === 'offers' && offers ? `Offres de ${offers.company}` : MODE_TITLES[mode]}</DialogTitle>
+            <DialogDescription className="text-xs">{MODE_DESCRIPTIONS[mode]}</DialogDescription>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
-            aria-label="Fermer"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {mode === 'choose' && <ChooseMode onPick={setMode} />}
           {mode === 'brief' && (
             <BriefMode
               briefText={briefText}
               setBriefText={setBriefText}
               briefName={briefName}
-              setBriefName={setBriefName}
+              onNameChange={onNameChange}
               clientName={clientName}
               setClientName={setClientName}
               analyzing={analyzing}
               analysis={analysis}
+              analysisError={analysisError}
+              isStale={isStale}
               extractedFields={extractedFields}
-              onAnalyze={handleAnalyze}
+              missingFields={missingFields}
+              onAnalyze={canAnalyze ? handleAnalyze : undefined}
               urlSuggestion={urlSuggestion}
               scanningUrl={scanningUrl}
               onScanUrl={handleScanUrl}
@@ -637,10 +786,23 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               onFileUpload={handleFileUpload}
             />
           )}
+          {mode === 'offers' && offers && (
+            <JobOffersPicker
+              company={offers.company}
+              jobs={offers.jobs}
+              truncated={offers.truncated}
+              importedUrls={importedUrls}
+              selected={selectedUrls}
+              maxSelectable={MAX_BATCH_OFFERS}
+              items={bulkItems}
+              onToggle={toggleOffer}
+              onToggleAll={toggleAllOffers}
+            />
+          )}
           {mode === 'manual' && (
             <ManualMode
               name={briefName}
-              setName={setBriefName}
+              onNameChange={onNameChange}
               clientName={clientName}
               setClientName={setClientName}
               description={description}
@@ -651,63 +813,71 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
 
         {/* Footer (selon mode) */}
         {mode === 'brief' && (
-          <div className="border-t border-border bg-card/50 px-6 py-3 flex items-center justify-between gap-3 flex-shrink-0">
-            <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 min-w-0">
-              <Clock className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">
-                {analysis
-                  ? `Brouillon prêt · ${extractedFields.length} infos extraites`
-                  : briefText.trim().length > 20
-                    ? 'Prêt pour analyse'
-                    : 'Colle ou tape ton brief (min. 20 caractères)'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {!analysis ? (
-                <button
-                  type="button"
-                  onClick={handleAnalyze}
-                  disabled={analyzing || briefText.trim().length < 20}
-                  className="h-9 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
-                >
-                  {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />}
-                  Analyser avec l'IA
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleCreateFromBrief}
-                  disabled={creating}
-                  className="h-9 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
-                >
-                  {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.5} />}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-6 py-3">
+            <p className="min-w-0 truncate text-xs text-muted-foreground" aria-live="polite">
+              {briefStatus ?? (
+                <>
+                  Prêt à analyser
+                  <kbd className="ml-2 font-mono text-xs">{shortcutLabel()}</kbd>
+                </>
+              )}
+            </p>
+            <div className="flex shrink-0 items-center gap-2">
+              {!analysis && !analyzing && canAnalyze && (
+                <Button variant="ghost" onClick={handleCreateFromBrief} disabled={creating}>
+                  Créer sans analyse
+                </Button>
+              )}
+              {analysis ? (
+                <Button variant="primary" onClick={handleCreateFromBrief} loading={creating}>
                   Créer la mission
-                  <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
-                </button>
+                  <ArrowRight />
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={handleAnalyze} loading={analyzing} disabled={!canAnalyze}>
+                  {analyzing ? 'Analyse en cours' : 'Analyser la fiche'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {mode === 'offers' && offers && (
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-6 py-3">
+            <p className="min-w-0 truncate text-xs text-muted-foreground" aria-live="polite">{offersStatus}</p>
+            <div className="flex shrink-0 items-center gap-2">
+              {bulkItems && !bulkRunning && (
+                <Button variant="ghost" onClick={() => setBulkItems(null)} disabled={creating}>
+                  Modifier la sélection
+                </Button>
+              )}
+              {bulkItems ? (
+                <Button variant="primary" onClick={createBulk} loading={creating || bulkRunning} disabled={bulkRunning || bulkReady === 0}>
+                  {bulkRunning ? 'Analyse en cours' : bulkReady > 0 ? `Créer ${plural(bulkReady, 'mission')}` : 'Créer les missions'}
+                  {!bulkRunning && <ArrowRight />}
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={startBulk} loading={bulkRunning} disabled={selectedUrls.size === 0}>
+                  {selectedUrls.size === 0
+                    ? 'Analyser les offres'
+                    : selectedUrls.size === 1
+                      ? 'Ouvrir cette offre'
+                      : `Analyser ${plural(selectedUrls.size, 'offre')}`}
+                </Button>
               )}
             </div>
           </div>
         )}
 
         {mode === 'manual' && (
-          <div className="border-t border-border bg-card/50 px-6 py-3 flex items-center justify-end gap-3 flex-shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-9 px-4 rounded-full text-[13px] font-medium border border-border hover:bg-accent transition-colors"
-            >
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-6 py-3">
+            <Button variant="ghost" onClick={onClose}>
               Annuler
-            </button>
-            <button
-              type="button"
-              onClick={handleCreateManual}
-              disabled={creating || !briefName.trim()}
-              className="h-9 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
-            >
-              {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.5} />}
+            </Button>
+            <Button variant="primary" onClick={handleCreateManual} loading={creating} disabled={!briefName.trim()}>
               Créer la mission
-              <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
-            </button>
+              <ArrowRight />
+            </Button>
           </div>
         )}
       </DialogContent>
@@ -718,62 +888,25 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
 // ─── Mode Choose ──────────────────────────────────────────────
 
 const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick }) => (
-  <div className="px-8 py-10">
-    <div className="text-center max-w-md mx-auto mb-10 konekt-fade-up">
-      <div className="inline-flex items-center gap-1.5 mb-4 px-3 py-1 rounded-full text-[11px] font-medium konekt-skalr-bg-soft" style={{ border: '1px solid hsl(271 81% 56% / 0.25)' }}>
-        <Sparkles className="w-3 h-3" style={{ color: 'hsl(330 81% 70%)' }} />
-        <span className="konekt-skalr-text">Brief en 60 secondes</span>
-      </div>
-      <h2 className="font-display text-[28px] sm:text-[32px] font-bold leading-tight mb-2">
-        Décris la mission,{' '}
-        <span className="font-editorial italic font-normal">l'IA fait le reste.</span>
-      </h2>
-      <p className="text-[13px] text-muted-foreground">
-        Colle une fiche de poste ou remplis les champs manuellement. À toi de choisir.
-      </p>
-    </div>
-
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto konekt-fade-up" style={{ animationDelay: '120ms' }}>
-      {MODE_OPTIONS.map(opt => {
-        const Icon = opt.icon;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onPick(opt.value)}
-            className={cn(
-              'relative flex flex-col items-start gap-3 px-5 py-5 rounded-xl border text-left transition-all',
-              opt.recommended
-                ? 'border-foreground/30 bg-card hover:border-foreground/50'
-                : 'border-border bg-card/60 hover:bg-card hover:border-foreground/30',
-            )}
-          >
-            {opt.badge && (
-              <span
-                className={cn(
-                  'absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full font-bold',
-                  opt.recommended ? 'text-white konekt-skalr-bg' : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {opt.badge}
-              </span>
-            )}
-            <div
-              className={cn(
-                'h-9 w-9 rounded-lg grid place-items-center flex-shrink-0',
-                opt.recommended ? 'konekt-skalr-bg konekt-shine' : 'bg-muted',
-              )}
-            >
-              <Icon className={cn('w-4 h-4', opt.recommended ? 'text-white' : 'text-muted-foreground')} strokeWidth={2.5} />
-            </div>
-            <div>
-              <p className="font-semibold text-[14px] mb-1">{opt.label}</p>
-              <p className="text-[11.5px] text-muted-foreground leading-relaxed">{opt.desc}</p>
-            </div>
-          </button>
-        );
-      })}
-    </div>
+  <div className="konekt-fade-up grid grid-cols-1 gap-3 p-6 sm:grid-cols-2 sm:p-8">
+    {MODE_OPTIONS.map(opt => (
+      <Button
+        key={opt.value}
+        type="button"
+        variant="outline"
+        onClick={() => onPick(opt.value)}
+        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal p-5 text-left"
+      >
+        <IconTile icon={opt.icon} tone={opt.recommended ? 'brand' : 'default'} size="md" />
+        <span className="block space-y-1">
+          <span className="flex items-center gap-2">
+            <span className="text-md font-semibold">{opt.label}</span>
+            {opt.recommended && <Badge variant="brand">Recommandé</Badge>}
+          </span>
+          <span className="block text-sm font-normal text-foreground-secondary">{opt.desc}</span>
+        </span>
+      </Button>
+    ))}
   </div>
 );
 
@@ -783,13 +916,17 @@ interface BriefModeProps {
   briefText: string;
   setBriefText: (v: string) => void;
   briefName: string;
-  setBriefName: (v: string) => void;
+  onNameChange: (v: string) => void;
   clientName: string;
   setClientName: (v: string) => void;
   analyzing: boolean;
   analysis: BriefAnalysis | null;
+  analysisError: string | null;
+  isStale: boolean;
   extractedFields: ExtractedField[];
-  onAnalyze: () => void;
+  missingFields: string[];
+  /** Absent quand la fiche est trop courte pour être analysée. */
+  onAnalyze?: () => void;
   urlSuggestion: string | null;
   scanningUrl: boolean;
   onScanUrl: (url?: string) => void;
@@ -798,8 +935,8 @@ interface BriefModeProps {
 }
 
 const BriefMode: React.FC<BriefModeProps> = ({
-  briefText, setBriefText, briefName, setBriefName, clientName, setClientName,
-  analyzing, analysis, extractedFields,
+  briefText, setBriefText, briefName, onNameChange, clientName, setClientName,
+  analyzing, analysis, analysisError, isStale, extractedFields, missingFields, onAnalyze,
   urlSuggestion, scanningUrl, onScanUrl, uploadingFile, onFileUpload,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -814,233 +951,186 @@ const BriefMode: React.FC<BriefModeProps> = ({
     if (file) onFileUpload(file);
   };
 
+  const submitManualUrl = () => {
+    const url = manualUrl.trim();
+    if (!url || !isValidUrl(url)) return;
+    onScanUrl(url);
+    setManualUrl('');
+    setShowUrlInput(false);
+  };
+
   const sourceInfo = urlSuggestion ? detectUrlSource(urlSuggestion) : null;
+  const length = briefText.length;
+  const trimmedLength = briefText.trim().length;
 
   return (
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 min-h-[440px]">
-    {/* Left : input */}
-    <div className="p-6 space-y-3 lg:border-r border-border">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Nom (optionnel)
-          </label>
-          <input
-            value={briefName}
-            onChange={(e) => setBriefName(e.target.value)}
-            placeholder="Ex: Senior React @ Doctolib"
-            className="w-full h-9 px-3 mt-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-          />
+    // Sur grand écran, hauteur fixe : la fenêtre ne change pas de taille d'un état à l'autre
+    // et chaque colonne défile seule. Sur téléphone, les colonnes s'empilent et le corps défile.
+    <div className="grid grid-cols-1 lg:h-[min(36rem,calc(90vh-9rem))] lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
+      {/* Gauche : la fiche */}
+      <div className="flex flex-col gap-4 p-6 lg:min-h-0 lg:overflow-y-auto">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="brief-name" className="text-xs text-foreground-secondary">
+              Nom de la mission <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </Label>
+            <Input
+              id="brief-name"
+              value={briefName}
+              onChange={(e) => onNameChange(e.target.value)}
+              placeholder="Rempli par l'analyse si vide"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="brief-client" className="text-xs text-foreground-secondary">
+              Client <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </Label>
+            <Input
+              id="brief-client"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="Ex : Numspot"
+            />
+          </div>
         </div>
-        <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Client (optionnel)
-          </label>
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            placeholder="Ex: Doctolib"
-            className="w-full h-9 px-3 mt-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-          />
-        </div>
-      </div>
 
-      {/* Import shortcuts */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1">
-          Importer depuis
-        </p>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploadingFile}
-          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
-        >
-          {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
-          Un fichier
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowUrlInput(s => !s)}
-          className={cn(
-            'h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium border transition-colors',
-            showUrlInput ? 'bg-foreground text-background border-foreground' : 'border-border bg-card hover:bg-accent',
-          )}
-        >
-          <Link2 className="w-3 h-3" />
-          Une URL
-        </button>
-        <span className="text-[10px] text-muted-foreground/70 flex-1 text-right">
-          TXT · MD · WTTJ · LinkedIn Jobs · careers
-        </span>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.md,text/plain,text/markdown"
-          className="sr-only"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onFileUpload(file);
-            e.target.value = '';
-          }}
-        />
-      </div>
-
-      {/* URL input box (apparait quand on clique "Une URL") */}
-      {showUrlInput && (
-        <div className="konekt-fade-up flex items-center gap-2 bg-card border border-border rounded-md p-2">
-          <Globe className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 ml-1" />
-          <input
-            value={manualUrl}
-            onChange={(e) => setManualUrl(e.target.value)}
-            placeholder="https://www.welcometothejungle.com/fr/companies/…"
-            className="flex-1 h-8 px-2 text-[12px] bg-transparent focus:outline-none"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && manualUrl.trim() && isValidUrl(manualUrl.trim())) {
-                onScanUrl(manualUrl.trim());
-                setManualUrl('');
-                setShowUrlInput(false);
-              }
+        {/* Import */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Importer</span>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => fileInputRef.current?.click()}
+            loading={uploadingFile}
+          >
+            {!uploadingFile && <Paperclip />}
+            Un fichier
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            aria-expanded={showUrlInput}
+            onClick={() => setShowUrlInput(s => !s)}
+            className={cn(showUrlInput && 'border-border-strong bg-accent')}
+          >
+            <Link2 />
+            Une adresse web
+          </Button>
+          <Input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,text/plain,text/markdown"
+            className="sr-only"
+            tabIndex={-1}
+            aria-label="Importer un fichier .txt ou .md"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFileUpload(file);
+              e.target.value = '';
             }}
+          />
+        </div>
+
+        {showUrlInput && (
+          <div className="konekt-fade-up space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="brief-url" className="sr-only">Adresse de l'offre</Label>
+              <Input
+                id="brief-url"
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                placeholder="https://www.welcometothejungle.com/fr/companies/…"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+                    e.preventDefault();
+                    submitManualUrl();
+                  }
+                }}
+                autoFocus
+              />
+              <Button
+                variant="outline"
+                onClick={submitManualUrl}
+                disabled={!manualUrl.trim() || !isValidUrl(manualUrl.trim())}
+                loading={scanningUrl}
+              >
+                Lire la page
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Adresse d'une offre : sa fiche est lue pour vous. Adresse de la page emplois d'une société : vous choisissez parmi ses offres.
+            </p>
+          </div>
+        )}
+
+        {/* Adresse repérée dans la fiche collée */}
+        {urlSuggestion && sourceInfo && (
+          <div className="konekt-fade-up flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+            <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <p className="min-w-0 flex-1 truncate text-xs">Adresse {sourceInfo.label} détectée.</p>
+            <Button variant="ghost" size="xs" onClick={() => onScanUrl()} loading={scanningUrl}>
+              Lire la page
+            </Button>
+          </div>
+        )}
+
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragActive(false);
+          }}
+          onDrop={handleDrop}
+          className="relative flex flex-col gap-1.5 lg:min-h-[260px] lg:flex-1"
+        >
+          <Label htmlFor="brief-text" className="text-xs text-foreground-secondary">
+            Fiche de poste
+          </Label>
+          <Textarea
+            id="brief-text"
+            value={briefText}
+            onChange={(e) => setBriefText(e.target.value)}
+            placeholder={'Collez la fiche de poste, glissez-déposez un fichier ou décrivez le besoin.\n\nExemple :\nIngénieur logiciel senior pour Doctolib. Stack React, TypeScript, Node. 5 ans d\'expérience minimum, idéalement en scale-up santé ou fintech. Paris ou télétravail complet en France. Démarrage au T3 2026.'}
+            className="min-h-[240px] resize-none leading-relaxed lg:min-h-0 lg:flex-1"
             autoFocus
           />
-          <button
-            type="button"
-            onClick={() => {
-              if (manualUrl.trim() && isValidUrl(manualUrl.trim())) {
-                onScanUrl(manualUrl.trim());
-                setManualUrl('');
-                setShowUrlInput(false);
-              }
-            }}
-            disabled={!manualUrl.trim() || !isValidUrl(manualUrl.trim()) || scanningUrl}
-            className="h-7 px-3 rounded-md text-[11px] font-medium bg-foreground text-background hover:opacity-90 disabled:opacity-40 transition-opacity"
-          >
-            {scanningUrl ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Scanner'}
-          </button>
-        </div>
-      )}
-
-      {/* URL detection banner — quand l'user a collé une URL dans le brief */}
-      {urlSuggestion && sourceInfo && (
-        <div
-          className="konekt-fade-up flex items-center gap-2 px-3 py-2 rounded-md"
-          style={{
-            background: 'linear-gradient(135deg, hsl(271 81% 56% / 0.10), hsl(217 91% 60% / 0.10))',
-            border: '1px solid hsl(271 81% 56% / 0.3)',
-          }}
-        >
-          <span className="text-base">{sourceInfo.emoji}</span>
-          <p className="text-[12px] flex-1 min-w-0 truncate">
-            <span className="font-semibold konekt-skalr-text">{sourceInfo.label}</span>
-            <span className="text-muted-foreground ml-1">détecté — pré-remplir titre + entreprise ?</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => onScanUrl()}
-            disabled={scanningUrl}
-            className="h-7 px-3 rounded-full text-[11px] font-semibold text-white konekt-skalr-bg konekt-shine flex-shrink-0 disabled:opacity-50"
-          >
-            {scanningUrl ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Pré-remplir →'}
-          </button>
-        </div>
-      )}
-
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={handleDrop}
-        className={cn('relative rounded-md transition-all', dragActive && 'ring-2 ring-foreground/40')}
-      >
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-          Fiche de poste / Brief
-        </label>
-        <textarea
-          value={briefText}
-          onChange={(e) => setBriefText(e.target.value)}
-          placeholder={`Colle ta fiche de poste ici, glisse-dépose un fichier, ou tape ton brief...\n\nEx:\nSenior Software Engineer pour Doctolib.\nStack React + TypeScript + Node.\n5+ ans d'expérience, idéalement passé par une scale-up santé ou fintech.\nParis ou full-remote France. Démarrage T3 2026.`}
-          rows={10}
-          className="w-full mt-1 px-3 py-2 text-[13px] leading-relaxed rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-        />
-        {dragActive && (
-          <div className="absolute inset-0 mt-5 flex items-center justify-center rounded-md bg-background/90 border-2 border-dashed border-foreground/40 pointer-events-none">
-            <div className="text-center">
-              <Upload className="w-6 h-6 mx-auto mb-2 text-foreground" />
-              <p className="text-sm font-semibold">Lâche pour importer</p>
-              <p className="text-xs text-muted-foreground">TXT · MD</p>
-            </div>
-          </div>
-        )}
-        <p className="text-[10.5px] text-muted-foreground mt-1.5">
-          {briefText.length} caractères · {briefText.trim().length < 20 ? 'minimum 20' : 'prêt pour analyse'}
-        </p>
-      </div>
-    </div>
-
-    {/* Right : live extraction */}
-    <div className="p-6 bg-card/30">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-6 w-6 rounded-md grid place-items-center konekt-skalr-bg flex-shrink-0">
-          <Sparkles className="w-3 h-3 text-white" strokeWidth={2.5} />
-        </div>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-          {analyzing ? "L'assistant analyse…" : analysis ? "L'assistant a détecté" : 'Assistant prêt'}
-        </p>
-        {analyzing && (
-          <div className="flex items-end gap-0.5 h-3 ml-auto" style={{ color: 'hsl(330 81% 70%)' }}>
-            <span className="w-0.5 h-2 bg-current rounded animate-pulse" />
-            <span className="w-0.5 h-3 bg-current rounded animate-pulse" style={{ animationDelay: '100ms' }} />
-            <span className="w-0.5 h-2.5 bg-current rounded animate-pulse" style={{ animationDelay: '200ms' }} />
-          </div>
-        )}
-      </div>
-
-      {!analysis && !analyzing && (
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-[12px] leading-relaxed">
-            Colle ton brief à gauche et clique sur <strong className="text-foreground">Analyser avec l'IA</strong>.
-          </p>
-          <p className="text-[11px] mt-2 opacity-70">
-            En quelques secondes, l'IA détecte le titre, les compétences clés, l'expérience, la localisation et génère les filtres de recherche.
-          </p>
-        </div>
-      )}
-
-      {analyzing && (
-        <div className="space-y-2">
-          {[0, 1, 2, 3, 4, 5].map(i => (
-            <div
-              key={i}
-              className="h-9 rounded-md bg-muted/40 animate-pulse"
-              style={{ animationDelay: `${i * 80}ms`, opacity: 1 - i * 0.12 }}
-            />
-          ))}
-        </div>
-      )}
-
-      {analysis && extractedFields.length > 0 && (
-        <div className="grid grid-cols-1 gap-1.5 konekt-fade-up">
-          {extractedFields.map((f, i) => {
-            const Icon = f.icon;
-            return (
-              <div
-                key={i}
-                className="flex items-start gap-2 px-2.5 py-2 rounded-md bg-card border border-border konekt-fade-up"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                <Icon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{f.label}</p>
-                  <p className="text-[12px] font-medium truncate">{f.value}</p>
-                </div>
-                <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: 'hsl(var(--status-success))' }} strokeWidth={3} />
+          {dragActive && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 top-6 grid place-items-center rounded-lg border-2 border-dashed border-brand bg-popover/90">
+              <div className="text-center">
+                <Upload className="mx-auto mb-2 size-6" aria-hidden="true" />
+                <p className="text-sm font-semibold">Déposez le fichier pour l'importer</p>
+                <p className="text-xs text-muted-foreground">.txt ou .md</p>
               </div>
-            );
-          })}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              {length.toLocaleString('fr-FR')} caractères
+              {length > MAX_BRIEF_CHARS && (
+                <span className="text-warning">
+                  {' '}: seuls les {MAX_BRIEF_CHARS.toLocaleString('fr-FR')} premiers sont analysés
+                </span>
+              )}
+              {trimmedLength >= MIN_BRIEF_CHARS && trimmedLength < SHORT_BRIEF_CHARS && (
+                <> : une fiche plus détaillée donne une analyse plus précise</>
+              )}
+            </span>
+            <span>Fichier .txt ou .md, ou glisser-déposer</span>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Droite : ce que l'assistant retient */}
+      <BriefAnalysisPanel
+        className="border-t border-border lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0"
+        analyzing={analyzing}
+        hasAnalysis={analysis !== null}
+        error={analysisError}
+        stale={isStale}
+        fields={extractedFields}
+        missing={missingFields}
+        onRetry={onAnalyze}
+      />
     </div>
-  </div>
   );
 };
 
@@ -1048,7 +1138,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
 
 interface ManualModeProps {
   name: string;
-  setName: (v: string) => void;
+  onNameChange: (v: string) => void;
   clientName: string;
   setClientName: (v: string) => void;
   description: string;
@@ -1056,81 +1146,45 @@ interface ManualModeProps {
 }
 
 const ManualMode: React.FC<ManualModeProps> = ({
-  name, setName, clientName, setClientName, description, setDescription,
+  name, onNameChange, clientName, setClientName, description, setDescription,
 }) => (
-  <div className="px-8 py-8 max-w-xl mx-auto space-y-4 konekt-fade-up">
-    <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        Titre de la mission <span className="text-destructive">*</span>
-      </label>
-      <input
+  <div className="konekt-fade-up mx-auto max-w-xl space-y-4 px-8 py-8">
+    <div className="space-y-1.5">
+      <Label htmlFor="manual-name">
+        Titre de la mission <span className="font-normal text-muted-foreground">(obligatoire)</span>
+      </Label>
+      <Input
+        id="manual-name"
         value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Ex: Senior React Engineer"
-        className="w-full h-10 px-3 mt-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+        onChange={(e) => onNameChange(e.target.value)}
+        placeholder="Ex : Ingénieur React senior"
+        aria-required="true"
         autoFocus
       />
     </div>
-    <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        Client / Entreprise (optionnel)
-      </label>
-      <input
+    <div className="space-y-1.5">
+      <Label htmlFor="manual-client">
+        Client <span className="font-normal text-muted-foreground">(facultatif)</span>
+      </Label>
+      <Input
+        id="manual-client"
         value={clientName}
         onChange={(e) => setClientName(e.target.value)}
-        placeholder="Ex: Doctolib"
-        className="w-full h-10 px-3 mt-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+        placeholder="Ex : Doctolib"
       />
     </div>
-    <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        Description (optionnel)
-      </label>
-      <textarea
+    <div className="space-y-1.5">
+      <Label htmlFor="manual-description">
+        Description <span className="font-normal text-muted-foreground">(facultatif)</span>
+      </Label>
+      <Textarea
+        id="manual-description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder="Quelques lignes pour décrire la mission, le contexte, les enjeux…"
+        placeholder="Quelques lignes sur la mission, le contexte et les enjeux."
         rows={6}
-        className="w-full mt-1 px-3 py-2 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+        className="resize-none"
       />
     </div>
-    <p className="text-[11px] text-muted-foreground">
-      Tu pourras compléter le brief, ajouter des compétences et lancer l'analyse IA après création.
-    </p>
   </div>
 );
-
-// ─── Helpers ───────────────────────────────────────────────────
-
-interface ExtractedField {
-  label: string;
-  value: string;
-  icon: typeof FileText;
-}
-
-function buildExtractedFields(a: BriefAnalysis['analysis']): ExtractedField[] {
-  const fields: ExtractedField[] = [];
-
-  if (a.suggested_title) {
-    fields.push({ label: 'Titre', value: a.suggested_title, icon: FileText });
-  }
-  if (a.role_keywords && a.role_keywords.length > 0) {
-    fields.push({ label: 'Rôles', value: a.role_keywords.slice(0, 3).join(', '), icon: Briefcase });
-  }
-  if (a.skills_to_search && a.skills_to_search.length > 0) {
-    fields.push({ label: 'Compétences', value: a.skills_to_search.slice(0, 5).join(', '), icon: Layers });
-  }
-  if (a.years_experience_min !== undefined && a.years_experience_min !== null) {
-    const max = a.years_experience_max;
-    const exp = max ? `${a.years_experience_min}–${max} ans` : `${a.years_experience_min}+ ans`;
-    fields.push({ label: 'Expérience', value: exp, icon: Star });
-  }
-  if (a.location_hint) {
-    fields.push({ label: 'Localisation', value: a.location_hint, icon: MapPin });
-  }
-  if (a.job_category) {
-    fields.push({ label: 'Catégorie', value: a.job_category, icon: Building2 });
-  }
-
-  return fields;
-}

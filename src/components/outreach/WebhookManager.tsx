@@ -1,9 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Webhook, CheckCircle2, XCircle, RefreshCw, Trash2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ErrorBox } from '@/components/layout/ErrorBox';
+import { plural } from '@/lib/plural';
+import { cn } from '@/lib/utils';
+import { Bell, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface WebhookInfo {
@@ -14,16 +27,52 @@ interface WebhookInfo {
   created_at?: string;
 }
 
+interface WebhookListResponse {
+  webhooks?: WebhookInfo[] | { items?: WebhookInfo[] };
+}
+
+interface WebhookRegisterResponse {
+  results?: Array<{ source: string; success: boolean }>;
+}
+
+/**
+ * Revue design (D-64) : les sources techniques deviennent des noms métier, les
+ * états passent par les jetons (pastille et mot), la suppression demande une
+ * confirmation, et l'action principale est monochrome, plus au bleu de LinkedIn.
+ */
+const SOURCES: Record<string, { label: string; description: string; subject: string }> = {
+  messaging: {
+    label: 'Réponses des candidats',
+    description: 'Détecte les réponses des candidats.',
+    subject: 'des réponses des candidats',
+  },
+  users: {
+    label: 'Invitations acceptées',
+    description: 'Détecte les invitations acceptées.',
+    subject: 'des invitations acceptées',
+  },
+  accounts: {
+    label: 'État des comptes',
+    description: 'Suit l’état des comptes LinkedIn.',
+    subject: 'des changements d’état des comptes LinkedIn',
+  },
+};
+const REQUIRED_SOURCES = ['messaging', 'users', 'accounts'];
+const sourceLabel = (source: string) => SOURCES[source]?.label ?? 'Autre notification';
+
 export function WebhookManager() {
   const [webhooks, setWebhooks] = useState<WebhookInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  // Lecture ratée : sans cet état, la liste vide annonçait trois notifications manquantes.
+  const [loadError, setLoadError] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WebhookInfo | null>(null);
 
   const fetchWebhooks = async () => {
     setLoading(true);
     try {
-      const response = await invokeEdgeFunction<{ webhooks?: any }>('unipile-manage-webhooks', {
+      const response = await invokeEdgeFunction<WebhookListResponse>('unipile-manage-webhooks', {
         action: 'list',
       });
 
@@ -31,15 +80,17 @@ export function WebhookManager() {
       if (!response.data?.success) throw new Error(response.data?.error);
 
       // Normalize source names (Unipile API uses 'account_status' but we display 'accounts')
-      const webhooksRaw = (response.data as any).webhooks?.items || (response.data as any).webhooks || [];
+      const raw = response.data.webhooks;
+      const webhooksRaw = (Array.isArray(raw) ? raw : raw?.items) ?? [];
       const normalizedWebhooks = webhooksRaw.map((w: WebhookInfo) => ({
         ...w,
         source: w.source === 'account_status' ? 'accounts' : w.source,
       }));
       setWebhooks(normalizedWebhooks);
+      setLoadError(false);
     } catch (error) {
       console.error('Error fetching webhooks:', error);
-      toast.error('Erreur lors de la récupération des webhooks');
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -52,26 +103,26 @@ export function WebhookManager() {
   const handleRegister = async () => {
     setRegistering(true);
     try {
-      const response = await invokeEdgeFunction<{ results?: any[] }>('unipile-manage-webhooks', {
+      const response = await invokeEdgeFunction<WebhookRegisterResponse>('unipile-manage-webhooks', {
         action: 'register',
       });
 
       if (response.error) throw response.error;
       if (!response.data?.success) {
-        const failedSources = (response.data as any)?.results?.filter((r: { success: boolean }) => !r.success) || [];
+        const failedSources = response.data?.results?.filter((r) => !r.success) || [];
         if (failedSources.length > 0) {
-          toast.warning(`Certains webhooks n'ont pas pu être enregistrés: ${failedSources.map((r: { source: string }) => r.source).join(', ')}`);
+          toast.warning(`Certaines notifications n’ont pas pu être activées : ${failedSources.map((r) => sourceLabel(r.source).toLowerCase()).join(', ')}.`);
         } else {
           throw new Error(response.data?.error);
         }
       } else {
-        toast.success('Webhooks enregistrés avec succès !');
+        toast.success('Notifications en temps réel activées');
       }
 
       await fetchWebhooks();
     } catch (error) {
       console.error('Error registering webhooks:', error);
-      toast.error('Erreur lors de l\'enregistrement des webhooks');
+      toast.error('Les notifications n’ont pas pu être activées. Réessayez.');
     } finally {
       setRegistering(false);
     }
@@ -87,159 +138,157 @@ export function WebhookManager() {
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      toast.success('Webhook supprimé');
+      toast.success('Notification supprimée');
       await fetchWebhooks();
     } catch (error) {
       console.error('Error deleting webhook:', error);
-      toast.error('Erreur lors de la suppression du webhook');
+      toast.error('La notification n’a pas pu être supprimée. Réessayez.');
     } finally {
       setDeletingId(null);
     }
   };
 
-  const getSourceLabel = (source: string) => {
-    switch (source) {
-      case 'messaging': return 'Messages';
-      case 'users': return 'Connexions';
-      case 'accounts': return 'Comptes';
-      default: return source;
-    }
-  };
-
-  const getSourceDescription = (source: string) => {
-    switch (source) {
-      case 'messaging': return 'Détecte les réponses des candidats';
-      case 'users': return 'Détecte les invitations acceptées';
-      case 'accounts': return 'Changements de statut de compte';
-      default: return '';
-    }
-  };
-
   const registeredSources = webhooks.map(w => w.source);
-  const requiredSources = ['messaging', 'users', 'accounts'];
-  const missingSources = requiredSources.filter(s => !registeredSources.includes(s));
+  const missingSources = REQUIRED_SOURCES.filter(s => !registeredSources.includes(s));
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Webhook className="w-5 h-5 text-linkedin" />
-            <div>
-              <CardTitle className="text-lg">Webhooks Temps Réel</CardTitle>
-              <CardDescription>
-                Recevez des notifications instantanées quand un candidat répond ou accepte une invitation
-              </CardDescription>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={fetchWebhooks}
-            disabled={loading}
-            aria-label="Rafraîchir les webhooks"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-linkedin" />
-          </div>
-        ) : (
-          <>
-            {/* Status summary */}
-            <div className="flex items-center gap-2 p-3 rounded-lg border border-border bg-muted/50">
-              {missingSources.length === 0 ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  <span className="text-sm font-medium text-green-700">
-                    Tous les webhooks sont configurés
-                  </span>
-                </>
-              ) : (
-                <>
-                  <XCircle className="w-5 h-5 text-amber-500" />
-                  <span className="text-sm font-medium text-amber-700">
-                    {missingSources.length} webhook(s) manquant(s): {missingSources.join(', ')}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Webhook list */}
-            {webhooks.length > 0 && (
-              <div className="space-y-2">
-                {webhooks.map((webhook) => (
-                  <div
-                    key={webhook.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-border bg-card"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="bg-linkedin/10 text-linkedin border-linkedin/20">
-                        {getSourceLabel(webhook.source)}
-                      </Badge>
-                      <div className="leading-tight">
-                        <div className="text-sm text-muted-foreground">
-                          {getSourceDescription(webhook.source)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {webhook.account_ids?.length
-                            ? `${webhook.account_ids.length} compte(s) ciblé(s)`
-                            : 'Tous les comptes'}
-                        </div>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(webhook.id)}
-                      disabled={deletingId === webhook.id}
-                      className="text-destructive hover:text-destructive"
-                      aria-label="Supprimer le webhook"
-                    >
-                      {deletingId === webhook.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Register button */}
-            {missingSources.length > 0 && (
-              <Button
-                onClick={handleRegister}
-                disabled={registering}
-                className="w-full bg-linkedin hover:bg-linkedin-hover"
-              >
-                {registering ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enregistrement...
-                  </>
-                ) : (
-                  <>
-                    <Webhook className="w-4 h-4 mr-2" />
-                    Activer les webhooks temps réel
-                  </>
-                )}
-              </Button>
-            )}
-
-            {/* Info text */}
+    <section aria-labelledby="notifications-temps-reel" className="space-y-4 rounded-lg border border-border p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <h5 id="notifications-temps-reel" className="text-sm font-semibold text-foreground">
+              Notifications en temps réel
+            </h5>
             <p className="text-xs text-muted-foreground">
-              Les webhooks permettent de détecter automatiquement quand un candidat répond ou accepte une invitation, 
-              ce qui arrête la séquence et met à jour le statut en temps réel.
+              Konekt est prévenu dès qu’un candidat répond ou accepte une invitation.
             </p>
-          </>
-        )}
-      </CardContent>
-    </Card>
+          </div>
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="shrink-0 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+              onClick={fetchWebhooks}
+              disabled={loading}
+              aria-label="Actualiser l’état des notifications"
+            >
+              <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Actualiser</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {loading && webhooks.length === 0 ? (
+        <div className="space-y-2">
+          <p role="status" className="sr-only">Chargement des notifications…</p>
+          <Skeleton className="h-9 w-full rounded-lg" aria-hidden="true" />
+          <Skeleton className="h-12 w-full rounded-lg" aria-hidden="true" />
+        </div>
+      ) : loadError ? (
+        <ErrorBox title="Impossible de lire l’état des notifications." onRetry={() => { void fetchWebhooks(); }} />
+      ) : (
+        <>
+          {/* État d'ensemble : pastille et mot, jamais la couleur seule. */}
+          <p className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm text-foreground">
+            <span
+              className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', missingSources.length === 0 ? 'bg-success' : 'bg-warning')}
+              aria-hidden="true"
+            />
+            {missingSources.length === 0
+              ? 'Les trois notifications sont actives.'
+              : `${plural(missingSources.length, 'notification inactive', 'notifications inactives')} : ${missingSources.map((s) => sourceLabel(s).toLowerCase()).join(', ')}.`}
+          </p>
+
+          {/* Webhook list */}
+          {webhooks.length > 0 && (
+            <ul className="space-y-2">
+              {webhooks.map((webhook) => (
+                <li
+                  key={webhook.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{sourceLabel(webhook.source)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {SOURCES[webhook.source]?.description}
+                      {SOURCES[webhook.source]?.description ? ' ' : ''}
+                      {webhook.account_ids?.length
+                        ? `${plural(webhook.account_ids.length, 'compte ciblé', 'comptes ciblés')}.`
+                        : 'Tous les comptes.'}
+                    </p>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => setDeleteTarget(webhook)}
+                        disabled={deletingId === webhook.id}
+                        loading={deletingId === webhook.id}
+                        className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                        aria-label={`Supprimer la notification « ${sourceLabel(webhook.source)} »`}
+                      >
+                        {deletingId !== webhook.id && <Trash2 aria-hidden="true" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Supprimer</TooltipContent>
+                  </Tooltip>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Register button */}
+          {missingSources.length > 0 && (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleRegister}
+              disabled={registering}
+              loading={registering}
+              className="w-full max-md:h-11"
+            >
+              {!registering && <Bell aria-hidden="true" />}
+              {registering ? 'Activation…' : 'Activer les notifications en temps réel'}
+            </Button>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Ces notifications arrêtent aussitôt la séquence d’un candidat qui répond et mettent son statut à jour.
+          </p>
+        </>
+      )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Supprimer la notification « {deleteTarget ? sourceLabel(deleteTarget.source) : ''} » ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Konekt ne sera plus prévenu en temps réel {deleteTarget ? SOURCES[deleteTarget.source]?.subject ?? 'de ces événements' : ''}.
+              {' '}Vous pourrez la rétablir avec « Activer les notifications en temps réel ».
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive"
+              onClick={() => {
+                if (deleteTarget) void handleDelete(deleteTarget.id);
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
   );
 }

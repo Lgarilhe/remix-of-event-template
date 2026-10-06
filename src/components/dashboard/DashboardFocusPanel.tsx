@@ -1,284 +1,215 @@
 /**
- * DashboardFocusPanel — "Ce qui demande votre attention aujourd'hui".
+ * DashboardFocusPanel — le haut de « À faire » : ce qui attend une action.
  *
- * Coeur du Dashboard SaaS moderne : on agrège tout ce qui est *actionnable* en
- * une grille de cartes color-coded. L'user voit en 1 seconde ce qui réclame
- * son attention et clique pour aller traiter.
+ * Une ligne par signal, seulement s'il demande quelque chose (design simplifié,
+ * docs/design/06-simplicite.md) : compte LinkedIn à reconnecter, réponses à
+ * lire, candidats qui attendent votre réponse, candidats qui n'avancent plus.
+ * Chaque ligne : une pastille d'icône (qui bouge quand quelque chose attend),
+ * une phrase, les visages des personnes concernées, et un bouton discret où l'on agit.
+ * Les lignes sont posées sur une carte ; la panne LinkedIn, qui arrête les envois,
+ * a son propre bandeau texturé (texturedCard) et son bouton plein.
  *
- * V2 anim : staggered card entrance, counter animation sur les chiffres,
- * pulse subtil sur les cards critiques (count > 0), hover lift + chevron
- * slide-in.
+ * Un compteur inconnu (number | null) ne disparaît pas : sa ligne dit
+ * « Chargement » ou « Indisponible », jamais un zéro inventé.
  */
 
 import React from 'react';
-import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import {
-  AlertTriangle,
-  MessageCircle,
-  Bell,
-  UserCheck,
-  ArrowRight,
-  CheckCircle2,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useCountUp } from '@/hooks/useCountUp';
-import { LivePulse } from './LivePulse';
+import { Link } from 'react-router-dom';
+import { MessageCircle, Unplug } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconTile } from '@/components/ui/IconTile';
+import { AvatarStack } from '@/components/ui/person-avatar';
+import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
+import { Skeleton } from '@/components/ui/skeleton';
+import { texturedCard } from '@/components/layout/texturedCard';
+import { plural } from '@/lib/plural';
 
-export interface FocusItem {
-  key: string;
-  label: string;
-  /** null : inconnu (chargement ou lecture en échec), affiché « – ». */
-  count: number | null;
-  description: string;
-  icon: React.ReactNode;
-  href: string;
-  tone: 'destructive' | 'warning' | 'info' | 'success';
-  /** Si true, on affiche un LivePulse pour signaler "temps réel". */
-  live?: boolean;
+export interface FocusPerson {
+  name: string;
+  src?: string | null;
+  /** Identifiant du candidat : sa copie privée de photo passe avant `src`. */
+  candidateId?: string | null;
 }
 
 interface DashboardFocusPanelProps {
+  /** Compte LinkedIn de l'utilisateur en erreur : les envois sont en pause. */
+  linkedinIssue?: boolean;
   /** Réponses de candidats comptées par la barre latérale ; null tant qu'inconnu. */
   unreadMessages: number | null;
   /** Lecture des réponses en échec ou hors ligne, sans donnée : « Indisponible » au lieu de « Chargement ». */
   unreadMessagesUnavailable?: boolean;
-  stagnantCandidates: number;
-  remindersToday: number;
-  pendingResponses: number;
+  unreadPeople?: FocusPerson[];
+  /** null : lecture des candidats en échec. */
+  pendingResponses: number | null;
+  pendingPeople?: FocusPerson[];
+  /** null : lecture des candidats en échec. */
+  stagnantCandidates: number | null;
+  stagnantPeople?: FocusPerson[];
+  isLoading?: boolean;
 }
 
-const TONE_STYLES: Record<
-  FocusItem['tone'],
-  { bg: string; iconBg: string; iconColor: string; ring: string; glow: string }
-> = {
-  destructive: {
-    bg: 'bg-destructive/[0.04] hover:bg-destructive/[0.08]',
-    iconBg: 'bg-destructive/10',
-    iconColor: 'text-destructive',
-    ring: 'border-destructive/20 hover:border-destructive/40',
-    glow: 'before:bg-destructive/20',
-  },
-  warning: {
-    bg: 'bg-warning/[0.04] hover:bg-warning/[0.08]',
-    iconBg: 'bg-warning/10',
-    iconColor: 'text-warning',
-    ring: 'border-warning/20 hover:border-warning/40',
-    glow: 'before:bg-warning/20',
-  },
-  info: {
-    bg: 'bg-info/[0.04] hover:bg-info/[0.08]',
-    iconBg: 'bg-info/10',
-    iconColor: 'text-info',
-    ring: 'border-info/20 hover:border-info/40',
-    glow: 'before:bg-info/20',
-  },
-  success: {
-    bg: 'bg-success/[0.04] hover:bg-success/[0.08]',
-    iconBg: 'bg-success/10',
-    iconColor: 'text-success',
-    ring: 'border-success/20 hover:border-success/40',
-    glow: 'before:bg-success/20',
-  },
-};
+interface SignalRowProps {
+  tile: React.ReactNode;
+  title: string;
+  description: string;
+  people?: FocusPerson[];
+  total?: number;
+  action?: { label: string; href: string };
+  /** Bandeau texturé chaud (blocage) à la place d'une ligne de liste : l'accueil en porte un seul à la fois. */
+  texture?: 'warm';
+}
 
-const FocusCard: React.FC<{ item: FocusItem; index: number }> = ({ item, index }) => {
-  const navigate = useNavigate();
-  const styles = TONE_STYLES[item.tone];
-  const isActive = (item.count ?? 0) > 0;
-  const animatedCount = useCountUp(item.count ?? 0, { duration: 900 });
-
+// Sur téléphone, les visages et le lien passent sous la phrase, alignés sur elle.
+const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people, total, action, texture }) => {
+  const Root = texture ? 'div' : 'li';
   return (
-    <motion.button
-      onClick={() => navigate(item.href)}
-      variants={{
-        hidden: { opacity: 0, y: 10 },
-        visible: {
-          opacity: 1,
-          y: 0,
-          transition: { duration: 0.4, ease: 'easeOut', delay: index * 0.06 },
-        },
-      }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      whileTap={{ scale: 0.98 }}
-      className={cn(
-        'group relative rounded-xl border p-4 text-left transition-colors overflow-hidden',
-        isActive
-          ? `${styles.bg} ${styles.ring}`
-          : 'bg-card border-border hover:bg-muted/40',
-      )}
-    >
-      {/* Pulsing glow halo on active cards (very subtle) */}
-      {isActive && (
-        <motion.div
-          aria-hidden="true"
-          className={cn('absolute -top-12 -right-12 h-32 w-32 rounded-full blur-2xl pointer-events-none', styles.iconBg)}
-          animate={{ opacity: [0.3, 0.6, 0.3] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      )}
-
-      <div className="relative flex items-start justify-between gap-2 mb-3">
-        <div
-          className={cn(
-            'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
-            isActive ? `${styles.iconBg} ${styles.iconColor}` : 'bg-emerald-500/15 text-foreground',
-          )}
-        >
-          {item.icon}
+    <Root className={texture ? texturedCard(texture, 'flex items-start gap-3.5 rounded-xl px-4 py-4 sm:items-center sm:px-5') : 'flex items-start gap-3.5 py-4 sm:items-center'}>
+      {tile}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-md font-medium text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {isActive && item.live && <LivePulse tone={item.tone === 'success' ? 'success' : item.tone === 'destructive' ? 'destructive' : 'info'} />}
-          <ArrowRight
-            className={cn(
-              'w-4 h-4 shrink-0 transition-all opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0',
-              isActive ? styles.iconColor : 'text-muted-foreground',
+        {(people?.length || action) && (
+          <div className="flex items-center gap-4">
+            {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} ringClassName="ring-card" />}
+            {action && (
+              <Button
+                asChild
+                variant={texture ? 'primary' : 'secondary'}
+                size="sm"
+                className={texture ? 'min-h-11 md:min-h-0' : 'min-h-11 min-w-11 md:min-h-0 md:min-w-0'}
+              >
+                <Link to={action.href}>{action.label}</Link>
+              </Button>
             )}
-            aria-hidden="true"
-          />
-        </div>
-      </div>
-
-      <div
-        className={cn(
-          'relative font-display text-2xl font-bold tabular-nums leading-none mb-1.5',
-          isActive ? 'text-foreground' : 'text-muted-foreground/60',
+          </div>
         )}
-      >
-        {item.count === null ? '–' : animatedCount}
       </div>
-      <div
-        className={cn(
-          'relative text-[13px] font-semibold leading-tight',
-          isActive ? 'text-foreground' : 'text-muted-foreground',
-        )}
-      >
-        {item.label}
-      </div>
-      <div className="relative text-xs text-muted-foreground mt-0.5 truncate">
-        {item.description}
-      </div>
-    </motion.button>
+    </Root>
   );
 };
 
+/** Ligne d'un compteur inconnu : jamais de chiffre, l'état de la lecture. */
+const UnknownRow: React.FC<{ title: string; unavailable: boolean }> = ({ title, unavailable }) => (
+  <li className="flex items-center justify-between gap-6 py-4">
+    <p className="text-md text-muted-foreground">{title}</p>
+    <p className="text-sm text-muted-foreground">{unavailable ? 'Indisponible' : 'Chargement'}</p>
+  </li>
+);
+
 export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
+  linkedinIssue = false,
   unreadMessages,
   unreadMessagesUnavailable = false,
-  stagnantCandidates,
-  remindersToday,
+  unreadPeople,
   pendingResponses,
+  pendingPeople,
+  stagnantCandidates,
+  stagnantPeople,
+  isLoading,
 }) => {
-  const items: FocusItem[] = [
-    {
-      key: 'unread',
-      label: 'Réponses non lues',
-      count: unreadMessages,
-      description:
-        unreadMessages === null
-          ? unreadMessagesUnavailable ? 'Indisponible' : 'Chargement'
-          : unreadMessages > 0 ? "À traiter dans l'inbox" : 'Inbox à jour',
-      icon: <MessageCircle className="w-4 h-4" />,
-      href: '/inbox',
-      tone: 'info',
-      live: true,
-    },
-    {
-      key: 'pending',
-      label: 'Candidats à relancer',
-      count: pendingResponses,
-      description: pendingResponses > 0 ? 'Ont répondu, en attente' : 'Aucune relance urgente',
-      icon: <UserCheck className="w-4 h-4" />,
-      href: '/pipeline',
-      tone: 'warning',
-    },
-    {
-      key: 'stagnant',
-      label: 'Candidats stagnants',
-      count: stagnantCandidates,
-      description: stagnantCandidates > 0 ? 'Au-delà du temps cible' : 'Pipeline fluide',
-      icon: <AlertTriangle className="w-4 h-4" />,
-      href: '/pipeline?view=analytics',
-      tone: 'destructive',
-    },
-    {
-      key: 'reminders',
-      label: 'Rappels du jour',
-      count: remindersToday,
-      description: remindersToday > 0 ? "À traiter aujourd'hui" : 'Aucun rappel',
-      icon: <Bell className="w-4 h-4" />,
-      href: '/tasks',
-      tone: 'success',
-    },
-  ];
-
-  const totalActionable = items.reduce((s, i) => s + (i.count ?? 0), 0);
-
-  // Un compteur inconnu ne permet pas d'annoncer « Tout est à jour ».
-  if (totalActionable === 0 && items.every((i) => i.count !== null)) {
+  if (isLoading) {
     return (
-      <motion.div
-        className="rounded-xl bg-card border border-border p-6 flex items-center gap-4 mb-6 relative overflow-hidden"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-      >
-        <motion.div
-          aria-hidden="true"
-          className="absolute -top-12 -right-12 h-40 w-40 rounded-full bg-success/10 blur-3xl pointer-events-none"
-          animate={{ opacity: [0.4, 0.7, 0.4] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="h-10 w-10 rounded-full bg-success/10 text-success flex items-center justify-center shrink-0 relative"
-          initial={{ scale: 0.7 }}
-          animate={{ scale: 1 }}
-          transition={{ type: 'spring', stiffness: 220, delay: 0.2 }}
-        >
-          <CheckCircle2 className="w-5 h-5" />
-        </motion.div>
-        <div className="min-w-0 relative">
-          <h2 className="font-display font-bold text-foreground text-base tracking-tight">
-            Tout est à jour
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Pas d'action urgente — bon moment pour sourcer ou peaufiner un brief.
-          </p>
-        </div>
-      </motion.div>
+      <div className="space-y-3 py-4" role="status" aria-label="Chargement">
+        {[0, 1].map((i) => (
+          <Skeleton key={i} className="h-14 rounded-xl" />
+        ))}
+      </div>
     );
   }
 
-  return (
-    <div className="mb-6">
-      <motion.div
-        className="flex items-center gap-2 mb-3"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4 }}
-      >
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          Pour aujourd'hui
-        </span>
-        <div className="flex-1 h-px bg-border" />
-        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-[11px] text-foreground bg-foreground/10 font-bold tabular-nums">
-          {totalActionable}
-        </span>
-      </motion.div>
+  const rows: React.ReactNode[] = [];
 
-      <motion.div
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3"
-        initial="hidden"
-        animate="visible"
-        variants={{
-          hidden: {},
-          visible: { transition: { staggerChildren: 0.06 } },
-        }}
-      >
-        {items.map((item, i) => (
-          <FocusCard key={item.key} item={item} index={i} />
-        ))}
-      </motion.div>
+  // Un blocage des envois est la chose à faire avant toutes les autres : bandeau texturé, au-dessus de la liste.
+  const linkedinBanner = linkedinIssue ? (
+    <SignalRow
+      tile={<IconTile icon={Unplug} tone="default" size="lg" />}
+      title="Compte LinkedIn à reconnecter"
+      description="Les envois sont en pause jusqu'à la reconnexion."
+      action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
+      texture="warm"
+    />
+  ) : null;
+
+  // La bulle qui écrit va à la première ligne de conversation, pas aux deux.
+  let typingUsed = false;
+  const conversationTile = () => {
+    const tile = typingUsed ? (
+      <IconTile icon={MessageCircle} tone="brand" size="lg" />
+    ) : (
+      <IconTile tone="brand" size="lg">
+        <TypingIcon />
+      </IconTile>
+    );
+    typingUsed = true;
+    return tile;
+  };
+
+  if (unreadMessages === null) {
+    rows.push(<UnknownRow key="unread" title="Réponses de candidats" unavailable={unreadMessagesUnavailable} />);
+  } else if (unreadMessages > 0) {
+    rows.push(
+      <SignalRow
+        key="unread"
+        tile={conversationTile()}
+        title={`${plural(unreadMessages, 'réponse')} à lire`}
+        description={unreadMessages > 1 ? 'Des candidats vous ont écrit.' : 'Un candidat vous a écrit.'}
+        people={unreadPeople}
+        total={unreadMessages}
+        action={{ label: 'Lire', href: '/inbox' }}
+      />,
+    );
+  }
+
+  if (pendingResponses === null) {
+    rows.push(<UnknownRow key="pending" title="Candidats qui attendent votre réponse" unavailable />);
+  } else if (pendingResponses > 0) {
+    const many = pendingResponses > 1;
+    rows.push(
+      <SignalRow
+        key="pending"
+        tile={conversationTile()}
+        title={`${plural(pendingResponses, 'candidat')} ${many ? 'attendent' : 'attend'} votre réponse`}
+        description={many ? 'Ils vous ont répondu, sans suite depuis un jour ou plus.' : 'Il vous a répondu, sans suite depuis un jour ou plus.'}
+        people={pendingPeople}
+        total={pendingResponses}
+        action={{ label: 'Répondre', href: '/inbox' }}
+      />,
+    );
+  }
+
+  if (stagnantCandidates === null) {
+    rows.push(<UnknownRow key="stagnant" title="Candidats qui n'avancent plus" unavailable />);
+  } else if (stagnantCandidates > 0) {
+    const many = stagnantCandidates > 1;
+    rows.push(
+      <SignalRow
+        key="stagnant"
+        tile={
+          <IconTile tone="warning" size="lg">
+            <HourglassIcon />
+          </IconTile>
+        }
+        title={`${plural(stagnantCandidates, 'candidat')} ${many ? "n'avancent" : "n'avance"} plus`}
+        description="Au-delà du délai prévu pour leur étape."
+        people={stagnantPeople}
+        total={stagnantCandidates}
+        action={{ label: 'Voir', href: '/pipeline?view=analytics' }}
+      />,
+    );
+  }
+
+  if (rows.length === 0 && !linkedinBanner) return null;
+  return (
+    <div className="space-y-3 pt-3">
+      {linkedinBanner}
+      {rows.length > 0 && (
+        <Card>
+          <ul className="divide-y divide-border px-5">{rows}</ul>
+        </Card>
+      )}
     </div>
   );
 };

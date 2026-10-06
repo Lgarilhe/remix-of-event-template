@@ -2,8 +2,9 @@
  * StatTile — tuile de KPI unifiée (design system).
  *
  * Pour les bandeaux de KPI en haut des pages (Dashboard, Tasks, Calendar…).
- * Style brutal : bordure nette, label uppercase tracking-wider, chiffres en
- * font-mono tabular-nums. Optionnellement accentuable (fond primary/destructive/success).
+ * Carte arrondie, libellé discret, chiffre en graisse 600 et chiffres alignés.
+ * La couleur d'un statut ne s'applique qu'au chiffre, et seulement si `accent`
+ * (docs/design/01-direction.md : un zéro ne se met pas en avant).
  *
  * Usage :
  *   <StatTile label="En retard" value={3} icon={AlertCircle} variant="destructive" />
@@ -17,7 +18,7 @@ export type StatTileVariant = 'default' | 'primary' | 'success' | 'warning' | 'd
 export interface StatTileProps {
   label: string;
   value: React.ReactNode;
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  icon?: React.ElementType;
   /** Petit indicateur à droite de la value (ex. trend) */
   trailing?: React.ReactNode;
   /** Variant pour accentuer (couleur + bg) */
@@ -28,12 +29,12 @@ export interface StatTileProps {
 }
 
 const VARIANT_STYLES: Record<StatTileVariant, { icon: string; value: string; bg: string }> = {
-  default:     { icon: 'text-muted-foreground', value: 'text-foreground',   bg: 'bg-background' },
-  primary:     { icon: 'text-foreground',       value: 'text-foreground',   bg: 'bg-accent/10' },
-  success:     { icon: 'text-success',          value: 'text-success',      bg: 'bg-success/5' },
-  warning:     { icon: 'text-warning',          value: 'text-warning',      bg: 'bg-warning/5' },
-  destructive: { icon: 'text-destructive',      value: 'text-destructive',  bg: 'bg-destructive/5' },
-  info:        { icon: 'text-info',             value: 'text-info',         bg: 'bg-info/5' },
+  default:     { icon: 'text-muted-foreground', value: 'text-foreground', bg: 'bg-card' },
+  primary:     { icon: 'text-brand',            value: 'text-foreground', bg: 'bg-card' },
+  success:     { icon: 'text-success',          value: 'text-success',    bg: 'bg-card' },
+  warning:     { icon: 'text-warning',          value: 'text-warning',    bg: 'bg-card' },
+  destructive: { icon: 'text-danger',           value: 'text-danger',     bg: 'bg-card' },
+  info:        { icon: 'text-info',             value: 'text-info',       bg: 'bg-card' },
 };
 
 export const StatTile: React.FC<StatTileProps> = React.memo(({
@@ -50,19 +51,19 @@ export const StatTile: React.FC<StatTileProps> = React.memo(({
   return (
     <div
       className={cn(
-        'border border-border p-3 sm:p-4 flex flex-col gap-1 transition-colors',
-        accent ? styles.bg : 'bg-background',
+        'flex flex-col gap-1.5 rounded-xl border border-border p-4 transition-colors',
+        styles.bg,
         className,
       )}
     >
       <div className="flex items-center gap-1.5">
-        {Icon && <Icon className={cn('w-3 h-3 shrink-0', styles.icon)} aria-hidden={true} />}
-        <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium truncate">
+        {Icon && <Icon className={cn('h-3.5 w-3.5 shrink-0', accent ? styles.icon : 'text-muted-foreground')} aria-hidden={true} />}
+        <span className="truncate text-xs font-medium text-muted-foreground">
           {label}
         </span>
       </div>
       <div className="flex items-baseline justify-between gap-2">
-        <span className={cn('text-xl sm:text-2xl font-bold font-mono tracking-tight tabular-nums', accent && styles.value)}>
+        <span className={cn('text-2xl font-semibold tracking-tight tabular-nums', accent && styles.value)}>
           {value}
         </span>
         {trailing && (
@@ -81,45 +82,37 @@ StatTile.displayName = 'StatTile';
  * StatGrid — grille responsive pour les StatTile avec gestion des bordures.
  * Usage : <StatGrid cols={{ base: 2, sm: 3, lg: 6 }}>{tiles}</StatGrid>
  *
- * Note : on utilise gap-0 + neg margins pour éviter les doubles bordures
- * entre tiles (pattern brutal).
+ * Tuiles séparées par un espace de 12 px.
  */
 export interface StatGridProps {
   children: React.ReactNode;
   /** Colonnes par breakpoint */
-  cols?: { base?: number; sm?: number; md?: number; lg?: number };
+  cols?: { base?: number; sm?: number; md?: number; lg?: number; xl?: number };
   className?: string;
 }
 
-const COL_CLASSES = (col: number): string => {
-  switch (col) {
-    case 1: return 'grid-cols-1';
-    case 2: return 'grid-cols-2';
-    case 3: return 'grid-cols-3';
-    case 4: return 'grid-cols-4';
-    case 5: return 'grid-cols-5';
-    case 6: return 'grid-cols-6';
-    case 7: return 'grid-cols-7';
-    default: return 'grid-cols-1';
-  }
+// Classes écrites en entier : Tailwind ne génère que les classes qu'il lit
+// telles quelles dans le code (un `sm:${…}` construit à l'exécution n'existe pas).
+const COLS: Record<number, { base: string; sm: string; md: string; lg: string; xl: string }> = {
+  1: { base: 'grid-cols-1', sm: 'sm:grid-cols-1', md: 'md:grid-cols-1', lg: 'lg:grid-cols-1', xl: 'xl:grid-cols-1' },
+  2: { base: 'grid-cols-2', sm: 'sm:grid-cols-2', md: 'md:grid-cols-2', lg: 'lg:grid-cols-2', xl: 'xl:grid-cols-2' },
+  3: { base: 'grid-cols-3', sm: 'sm:grid-cols-3', md: 'md:grid-cols-3', lg: 'lg:grid-cols-3', xl: 'xl:grid-cols-3' },
+  4: { base: 'grid-cols-4', sm: 'sm:grid-cols-4', md: 'md:grid-cols-4', lg: 'lg:grid-cols-4', xl: 'xl:grid-cols-4' },
+  5: { base: 'grid-cols-5', sm: 'sm:grid-cols-5', md: 'md:grid-cols-5', lg: 'lg:grid-cols-5', xl: 'xl:grid-cols-5' },
+  6: { base: 'grid-cols-6', sm: 'sm:grid-cols-6', md: 'md:grid-cols-6', lg: 'lg:grid-cols-6', xl: 'xl:grid-cols-6' },
+  7: { base: 'grid-cols-7', sm: 'sm:grid-cols-7', md: 'md:grid-cols-7', lg: 'lg:grid-cols-7', xl: 'xl:grid-cols-7' },
 };
 
 export const StatGrid: React.FC<StatGridProps> = ({ children, cols, className }) => {
-  const base = COL_CLASSES(cols?.base ?? 2);
-  const sm = cols?.sm ? `sm:${COL_CLASSES(cols.sm)}` : '';
-  const md = cols?.md ? `md:${COL_CLASSES(cols.md)}` : '';
-  const lg = cols?.lg ? `lg:${COL_CLASSES(cols.lg)}` : '';
-
   return (
     <div
       className={cn(
-        'grid -mx-px',
-        base,
-        sm,
-        md,
-        lg,
-        '[&>*]:-ml-px [&>*]:-mt-px',
-        'relative',
+        'grid gap-3',
+        COLS[cols?.base ?? 2]?.base,
+        cols?.sm && COLS[cols.sm]?.sm,
+        cols?.md && COLS[cols.md]?.md,
+        cols?.lg && COLS[cols.lg]?.lg,
+        cols?.xl && COLS[cols.xl]?.xl,
         className,
       )}
     >

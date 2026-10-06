@@ -13,7 +13,11 @@
  * En-tête : <h3 id="sidebar-section-{id}">, qui nomme la liste
  * (<ul aria-labelledby>). Les enfants sont des SidebarRow (chacun rend son <li>).
  * Section repliable : le titre devient un bouton avec aria-expanded ; le corps
- * n'est pas monté tant qu'elle est repliée.
+ * n'est pas monté tant qu'elle est repliée. Ce bouton reste natif : ligne de
+ * dépliage pleine largeur, qui prend la typographie du titre.
+ *
+ * Revue design (lot 12) : paliers nommés, titre à 11 px en casse normale
+ * (A-18, A-54) ; « Réessayer » est un Button du kit (A-53).
  */
 import type React from 'react';
 import { useId, useState } from 'react';
@@ -22,7 +26,9 @@ import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SectionState } from '@/lib/sidebarSection';
 import { useCloseMobileSidebar } from '@/hooks/sidebar/useCloseMobileSidebar';
+import { Button } from '@/components/ui/button';
 import { SidebarRow } from './SidebarRow';
+import { SIDEBAR_GHOST_CLASS } from './sidebarButtonClass';
 
 export interface SidebarSectionProps {
   /** Sert à l'id du titre (sidebar-section-{id}), qui nomme la liste. */
@@ -57,10 +63,11 @@ export interface SidebarSectionProps {
 
 const DEFAULT_ERROR_TEXT = 'Impossible de charger cette liste.';
 
-const RETRY_CLASS =
-  'inline-flex items-center justify-center rounded-md px-2 min-h-11 md:min-h-7 text-[12px] font-medium ' +
-  'text-sidebar-foreground underline-offset-2 hover:underline hover:bg-sidebar-accent/60 ' +
-  'outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
+/** Classes ajoutées au Button du kit (taille xs) : 44 px sur téléphone, 28 px sur ordinateur. */
+const RETRY_CLASS = cn(
+  SIDEBAR_GHOST_CLASS,
+  'rounded-md px-2 min-h-11 md:min-h-7 text-xs font-medium text-sidebar-foreground underline-offset-2 hover:underline',
+);
 
 export function SidebarSection({
   id,
@@ -142,7 +149,7 @@ export function SidebarSection({
       <div className="flex flex-wrap items-center gap-x-1 px-1">
         <h3
           id={headingId}
-          className="min-w-0 flex-auto text-[11.5px] font-semibold text-muted-foreground"
+          className="min-w-0 flex-auto text-2xs font-semibold text-muted-foreground"
         >
           {heading}
         </h3>
@@ -169,16 +176,16 @@ export function SidebarSection({
     );
   } else if (state === 'offline') {
     message = (
-      <p className="px-2 py-1.5 text-[12px] text-muted-foreground">Disponible au retour de la connexion.</p>
+      <p className="px-2 py-1.5 text-xs text-muted-foreground">Disponible au retour de la connexion.</p>
     );
   } else if (state === 'error') {
     message = (
       <div className="flex flex-wrap items-center gap-x-1 px-2 py-1">
-        <p className="text-[12px] text-muted-foreground">{errorText}</p>
+        <p className="text-xs text-muted-foreground">{errorText}</p>
         {onRetry && (
-          <button type="button" onClick={onRetry} className={RETRY_CLASS}>
+          <Button type="button" variant="ghost" size="xs" onClick={onRetry} className={RETRY_CLASS}>
             Réessayer
-          </button>
+          </Button>
         )}
       </div>
     );
@@ -187,7 +194,7 @@ export function SidebarSection({
       rows = children;
     } else {
       if (emptyText) {
-        message = <p className="px-2 py-1.5 text-[12px] text-muted-foreground">{emptyText}</p>;
+        message = <p className="px-2 py-1.5 text-xs text-muted-foreground">{emptyText}</p>;
       }
       if (emptyAction) {
         rows = <SidebarRow title={emptyAction.label} to={emptyAction.to} />;
@@ -196,11 +203,11 @@ export function SidebarSection({
     if (stale) {
       staleLine = (
         <div className="flex flex-wrap items-center gap-x-1 px-2 py-0.5">
-          <p className="text-[11.5px] text-muted-foreground">Données peut-être anciennes.</p>
+          <p className="text-2xs text-muted-foreground">Données peut-être anciennes.</p>
           {onRetry && (
-            <button type="button" onClick={onRetry} className={RETRY_CLASS}>
+            <Button type="button" variant="ghost" size="xs" onClick={onRetry} className={RETRY_CLASS}>
               Réessayer
-            </button>
+            </Button>
           )}
         </div>
       );

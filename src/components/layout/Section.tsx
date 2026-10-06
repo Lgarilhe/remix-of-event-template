@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 export interface SectionProps {
   title: string;
   subtitle?: string;
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  icon?: React.ElementType;
   /** Action à droite (lien "Voir tout", bouton, tabs) */
   action?: React.ReactNode;
   children: React.ReactNode;
@@ -20,6 +20,8 @@ export interface SectionProps {
   className?: string;
   /** Tag sémantique (section/article/aside) */
   as?: 'section' | 'article' | 'aside' | 'div';
+  /** Niveau du titre : 2 sous le titre de page, 3 (défaut) dans une page déjà découpée. */
+  headingLevel?: 2 | 3;
 }
 
 export const Section: React.FC<SectionProps> = ({
@@ -31,18 +33,21 @@ export const Section: React.FC<SectionProps> = ({
   padded = false,
   className,
   as: Component = 'section',
+  headingLevel = 3,
 }) => {
+  const headingId = React.useId();
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
   return (
-    <Component className={cn('border border-border bg-background', className)}>
-      <header className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
-        <div className="flex items-center gap-2 min-w-0">
-          {Icon && <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden={true} />}
-          <h3 className="text-xs uppercase tracking-wider font-bold text-foreground truncate">
+    <Component aria-labelledby={headingId} className={cn('rounded-xl border border-border bg-card', className)}>
+      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden={true} />}
+          <Heading id={headingId} className="truncate text-sm font-semibold text-foreground">
             {title}
-          </h3>
+          </Heading>
           {subtitle && (
-            <span className="text-xs text-muted-foreground tracking-wide hidden sm:inline truncate">
-              — {subtitle}
+            <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+              · {subtitle}
             </span>
           )}
         </div>

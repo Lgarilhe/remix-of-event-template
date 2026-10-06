@@ -151,8 +151,10 @@ test('extension : carte masquée sans jeton, révélée par #extension ou l’an
   await expect(page).toHaveURL(/\/settings\/account\/connections$/);
   await expect(title).toBeVisible();
 
-  // Mémo consommé : une nouvelle visite ne la révèle plus. (goto et non reload :
-  // un rechargement garderait l'état de navigation revealExtension de l'entrée.)
+  // Mémo consommé : une nouvelle visite ne la révèle plus. Détour par une autre
+  // page : Chromium traite un goto vers l'adresse courante comme un rechargement,
+  // qui garde l'état de navigation revealExtension de l'entrée.
+  await page.goto('/dashboard');
   listed = page.waitForResponse('**/functions/v1/extension-token');
   await page.goto('/settings/account/connections');
   await listed;

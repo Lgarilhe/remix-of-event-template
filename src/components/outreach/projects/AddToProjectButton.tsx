@@ -20,6 +20,8 @@ import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProject
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import type { LinkedInProfile } from '@/components/outreach/types';
+import { serializeProfileForStorage } from '@/lib/serializeProfile';
 
 interface AddToProjectButtonProps {
   candidateId: string;
@@ -29,9 +31,13 @@ interface AddToProjectButtonProps {
   score?: number;
   recommendation?: string;
   skipReason?: string;
+  /** Profil de la recherche : enregistré en entier (photo comprise) avec la ligne créée. */
+  profile?: LinkedInProfile;
   jobId: string;
   activeProject?: SourcingProject | null;
   compact?: boolean;
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
   onAdded?: () => void; // Callback when profile is added to project
 }
 
@@ -43,9 +49,11 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
   score,
   recommendation,
   skipReason,
+  profile,
   jobId,
   activeProject,
   compact = false,
+  quiet = false,
   onAdded,
 }) => {
   const { projects } = useSourcingProjects();
@@ -96,7 +104,9 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
 
         if (error) throw error;
       } else {
-        // Create new record
+        // Create new record, à trier (lot 0b-4, N16 : insertion admise).
+        // Organisation de la mission : exigée par la RLS et par les policies
+        // mission_same_org_* (une ligne ne porte que la mission de son organisation).
         const { error } = await supabase
           .from('job_candidate_status')
           .insert({
@@ -104,6 +114,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             candidate_name: candidateName,
             candidate_headline: candidateHeadline,
             linkedin_profile_url: linkedinProfileUrl,
+            ...(profile ? { linkedin_profile_data: serializeProfileForStorage(profile) } : {}),
             job_id: jobId,
             project_id: project.id,
             score,
@@ -111,6 +122,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             skip_reason: skipReason,
             status: 'untreated',
             created_by: user.id,
+            organization_id: project.organization_id,
           });
 
         if (error) throw error;
@@ -118,14 +130,13 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
 
       setAddedToProject(project.id);
       queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
-      queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['mission-stage-counts'] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-      toast.success(`${candidateName} shortlisté pour "${project.name}"`);
+      toast.success(`${candidateName} ajouté à « ${project.name} »`);
       onAdded?.();
     } catch (error) {
       console.error('Error adding to project:', error);
-      toast.error('Erreur lors de la shortlist');
+      toast.error('Erreur lors de l\'ajout');
     } finally {
       setIsAdding(false);
     }
@@ -138,25 +149,21 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
     if (compact) {
       return (
         <Button
-          variant={isAdded ? "ghost" : "outline"}
+          variant={isAdded || quiet ? "ghost" : "outline"}
           size="sm"
-          title={isAdded ? `Déjà shortlisté pour "${activeProject.name}"` : `Shortlister pour "${activeProject.name}"`}
-          className={`h-7 gap-1.5 text-xs rounded-lg border-2 px-2.5 font-medium shrink-0 transition-all ${
-            isAdded
-              ? 'text-success border-success/40 bg-success/10'
-              : 'bg-muted border-foreground/30 shadow-sm text-foreground hover:bg-accent hover:border-foreground/50 hover:shadow-md'
-          }`}
+          title={isAdded ? `Déjà retenu pour « ${activeProject.name} »` : `Retenir pour « ${activeProject.name} »`}
+          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : quiet ? 'text-foreground-secondary hover:text-foreground' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >
           {isAdding ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="animate-spin" aria-hidden="true" />
           ) : isAdded ? (
-            <Check className="w-3.5 h-3.5" />
+            <Check aria-hidden="true" />
           ) : (
-            <FolderPlus className="w-3.5 h-3.5" />
+            <FolderPlus aria-hidden="true" />
           )}
-          {isAdded ? 'Shortlisté' : 'Shortlister'}
+          {isAdded ? 'Retenu' : 'Retenir'}
         </Button>
       );
     }

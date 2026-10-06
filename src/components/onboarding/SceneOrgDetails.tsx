@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useId, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
+/**
+ * Réponses de la scène, toutes enregistrées sur l'organisation (team_size,
+ * freelance_mode, annual_hires). La fourchette de TJM n'était écrite nulle
+ * part : elle n'est plus demandée (B-64).
+ */
 export interface OrgDetailsData {
   teamSize: string;
   freelanceMode?: string;
-  tjm?: string;
   annualHires?: string;
 }
 
@@ -21,81 +25,61 @@ interface Props {
 
 const TEAM_SIZES = [
   { value: '1', label: 'Juste moi' },
-  { value: '2-5', label: '2 – 5 personnes' },
-  { value: '6-20', label: '6 – 20 personnes' },
-  { value: '21-50', label: '21 – 50 personnes' },
-  { value: '50+', label: '50+' },
+  { value: '2-5', label: '2 à 5 personnes' },
+  { value: '6-20', label: '6 à 20 personnes' },
+  { value: '21-50', label: '21 à 50 personnes' },
+  { value: '50+', label: 'Plus de 50 personnes' },
 ];
 
 const ANNUAL_HIRES = [
-  { value: '1-5', label: '1 – 5 recrutements' },
-  { value: '6-15', label: '6 – 15 recrutements' },
-  { value: '16-40', label: '16 – 40 recrutements' },
+  { value: '1-5', label: '1 à 5 recrutements' },
+  { value: '6-15', label: '6 à 15 recrutements' },
+  { value: '16-40', label: '16 à 40 recrutements' },
   { value: '40+', label: 'Plus de 40 recrutements' },
 ];
 
 const FREELANCE_MODES = [
-  { value: 'rpo', label: 'RPO (embedded)' },
-  { value: 'success', label: 'Au succès / Missions ponctuelles' },
+  { value: 'rpo', label: "RPO (intégré à l'équipe du client)" },
+  { value: 'success', label: 'Au succès, missions ponctuelles' },
   { value: 'both', label: 'Les deux' },
 ];
 
-const TJM_MIN = 200;
-const TJM_MAX = 1500;
-const TJM_STEP = 50;
+const FIELD_CLASS = 'h-11 md:h-10';
+const NAV_BUTTON_CLASS = 'min-h-11 md:min-h-0';
 
 export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) => {
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
   const [freelanceMode, setFreelanceMode] = useState('');
-  const [tjm, setTjm] = useState<[number, number]>([400, 700]);
   const [annualHires, setAnnualHires] = useState('');
-
-  const handleTjmMinChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const nextMin = Math.min(Number(event.target.value), tjm[1] - TJM_STEP);
-    setTjm([nextMin, tjm[1]]);
-  };
-
-  const handleTjmMaxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const nextMax = Math.max(Number(event.target.value), tjm[0] + TJM_STEP);
-    setTjm([tjm[0], nextMax]);
-  };
-
-  const tjmStartPercent = ((tjm[0] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
-  const tjmEndPercent = ((tjm[1] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
+  const modeId = useId();
+  const teamId = useId();
+  const hiresId = useId();
+  const hiresHintId = useId();
 
   const canSubmit = teamSize && (!isFreelance || freelanceMode);
 
   return (
-    <div className="w-full flex flex-col gap-5">
-      {/* Header */}
-      <div className="mb-3">
-        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
+    <div className="flex w-full flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {isFreelance ? 'Votre activité, concrètement.' : 'Votre équipe, concrètement.'}
-        </h2>
-        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
-          Taille et volume calibrent vos quotas d'envoi et ce que l'IA Konekt vous recommande.
+        </h1>
+        <p className="mt-2 max-w-md text-md text-foreground-secondary">
+          Votre façon de travailler et votre volume calibrent vos quotas d'envoi et ce que l'IA Konekt vous recommande.
         </p>
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="space-y-4"
-      >
-        {/* Freelance mode */}
+      <div className="space-y-5">
         {isFreelance && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Quel est votre mode d'intervention ?
-            </label>
+          <div className="space-y-2">
+            <Label htmlFor={modeId}>Mode d'intervention</Label>
             <Select value={freelanceMode} onValueChange={setFreelanceMode}>
-              <SelectTrigger className="border border-border h-10 text-sm">
-                <SelectValue placeholder="Sélectionnez" />
+              <SelectTrigger id={modeId} className={FIELD_CLASS}>
+                <SelectValue placeholder="Choisissez un mode" />
               </SelectTrigger>
               <SelectContent>
-                {FREELANCE_MODES.map(s => (
+                {FREELANCE_MODES.map((s) => (
                   <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -103,79 +87,15 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         )}
 
-        {/* TJM range - shown when RPO or both */}
-        <AnimatePresence>
-          {isFreelance && (freelanceMode === 'rpo' || freelanceMode === 'both') && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-3"
-            >
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Fourchette TJM indicative
-              </label>
-
-              <div className="space-y-3 rounded-md border border-border bg-background px-4 py-4">
-                <div className="relative h-10">
-                  {/* Track background */}
-                  <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground/15" />
-                  {/* Active range */}
-                  <div
-                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground"
-                    style={{
-                      left: `${tjmStartPercent}%`,
-                      width: `${tjmEndPercent - tjmStartPercent}%`,
-                    }}
-                  />
-
-                  <input
-                    type="range"
-                    min={TJM_MIN}
-                    max={TJM_MAX}
-                    step={TJM_STEP}
-                    value={tjm[0]}
-                    onChange={handleTjmMinChange}
-                    aria-label="TJM minimum"
-                    className="pointer-events-none absolute inset-0 z-20 h-10 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-[3px] [&::-moz-range-thumb]:border-background [&::-moz-range-thumb]:bg-foreground [&::-moz-range-thumb]:shadow-sm"
-                  />
-
-                  <input
-                    type="range"
-                    min={TJM_MIN}
-                    max={TJM_MAX}
-                    step={TJM_STEP}
-                    value={tjm[1]}
-                    onChange={handleTjmMaxChange}
-                    aria-label="TJM maximum"
-                    className="pointer-events-none absolute inset-0 z-30 h-10 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-[3px] [&::-moz-range-thumb]:border-background [&::-moz-range-thumb]:bg-foreground [&::-moz-range-thumb]:shadow-sm"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground/60">{TJM_MIN}€</span>
-                  <span className="font-bold text-foreground text-sm">{tjm[0]}€ — {tjm[1]}€ <span className="text-muted-foreground font-normal text-xs">/ jour</span></span>
-                  <span className="text-muted-foreground/60">{TJM_MAX}€</span>
-                </div>
-              </div>
-
-              <p className="text-xs text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Team size (hidden for freelance) */}
         {!isFreelance && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Taille de l'équipe recrutement
-            </label>
+          <div className="space-y-2">
+            <Label htmlFor={teamId}>Taille de l'équipe recrutement</Label>
             <Select value={teamSize} onValueChange={setTeamSize}>
-              <SelectTrigger className="border border-border h-10 text-sm">
-                <SelectValue placeholder="Sélectionnez" />
+              <SelectTrigger id={teamId} className={FIELD_CLASS}>
+                <SelectValue placeholder="Choisissez une taille" />
               </SelectTrigger>
               <SelectContent>
-                {TEAM_SIZES.map(s => (
+                {TEAM_SIZES.map((s) => (
                   <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -183,51 +103,48 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         )}
 
-        {/* Volume de recrutement prévu (12 mois) */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="space-y-2">
+          <Label htmlFor={hiresId}>
             {isFreelance ? 'Recrutements visés sur 12 mois' : 'Recrutements prévus sur 12 mois'}
-          </label>
+          </Label>
           <Select value={annualHires} onValueChange={setAnnualHires}>
-            <SelectTrigger className="border border-border h-10 text-sm">
-              <SelectValue placeholder="Sélectionnez" />
+            <SelectTrigger id={hiresId} aria-describedby={hiresHintId} className={FIELD_CLASS}>
+              <SelectValue placeholder="Choisissez un volume" />
             </SelectTrigger>
             <SelectContent>
-              {ANNUAL_HIRES.map(s => (
+              {ANNUAL_HIRES.map((s) => (
                 <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">
-            Sert à dimensionner vos quotas et vos suggestions de missions.
+          <p id={hiresHintId} className="text-xs text-muted-foreground">
+            Facultatif. Sert à dimensionner vos quotas et vos suggestions de missions.
           </p>
         </div>
+      </div>
 
-
-      </motion.div>
-
-      {/* Navigation */}
-      <motion.div
-        className="flex items-center justify-between pt-2"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-      >
-        <Button
-          variant="ghost"
-          onClick={onBack}
-          className="gap-2 text-sm"
-        >
-          <ArrowLeft className="w-4 h-4" /> Retour
+      <div className="flex items-center justify-between pt-2">
+        <Button variant="ghost" onClick={onBack} className={NAV_BUTTON_CLASS}>
+          <ArrowLeft aria-hidden="true" />
+          Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined, annualHires: annualHires || undefined })}
+          variant="primary"
+          onClick={() =>
+            canSubmit &&
+            onSubmit({
+              teamSize,
+              freelanceMode: isFreelance ? freelanceMode : undefined,
+              annualHires: annualHires || undefined,
+            })
+          }
           disabled={!canSubmit}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          className={NAV_BUTTON_CLASS}
         >
-          Suivant <ArrowRight className="w-4 h-4" />
+          Continuer
+          <ArrowRight aria-hidden="true" />
         </Button>
-      </motion.div>
+      </div>
     </div>
   );
 };

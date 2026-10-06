@@ -7,6 +7,8 @@
 
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { shouldIgnoreShortcut } from '@/lib/keyboardShortcuts';
+import { getSequencesBeta, isSequencesPath } from '@/lib/sequencesBeta';
 
 const G_ROUTES: Record<string, string> = {
   d: '/dashboard',
@@ -16,22 +18,10 @@ const G_ROUTES: Record<string, string> = {
   t: '/tasks',
   c: '/inbox',
   i: '/agents',
+  // Séquences (lot 5c-2) : seulement interrupteur konekt.sequences-v2 allumé.
+  s: '/sequences',
 };
 const G_SEQUENCE_WINDOW_MS = 1200;
-const BLOCKING_ROLES = '[role="menu"], [role="listbox"], [role="combobox"], [role="grid"], [role="dialog"], [role="alertdialog"]';
-
-function isTypingOrInMenu(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el || typeof el.closest !== 'function') return false;
-  if (el.isContentEditable) return true;
-  if (el.closest('input, textarea, select, [contenteditable="true"]')) return true;
-  return !!el.closest(BLOCKING_ROLES);
-}
-
-// Palette, tiroir de l'assistant, fenêtre de confirmation… : tout dialogue Radix ouvert.
-function hasOpenDialog(): boolean {
-  return !!document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]');
-}
 
 export function GoShortcuts() {
   const navigate = useNavigate();
@@ -41,7 +31,7 @@ export function GoShortcuts() {
   useEffect(() => {
     let pendingSince = 0;
     const handler = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || isTypingOrInMenu(e.target) || hasOpenDialog()) {
+      if (shouldIgnoreShortcut(e)) {
         pendingSince = 0;
         return;
       }
@@ -49,7 +39,7 @@ export function GoShortcuts() {
       if (pendingSince && e.timeStamp - pendingSince < G_SEQUENCE_WINDOW_MS) {
         pendingSince = 0;
         const path = G_ROUTES[key];
-        if (path) {
+        if (path && (!isSequencesPath(path) || getSequencesBeta())) {
           e.preventDefault();
           e.stopPropagation();
           navigate(path);

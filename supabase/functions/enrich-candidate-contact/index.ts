@@ -31,7 +31,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { ACTION_COSTS } from "../_shared/ai-config.ts";
 import { getSubscriptionGate } from "../_shared/subscription-gate.ts";
-import { getOrFetchContact, normalizeLinkedInUrl as normalizeLinkedInUrlShared } from "../_shared/get-or-fetch-contact.ts";
+import {
+  getOrFetchContact, normalizeLinkedInUrl as normalizeLinkedInUrlShared,
+  GdprRegistryUnavailableError, GDPR_REGISTRY_UNAVAILABLE_MESSAGE,
+} from "../_shared/get-or-fetch-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -306,11 +309,21 @@ Deno.serve(async (req) => {
     // ── Cascade lookup PRE-BC : check RGPD + sources gratuites avant payer ──
     // (Unipile contact_info, candidate_enrichments cache, job_candidate_status,
     //  airtable_candidates → si trouvé, on évite l'appel BC payant)
-    const cascade = await getOrFetchContact(serviceClient, {
-      organizationId: orgId,
-      linkedinUrl: linkedin_url,
-      contactInfoFromProfile: body.contact_info_hint || undefined,
-    });
+    // Registre des effacements illisible (décision 13) : refus clair, ni
+    // enrichissement ni débit.
+    let cascade: Awaited<ReturnType<typeof getOrFetchContact>>;
+    try {
+      cascade = await getOrFetchContact(serviceClient, {
+        organizationId: orgId,
+        linkedinUrl: linkedin_url,
+        contactInfoFromProfile: body.contact_info_hint || undefined,
+      });
+    } catch (e) {
+      if (e instanceof GdprRegistryUnavailableError) {
+        return json({ success: false, error: GDPR_REGISTRY_UNAVAILABLE_MESSAGE, error_code: "GDPR_UNVERIFIED" }, 503);
+      }
+      throw e;
+    }
 
     if (cascade.gdprBlocked) {
       console.log(`[enrich-candidate-contact] RGPD blocked for ${normalizedUrl}`);

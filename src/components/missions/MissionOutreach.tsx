@@ -10,11 +10,28 @@ import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import {
+  computeResponseRate,
+  missionEnrollmentJobIds,
+  RESPONSE_RATE_MIN_CONTACTED,
+  SENT_EXECUTION_STATUSES,
+} from '@/lib/sequenceErrorMessages';
 import { CheckCircle2, ArrowRight, Loader2 } from 'lucide-react';
 
 interface MissionOutreachProps {
   project: SourcingProject;
 }
+
+interface EnrollmentStats {
+  total: number;
+  active: number;
+  completed: number;
+  replied: number;
+  /** Inscriptions ayant au moins une étape envoyée (dénominateur du taux de réponse). */
+  contacted: number;
+}
+
+const EMPTY_STATS: EnrollmentStats = { total: 0, active: 0, completed: 0, replied: 0, contacted: 0 };
 
 // ── Main component ──
 
@@ -40,79 +57,112 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   const [isLoading, setIsLoading] = useState(true);
 
-  // Enrollment stats
-  const [enrollmentStats, setEnrollmentStats] = useState({ active: 0, completed: 0, replied: 0, total: 0 });
+  // Chiffres des inscriptions de la mission (null tant qu'ils ne sont pas connus).
+  const [enrollmentStats, setEnrollmentStats] = useState<EnrollmentStats | null>(null);
   const [goCount, setGoCount] = useState(0);
+  // Incrémenté à chaque rechargement de la liste des séquences (inscription,
+  // pause, reprise, réponse) : les chiffres d'en-tête suivent la liste.
+  const [statsVersion, setStatsVersion] = useState(0);
+  const handleSequencesChanged = useCallback(() => setStatsVersion(v => v + 1), []);
+  // Demande d'ouverture du choix de modèle, transmise à la liste des séquences.
+  const [createRequestId, setCreateRequestId] = useState(0);
 
-  // Fetch enrollment stats + go count for this project's sequences
+  // Chiffres d'en-tête : inscriptions de la mission par job_id (séquences de la
+  // mission ET séquences partagées entre missions), comptées côté serveur par
+  // statut. Avant, seules les séquences rattachées à la mission comptaient,
+  // sur au plus 1 000 lignes, et les chiffres ne bougeaient plus après le
+  // premier affichage.
   useEffect(() => {
     if (!project.id) return;
     let isMounted = true;
+    const jobIds = missionEnrollmentJobIds(project.id, project.job_id);
 
     const fetchStats = async () => {
-      const { data: sequences, error: seqError } = await (supabase
-        .from('outreach_sequences')
-        .select('id') as any)
-        .eq('project_id', project.id);
-
-      if (seqError) throw seqError;
-
-      if (!sequences?.length) {
-        // SequencesList gère son propre empty state ("Créer ma première
-        // séquence") — pas besoin d'écran intermédiaire à 3 cards.
-        return;
-      }
-
-      const seqIds = sequences.map((s: any) => s.id);
-      const { data: enrollments, error: enrError } = await supabase
+      const countByStatus = (status?: string) => {
+        const q = supabase
+          .from('sequence_enrollments')
+          .select('id', { count: 'exact', head: true })
+          .in('job_id', jobIds);
+        return status ? q.eq('status', status) : q;
+      };
+      // Contactés = au moins une étape réellement partie chez le candidat.
+      const contactedQuery = supabase
         .from('sequence_enrollments')
-        .select('status')
-        .in('sequence_id', seqIds);
+        .select('id, sequence_step_executions!inner(status)', { count: 'exact', head: true })
+        .in('job_id', jobIds)
+        .in('sequence_step_executions.status', [...SENT_EXECUTION_STATUSES]);
 
-      if (enrError) throw enrError;
-      if (!enrollments) return;
+      const [totalRes, activeRes, completedRes, repliedRes, contactedRes] = await Promise.all([
+        countByStatus(), countByStatus('active'), countByStatus('completed'), countByStatus('replied'), contactedQuery,
+      ]);
+      const failed = [totalRes, activeRes, completedRes, repliedRes].find(r => r.error);
+      if (failed) throw failed.error;
+      if (contactedRes.error) console.error('[MissionOutreach] contacted count failed:', contactedRes.error);
 
+      const completed = completedRes.count ?? 0;
+      const replied = repliedRes.count ?? 0;
       if (isMounted) {
         setEnrollmentStats({
-          total: enrollments.length,
-          active: enrollments.filter(e => e.status === 'active').length,
-          completed: enrollments.filter(e => e.status === 'completed').length,
-          replied: enrollments.filter(e => e.status === 'replied').length,
+          total: totalRes.count ?? 0,
+          active: activeRes.count ?? 0,
+          completed,
+          replied,
+          // À défaut du détail des étapes : terminés + répondus.
+          contacted: contactedRes.error ? completed + replied : (contactedRes.count ?? 0),
         });
       }
     };
 
-    // Count Go-scored candidates in project
+    // Candidats Go de la mission : une ligne par membre qui a évalué, donc
+    // dédoublonnés par candidat.
     const fetchGoCount = async () => {
-      const { count, error } = await (supabase as any)
-        .from('sourcing_project_candidates')
-        .select('*', { count: 'exact', head: true })
-        .eq('project_id', project.id)
-        .eq('recommendation', 'go');
-      if (error) throw error;
-      if (isMounted) setGoCount(count || 0);
+      const candidateIds = new Set<string>();
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('job_candidate_status')
+          .select('candidate_id')
+          .eq('project_id', project.id)
+          .eq('recommendation', 'go')
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        (data || []).forEach(row => candidateIds.add(row.candidate_id));
+        if (!data || data.length < PAGE) break;
+      }
+      if (isMounted) setGoCount(candidateIds.size);
     };
 
     const loadData = async () => {
-      try {
-        await Promise.all([fetchStats(), fetchGoCount()]);
-      } catch (err) {
-        if (!isMounted) return;
-        console.error('[MissionOutreach] Load error:', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
+      const [statsResult, goResult] = await Promise.allSettled([fetchStats(), fetchGoCount()]);
+      if (!isMounted) return;
+      if (statsResult.status === 'rejected') {
+        console.error('[MissionOutreach] enrollment stats failed:', statsResult.reason);
+        setEnrollmentStats(null);
       }
+      if (goResult.status === 'rejected') console.error('[MissionOutreach] go count failed:', goResult.reason);
+      setIsLoading(false);
     };
 
     loadData();
 
     return () => { isMounted = false; };
-  }, [project.id]);
+  }, [project.id, project.job_id, statsVersion]);
 
   const subTabs = [
     { value: 'sequences', label: 'Séquences', emoji: '⚡' },
     { value: 'invitations', label: 'Invitations', emoji: '📨' },
   ];
+
+  const response = computeResponseRate({
+    replied: enrollmentStats?.replied ?? 0,
+    contacted: enrollmentStats?.contacted ?? 0,
+  });
+
+  const openSequenceCreation = () => {
+    setOutreachTab('sequences');
+    setCreateRequestId(id => id + 1);
+  };
 
   if (accountsLoading) {
     return (
@@ -123,75 +173,62 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   }
 
   if (accounts.length === 0) {
-    return <EmptyLinkedInAccountState message="Pour gérer vos séquences d'outreach, connectez d'abord un compte LinkedIn." />;
+    return <EmptyLinkedInAccountState message="Pour gérer vos séquences, connectez d'abord un compte LinkedIn." />;
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center py-12" role="status" aria-label="Chargement">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
       </div>
     );
   }
 
   return (
     <div className="border border-border bg-background">
-      {/* Go candidates CTA — prominent when candidates exist but not enrolled */}
-      {goCount > 0 && enrollmentStats.total === 0 && (
+      {/* Candidats Go pas encore inscrits : chemin vers la création puis l'inscription */}
+      {goCount > 0 && enrollmentStats?.total === 0 && (
         <div className="border-b border-border bg-success/5 p-4 flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-4 h-4 text-success" />
+            <CheckCircle2 className="w-4 h-4 text-success" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-foreground">
-              {goCount} candidat{goCount > 1 ? 's' : ''} Go prêt{goCount > 1 ? 's' : ''} à être contacté{goCount > 1 ? 's' : ''}
+              {goCount > 1 ? `${goCount} candidats Go attendent un premier contact.` : '1 candidat Go attend un premier contact.'}
             </p>
             <p className="text-xs text-muted-foreground">
-              Créez une séquence pour les inscrire automatiquement.
+              Créez une séquence puis inscrivez-les depuis l'onglet Sourcing.
             </p>
           </div>
           <button
-            onClick={() => setOutreachTab('sequences')}
+            onClick={openSequenceCreation}
             className="shrink-0 flex items-center gap-2 h-9 px-4 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 transition-colors rounded-lg"
           >
             Créer une séquence
-            <ArrowRight className="w-3.5 h-3.5" />
+            <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         </div>
       )}
 
       {/* Bandeau "Contactez vos candidats" retiré (demande Laurent 2026-05-20). */}
-      {/* Account selector (if multiple accounts) */}
-      {accounts.length > 1 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
-          <span className="text-xs font-medium text-muted-foreground">Compte :</span>
-          <select
-            value={selectedAccount || ''}
-            onChange={(e) => setSelectedAccount(e.target.value || null)}
-            className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground font-medium"
-          >
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Pas de sélecteur de compte ici : il n'agit pas sur les séquences (le
+          compte d'envoi se choisit à l'inscription). L'onglet Invitations a le sien. */}
 
-      {/* Enrollment stats */}
-      {enrollmentStats.total > 0 && (
+      {/* Chiffres des inscriptions de la mission */}
+      {enrollmentStats && enrollmentStats.total > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2.5 border-b border-border">
           <span className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{enrollmentStats.total}</span> inscrits
+            <span className="font-semibold text-foreground">{enrollmentStats.total}</span> candidat{enrollmentStats.total > 1 ? 's' : ''} inscrit{enrollmentStats.total > 1 ? 's' : ''}
           </span>
           <span className="text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">{enrollmentStats.active}</span> en cours
           </span>
           <span className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{enrollmentStats.replied}</span> répondu
+            <span className="font-semibold text-foreground">{enrollmentStats.replied}</span> {enrollmentStats.replied > 1 ? 'ont répondu' : 'a répondu'}
           </span>
-          {enrollmentStats.replied > 0 && (
-            <span className="text-xs font-semibold text-success">
-              {Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)}% taux de réponse
+          {response.rate !== null && response.contacted >= RESPONSE_RATE_MIN_CONTACTED && (
+            <span className="text-xs font-semibold text-success" title={`${response.replied} réponse(s) sur ${response.contacted} candidat(s) contacté(s)`}>
+              {response.rate} % de réponse
             </span>
           )}
         </div>
@@ -209,8 +246,9 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
                 ? "bg-foreground text-background border-foreground"
                 : "bg-background text-foreground border-border hover:bg-muted/50"
             )}
+            aria-pressed={outreachTab === sub.value}
           >
-            <span>{sub.emoji}</span>
+            <span aria-hidden="true">{sub.emoji}</span>
             <span>{sub.label}</span>
           </button>
         ))}
@@ -223,6 +261,8 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           selectedAccount={selectedAccount}
           isVisible={outreachTab === 'sequences'}
           projectId={project.id}
+          createRequestId={createRequestId}
+          onDataChanged={handleSequencesChanged}
         />
       </div>
 

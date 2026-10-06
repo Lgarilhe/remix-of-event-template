@@ -2,16 +2,23 @@ import React, { useState, useCallback } from 'react';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Link } from 'react-router-dom';
 import { MessageSquare, Loader2, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
 import { ChatMessage } from './types';
+import { EmptyState } from '@/components/layout/EmptyState';
 
 interface CardMessageThreadProps {
   accountId?: string;
   profileId: string;
   profileName: string;
+  /**
+   * Mission de l'envoi (uuid, sans « project: ») : le serveur y pose
+   * « Contacté » (lot 0b). Absente, il la résout lui-même.
+   */
+  projectId?: string;
   onMessageSent?: () => void;
   onProfileTreated?: () => void;
 }
@@ -32,6 +39,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
   accountId,
   profileId,
   profileName,
+  projectId,
   onMessageSent,
   onProfileTreated,
 }) => {
@@ -101,6 +109,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
           account_id: accountId,
           chat_id: chatId,
           text: replyText.trim(),
+          project_id: projectId,
         },
       });
 
@@ -125,71 +134,69 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
     } finally {
       setIsSending(false);
     }
-  }, [chatId, replyText, isSending, accountId, onMessageSent, onProfileTreated]);
+  }, [chatId, replyText, isSending, accountId, projectId, onMessageSent, onProfileTreated]);
+
+  // États sans fil à montrer : un titre, une phrase, une action au besoin, sans cadre.
+  const emptyClass = 'border-0 py-8';
 
   if (!accountId) {
     return (
-      <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg">
-        <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
-        <p className="text-sm font-medium mb-1">Compte non disponible</p>
-        <p className="text-xs text-muted-foreground">
-          Sélectionnez un compte LinkedIn pour voir l'historique des messages
-        </p>
-      </div>
+      <EmptyState
+        className={emptyClass}
+        title="Aucun compte LinkedIn utilisable"
+        description="Reliez ou reconnectez votre compte LinkedIn pour lire et envoyer des messages à ce candidat."
+        action={(
+          <Button asChild variant="outline" size="sm">
+            <Link to="/settings/account/connections">Ouvrir mes connexions</Link>
+          </Button>
+        )}
+      />
     );
   }
 
   if (messagesLoading) {
     return (
-      <div className="text-center py-8">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-primary" />
-        <p className="text-sm text-muted-foreground">Chargement des messages...</p>
-      </div>
+      <EmptyState
+        className={emptyClass}
+        icon={<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+        title="Chargement des messages"
+      />
     );
   }
 
   if (!messagesLoaded) {
     return (
-      <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg">
-        <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
-        <p className="text-sm font-medium mb-1">Historique des messages</p>
-        <p className="text-xs text-muted-foreground mb-4">
-          Consultez l'historique des échanges avec ce candidat
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={loadMessages}
-          className="text-primary border-primary/30 hover:bg-primary/10"
-        >
-          <MessageSquare className="w-4 h-4 mr-2" />
-          Charger l'historique
-        </Button>
-      </div>
+      <EmptyState
+        className={emptyClass}
+        title="Historique des messages"
+        description="Consultez les échanges avec ce candidat."
+        action={(
+          <Button variant="outline" size="sm" onClick={loadMessages}>
+            <MessageSquare aria-hidden="true" />
+            Charger l'historique
+          </Button>
+        )}
+      />
     );
   }
 
   if (noConversation) {
     return (
-      <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg border border-border">
-        <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
-        <p className="text-sm font-medium mb-1 text-foreground/70">Aucune conversation</p>
-        <p className="text-xs text-muted-foreground">
-          Vous n'avez pas encore échangé avec ce candidat
-        </p>
-      </div>
+      <EmptyState
+        className={emptyClass}
+        title="Aucune conversation"
+        description="Vous n'avez pas encore échangé avec ce candidat."
+      />
     );
   }
 
   if (messages.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg">
-        <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
-        <p className="text-sm font-medium mb-1">Conversation vide</p>
-        <p className="text-xs text-muted-foreground">
-          La conversation existe mais aucun message n'a été trouvé
-        </p>
-      </div>
+      <EmptyState
+        className={emptyClass}
+        title="Conversation vide"
+        description="La conversation existe, mais aucun message n'a été trouvé."
+      />
     );
   }
 

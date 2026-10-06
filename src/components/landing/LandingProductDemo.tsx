@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Search, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /**
- * Démo produit vivante du hero landing — remplace le screenshot statique.
- * Rejoue en boucle la chorégraphie signature de l'app : recherche qui se
- * tape → résultats en cascade → scoring → ajout à la séquence → toast.
+ * Démonstration produit de l'accueil : une recherche, le score d'un profil et
+ * son ajout à une séquence, dans la fenêtre de l'application.
  *
- * Les couleurs sont volontairement câblées sur le thème SOMBRE de l'app
- * (hsl 40 3% …) et non sur les tokens de la page : la landing est claire,
- * mais la fenêtre représente l'app telle qu'elle est. Purement décoratif
- * (aria-hidden), aucune interaction réelle.
+ * Jouée une seule fois, en moins de cinq secondes, quand la fenêtre entre à
+ * l'écran, puis figée sur l'état final (WCAG 2.2.2 : aucun mouvement
+ * automatique de plus de cinq secondes). Avec le mouvement réduit, l'état final
+ * s'affiche d'emblée. Couleurs et tailles viennent des jetons du thème.
+ * Décorative : lue comme une image par les lecteurs d'écran.
  */
 
 const EASE_OUT: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -18,11 +19,10 @@ const RING_R = 18;
 const CIRC = 2 * Math.PI * RING_R;
 const SCORE = 92;
 const QUERY = 'Product Designer Senior · Paris';
-const LOOP_MS = 11000;
 
 const OTHER_ROWS = [
   { ini: 'NB', name: 'Noah Bertrand', role: 'Product Designer · Lyon · 6 ans', chips: ['Figma', 'Prototypage'], badge: 86 },
-  { ini: 'LM', name: 'Léa Mercier', role: 'UX Designer Senior · Remote · 9 ans', chips: ['Recherche', 'Design ops'], badge: 81 },
+  { ini: 'LM', name: 'Léa Mercier', role: 'UX Designer Senior · Télétravail · 9 ans', chips: ['Recherche', 'Design ops'], badge: 81 },
   { ini: 'TN', name: 'Théo Nguyen', role: 'Product Designer · Nantes · 5 ans', chips: ['Design system', 'Motion'], badge: 78 },
 ];
 
@@ -36,7 +36,6 @@ interface DemoState {
   cursorClick: boolean;
   added: boolean;
   toastOn: boolean;
-  fadeOut: boolean;
 }
 
 const FINAL_STATE: DemoState = {
@@ -49,7 +48,6 @@ const FINAL_STATE: DemoState = {
   cursorClick: false,
   added: true,
   toastOn: false,
-  fadeOut: false,
 };
 
 const INITIAL_STATE: DemoState = {
@@ -62,25 +60,24 @@ const INITIAL_STATE: DemoState = {
   cursorClick: false,
   added: false,
   toastOn: false,
-  fadeOut: false,
 };
 
 export const LandingProductDemo = () => {
   const reduceMotion = useReducedMotion();
   const [s, setS] = useState<DemoState>(reduceMotion ? FINAL_STATE : INITIAL_STATE);
   const [displayScore, setDisplayScore] = useState(reduceMotion ? SCORE : 0);
+  const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const addRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLSpanElement>(null);
   const [cursorPos, setCursorPos] = useState({ x: 320, y: -20 });
-  const timersRef = useRef<number[]>([]);
 
-  const patch = useCallback((p: Partial<DemoState>) => setS(prev => ({ ...prev, ...p })), []);
+  const patch = useCallback((p: Partial<DemoState>) => setS((prev) => ({ ...prev, ...p })), []);
 
-  // Count-up du score, synchronisé sur le tracé de l'anneau (900ms ease-out).
+  // Compte du score, synchronisé sur le tracé de l'anneau (700 ms).
   const runScoreCount = useCallback(() => {
     const start = performance.now();
     const step = (now: number) => {
-      const p = Math.min((now - start) / 900, 1);
+      const p = Math.min((now - start) / 700, 1);
       const e = 1 - Math.pow(1 - p, 3);
       setDisplayScore(Math.round(e * SCORE));
       if (p < 1) requestAnimationFrame(step);
@@ -98,202 +95,223 @@ export const LandingProductDemo = () => {
   }, []);
 
   useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion) {
+      setS(FINAL_STATE);
+      setDisplayScore(SCORE);
+      return;
+    }
+    const root = rootRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') {
+      setS(FINAL_STATE);
+      setDisplayScore(SCORE);
+      return;
+    }
 
-    const runCycle = () => {
-      timersRef.current.forEach(clearTimeout);
-      timersRef.current = [];
-      setS(INITIAL_STATE);
-      setDisplayScore(0);
-      setCursorPos({ x: 320, y: -20 });
-
-      const at = (ms: number, fn: () => void) => {
-        timersRef.current.push(window.setTimeout(fn, ms));
-      };
-
-      // Frappe de la recherche (38ms/caractère)
-      for (let i = 1; i <= QUERY.length; i++) {
-        at(350 + i * 38, () => patch({ typed: QUERY.slice(0, i) }));
-      }
-      at(1900, () => patch({ searchFocus: true }));
-      at(2050, () => patch({ rowsIn: true }));
-      at(2900, () => { patch({ scoreOn: true }); runScoreCount(); });
-      at(3900, () => patch({ pillOn: true }));
-      at(4300, () => { moveCursorToAdd(); patch({ cursorOn: true }); });
-      at(5350, () => patch({ cursorClick: true }));
-      at(5520, () => patch({ cursorClick: false, added: true }));
-      at(5900, () => patch({ toastOn: true, searchFocus: false }));
-      at(9600, () => patch({ cursorOn: false }));
-      at(10300, () => patch({ fadeOut: true }));
+    const timers: number[] = [];
+    const at = (ms: number, fn: () => void) => {
+      timers.push(window.setTimeout(fn, ms));
     };
 
-    const startId = window.setTimeout(runCycle, 250);
-    const loopId = window.setInterval(runCycle, LOOP_MS);
+    // Une seule lecture, déclenchée quand la moitié de la fenêtre est visible.
+    const play = () => {
+      at(150, () => patch({ searchFocus: true }));
+      for (let i = 1; i <= QUERY.length; i++) {
+        at(200 + i * 28, () => patch({ typed: QUERY.slice(0, i) }));
+      }
+      at(1200, () => patch({ rowsIn: true, searchFocus: false }));
+      at(1650, () => {
+        patch({ scoreOn: true });
+        runScoreCount();
+      });
+      at(2400, () => patch({ pillOn: true }));
+      at(2550, () => {
+        moveCursorToAdd();
+        patch({ cursorOn: true });
+      });
+      at(3300, () => patch({ cursorClick: true }));
+      at(3450, () => patch({ cursorClick: false, added: true }));
+      at(3650, () => patch({ toastOn: true }));
+      at(4550, () => setS(FINAL_STATE));
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer.disconnect();
+          play();
+        }
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(root);
+
     return () => {
-      clearTimeout(startId);
-      clearInterval(loopId);
-      timersRef.current.forEach(clearTimeout);
+      observer.disconnect();
+      timers.forEach(clearTimeout);
     };
   }, [reduceMotion, patch, runScoreCount, moveCursorToAdd]);
 
   return (
     <div
-      className="rounded-2xl border border-white/10 bg-[hsl(40,3%,14%)] text-[hsl(0,0%,98%)] text-left overflow-hidden shadow-2xl relative"
-      aria-label="Démonstration animée de Konekt : recherche, scoring et mise en séquence d'un candidat"
+      ref={rootRef}
+      role="img"
+      aria-label="Aperçu de Konekt : une recherche de profils, le score d'un candidat et son ajout à une séquence"
+      className="relative isolate overflow-hidden rounded-xl border border-border bg-card text-left text-foreground"
     >
-      {/* Filet dégradé de marque — balaie le haut de la fenêtre au scoring */}
-      <div className="absolute top-0 left-0 right-0 h-0.5 overflow-hidden z-10" aria-hidden="true">
-        <motion.div
-          className="absolute inset-y-0 w-1/3 rounded-full skalr-gradient-border"
-          initial={false}
-          animate={s.scoreOn && !s.fadeOut ? { x: ['-120%', '340%'], opacity: [0, 0.95, 0] } : { x: '-120%', opacity: 0 }}
-          transition={s.scoreOn && !s.fadeOut ? { duration: 1.1, ease: EASE_OUT } : { duration: 0 }}
-        />
-      </div>
-
       <div aria-hidden="true">
-        {/* Chrome fenêtre */}
-        <div className="flex items-center px-4 py-3 border-b border-white/10">
-          <div className="flex gap-1.5">
-            {[0, 1, 2].map(i => <span key={i} className="w-2.5 h-2.5 rounded-full bg-[hsl(40,3%,18%)]" />)}
+        {/* Barre de fenêtre */}
+        <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
+          <div className="flex shrink-0 gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="h-2.5 w-2.5 rounded-full bg-muted" />
+            ))}
           </div>
-          <span className="flex-1 text-center font-mono text-[11px] text-[hsl(40,2%,56%)]">
-            konekt.app — Mission · Product Designer Senior
+          <span className="min-w-0 flex-1 truncate text-center text-2xs text-muted-foreground">
+            Mission · Product Designer Senior
           </span>
-          <span className="w-[52px]" />
+          <span className="w-10 shrink-0" />
         </div>
 
-        {/* Onglets mission */}
-        <div className="flex items-center gap-0.5 px-3 border-b border-white/10">
-          {['Aperçu', 'Brief', 'Sourcing', 'Pipeline'].map(tab => (
+        {/* Onglets de la mission */}
+        <div className="flex items-center gap-0.5 border-b border-border px-3">
+          {['Aperçu', 'Brief', 'Sourcing', 'Pipeline'].map((tab) => (
             <span
               key={tab}
-              className={`relative px-3 py-2.5 text-[13px] ${tab === 'Sourcing' ? 'text-[hsl(0,0%,98%)]' : 'text-[hsl(40,2%,56%)]'}`}
+              className={cn('relative px-2.5 py-2.5 text-sm sm:px-3', tab === 'Sourcing' ? 'text-foreground' : 'text-muted-foreground')}
             >
               {tab}
-              {tab === 'Sourcing' && <span className="absolute left-2.5 right-2.5 -bottom-px h-0.5 rounded-full bg-[hsl(0,0%,98%)]" />}
+              {tab === 'Sourcing' && <span className="absolute inset-x-2.5 -bottom-px h-0.5 rounded-full bg-foreground" />}
             </span>
           ))}
           <span className="flex-1" />
-          <span className="font-mono text-[11px] text-[hsl(40,2%,56%)] pr-1.5">
-            Entretiens&nbsp;&nbsp;<span className="text-[hsl(0,0%,98%)]">{s.toastOn || s.added ? 5 : 4}</span>
+          <span className="hidden pr-1.5 text-2xs text-muted-foreground sm:inline">
+            Entretiens <span className="ml-1 tabular-nums text-foreground">{s.added ? 5 : 4}</span>
           </span>
         </div>
 
         {/* Barre de recherche */}
-        <div className="flex gap-2.5 px-3.5 pt-3.5 pb-1">
+        <div className="flex gap-2.5 px-3.5 pb-1 pt-3.5">
           <div
-            className={`flex-1 flex items-center gap-2 h-9 px-3 rounded-[10px] border bg-[hsl(40,3%,11%)] transition-[border-color,box-shadow] duration-200 ${
-              s.searchFocus ? 'border-white/25 shadow-[0_0_0_3px_rgba(255,255,255,0.06)]' : 'border-white/[0.12]'
-            }`}
-          >
-            <Search className="w-3.5 h-3.5 shrink-0 text-[hsl(40,2%,56%)]" />
-            <span className="text-[13px] whitespace-nowrap overflow-hidden">{s.typed}</span>
-            {!reduceMotion && s.typed.length < QUERY.length && s.typed.length > 0 && (
-              <span className="w-px h-3.5 bg-[hsl(0,0%,98%)] animate-pulse" />
+            className={cn(
+              'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-background px-3 transition-[border-color,box-shadow] duration-200',
+              s.searchFocus ? 'border-ring ring-[3px] ring-ring/20' : 'border-input',
             )}
-            <span className="ml-auto font-mono text-[10px] text-[hsl(40,2%,56%)] border border-white/10 rounded px-1.5 py-px">⌘K</span>
+          >
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate whitespace-nowrap text-sm">{s.typed}</span>
+            {s.typed.length > 0 && s.typed.length < QUERY.length && <span className="h-3.5 w-px shrink-0 bg-foreground" />}
           </div>
-          <span className="inline-flex items-center text-[12px] font-semibold rounded-[10px] px-3.5 bg-[hsl(0,0%,98%)] text-[hsl(40,3%,11%)]">
+          <span className="hidden items-center rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground sm:inline-flex">
             Scorer les profils
           </span>
         </div>
 
-        {/* Liste résultats */}
-        <div ref={listRef} className="relative flex flex-col gap-2 px-3.5 pb-4 pt-2.5 min-h-[240px]">
+        {/* Résultats */}
+        <div ref={listRef} className="relative flex min-h-[240px] flex-col gap-2 px-3.5 pb-4 pt-2.5">
+          {/* Ligne principale */}
           <motion.div
-            className="contents"
             initial={false}
-            animate={{ opacity: s.fadeOut ? 0 : 1 }}
-            transition={{ duration: 0.25 }}
+            animate={s.rowsIn ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
+            transition={{ duration: 0.4, ease: EASE_OUT }}
+            className={cn(
+              'grid grid-cols-[36px_1fr_auto] items-center gap-3 rounded-xl border bg-card p-3 transition-colors duration-300',
+              s.added ? 'border-border-strong' : 'border-border',
+            )}
           >
-            {/* Ligne candidate principale */}
+            <span className="grid h-9 w-9 place-items-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground-secondary">
+              CR
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold leading-tight">Camille Roy</p>
+              <p className="truncate text-2xs text-muted-foreground">Product Designer Senior · Paris · 8 ans</p>
+              <div className="mt-1.5 hidden gap-1 sm:flex">
+                {['Figma', 'Design system', 'SaaS B2B'].map((c) => (
+                  <span key={c} className="rounded-full border border-border px-2 py-px text-3xs text-muted-foreground">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <motion.span
+                initial={false}
+                animate={s.pillOn ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.3, ease: EASE_OUT }}
+                className="hidden items-center gap-1 whitespace-nowrap rounded-md border border-border bg-muted px-2 py-0.5 text-3xs font-semibold sm:inline-flex"
+              >
+                <Check className="h-3 w-3 text-success" /> À contacter
+              </motion.span>
+              <span className="relative h-11 w-11 shrink-0">
+                <svg width="44" height="44" viewBox="0 0 44 44" className="-rotate-90">
+                  <circle cx="22" cy="22" r={RING_R} fill="none" strokeWidth="4.5" className="stroke-muted" />
+                  <motion.circle
+                    cx="22"
+                    cy="22"
+                    r={RING_R}
+                    fill="none"
+                    strokeWidth="4.5"
+                    strokeLinecap="round"
+                    className="stroke-brand"
+                    strokeDasharray={CIRC}
+                    initial={false}
+                    animate={{ strokeDashoffset: s.scoreOn ? CIRC * (1 - SCORE / 100) : CIRC }}
+                    transition={{ duration: 0.7, ease: EASE_OUT }}
+                  />
+                </svg>
+                <span className="absolute inset-0 grid place-items-center text-xs font-semibold tabular-nums">{displayScore}</span>
+              </span>
+              <span
+                ref={addRef}
+                className={cn(
+                  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-[background-color,color,border-color,transform] duration-300 sm:px-3',
+                  s.added ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-transparent text-foreground',
+                  s.cursorClick ? 'scale-95' : 'scale-100',
+                )}
+              >
+                {s.added ? (
+                  <>
+                    <Check className="h-3 w-3" /> Ajoutée
+                  </>
+                ) : (
+                  <>
+                    <span className="sm:hidden">Ajouter</span>
+                    <span className="hidden sm:inline">Ajouter à la séquence</span>
+                  </>
+                )}
+              </span>
+            </div>
+          </motion.div>
+
+          {/* Autres candidats */}
+          {OTHER_ROWS.map((row, i) => (
             <motion.div
+              key={row.ini}
               initial={false}
               animate={s.rowsIn ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
-              transition={{ duration: 0.5, ease: EASE_OUT }}
-              className={`grid grid-cols-[36px_1fr_auto] gap-3 items-center p-3 rounded-xl border bg-[hsl(40,3%,14%)] transition-colors duration-300 ${
-                s.added ? 'border-white/25' : 'border-white/10'
-              }`}
+              transition={{ duration: 0.4, ease: EASE_OUT, delay: s.rowsIn ? (i + 1) * 0.06 : 0 }}
+              className="grid grid-cols-[36px_1fr_auto] items-center gap-3 rounded-xl border border-border bg-card p-3"
             >
-              <span className="w-9 h-9 rounded-full grid place-items-center border border-white/10 bg-[hsl(40,3%,18%)] font-brand font-semibold text-[12px]">
-                CR
+              <span className="grid h-9 w-9 place-items-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground-secondary">
+                {row.ini}
               </span>
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold leading-tight truncate">Camille Roy</p>
-                <p className="text-[11.5px] text-[hsl(40,2%,56%)] truncate">Product Designer Senior · Paris · 8 ans</p>
-                <div className="hidden sm:flex gap-1 mt-1.5">
-                  {['Figma', 'Design system', 'B2B SaaS'].map(c => (
-                    <span key={c} className="font-mono text-[9px] text-[hsl(40,2%,56%)] border border-white/10 rounded-full px-2 py-px">{c}</span>
+                <p className="truncate text-sm font-semibold leading-tight">{row.name}</p>
+                <p className="truncate text-2xs text-muted-foreground">{row.role}</p>
+                <div className="mt-1.5 hidden gap-1 sm:flex">
+                  {row.chips.map((c) => (
+                    <span key={c} className="rounded-full border border-border px-2 py-px text-3xs text-muted-foreground">
+                      {c}
+                    </span>
                   ))}
                 </div>
               </div>
-              <div className="flex items-center gap-2.5">
-                <motion.span
-                  initial={false}
-                  animate={s.pillOn ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.85 }}
-                  transition={{ duration: 0.4, ease: EASE_OUT }}
-                  className="hidden sm:inline-flex items-center gap-1 text-[10.5px] font-semibold border border-white/10 bg-[hsl(40,3%,18%)] rounded-lg px-2 py-0.5 whitespace-nowrap"
-                >
-                  <Check className="w-3 h-3 text-[hsl(142,71%,45%)]" /> À contacter
-                </motion.span>
-                <span className="relative w-11 h-11 shrink-0">
-                  <svg width="44" height="44" viewBox="0 0 44 44" className="-rotate-90">
-                    <circle cx="22" cy="22" r={RING_R} fill="none" strokeWidth="4.5" className="stroke-[hsl(40,3%,18%)]" />
-                    <motion.circle
-                      cx="22" cy="22" r={RING_R} fill="none" strokeWidth="4.5"
-                      className="stroke-[hsl(0,0%,98%)]"
-                      strokeDasharray={CIRC}
-                      initial={false}
-                      animate={{ strokeDashoffset: s.scoreOn ? CIRC * (1 - SCORE / 100) : CIRC }}
-                      transition={{ duration: 0.9, ease: EASE_OUT }}
-                    />
-                  </svg>
-                  <span className="absolute inset-0 grid place-items-center font-mono text-[12px] tabular-nums">{displayScore}</span>
-                </span>
-                <div
-                  ref={addRef}
-                  className={`inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-[10px] px-3 py-1.5 border transition-colors duration-300 whitespace-nowrap ${
-                    s.added
-                      ? 'bg-[hsl(0,0%,98%)] text-[hsl(40,3%,11%)] border-transparent'
-                      : 'bg-transparent text-[hsl(0,0%,98%)] border-white/10'
-                  } ${s.cursorClick ? 'scale-95' : 'scale-100'}`}
-                  style={{ transitionProperty: 'background-color,color,border-color,transform' }}
-                >
-                  {s.added ? <><Check className="w-3 h-3" /> Ajoutée</> : 'Ajouter à la séquence'}
-                </div>
-              </div>
+              <span className="rounded-md border border-border px-2 py-1 text-2xs tabular-nums text-muted-foreground">{row.badge}</span>
             </motion.div>
-
-            {/* Autres candidats */}
-            {OTHER_ROWS.map((row, i) => (
-              <motion.div
-                key={row.ini}
-                initial={false}
-                animate={s.rowsIn ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
-                transition={{ duration: 0.5, ease: EASE_OUT, delay: s.rowsIn ? (i + 1) * 0.07 : 0 }}
-                className="grid grid-cols-[36px_1fr_auto] gap-3 items-center p-3 rounded-xl border border-white/10 bg-[hsl(40,3%,14%)]"
-              >
-                <span className="w-9 h-9 rounded-full grid place-items-center border border-white/10 bg-[hsl(40,3%,18%)] font-brand font-semibold text-[12px]">
-                  {row.ini}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold leading-tight truncate">{row.name}</p>
-                  <p className="text-[11.5px] text-[hsl(40,2%,56%)] truncate">{row.role}</p>
-                  <div className="hidden sm:flex gap-1 mt-1.5">
-                    {row.chips.map(c => (
-                      <span key={c} className="font-mono text-[9px] text-[hsl(40,2%,56%)] border border-white/10 rounded-full px-2 py-px">{c}</span>
-                    ))}
-                  </div>
-                </div>
-                <span className="font-mono text-[11.5px] text-[hsl(40,2%,56%)] border border-white/10 rounded-lg px-2 py-1">{row.badge}</span>
-              </motion.div>
-            ))}
-          </motion.div>
+          ))}
 
           {/* Curseur */}
           <motion.div
-            className="absolute left-0 top-0 z-20 pointer-events-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.45)]"
+            className="pointer-events-none absolute left-0 top-0 z-20 drop-shadow-md"
             initial={false}
             animate={{
               x: cursorPos.x,
@@ -301,24 +319,29 @@ export const LandingProductDemo = () => {
               opacity: s.cursorOn ? 1 : 0,
               scale: s.cursorClick ? 0.86 : 1,
             }}
-            transition={{ x: { duration: 0.95, ease: EASE_OUT }, y: { duration: 0.95, ease: EASE_OUT }, opacity: { duration: 0.35 }, scale: { duration: 0.15 } }}
+            transition={{
+              x: { duration: 0.7, ease: EASE_OUT },
+              y: { duration: 0.7, ease: EASE_OUT },
+              opacity: { duration: 0.25 },
+              scale: { duration: 0.15 },
+            }}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="hsl(0,0%,98%)">
-              <path d="M4 2l6 15.5 2.2-6L18 9.4z" stroke="hsl(40,3%,11%)" strokeWidth="1.4" strokeLinejoin="round" />
+            <svg viewBox="0 0 24 24" width="18" height="18">
+              <path d="M4 2l6 15.5 2.2-6L18 9.4z" className="fill-foreground stroke-background" strokeWidth="1.4" strokeLinejoin="round" />
             </svg>
           </motion.div>
 
-          {/* Toast de confirmation */}
+          {/* Confirmation */}
           <motion.div
-            className="absolute right-3.5 bottom-3.5 z-20 flex items-center gap-2.5 rounded-xl border border-white/10 bg-[hsl(40,3%,11%)] px-3.5 py-2.5 shadow-2xl pointer-events-none"
+            className="pointer-events-none absolute bottom-3.5 right-3.5 z-20 flex items-center gap-2.5 rounded-xl border border-border bg-popover px-3.5 py-2.5 shadow-lg"
             initial={false}
-            animate={s.toastOn && !s.fadeOut ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
-            transition={{ duration: 0.35, ease: EASE_OUT }}
+            animate={s.toastOn ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: 0.3, ease: EASE_OUT }}
           >
-            <Check className="w-4 h-4 shrink-0 text-[hsl(142,71%,45%)]" />
+            <Check className="h-4 w-4 shrink-0 text-success" />
             <span>
-              <span className="block text-[12px] font-semibold leading-tight">Camille ajoutée à la séquence</span>
-              <span className="block text-[10.5px] text-[hsl(40,2%,56%)]">Mission · Product Designer Senior</span>
+              <span className="block text-xs font-semibold leading-tight">Camille ajoutée à la séquence</span>
+              <span className="block text-3xs text-muted-foreground">Mission · Product Designer Senior</span>
             </span>
           </motion.div>
         </div>

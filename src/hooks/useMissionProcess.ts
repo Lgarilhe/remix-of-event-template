@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { toast } from 'sonner';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 
 const db = supabase as any;
 
@@ -61,7 +62,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
   const { organizationId } = useOrganization();
 
   // Fetch steps
-  const { data: steps = [], isLoading: loadingSteps } = useQuery({
+  const { data: steps = [], isLoading: loadingSteps, isError: stepsError, refetch: refetchSteps } = useQuery({
     queryKey: ['mission-process-steps', projectId],
     queryFn: async () => {
       if (!projectId) return [];
@@ -198,6 +199,8 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-process-steps', projectId] });
+      // Les candidats de l'étape supprimée perdent leur process_step_id (ON DELETE SET NULL).
+      void invalidateStageReaders(queryClient);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -243,10 +246,11 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: (remapped, { label }) => {
       queryClient.invalidateQueries({ queryKey: ['mission-process-steps', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
-      const plural = remapped > 1 ? 's' : '';
-      const suffix = remapped > 0 ? ` · ${remapped} candidat${plural} repositionné${plural}` : '';
+      // Candidats repositionnés : kanban, compteurs et /pipeline à relire.
+      void invalidateStageReaders(queryClient);
+      // Le nombre brut de la fonction compte des lignes (doublons et écartés compris),
+      // pas des candidats : on ne l'annonce pas, la boîte de confirmation a donné le compte.
+      const suffix = remapped > 0 ? ' · candidats repositionnés' : '';
       toast.success((label ? `Process « ${label} » appliqué` : 'Process créé') + suffix);
     },
     onError: (err: Error) => toast.error(err.message),
@@ -264,15 +268,17 @@ export const useMissionProcess = (projectId: string | undefined) => {
 
   const initializeDefaultSteps = () => initializeFromTemplate(DEFAULT_STEPS);
 
-  // Nb de candidats positionnés sur une étape ACTUELLE (pipeline_stage = step.id) — pour l'AlertDialog.
-  const countCandidatesOnSteps = async (): Promise<number> => {
+  // Nb de candidats positionnés sur une étape ACTUELLE (process_step_id, lot 0c ;
+  // une ligne par candidat, doublons réunis) : pour l'AlertDialog. null quand la
+  // lecture échoue : un zéro inventé ferait annoncer « aucun candidat ».
+  const countCandidatesOnSteps = async (): Promise<number | null> => {
     if (!projectId || steps.length === 0) return 0;
     const { count, error } = await db
-      .from('job_candidate_status')
+      .from('mission_candidate_rows')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId)
-      .in('pipeline_stage', steps.map(s => s.id));
-    if (error) return 0;
+      .in('process_step_id', steps.map(s => s.id));
+    if (error) return null;
     return count ?? 0;
   };
 
@@ -280,6 +286,9 @@ export const useMissionProcess = (projectId: string | undefined) => {
     steps,
     team,
     loadingSteps,
+    /** Lecture des étapes en échec (sans données). */
+    stepsError,
+    refetchSteps,
     loadingTeam,
     addStep: addStepMutation.mutateAsync,
     updateStep: updateStepMutation.mutateAsync,

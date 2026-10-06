@@ -15,7 +15,8 @@ test.describe('Landing page', () => {
     const hero = page.getByRole('heading', { level: 1 }).first();
     await expect(hero).toContainText(/Le recrutement/i);
 
-    await expect(page.getByRole('button', { name: /Réserver une démo/i }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /Essai gratuit/i }).first()).toBeVisible();
+    // Design, lot 8 : l'essai est l'action principale ; la démo mène au formulaire de contact.
+    await expect(page.getByRole('link', { name: /Demander une démo/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Commencer l'essai gratuit/i }).first()).toBeVisible();
   });
 });

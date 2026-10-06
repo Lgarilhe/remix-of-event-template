@@ -29,6 +29,8 @@ interface CardActionsProps {
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
   compact?: boolean;
+  /** Nouvelle page mission : boutons discrets (aucun bouton plein ni contour), cibles de 44 px sur téléphone. */
+  variant?: 'default' | 'mission-v3';
 }
 
 /**
@@ -66,7 +68,9 @@ export const CardActions: React.FC<CardActionsProps> = ({
   onSequenceEnroll,
   onProfileTreated,
   compact = false,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
   // Détermine le CTA primaire selon l'état du profil.
@@ -77,80 +81,32 @@ export const CardActions: React.FC<CardActionsProps> = ({
 
   return (
     <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
-      {/* ═══ PRIMARY CTA — Score IA (gradient violet/indigo inspiré 21st.dev) ═══
-          Bouton CTA dédié à l'action AI scoring. Gradient indigo→violet→fuchsia
-          + shadow halo coloré + shine sweep au hover + sparkle pulse. Reste
-          compact (h-7/h-8) pour s'intégrer dans le rang d'actions. */}
+      {/* Action principale : noter le profil sur les critères du poste. */}
       {showScore && (
-        <button
+        <Button
+          variant={isV3 ? 'ghost' : 'primary'}
+          size={compact ? 'xs' : 'sm'}
           onClick={onScoreProfile}
-          disabled={isScoring}
-          title={isScoring ? 'Analyse IA en cours…' : `Scorer pour ${selectedJob?.title}`}
+          loading={isScoring}
+          title={isScoring ? 'Notation en cours' : `Noter pour ${selectedJob?.title}`}
           aria-busy={isScoring}
-          className={`group relative inline-flex items-center justify-center gap-1.5 overflow-hidden rounded-md font-bold uppercase tracking-wider text-white transition-all duration-200 ${
-            compact ? 'h-7 px-2.5 text-[11px]' : 'h-8 px-3.5 text-xs'
-          } ${isScoring ? 'cursor-wait' : 'cursor-pointer'}`}
-          style={{
-            backgroundImage: 'linear-gradient(110deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%)',
-            boxShadow: isScoring
-              ? '0 0 0 2px rgba(124, 58, 237, 0.35), 0 4px 18px 0 rgba(124, 58, 237, 0.55)'
-              : '0 4px 14px 0 rgba(124, 58, 237, 0.4)',
-          }}
-          onMouseEnter={(e) => {
-            if (isScoring) return;
-            e.currentTarget.style.boxShadow = '0 6px 22px 0 rgba(124, 58, 237, 0.6)';
-            e.currentTarget.style.transform = 'translateY(-1px) scale(1.02)';
-          }}
-          onMouseLeave={(e) => {
-            if (isScoring) return;
-            e.currentTarget.style.boxShadow = '0 4px 14px 0 rgba(124, 58, 237, 0.4)';
-            e.currentTarget.style.transform = '';
-          }}
+          className={isV3 ? 'shrink-0 text-foreground-secondary hover:text-foreground max-sm:min-h-11' : 'shrink-0'}
         >
-          {/* Loading state : shimmer continu (pas seulement au hover) + ring
-              + label "ANALYSE…". Donne 3 signaux visuels au lieu d'un simple
-              spinner perdu sur le gradient. */}
-          {isScoring && (
-            <span
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.4s_ease-in-out_infinite]"
-            />
-          )}
-          {/* Shine sweep au hover (état idle uniquement) */}
-          {!isScoring && (
-            <span
-              aria-hidden
-              className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
-            />
-          )}
-          {/* Subtle inner highlight (top edge) */}
-          <span
-            aria-hidden
-            className="absolute inset-x-0 top-0 h-px bg-white/30"
-          />
-          {isScoring ? (
-            <>
-              <Loader2 className={`relative ${iconSize} animate-spin`} aria-hidden="true" />
-              <span className="relative">Analyse…</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className={`relative ${iconSize} group-hover:animate-pulse`} aria-hidden="true" />
-              <span className="relative">SCORE</span>
-            </>
-          )}
-        </button>
+          {!isScoring && <Sparkles aria-hidden="true" />}
+          {isScoring ? 'Notation…' : 'Noter'}
+        </Button>
       )}
 
       {showSequenceCTA && (
         <SequenceEnrollButton
           selectedProfiles={[profile]}
           accountId={accountId}
-          selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
+          selectedJob={selectedJob ?? undefined}
           onSuccess={() => {
             onSequenceEnroll?.();
             onProfileTreated?.();
           }}
+          quiet={isV3}
         />
       )}
 
@@ -159,10 +115,10 @@ export const CardActions: React.FC<CardActionsProps> = ({
           + shadow pour ressortir du fond blanc de la card. */}
       {selectedJob && !showScore && !compact && (
         <Button
-          variant="outline"
+          variant={isV3 ? 'ghost' : 'outline'}
           size="sm"
           onClick={onOpenMessage}
-          className="h-8 px-2.5 text-xs gap-1.5 bg-muted border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all font-medium"
+          className={isV3 ? 'shrink-0 text-foreground-secondary hover:text-foreground max-sm:min-h-11' : 'shrink-0'}
           title="Composer un message d'approche"
         >
           <PenLine className={iconSize} aria-hidden="true" />
@@ -180,9 +136,11 @@ export const CardActions: React.FC<CardActionsProps> = ({
           score={jobScore?.match_score}
           recommendation={jobScore?.recommendation}
           skipReason={jobScore?.missing_skills?.join(', ')}
+          profile={profile}
           jobId={selectedJob.id}
           activeProject={activeProject}
           compact
+          quiet={isV3}
           onAdded={onProfileTreated}
         />
       )}
@@ -192,7 +150,11 @@ export const CardActions: React.FC<CardActionsProps> = ({
           Si profil a déjà un email/phone (Unipile contact_info ou cache), affiche
           directement, sinon bouton qui lance l'enrichment async via Better Contact. */}
       {!compact && profileUrl && (
-        <EnrichContactButton profile={profile} compact />
+        <EnrichContactButton
+          profile={profile}
+          compact
+          className={isV3 ? 'text-foreground-secondary border-transparent hover:border-transparent max-sm:min-h-11' : undefined}
+        />
       )}
 
       {/* ═══ OVERFLOW MENU ⋯ ═══ */}
@@ -201,7 +163,9 @@ export const CardActions: React.FC<CardActionsProps> = ({
           <Button
             variant="ghost"
             size="icon"
-            className={`${compact ? 'h-7 w-7' : 'h-8 w-8'} bg-muted border border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all`}
+            className={isV3
+              ? 'h-8 w-8 max-sm:h-11 max-sm:w-11'
+              : `${compact ? 'h-7 w-7' : 'h-8 w-8'} bg-muted border border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all`}
             aria-label={`Plus d'actions pour ${fullName}`}
           >
             <MoreHorizontal className={iconSize} aria-hidden="true" />

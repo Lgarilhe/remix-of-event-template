@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 // __dirname n'existe pas en ESM (package.json "type":"module")
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-import { E2E, authStorageKey } from './helpers/env';
+import { E2E, authStorageKey, missionPageEntries } from './helpers/env';
 import { assertNotProduction } from './helpers/guard-prod';
 import { createOrg, addMember, signIn, type TestOrg, type TestUser } from './helpers/supabase-admin';
 
@@ -36,7 +36,7 @@ async function writeStorageState(file: string, user: TestUser) {
     origins: [
       {
         origin,
-        localStorage: [{ name: authStorageKey(), value }],
+        localStorage: [{ name: authStorageKey(), value }, ...missionPageEntries()],
       },
     ],
   };

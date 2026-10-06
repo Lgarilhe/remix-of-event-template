@@ -107,7 +107,8 @@ test('R3 — barre latérale et salutation n\'attendent plus d\'avatar du profil
     assert.match(src, /const \{ displayName \} = useCurrentProfile\(\);/, name);
   }
   assert.match(sidebarMenu, /const avatarUrl = connections\.linkedin\.avatarUrl \|\| null;/);
-  assert.match(dashboard, /const greetingAvatarUrl = connections\.linkedin\.avatarUrl;/);
+  // Depuis le lot 4 du chantier design, la salutation n'affiche plus d'avatar : rien à lire.
+  assert.doesNotMatch(dashboard, /avatar_url/);
   assert.doesNotMatch(dashboard, /profil custom upload/, 'le téléversement d\'avatar n\'existe pas');
 });
 
@@ -142,7 +143,7 @@ test('R13 — l\'onglet Équipe affiche l\'e-mail sous le nom, sans doublon', ()
 
 // ---------------------------------------------------------------- R5f
 test('R5f — onglet Équipe : bloc d\'erreur au lieu de 80, « Modifier » masqué', () => {
-  assert.match(team, /import \{ ErrorBox \} from '@\/components\/marketplace\/ErrorBox'/);
+  assert.match(team, /import \{ ErrorBox \} from '@\/components\/layout\/ErrorBox'/);
   assert.match(team, /isError: quotasError, refetch: refetchQuotas,\s*\} = useMemberQuotas\(\)/);
   assert.match(team, /trailing=\{!isEditingQ && !quotasError &&/);
   const errorAt = team.indexOf('quotasError ?');

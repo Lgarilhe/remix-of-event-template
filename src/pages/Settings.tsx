@@ -3,6 +3,9 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SEOHead } from '@/components/SEOHead';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useOrgManagerName } from '@/hooks/useOrgManagerName';
 import { hasFeature } from '@/lib/featureGates';
@@ -55,8 +58,9 @@ const Settings = () => {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-8">
         {/* Même arbre dans les deux dispositions : seuls le titre, le rail et les classes changent.
             Déplacer {routes} d'un parent à l'autre remontait la rubrique ouverte au passage du
-            seuil (fenêtre redimensionnée, tablette tournée) et perdait la saisie en cours. */}
-        {isDesktop && <h1 className="text-2xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>}
+            seuil (fenêtre redimensionnée, tablette tournée) et perdait la saisie en cours.
+            Titre : l'en-tête commun des pages (h1 de 20 px, graisse 600, revue design F-04). */}
+        {isDesktop && <PageHeader title="Paramètres" className="mb-4" />}
         <div className={isDesktop ? 'flex gap-10' : undefined}>
           {isDesktop && <SettingsNav viewer={viewer} variant="rail" className="w-60 shrink-0 sticky top-6 self-start max-h-[calc(100vh-3rem)] overflow-y-auto" />}
           <div className={isDesktop ? 'flex-1 min-w-0 max-w-3xl' : undefined}>{routes}</div>
@@ -81,10 +85,11 @@ function SettingsNav({ viewer, variant, className }: { viewer: SettingsViewer; v
     const items = SETTINGS_SECTIONS.filter((s) => s.door === door && sectionAccess(s.id, viewer) === 'open');
     return (
       <section aria-labelledby={headingId}>
-        <h2 id={headingId} className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
+        {/* Intitulé de groupe : la classe eyebrow, seul usage des capitales (revue design F-05). */}
+        <h2 id={headingId} className="eyebrow mb-1.5 px-3">{title}</h2>
         {managed ? (
           manager.isLoading
-            ? <div className="mx-3 h-5 w-56 max-w-full rounded bg-muted animate-pulse" aria-hidden="true" />
+            ? <Skeleton className="mx-3 h-5 w-56 max-w-full" aria-hidden="true" />
             : <p className="px-3 text-sm text-muted-foreground">{managedBySentence(manager.name)}</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
@@ -109,11 +114,17 @@ function SectionLink({ section, variant }: { section: SettingsSection; variant: 
       to={SETTINGS_PATHS[section.id]}
       state={{ focusHeading: true, fromList: variant === 'list' }}
       data-section={section.id}
+      // Rubrique active : même traitement que la barre latérale de l'app (fond discret,
+      // texte plein, graisse 600), jamais d'aplat inversé (revue design F-03).
       className={({ isActive }) => cn(
-        'flex items-center gap-2.5 rounded-lg px-3 text-sm font-medium transition-colors',
+        'flex items-center gap-2.5 rounded-lg px-3 text-sm transition-colors duration-150',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         variant === 'rail' ? 'h-9' : 'min-h-12',
-        variant === 'rail' && isActive ? 'bg-foreground text-background' : 'text-foreground/80 hover:bg-muted hover:text-foreground',
+        variant === 'list'
+          ? 'font-medium text-foreground hover:bg-muted/60'
+          : isActive
+            ? 'bg-muted font-semibold text-foreground'
+            : 'font-medium text-foreground-secondary hover:bg-muted/60 hover:text-foreground',
       )}
     >
       <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
@@ -132,7 +143,7 @@ function SettingsList({ viewer }: { viewer: SettingsViewer }) {
   }, []);
   return (
     <div ref={listRef}>
-      <h1 className="text-xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>
+      <PageHeader title="Paramètres" className="mb-4" />
       <SettingsNav viewer={viewer} variant="list" />
     </div>
   );
@@ -174,7 +185,13 @@ function SectionFrame({ section, viewer, isDesktop }: { section: SettingsSection
         </Link>
       )}
       <header className="mb-6">
-        <Heading ref={headingRef} tabIndex={-1} className="text-lg font-semibold tracking-tight text-foreground focus:outline-none">{section.label}</Heading>
+        <Heading
+          ref={headingRef}
+          tabIndex={-1}
+          className={cn('font-semibold tracking-tight text-foreground focus:outline-none', isDesktop ? 'text-lg' : 'text-xl')}
+        >
+          {section.label}
+        </Heading>
         <p className="text-sm text-muted-foreground mt-1">{section.intro}</p>
       </header>
       {access === 'open' ? <div className="space-y-6"><Body /></div>
@@ -186,18 +203,18 @@ function SectionFrame({ section, viewer, isDesktop }: { section: SettingsSection
 
 function ManagedNotice({ note }: { note?: string }) {
   const { name, isLoading } = useOrgManagerName(true);
-  if (isLoading) return <div className="h-16 rounded-xl bg-muted animate-pulse" aria-hidden="true" />;
+  if (isLoading) return <Skeleton className="h-16 rounded-xl" aria-hidden="true" />;
   return (
-    <div role="note" className="rounded-xl border border-border bg-card p-5 space-y-1.5">
+    <Card role="note" className="space-y-1.5 p-5">
       <p className="text-sm text-foreground">{managedBySentence(name)}</p>
       {note && <p className="text-sm text-muted-foreground">{note}</p>}
-    </div>
+    </Card>
   );
 }
 
 function TeamUnavailable({ isOwner }: { isOwner: boolean }) {
   return (
-    <div role="note" className="rounded-xl border border-border bg-card p-5">
+    <Card role="note" className="p-5">
       {/* Le type est réservé au propriétaire : un admin n'est pas envoyé vers un réglage fermé. */}
       {isOwner ? (
         <p className="text-sm text-foreground">
@@ -209,7 +226,7 @@ function TeamUnavailable({ isOwner }: { isOwner: boolean }) {
           Équipe n’est proposée qu’aux organisations Entreprise et Cabinet. Seul le propriétaire peut choisir le type de l’organisation.
         </p>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -217,9 +234,9 @@ const safeDecode = (value: string) => { try { return decodeURIComponent(value); 
 
 /** #ancre : recale tant que les blocs au-dessus passent du chargement à leur taille finale,
  *  jusqu'au premier geste (3 s au plus). Seule une navigation qui porte un hash fixe une
- *  nouvelle cible (lien vers une ancre de la rubrique déjà ouverte, même rejoué). Les lecteurs
- *  de retour (paiement, Notion) réécrivent l'adresse sans hash via setSearchParams : ce
- *  remplacement n'interrompt pas l'alignement en cours. */
+ *  nouvelle cible (lien vers une ancre de la rubrique déjà ouverte, même rejoué). Le lecteur
+ *  de retour de paiement réécrit l'adresse sans hash via setSearchParams : ce remplacement
+ *  n'interrompt pas l'alignement en cours. Celui de Notion pose #applications, nouvelle cible. */
 function useHashScroll(paneRef: RefObject<HTMLElement>) {
   const { hash, key } = useLocation();
   const target = useRef({ id: safeDecode(hash.slice(1)), key });

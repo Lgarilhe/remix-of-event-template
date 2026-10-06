@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
@@ -14,13 +15,12 @@ import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDet
 import { JobMatchResult, BatchScoringStats as BatchScoringStatsType } from '@/components/outreach/JobScoreDisplay';
 import { BatchScoringReport, BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
-import { ScoredSortBy, canRehydrate } from '@/hooks/useFilteredResults';
+import { ScoredSortBy, canRehydrate, rehydrateProfile } from '@/hooks/useFilteredResults';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
-import { useNotionMatch } from '@/hooks/useNotionMatch';
-import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { useProjectEnrollments } from '@/hooks/useProjectEnrollments';
+import { missionEnrollmentJobIds } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -29,11 +29,14 @@ import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
   ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock,
-  Rows3, Layers,
+  Rows3, Layers, GitBranch,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
+import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
+import { retainedStageLabel, sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
+import { useSourcingPanelSlot } from '@/components/missions/v3/shell/sourcingPanelContext';
 
 interface SearchResultsPanelProps {
   // Results
@@ -135,23 +138,20 @@ interface SearchResultsPanelProps {
   // Refs
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   loadMoreTriggerRef: React.RefObject<HTMLDivElement>;
+
+  // Nouvelle page mission (Sourcing, trois groupes) : rendu propre, passé
+  // seulement par SourcingScreen. Défaut : le rendu actuel, inchangé.
+  layout?: 'default' | 'mission-v3';
+  chipsDirty?: boolean;
+  onRerun?: () => void;
+  onSetSelection?: (ids: string[]) => void;
+  onRetainProfiles?: (profiles: LinkedInProfile[]) => Promise<void>;
+  onDismissProfiles?: (profiles: LinkedInProfile[]) => Promise<void>;
+  onRestoreProfile?: (candidateId: string) => Promise<void>;
 }
 
 const getCanonicalProfileUrl = (p: Pick<LinkedInProfile, 'profile_url' | 'public_profile_url'>) =>
   p.public_profile_url || p.profile_url || '';
-
-const getProfileDisplayName = (p: Pick<LinkedInProfile, 'name' | 'first_name' | 'last_name'>) =>
-  p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || undefined;
-
-// Même normalisation que le matching Notion des cartes (LinkedInResultCard)
-const normalizeName = (value?: string | null) =>
-  (value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 
 export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   results,
@@ -224,7 +224,19 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   openToWorkActive = false,
   openToWorkSupported = false,
   onToggleOpenToWork,
+  layout = 'default',
+  chipsDirty = false,
+  onRerun,
+  onSetSelection,
+  onRetainProfiles,
+  onDismissProfiles,
+  onRestoreProfile,
 }) => {
+  const isV3 = layout === 'mission-v3';
+  // Nouvelle page : ordre du groupe affiché (flèches de la fiche) et profils
+  // remis à trier ici (gardés dans À trier même hors de la recherche en cours).
+  const [v3Order, setV3Order] = useState<LinkedInProfile[] | null>(null);
+  const [v3Restored, setV3Restored] = useState<ReadonlySet<string>>(() => new Set());
   // Profile detail sheet state
   const [detailProfile, setDetailProfile] = useState<LinkedInProfile | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -243,6 +255,21 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const setViewMode = useCallback((mode: ViewMode) => {
     setViewModeState(mode);
     try { localStorage.setItem('konekt_search_view_mode', mode); } catch { /* noop */ }
+  }, []);
+
+  // Nouvelle page mission : affichage des profils à trier (Tri, Liste, Détaillé),
+  // dans la clé de l'ancienne recherche ; la Liste reste le défaut.
+  const [v3View, setV3ViewState] = useState<SourcingView>(() => {
+    try {
+      const stored = localStorage.getItem('konekt_search_view_mode');
+      return stored === 'triage' || stored === 'detailed' ? stored : 'compact';
+    } catch {
+      return 'compact';
+    }
+  });
+  const setV3View = useCallback((next: SourcingView) => {
+    setV3ViewState(next);
+    try { localStorage.setItem('konekt_search_view_mode', next); } catch { /* noop */ }
   }, []);
 
   const [enriching, setEnriching] = useState(false);
@@ -328,20 +355,23 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [selectedAccount]);
 
   // Navigation helpers for profile detail sheet
+  // Nouvelle page : la fiche parcourt le groupe affiché, dans l'ordre du tableau.
+  const navList = isV3 && v3Order ? v3Order : filteredResults;
+
   const detailIndex = useMemo(() => {
     if (!detailProfile) return -1;
-    return filteredResults.findIndex(r => r.id === detailProfile.id);
-  }, [detailProfile, filteredResults]);
+    return navList.findIndex(r => r.id === detailProfile.id);
+  }, [detailProfile, navList]);
 
   const navigatePrev = useMemo(() => {
     if (detailIndex <= 0) return undefined;
-    return () => setDetailProfile(filteredResults[detailIndex - 1]);
-  }, [detailIndex, filteredResults]);
+    return () => setDetailProfile(navList[detailIndex - 1]);
+  }, [detailIndex, navList]);
 
   const navigateNext = useMemo(() => {
-    if (detailIndex < 0 || detailIndex >= filteredResults.length - 1) return undefined;
-    return () => setDetailProfile(filteredResults[detailIndex + 1]);
-  }, [detailIndex, filteredResults]);
+    if (detailIndex < 0 || detailIndex >= navList.length - 1) return undefined;
+    return () => setDetailProfile(navList[detailIndex + 1]);
+  }, [detailIndex, navList]);
 
 
   // Airtable match - collect profile info for URL + fuzzy matching
@@ -354,37 +384,15 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     [results]
   );
   const { getMatch: getAirtableMatch } = useAirtableMatch(profileMatchInputs);
-  const notionMatchInputs = useMemo(
-    () => results.map((r) => ({ url: getCanonicalProfileUrl(r), name: getProfileDisplayName(r) })),
-    [results]
-  );
-  const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
-  // Notion shortlist : pré-fetch pour ProfileDetailSheet & LinkedInResultCard,
-  // et matching par nom pour la pill « Shortlist » — les shortlists historiques
-  // vivent dans Notion sans statut Konekt (le sync edge ne matchait jamais).
-  const { data: notionShortlistData } = useNotionShortlist();
-  const notionShortlistNames = React.useMemo(() => {
-    if (!notionShortlistData) return [] as string[];
-    const names = new Set<string>();
-    for (const s of notionShortlistData as any[]) {
-      const n = normalizeName(s?.candidate?.name);
-      if (n) names.add(n);
-    }
-    return Array.from(names);
-  }, [notionShortlistData]);
-  const matchesNotionShortlistName = React.useCallback((rawName?: string | null) => {
-    if (notionShortlistNames.length === 0) return false;
-    const profileName = normalizeName(rawName);
-    if (!profileName) return false;
-    return notionShortlistNames.some(
-      (n) => n === profileName || n.includes(profileName) || profileName.includes(n)
-    );
-  }, [notionShortlistNames]);
   // Enrollments existants pour cette mission → permet d'afficher un badge
   // "En séquence X · Étape N" sur les cards. L'user voit immédiatement
   // qu'un candidat est déjà en séquence avant d'agir dessus.
-  const enrollmentJobId = activeProject?.job_id || activeProject?.id || null;
-  const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
+  // Toutes les valeurs possibles de job_id : une mission rattachée à un job
+  // garde aussi les inscriptions faites depuis le sourcing (job_id = id de la
+  // mission, id synthétique normalisé).
+  const { enrollments: projectEnrollments } = useProjectEnrollments(
+    missionEnrollmentJobIds(activeProject?.id, activeProject?.job_id),
+  );
   // Count by status for filter badges.
   // Statuts DB (scorés/contactés/shortlist/archivés) : comptés sur TOUS les
   // candidats connus du job rehydratables — les pills correspondantes
@@ -404,12 +412,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     // que son compteur)
     for (const [candidateId, s] of treatedCandidates) {
       if (!renderableIds.has(candidateId) && !canRehydrate(s)) continue;
-      // Shortlist Notion (historique sans statut Konekt) — dédupliqué du statut
-      // DB, et AVANT le skip 'discovered' (les résultats de recherche sont
-      // auto-persistés en discovered)
-      if (s.status !== 'shortlisted' && matchesNotionShortlistName(s.candidate_name)) {
-        counts.shortlisted++;
-      }
       if (s.status === 'discovered') continue;
       if (s.status === 'scored') {
         counts.scored++;
@@ -438,46 +440,23 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       else if (s.status === 'dismissed') counts.dismissed++;
     }
 
-    // Count "known" + shortlists Notion des profils de recherche sans ligne DB
+    // Count "known"
     for (const r of mergedResults) {
-      if (!treatedCandidates.has(r.id) && matchesNotionShortlistName(getProfileDisplayName(r))) {
-        counts.shortlisted++;
-      }
-      const profileUrl = getCanonicalProfileUrl(r);
-      const notionMatch = getNotionMatch({
-        url: profileUrl,
-        name: getProfileDisplayName(r),
-      });
-      if (getAirtableMatch(profileUrl) || notionMatch) {
+      if (getAirtableMatch(getCanonicalProfileUrl(r))) {
         counts.known++;
       }
     }
 
     return counts;
-  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
+  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch]);
 
-  // Apply "known" filter to filteredResults + élargit "shortlisted" au match Notion
+  // Apply "known" filter to filteredResults
   const displayResults = React.useMemo(() => {
     if (statusFilter === 'known') {
-      return filteredResults.filter(r => {
-        const profileUrl = getCanonicalProfileUrl(r);
-        return !!(
-          getAirtableMatch(profileUrl) ||
-          getNotionMatch({ url: profileUrl, name: getProfileDisplayName(r) })
-        );
-      });
-    }
-    if (statusFilter === 'shortlisted') {
-      // filteredResults = statut DB 'shortlisted' (useFilteredResults) ;
-      // on y ajoute les profils matchés dans la shortlist Notion (historique)
-      const included = new Set(filteredResults.map(r => r.id));
-      const notionExtra = mergedResults.filter(
-        r => !included.has(r.id) && matchesNotionShortlistName(getProfileDisplayName(r))
-      );
-      return [...filteredResults, ...notionExtra];
+      return filteredResults.filter(r => !!getAirtableMatch(getCanonicalProfileUrl(r)));
     }
     return filteredResults;
-  }, [filteredResults, mergedResults, statusFilter, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
+  }, [filteredResults, statusFilter, getAirtableMatch]);
 
   // « Scorer les 20 premiers » : premier lot sans aucun score. Le bouton
   // sélectionne les 20 premiers profils affichés non scorés et lance le
@@ -488,15 +467,186 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     return displayResults.filter(p => !isScored(p.id)).slice(0, 20).map(p => p.id);
   }, [results, displayResults, jobScores, treatedCandidates]);
 
+  // Nouvelle page : À trier = la recherche en cours (et les profils remis à
+  // trier ici) ; Retenus et Écartés = toutes les lignes de la mission lues par
+  // la recherche. Calcul d'affichage seul : ni la vue, ni le filtre, ni le
+  // cache de la recherche ne sont modifiés.
+  const v3Profiles = useMemo(
+    () => (isV3
+      ? sourcingProfilesOf(results, treatedCandidates, (s) => (canRehydrate(s) ? rehydrateProfile(s) : null), v3Restored)
+      : results),
+    [isV3, results, treatedCandidates, v3Restored],
+  );
+  const restoreV3 = useCallback(async (candidateId: string) => {
+    setV3Restored(prev => new Set(prev).add(candidateId));
+    await onRestoreProfile?.(candidateId);
+  }, [onRestoreProfile]);
+
+  // Nouvelle page : les décisions de la fiche (Retenir, Écarter, Remettre à trier)
+  // passent par les mêmes écritures que le tableau, puis la fiche passe au profil
+  // voisin du groupe affiché, ou se ferme s'il n'en reste aucun.
+  const detailDecisions = useMemo(() => {
+    if (!isV3 || !detailProfile) return undefined;
+    const current = detailProfile;
+    const index = navList.findIndex(r => r.id === current.id);
+    const neighbor = index >= 0 ? (navList[index + 1] ?? navList[index - 1]) : undefined;
+    const then = async (action: () => Promise<void>) => {
+      await action();
+      if (neighbor) setDetailProfile(neighbor);
+      else setDetailOpen(false);
+    };
+    const status = treatedCandidates.get(current.id);
+    const group = sourcingGroupOf(status);
+    if (group === 'rejected') {
+      return { stageLabel: 'Écarté', ...(onRestoreProfile ? { onRestore: () => then(() => restoreV3(current.id)) } : {}) };
+    }
+    if (group !== 'to_sort') return { stageLabel: retainedStageLabel(status) };
+    return {
+      stageLabel: 'À trier',
+      onRetain: onRetainProfiles && activeProject ? () => then(() => onRetainProfiles([current])) : undefined,
+      onDismiss: onDismissProfiles && selectedJob ? () => then(() => onDismissProfiles([current])) : undefined,
+    };
+  }, [isV3, detailProfile, navList, treatedCandidates, onRestoreProfile, restoreV3, onRetainProfiles, onDismissProfiles, activeProject, selectedJob]);
+
+  // Nouvelle page : la fiche s'ouvre dans le panneau de droite de la coquille.
+  const slot = useSourcingPanelSlot();
+  const panelSlot = isV3 ? slot : null;
+  const claimPanel = panelSlot?.claim;
+  useEffect(() => {
+    if (!claimPanel || !detailOpen) return;
+    return claimPanel(() => setDetailOpen(false));
+  }, [claimPanel, detailOpen]);
+
+  const detailSheet = (
+    <ProfileDetailSheet
+        profile={detailProfile}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        selectedJob={selectedJob}
+        jobScore={detailProfile ? jobScores[detailProfile.id] : undefined}
+        accountId={selectedAccount || undefined}
+        activeProject={activeProject}
+        candidateStatus={detailProfile ? (treatedCandidates.get(detailProfile.id) ? {
+          status: treatedCandidates.get(detailProfile.id)!.status,
+          score: treatedCandidates.get(detailProfile.id)!.score,
+          recommendation: treatedCandidates.get(detailProfile.id)!.recommendation,
+          updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
+        } : null) : null}
+        airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
+        onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
+        onDeepScore={onDeepScoreProfile}
+        onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
+        onMessageSent={onMessageSent}
+        onSequenceEnroll={onSequenceEnrollSuccess}
+        onProfileTreated={detailProfile ? () => onProfileTreated(detailProfile.id) : undefined}
+        onNavigatePrev={navigatePrev}
+        onNavigateNext={navigateNext}
+        currentIndex={detailIndex >= 0 ? detailIndex : undefined}
+        totalCount={navList.length}
+        decisions={detailDecisions}
+        asPanel={panelSlot ? { titleId: panelSlot.titleId, onClose: () => setDetailOpen(false) } : undefined}
+    />
+  );
+
   return (
-    <div className="bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
+    <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
+      {isV3 && onSetSelection && onRetainProfiles && onDismissProfiles ? (
+        <SourcingResultsV3
+          profiles={v3Profiles}
+          results={results}
+          loading={loading}
+          loadingMore={loadingMore}
+          hasSearched={hasSearched}
+          hasMoreResults={hasMoreResults}
+          cursor={cursor}
+          total={total}
+          selectedJob={selectedJob}
+          selectedProfiles={selectedProfiles}
+          jobScores={jobScores}
+          scoringInProgress={scoringInProgress}
+          canBatchScore={canBatchScore}
+          treatedCandidates={treatedCandidates}
+          selectedAccount={selectedAccount}
+          activeProject={activeProject}
+          chipsDirty={chipsDirty}
+          refineLoading={refineLoading}
+          scrollAreaRef={scrollAreaRef}
+          onRerun={onRerun}
+          onLoadMore={onLoadMore}
+          onRefineSearch={onRefineSearch}
+          onSetSelection={onSetSelection}
+          onToggleProfileSelection={onToggleProfileSelection}
+          onBatchScore={onBatchScore}
+          onRetainProfiles={onRetainProfiles}
+          onDismissProfiles={onDismissProfiles}
+          onRestoreCandidate={onRestoreProfile ? restoreV3 : undefined}
+          onOpenProfile={openProfileDetail}
+          onOrderChange={setV3Order}
+          onOpenInMail={() => onSetShowBulkInMailModal(true)}
+          onSequenceEnrollSuccess={onSequenceEnrollSuccess}
+          view={v3View}
+          onViewChange={setV3View}
+          renderCompact={({ profiles, allSelected, onToggleSelectAll }) => (
+            <CompactResultsTable
+              profiles={profiles}
+              selectedJob={selectedJob}
+              jobScores={jobScores}
+              selectedProfiles={selectedProfiles}
+              treatedCandidates={treatedCandidates}
+              onToggleSelect={onToggleProfileSelection}
+              onToggleSelectAll={onToggleSelectAll}
+              allSelected={allSelected}
+              onOpenDetail={openProfileDetail}
+              onArchive={selectedJob ? (profile) => { void onDismissProfiles([profile]); } : undefined}
+              storageKey={selectedJob?.id || 'no-job'}
+              variant="mission-v3"
+            />
+          )}
+          renderCard={(profile) => (
+            <LinkedInResultCard
+              profile={profile}
+              selectedJob={selectedJob}
+              isSelected={selectedProfiles.has(profile.id)}
+              isBatchScoring={scoringInProgress}
+              viewMode="detailed"
+              variant="mission-v3"
+              onToggleSelect={() => onToggleProfileSelection(profile.id)}
+              jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
+                profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
+                match_score: treatedCandidates.get(profile.id)!.score!,
+                matching_skills: [],
+                missing_skills: [],
+                experience_match: 'incertain' as const,
+                location_match: false,
+                summary: '',
+                recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
+              } : undefined)}
+              onScoreProfile={() => onScoreProfile(profile)}
+              accountId={selectedAccount || undefined}
+              onMessageSent={onMessageSent}
+              activeProject={activeProject}
+              onProfileTreated={() => onProfileTreated(profile.id)}
+              onArchive={selectedJob ? () => { void onDismissProfiles([profile]); } : undefined}
+              candidateStatus={treatedCandidates.get(profile.id) ? {
+                status: treatedCandidates.get(profile.id)!.status,
+                score: treatedCandidates.get(profile.id)!.score,
+                recommendation: treatedCandidates.get(profile.id)!.recommendation,
+                updated_at: treatedCandidates.get(profile.id)!.updated_at,
+              } : null}
+              enrollmentInfo={projectEnrollments.get(profile.id) || null}
+              airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
+              onOpenDetail={() => openProfileDetail(profile)}
+            />
+          )}
+        />
+      ) : (<>
       {/* HEADER: count clarifié + Pool toggle. Affiché uniquement quand il
           y a quelque chose à montrer (count après search, ou pool toggle).
           Avant : toujours rendu — 45px de chrome vide avant les résultats. */}
       {((hasSearched && !activeProject) || (poolCount > 0 && onSetShowPoolView)) && (
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0 min-w-0">
           {hasSearched && !activeProject && (
-            <div className="flex items-baseline gap-1.5 text-[12.5px] whitespace-nowrap">
+            <div className="flex items-baseline gap-1.5 text-xs whitespace-nowrap">
               <span className="font-display font-bold text-foreground tabular-nums">{displayResults.length}</span>
               <span className="text-muted-foreground">candidat{displayResults.length > 1 ? 's' : ''} affiché{displayResults.length > 1 ? 's' : ''}</span>
               {total !== null && total > displayResults.length && (
@@ -514,7 +664,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               variant={showPoolView ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => onSetShowPoolView(!showPoolView)}
-              className="h-7 px-2.5 text-[11.5px] gap-1.5 rounded-full shrink-0"
+              className="h-7 px-2.5 text-2xs gap-1.5 rounded-full shrink-0"
               title={showPoolView ? 'Voir les nouveaux résultats' : 'Voir les profils déjà connus'}
             >
               <Database className="w-3 h-3" />
@@ -530,7 +680,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {selectedJob && hasSearched && (displayResults.length > 0 || openToWorkActive) && (
         <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
           {/* Eyebrow label */}
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden md:inline">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden md:inline">
             Filtrer
           </span>
 
@@ -552,13 +702,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   key={value}
                   onClick={() => onSetStatusFilter(value)}
                   title={tooltip}
-                  className={`inline-flex items-center gap-1 h-6 px-2 text-[11.5px] rounded-full transition-colors shrink-0 ${
+                  className={`inline-flex items-center gap-1 h-6 px-2 text-2xs rounded-full transition-colors shrink-0 ${
                     isActive
                       ? 'bg-foreground text-background font-semibold'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                   }`}
                 >
-                  <span className="text-[11px]">{icon}</span>
+                  <span className="text-2xs">{icon}</span>
                   <span className="hidden lg:inline">{label}</span>
                   {count > 0 && (
                     <span className={`tabular-nums ${isActive ? 'opacity-90' : 'text-muted-foreground/80'}`}>
@@ -579,13 +729,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 title={openToWorkActive
                   ? 'Recherche limitée aux profils à l\'écoute — cliquer pour désactiver et relancer'
                   : 'Relancer la recherche limitée aux profils à l\'écoute (Open to Work)'}
-                className={`inline-flex items-center gap-1 h-6 px-2 text-[11.5px] rounded-full transition-colors shrink-0 ${
+                className={`inline-flex items-center gap-1 h-6 px-2 text-2xs rounded-full transition-colors shrink-0 ${
                   openToWorkActive
                     ? 'bg-success text-success-foreground font-semibold'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                 }`}
               >
-                <span className="text-[11px]">🟢</span>
+                <span className="text-2xs">🟢</span>
                 <span className="hidden lg:inline">À l'écoute</span>
               </button>
             )}
@@ -610,7 +760,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 highTier.forEach(id => onToggleProfileSelection(id));
                 toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
               }}
-              className="h-7 px-3 text-[11.5px] gap-1.5 rounded-full text-emerald-500 hover:bg-emerald-500/10 shrink-0 font-medium"
+              className="h-7 px-3 text-2xs gap-1.5 rounded-full text-emerald-500 hover:bg-emerald-500/10 shrink-0 font-medium"
               disabled={scoringInProgress}
               title="Sélectionne automatiquement les profils détectés comme à haut potentiel par l'IA pré-scoring (avant LLM)"
             >
@@ -629,7 +779,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 firstBatchIds.forEach(id => onToggleProfileSelection(id));
                 onBatchScore(firstBatchIds);
               }}
-              className="h-7 px-3 text-[11.5px] gap-1.5 rounded-full text-foreground hover:bg-foreground/10 shrink-0 font-medium"
+              className="h-7 px-3 text-2xs gap-1.5 rounded-full text-foreground hover:bg-foreground/10 shrink-0 font-medium"
               disabled={scoringInProgress}
               title="Sélectionne les premiers profils non scorés et lance le scoring par lot"
             >
@@ -645,14 +795,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               avec labels visibles à partir de md (pas juste des icônes). */}
           {selectedProfiles.size > 0 && (
             <div className="flex items-center gap-1 shrink-0 bg-foreground/[0.04] rounded-lg border border-border px-2 py-1">
-              <span className="text-[11px] font-semibold text-foreground px-1.5 py-0.5 rounded-md bg-foreground/10">
+              <span className="text-2xs font-semibold text-foreground px-1.5 py-0.5 rounded-md bg-foreground/10">
                 {selectedProfiles.size} sélectionné{selectedProfiles.size > 1 ? 's' : ''}
               </span>
               <div className="w-px h-4 bg-border mx-0.5" aria-hidden="true" />
               <button
                 onClick={() => onBatchScore()}
                 disabled={scoringInProgress}
-                className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-40"
                 title="Scorer les profils sélectionnés"
               >
                 {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
@@ -675,7 +825,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               {activeProject && (
                 <button
                   onClick={onBulkAddToProject}
-                  className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-success hover:bg-success/10 transition-colors"
+                  className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-success hover:bg-success/10 transition-colors"
                   title="Shortlister pour cette mission"
                 >
                   <FolderPlus className="w-3.5 h-3.5" />
@@ -693,7 +843,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               {selectedAccount && (
                 <button
                   onClick={() => onSetShowBulkInMailModal(true)}
-                  className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors"
+                  className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors"
                   title="Envoyer un InMail groupé"
                 >
                   <Mail className="w-3.5 h-3.5" />
@@ -702,7 +852,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               )}
               <button
                 onClick={onBulkDismiss}
-                className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-destructive hover:bg-destructive/10 transition-colors"
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-destructive hover:bg-destructive/10 transition-colors"
                 title="Archiver les profils sélectionnés"
               >
                 <Archive className="w-3.5 h-3.5" />
@@ -715,7 +865,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="flex-1" />
 
           {/* Eyebrow label "Affichage" */}
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden lg:inline">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden lg:inline">
             Affichage
           </span>
 
@@ -727,7 +877,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           >
             <button
               onClick={() => setViewMode('compact')}
-              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors ${
                 viewMode === 'compact'
                   ? 'bg-foreground text-background font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
@@ -740,7 +890,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </button>
             <button
               onClick={() => setViewMode('detailed')}
-              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors ${
                 viewMode === 'detailed'
                   ? 'bg-foreground text-background font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
@@ -757,7 +907,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {Object.keys(jobScores).length > 0 && (
             <button
               onClick={() => onSetSortByScore(!sortByScore)}
-              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full border transition-colors shrink-0 ${
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full border transition-colors shrink-0 ${
                 sortByScore
                   ? 'bg-foreground text-background border-foreground font-semibold'
                   : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-foreground/30'
@@ -926,14 +1076,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       value={total}
                       className="text-base sm:text-lg font-black text-foreground tabular-nums tracking-tight leading-none"
                     />
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">
                       profils
                     </span>
-                    <span className="text-[11px] text-muted-foreground/70">
+                    <span className="text-2xs text-muted-foreground/70">
                       · {displayResults.length} affichés
                     </span>
                     {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-500">
+                      <span className="inline-flex items-center gap-1 text-2xs font-bold uppercase tracking-wider text-emerald-500">
                         <CheckCircle2 className="w-3 h-3" />
                         traité
                       </span>
@@ -950,7 +1100,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       size="sm"
                       onClick={() => onRefineSearch('expand')}
                       disabled={refineLoading}
-                      className="h-6 px-2 gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                      className="h-6 px-2 gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                     >
                       {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
                       Élargir
@@ -960,7 +1110,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       size="sm"
                       onClick={() => onRefineSearch('narrow')}
                       disabled={refineLoading}
-                      className="h-6 px-2 gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                      className="h-6 px-2 gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                     >
                       {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
                       Affiner
@@ -1003,19 +1153,42 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                     <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
                     <p className="text-xs text-foreground flex-1 min-w-0 truncate">
                       <span className="font-semibold">{goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} Go</span>
-                      <span className="text-muted-foreground"> — prêts pour une séquence d'outreach.</span>
+                      <span className="text-muted-foreground"> : prêts pour une séquence.</span>
                     </p>
-                    <SequenceEnrollButton
-                      // 🐛 BUG FIX (Opus audit) : jobScores est indexé par `profile.id`
-                      // (voir useLinkedInScoring.ts:478 `setJobScores(prev => ({ ...prev, [profile.id]: mapped }))`),
-                      // pas par `public_identifier` ni `provider_id`. Avant, ce filter
-                      // retournait 0 profils silencieusement → le bouton envoyait une
-                      // séquence vide en croyant avoir N candidats "Go".
-                      selectedProfiles={filteredResults.filter(p => jobScores[p.id]?.recommendation === 'go')}
-                      accountId={selectedAccount}
-                      selectedJob={selectedJob}
-                      onSuccess={onSequenceEnrollSuccess}
-                    />
+                    {selectedAccount ? (
+                      <SequenceEnrollButton
+                        // 🐛 BUG FIX (Opus audit) : jobScores est indexé par `profile.id`
+                        // (voir useLinkedInScoring.ts:478 `setJobScores(prev => ({ ...prev, [profile.id]: mapped }))`),
+                        // pas par `public_identifier` ni `provider_id`. Avant, ce filter
+                        // retournait 0 profils silencieusement → le bouton envoyait une
+                        // séquence vide en croyant avoir N candidats "Go".
+                        selectedProfiles={filteredResults.filter(p => jobScores[p.id]?.recommendation === 'go')}
+                        accountId={selectedAccount}
+                        selectedJob={selectedJob}
+                        onSuccess={onSequenceEnrollSuccess}
+                      />
+                    ) : (
+                      // Sans compte LinkedIn (recherche en base), aucune étape
+                      // LinkedIn ne pourrait partir : le bouton est désactivé
+                      // et dit pourquoi.
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span tabIndex={0} className="inline-flex shrink-0 rounded-lg" aria-label="Connectez votre compte LinkedIn pour lancer une séquence">
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-lg border-2 border-border text-muted-foreground bg-muted/40 cursor-not-allowed"
+                              >
+                                <GitBranch className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                                Séquence
+                              </button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Connectez votre compte LinkedIn pour lancer une séquence</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 );
               }
@@ -1032,7 +1205,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   className="border border-accent/30 bg-accent/5 rounded-md px-3 py-1 flex items-center gap-2 mb-2"
                 >
                   <span className="text-xs shrink-0">🎯</span>
-                  <p className="text-[11.5px] text-foreground/80 flex-1 min-w-0 truncate">
+                  <p className="text-2xs text-foreground/80 flex-1 min-w-0 truncate">
                     Sélectionnez les profils intéressants puis <strong className="text-foreground">Score</strong> pour les évaluer.
                   </p>
                   <button
@@ -1053,7 +1226,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   className="border border-accent/30 bg-accent/5 rounded-md px-3 py-1 flex items-center gap-2 mb-2"
                 >
                   <span className="text-xs shrink-0">🟢</span>
-                  <p className="text-[11.5px] text-foreground/80 flex-1 min-w-0 truncate">
+                  <p className="text-2xs text-foreground/80 flex-1 min-w-0 truncate">
                     Profils scorés. Les <strong className="text-accent">Go</strong> sont les meilleurs matchs — messagez-les ou ajoutez au pipeline.
                   </p>
                   <button
@@ -1094,7 +1267,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   id="select-all"
                   className="w-5 h-5 border-2 border-foreground/50 bg-background hover:border-foreground hover:bg-muted shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-colors"
                 />
-                <label htmlFor="select-all" className="text-[11.5px] text-foreground cursor-pointer select-none font-medium">
+                <label htmlFor="select-all" className="text-2xs text-foreground cursor-pointer select-none font-medium">
                   Tout sélectionner
                 </label>
               </div>
@@ -1151,7 +1324,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   } : null}
                   enrollmentInfo={projectEnrollments.get(profile.id) || null}
                   airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
-                  notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
                   onOpenDetail={() => openProfileDetail(profile)}
                 />
               </motion.div>
@@ -1235,35 +1407,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         )}
       </div>
+      </>)}
 
-      {/* Profile Detail Sheet */}
-      <ProfileDetailSheet
-        profile={detailProfile}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        selectedJob={selectedJob}
-        jobScore={detailProfile ? jobScores[detailProfile.id] : undefined}
-        accountId={selectedAccount || undefined}
-        activeProject={activeProject}
-        candidateStatus={detailProfile ? (treatedCandidates.get(detailProfile.id) ? {
-          status: treatedCandidates.get(detailProfile.id)!.status,
-          score: treatedCandidates.get(detailProfile.id)!.score,
-          recommendation: treatedCandidates.get(detailProfile.id)!.recommendation,
-          updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
-        } : null) : null}
-        airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
-        notionMatch={detailProfile ? getNotionMatch({ url: getCanonicalProfileUrl(detailProfile), name: getProfileDisplayName(detailProfile) }) : undefined}
-        onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
-        onDeepScore={onDeepScoreProfile}
-        onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
-        onMessageSent={onMessageSent}
-        onSequenceEnroll={onSequenceEnrollSuccess}
-        onProfileTreated={detailProfile ? () => onProfileTreated(detailProfile.id) : undefined}
-        onNavigatePrev={navigatePrev}
-        onNavigateNext={navigateNext}
-        currentIndex={detailIndex >= 0 ? detailIndex : undefined}
-        totalCount={filteredResults.length}
-      />
+      {/* Fiche du profil : panneau de droite de la coquille (nouvelle page), sinon fenêtre latérale */}
+      {panelSlot ? (panelSlot.element && detailOpen ? createPortal(detailSheet, panelSlot.element) : null) : detailSheet}
 
       {/* Bulk InMail Modal */}
       {selectedAccount && (
@@ -1272,7 +1419,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           onClose={() => onSetShowBulkInMailModal(false)}
           recipients={Array.from(selectedProfiles)
             .map(id => {
-              const p = results.find(r => r.id === id);
+              const p = (isV3 ? v3Profiles : results).find(r => r.id === id);
               if (!p) return null;
               return {
                 id: p.id,
@@ -1286,6 +1433,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             .filter(Boolean) as any[]}
           accountId={selectedAccount}
           selectedJob={selectedJob}
+          projectId={activeProject?.id}
         />
       )}
     </div>

@@ -1,13 +1,20 @@
 /**
  * Vérifie la compatibilité entre une séquence outreach et un profil LinkedIn.
  *
- * Pourquoi : on évite que l'user enrôle un profil qui va échouer
- * silencieusement à la 1ʳᵉ étape. Exemples :
- * - Séquence avec connection_request → profil 1st degree va échouer
- *   (déjà connectés, on ne peut pas re-inviter)
+ * Pourquoi : on prévient avant l'inscription d'un profil que la séquence ne
+ * traitera pas comme prévu. Exemples :
+ * - Séquence avec connection_request → profil 1st degree : le moteur saute
+ *   l'invitation (« Déjà en relation : invitation inutile ») et envoie les
+ *   messages suivants (SEQ-036). Avertissement, non bloquant, s'il reste un
+ *   message ou un InMail à envoyer ; bloquant si la séquence ne contient que
+ *   l'invitation (rien ne partirait).
  * - Séquence avec inmail uniquement → profil 1st degree pourrait recevoir
  *   un message direct au lieu d'un InMail (gaspillage crédits InMail)
+ * - Hors réseau sans InMail → injoignable : bloquant.
  */
+
+// Miroir front des canaux fermés du moteur (D2). Module pur, sans dépendance applicative.
+import { isStepTypeOffered } from '@/components/outreach/sequence/sequenceGraph';
 
 export type NetworkDistance =
   | 'FIRST_DEGREE'
@@ -48,7 +55,8 @@ export interface ProfileCompat {
 }
 
 export type CompatIssue =
-  | 'connection_already_connected'   // 1st degree → connection_request va échouer
+  | 'connection_already_connected'   // 1st degree → l'invitation sera sautée, la suite part
+  | 'connection_only_already_connected' // 1st degree → invitation seule : rien ne partira
   | 'inmail_wasted'                  // 1st degree → InMail gaspille un crédit
   | 'too_far'                        // > 3rd degree → ne peut pas être contacté
   | null;
@@ -57,6 +65,10 @@ export interface ProfileCompatResult {
   profile: ProfileCompat;
   distance: string | null;
   issue: CompatIssue;
+  /**
+   * Motif au vouvoiement, sans tiret long, affiché après le nom du candidat :
+   * « Chloé Lefèvre : Déjà en relation : l'invitation sera sautée… ».
+   */
   message: string | null;
 }
 
@@ -92,6 +104,36 @@ export function getSequenceActionTypes(steps: SequenceStep[]): Set<string> {
   return set;
 }
 
+/** Candidat déjà en relation et séquence avec invitation (avertissement non bloquant). */
+export const ALREADY_CONNECTED_COMPAT_MESSAGE =
+  "Déjà en relation : l'invitation sera sautée, les messages suivants partiront.";
+
+/** Candidat déjà en relation et séquence sans autre envoi que l'invitation (bloquant). */
+export const CONNECTION_ONLY_ALREADY_CONNECTED_COMPAT_MESSAGE =
+  "Déjà en relation : cette séquence ne contient qu'une invitation, rien ne lui sera envoyé.";
+
+/**
+ * Types d'étape d'un canal fermé (décision D2 : e-mail et WhatsApp). Le moteur
+ * les saute sans rien envoyer puis continue la séquence : l'aperçu ne génère
+ * pas leur message, ne les compte pas comme déjà envoyées et ne les annonce
+ * pas. Miroir front de CLOSED_SEND_CHANNELS (sequence-engine-rules.ts), dérivé
+ * de isStepTypeOffered : rouvrir le canal dans l'éditeur le rouvre partout ici.
+ */
+export const CLOSED_CHANNEL_ACTION_TYPES: readonly string[] = ['email', 'whatsapp_message']
+  .filter(t => !isStepTypeOffered(t));
+
+/** Vrai si l'étape passe par un canal fermé (sautée par le moteur, D2). */
+export function isClosedChannelStep(actionType: string | null | undefined): boolean {
+  return !!actionType && CLOSED_CHANNEL_ACTION_TYPES.includes(actionType);
+}
+
+/**
+ * Étapes qui atteignent un candidat déjà en relation une fois l'invitation
+ * sautée. Les canaux fermés ne comptent pas.
+ */
+const REACH_AFTER_INVITE_ACTIONS = ['message', 'smart_message', 'inmail', 'email', 'whatsapp_message']
+  .filter(t => !isClosedChannelStep(t));
+
 /**
  * Calcule la compatibilité d'un profil avec une séquence.
  * Retourne un objet avec issue=null si tout est OK.
@@ -104,25 +146,15 @@ export function checkProfileCompat(
   const actions = getSequenceActionTypes(steps);
   const firstReach = getSequenceFirstReachAction(steps);
 
-  // Cas 1 : 1st degree + séquence avec connection_request → échec garanti
+  // Cas 1 : 1st degree + séquence avec connection_request → le moteur saute
+  // l'invitation et planifie la suite (SEQ-036) : avertissement seulement.
+  // Sans autre envoi après l'invitation, l'inscription se terminerait sans
+  // rien envoyer : bloquant.
   if (distance === 'FIRST_DEGREE' && actions.has('connection_request')) {
-    // Si la séquence commence direct par connection_request, c'est bloquant
-    if (firstReach === 'connection_request') {
-      return {
-        profile,
-        distance,
-        issue: 'connection_already_connected',
-        message: 'Déjà 1er niveau — l\'invitation LinkedIn échouera. Préfère une séquence sans demande de connexion.',
-      };
-    }
-    // Si connection_request est plus tard dans la séquence, l'enrollment
-    // ira jusque-là puis échouera. Warning soft.
-    return {
-      profile,
-      distance,
-      issue: 'connection_already_connected',
-      message: 'Déjà 1er niveau — la demande de connexion plus tard dans la séquence échouera.',
-    };
+    const otherReach = REACH_AFTER_INVITE_ACTIONS.some(t => actions.has(t));
+    return otherReach
+      ? { profile, distance, issue: 'connection_already_connected', message: ALREADY_CONNECTED_COMPAT_MESSAGE }
+      : { profile, distance, issue: 'connection_only_already_connected', message: CONNECTION_ONLY_ALREADY_CONNECTED_COMPAT_MESSAGE };
   }
 
   // Cas 2 : 1st degree + séquence en InMail uniquement → gaspillage de crédit
@@ -131,17 +163,18 @@ export function checkProfileCompat(
       profile,
       distance,
       issue: 'inmail_wasted',
-      message: 'Déjà 1er niveau — un message direct serait gratuit, l\'InMail consomme un crédit.',
+      message: 'Vous êtes déjà en relation : un message direct serait gratuit, l\'InMail consomme un crédit.',
     };
   }
 
-  // Cas 3 : pas en 1st/2nd/3rd degree → contact LinkedIn impossible
-  if (distance === 'OUT_OF_NETWORK') {
+  // Cas 3 : hors réseau → seul un InMail peut l'atteindre. Une séquence qui
+  // comporte un InMail reste donc possible pour ce candidat.
+  if (distance === 'OUT_OF_NETWORK' && !actions.has('inmail')) {
     return {
       profile,
       distance,
       issue: 'too_far',
-      message: 'Hors du réseau LinkedIn — contact impossible sans InMail Recruiter.',
+      message: 'Hors de votre réseau LinkedIn : seul un InMail peut l\'atteindre.',
     };
   }
 
@@ -167,7 +200,11 @@ export function checkProfilesCompat(
     const result = checkProfileCompat(profile, steps);
     if (result.issue === null) {
       compatible.push(result);
-    } else if (result.issue === 'connection_already_connected' || result.issue === 'too_far') {
+    } else if (result.issue === 'too_far' || result.issue === 'connection_only_already_connected') {
+      // Bloquent : un candidat injoignable, et un candidat déjà en relation
+      // quand la séquence ne contient que l'invitation (rien ne partirait).
+      // Déjà en relation avec des messages après l'invitation : l'invitation
+      // est sautée par le moteur, les messages suivants partent (avertissement).
       blockers.push(result);
     } else {
       warnings.push(result);
@@ -175,4 +212,55 @@ export function checkProfilesCompat(
   }
 
   return { compatible, warnings, blockers };
+}
+
+/** Étape de séquence telle que lue dans sequence_steps (champs utiles au choix de la première étape). */
+export interface FirstStepCandidate {
+  step_order?: number | null;
+  stepOrder?: number | null;
+  parent_step_id?: string | null;
+  branch?: string | null;
+  variant_group?: string | null;
+  variant_weight?: number | null;
+}
+
+/**
+ * Première étape à planifier pour UNE inscription, avec le même tirage que le
+ * moteur (process-sequences, scheduleNextStep) :
+ * - étapes de premier niveau (ni branche, ni parent), plus petit step_order ;
+ * - une ligne sans variant_group à cet ordre l'emporte (même ordre de tri que
+ *   le repli linéaire du moteur : variant_group nulls first) ;
+ * - sinon, si plusieurs variantes partagent l'ordre : tirage pondéré par
+ *   variant_weight (100 par défaut), et variantAssigned = variant_group retenu.
+ * À appeler une fois par candidat : chaque inscription a son propre tirage.
+ */
+export function pickFirstStep<T extends FirstStepCandidate>(
+  steps: readonly T[],
+  random: () => number = Math.random,
+): { step: T | null; variantAssigned: string | null } {
+  if (!Array.isArray(steps) || steps.length === 0) return { step: null, variantAssigned: null };
+  const orderOf = (s: T) => s.step_order ?? s.stepOrder ?? 0;
+  const topLevel = steps.filter(s => !s.parent_step_id && !s.branch);
+  const pool = topLevel.length > 0 ? topLevel : [...steps];
+  const minOrder = Math.min(...pool.map(orderOf));
+  const atFirstOrder = pool.filter(s => orderOf(s) === minOrder);
+
+  const plain = atFirstOrder.find(s => !s.variant_group);
+  if (plain) return { step: plain, variantAssigned: null };
+
+  const variants = atFirstOrder.filter(s => !!s.variant_group);
+  if (variants.length === 1) return { step: variants[0], variantAssigned: variants[0].variant_group ?? null };
+
+  const weightOf = (s: T) => s.variant_weight || 100;
+  const total = variants.reduce((sum, v) => sum + weightOf(v), 0);
+  let draw = random() * total;
+  let chosen = variants[variants.length - 1];
+  for (const variant of variants) {
+    draw -= weightOf(variant);
+    if (draw <= 0) {
+      chosen = variant;
+      break;
+    }
+  }
+  return { step: chosen, variantAssigned: chosen.variant_group ?? null };
 }

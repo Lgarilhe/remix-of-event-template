@@ -11,6 +11,7 @@
 // mais on supprime la dépendance au gateway.
 
 import { getAnthropicModelId } from "./ai-config.ts";
+import { gen5Params, isGen5Model, withThinkingHeadroom } from "./gen5-models.ts";
 import { ANTI_AI_STYLE_PROMPT, ANTI_AI_STYLE_COMPACT } from "./anti-ai-style.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -31,6 +32,36 @@ function mapModel(requestedModel: string | undefined): string {
   }
   // Tout le reste (google/gemini-*, openai/*, sonar…) → Haiku par défaut
   return "claude-haiku-4-5-20251001";
+}
+
+// Modèles génération 5 (Sonnet 5.x, Opus 5.x) : une température hors défaut et un
+// tool_choice forcé ("tool" ou "any") sont refusés (400), la réflexion est active
+// par défaut et ses tokens comptent dans max_tokens (voir gen5-models.ts : effort
+// bas, adapté aux tâches courtes de ce helper, et marge de max_tokens).
+// Limite de l'API pour les paramètres optionnels cumulés d'un outil strict.
+const STRICT_MAX_OPTIONAL_PARAMS = 24;
+
+// `strict: true` fait échouer l'appel (400) si le schéma sort du sous-ensemble admis :
+// additionalProperties:false et properties sur chaque objet, ni union, ni $ref, ni
+// borne numérique ou de longueur, ni maxItems, minItems au plus 1, 24 paramètres
+// optionnels au plus. Un schéma qui n'y entre pas reste sans strict.
+function isStrictCompatible(schema: unknown): boolean {
+  let optional = 0;
+  const walk = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.every(walk);
+    if (!node || typeof node !== "object") return true;
+    const s = node as Record<string, unknown>;
+    if (Array.isArray(s.type) || "anyOf" in s || "oneOf" in s || "allOf" in s || "$ref" in s) return false;
+    if (["minimum", "maximum", "multipleOf", "minLength", "maxLength", "maxItems"].some((k) => k in s)) return false;
+    if (typeof s.minItems === "number" && s.minItems > 1) return false;
+    if (s.type === "object") {
+      if (s.additionalProperties !== false || !s.properties || typeof s.properties !== "object") return false;
+      const required = Array.isArray(s.required) ? s.required : [];
+      optional += Object.keys(s.properties).filter((k) => !required.includes(k)).length;
+    }
+    return Object.values(s).every(walk);
+  };
+  return walk(schema) && optional <= STRICT_MAX_OPTIONAL_PARAMS;
 }
 
 export interface OpenAIMessage {
@@ -55,7 +86,9 @@ export interface OpenAIToolChoice {
 export interface ClaudeCompatOptions {
   model?: string;
   messages: OpenAIMessage[];
+  /** Ignorée sur les modèles génération 5 (400 de l'API) : l'effort la remplace. */
   temperature?: number;
+  /** Sur les modèles génération 5, une marge pour la réflexion s'ajoute à cette valeur. */
   max_tokens?: number;
   tools?: OpenAITool[];
   tool_choice?: OpenAIToolChoice | "auto" | "none";
@@ -127,6 +160,10 @@ function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number):
 export async function callClaudeCompat(opts: ClaudeCompatOptions): Promise<ClaudeCompatResult> {
   const apiKey = getApiKey();
   const model = mapModel(opts.model);
+  const gen5 = isGen5Model(model);
+  const forcedToolName = opts.tool_choice && typeof opts.tool_choice === "object" && opts.tool_choice.type === "function"
+    ? opts.tool_choice.function.name
+    : null;
   const timeoutMs = opts.timeoutMs ?? 45000;
   const maxRetries = opts.maxRetries ?? 2;
 
@@ -162,16 +199,25 @@ export async function callClaudeCompat(opts: ClaudeCompatOptions): Promise<Claud
     systemParts.push("Respond ONLY with valid JSON. No markdown code blocks, no prose before or after.");
   }
 
+  // Génération 5 : tool_choice forcé refusé (voir plus bas), donc l'outil est
+  // imposé par une consigne en fin de system prompt.
+  if (gen5 && forcedToolName && opts.tools && opts.tools.length > 0) {
+    systemParts.push(`Réponds uniquement en appelant l'outil "${forcedToolName}", sans texte avant ni après l'appel.`);
+  }
+
   const body: Record<string, unknown> = {
     model,
-    max_tokens: opts.max_tokens ?? 2000,
+    max_tokens: withThinkingHeadroom(model, opts.max_tokens ?? 2000),
     messages: chatMessages,
   };
 
   if (systemParts.length > 0) {
     body.system = systemParts.join("\n\n");
   }
-  if (typeof opts.temperature === "number") {
+  if (gen5) {
+    // Pas de temperature : refusée sur ces modèles. L'effort règle la réflexion à la place.
+    Object.assign(body, gen5Params(model));
+  } else if (typeof opts.temperature === "number") {
     body.temperature = opts.temperature;
   }
 
@@ -181,9 +227,11 @@ export async function callClaudeCompat(opts: ClaudeCompatOptions): Promise<Claud
       name: t.function.name,
       description: t.function.description ?? "",
       input_schema: t.function.parameters,
+      // L'outil imposé garde des arguments conformes au schéma malgré "auto".
+      ...(gen5 && t.function.name === forcedToolName && isStrictCompatible(t.function.parameters) ? { strict: true } : {}),
     }));
-    if (opts.tool_choice && typeof opts.tool_choice === "object" && opts.tool_choice.type === "function") {
-      body.tool_choice = { type: "tool", name: opts.tool_choice.function.name };
+    if (forcedToolName) {
+      body.tool_choice = gen5 ? { type: "auto" } : { type: "tool", name: forcedToolName };
     } else if (opts.tool_choice === "auto") {
       body.tool_choice = { type: "auto" };
     } else if (opts.tool_choice === "none") {

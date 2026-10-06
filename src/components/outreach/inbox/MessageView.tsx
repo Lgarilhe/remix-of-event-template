@@ -1,25 +1,24 @@
 /**
- * MessageView — Vue d'une conversation (header + messages + composer).
+ * MessageView — une conversation : en-tête, fil des messages, composeur.
  *
- * Architecture CSS Grid avec rangées explicites :
+ * Grille à trois rangées explicites (auto / 1fr / auto) : l'en-tête et le
+ * composeur gardent leur hauteur, le fil prend le reste et défile.
  *
- *   .root [grid h-full overflow-hidden]
- *     gridTemplateRows: 'auto 1fr auto'
- *   ├── HEADER   (auto)  ← hauteur intrinsèque
- *   ├── MESSAGES (1fr)   ← prend le reste, scrollable
- *   └── COMPOSER (auto)  ← hauteur intrinsèque, TOUJOURS visible
- *
- * Pourquoi grid avec template-rows explicite ?
- *  - Les rangées `auto` ont leur hauteur intrinsèque (jamais 0)
- *  - La rangée `1fr` prend exactement le reste
- *  - Pas de magic flex-1 + min-h-0 + shrink-0 fragile
- *  - Pas de position fixed/absolute hacky
- *
- * Refonte from scratch — 2026-04-28.
+ * Revue design, lot 6a :
+ * - en-tête : statut d'inscription (EnrollmentStatusBadge), mission de
+ *   l'inscription ou « Mission probable » quand elle n'est que déduite des
+ *   messages ; actions sur ordinateur comme sur téléphone : sommeil, archive,
+ *   « Inscrire dans une séquence », menu « Plus d'actions » (D-02, D-03,
+ *   D-08, D-18). Design simplifié (lot Suite) : le statut s'écrit en mots à
+ *   côté du nom, « Inscrire dans une séquence » en bouton discret, le logo
+ *   LinkedIn ne se pose plus sur le visage ;
+ * - fil : frise d'activité tirée du catalogue des séquences, bulles sans ombre
+ *   ni ressort, réagir et supprimer au doigt, au survol et au clavier (D-01,
+ *   D-12, D-15) ;
+ * - composeur : brouillon signalé, un seul bouton principal (D-10, D-13).
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
 import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ToneSelector, AITone } from './ToneSelector';
@@ -32,6 +31,10 @@ import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMemberName } from '@/hooks/useTeamMembers';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
+import { pauseToastTitle } from '@/lib/sequenceErrorMessages';
+import { readManualStop } from '@/lib/sequenceLabels';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft, readChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
@@ -40,16 +43,26 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-  ChevronLeft, User, Loader2, MessageSquare, Clock, CheckCheck, Check, Trash2,
-  FileText, ChevronDown, ArrowRight, Briefcase, StopCircle,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/layout';
+import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
+import {
+  Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock, ExternalLink,
+  FileText, GitBranch, ListPlus, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
+import { channelLabel } from '@/lib/channels';
 import {
   getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
   getInitials, getMessageText, getMessageDisplayText, hasDisplayableContent,
@@ -57,8 +70,17 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
+import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
-const REACTION_EMOJIS = ['👍', '❤️', '🔥', '👏', '😂', '😮'];
+// Boutons icône de l'en-tête : 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
+const HEADER_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground md:h-8 md:w-8';
+// Cibles de 44 px au doigt dans les menus
+const MENU_ITEM = 'min-h-11 md:min-h-0';
+// Action d'un message : visible au doigt, révélée au survol ou au focus à la souris (D-12)
+const MESSAGE_ACTION = cn(
+  'h-11 w-11 shrink-0 self-center text-muted-foreground hover:text-foreground md:h-7 md:w-7',
+  '[@media(hover:hover)]:opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 data-[state=open]:opacity-100',
+);
 
 interface MessageViewProps {
   selectedChat: Chat | null;
@@ -71,9 +93,9 @@ interface MessageViewProps {
   suggestionsLoaded: boolean;
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   availableJobs: JobData[];
-  /** Liste des missions actives (sourcing_projects) avec leur outreach_config.
-   *  Utilisée pour afficher le contexte mission même quand le candidat n'est
-   *  pas dans une séquence (conv manuelle), via matching subject/contenu. */
+  /** Missions actives (sourcing_projects) : une conversation hors séquence dont
+   *  les messages citent le poste, le nom ou le client d'une mission affiche
+   *  « Mission probable ». */
   activeMissions?: ActiveMissionLite[];
   messagesEndRef: React.RefObject<HTMLDivElement>;
   messagesContainerRef: React.RefObject<HTMLDivElement>;
@@ -84,8 +106,8 @@ interface MessageViewProps {
   onBack: () => void;
   onNewMessageChange: (message: string) => void;
   onSendMessage: () => void;
+  /** Place une suggestion dans le composeur (jamais d'envoi direct, D-14). */
   onSuggestionClick: (text: string) => void;
-  onSuggestionSend: (text: string) => void;
   onFetchSuggestions: () => void;
   /** Re-fetch les messages du chat actuel (utilisé par le bouton "Recharger").
       Retourne le nombre de messages fetchés (0 = vide → toast info). */
@@ -97,7 +119,10 @@ interface MessageViewProps {
   onAutoSyncIfEmpty?: (chatId: string) => Promise<number>;
   onClearSuggestions: () => void;
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
+  /** Ouvre le choix de la séquence, puis la préparation partagée (D-02). */
   onEnrollInSequence: () => void;
+  /** Recharge les inscriptions de la messagerie (badges, liste) après une mise en pause. */
+  onEnrollmentsChanged?: () => void;
   onScheduleCall: () => void;
   calendlyLink?: string | null;
   onAddReaction?: (messageId: string, reaction: string) => Promise<boolean>;
@@ -105,6 +130,30 @@ interface MessageViewProps {
   isReacting?: boolean;
   isDeleting?: boolean;
 }
+
+/** Séparateur de date du fil. */
+const DateSeparator: React.FC<{ label: string }> = ({ label }) => (
+  <div className="my-6 flex select-none items-center gap-3 px-2">
+    <div className="h-px flex-1 bg-border" aria-hidden="true" />
+    <span className="text-2xs font-medium text-muted-foreground">{label}</span>
+    <div className="h-px flex-1 bg-border" aria-hidden="true" />
+  </div>
+);
+
+/** Message d'état du fil (vide, historique indisponible, synchronisation). */
+const ThreadNotice: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  children?: React.ReactNode;
+  action?: React.ReactNode;
+}> = ({ icon, title, children, action }) => (
+  <div className="mx-auto flex max-w-md flex-col items-center px-4 text-center" role="status">
+    <span className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-muted text-foreground-secondary">{icon}</span>
+    <p className="text-md font-semibold text-foreground">{title}</p>
+    {children && <div className="mt-1 text-sm text-muted-foreground">{children}</div>}
+    {action && <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div>}
+  </div>
+);
 
 export const MessageView: React.FC<MessageViewProps> = ({
   selectedChat,
@@ -123,8 +172,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onNewMessageChange,
   onSendMessage,
   onSuggestionClick,
-  onSuggestionSend,
   onAddToPipeline,
+  onEnrollInSequence,
+  onEnrollmentsChanged,
   onScheduleCall,
   calendlyLink,
   onAddReaction,
@@ -140,6 +190,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const handleToneChange = onToneChange || setLocalTone;
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +198,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const chatStatus = useChatStatus();
 
   // Draft auto-save : restore au changement de chat
-  const { setDraft, clearDraft } = useChatDraft(selectedChat?.id);
+  const { setDraft, clearDraft, hasDraft } = useChatDraft(selectedChat?.id);
   const lastChatIdRef = useRef<string | null>(null);
   const skipNextDraftSaveRef = useRef(false);
   useEffect(() => {
@@ -183,17 +234,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
     wasSendingRef.current = sending;
   }, [sending, newMessage, clearDraft]);
 
-  // ─── Auto-scroll intelligent (style Slack/iMessage) ─────────────────
-  // Scroll en bas UNIQUEMENT si :
-  //   1. C'est l'ouverture initiale du chat (premier rendu de messages)
-  //   2. OU l'user était déjà près du bas (< 150px) ET un NOUVEAU message arrive
-  // Sinon (user en train de lire en haut/milieu) → pas de scroll (sinon
-  // le poll auto le ramènerait en bas toutes les 20s — chiant).
+  // ─── Défilement automatique ─────────────────────────────────────────
+  // En bas seulement à l'ouverture de la conversation, ou quand un nouveau
+  // message arrive alors qu'on était déjà en bas (à moins de 150 px). Sinon
+  // (lecture plus haut dans le fil), le rafraîchissement ne déplace rien.
   const lastMessageCountRef = useRef(0);
   const lastChatIdForScrollRef = useRef<string | null>(null);
   const isNearBottomRef = useRef(true);
 
-  // Track scroll position pour détecter si l'user est en bas
+  // Position de lecture : près du bas ou non
   useEffect(() => {
     const container = messagesScrollRef.current;
     if (!container) return;
@@ -205,7 +254,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [selectedChat?.id]);
 
-  // Scroll conditionnel
+  // Défilement conditionnel
   useEffect(() => {
     if (loadingMessages || messages.length === 0) return;
     const container = messagesScrollRef.current;
@@ -218,7 +267,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
     lastChatIdForScrollRef.current = selectedChat?.id || null;
     lastMessageCountRef.current = newMessagesCount;
 
-    // Premier rendu du chat OU user en bas + nouveau message → scroll
     const shouldScroll = chatChanged || (hasNewMessage && isNearBottomRef.current);
     if (!shouldScroll) return;
 
@@ -238,18 +286,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return () => clearTimeout(t);
   }, [messages, loadingMessages, selectedChat?.id]);
 
-  // ─── Auto-sync silencieux à l'ouverture d'un chat vide ──────────────
-  // Quand on ouvre un chat dont le fetch normal renvoie 0 messages, on
-  // déclenche automatiquement sync_chat_history en arrière-plan. Le sync
-  // poll Unipile pendant 5-30s puis re-fetch les messages quand prêt.
-  // Pas de toast, juste un petit indicateur "Synchronisation…" dans
-  // l'écran vide pour montrer que ça travaille.
-  //
-  // Guard via Set de chat_ids déjà tentés, persisté dans sessionStorage
-  // pour résister aux remounts (route change /inbox → /missions → /inbox).
-  // Sans ce persist, on retentait inlassablement les mêmes chats vides à
-  // chaque navigation → quota Unipile gaspillé sur des conv vraiment
-  // vides (ex: leads froids avec un seul InMail sans réponse).
+  // ─── Synchronisation silencieuse d'une conversation vide ────────────
+  // Une conversation qui s'ouvre sans message lance une synchronisation de
+  // l'historique en arrière-plan (5 à 30 s), une fois par conversation et par
+  // session : sans cette garde (gardée en sessionStorage pour survivre au
+  // changement de page), chaque retour dans la messagerie relançait la même
+  // synchronisation sur des conversations réellement vides.
   const SESSION_KEY = 'inbox.autoSyncedChats';
   const loadSyncedSet = (): Set<string> => {
     try {
@@ -282,9 +324,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     setAutoSyncing(true);
     onAutoSyncIfEmpty(chatId)
       .catch(() => {
-        // Silencieux : si le sync échoue (chat supprimé, timeout, etc.)
-        // l'utilisateur peut toujours cliquer sur "Recharger" pour avoir
-        // un message d'erreur explicite.
+        // Silencieux : « Recharger les messages » donne ensuite un message clair.
       })
       .finally(() => {
         // Ne décroche que si on est encore sur ce chat (l'user a peut-
@@ -305,10 +345,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
-    // Skip les messages sans contenu affichable (Unipile remonte parfois
-    // des messages "fantômes" sans texte ni attachment — ex. anciennes
-    // réactions désynchro, payloads partiels). Sinon ils créent des
-    // bulles vides chelou dans le thread.
+    // Les messages sans contenu affichable (réactions désynchronisées,
+    // réponses partielles du service) donneraient des bulles vides.
     messages.forEach(m => {
       if (!hasDisplayableContent(m) && (!m.reactions || m.reactions.length === 0)) return;
       items.push({ kind: 'message', data: m });
@@ -320,7 +358,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       return tA.localeCompare(tB);
     });
 
-    // Insertion des date separators entre items de jours différents
+    // Séparateurs de date entre deux jours différents
     const withSeparators: TimelineItem[] = [];
     let lastDate: string | null = null;
     const today = new Date();
@@ -367,31 +405,65 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // User connecté + org + variables custom pour les placeholders templates
   const { user } = useAuthReady();
 
-  // Action IA : Résumer la conversation
+  // Action IA : résumer la conversation
   const { summarize, summarizeLoading } = useTextActions();
   const [summary, setSummary] = useState<SummarizeResult | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
 
-  // Stop séquence depuis l'inbox : workflow naturel quand on prend la
-  // conversation à la main et qu'on veut éviter les relances auto qui
-  // partent encore. Lookup l'enrollment actif via profile_id (pas dans
-  // SequenceEnrollmentInfo qui ne porte pas l'ID), update status='paused'
-  // + cancel les executions schedulées.
-  const [stopSeqConfirm, setStopSeqConfirm] = useState(false);
+  // Mise en pause depuis la messagerie : quand on reprend l'échange à la main,
+  // les relances automatiques ne partent plus. Les inscriptions actives du
+  // candidat sont lues à l'ouverture de la conversation (pas dans la carte des
+  // 500 dernières inscriptions, ni déduites du statut d'une mission).
+  // Lot 5b : sans fenêtre, « Annuler » dans le toast (reprise serveur).
   const [stoppingSeq, setStoppingSeq] = useState(false);
+  const { offerUndoPause } = useUndoableEnrollmentAction();
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
+  const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
+  const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
 
-  // Reset le flag local quand on change de chat (sinon on garde "stoppé"
-  // affiché en allant sur un autre candidat actif)
+  // Nouvelle conversation : la pause affichée ne concerne que la précédente
   useEffect(() => {
     setSeqStoppedLocal(false);
   }, [selectedChat?.id]);
 
+  const chatProfileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
+  useEffect(() => {
+    if (!chatProfileId) {
+      setActiveEnrollments([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      // Identifiant de la messagerie (ACo...) : une inscription faite depuis
+      // Recruiter porte un autre profile_id (AE...), retrouvée par provider_id
+      // ou resolved_profile_id.
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .select('id, current_step_order')
+        .or(enrollmentProfileFilter(chatProfileId))
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        // Lecture impossible : pas d'action de pause (on n'invente pas d'inscription).
+        console.warn('[MessageView] active enrollments lookup failed:', error);
+        setActiveEnrollments([]);
+        return;
+      }
+      setActiveEnrollments(data ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [chatProfileId, activeEnrollmentsKey]);
+  const hasActiveEnrollment = activeEnrollments.length > 0 && !seqStoppedLocal;
+
+  // Mise en pause (contrat de pause) : seules les inscriptions changent de
+  // statut ; les étapes programmées gardent leur date et le moteur les ignore
+  // tant que l'inscription n'est pas reprise.
   const handleStopSequence = async () => {
     if (!selectedChat) return;
     const profileId = getAttendeeProfileId(selectedChat);
     if (!profileId) {
-      toast.error('Profil candidat introuvable');
+      toast.error('Profil du candidat introuvable', { description: "La séquence n'a pas été mise en pause." });
       return;
     }
     setStoppingSeq(true);
@@ -399,55 +471,75 @@ export const MessageView: React.FC<MessageViewProps> = ({
       const { data: active, error: fetchErr } = await supabase
         .from('sequence_enrollments')
         .select('id')
-        .eq('profile_id', profileId)
+        .or(enrollmentProfileFilter(profileId))
         .eq('status', 'active')
         .order('created_at', { ascending: false });
       if (fetchErr) throw fetchErr;
       const ids = (active || []).map(e => e.id);
       if (ids.length === 0) {
-        toast.info('Aucune séquence active pour ce candidat');
-        setStopSeqConfirm(false);
+        toast.info('Aucune séquence en cours pour ce candidat');
+        setActiveEnrollmentsKey(k => k + 1);
         return;
       }
-      // Pause toutes les inscriptions actives (cas rare où il y en aurait plusieurs)
-      const { error: pauseErr } = await supabase
+      // Toutes les inscriptions actives (cas rare où il y en aurait plusieurs),
+      // relues pour détecter un refus silencieux (0 ligne).
+      const { data: paused, error: pauseErr } = await supabase
         .from('sequence_enrollments')
         .update({ status: 'paused', pause_reason: 'manual' })
-        .in('id', ids);
+        .in('id', ids)
+        .eq('status', 'active')
+        .select('id');
       if (pauseErr) throw pauseErr;
-      // Cancel les executions schedulées
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Stoppé depuis Inbox' })
-        .in('enrollment_id', ids)
-        .eq('status', 'scheduled');
+      const pausedCount = paused?.length ?? 0;
+      if (pausedCount === 0) {
+        toast.error('Mise en pause impossible', { description: "La séquence n'a pas été mise en pause. Réessayez." });
+        return;
+      }
       setSeqStoppedLocal(true);
-      toast.success(ids.length > 1 ? `${ids.length} séquences arrêtées` : 'Séquence arrêtée');
+      setActiveEnrollmentsKey(k => k + 1);
+      onEnrollmentsChanged?.();
+      const name = getChatDisplayName(selectedChat) || null;
+      const partial = pausedCount < ids.length;
+      // « Annuler » ne reprend que les inscriptions que cette pause a touchées,
+      // y compris quand elle n'en a touché qu'une partie (le titre le dit).
+      offerUndoPause({
+        title: partial
+          ? `${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`
+          : pausedCount > 1
+            ? `${pausedCount} séquences mises en pause pour ${name || 'ce candidat'}.`
+            : pauseToastTitle(name),
+        ...(partial ? { description: 'Les autres n’ont pas pu être mises en pause. Réessayez.', tone: 'warning' as const } : {}),
+        enrollmentIds: (paused ?? []).map(e => e.id),
+        candidateName: name,
+        onSettled: () => {
+          setSeqStoppedLocal(false);
+          setActiveEnrollmentsKey(k => k + 1);
+          onEnrollmentsChanged?.();
+        },
+      });
     } catch (err) {
-      console.error('[MessageView] stopSequence error:', err);
-      toast.error("Erreur lors de l'arrêt");
+      console.error('[MessageView] pause sequence error:', err);
+      toast.error('Mise en pause impossible', { description: 'Réessayez dans un instant.' });
     } finally {
       setStoppingSeq(false);
-      setStopSeqConfirm(false);
     }
   };
 
-  /** Wrapper du re-fetch qui toaste selon le résultat.
-      Si la 1ère tentative (fetch normal) renvoie 0, le parent enchaîne
-      automatiquement avec un sync_chat_history (peut prendre 10-30s). */
+  /** Wrapper du re-fetch : la première tentative lit le cache ; à vide, le
+      parent enchaîne une synchronisation de l'historique (10 à 30 s). */
   const handleRefetch = async () => {
     if (!onRefetchMessages) return;
-    toast.info('Synchronisation en cours...', {
-      description: 'Si l\'historique n\'est pas en cache, on force une resync (~10-30s)',
+    toast.info('Synchronisation de la conversation', {
+      description: "Si l'historique n'est pas disponible, la synchronisation peut prendre jusqu'à 30 secondes.",
       duration: 4000,
     });
     const result = await onRefetchMessages();
     if (typeof result === 'number' && result === 0) {
       toast.warning(
-        "LinkedIn n'a pas pu récupérer les messages",
+        "LinkedIn n'a pas renvoyé les messages",
         {
           description:
-            'Cette conversation a été supprimée côté LinkedIn ou son historique n\'est plus accessible.',
+            "Cette conversation a été supprimée sur LinkedIn ou son historique n'est plus accessible.",
           duration: 6000,
         }
       );
@@ -476,6 +568,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     setSummaryOpen(false);
   }, [selectedChat?.id]);
   const { organization } = useOrganization();
+  const memberName = useMemberName();
   const { asMap: customVariablesMap } = useUserTemplateVariables();
 
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
@@ -490,19 +583,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
-  // ─── Calculs hoisted AVANT le early return ────────────────────────
-  // Tous les hooks (useMemo / useEffect / useState) doivent être appelés
-  // dans le même ordre à chaque render, donc PAS après un return
-  // conditionnel. On hoist aussi les const dépendantes pour que les
-  // useMemo aient leurs deps disponibles.
+  // ─── Calculs avant le retour anticipé (même ordre des hooks à chaque rendu)
   const jobInfo = selectedChat ? getChatJobInfo(selectedChat, enrollmentsMap) : null;
   const currentJobData = jobInfo?.job_id
     ? availableJobs.find(j => j.id === jobInfo.job_id)
     : undefined;
 
-  // Si pas d'enrollment (conv manuelle), on essaie d'inférer la mission à
-  // partir du subject InMail et des premiers messages envoyés. Permet
-  // d'afficher le contexte (mission + outreach_config) même sans séquence.
+  // Sans inscription, la mission est déduite de l'objet de l'InMail et des
+  // premiers messages envoyés. Elle reste une hypothèse : l'en-tête l'affiche
+  // comme « Mission probable », sans en tirer le mode de recrutement ni le
+  // client, et aucune mission n'est plus supposée par défaut (revue design D-08).
   const inferredMission = useMemo<ActiveMissionLite | null>(() => {
     if (jobInfo) return null; // Déjà couvert par enrollment
     if (!activeMissions.length || !selectedChat) return null;
@@ -523,76 +613,44 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
     const norm = (s: string | null | undefined) => (s || '').toLowerCase().trim();
 
-    if (haystack.length >= 5) {
-      // 1. Match exact sur job_title (>4 chars pour éviter "AI")
-      const byJobTitle = activeMissions.find(m => {
-        const t = norm(m.job_title);
-        return t.length > 4 && haystack.includes(t);
-      });
-      if (byJobTitle) return byJobTitle;
+    if (haystack.length < 5) return null;
 
-      // 2. Match sur le name de la mission
-      const byName = activeMissions.find(m => {
-        const n = norm(m.name);
-        return n.length > 4 && haystack.includes(n);
-      });
-      if (byName) return byName;
+    // 1. Match exact sur job_title (>4 chars pour éviter "AI")
+    const byJobTitle = activeMissions.find(m => {
+      const t = norm(m.job_title);
+      return t.length > 4 && haystack.includes(t);
+    });
+    if (byJobTitle) return byJobTitle;
 
-      // 3. Match par client_name (ex: "Theodo Group" mentionné dans le msg)
-      const byClient = activeMissions.find(m => {
-        const c = norm(m.client_name);
-        return c.length > 3 && haystack.includes(c);
-      });
-      if (byClient) return byClient;
+    // 2. Match sur le name de la mission
+    const byName = activeMissions.find(m => {
+      const n = norm(m.name);
+      return n.length > 4 && haystack.includes(n);
+    });
+    if (byName) return byName;
 
-      // 4. Match fuzzy : >=2 mots significatifs (>3 chars) du job_title
-      //    présents dans le haystack — capture les variantes de titres
-      //    ("Lead AI Engineer" vs "Senior AI Engineer Lead")
-      const byFuzzyTitle = activeMissions.find(m => {
-        const t = norm(m.job_title);
-        if (t.length < 5) return false;
-        const words = t.split(/\s+/).filter(w => w.length > 3);
-        if (words.length < 2) return false;
-        const hits = words.filter(w => haystack.includes(w)).length;
-        return hits >= 2;
-      });
-      if (byFuzzyTitle) return byFuzzyTitle;
-    }
+    // 3. Match par client_name (ex: "Theodo Group" mentionné dans le msg)
+    const byClient = activeMissions.find(m => {
+      const c = norm(m.client_name);
+      return c.length > 3 && haystack.includes(c);
+    });
+    if (byClient) return byClient;
 
-    // 5. Fallback : une seule mission active dans l'org → on l'utilise
-    //    par défaut. Hypothèse safe : si le user n'a qu'une seule mission,
-    //    toutes les conv portent dessus.
-    return activeMissions.length === 1 ? activeMissions[0] : null;
+    // 4. Au moins deux mots significatifs (plus de 3 lettres) du poste
+    //    présents dans les messages (« Lead AI Engineer » et « Senior AI Engineer Lead »)
+    const byFuzzyTitle = activeMissions.find(m => {
+      const t = norm(m.job_title);
+      if (t.length < 5) return false;
+      const words = t.split(/\s+/).filter(w => w.length > 3);
+      if (words.length < 2) return false;
+      const hits = words.filter(w => haystack.includes(w)).length;
+      return hits >= 2;
+    });
+    return byFuzzyTitle ?? null;
   }, [jobInfo, activeMissions, selectedChat, messages]);
 
-  // Source unifiée pour les badges contextuels. Préfère jobInfo (séquence)
-  // sinon utilise inferredMission (conv manuelle matchée).
-  const displayContext = jobInfo
-    ? {
-        title: jobInfo.job_title,
-        stepOrder: jobInfo.current_step_order,
-        status: jobInfo.status,
-        repliedAt: jobInfo.replied_at,
-        outreachConfig: jobInfo.outreach_config || null,
-        clientName: jobInfo.client_name || null,
-        inSequence: true,
-      }
-    : inferredMission
-    ? {
-        title: inferredMission.job_title || inferredMission.name,
-        stepOrder: null,
-        status: inferredMission.status,
-        repliedAt: null,
-        outreachConfig: inferredMission.outreach_config,
-        clientName: inferredMission.client_name,
-        inSequence: false,
-      }
-    : null;
-
-  // Données mémoïsées pour le bouton "Réponse + CTA". Sans memo, ces
-  // structures sont recalculées à chaque render (poll auto 20s,
-  // keystroke dans le composer) → MessageComposer et CtaReplyButton
-  // re-renderent pour rien.
+  // Données mémoïsées pour « Proposer une suite » : sans memo, elles seraient
+  // recalculées à chaque rendu (rafraîchissement, frappe dans le composeur).
   const ctaChatHistory = useMemo(() => (
     messages
       .filter(m => getMessageText(m).trim().length > 0)
@@ -615,19 +673,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
     || undefined
   ), [user?.user_metadata?.full_name, user?.user_metadata?.first_name, user?.user_metadata?.last_name]);
 
-  // Empty state
+  // Aucune conversation ouverte (ordinateur)
   if (!selectedChat) {
     return (
-      <div className="h-full grid place-items-center bg-background text-muted-foreground">
-        <div className="text-center max-w-xs px-6">
-          <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <p className="text-sm font-medium text-foreground/70">Sélectionnez une conversation</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Vos messages LinkedIn et InMail apparaîtront ici.
-          </p>
-        </div>
+      <div className="grid h-full place-items-center bg-background p-6">
+        <EmptyState
+          illustration="conversation"
+          title="Sélectionnez une conversation"
+          description="Vos messages LinkedIn et vos InMails s'affichent ici."
+          className="w-full max-w-sm border-0"
+        />
       </div>
     );
   }
@@ -636,6 +691,67 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const headline = getChatHeadline(selectedChat);
   const subject = getChatSubject(selectedChat);
   const channel = detectChannel(selectedChat.account_type);
+
+  // Statut de l'inscription : « En pause » juste après une mise en pause ;
+  // « En cours » pour une inscription active lue à l'ouverture ; sinon la
+  // dernière inscription connue du candidat, « A répondu » dès qu'une réponse
+  // est notée sur une inscription encore active.
+  const enrollmentStatus = seqStoppedLocal
+    ? 'paused'
+    : hasActiveEnrollment
+      ? 'active'
+      : jobInfo
+        ? jobInfo.status === 'active' && jobInfo.replied_at
+          ? 'replied'
+          : jobInfo.status
+        : null;
+  const enrollmentPauseReason = seqStoppedLocal ? 'manual' : jobInfo?.pause_reason ?? null;
+  // Lot 5b : « Arrêtée par Claire Dubois le 05/10 » pour un arrêt manuel.
+  const enrollmentManualStop = jobInfo ? readManualStop(enrollmentStatus, jobInfo.completion_reason, jobInfo.manual_stop) : null;
+  // Mise en pause seulement si une inscription ACTIVE du candidat a été lue en
+  // base (jamais d'après le statut d'une mission, ni d'une mission déduite).
+  const canStopSequence = hasActiveEnrollment;
+  const activeStepOrder = hasActiveEnrollment ? activeEnrollments[0]?.current_step_order ?? null : null;
+  const isSnoozedOrArchived = chatStatus.isSnoozed(selectedChat.id) || chatStatus.isArchived(selectedChat.id);
+
+  // Contexte de la mission, quand l'inscription le donne ; l'étape vient de
+  // l'inscription active lue à l'ouverture.
+  const contextItems: React.ReactNode[] = [];
+  if (jobInfo?.job_title) {
+    contextItems.push(
+      <span key="title" className="inline-flex min-w-0 items-center gap-1 text-foreground-secondary">
+        <Briefcase className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="truncate">{jobInfo.job_title}</span>
+      </span>,
+    );
+  }
+  if (activeStepOrder != null) {
+    contextItems.push(<span key="step">Étape {activeStepOrder + 1}</span>);
+  }
+  if (jobInfo) {
+    const config = jobInfo.outreach_config;
+    if (config?.recruitment_mode) {
+      contextItems.push(
+        <span
+          key="mode"
+          title={config.recruitment_mode === 'internal'
+            ? "Les réponses IA parlent au nom de l'entreprise (« nous »)"
+            : 'Les réponses IA parlent au nom du cabinet'}
+        >
+          {config.recruitment_mode === 'internal' ? 'Recrutement interne' : 'Cabinet'}
+        </span>,
+      );
+    }
+    if (config?.anonymize_client) {
+      contextItems.push(
+        <span key="anon" title={`Le nom du client est masqué dans les réponses générées (alias : ${config.anonymized_alias || 'par défaut'})`}>
+          Client masqué
+        </span>,
+      );
+    } else if (jobInfo.client_name) {
+      contextItems.push(<span key="client">{jobInfo.client_name}</span>);
+    }
+  }
 
   const aiContext = {
     recipientName: displayName,
@@ -659,10 +775,18 @@ export const MessageView: React.FC<MessageViewProps> = ({
     tone: currentTone, // Passe le tone choisi par l'user au prompt Claude
   };
 
-  // ─── LAYOUT — CSS Grid 3 rangées (auto / 1fr / auto) ─────────────────
+  const handleReaction = async (messageId: string, emoji: string) => {
+    if (!onAddReaction) return;
+    setReactionPickerMsgId(null);
+    setReactingMsgId(messageId);
+    await onAddReaction(messageId, emoji);
+    setReactingMsgId(null);
+  };
+
+  // ─── Mise en page : grille à trois rangées (auto / 1fr / auto) ──────────
   return (
     <div
-      className="h-full min-w-0 bg-background overflow-hidden"
+      className="h-full min-w-0 overflow-hidden bg-background"
       style={{
         display: 'grid',
         gridTemplateRows: 'auto minmax(0, 1fr) auto',
@@ -670,124 +794,87 @@ export const MessageView: React.FC<MessageViewProps> = ({
       }}
       data-component="message-view"
     >
-      {/* ROW 1 — HEADER moderne avec backdrop blur */}
-      <header className="border-b border-border bg-background/95 backdrop-blur-md">
-        <div className="flex items-center gap-3 px-5 py-3.5">
+      {/* RANGÉE 1 : en-tête */}
+      <header className="border-b border-border bg-background">
+        <div className="flex items-start gap-2 px-2 py-2 md:gap-3 md:px-5 md:py-3">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 md:hidden rounded-full"
+            className="h-11 w-11 shrink-0 md:hidden"
             onClick={onBack}
-            aria-label="Retour"
+            aria-label="Retour aux conversations"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft aria-hidden="true" />
           </Button>
 
-          {/* Avatar circulaire avec ring subtil + badge channel */}
-          <div className="relative shrink-0">
-            <Avatar className="w-11 h-11 rounded-full ring-2 ring-background">
-              <AvatarImage src={avatar} className="rounded-full" />
-              <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-sm">
+          {/* Avatar ; la pastille du canal seulement hors LinkedIn */}
+          <span className="relative mt-0.5 shrink-0">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={avatar} alt="" />
+              <AvatarFallback className="text-xs font-semibold text-foreground-secondary">
                 {getInitials(displayName)}
               </AvatarFallback>
             </Avatar>
-            <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background grid place-items-center ring-1 ring-border">
-              <ChannelIcon channel={channel} size="sm" />
-            </div>
-          </div>
+            {channel !== 'linkedin' && (
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
+              >
+                <ChannelIcon channel={channel} size="xs" />
+              </span>
+            )}
+          </span>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-semibold text-foreground truncate text-[15px] tracking-tight">
-                {displayName}
-              </h2>
-              {/* Badge statut séquence si enrollment actif/passé */}
-              {jobInfo && jobInfo.status && (
-                <SequenceStatusBadge status={jobInfo.status} repliedAt={jobInfo.replied_at} />
-              )}
-              {/* Si pas en séquence mais mission inférée → badge "Hors séquence" */}
-              {!jobInfo && inferredMission && (
-                <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md border bg-muted/40 text-muted-foreground border-border whitespace-nowrap">
-                  Hors séquence
+          <div className="min-w-0 flex-1 py-0.5">
+            {/* Le nom, puis l'état de l'inscription en mots, sans pastille (design simplifié) */}
+            <div className="flex min-w-0 items-baseline gap-x-2">
+              <h2 className="min-w-0 truncate text-md font-semibold text-foreground">{displayName}</h2>
+              {enrollmentStatus && (
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <GitBranch className="h-3 w-3 self-center" aria-hidden="true" />
+                  <span className="sr-only">Séquence : </span>
+                  <EnrollmentStatusBadge
+                    status={enrollmentStatus}
+                    pauseReason={enrollmentPauseReason}
+                    manualStop={enrollmentManualStop}
+                    stoppedByName={memberName(enrollmentManualStop?.by)}
+                    plain
+                  />
                 </span>
               )}
             </div>
-            {headline && (
-              <p className="text-[13px] text-muted-foreground truncate mt-0.5 leading-tight">
-                {headline}
+            {headline && <p className="truncate text-xs text-muted-foreground">{headline}</p>}
+            {contextItems.length > 0 ? (
+              <p className="mt-1 flex min-w-0 items-center gap-x-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                {contextItems.map((item, i) => (
+                  <React.Fragment key={i}>
+                    {i > 0 && <span aria-hidden="true">·</span>}
+                    {item}
+                  </React.Fragment>
+                ))}
               </p>
-            )}
-            {/* Bandeau contexte mission : poste + statut séquence + mode outreach + anonymisation */}
-            {displayContext && (
-              <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                {displayContext.title && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground bg-foreground/8 border border-border px-2 py-0.5 rounded-md">
-                    <Briefcase className="w-3 h-3 text-muted-foreground" />
-                    {displayContext.title}
-                  </span>
-                )}
-                {displayContext.stepOrder != null && displayContext.status === 'active' && !seqStoppedLocal && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-info bg-info/10 border border-info/30 px-2 py-0.5 rounded-md">
-                    Étape {(displayContext.stepOrder ?? 0) + 1}
-                  </span>
-                )}
-                {/* Bouton Stop séquence inline — visible uniquement si une
-                    séquence est ACTIVE pour ce candidat. UX : workflow
-                    naturel quand l'user veut prendre la conv à la main et
-                    couper les relances auto qui partent encore. */}
-                {displayContext.status === 'active' && !seqStoppedLocal && (
-                  <button
-                    type="button"
-                    onClick={() => setStopSeqConfirm(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive bg-destructive/8 border border-destructive/30 px-2 py-0.5 rounded-md hover:bg-destructive/15 transition-colors"
-                    title="Arrêter la séquence — annule toutes les relances programmées pour ce candidat"
-                  >
-                    <StopCircle className="w-3 h-3" />
-                    Arrêter
-                  </button>
-                )}
-                {seqStoppedLocal && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md">
-                    <StopCircle className="w-3 h-3" />
-                    Séquence stoppée
-                  </span>
-                )}
-                {displayContext.outreachConfig?.recruitment_mode && (
-                  <span
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md"
-                    title={displayContext.outreachConfig.recruitment_mode === 'internal'
-                      ? 'L\'IA parle en "on / nous / chez nous"'
-                      : 'L\'IA parle en cabinet externe'}
-                  >
-                    {displayContext.outreachConfig.recruitment_mode === 'internal' ? '🏢 Interne' : '🤝 Cabinet'}
-                  </span>
-                )}
-                {displayContext.outreachConfig?.anonymize_client && (
-                  <span
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded-md"
-                    title={`Le nom du client est masqué dans les réponses générées (alias : ${displayContext.outreachConfig.anonymized_alias || 'défaut'})`}
-                  >
-                    🕶 Anonyme
-                  </span>
-                )}
-                {displayContext.clientName && !displayContext.outreachConfig?.anonymize_client && (
-                  <span
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/30 border border-border px-2 py-0.5 rounded-md"
-                    title="Client de la mission"
-                  >
-                    {displayContext.clientName}
-                  </span>
-                )}
-              </div>
-            )}
+            ) : inferredMission ? (
+              <p
+                className="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+                title="Déduite des messages échangés : aucune inscription en séquence ne la confirme."
+              >
+                <Briefcase className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="truncate">
+                  Mission probable : {inferredMission.job_title || inferredMission.name}
+                </span>
+              </p>
+            ) : null}
             {subject && (
-              <p className="hidden md:block text-xs text-muted-foreground/70 truncate mt-1 italic">
-                Objet : {subject}
-              </p>
+              <p className="mt-0.5 hidden truncate text-xs text-muted-foreground md:block">Objet : {subject}</p>
             )}
           </div>
 
-          <div className="hidden md:flex items-center gap-1 shrink-0">
+          {/* Actions : visibles sur ordinateur et sur téléphone */}
+          <div className="flex shrink-0 items-center gap-0.5 md:gap-1">
+            <Button variant="ghost" size="sm" onClick={onEnrollInSequence} className="hidden lg:inline-flex">
+              <ListPlus aria-hidden="true" />
+              Inscrire dans une séquence
+            </Button>
             <SnoozeArchiveButtons
               chatId={selectedChat.id}
               accountId={selectedChat.account_id}
@@ -797,230 +884,200 @@ export const MessageView: React.FC<MessageViewProps> = ({
               onSnooze={chatStatus.snoozeChat}
               onArchive={chatStatus.archiveChat}
               onRestore={chatStatus.restoreChat}
-              compact
+              archiveClassName="hidden md:inline-flex"
             />
-            <div className="w-px h-5 bg-border mx-1.5" aria-hidden="true" />
-            <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
-            {/* Bouton Résumer (visible si conv >= 4 messages) */}
-            {messages.length >= 4 && (
-              <button
-                type="button"
-                onClick={handleSummarize}
-                disabled={summarizeLoading}
-                className={cn(
-                  'h-8 px-3 inline-flex items-center gap-1.5 text-xs font-medium rounded-lg transition-colors',
-                  summarizeLoading
-                    ? 'text-muted-foreground cursor-wait'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" aria-label="Plus d'actions" className={HEADER_ICON}>
+                      <MoreHorizontal aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Plus d'actions</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuItem className={cn(MENU_ITEM, 'lg:hidden')} onSelect={onEnrollInSequence}>
+                  <ListPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Inscrire dans une séquence
+                </DropdownMenuItem>
+                {/* Sur téléphone, l'archive passe dans ce menu pour laisser la place au nom */}
+                {!isSnoozedOrArchived && (
+                  <DropdownMenuItem
+                    className={cn(MENU_ITEM, 'md:hidden')}
+                    onSelect={() => chatStatus.archiveChat(selectedChat.id, selectedChat.account_id)}
+                  >
+                    <Archive className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Archiver la conversation
+                  </DropdownMenuItem>
                 )}
-                title="Générer un résumé de la conversation"
-              >
-                {summarizeLoading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <FileText className="w-3.5 h-3.5" />
+                <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} className={MENU_ITEM} />
+                {messages.length >= 4 && (
+                  <DropdownMenuItem
+                    className={MENU_ITEM}
+                    disabled={summarizeLoading}
+                    onSelect={() => void handleSummarize()}
+                  >
+                    <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Résumer la conversation
+                  </DropdownMenuItem>
                 )}
-                <span>Résumer</span>
-              </button>
-            )}
-            {selectedChat.attendees?.[0]?.profile_url && (
-              <a
-                href={selectedChat.attendees[0].profile_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-8 px-3 inline-flex items-center gap-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                title="Voir le profil LinkedIn"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>Profil</span>
-              </a>
-            )}
+                {profileUrl && (
+                  <DropdownMenuItem asChild className={MENU_ITEM}>
+                    <a href={profileUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Voir le profil LinkedIn
+                    </a>
+                  </DropdownMenuItem>
+                )}
+                {canStopSequence && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {/* Lot 5b : pause immédiate, « Annuler » dans le toast. */}
+                    <DropdownMenuItem className={MENU_ITEM} disabled={stoppingSeq} onSelect={() => { void handleStopSequence(); }}>
+                      <CircleStop className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Mettre en pause pour ce candidat
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        {/* Panneau Résumé — affiché juste sous le header quand summary dispo */}
+        {/* Résumé de la conversation, sous l'en-tête */}
+        {summarizeLoading && !(summary && summaryOpen) && (
+          <div className="flex items-center gap-2 border-t border-border bg-muted px-3 py-2 text-xs text-muted-foreground md:px-5" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            Résumé de la conversation en cours…
+          </div>
+        )}
         {summary && summaryOpen && (
-          <div className="border-t border-border bg-gradient-to-br from-foreground/5 to-foreground/[0.02] px-5 py-3">
+          <section aria-labelledby="conversation-summary-title" className="border-t border-border bg-muted px-3 py-3 md:px-5">
             <div className="flex items-start gap-3">
-              <div className="h-8 w-8 rounded-md bg-foreground/10 grid place-items-center shrink-0">
-                <FileText className="w-4 h-4 text-foreground/70" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <h3 className="text-xs font-semibold text-foreground">
-                    Résumé IA
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-foreground-secondary">
+                <FileText className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <h3 id="conversation-summary-title" className="text-xs font-semibold text-foreground">
+                    Résumé de la conversation
                   </h3>
-                  <button
-                    type="button"
-                    onClick={() => setSummaryOpen(false)}
-                    className="text-[10px] text-muted-foreground hover:text-foreground"
-                  >
-                    Fermer
-                  </button>
+                  <Button variant="ghost" size="xs" onClick={() => setSummaryOpen(false)}>
+                    Fermer le résumé
+                  </Button>
                 </div>
-                <p className="text-[13px] text-foreground/80 leading-relaxed">
-                  {summary.summary}
-                </p>
+                <p className="text-sm leading-relaxed text-foreground-secondary">{summary.summary}</p>
                 {summary.key_points && summary.key_points.length > 0 && (
-                  <ul className="mt-2 space-y-0.5">
+                  <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground marker:text-muted-foreground">
                     {summary.key_points.map((p, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-[12px] text-muted-foreground">
-                        <span className="mt-1.5 h-1 w-1 rounded-full bg-muted-foreground/50 shrink-0" />
-                        <span>{p}</span>
-                      </li>
+                      <li key={i}>{p}</li>
                     ))}
                   </ul>
                 )}
                 {summary.next_action && (
-                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-foreground/5 text-[11px] text-foreground/80">
-                    <ArrowRight className="w-3 h-3 text-foreground/50" />
-                    <span className="font-medium">Prochaine étape :</span>
-                    <span>{summary.next_action}</span>
-                  </div>
+                  <p className="mt-2 inline-flex items-start gap-1.5 rounded-md bg-background px-2 py-1 text-xs text-foreground-secondary">
+                    <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span>
+                      <span className="font-medium text-foreground">Prochaine étape : </span>
+                      {summary.next_action}
+                    </span>
+                  </p>
                 )}
               </div>
             </div>
-          </div>
+          </section>
         )}
       </header>
 
-      {/* ROW 2 — MESSAGES (scrollable, design moderne avec grouping)
-          overflow-x-hidden + min-w-0 pour empêcher tout débordement
-          horizontal (ex: long URL non-coupable dans un message) */}
+      {/* RANGÉE 2 : fil des messages, seul à défiler */}
       <div
         ref={messagesScrollRef}
-        className="overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background min-w-0"
+        className="min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {/* Container utilise pleine largeur avec padding latéral généreux.
-            Les bulles ont leur propre max-width en pourcentage. */}
-        <div className="px-6 py-6 min-w-0 max-w-full">
+        <div className="min-w-0 max-w-full px-3 py-6 md:px-6">
           {loadingMessages && messages.length === 0 ? (
-            <div className="flex flex-col gap-4">
-              {[
-                { width: 40, side: 'left' },
-                { width: 28, side: 'right' },
-                { width: 56, side: 'left' },
-                { width: 36, side: 'right' },
-                { width: 32, side: 'left' },
-              ].map((s, i) => (
-                <div
+            <div className="flex flex-col gap-4" role="status" aria-label="Chargement des messages">
+              {[40, 28, 56, 36, 32].map((width, i) => (
+                <Skeleton
                   key={i}
-                  className={cn(
-                    'h-12 bg-muted/40 animate-pulse rounded-2xl',
-                    s.side === 'left' ? 'self-start rounded-bl-sm' : 'self-end rounded-br-sm',
-                  )}
-                  style={{ width: `${s.width}%`, animationDelay: `${i * 80}ms` }}
+                  className={cn('h-12 rounded-xl', i % 2 ? 'self-end' : 'self-start')}
+                  style={{ width: `${width}%` }}
                 />
               ))}
             </div>
           ) : messages.length === 0 ? (
-            <div className="grid place-items-center min-h-[40vh] text-muted-foreground">
-              <div className="text-center max-w-md px-4">
-                <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-muted to-muted/40 grid place-items-center">
-                  <MessageSquare className="w-7 h-7 opacity-40" />
-                </div>
-                {selectedChat.last_message?.text ? (
-                  <>
-                    {/* On a un last_message en DB mais Unipile ne renvoie pas l'historique
-                        (conv ancienne, archivée, ou rate limit) — on l'affiche au moins */}
-                    <p className="text-base font-medium text-foreground/80">
-                      Historique indisponible
-                    </p>
-                    <p className="text-sm text-muted-foreground/70 mt-1 mb-4">
-                      LinkedIn n'a pas renvoyé les messages de cette conversation.
-                      Voici le dernier message connu :
-                    </p>
-                    <div className={cn(
-                      "px-4 py-3 rounded-2xl text-sm leading-relaxed text-left mt-4 inline-block max-w-full",
+            <div className="grid min-h-[40vh] place-items-center">
+              {selectedChat.last_message?.text ? (
+                <ThreadNotice
+                  icon={<MessageSquare className="h-5 w-5" aria-hidden="true" />}
+                  title="Historique indisponible"
+                  action={
+                    onRefetchMessages ? (
+                      <Button variant="outline" size="sm" onClick={handleRefetch} loading={loadingMessages}>
+                        {!loadingMessages && <RefreshCw aria-hidden="true" />}
+                        Recharger les messages
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  <p>LinkedIn n'a pas renvoyé les messages de cette conversation. Voici le dernier message connu :</p>
+                  <div
+                    className={cn(
+                      'mt-4 inline-block max-w-full rounded-xl px-4 py-3 text-left text-sm leading-relaxed',
                       selectedChat.last_message.is_sender
-                        ? "bg-foreground text-background rounded-br-sm"
-                        : "bg-muted text-foreground rounded-bl-sm"
-                    )}>
-                      <p className="whitespace-pre-wrap break-words">
-                        {selectedChat.last_message.text || selectedChat.last_message.text_content}
-                      </p>
-                      {selectedChat.last_message.timestamp && (
-                        <p className="text-[10px] text-muted-foreground/70 mt-1">
-                          {formatMessageTime(selectedChat.last_message.timestamp)}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRefetch}
-                      disabled={loadingMessages}
-                      className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
-                    >
-                      {loadingMessages ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : null}
-                      <span>Recharger les messages</span>
-                    </button>
-                  </>
-                ) : autoSyncing ? (
-                  <>
-                    <p className="text-base font-medium text-foreground/80 inline-flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Synchronisation de l'historique…
-                    </p>
-                    <p className="text-sm text-muted-foreground/70 mt-1 mb-3">
-                      LinkedIn récupère les messages de cette conversation. Ça peut prendre quelques secondes.
-                    </p>
-                    {/* Escape hatch : si le sync prend trop de temps,
-                        l'user peut forcer un refetch manuel (avec toast
-                        d'erreur explicite si fail). */}
-                    {onRefetchMessages && (
-                      <button
-                        type="button"
-                        onClick={handleRefetch}
-                        disabled={loadingMessages}
-                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background text-foreground hover:bg-accent transition-colors disabled:opacity-50"
-                      >
-                        <span>Forcer le rechargement</span>
-                      </button>
+                        ? 'rounded-br-md bg-foreground text-background'
+                        : 'rounded-bl-md bg-muted text-foreground',
                     )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-base font-medium text-foreground/80">Aucun message</p>
-                    <p className="text-sm text-muted-foreground/70 mt-1 mb-3">
-                      Cette conversation est vide ou LinkedIn n'a pas encore renvoyé l'historique.
+                  >
+                    <p className="whitespace-pre-wrap break-words">
+                      {selectedChat.last_message.text || selectedChat.last_message.text_content}
                     </p>
-                    {onRefetchMessages && (
-                      <button
-                        type="button"
-                        onClick={handleRefetch}
-                        disabled={loadingMessages}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
-                      >
-                        {loadingMessages ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : null}
-                        <span>Recharger les messages</span>
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
+                  </div>
+                  {selectedChat.last_message.timestamp && (
+                    <p className="mt-1 text-3xs tabular-nums text-muted-foreground">
+                      {formatMessageTime(selectedChat.last_message.timestamp)}
+                    </p>
+                  )}
+                </ThreadNotice>
+              ) : autoSyncing ? (
+                <ThreadNotice
+                  icon={<Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
+                  title="Synchronisation de l'historique"
+                  action={
+                    onRefetchMessages ? (
+                      <Button variant="outline" size="sm" onClick={handleRefetch} disabled={loadingMessages}>
+                        Forcer le rechargement
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  LinkedIn récupère les messages de cette conversation, ce qui peut prendre quelques secondes.
+                </ThreadNotice>
+              ) : (
+                <ThreadNotice
+                  icon={<MessageSquare className="h-5 w-5" aria-hidden="true" />}
+                  title="Aucun message"
+                  action={
+                    onRefetchMessages ? (
+                      <Button variant="outline" size="sm" onClick={handleRefetch} loading={loadingMessages}>
+                        {!loadingMessages && <RefreshCw aria-hidden="true" />}
+                        Recharger les messages
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  Cette conversation est vide, ou LinkedIn n'a pas encore renvoyé son historique.
+                </ThreadNotice>
+              )}
             </div>
           ) : (
             <div className="space-y-1">
               {timeline.map((item, idx) => {
-                // Date separator (sticky-like, entre groupes de jours)
                 if (item.kind === 'date') {
-                  return (
-                    <div
-                      key={`date-${item.date}`}
-                      className="flex items-center gap-3 my-6 px-2 select-none"
-                    >
-                      <div className="flex-1 h-px bg-border/60" />
-                      <span className="text-[11px] font-medium text-muted-foreground/70 px-2">
-                        {item.label}
-                      </span>
-                      <div className="flex-1 h-px bg-border/60" />
-                    </div>
-                  );
+                  return <DateSeparator key={`date-${item.date}`} label={item.label} />;
                 }
 
                 if (item.kind === 'event') {
@@ -1029,8 +1086,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 const msg = item.data;
                 const isSender = !!msg.is_sender;
 
-                // Détection groupage : message précédent du même expéditeur ?
-                // Skip les date separators et events dans la détection.
+                // Regroupement des messages consécutifs d'un même auteur
+                // (les séparateurs et les événements interrompent le groupe).
                 const prev = idx > 0 ? timeline[idx - 1] : null;
                 const prevIsSameSender =
                   prev?.kind === 'message' && !!prev.data.is_sender === isSender;
@@ -1038,35 +1095,28 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 const nextIsSameSender =
                   next?.kind === 'message' && !!next.data.is_sender === isSender;
 
-                // Border-radius modulaire selon position dans le groupe
                 const isFirstOfGroup = !prevIsSameSender;
                 const isLastOfGroup = !nextIsSameSender;
+                const canReact = !isSender && !!onAddReaction && msg.id != null;
+                const canDelete = isSender && !!onDeleteMessage && msg.id != null;
+                const reacting = isReacting && reactingMsgId === msg.id;
 
                 return (
-                  <motion.div
+                  <div
                     key={msg.id ?? idx}
-                    // Entrée spring par bulle : un message envoyé ou une
-                    // réponse qui arrive se pose au lieu d'apparaître d'un
-                    // coup. Au premier rendu du thread, toutes les bulles
-                    // montent ensemble (pas de stagger — resterait lourd sur
-                    // les longues conversations).
-                    initial={{ opacity: 0, y: 6, scale: 0.985 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 480, damping: 38, mass: 0.7 }}
                     className={cn(
-                      'flex group/msg relative',
+                      'group/msg flex items-end gap-2',
                       isSender ? 'justify-end' : 'justify-start',
-                      // Espacement plus large entre groupes différents
                       isFirstOfGroup && idx > 0 && 'mt-4',
                     )}
                   >
-                    {/* Avatar à gauche pour messages reçus, uniquement sur le LAST of group */}
+                    {/* Avatar du candidat, sur le dernier message du groupe */}
                     {!isSender && (
-                      <div className="w-8 h-8 mr-2 shrink-0">
+                      <div className="h-8 w-8 shrink-0">
                         {isLastOfGroup && (
-                          <Avatar className="w-8 h-8 rounded-full ring-1 ring-border">
-                            <AvatarImage src={avatar} className="rounded-full" />
-                            <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground text-[10px] font-semibold rounded-full">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={avatar} alt="" />
+                            <AvatarFallback className="text-3xs font-semibold text-foreground-secondary">
                               {getInitials(displayName)}
                             </AvatarFallback>
                           </Avatar>
@@ -1074,54 +1124,47 @@ export const MessageView: React.FC<MessageViewProps> = ({
                       </div>
                     )}
 
-                    {/* Bulles : 85% sur mobile, 75% sur md+ — utilise mieux
-                        la largeur sur grand écran tout en gardant un asymétrie
-                        gauche/droite lisible. min-w-0 pour permettre le shrink. */}
-                    <div className="relative max-w-[85%] md:max-w-[75%] min-w-0">
+                    {/* Supprimer (message envoyé) */}
+                    {canDelete && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => setDeleteMsgConfirm(msg.id)}
+                            aria-label="Supprimer ce message"
+                            className={MESSAGE_ACTION}
+                          >
+                            <Trash2 aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Supprimer ce message</TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {/* Bulle : 85 % de large au plus sur téléphone, 75 % au-delà */}
+                    <div className={cn('flex min-w-0 max-w-[85%] flex-col md:max-w-[75%]', isSender ? 'items-end' : 'items-start')}>
                       <div
                         className={cn(
-                          'px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-shadow',
-                          'group-hover/msg:shadow-md min-w-0 overflow-hidden',
+                          'min-w-0 max-w-full overflow-hidden rounded-xl px-4 py-2.5 text-sm leading-relaxed',
+                          isSender ? 'bg-foreground text-background' : 'bg-muted text-foreground',
                           isSender
-                            ? 'bg-foreground text-background'
-                            : 'bg-muted text-foreground',
-                          // Border radius modulaire selon group position
-                          isSender
-                            ? cn(
-                                'rounded-2xl',
-                                isFirstOfGroup && 'rounded-tr-md',
-                                isLastOfGroup && 'rounded-br-md',
-                              )
-                            : cn(
-                                'rounded-2xl',
-                                isFirstOfGroup && 'rounded-tl-md',
-                                isLastOfGroup && 'rounded-bl-md',
-                              ),
+                            ? cn(isFirstOfGroup && 'rounded-tr-md', isLastOfGroup && 'rounded-br-md')
+                            : cn(isFirstOfGroup && 'rounded-tl-md', isLastOfGroup && 'rounded-bl-md'),
                         )}
                       >
-                        {/* overflow-wrap:anywhere force le wrap même pour les
-                            URLs/strings longs sans espace. break-words seul
-                            ne suffit pas pour les URLs ultra-longues. */}
+                        {/* overflow-wrap: anywhere coupe aussi les adresses longues sans espace */}
                         <p
-                          className={cn(
-                            "whitespace-pre-wrap break-words text-pretty",
-                            // Italic + dim pour les placeholders (pièce jointe,
-                            // message supprimé) pour les distinguer du texte réel.
-                            !getMessageText(msg) && "italic opacity-75",
-                          )}
+                          className={cn('whitespace-pre-wrap break-words text-pretty', !getMessageText(msg) && 'italic')}
                           style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                         >
                           {getMessageDisplayText(msg)}
                         </p>
                       </div>
 
-                      {/* Réactions sur le message — affichées juste sous la
-                          bulle, groupées par emoji avec count si > 1 */}
+                      {/* Réactions reçues, groupées par emoji */}
                       {msg.reactions && msg.reactions.length > 0 && (
-                        <div className={cn(
-                          "flex gap-1 mt-1 flex-wrap",
-                          isSender ? "justify-end" : "justify-start",
-                        )}>
+                        <div className={cn('mt-1 flex flex-wrap gap-1', isSender ? 'justify-end' : 'justify-start')}>
                           {Object.entries(
                             msg.reactions.reduce<Record<string, number>>((acc, r) => {
                               const emoji = r.value || r.reaction || '';
@@ -1132,81 +1175,91 @@ export const MessageView: React.FC<MessageViewProps> = ({
                           ).map(([emoji, count]) => (
                             <span
                               key={emoji}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-background border border-border rounded-full shadow-sm"
+                              className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-xs"
                             >
                               <span>{emoji}</span>
                               {count > 1 && (
-                                <span className="text-[10px] text-muted-foreground tabular-nums font-medium">
-                                  {count}
-                                </span>
+                                <span className="text-3xs font-medium tabular-nums text-muted-foreground">{count}</span>
                               )}
                             </span>
                           ))}
                         </div>
                       )}
 
-                      {/* Timestamp + read receipts UNIQUEMENT sur le last of group */}
+                      {/* Heure et accusé de lecture, sur le dernier message du groupe */}
                       {isLastOfGroup && (
                         <div
                           className={cn(
-                            'flex items-center gap-1 mt-1 px-1 text-[10.5px] text-muted-foreground/80',
+                            'mt-1 flex items-center gap-1 px-1 text-3xs text-muted-foreground',
                             isSender ? 'justify-end' : 'justify-start',
                           )}
                         >
                           <span className="tabular-nums">{formatMessageTime(msg.timestamp)}</span>
                           {isSender && (msg.read || msg.seen === 1 ? (
-                            <CheckCheck className="w-3 h-3 text-foreground/70" />
+                            <span title="Lu" className="inline-flex">
+                              <CheckCheck className="h-3 w-3 text-foreground-secondary" aria-hidden="true" />
+                              <span className="sr-only">Lu</span>
+                            </span>
                           ) : msg.delivered ? (
-                            <Check className="w-3 h-3 text-muted-foreground/60" />
+                            <span title="Distribué" className="inline-flex">
+                              <Check className="h-3 w-3" aria-hidden="true" />
+                              <span className="sr-only">Distribué</span>
+                            </span>
                           ) : (
-                            <Clock className="w-3 h-3 text-muted-foreground/40" />
+                            <span title="Envoi en cours" className="inline-flex">
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                              <span className="sr-only">Envoi en cours</span>
+                            </span>
                           ))}
                         </div>
-                      )}
-
-                      {/* Reactions au hover (received only) */}
-                      {!isSender && onAddReaction && msg.id != null && (
-                        <div
-                          className={cn(
-                            'absolute opacity-0 group-hover/msg:opacity-100 transition-opacity z-10',
-                            'flex gap-0.5 bg-background border border-border px-1 py-0.5 rounded-full shadow-md',
-                            '-bottom-3 left-2',
-                          )}
-                        >
-                          {REACTION_EMOJIS.map(emoji => (
-                            <button
-                              key={emoji}
-                              disabled={isReacting && reactingMsgId === msg.id}
-                              onClick={async () => {
-                                setReactingMsgId(msg.id);
-                                await onAddReaction(msg.id, emoji);
-                                setReactingMsgId(null);
-                              }}
-                              className="h-7 w-7 grid place-items-center text-base hover:bg-accent rounded-full transition-colors disabled:opacity-50"
-                              aria-label={`Réagir avec ${emoji}`}
-                            >
-                              {isReacting && reactingMsgId === msg.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                emoji
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Delete (sent only) au hover */}
-                      {isSender && onDeleteMessage && msg.id != null && (
-                        <button
-                          onClick={() => setDeleteMsgConfirm(msg.id)}
-                          className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 grid place-items-center bg-destructive text-destructive-foreground shadow-md hover:bg-destructive/80 rounded-full"
-                          aria-label="Supprimer ce message"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
                       )}
                     </div>
-                  </motion.div>
+
+                    {/* Réagir (message reçu) */}
+                    {canReact && (
+                      <Popover
+                        open={reactionPickerMsgId === msg.id}
+                        onOpenChange={(open) => setReactionPickerMsgId(open ? msg.id : null)}
+                      >
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label="Réagir au message"
+                                disabled={reacting}
+                                className={MESSAGE_ACTION}
+                              >
+                                {reacting ? (
+                                  <Loader2 className="animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <SmilePlus aria-hidden="true" />
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>Réagir au message</TooltipContent>
+                        </Tooltip>
+                        <PopoverContent side="top" align="start" className="w-auto p-1">
+                          <div className="flex gap-0.5" role="group" aria-label="Réactions">
+                            {LINKEDIN_REACTIONS.map(({ emoji, label }) => (
+                              <Button
+                                key={emoji}
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 text-base md:h-9 md:w-9"
+                                onClick={() => void handleReaction(msg.id, emoji)}
+                                aria-label={`Réagir : ${label}`}
+                              >
+                                {emoji}
+                              </Button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
                 );
               })}
               <div ref={messagesEndRef} />
@@ -1215,7 +1268,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* ROW 3 — COMPOSER + Smart Replies + AI panel optionnel */}
+      {/* RANGÉE 3 : suggestions, panneau IA et composeur */}
       <div>
         {aiPanelOpen && (
           <div className="max-h-[40vh] overflow-y-auto border-t border-border">
@@ -1226,15 +1279,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
               chatId={selectedChat.id}
               accountId={selectedChat.account_id}
               onSuggestionSelect={(text) => onSuggestionClick(text)}
-              onSuggestionSend={(text) => onSuggestionSend(text)}
               onAddToPipeline={onAddToPipeline}
-              sending={sending}
             />
           </div>
         )}
-        {/* Smart Replies — quick suggestions style Gmail. Affiché si on a
-            des suggestions ET que le panel n'est pas déjà ouvert (pour
-            éviter la redondance). */}
+        {/* Suggestions rapides, tant que le panneau IA est fermé */}
         {!aiPanelOpen && replySuggestions.length > 0 && (
           <SmartReplies
             suggestions={replySuggestions}
@@ -1248,11 +1297,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
           onSend={onSendMessage}
           sending={sending}
           onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
+          aiPanelOpen={aiPanelOpen}
           hasAISuggestions={replySuggestions.length > 0}
           aiSuggestionsCount={replySuggestions.length}
           onScheduleCall={onScheduleCall}
           hasCalendlyLink={!!calendlyLink}
-          channel={channel?.toUpperCase()}
+          channel={channelLabel(channel)}
+          draftSaved={hasDraft}
           placeholderContext={buildPlaceholderContext({
             chat: selectedChat,
             messages,
@@ -1268,8 +1319,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             calendlyLink,
             customVariables: customVariablesMap(),
           })}
-          // Données pour le bouton "Réponse + CTA" (mémoïsées plus haut
-          // pour éviter les re-renders du composer à chaque keystroke).
+          // Données de « Proposer une suite » (mémoïsées plus haut)
           ctaChatHistory={ctaChatHistory}
           ctaCandidateName={selectedChat ? getChatDisplayName(selectedChat) : undefined}
           ctaRecruiterName={ctaRecruiterName}
@@ -1280,21 +1330,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
         />
       </div>
 
-      {/* Delete confirmation dialog */}
+      {/* Supprimer un message */}
       <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer ce message ?</AlertDialogTitle>
             <AlertDialogDescription>
-              LinkedIn : la suppression n'est possible que dans les 60 premières minutes
-              après l'envoi. Cette action est irréversible.
+              LinkedIn n'autorise la suppression que dans les 60 minutes qui suivent l'envoi. Cette action est
+              irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               disabled={isDeleting}
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (deleteMsgConfirm && onDeleteMessage) {
                   await onDeleteMessage(deleteMsgConfirm);
@@ -1302,71 +1352,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 }
               }}
             >
-              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Supprimer
+              Supprimer le message
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Stop sequence confirmation dialog */}
-      <AlertDialog open={stopSeqConfirm} onOpenChange={(open) => !open && setStopSeqConfirm(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Arrêter la séquence ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Toutes les actions programmées pour ce candidat (relances, InMails, emails) seront annulées.
-              Tu pourras reprendre la séquence depuis l'écran de gestion outreach si besoin.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={stoppingSeq}
-              onClick={handleStopSequence}
-            >
-              {stoppingSeq ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <StopCircle className="w-4 h-4 mr-2" />}
-              Arrêter la séquence
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
-  );
-};
-
-/**
- * SequenceStatusBadge — petit badge coloré qui rend visible l'état de
- * l'enrollment du candidat dans la séquence outreach. Affiché dans le
- * header de la conversation à côté du nom.
- *
- * Statuts possibles :
- *  - active     : candidat en cours de séquence (étapes pas encore toutes envoyées)
- *  - replied    : a répondu (la séquence s'arrête automatiquement)
- *  - paused     : en pause (raison: crédits InMail = 0, profil bloqué 403, etc.)
- *  - completed  : toutes les étapes ont été exécutées
- *  - cancelled / stopped : interrompu manuellement
- */
-const SequenceStatusBadge: React.FC<{ status: string; repliedAt: string | null }> = ({ status, repliedAt }) => {
-  // Si répondu, override le statut pour l'affichage (même si le DB dit "active")
-  const effectiveStatus = repliedAt ? 'replied' : status;
-  const config: Record<string, { label: string; className: string }> = {
-    active: { label: 'En séquence', className: 'bg-info/10 text-info border-info/30' },
-    replied: { label: '✓ A répondu', className: 'bg-success/10 text-success border-success/30' },
-    paused: { label: '⏸ En pause', className: 'bg-warning/10 text-warning border-warning/30' },
-    completed: { label: 'Terminé', className: 'bg-muted/40 text-muted-foreground border-border' },
-    cancelled: { label: 'Annulé', className: 'bg-destructive/10 text-destructive border-destructive/30' },
-    stopped: { label: 'Stoppé', className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  };
-  const cfg = config[effectiveStatus] || config.active;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md border whitespace-nowrap',
-        cfg.className,
-      )}
-    >
-      {cfg.label}
-    </span>
   );
 };

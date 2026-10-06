@@ -39,48 +39,24 @@ export interface IntentInfo {
   isStale?: boolean;
 }
 
+/**
+ * Libellé et ton de badge d'une intention (variante de `Badge` : fond teinté,
+ * texte de la couleur du statut, lisible dans les deux thèmes ; revue design
+ * D-04). Le mot porte l'information, la couleur ne fait que la doubler.
+ */
 export interface ChatIntentMetadata {
-  emoji: string;
   label: string;
-  color: string;
+  tone: 'success' | 'warning' | 'info' | 'danger' | 'muted';
 }
 
 export const INTENT_META: Record<ChatIntent, ChatIntentMetadata> = {
-  interested: {
-    emoji: '🟢',
-    label: 'Intéressé',
-    color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  },
-  not_interested: {
-    emoji: '🔴',
-    label: 'Décline',
-    color: 'bg-red-500/10 text-red-700 dark:text-red-400',
-  },
-  needs_info: {
-    emoji: '💬',
-    label: 'Demande info',
-    color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
-  },
-  wants_call: {
-    emoji: '📞',
-    label: 'Veut appel',
-    color: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
-  },
-  timing_issue: {
-    emoji: '⏰',
-    label: 'Timing pas bon',
-    color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-  },
-  already_placed: {
-    emoji: '🚫',
-    label: 'Déjà placé',
-    color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400',
-  },
-  neutral: {
-    emoji: '⚪',
-    label: 'Neutre',
-    color: 'bg-muted/40 text-muted-foreground',
-  },
+  interested: { label: 'Intéressé', tone: 'success' },
+  not_interested: { label: 'Décline', tone: 'danger' },
+  needs_info: { label: "Demande d'infos", tone: 'info' },
+  wants_call: { label: 'Veut un appel', tone: 'success' },
+  timing_issue: { label: 'Pas le bon moment', tone: 'warning' },
+  already_placed: { label: 'Déjà placé', tone: 'muted' },
+  neutral: { label: 'Neutre', tone: 'muted' },
 };
 
 export function useChatIntents(chats: Chat[], accountId: string | null) {

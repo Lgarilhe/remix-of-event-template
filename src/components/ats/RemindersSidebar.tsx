@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { 
-  X, 
-  Bell, 
-  Clock, 
-  CheckCircle2, 
-  Loader2,
-  Plus
-} from 'lucide-react';
+/**
+ * Panneau « Rappels » du pipeline global : un panneau latéral (Sheet), plein
+ * écran sous 768 px, au lieu d'une colonne insérée à côté des colonnes
+ * (revue design E-21). Une lecture en échec s'affiche comme une erreur avec
+ * « Réessayer », jamais comme une liste vide (E-44).
+ */
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { format, isPast, isToday, isTomorrow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Bell, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { EmptyState, ErrorState } from '@/components/layout';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 interface Reminder {
   id: string;
@@ -30,20 +32,33 @@ interface Reminder {
 }
 
 interface RemindersSidebarProps {
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onReminderClick: (candidateId: string) => void;
 }
 
-export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
-  onClose,
-  onReminderClick,
-}) => {
+/** « Aujourd'hui à 14:30 », « Demain à 9:00 », « 22 sept. à 11:29 » (comme la page Tâches). */
+function dueLabelOf(dueAt: string): string {
+  try {
+    const d = parseISO(dueAt);
+    const time = format(d, 'HH:mm');
+    if (isToday(d)) return `Aujourd'hui à ${time}`;
+    if (isTomorrow(d)) return `Demain à ${time}`;
+    return format(d, "d MMM 'à' HH:mm", { locale: fr });
+  } catch {
+    return 'Date inconnue';
+  }
+}
+
+export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({ open, onOpenChange, onReminderClick }) => {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
 
-  const fetchReminders = async () => {
+  const fetchReminders = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       let query = supabase
         .from('candidate_reminders')
@@ -60,20 +75,20 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
       setReminders(data || []);
     } catch (error) {
       console.error('Error fetching reminders:', error);
-      toast.error('Erreur lors du chargement des rappels');
+      setLoadError(error instanceof Error ? error.message : 'Lecture des rappels impossible');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showCompleted]);
 
   useEffect(() => {
-    fetchReminders();
-  }, [showCompleted]);
+    if (open) void fetchReminders();
+  }, [open, fetchReminders]);
 
   const toggleComplete = async (reminder: Reminder) => {
     try {
       const newCompletedAt = reminder.completed_at ? null : new Date().toISOString();
-      
+
       const { error } = await supabase
         .from('candidate_reminders')
         .update({ completed_at: newCompletedAt })
@@ -81,147 +96,122 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
 
       if (error) throw error;
 
-      setReminders(prev => prev.map(r => 
+      setReminders(prev => prev.map(r =>
         r.id === reminder.id ? { ...r, completed_at: newCompletedAt } : r
       ));
 
-      toast.success(newCompletedAt ? 'Rappel terminé' : 'Rappel réactivé');
+      toast.success(
+        newCompletedAt
+          ? `Rappel «\u00a0${reminder.title}\u00a0» marqué comme fait`
+          : `Rappel «\u00a0${reminder.title}\u00a0» rouvert`,
+      );
     } catch (error) {
       console.error('Error updating reminder:', error);
-      toast.error('Erreur lors de la mise à jour');
+      toast.error("Le rappel n'a pas pu être mis à jour. Réessayez.");
     }
   };
 
-  const getDueDateLabel = (dueAt: string) => {
-    const date = parseISO(dueAt);
-    
-    if (isPast(date) && !isToday(date)) {
-      return { label: 'En retard', className: 'bg-destructive/10 text-destructive' };
-    }
-    if (isToday(date)) {
-      return { label: "Aujourd'hui", className: 'bg-warning/10 text-warning' };
-    }
-    if (isTomorrow(date)) {
-      return { label: 'Demain', className: 'bg-info/10 text-info' };
-    }
-    return {
-      label: format(date, 'd MMM', { locale: fr }),
-      className: 'bg-muted text-foreground'
-    };
-  };
+  const completedId = 'reminders-show-completed';
 
   return (
-    <div className="w-80 bg-background rounded-xl border border-border flex-shrink-0 overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Bell className="w-5 h-5 text-warning" />
-          <h3 className="font-semibold text-foreground">Rappels</h3>
-        </div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fermer les rappels">
-          <X className="w-4 h-4" aria-hidden="true" />
-        </Button>
-      </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-full max-w-none flex-col gap-0 p-0 md:max-w-sm">
+        <SheetHeader className="space-y-1 border-b border-border px-5 py-4 pr-14 text-left">
+          <SheetTitle>Rappels</SheetTitle>
+          <SheetDescription>Les rappels posés sur vos candidats, par échéance.</SheetDescription>
+        </SheetHeader>
 
-      {/* Filters */}
-      <div className="px-4 py-2 border-b border-border">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <Checkbox 
+        <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+          <Checkbox
+            id={completedId}
             checked={showCompleted}
-            onCheckedChange={(checked) => setShowCompleted(!!checked)}
+            onCheckedChange={(checked) => setShowCompleted(checked === true)}
           />
-          <span className="text-sm text-muted-foreground">Afficher terminés</span>
-        </label>
-      </div>
+          <label htmlFor={completedId} className="cursor-pointer text-sm text-foreground-secondary">
+            Afficher les rappels terminés
+          </label>
+        </div>
 
-      {/* Reminders list */}
-      <ScrollArea className="h-[500px]">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : reminders.length === 0 ? (
-          <div className="text-center py-12 px-4">
-            <Bell className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground">
-              {showCompleted ? 'Aucun rappel' : 'Aucun rappel en attente'}
-            </p>
-          </div>
-        ) : (
-          <div className="p-2 space-y-2">
-            {reminders.map(reminder => {
-              const dueDateInfo = getDueDateLabel(reminder.due_at);
-              const isCompleted = !!reminder.completed_at;
-              
-              return (
-                <div
-                  key={reminder.id}
-                  role="button"
-                  tabIndex={0}
-                  className={`
-                    p-3 rounded-lg border transition-all cursor-pointer
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
-                    ${isCompleted
-                      ? 'bg-muted border-border opacity-60'
-                      : 'bg-background border-border hover:border-border'
-                    }
-                  `}
-                  onClick={() => onReminderClick(reminder.candidate_id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onReminderClick(reminder.candidate_id);
-                    }
-                  }}
-                >
-                  <div className="flex items-start gap-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <div className="space-y-2" role="status" aria-label="Chargement des rappels">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3 rounded-lg border border-border p-3">
+                  <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4 rounded-sm" />
+                    <Skeleton className="h-3 w-1/2 rounded-sm" />
+                    <Skeleton className="h-3 w-1/3 rounded-sm" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : loadError ? (
+            <ErrorState
+              variant="compact"
+              title="Impossible de charger les rappels"
+              description="Vérifiez votre connexion, puis réessayez. Vos rappels ne sont pas perdus."
+              detail={loadError}
+              onRetry={() => void fetchReminders()}
+            />
+          ) : reminders.length === 0 ? (
+            <EmptyState
+              variant="compact"
+              icon={Bell}
+              title={showCompleted ? 'Aucun rappel' : 'Aucun rappel en attente'}
+              description={"Posez un rappel depuis la fiche d'un candidat\u00a0: il apparaîtra ici et dans vos tâches."}
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/tasks">Ouvrir les tâches</Link>
+                </Button>
+              }
+            />
+          ) : (
+            <ul className="space-y-2">
+              {reminders.map(reminder => {
+                const isCompleted = !!reminder.completed_at;
+                const due = parseISO(reminder.due_at);
+                const overdue = !isCompleted && isPast(due) && !isToday(due);
+                return (
+                  <li key={reminder.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
                     <Checkbox
                       checked={isCompleted}
                       onCheckedChange={() => toggleComplete(reminder)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-0.5"
+                      aria-label={isCompleted ? `Rouvrir le rappel « ${reminder.title} »` : `Marquer le rappel « ${reminder.title} » comme fait`}
+                      className="mt-0.5 after:absolute after:-inset-3.5 relative"
                     />
-                    
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`font-medium text-sm ${isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                          {reminder.title}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => onReminderClick(reminder.candidate_id)}
+                      className="block h-auto min-w-0 flex-1 whitespace-normal rounded-md p-0 text-left font-normal hover:bg-transparent active:scale-100 [&_svg]:size-3"
+                    >
+                      <span className={cn('block text-sm font-medium', isCompleted ? 'text-muted-foreground line-through' : 'text-foreground')}>
+                        {reminder.title}
+                      </span>
+                      {(reminder.candidate_name || reminder.job_title) && (
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {[reminder.candidate_name, reminder.job_title].filter(Boolean).join(' · ')}
                         </span>
-                      </div>
-                      
-                      {reminder.candidate_name && (
-                        <p className="text-xs text-muted-foreground mb-1">
-                          {reminder.candidate_name}
-                        </p>
                       )}
-                      
-                      {reminder.job_title && (
-                        <p className="text-xs text-muted-foreground mb-2">
-                          {reminder.job_title}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <Badge className={`text-xs px-1.5 py-0 ${dueDateInfo.className}`}>
-                          <Clock className="w-2.5 h-2.5 mr-1" />
-                          {dueDateInfo.label}
-                        </Badge>
-                        
-                        {isCompleted && (
-                          <Badge variant="outline" className="text-xs px-1.5 py-0 text-success">
-                            <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
-                            Terminé
-                          </Badge>
+                      <span
+                        className={cn(
+                          'mt-1.5 inline-flex items-center gap-1 text-xs tabular-nums',
+                          overdue ? 'font-medium text-danger' : 'text-muted-foreground',
                         )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </ScrollArea>
-    </div>
+                      >
+                        <Clock className="h-3 w-3" aria-hidden="true" />
+                        {overdue && 'En retard · '}
+                        {dueLabelOf(reminder.due_at)}
+                      </span>
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 };

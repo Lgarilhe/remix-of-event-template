@@ -39,3 +39,16 @@ export const E2E = {
 export function authStorageKey(): string {
   return `sb-${E2E.projectRef}-auth-token`;
 }
+
+/**
+ * Interrupteur de la nouvelle page mission (src/lib/missionBeta.ts) : allumé
+ * par défaut. Les états de session posent « 0 » (ancienne page) pour que les
+ * specs écrites contre l'ancienne page (séquences, Sourcing, Pipeline par
+ * ?tab=) gardent leur cible ; mission-v3.spec.ts choisit la valeur par test.
+ */
+export const MISSION_V3_STORAGE_KEY = 'konekt.mission-v3';
+export type MissionPageChoice = 'legacy' | 'default' | 'v3';
+export function missionPageEntries(choice: MissionPageChoice = 'legacy'): Array<{ name: string; value: string }> {
+  if (choice === 'default') return [];
+  return [{ name: MISSION_V3_STORAGE_KEY, value: choice === 'v3' ? '1' : '0' }];
+}

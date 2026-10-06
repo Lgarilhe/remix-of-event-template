@@ -15,9 +15,17 @@
  *    Verdict ✅ / ⚠️ / ❌ / ? résolu via fallback :
  *      criteriaEvaluations → matching_skills → missing_skills → unknown
  *  - Persistance des colonnes en localStorage avec clé v2 (reset des défauts).
+ *
+ * Disposition « mission-v3 » (design simplifié, 04/10/2026) : sans cadre, texte
+ * de 14 px, visage et titre sous le nom, note en anneau, cellules vides laissées
+ * vides (aucun tiret), colonnes par défaut réduites au nom, au lieu, à
+ * l'expérience et à la note (les critères du poste s'ajoutent par « Colonnes »),
+ * pied de tableau supprimé. Le choix de colonnes d'une personne est
+ * gardé : ce défaut ne vaut que pour qui n'a rien choisi, et s'écrit dans une
+ * clé à part (v3) pour ne pas toucher le rendu de l'ancienne page.
  */
 
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { LinkedInProfile } from '../types';
 import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
@@ -25,6 +33,9 @@ import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
+import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem,
@@ -70,6 +81,8 @@ interface CompactResultsTableProps {
   onArchive?: (profile: LinkedInProfile) => void;
   /** Clé localStorage pour persister la visibilité des colonnes (souvent jobId) */
   storageKey?: string;
+  /** Nouvelle page mission : tableau sans cadre, colonnes réduites par défaut (voir l'en-tête). */
+  variant?: 'default' | 'mission-v3';
 }
 
 type ColumnSection = 'profil' | 'signals' | 'contact' | 'network' | 'experience' | 'education' | 'skills' | 'status' | 'criteres' | 'actions';
@@ -102,6 +115,38 @@ const SECTION_LABELS: Record<ColumnSection, string> = {
   criteres: '🎯 Critères du poste',
   actions: '⚙️',
 };
+
+/** Mêmes sections, sans emoji, pour la nouvelle page mission. */
+const SECTION_LABELS_V3: Record<ColumnSection, string> = {
+  profil: 'Profil',
+  signals: 'Signaux LinkedIn',
+  contact: 'Contact',
+  network: 'Réseau',
+  experience: 'Expériences',
+  education: 'Formation',
+  skills: 'Compétences',
+  status: 'Statut Konekt',
+  criteres: 'Critères du poste',
+  actions: 'Actions',
+};
+
+/** Colonnes montrées par défaut sur la nouvelle page, pour qui n'a rien choisi. */
+const V3_DEFAULT_COLUMNS: ReadonlySet<string> = new Set(['name', 'location', 'years_exp', 'score', 'actions']);
+
+/**
+ * Nouvelle page, téléphone : lieu et expérience ne sont jamais en colonne, pour que le nom, la note et le menu de
+ * la ligne tiennent à l'écran. Les colonnes que la personne ajoute s'affichent, le menu de la ligne reste collé à droite.
+ */
+const V3_PHONE_HIDDEN: ReadonlySet<string> = new Set(['location', 'years_exp']);
+
+/** Largeur de la colonne du menu de la ligne (nouvelle page) : collée à droite, sur toute la largeur de l'écran. */
+const V3_ACTIONS_WIDTH = 'w-14 min-w-14';
+
+/** Cellule vide de l'ancienne page ; la nouvelle page n'écrit rien. */
+const DASH = <span className="text-muted-foreground/30">—</span>;
+
+/** Zone de toucher de 44 px autour d'une case de 16 px, sur téléphone. */
+const TAP_CHECKBOX = 'relative before:absolute before:-inset-3.5 sm:before:hidden';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -311,7 +356,7 @@ function resolveVerdict(criterion: CriterionDef, score: JobMatchResult | undefin
   return { verdict: 'unknown' };
 }
 
-const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string }> = ({ verdict, label, reason }) => {
+const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string; plain?: boolean }> = ({ verdict, label, reason, plain = false }) => {
   if (verdict === 'pass') {
     return (
       <Tooltip>
@@ -321,7 +366,7 @@ const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string }
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
-          <p className="text-xs font-bold">{label} ✓</p>
+          <p className="text-xs font-bold">{plain ? `${label} : validé` : `${label} ✓`}</p>
           {reason && <p className="text-xs text-muted-foreground mt-0.5">{reason}</p>}
         </TooltipContent>
       </Tooltip>
@@ -336,7 +381,7 @@ const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string }
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
-          <p className="text-xs font-bold">{label} (partiel)</p>
+          <p className="text-xs font-bold">{plain ? `${label} : partiel` : `${label} (partiel)`}</p>
           {reason && <p className="text-xs text-muted-foreground mt-0.5">{reason}</p>}
         </TooltipContent>
       </Tooltip>
@@ -351,7 +396,7 @@ const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string }
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
-          <p className="text-xs font-bold">{label} ✗</p>
+          <p className="text-xs font-bold">{plain ? `${label} : non validé` : `${label} ✗`}</p>
           {reason && <p className="text-xs text-muted-foreground mt-0.5">{reason}</p>}
         </TooltipContent>
       </Tooltip>
@@ -365,18 +410,18 @@ const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string }
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">
-        <p className="text-xs">{label} — non évalué (lancer le scoring)</p>
+        <p className="text-xs">{plain ? `${label} : non évalué, notez le profil pour l'évaluer` : <>{label} — non évalué (lancer le scoring)</>}</p>
       </TooltipContent>
     </Tooltip>
   );
 };
 
-const FlagIcon: React.FC<{ active: boolean | undefined; label: string; emoji?: string }> = ({ active, label, emoji = '✓' }) => {
-  if (!active) return <span className="text-muted-foreground/30">—</span>;
+const FlagIcon: React.FC<{ active: boolean | undefined; label: string; emoji?: string; empty?: React.ReactNode }> = ({ active, label, emoji = '✓', empty = DASH }) => {
+  if (!active) return <>{empty}</>;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center justify-center w-5 h-5 bg-success/15 text-success rounded-sm text-[10px] font-bold" aria-label={label}>{emoji}</span>
+        <span className="inline-flex items-center justify-center w-5 h-5 bg-success/15 text-success rounded-sm text-2xs font-bold" aria-label={label}>{emoji}</span>
       </TooltipTrigger>
       <TooltipContent side="top">
         <p className="text-xs">{label}</p>
@@ -403,8 +448,8 @@ function fmtIndustry(ind: any): string | null {
   return String(ind);
 }
 
-const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
-  if (!exp) return <span className="text-muted-foreground/30">—</span>;
+const ExperienceCell: React.FC<{ exp: any | undefined; empty?: React.ReactNode }> = ({ exp, empty = DASH }) => {
+  if (!exp) return <>{empty}</>;
   const role = exp.role || exp.position || '';
   const company = exp.company || '';
   const start = fmtYearMonth(exp.start);
@@ -481,14 +526,14 @@ const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
         {/* Description société */}
         {exp.company_description && (
           <div className="px-3 py-2 border-b border-border bg-background">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{exp.company_description}</p>
           </div>
         )}
 
         {/* Détails du poste */}
         <div className="p-3 bg-background">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1.5">Poste occupé</p>
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1.5">Poste occupé</p>
           <p className="text-sm font-medium text-foreground">{role || '—'}</p>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
             <CalendarDays className="w-3 h-3" aria-hidden="true" />
@@ -503,8 +548,8 @@ const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
   );
 };
 
-const EducationCell: React.FC<{ edu: any | undefined }> = ({ edu }) => {
-  if (!edu) return <span className="text-muted-foreground/30">—</span>;
+const EducationCell: React.FC<{ edu: any | undefined; empty?: React.ReactNode }> = ({ edu, empty = DASH }) => {
+  if (!edu) return <>{empty}</>;
   const school = edu.school || edu.school_details?.name || '';
   const degree = edu.degree || '';
   const field = edu.field_of_study || '';
@@ -582,14 +627,14 @@ const EducationCell: React.FC<{ edu: any | undefined }> = ({ edu }) => {
         {/* Description école */}
         {schoolDescription && (
           <div className="px-3 py-2 border-b border-border bg-background">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{schoolDescription}</p>
           </div>
         )}
 
         {/* Détails du diplôme */}
         <div className="p-3 bg-background space-y-1.5">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">Cursus</p>
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold">Cursus</p>
           {degree && (
             <div className="flex items-start gap-1.5 text-xs">
               <BookOpen className="w-3 h-3 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />
@@ -635,7 +680,11 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
   onOpenDetail,
   onArchive,
   storageKey,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
+  const empty: React.ReactNode = isV3 ? null : DASH;
+  const sectionLabels = isV3 ? SECTION_LABELS_V3 : SECTION_LABELS;
   const [sortBy, setSortBy] = useState<{ id: string; dir: 'asc' | 'desc' } | null>({ id: 'score', dir: 'desc' });
 
   // ─── Critères du poste (canonical list) ────────────────────────────────────
@@ -649,21 +698,21 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
     const cols: ColumnConfig[] = [];
 
     // 👤 Profil — sticky avatar + nom
-    cols.push({ id: 'avatar', label: 'Avatar', section: 'profil', defaultVisible: true, sticky: true, minWidth: 40 });
+    if (!isV3) cols.push({ id: 'avatar', label: 'Photo', section: 'profil', defaultVisible: true, sticky: true, minWidth: 40 });
     cols.push({
       id: 'name', label: 'Nom', section: 'profil', defaultVisible: true, sticky: true, minWidth: 160,
       sortValue: (p) => (p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim()).toLowerCase(),
     });
     cols.push({
-      id: 'headline', label: 'Headline', section: 'profil', defaultVisible: true, minWidth: 220,
+      id: 'headline', label: 'Titre du profil', section: 'profil', defaultVisible: true, minWidth: 220,
       sortValue: (p) => (p.headline || '').toLowerCase(),
     });
     cols.push({
-      id: 'score', label: 'Score IA', section: 'profil', defaultVisible: true, minWidth: 70,
-      sortValue: (_, s) => s?.match_score ?? -1,
+      id: 'score', label: 'Note', section: 'profil', defaultVisible: true, minWidth: 70,
+      sortValue: (_, s, st) => s?.match_score ?? (isV3 ? st?.score : null) ?? -1,
     });
     cols.push({
-      id: 'recommendation', label: 'Reco', section: 'profil', defaultVisible: true, minWidth: 70,
+      id: 'recommendation', label: 'Avis', section: 'profil', defaultVisible: true, minWidth: 70,
       sortValue: (_, s) => s?.recommendation === 'go' ? 0 : s?.recommendation === 'maybe' ? 1 : s?.recommendation === 'skip' ? 2 : 3,
     });
     cols.push({
@@ -684,15 +733,15 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
     });
 
     // 🚦 Signaux LinkedIn
-    cols.push({ id: 'sig_open_to_work', label: 'Open to Work', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_to_work || p.is_open_to_work) ? 1 : 0 });
+    cols.push({ id: 'sig_open_to_work', label: 'À l\'écoute', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_to_work || p.is_open_to_work) ? 1 : 0 });
     cols.push({ id: 'sig_premium', label: 'Premium', section: 'signals', defaultVisible: false, minWidth: 70, sortValue: (p) => (p.premium || p.is_premium) ? 1 : 0 });
     cols.push({ id: 'sig_hiring', label: 'Recrute', section: 'signals', defaultVisible: false, minWidth: 70, sortValue: (p) => p.is_hiring ? 1 : 0 });
     cols.push({ id: 'sig_influencer', label: 'Influenceur', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => p.is_influencer ? 1 : 0 });
     cols.push({ id: 'sig_creator', label: 'Créateur', section: 'signals', defaultVisible: false, minWidth: 70, sortValue: (p) => p.is_creator ? 1 : 0 });
     cols.push({ id: 'sig_can_inmail', label: 'InMail', section: 'signals', defaultVisible: false, minWidth: 60, sortValue: (p) => p.can_send_inmail ? 1 : 0 });
-    cols.push({ id: 'sig_open_profile', label: 'Open profile', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_profile || p.is_open_profile) ? 1 : 0 });
+    cols.push({ id: 'sig_open_profile', label: 'Profil ouvert', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_profile || p.is_open_profile) ? 1 : 0 });
     cols.push({ id: 'sig_verified', label: 'Vérifié', section: 'signals', defaultVisible: false, minWidth: 60, sortValue: (p) => p.verified ? 1 : 0 });
-    cols.push({ id: 'sig_recently_hired', label: 'Recemt embauché', section: 'signals', defaultVisible: false, minWidth: 100, sortValue: (p) => p.recently_hired ? 1 : 0 });
+    cols.push({ id: 'sig_recently_hired', label: 'Récemment embauché', section: 'signals', defaultVisible: false, minWidth: 100, sortValue: (p) => p.recently_hired ? 1 : 0 });
 
     // 📞 Contact
     cols.push({ id: 'email', label: 'Email', section: 'contact', defaultVisible: false, minWidth: 180, sortValue: (p) => (getEmail(p) || '').toLowerCase() });
@@ -701,22 +750,22 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
 
     // 🌐 Network
     cols.push({ id: 'connections', label: 'Connexions', section: 'network', defaultVisible: false, minWidth: 80, sortValue: (p) => p.connections_count ?? 0 });
-    cols.push({ id: 'followers', label: 'Followers', section: 'network', defaultVisible: false, minWidth: 80, sortValue: (p) => p.followers_count ?? 0 });
-    cols.push({ id: 'shared_connections', label: 'Conn. partagées', section: 'network', defaultVisible: false, minWidth: 90, sortValue: (p) => p.shared_connections_count ?? 0 });
-    cols.push({ id: 'network_distance', label: 'Distance', section: 'network', defaultVisible: false, minWidth: 70, sortValue: (p) => Number(p.network_distance) || 9 });
+    cols.push({ id: 'followers', label: 'Abonnés', section: 'network', defaultVisible: false, minWidth: 80, sortValue: (p) => p.followers_count ?? 0 });
+    cols.push({ id: 'shared_connections', label: 'Relations communes', section: 'network', defaultVisible: false, minWidth: 90, sortValue: (p) => p.shared_connections_count ?? 0 });
+    cols.push({ id: 'network_distance', label: 'Degré', section: 'network', defaultVisible: false, minWidth: 70, sortValue: (p) => Number(p.network_distance) || 9 });
 
     // 💼 Expériences (XP totale + nb postes + XP 1..5)
     cols.push({
-      id: 'years_exp', label: 'Années XP', section: 'experience', defaultVisible: true, minWidth: 80,
+      id: 'years_exp', label: 'Expérience', section: 'experience', defaultVisible: true, minWidth: 80,
       sortValue: (p) => getYearsOfExp(p),
     });
     cols.push({
-      id: 'jobs_count', label: 'Nb postes', section: 'experience', defaultVisible: false, minWidth: 70,
+      id: 'jobs_count', label: 'Nombre de postes', section: 'experience', defaultVisible: false, minWidth: 70,
       sortValue: (p) => p.work_experience?.length ?? 0,
     });
     for (let i = 1; i <= 5; i++) {
       cols.push({
-        id: `exp_${i}`, label: `XP ${i}`, section: 'experience', defaultVisible: i <= 2, minWidth: 200,
+        id: `exp_${i}`, label: `Poste ${i}`, section: 'experience', defaultVisible: i <= 2, minWidth: 200,
         sortValue: (p) => (p.work_experience?.[i - 1]?.company || '').toLowerCase(),
       });
     }
@@ -731,11 +780,11 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
 
     // 🛠️ Compétences
     cols.push({
-      id: 'skills_top', label: 'Top skills', section: 'skills', defaultVisible: false, minWidth: 220,
+      id: 'skills_top', label: 'Compétences clés', section: 'skills', defaultVisible: false, minWidth: 220,
       sortValue: (p) => (p.skills?.[0]?.name || '').toLowerCase(),
     });
     cols.push({
-      id: 'skills_count', label: 'Nb skills', section: 'skills', defaultVisible: false, minWidth: 70,
+      id: 'skills_count', label: 'Nombre de compétences', section: 'skills', defaultVisible: false, minWidth: 70,
       sortValue: (p) => p.skills?.length ?? 0,
     });
     cols.push({
@@ -769,8 +818,14 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
     // ⚙️ Actions
     cols.push({ id: 'actions', label: 'Actions', section: 'actions', defaultVisible: true, minWidth: 50 });
 
+    if (isV3) {
+      // Nouvelle page : lieu et expérience juste après le nom, la note ensuite.
+      const lead = ['name', 'location', 'years_exp', 'score'];
+      const head = lead.map((id) => cols.find((c) => c.id === id)).filter((c): c is ColumnConfig => !!c);
+      return [...head, ...cols.filter((c) => !lead.includes(c.id))];
+    }
     return cols;
-  }, [criteriaList]);
+  }, [criteriaList, isV3]);
 
   // ─── Visibility (persisted localStorage v2) ────────────────────────────────
   const lsKey = `konekt_table_columns_v2_${storageKey || 'default'}`;
@@ -802,24 +857,88 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
   }, [allColumns]);
 
   useEffect(() => {
+    if (isV3) return; // nouvelle page : rien n'est écrit tant que la personne n'a pas choisi
     try {
       localStorage.setItem(lsKey, JSON.stringify(Array.from(hiddenColumns)));
     } catch {/* noop */}
-  }, [hiddenColumns, lsKey]);
+  }, [hiddenColumns, lsKey, isV3]);
+
+  // Nouvelle page : choix de la personne (null = rien choisi, colonnes par défaut). Écrit dans
+  // une clé à part ; un choix fait avant (clé v2 du même poste) est repris sauf s'il valait le
+  // défaut d'alors, que l'ancien tableau écrivait de lui-même dès l'ouverture.
+  const lsKeyV3 = `konekt_table_columns_v3_${storageKey || 'default'}`;
+  const [v3Choice, setV3Choice] = useState<Set<string> | null>(() => {
+    if (!isV3) return null;
+    try {
+      const own = localStorage.getItem(lsKeyV3);
+      if (own) {
+        const arr = JSON.parse(own);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+      const legacy = localStorage.getItem(lsKey);
+      if (legacy) {
+        const arr = JSON.parse(legacy);
+        if (Array.isArray(arr)) {
+          const oldDefault = allColumns.filter((c) => !c.defaultVisible).map((c) => c.id);
+          const unchanged = arr.length === oldDefault.length && oldDefault.every((id) => arr.includes(id));
+          if (!unchanged) return new Set(arr);
+        }
+      }
+    } catch {/* noop */}
+    return null;
+  });
+  const commitV3Choice = useCallback((next: Set<string> | null) => {
+    setV3Choice(next);
+    try {
+      if (next) localStorage.setItem(lsKeyV3, JSON.stringify(Array.from(next)));
+      else localStorage.removeItem(lsKeyV3);
+    } catch {/* noop */}
+  }, [lsKeyV3]);
+
+  // Par défaut, une colonne vide pour toutes les lignes (ni lieu, ni expérience, ni note) n'est pas proposée.
+  const emptyByDefault = useMemo(() => {
+    const out = new Set<string>();
+    if (!isV3) return out;
+    const noteOf = (p: LinkedInProfile) => jobScores[p.id]?.match_score ?? treatedCandidates.get(p.id)?.score ?? null;
+    if (!profiles.some((p) => !!p.location)) out.add('location');
+    if (!profiles.some((p) => getYearsOfExp(p) > 0)) out.add('years_exp');
+    if (!profiles.some((p) => (noteOf(p) ?? 0) > 0)) out.add('score');
+    return out;
+  }, [isV3, profiles, jobScores, treatedCandidates]);
+  // Colonnes cachées d'emblée : toutes sauf celles du défaut. Un choix de la personne part de là, et non de
+  // l'état du moment : l'absence de données (note avant la notation, par exemple) n'est pas un choix.
+  const v3StaticHidden = useMemo(
+    () => new Set(allColumns.filter((c) => !V3_DEFAULT_COLUMNS.has(c.id)).map((c) => c.id)),
+    [allColumns],
+  );
+  const v3DefaultHidden = useMemo(
+    () => new Set([...v3StaticHidden, ...emptyByDefault]),
+    [v3StaticHidden, emptyByDefault],
+  );
+  const effectiveHidden = isV3 ? (v3Choice ?? v3DefaultHidden) : hiddenColumns;
 
   const visibleColumns = useMemo(
-    () => allColumns.filter((c) => !hiddenColumns.has(c.id)),
-    [allColumns, hiddenColumns],
+    () => allColumns.filter((c) => (isV3 && c.id === 'name') || !effectiveHidden.has(c.id)),
+    [allColumns, effectiveHidden, isV3],
   );
 
   const toggleColumn = useCallback((id: string) => {
+    if (isV3) {
+      // Le sens du clic suit ce que la personne voit (une colonne vide d'emblée est décochée), pas le choix enregistré.
+      const hiddenNow = (v3Choice ?? v3DefaultHidden).has(id);
+      const next = new Set(v3Choice ?? v3StaticHidden);
+      if (hiddenNow) next.delete(id);
+      else next.add(id);
+      commitV3Choice(next);
+      return;
+    }
     setHiddenColumns((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }, []);
+  }, [isV3, v3Choice, v3DefaultHidden, v3StaticHidden, commitV3Choice]);
 
   // ─── Sorting ──────────────────────────────────────────────────────────────
   const sortedProfiles = useMemo(() => {
@@ -851,21 +970,60 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
     const map = new Map<ColumnSection, ColumnConfig[]>();
     for (const c of allColumns) {
       if (c.id === 'avatar') continue; // sticky, pas toggleable
+      if (isV3 && c.id === 'name') continue; // nouvelle page : le nom porte le visage, toujours affiché
       if (!map.has(c.section)) map.set(c.section, []);
       map.get(c.section)!.push(c);
     }
     return map;
-  }, [allColumns]);
+  }, [allColumns, isV3]);
+
+  // ─── Défilement horizontal (nouvelle page) : indice d'une suite à droite, zone atteignable au clavier ───
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollCue, setScrollCue] = useState({ scrollable: false, moreRight: false });
+  const updateScrollCue = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const scrollable = el.scrollWidth > el.clientWidth + 1;
+    const moreRight = scrollable && el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setScrollCue((prev) => (prev.scrollable === scrollable && prev.moreRight === moreRight ? prev : { scrollable, moreRight }));
+  }, []);
+  useEffect(() => {
+    if (!isV3) return undefined;
+    updateScrollCue();
+    const el = scrollerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(updateScrollCue);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [isV3, updateScrollCue, visibleColumns, profiles.length]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
   if (profiles.length === 0) return null;
 
+  // Nouvelle page : le titre passe sous le nom, sauf si la colonne « Titre du profil » est affichée.
+  const headlineShown = visibleColumns.some((c) => c.id === 'headline');
+  // Ancienne page : pas de bloc en plus autour du tableau (rendu inchangé) ; nouvelle page : bloc de position pour l'indice de défilement.
+  const ScrollFrame: React.ElementType = isV3 ? 'div' : React.Fragment;
+  const phoneHidden = (col: ColumnConfig) => isV3 && V3_PHONE_HIDDEN.has(col.id);
+  // Nouvelle page : le menu de la ligne reste collé à droite quand les colonnes dépassent la largeur.
+  const stickyRight = (col: ColumnConfig) => isV3 && col.id === 'actions';
+  const stickyLeftOf = (col: ColumnConfig) => (col.sticky ? (col.id === 'avatar' ? 32 : isV3 ? 32 : 72) : undefined);
+
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="border border-border bg-background overflow-hidden">
+      <div className={isV3 ? undefined : 'overflow-hidden rounded-xl border border-border bg-background'}>
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 flex-wrap gap-2">
+        <div className={isV3 ? 'flex flex-wrap items-center justify-between gap-2 pb-1 pl-2' : 'flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2'}>
+          {isV3 ? (
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{profiles.length}</span> profil{profiles.length > 1 ? 's' : ''}
+              {criteriaList.length > 0 && (
+                <> · <span className="font-medium text-foreground">{criteriaList.length}</span> critère{criteriaList.length > 1 ? 's' : ''} du poste</>
+              )}
+            </p>
+          ) : (
           <p className="text-xs text-muted-foreground">
             <span className="text-foreground font-medium">{profiles.length}</span> profil{profiles.length > 1 ? 's' : ''}
             {' · '}
@@ -874,34 +1032,49 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
               <> · <span className="text-foreground font-medium">{criteriaList.length}</span> critère{criteriaList.length > 1 ? 's' : ''} du poste</>
             )}
           </p>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
+              {isV3 ? (
+                <Button variant="ghost" size="sm" className="text-foreground-secondary hover:text-foreground max-sm:min-h-11">
+                  <Columns3 aria-hidden="true" />
+                  Colonnes
+                </Button>
+              ) : (
               <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                 <Columns3 className="w-3.5 h-3.5" aria-hidden="true" />
                 Colonnes
               </Button>
+              )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72 max-h-[70vh] overflow-y-auto">
-              <DropdownMenuLabel className="text-xs flex items-center justify-between">
+            <DropdownMenuContent
+              align="end"
+              collisionPadding={isV3 ? 8 : undefined}
+              // Nouvelle page : la hauteur suit la place libre (téléphone : le haut du menu ne sort plus de l'écran).
+              className={isV3
+                ? 'w-72 max-h-[min(70vh,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto'
+                : 'w-72 max-h-[70vh] overflow-y-auto'}
+            >
+              <DropdownMenuLabel className={isV3 ? 'text-sm flex items-center justify-between' : 'text-xs flex items-center justify-between'}>
                 <span>Colonnes affichées</span>
-                <span className="text-muted-foreground font-normal">{visibleColumns.length}/{allColumns.length}</span>
+                {!isV3 && <span className="text-muted-foreground font-normal">{visibleColumns.length}/{allColumns.length}</span>}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {Array.from(columnsBySection.entries()).map(([section, cols]) => (
                 <React.Fragment key={section}>
-                  <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground pt-2">
-                    {SECTION_LABELS[section]}
+                  <DropdownMenuLabel className={isV3 ? 'pt-2 text-sm font-normal text-muted-foreground' : 'pt-2 text-xs font-normal text-muted-foreground'}>
+                    {sectionLabels[section]}
                   </DropdownMenuLabel>
                   {cols.map((col) => {
-                    const visible = !hiddenColumns.has(col.id);
+                    const visible = !effectiveHidden.has(col.id);
                     return (
                       <DropdownMenuCheckboxItem
                         key={col.id}
                         checked={visible}
                         onCheckedChange={() => toggleColumn(col.id)}
                         onSelect={(e) => e.preventDefault()}
-                        className="text-xs cursor-pointer"
+                        className={isV3 ? cn('text-sm cursor-pointer', phoneHidden(col) && 'max-sm:hidden') : 'text-xs cursor-pointer'}
                       >
                         <span className="flex-1 truncate">{col.label}</span>
                       </DropdownMenuCheckboxItem>
@@ -911,15 +1084,23 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onSelect={(e) => { e.preventDefault(); setHiddenColumns(new Set(allColumns.filter(c => !c.defaultVisible).map(c => c.id))); }}
-                className="text-xs cursor-pointer text-muted-foreground"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (isV3) commitV3Choice(null);
+                  else setHiddenColumns(new Set(allColumns.filter(c => !c.defaultVisible).map(c => c.id)));
+                }}
+                className={isV3 ? 'text-sm cursor-pointer text-muted-foreground' : 'text-xs cursor-pointer text-muted-foreground'}
               >
                 <Eye className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Réinitialiser
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={(e) => { e.preventDefault(); setHiddenColumns(new Set()); }}
-                className="text-xs cursor-pointer text-muted-foreground"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (isV3) commitV3Choice(new Set());
+                  else setHiddenColumns(new Set());
+                }}
+                className={isV3 ? 'text-sm cursor-pointer text-muted-foreground' : 'text-xs cursor-pointer text-muted-foreground'}
               >
                 <EyeOff className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Tout afficher
@@ -929,30 +1110,38 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
+        <ScrollFrame {...(isV3 ? { className: 'relative' } : {})}>
+        <div
+          ref={scrollerRef}
+          className="overflow-x-auto"
+          {...(isV3 ? {
+            onScroll: updateScrollCue,
+            // Zone défilante : atteignable au clavier (flèches) seulement quand elle déborde.
+            ...(scrollCue.scrollable ? { tabIndex: 0, role: 'region', 'aria-label': 'Liste des profils, défilement horizontal possible' } : {}),
+          } : {})}
+        >
+          <table className={isV3 ? 'w-full border-collapse text-sm' : 'w-full text-xs border-collapse'}>
             <thead>
-              <tr className="border-b border-border bg-muted/40 backdrop-blur-sm sticky top-0 z-20">
-                <th className="p-1.5 text-left align-middle w-8 sticky left-0 z-30 bg-muted/40 backdrop-blur-sm">
+              <tr className="sticky top-0 z-20 border-b border-border bg-background">
+                <th className={cn('p-1.5 text-left align-middle w-8 sticky left-0 z-30 bg-background', isV3 && 'pl-2')}>
                   <Checkbox
                     checked={allSelected && profiles.length > 0}
                     onCheckedChange={onToggleSelectAll}
                     aria-label="Tout sélectionner"
+                    className={isV3 ? TAP_CHECKBOX : undefined}
                   />
                 </th>
                 {visibleColumns.map((col, idx) => {
                   const isSorted = sortBy?.id === col.id;
                   const sortable = !!col.sortValue;
-                  // sticky position calculé : avatar=32px, name=après avatar
-                  const stickyLeft = col.sticky
-                    ? (col.id === 'avatar' ? 32 : 72)
-                    : undefined;
+                  // sticky position calculé : avatar=32px, name=après avatar (nouvelle page : le visage est dans le nom)
+                  const stickyLeft = stickyLeftOf(col);
                   return (
                     <th
                       key={col.id}
-                      className={`px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap ${
-                        col.sticky ? 'sticky z-30 bg-muted/40 backdrop-blur-sm' : ''
-                      } ${col.section === 'criteres' && idx > 0 && visibleColumns[idx - 1]?.section !== 'criteres' ? 'border-l-2 border-info/30' : ''}`}
+                      className={`h-9 ${stickyRight(col) ? 'px-1' : 'px-2'} ${isV3 && (col.id === 'score' || col.id === 'years_exp') ? 'text-center' : 'text-left'} ${isV3 ? 'text-sm' : 'text-xs'} font-normal text-muted-foreground whitespace-nowrap ${
+                        col.sticky ? 'sticky z-30 bg-background' : ''
+                      } ${!isV3 && col.section === 'criteres' && idx > 0 && visibleColumns[idx - 1]?.section !== 'criteres' ? 'border-l-2 border-info/30' : ''} ${phoneHidden(col) ? 'max-sm:hidden' : ''} ${stickyRight(col) ? `sticky right-0 z-30 bg-background ${V3_ACTIONS_WIDTH}` : ''}`}
                       style={{
                         minWidth: col.minWidth ? `${col.minWidth}px` : undefined,
                         left: stickyLeft != null ? `${stickyLeft}px` : undefined,
@@ -962,15 +1151,15 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         <button
                           type="button"
                           onClick={() => handleSort(col.id)}
-                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                          className={cn('inline-flex items-center gap-1 hover:text-foreground transition-colors', isV3 && 'group/sort max-sm:min-h-11')}
                         >
-                          <span className="truncate max-w-[140px]">{col.label}</span>
+                          <span className="truncate max-w-[140px]" title={isV3 ? col.label : undefined}>{col.label}</span>
                           {isSorted ? (
                             sortBy?.dir === 'desc'
                               ? <ArrowDown className="w-3 h-3" aria-hidden="true" />
                               : <ArrowUp className="w-3 h-3" aria-hidden="true" />
                           ) : (
-                            <ArrowUpDown className="w-3 h-3 opacity-30" aria-hidden="true" />
+                            <ArrowUpDown className={isV3 ? 'w-3 h-3 opacity-0 transition-opacity group-hover/sort:opacity-40 group-focus-visible/sort:opacity-60' : 'w-3 h-3 opacity-30'} aria-hidden="true" />
                           )}
                         </button>
                       ) : col.isCriterion ? (
@@ -981,13 +1170,13 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                           <TooltipContent side="top">
                             <p className="text-xs font-bold">{col.label}</p>
                             {col.criterion?.source && (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                              <p className="text-2xs text-muted-foreground mt-0.5">
                                 Source : {col.criterion.source === 'skills' ? 'Compétences du poste' : col.criterion.source === 'mustHave' ? 'Must-have' : col.criterion.source === 'shouldHave' ? 'Should-have' : col.criterion.source === 'niceToHave' ? 'Nice-to-have' : 'Évaluation IA'}
                               </p>
                             )}
                           </TooltipContent>
                         </Tooltip>
-                      ) : col.label}
+                      ) : col.id === 'avatar' || (isV3 && col.id === 'actions') ? <span className="sr-only">{col.label}</span> : col.label}
                     </th>
                   );
                 })}
@@ -1001,12 +1190,12 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                 const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Profil LinkedIn';
                 const initials = getInitials(fullName);
                 const profileUrl = getProfileUrl(profile);
-                const rowBg = isSelected ? 'bg-accent/40' : '';
+                const rowBg = isSelected ? 'bg-muted/60' : '';
 
                 return (
                   <tr
                     key={profile.id}
-                    className={`group transition-colors cursor-pointer ${rowBg} hover:bg-muted/40`}
+                    className={`group transition-colors cursor-pointer ${isV3 ? 'h-14' : ''} ${rowBg} hover:bg-muted/40`}
                     onClick={(e) => {
                       const target = e.target as HTMLElement;
                       if (target.closest('button, a, input, [role="checkbox"], [data-no-detail]')) return;
@@ -1014,25 +1203,25 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                     }}
                   >
                     {/* Checkbox sticky */}
-                    <td className={`p-1.5 align-middle sticky left-0 z-10 ${rowBg || 'bg-background'} group-hover:bg-muted/40`} data-no-detail>
+                    <td className={`p-1.5 align-middle sticky left-0 z-10 ${isV3 ? 'pl-2 ' : ''}${rowBg || 'bg-background'} group-hover:bg-muted/40`} data-no-detail>
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => onToggleSelect(profile.id)}
                         aria-label={`Sélectionner ${fullName}`}
+                        className={isV3 ? TAP_CHECKBOX : undefined}
                       />
                     </td>
 
                     {visibleColumns.map((col, idx) => {
-                      const stickyLeft = col.sticky
-                        ? (col.id === 'avatar' ? 32 : 72)
-                        : undefined;
+                      const stickyLeft = stickyLeftOf(col);
                       const stickyClass = col.sticky
                         ? `sticky z-10 ${rowBg || 'bg-background'} group-hover:bg-muted/40`
                         : '';
-                      const critBorder = col.section === 'criteres' && idx > 0 && visibleColumns[idx - 1]?.section !== 'criteres'
+                      const critBorder = !isV3 && col.section === 'criteres' && idx > 0 && visibleColumns[idx - 1]?.section !== 'criteres'
                         ? 'border-l-2 border-info/30'
                         : '';
-                      const baseTd = `px-2 py-1.5 align-middle ${stickyClass} ${critBorder}`;
+                      const rightClass = stickyRight(col) ? ` sticky right-0 z-10 text-center ${V3_ACTIONS_WIDTH} ${rowBg || 'bg-background'} group-hover:bg-muted/40` : '';
+                      const baseTd = `${stickyRight(col) ? 'px-1' : 'px-2'} py-1.5 align-middle ${stickyClass} ${critBorder}${phoneHidden(col) ? ' max-sm:hidden' : ''}${rightClass}`;
                       const styleObj = stickyLeft != null ? { left: `${stickyLeft}px` } : undefined;
 
                       // Profil
@@ -1041,12 +1230,31 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                           <td key={col.id} className={baseTd} style={styleObj}>
                             <Avatar className="w-7 h-7 border border-border">
                               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                              <AvatarFallback className="bg-primary/10 text-foreground text-[10px] font-medium">{initials}</AvatarFallback>
+                              <AvatarFallback className="bg-primary/10 text-foreground text-2xs font-medium">{initials}</AvatarFallback>
                             </Avatar>
                           </td>
                         );
                       }
                       if (col.id === 'name') {
+                        if (isV3) {
+                          return (
+                            <td key={col.id} className={baseTd} style={styleObj}>
+                              <div className="flex min-w-0 items-center gap-3">
+                                <PersonAvatar name={fullName} src={profile.profile_picture_url} size={32} className="max-[359px]:hidden" />
+                                <div className="min-w-0 max-w-[8.5rem] sm:max-w-[22rem]">
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenDetail(profile)}
+                                    className="block max-w-full truncate rounded-sm text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-words"
+                                  >
+                                    {fullName}
+                                  </button>
+                                  {!headlineShown && profile.headline && <p className="truncate text-muted-foreground">{profile.headline}</p>}
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        }
                         return (
                           <td key={col.id} className={baseTd} style={styleObj}>
                             <div className="font-medium text-foreground truncate max-w-[180px]">{fullName}</div>
@@ -1056,23 +1264,24 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                       if (col.id === 'headline') {
                         return (
                           <td key={col.id} className={baseTd}>
-                            <div className="text-muted-foreground truncate max-w-[300px]">{profile.headline || <span className="text-muted-foreground/30">—</span>}</div>
+                            <div className="text-muted-foreground truncate max-w-[300px]">{profile.headline || empty}</div>
                           </td>
                         );
                       }
                       if (col.id === 'score') {
+                        if (isV3) {
+                          // Même note que « Tri » : celle de la notation en cours, sinon celle déjà enregistrée.
+                          const note = score?.match_score ?? status?.score ?? null;
+                          return (
+                            <td key={col.id} className={`${baseTd} text-center`}>
+                              {note != null && note > 0 ? <ScorePill score={note} /> : null}
+                            </td>
+                          );
+                        }
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
                             {score?.match_score != null && score.match_score > 0 ? (
-                              <span
-                                className={`inline-flex items-center justify-center min-w-[36px] px-1.5 py-0.5 font-bold font-mono tabular-nums text-xs ${
-                                  score.match_score >= 70
-                                    ? 'bg-success/15 text-success border border-success/40'
-                                    : score.match_score >= 40
-                                      ? 'bg-warning/15 text-warning border border-warning/40'
-                                      : 'bg-destructive/15 text-destructive border border-destructive/40'
-                                }`}
-                              >
+                              <span className="text-sm font-semibold tabular-nums text-foreground">
                                 {score.match_score}
                               </span>
                             ) : (
@@ -1083,15 +1292,15 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                       }
                       if (col.id === 'recommendation') {
                         const r = score?.recommendation;
-                        if (!r) return <td key={col.id} className={`${baseTd} text-center`}><span className="text-muted-foreground/30">—</span></td>;
+                        if (!r) return <td key={col.id} className={`${baseTd} text-center`}>{empty}</td>;
                         const cfg = r === 'go'
-                          ? { label: 'GO', cls: 'bg-success/15 text-success border-success/40' }
+                          ? { label: 'Recommandé', cls: 'bg-success-muted text-success' }
                           : r === 'maybe'
-                            ? { label: 'MAYBE', cls: 'bg-warning/15 text-warning border-warning/40' }
-                            : { label: 'SKIP', cls: 'bg-destructive/15 text-destructive border-destructive/40' };
+                            ? { label: 'À voir', cls: 'bg-warning-muted text-warning' }
+                            : { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground' };
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
-                            <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${cfg.cls}`}>
+                            <span className={`inline-flex items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs ${cfg.cls}`}>
                               {cfg.label}
                             </span>
                           </td>
@@ -1100,34 +1309,34 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                       if (col.id === 'location') {
                         return (
                           <td key={col.id} className={baseTd}>
-                            <span className="truncate max-w-[140px] inline-block">{profile.location?.split(',')[0] || <span className="text-muted-foreground/30">—</span>}</span>
+                            <span className={cn('truncate max-w-[140px] inline-block', isV3 && 'text-foreground-secondary')}>{profile.location?.split(',')[0] || empty}</span>
                           </td>
                         );
                       }
                       if (col.id === 'industry') {
                         return (
                           <td key={col.id} className={baseTd}>
-                            <span className="truncate max-w-[160px] inline-block">{profile.industry || <span className="text-muted-foreground/30">—</span>}</span>
+                            <span className="truncate max-w-[160px] inline-block">{profile.industry || empty}</span>
                           </td>
                         );
                       }
                       if (col.id === 'pronoun') {
-                        return <td key={col.id} className={baseTd}><span className="text-muted-foreground">{profile.pronoun || <span className="text-muted-foreground/30">—</span>}</span></td>;
+                        return <td key={col.id} className={baseTd}><span className="text-muted-foreground">{profile.pronoun || empty}</span></td>;
                       }
                       if (col.id === 'language') {
-                        return <td key={col.id} className={baseTd}><span className="text-muted-foreground uppercase">{profile.primary_locale?.language || <span className="text-muted-foreground/30">—</span>}</span></td>;
+                        return <td key={col.id} className={baseTd}><span className="text-muted-foreground uppercase">{profile.primary_locale?.language || empty}</span></td>;
                       }
 
                       // Signaux
-                      if (col.id === 'sig_open_to_work') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.open_to_work || profile.is_open_to_work} label="Ouvert aux opportunités" /></td>;
-                      if (col.id === 'sig_premium') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.premium || profile.is_premium} label="Compte Premium" /></td>;
-                      if (col.id === 'sig_hiring') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.is_hiring} label="En recrutement" /></td>;
-                      if (col.id === 'sig_influencer') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.is_influencer} label="Influenceur LinkedIn" /></td>;
-                      if (col.id === 'sig_creator') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.is_creator} label="Créateur de contenu" /></td>;
-                      if (col.id === 'sig_can_inmail') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.can_send_inmail} label="InMail accepté" /></td>;
-                      if (col.id === 'sig_open_profile') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.open_profile || profile.is_open_profile} label="Profil ouvert (InMail gratuit)" /></td>;
-                      if (col.id === 'sig_verified') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.verified} label="Profil vérifié" /></td>;
-                      if (col.id === 'sig_recently_hired') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.recently_hired} label="Récemment embauché" /></td>;
+                      if (col.id === 'sig_open_to_work') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.open_to_work || profile.is_open_to_work} label="Ouvert aux opportunités" empty={empty} /></td>;
+                      if (col.id === 'sig_premium') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.premium || profile.is_premium} label="Compte Premium" empty={empty} /></td>;
+                      if (col.id === 'sig_hiring') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.is_hiring} label="En recrutement" empty={empty} /></td>;
+                      if (col.id === 'sig_influencer') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.is_influencer} label="Influenceur LinkedIn" empty={empty} /></td>;
+                      if (col.id === 'sig_creator') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.is_creator} label="Créateur de contenu" empty={empty} /></td>;
+                      if (col.id === 'sig_can_inmail') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.can_send_inmail} label="InMail accepté" empty={empty} /></td>;
+                      if (col.id === 'sig_open_profile') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.open_profile || profile.is_open_profile} label="Profil ouvert (InMail gratuit)" empty={empty} /></td>;
+                      if (col.id === 'sig_verified') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.verified} label="Profil vérifié" empty={empty} /></td>;
+                      if (col.id === 'sig_recently_hired') return <td key={col.id} className={`${baseTd} text-center`}><FlagIcon active={profile.recently_hired} label="Récemment embauché" empty={empty} /></td>;
 
                       // Contact
                       if (col.id === 'email') {
@@ -1139,7 +1348,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                                 <Mail className="w-3 h-3 shrink-0" aria-hidden="true" />
                                 <span className="truncate">{e}</span>
                               </a>
-                            ) : <span className="text-muted-foreground/30">—</span>}
+                            ) : empty}
                           </td>
                         );
                       }
@@ -1152,7 +1361,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                                 <Phone className="w-3 h-3 shrink-0" aria-hidden="true" />
                                 <span>{p}</span>
                               </a>
-                            ) : <span className="text-muted-foreground/30">—</span>}
+                            ) : empty}
                           </td>
                         );
                       }
@@ -1165,7 +1374,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                                 Voir
                                 <ExternalLink className="w-2.5 h-2.5" aria-hidden="true" />
                               </a>
-                            ) : <span className="text-muted-foreground/30">—</span>}
+                            ) : empty}
                           </td>
                         );
                       }
@@ -1173,39 +1382,39 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                       // Network
                       if (col.id === 'connections') {
                         const c = profile.connections_count;
-                        return <td key={col.id} className={`${baseTd} text-right`}>{c ? <span className="tabular-nums text-muted-foreground">{c >= 1000 ? `${(c / 1000).toFixed(1)}k` : c}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-right`}>{c ? <span className="tabular-nums text-muted-foreground">{c >= 1000 ? `${(c / 1000).toFixed(1)}k` : c}</span> : empty}</td>;
                       }
                       if (col.id === 'followers') {
                         const c = profile.followers_count;
-                        return <td key={col.id} className={`${baseTd} text-right`}>{c ? <span className="tabular-nums text-muted-foreground">{c >= 1000 ? `${(c / 1000).toFixed(1)}k` : c}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-right`}>{c ? <span className="tabular-nums text-muted-foreground">{c >= 1000 ? `${(c / 1000).toFixed(1)}k` : c}</span> : empty}</td>;
                       }
                       if (col.id === 'shared_connections') {
                         const c = profile.shared_connections_count;
-                        return <td key={col.id} className={`${baseTd} text-right`}>{c ? <span className="tabular-nums text-muted-foreground">{c}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-right`}>{c ? <span className="tabular-nums text-muted-foreground">{c}</span> : empty}</td>;
                       }
                       if (col.id === 'network_distance') {
                         const d = profile.network_distance;
-                        return <td key={col.id} className={`${baseTd} text-center`}>{d != null ? <span className="text-muted-foreground">{typeof d === 'number' ? `${d}°` : d}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-center`}>{d != null ? <span className="text-muted-foreground">{typeof d === 'number' ? `${d}°` : d}</span> : empty}</td>;
                       }
 
                       // Expériences
                       if (col.id === 'years_exp') {
                         const y = getYearsOfExp(profile);
-                        return <td key={col.id} className={`${baseTd} text-center`}>{y > 0 ? <span className="tabular-nums text-muted-foreground">{y}a</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-center`}>{y > 0 ? <span className="tabular-nums text-muted-foreground">{isV3 ? `${y} ans` : `${y}a`}</span> : empty}</td>;
                       }
                       if (col.id === 'jobs_count') {
                         const c = profile.work_experience?.length ?? 0;
-                        return <td key={col.id} className={`${baseTd} text-center`}>{c > 0 ? <span className="tabular-nums text-muted-foreground">{c}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-center`}>{c > 0 ? <span className="tabular-nums text-muted-foreground">{c}</span> : empty}</td>;
                       }
                       if (col.id.startsWith('exp_')) {
                         const i = parseInt(col.id.slice(4), 10) - 1;
-                        return <td key={col.id} className={baseTd}><ExperienceCell exp={profile.work_experience?.[i]} /></td>;
+                        return <td key={col.id} className={baseTd}><ExperienceCell exp={profile.work_experience?.[i]} empty={empty} /></td>;
                       }
 
                       // Formation
                       if (col.id.startsWith('edu_')) {
                         const i = parseInt(col.id.slice(4), 10) - 1;
-                        return <td key={col.id} className={baseTd}><EducationCell edu={profile.education?.[i]} /></td>;
+                        return <td key={col.id} className={baseTd}><EducationCell edu={profile.education?.[i]} empty={empty} /></td>;
                       }
 
                       // Skills
@@ -1218,26 +1427,26 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                                 <TooltipTrigger asChild>
                                   <div className="flex flex-wrap gap-1 max-w-[260px]">
                                     {skills.slice(0, 3).map((s, i) => (
-                                      <span key={i} className="text-[10px] px-1 py-0.5 bg-muted text-muted-foreground truncate max-w-[80px]">{s}</span>
+                                      <span key={i} className="text-2xs px-1 py-0.5 bg-muted text-muted-foreground truncate max-w-[80px]">{s}</span>
                                     ))}
-                                    {skills.length > 3 && <span className="text-[10px] text-muted-foreground">+{skills.length - 3}</span>}
+                                    {skills.length > 3 && <span className="text-2xs text-muted-foreground">+{skills.length - 3}</span>}
                                   </div>
                                 </TooltipTrigger>
                                 <TooltipContent side="top">
                                   <div className="text-xs">{skills.join(', ')}</div>
                                 </TooltipContent>
                               </Tooltip>
-                            ) : <span className="text-muted-foreground/30">—</span>}
+                            ) : empty}
                           </td>
                         );
                       }
                       if (col.id === 'skills_count') {
                         const c = profile.skills?.length ?? 0;
-                        return <td key={col.id} className={`${baseTd} text-center`}>{c > 0 ? <span className="tabular-nums text-muted-foreground">{c}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={`${baseTd} text-center`}>{c > 0 ? <span className="tabular-nums text-muted-foreground">{c}</span> : empty}</td>;
                       }
                       if (col.id === 'languages') {
                         const langs = profile.languages?.map(l => l.name).filter(Boolean) || [];
-                        return <td key={col.id} className={baseTd}>{langs.length > 0 ? <span className="text-muted-foreground truncate max-w-[140px] inline-block">{langs.join(', ')}</span> : <span className="text-muted-foreground/30">—</span>}</td>;
+                        return <td key={col.id} className={baseTd}>{langs.length > 0 ? <span className="text-muted-foreground truncate max-w-[140px] inline-block">{langs.join(', ')}</span> : empty}</td>;
                       }
 
                       // Statut Konekt
@@ -1251,7 +1460,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         return (
                           <td key={col.id} className={baseTd}>
                             {statusLabel ? (
-                              <span className={`text-[10px] px-1.5 py-0.5 uppercase tracking-wider font-bold ${
+                              <span className={`text-2xs px-1.5 py-0.5 uppercase tracking-wider font-bold ${
                                 status?.status === 'replied' ? 'bg-success/10 text-success'
                                 : status?.status === 'messaged' ? 'bg-info/10 text-info'
                                 : status?.status === 'dismissed' ? 'bg-destructive/10 text-destructive'
@@ -1259,7 +1468,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                               }`}>
                                 {statusLabel}
                               </span>
-                            ) : <span className="text-muted-foreground/30">—</span>}
+                            ) : empty}
                           </td>
                         );
                       }
@@ -1270,7 +1479,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                           <td key={col.id} className={baseTd} data-no-detail>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Actions pour ${fullName}`}>
+                                <Button variant="ghost" size="icon" className={isV3 ? 'h-8 w-8 max-sm:h-11 max-sm:w-11' : 'h-6 w-6'} aria-label={`Actions pour ${fullName}`}>
                                   <MoreHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -1311,7 +1520,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         const v = resolveVerdict(col.criterion, score);
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
-                            <VerdictCell verdict={v.verdict} label={col.criterion.label} reason={v.reason} />
+                            <VerdictCell verdict={v.verdict} label={col.criterion.label} reason={v.reason} plain={isV3} />
                           </td>
                         );
                       }
@@ -1324,18 +1533,21 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
             </tbody>
           </table>
         </div>
+        {isV3 && scrollCue.moreRight && (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-14 z-40 w-3 shadow-[inset_-8px_0_8px_-8px_hsl(var(--foreground)/0.25)]" />
+        )}
+        </ScrollFrame>
 
         {/* Footer info */}
-        {selectedJob && criteriaList.length === 0 && (
-          <div className="px-3 py-2 border-t border-border bg-muted/30 text-xs text-muted-foreground flex items-center gap-1.5">
-            <HelpCircle className="w-3 h-3" aria-hidden="true" />
+        {!isV3 && selectedJob && criteriaList.length === 0 && (
+          <div className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            <HelpCircle className="h-3 w-3" aria-hidden="true" />
             <span>Aucun critère défini sur ce poste — ajoutez compétences ou must/should/nice-to-have dans le brief pour voir les colonnes critères.</span>
           </div>
         )}
-        {selectedJob && criteriaList.length > 0 && Object.keys(jobScores).length === 0 && (
-          <div className="px-3 py-2 border-t border-border bg-info/10 text-xs text-info flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" aria-hidden="true" />
-            <span>Lancez le scoring pour évaluer les profils sur les critères du poste.</span>
+        {!isV3 && selectedJob && criteriaList.length > 0 && Object.keys(jobScores).length === 0 && (
+          <div className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            <span>Les profils ne sont pas encore notés. Notez-les pour les comparer aux critères du poste.</span>
           </div>
         )}
       </div>

@@ -6,6 +6,7 @@
  * Un nom par page : « Agenda » et « Messagerie », comme la rangée basse et la
  * palette.
  */
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import {
   Dialog,
   DialogContent,
@@ -31,13 +32,18 @@ const G_SHORTCUTS: ReadonlyArray<{ keys: string; label: string }> = [
   { keys: 'G puis I', label: 'Assistant' },
 ];
 
+/** Séquences (lot 5c-2) : listé seulement interrupteur konekt.sequences-v2 allumé, comme le raccourci. */
+const G_SEQUENCES = { keys: 'G puis S', label: 'Séquences' } as const;
+
 export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcutsDialogProps) {
   const mod = isMac() ? '⌘' : 'Ctrl';
+  const showSequences = useSequencesBeta();
   const rows: ReadonlyArray<{ keys: string; label: string }> = [
     { keys: `${mod} J`, label: 'Aller à une page ou une action' },
     { keys: `${mod} K`, label: 'Ouvrir ou fermer l\'assistant' },
     { keys: `${mod} B`, label: 'Replier ou déplier la barre' },
     ...G_SHORTCUTS,
+    ...(showSequences ? [G_SEQUENCES] : []),
   ];
 
   return (
@@ -51,7 +57,7 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
             {rows.map((row) => (
               <tr key={row.keys} className="border-b border-border last:border-0">
                 <td className="py-2 pr-4 whitespace-nowrap">
-                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[12px]">
+                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
                     {row.keys}
                   </kbd>
                 </td>
@@ -60,7 +66,7 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
             ))}
           </tbody>
         </table>
-        <DialogDescription className="text-[12px]">
+        <DialogDescription className="text-xs">
           Les raccourcis G ne fonctionnent pas dans un champ de saisie ni quand une fenêtre est ouverte.
         </DialogDescription>
       </DialogContent>

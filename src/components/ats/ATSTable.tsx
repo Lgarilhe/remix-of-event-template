@@ -1,7 +1,21 @@
+/**
+ * Affichage « Tableau » du pipeline global (revue design E-25) : le nom de
+ * chaque ligne est un bouton qui ouvre la fiche (la ligne entière reste
+ * cliquable à la souris), le tri annonce son sens (aria-sort et chevron), la
+ * dernière action a le format des cartes.
+ *
+ * Design simplifié (lot Suite) : six colonnes qui tiennent dans l'écran
+ * (candidat, étape, mission, dernière action, note, liens), sans cadre autour
+ * du tableau. La source et la séquence passent sous la mission, en mots ; la
+ * note est un anneau ; les liens vers LinkedIn et l'e-mail apparaissent au
+ * survol de la ligne, au clavier, et restent visibles sur un écran tactile.
+ *
+ * Les lignes sont paginées : le tri porte sur toute la liste, seules les lignes
+ * de la page courante sont rendues (avatar, infobulles et badges de chaque
+ * ligne ralentissent l'écran quand la liste est longue).
+ */
 import React, { useState, useMemo } from 'react';
-import { ATSCandidate } from '@/hooks/useATSData';
-import { differenceInDays, parseISO } from 'date-fns';
-import linkedinLogo from '@/assets/linkedin-logo.webp';
+import { Bell, ChevronDown, ChevronUp, ChevronsUpDown, Mail, StickyNote } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -10,48 +24,81 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { 
-  ArrowUpDown, 
-  Mail, 
-  StickyNote, 
-  Bell,
-  GitBranch,
-  FileText,
-  Send,
-  Target,
-  AlertTriangle
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { PersonAvatar } from '@/components/ui/person-avatar';
+import { ScoreRing } from '@/components/ui/score-ring';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ATSPagination } from '@/components/ats/ATSPagination';
+import { PAGE_SIZE, usePagination } from '@/hooks/usePagination';
+import {
+  ATS_SOURCE_LABELS,
+  ATS_STAGES,
+  type ATSCandidate,
+  stagnantDays,
+} from '@/hooks/useATSData';
+import { cn } from '@/lib/utils';
+import { timeAgo } from '@/lib/relativeTime';
+import { enrollmentStatusLabel, manualStopLabel, pausedLabel } from '@/lib/sequenceLabels';
 
 interface ATSTableProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
+  /** Valeur dont le changement ramène à la première page (les filtres de la page). */
+  resetKey?: unknown;
 }
 
-type SortKey = 'name' | 'stage' | 'source' | 'jobTitle' | 'lastActivity' | 'createdAt';
+type SortKey = 'name' | 'stage' | 'jobTitle' | 'lastActivity' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
 
-const SOURCE_LABELS: Record<string, string> = {
-  shortlist: 'Pipeline',
-  sequence: 'Séquence',
-  inmail: 'InMail',
-  outreach: 'Outreach',
+/** Sous la mission : la séquence et son état, sinon la source quand ce n'est pas une mission. */
+function originText(candidate: ATSCandidate): string | null {
+  if (candidate.sequenceName) {
+    // Arrêt manuel (lot 5b) : « arrêtée par Guillaume Martin le 29/09 », le nom gardé tel quel.
+    const manualStop = candidate.sequenceStatus === 'completed' ? candidate.sequenceManualStop ?? null : null;
+    const stopLabel = manualStop ? manualStopLabel(manualStop, candidate.sequenceStoppedByName) : null;
+    const status = stopLabel
+      ? stopLabel.charAt(0).toLowerCase() + stopLabel.slice(1)
+      : candidate.sequenceStatus
+      ? (candidate.sequenceStatus === 'paused' ? pausedLabel(null) : enrollmentStatusLabel(candidate.sequenceStatus)).toLowerCase()
+      : null;
+    return status ? `Séquence ${candidate.sequenceName}, ${status}` : `Séquence ${candidate.sequenceName}`;
+  }
+  return candidate.source === 'local' ? null : ATS_SOURCE_LABELS[candidate.source];
+}
+
+/** Liens de la ligne : au survol, au clavier, toujours visibles sur un écran tactile. */
+const REVEAL_ON_ROW =
+  'opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none';
+
+const stageLabel = (stage: string) => ATS_STAGES.find((s) => s.key === stage)?.label ?? stage;
+
+/** Rang de la colonne dans le pipeline (tri par étape : l'ordre des colonnes, pas l'ordre alphabétique des clés). */
+const stageRank = (stage: string) => {
+  const index = ATS_STAGES.findIndex((s) => s.key === stage);
+  return index === -1 ? ATS_STAGES.length : index;
 };
 
-const SOURCE_ICONS: Record<string, React.ReactNode> = {
-  shortlist: <FileText className="w-3 h-3" />,
-  sequence: <GitBranch className="w-3 h-3" />,
-  inmail: <Send className="w-3 h-3" />,
-  outreach: <Target className="w-3 h-3" />,
-};
+/** Bouton du kit rendu comme un texte de cellule (nom, poste) ; au doigt, sa zone de toucher fait 44 px de haut. */
+const TEXT_BUTTON =
+  'relative h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-0 text-left underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-1 [@media(pointer:coarse)]:after:-inset-y-3';
 
-export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick }) => {
+/** Lien en icône de 28 px, zone de toucher de 44 px. */
+const ICON_LINK = 'relative after:absolute after:-inset-2';
+
+export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick, resetKey }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const { containerRef, currentPage, pageCount, firstRow, lastRow, goToPage, resetPage } = usePagination(
+    candidates.length,
+    resetKey,
+  );
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDirection('desc'); }
+    resetPage();
   };
 
   const sortedCandidates = useMemo(() => {
@@ -61,8 +108,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
 
       switch (sortKey) {
         case 'name': aVal = a.name?.toLowerCase() || ''; bVal = b.name?.toLowerCase() || ''; break;
-        case 'stage': aVal = a.stage; bVal = b.stage; break;
-        case 'source': aVal = a.source; bVal = b.source; break;
+        case 'stage': aVal = stageRank(a.stage); bVal = stageRank(b.stage); break;
         case 'jobTitle': aVal = a.jobTitle?.toLowerCase() || ''; bVal = b.jobTitle?.toLowerCase() || ''; break;
         case 'lastActivity': aVal = a.lastActivity || ''; bVal = b.lastActivity || ''; break;
         case 'createdAt': aVal = a.createdAt || ''; bVal = b.createdAt || ''; break;
@@ -76,154 +122,182 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
     });
   }, [candidates, sortKey, sortDirection]);
 
-  const SortButton = ({ label, sortKeyVal }: { label: string; sortKeyVal: SortKey }) => (
-    <button
-      onClick={() => handleSort(sortKeyVal)}
-      className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-foreground hover:text-primary transition-colors"
-    >
-      {label}
-      <ArrowUpDown className="w-3 h-3" />
-    </button>
+  const sortHeader = (label: string, key: SortKey, className?: string) => {
+    const active = sortKey === key;
+    const Icon = active ? (sortDirection === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+    return (
+      <TableHead
+        className={cn('h-10 px-3', className)}
+        aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={() => handleSort(key)}
+          className="relative -mx-1.5 gap-1 rounded-md px-1.5 text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-2 hover:text-foreground [&_svg]:size-3.5"
+        >
+          {label}
+          <Icon className={cn(active && 'text-foreground')} aria-hidden="true" />
+        </Button>
+      </TableHead>
+    );
+  };
+
+  const pageCandidates = useMemo(
+    () => sortedCandidates.slice(firstRow, firstRow + PAGE_SIZE),
+    [sortedCandidates, firstRow],
   );
 
+  const now = new Date();
+
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden">
+    <div ref={containerRef}>
       <Table>
         <TableHeader>
-          <TableRow className="bg-accent/50 border-b border-border">
-            <TableHead className="w-[250px]"><SortButton label="Candidat" sortKeyVal="name" /></TableHead>
-            <TableHead className="w-[120px]"><SortButton label="Étape" sortKeyVal="stage" /></TableHead>
-            <TableHead className="w-[100px]"><SortButton label="Source" sortKeyVal="source" /></TableHead>
-            <TableHead className="w-[200px]"><SortButton label="Poste" sortKeyVal="jobTitle" /></TableHead>
-            <TableHead className="w-[150px]"><span className="text-xs font-medium uppercase tracking-wider">Séquence</span></TableHead>
-            <TableHead className="w-[100px]"><SortButton label="Activité" sortKeyVal="lastActivity" /></TableHead>
-            <TableHead className="w-[70px]"><span className="text-xs font-medium uppercase tracking-wider">Score</span></TableHead>
-            <TableHead className="w-[80px]"><span className="text-xs font-medium uppercase tracking-wider">Actions</span></TableHead>
+          <TableRow className="hover:bg-transparent">
+            {sortHeader('Candidat', 'name', 'min-w-[220px]')}
+            {sortHeader('Étape', 'stage')}
+            {sortHeader('Mission', 'jobTitle', 'min-w-[180px]')}
+            {sortHeader('Dernière action', 'lastActivity', 'min-w-[150px]')}
+            <TableHead className="h-10 px-3 text-xs font-medium">Note</TableHead>
+            <TableHead className="h-10 px-3 text-xs font-medium">
+              <span className="sr-only">Liens</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedCandidates.map(candidate => (
-            <TableRow 
-              key={candidate.id} 
-              className="cursor-pointer hover:bg-accent/20 border-b border-border transition-colors"
-              onClick={() => onCandidateClick(candidate)}
-            >
-              <TableCell>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground truncate text-sm min-w-0">
-                      {candidate.name}
-                    </span>
-                    {candidate.hasReminder && <Bell className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-                    {(candidate.notesCount || 0) > 0 && (
-                      <div className="flex items-center gap-0.5 text-muted-foreground flex-shrink-0">
-                        <StickyNote className="w-3.5 h-3.5" />
-                        <span className="text-xs">{candidate.notesCount}</span>
+          {pageCandidates.map(candidate => {
+            const stagnant = stagnantDays(candidate, now);
+            const activity = candidate.lastActivity || candidate.createdAt;
+            const origin = originText(candidate);
+            return (
+              <TableRow
+                key={candidate.id}
+                className="group cursor-pointer"
+                onClick={(e) => {
+                  // La ligne s'ouvre à la souris ; ses boutons et liens gardent leur action.
+                  if ((e.target as HTMLElement).closest('button, a')) return;
+                  onCandidateClick(candidate);
+                }}
+              >
+                <TableCell className="px-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={32} />
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="link"
+                          onClick={() => onCandidateClick(candidate)}
+                          className={cn(TEXT_BUTTON, 'text-foreground')}
+                        >
+                          <span className="truncate">{candidate.name}</span>
+                        </Button>
+                        {candidate.hasReminder && (
+                          <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
+                        )}
+                        {(candidate.notesCount || 0) > 0 && (
+                          <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
+                            <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+                            {candidate.notesCount}
+                            <span className="sr-only"> note{(candidate.notesCount || 0) > 1 ? 's' : ''}</span>
+                          </span>
+                        )}
                       </div>
+                      {candidate.headline && (
+                        <p className="max-w-[260px] truncate text-xs text-muted-foreground">{candidate.headline}</p>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-foreground">
+                  {stageLabel(candidate.stage)}
+                  {candidate.stage === 'ITW en cours' && candidate.processStepName && (
+                    <span className="block max-w-[160px] truncate text-xs text-muted-foreground">{candidate.processStepName}</span>
+                  )}
+                </TableCell>
+                <TableCell className="px-3 py-2.5">
+                  {candidate.jobTitle && (candidate.jobId && onJobClick ? (
+                    <Button
+                      type="button"
+                      variant="link"
+                      onClick={() => onJobClick(candidate.jobId as string)}
+                      className={cn(TEXT_BUTTON, 'max-w-[240px] font-normal text-foreground-secondary hover:text-foreground')}
+                    >
+                      <span className="sr-only">Voir la mission </span>
+                      <span className="truncate">{candidate.jobTitle}</span>
+                    </Button>
+                  ) : (
+                    <span className="block max-w-[240px] truncate text-sm text-foreground-secondary">{candidate.jobTitle}</span>
+                  ))}
+                  {origin && <span className="block max-w-[240px] truncate text-xs text-muted-foreground">{origin}</span>}
+                </TableCell>
+                <TableCell className="whitespace-nowrap px-3 py-2.5">
+                  {stagnant !== null ? (
+                    <span className="text-xs font-medium text-warning">
+                      {candidate.stageEnteredAt ? `Dans cette étape depuis ${stagnant}\u00a0j` : `Dernière action il y a ${stagnant}\u00a0j`}
+                    </span>
+                  ) : activity ? (
+                    <time
+                      dateTime={activity}
+                      title={new Date(activity).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {timeAgo(activity, { now })}
+                    </time>
+                  ) : null}
+                </TableCell>
+                <TableCell className="px-3 py-2.5">
+                  <ScoreRing score={candidate.score} />
+                </TableCell>
+                <TableCell className="px-3 py-2.5">
+                  <div className={cn('flex items-center gap-1', REVEAL_ON_ROW)}>
+                    {candidate.linkedin && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button asChild variant="ghost" size="icon-xs" className={ICON_LINK}>
+                            <a
+                              href={candidate.linkedin}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Ouvrir le profil LinkedIn de ${candidate.name}`}
+                            >
+                              <ChannelIcon channel="linkedin" />
+                            </a>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Profil LinkedIn</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {candidate.email && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button asChild variant="ghost" size="icon-xs" className={ICON_LINK}>
+                            <a href={`mailto:${candidate.email}`} aria-label={`Écrire un e-mail à ${candidate.name}`}>
+                              <Mail aria-hidden="true" />
+                            </a>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Écrire un e-mail</TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
-                  {candidate.headline && (
-                    <p className="text-xs text-muted-foreground truncate max-w-[200px]">{candidate.headline}</p>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full border border-border bg-foreground/[0.06] uppercase tracking-wider font-semibold w-fit">
-                  {candidate.stage}
-                  {(() => {
-                    const GUIDE_TIMES: Record<string, number> = { 'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5, 'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7 };
-                    const gt = GUIDE_TIMES[candidate.stage];
-                    const ds = candidate.lastActivity ? differenceInDays(new Date(), parseISO(candidate.lastActivity)) : null;
-                    if (gt && ds && ds > gt) return <span title={`Inactif ${ds}j (max ${gt}j)`}><AlertTriangle className="w-3 h-3 text-destructive" /></span>;
-                    return null;
-                  })()}
-                </span>
-              </TableCell>
-              <TableCell>
-                <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full border border-border bg-background w-fit uppercase tracking-wider font-medium text-muted-foreground">
-                  {SOURCE_ICONS[candidate.source]}
-                  {SOURCE_LABELS[candidate.source]}
-                </span>
-              </TableCell>
-              <TableCell>
-                {candidate.jobTitle ? (
-                  <span
-                    className={`text-sm text-foreground/80 truncate block max-w-[180px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:text-foreground hover:underline transition-colors' : ''}`}
-                    onClick={(e) => {
-                      if (candidate.jobId && onJobClick) {
-                        e.stopPropagation();
-                        onJobClick(candidate.jobId);
-                      }
-                    }}
-                  >
-                    {candidate.jobTitle}
-                  </span>
-                ) : (
-                  <span className="text-sm text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {candidate.sequenceName ? (
-                  <div className="flex items-center gap-1">
-                    <GitBranch className="w-3 h-3 text-foreground/50" />
-                    <span className="text-xs text-foreground/70 truncate max-w-[120px]">{candidate.sequenceName}</span>
-                  </div>
-                ) : (
-                  <span className="text-sm text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {candidate.lastActivity && (
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(candidate.lastActivity).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {candidate.score != null ? (
-                  <span className={`inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border tabular-nums ${
-                    candidate.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
-                    candidate.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
-                    'border-destructive/40 bg-destructive/10 text-destructive'
-                  }`}>
-                    {candidate.score}
-                  </span>
-                ) : (
-                  <span className="text-sm text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  {candidate.linkedin && (
-                    <button
-                      className="h-7 w-7 flex items-center justify-center rounded-lg border border-border hover:bg-accent transition-colors"
-                      onClick={(e) => { e.stopPropagation(); window.open(candidate.linkedin!, '_blank'); }}
-                    >
-                      <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
-                    </button>
-                  )}
-                  {candidate.email && (
-                    <button
-                      className="h-7 w-7 flex items-center justify-center rounded-lg border border-border hover:bg-accent transition-colors"
-                      onClick={(e) => { e.stopPropagation(); window.open(`mailto:${candidate.email}`, '_blank'); }}
-                    >
-                      <Mail className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-
-          {sortedCandidates.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-xs uppercase tracking-wider">
-                Aucun candidat trouvé
-              </TableCell>
-            </TableRow>
-          )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
+      <ATSPagination
+        total={candidates.length}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        firstRow={firstRow}
+        lastRow={lastRow}
+        onPageChange={goToPage}
+        className="border-t border-border"
+      />
     </div>
   );
 };

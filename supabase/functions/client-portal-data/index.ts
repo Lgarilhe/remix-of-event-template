@@ -6,6 +6,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Identifiant d'une ligne job_candidate_status (uuid).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Réponse tant que la fonction SQL client_portal_candidates (migration C1)
+// n'est pas en place : migration et fonction edge se déploient en parallèle.
+const PORTAL_UNAVAILABLE =
+  "Le portail est en cours de mise à jour. Réessayez dans quelques minutes.";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -49,7 +58,7 @@ async function handleFetchPortal(req: Request, supabase: any) {
   // 1. Validate token
   const { data: tokenRow, error: tokenErr } = await supabase
     .from("client_portal_tokens")
-    .select("*")
+    .select("id, organization_id, client_name, project_ids, permissions, expires_at")
     .eq("token", token)
     .maybeSingle();
 
@@ -57,8 +66,9 @@ async function handleFetchPortal(req: Request, supabase: any) {
     return jsonResponse({ error: "Invalid or unknown token" }, 404);
   }
 
-  // 2. Check expiration
-  if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+  // 2. Check expiration : un lien sans date est refusé (colonne obligatoire
+  //    depuis la migration C1, 90 jours par défaut).
+  if (isExpired(tokenRow.expires_at)) {
     return jsonResponse({ error: "Token expired" }, 403);
   }
 
@@ -102,15 +112,24 @@ async function handleFetchPortal(req: Request, supabase: any) {
     });
   }
 
-  // 6. Fetch candidates for all projects in one query
-  const allProjectIds = projects.map((p: any) => p.id);
-  const { data: allCandidates } = await supabase
-    .from("job_candidate_status")
-    .select(
-      "id, candidate_name, candidate_headline, pipeline_stage, score, updated_at, created_at, project_id"
-    )
-    .in("project_id", allProjectIds)
-    .order("updated_at", { ascending: false });
+  // 6. Candidats visibles (C1, R4) : seulement les retenus ou au-delà, jamais
+  //    « À trier », contactés seulement ni écartés, étape traduite pour le
+  //    portail. La règle vit en SQL (client_portal_candidates), seule lecture
+  //    partagée avec l'avis du client ci-dessous. Pas de repli sur une
+  //    lecture brute de job_candidate_status.
+  const { data: allCandidates, error: candErr } = await supabase.rpc(
+    "client_portal_candidates",
+    { p_token: token }
+  );
+
+  if (candErr) {
+    if (isMissingPortalFunction(candErr)) {
+      console.error("client_portal_candidates missing:", candErr.message);
+      return jsonResponse({ error: PORTAL_UNAVAILABLE }, 503);
+    }
+    console.error("client_portal_candidates error:", candErr.message);
+    return jsonResponse({ error: "Internal server error" }, 500);
+  }
 
   // Group candidates by project — anonymisation CÔTÉ SERVEUR.
   // Si le client n'a pas la permission de voir les noms (souvent RGPD), on ne
@@ -154,10 +173,14 @@ async function handleSubmitEvaluation(req: Request, supabase: any) {
     return jsonResponse({ error: "Missing token or evaluation" }, 400);
   }
 
+  if (typeof evaluation.candidate_id !== "string" || !UUID_RE.test(evaluation.candidate_id)) {
+    return jsonResponse({ error: "Ce candidat n'est plus disponible dans votre portail." }, 404);
+  }
+
   // 1. Validate token
   const { data: tokenRow, error: tokenErr } = await supabase
     .from("client_portal_tokens")
-    .select("id, organization_id, project_ids, permissions, expires_at")
+    .select("id, organization_id, permissions, expires_at")
     .eq("token", token)
     .maybeSingle();
 
@@ -166,8 +189,8 @@ async function handleSubmitEvaluation(req: Request, supabase: any) {
   }
 
   // 2. Check expiration
-  if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
-    return jsonResponse({ error: "Token expired" }, 403);
+  if (isExpired(tokenRow.expires_at)) {
+    return jsonResponse({ error: "Ce lien a expiré. Contactez votre recruteur." }, 403);
   }
 
   // 3. Check permission
@@ -176,41 +199,59 @@ async function handleSubmitEvaluation(req: Request, supabase: any) {
     return jsonResponse({ error: "Scorecard permission denied" }, 403);
   }
 
-  // 4. Verify the candidate's project belongs to this token's scope
-  const { data: candidate } = await supabase
-    .from("job_candidate_status")
-    .select("project_id")
+  // 4. Le candidat doit être visible dans ce portail : même lecture que
+  //    l'affichage (missions du lien, lien non échu, retenu ou au-delà).
+  //    Remplace l'ancienne vérification par mission seule, qui laissait
+  //    évaluer une ligne « À trier » ou écartée de la mission.
+  const { data: candidateRows, error: candErr } = await supabase
+    .rpc("client_portal_candidates", { p_token: token })
     .eq("id", evaluation.candidate_id)
-    .maybeSingle();
+    .limit(1);
 
+  if (candErr) {
+    if (isMissingPortalFunction(candErr)) {
+      console.error("client_portal_candidates missing:", candErr.message);
+      return jsonResponse({ error: PORTAL_UNAVAILABLE }, 503);
+    }
+    console.error("client_portal_candidates error:", candErr.message);
+    return jsonResponse({ error: "Internal server error" }, 500);
+  }
+
+  const candidate = candidateRows?.[0] ?? null;
   if (!candidate) {
-    return jsonResponse({ error: "Candidate not found" }, 404);
+    return jsonResponse({ error: "Ce candidat n'est plus disponible dans votre portail." }, 404);
   }
 
-  const allowedProjectIds = tokenRow.project_ids as string[] | null;
-  if (allowedProjectIds && allowedProjectIds.length > 0) {
-    if (!allowedProjectIds.includes(candidate.project_id)) {
-      return jsonResponse({ error: "Candidate not in allowed projects" }, 403);
-    }
-  } else {
-    // If no project_ids filter, verify the project belongs to the org
-    const { data: project } = await supabase
-      .from("sourcing_projects")
-      .select("organization_id")
-      .eq("id", candidate.project_id)
-      .maybeSingle();
+  // 5. Le candidat s'enregistre comme partout ailleurs : par l'identifiant de son
+  //    profil (job_candidate_status.candidate_id), pas par celui de la ligne que
+  //    renvoie client_portal_candidates. Sous l'identifiant de la ligne, la grille
+  //    d'un recruteur, la fiche et l'assistant ne retrouvaient jamais cet avis.
+  //    Lu par une fonction SQL à part, jamais renvoyé au navigateur : cet
+  //    identifiant désigne un candidat que le portail peut avoir anonymisé.
+  const { data: profileId, error: profileErr } = await supabase.rpc(
+    "client_portal_candidate_profile_id",
+    { p_token: token, p_row_id: candidate.id }
+  );
 
-    if (!project || project.organization_id !== tokenRow.organization_id) {
-      return jsonResponse({ error: "Candidate not in allowed projects" }, 403);
+  if (profileErr) {
+    if (isMissingPortalFunction(profileErr)) {
+      console.error("client_portal_candidate_profile_id missing:", profileErr.message);
+      return jsonResponse({ error: PORTAL_UNAVAILABLE }, 503);
     }
+    console.error("client_portal_candidate_profile_id error:", profileErr.message);
+    return jsonResponse({ error: "Internal server error" }, 500);
+  }
+  if (typeof profileId !== "string" || profileId === "") {
+    return jsonResponse({ error: "Ce candidat n'est plus disponible dans votre portail." }, 404);
   }
 
-  // 5. Insert evaluation — use DB-resolved project_id, not client-supplied job_id
+  // 6. Insert evaluation — use DB-resolved project_id, not client-supplied job_id
   const { error: insertErr } = await supabase
     .from("candidate_evaluations")
     .insert({
-      candidate_id: evaluation.candidate_id,
+      candidate_id: profileId,
       job_id: candidate.project_id,
+      project_id: candidate.project_id,
       organization_id: tokenRow.organization_id,
       criteria: evaluation.criteria,
       ratings: evaluation.ratings,
@@ -233,6 +274,19 @@ async function handleSubmitEvaluation(req: Request, supabase: any) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Un lien sans date, à date illisible ou échue est refusé (fail-closed).
+function isExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return true;
+  const t = new Date(expiresAt).getTime();
+  return Number.isNaN(t) || t <= Date.now();
+}
+
+// Fonction SQL absente (PGRST202 : inconnue du cache de schéma ; 42883 :
+// fonction inexistante), le temps que la migration C1 s'applique.
+function isMissingPortalFunction(err: { code?: string } | null): boolean {
+  return !!err && (err.code === "PGRST202" || err.code === "42883");
+}
+
 function parsePermissions(raw: any) {
   const defaults = {
     can_comment: true,

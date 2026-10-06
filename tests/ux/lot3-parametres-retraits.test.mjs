@@ -8,8 +8,10 @@
  *     au démarrage ;
  *   - Équipe : ni missions assignées, ni badges, ni cartes de chiffres ;
  *   - signatures sans « par défaut », tableau de bord sans WhatsApp ;
- *   - Calendly et Aircall retirés du menu d'ajout, proxy montré seulement s'il
- *     existe, extension masquée sans jeton actif ;
+ *   - Calendly et Aircall retirés du menu d'ajout, carte Notion par clé
+ *     supprimée avec ses colonnes (retrait de Notion, étape 2 ; la connexion
+ *     Notion de l'assistant reste dans Connexions), proxy montré seulement
+ *     s'il existe, extension masquée sans jeton actif ;
  *   - identifiant de l'organisation retiré de Général ; texte des politiques
  *     qui renvoie au journal de l’assistant.
  *
@@ -97,7 +99,9 @@ test('L3-5 — Abonnement et crédits : plus de sélecteur de modèle', () => {
 // ---------------------------------------------------------------- 6. Équipe
 test('L3-6 — Équipe : ni missions assignées, ni badges, ni cartes de chiffres', () => {
   const team = read('src/components/settings/TeamManagement.tsx');
-  for (const gone of [' séq', 'cand/30j', 'Missions assignées', 'Séquences actives', 'Candidats (30j)', 'useJobAssignments', 'useMemberStats', 'useSourcingProjects']) {
+  // Ancien badge « {stats.active_sequences} séq » ; la confirmation de retrait
+  // parle désormais des séquences arrêtées du membre (SEQ-042).
+  for (const gone of ['} séq', 'cand/30j', 'Missions assignées', 'Séquences actives', 'Candidats (30j)', 'useJobAssignments', 'useMemberStats', 'useSourcingProjects']) {
     assert.ok(!team.includes(gone), `« ${gone} » encore présent`);
   }
   assert.ok(team.includes('(LinkedIn, quota)'), 'texte des détails réservés aux administrateurs');
@@ -123,20 +127,32 @@ test('L3-8 — modèles de messages sans variables personnalisées', () => {
 
 // ---------------------------------------------------------------- 9. Tableau de bord
 test('L3-9 — tableau de bord sans WhatsApp', () => {
-  assert.doesNotMatch(read('src/components/dashboard/DashboardConnections.tsx'), /whatsapp/i);
+  assert.doesNotMatch(read('src/components/dashboard/DashboardFocusPanel.tsx'), /whatsapp/i);
   assert.ok(!read('src/pages/Dashboard.tsx').includes('whatsapp='));
 });
 
 // ---------------------------------------------------------------- 10. Intégrations
-test('L3-10 — Calendly et Aircall retirés du menu, proxy seulement s’il existe', () => {
+test('L3-10 — Calendly retiré du menu, Aircall relié depuis les réglages, plus de carte Notion par clé, proxy seulement s’il existe', () => {
   const integrations = read('src/components/settings/IntegrationsSettings.tsx');
-  for (const id of ['calendly', 'aircall']) {
-    assert.match(between(integrations, `id: '${id}'`, '\n  },'), /retired: true/, `${id} doit être retiré du menu d’ajout`);
-  }
-  assert.doesNotMatch(between(integrations, "id: 'notion'", '\n  },'), /retired/, 'Notion reste proposé');
+  assert.match(between(integrations, "id: 'calendly'", '\n  },'), /retired: true/, 'calendly doit être retiré du menu d’ajout');
+  // Aircall (téléphonie, 05/10/2026) : de retour dans le menu, état « connecté » posé par la liaison serveur.
+  const aircall = between(integrations, "id: 'aircall'", '\n  },');
+  assert.doesNotMatch(aircall, /retired: true/, 'aircall est proposé dans le menu d’ajout');
+  assert.match(aircall, /serverManagedConnection: true/, 'l’enregistrement des champs ne pose pas « connecté »');
+  assert.ok(integrations.includes('if (!config.serverManagedConnection) updates[config.connectedKey] = allFilled;'));
+  // Retrait de Notion, étape 2 : la carte par clé API a disparu avec ses
+  // colonnes (plus de clé à retirer), la connexion Notion de l'assistant reste
+  // montée dans Connexions.
+  assert.ok(!integrations.includes("id: 'notion'"), 'plus de carte Notion par clé');
+  assert.doesNotMatch(integrations, /notion_api_key|notion_connected|_db_id|notionLogo/, 'plus de champ Notion par clé');
+  assert.doesNotMatch(read('src/hooks/useOrganizationIntegrations.ts'), /notion_api_key/, 'plus de secret Notion à écrire');
+  const connections = between(read('src/components/settings/shell/sections.tsx'), 'function ConnectionsSection()', '\n}\n');
+  assert.ok(connections.includes('<SettingsAnchor id="applications"><AssistantConnectorsCard /></SettingsAnchor>'), 'la connexion Notion de l’assistant doit rester dans Connexions, dans la liste des applications');
   assert.ok(integrations.includes('!config.retired'));
-  // Une clé encore enregistrée garde la carte retirée visible, pour pouvoir la retirer.
-  assert.match(between(integrations, 'const visibleIntegrations', '});'), /config\.retired && config\.fields\.some\(f => f\.secret && !!values\[`\$\{f\.key\}_hint`\]\)/);
+  // Une clé encore enregistrée garde la carte visible (retirée du menu : pour la retirer ; Aircall : pour finir la liaison).
+  assert.match(between(integrations, 'const visibleIntegrations', '});'), /return config\.fields\.some\(f => f\.secret && !!values\[`\$\{f\.key\}_hint`\]\)/);
+  // Une carte déjà visible n'est pas aussi proposée dans le menu d'ajout.
+  assert.match(between(integrations, 'const hiddenIntegrations', ');'), /!visibleIntegrations\.some\(v => v\.id === config\.id\)/);
   const iGuard = integrations.indexOf('if (!hasProxy) return null;');
   assert.ok(iGuard >= 0, 'garde du proxy absente');
   assert.ok(iGuard < integrations.indexOf('<ProxyConfigPanel'), 'la garde précède le panneau du proxy');
@@ -149,7 +165,12 @@ test('L3-11 — extension masquée sans jeton actif, sauf demande explicite', ()
   const ext = read('src/components/settings/ExtensionTokens.tsx');
   assert.ok(ext.includes('revealWhenEmpty'));
   assert.ok(ext.includes('if (!revealed) return null;'));
-  assert.ok(ext.includes('if (revealedRef.current) toast.error('), 'pas de toast pour une carte cachée');
+  // Revue design : une lecture ratée s'affiche dans la carte (ErrorState et « Réessayer »,
+  // lot 12, F-06), plus par un toast. Même garantie : une carte cachée ne signale rien.
+  const failBranch = between(ext, 'if (error || !data?.success) {', 'return;');
+  assert.ok(failBranch.includes('setLoadError(true)'), 'échec de lecture signalé dans la carte');
+  assert.ok(!failBranch.includes('toast.'), 'pas de toast pour une carte cachée');
+  assert.ok(ext.indexOf('<ErrorState') > ext.indexOf('if (!revealed) return null;'), 'erreur montrée dans la carte révélée seulement');
   const iList = ext.indexOf('const list = data.tokens || [];');
   assert.ok(iList >= 0, 'liste des jetons introuvable');
   assert.ok(ext.indexOf('setRevealed(true)', iList) > iList, 'un jeton actif révèle la carte');

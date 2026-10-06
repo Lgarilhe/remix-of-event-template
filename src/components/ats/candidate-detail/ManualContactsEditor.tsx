@@ -14,6 +14,8 @@ import React, { useEffect, useState } from 'react';
 import { Mail, Phone, Pencil, Loader2, Check, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { HEADER_ACTION_CLASS } from '@/components/outreach/result-card/headerActions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -116,40 +118,39 @@ export const ManualContactsEditor: React.FC<Props> = ({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
-          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border border-border bg-background hover:bg-accent transition-colors"
-          title="Ajouter ou modifier email / téléphone manuellement"
+          variant="outline"
+          size="sm"
+          className={cn('shrink-0 max-sm:min-h-11', HEADER_ACTION_CLASS)}
+          title="Ajouter ou modifier l'e-mail et le téléphone à la main"
         >
-          <Pencil className="w-3 h-3" />
+          <Pencil aria-hidden="true" />
           {(contacts?.email || contacts?.phone) ? 'Modifier' : 'Ajouter contacts'}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-4 space-y-3" align="start">
         <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-0.5">
-            Contacts manuels
-          </p>
-          <p className="text-[11px] text-muted-foreground leading-snug">
-            Saisis l'email ou le téléphone du candidat. Sauvegardé pour
-            <span className="font-semibold"> toutes les missions</span> de ce candidat dans ton organisation.
+          <p className="text-sm font-semibold text-foreground">Contacts saisis à la main</p>
+          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+            Saisissez l'e-mail ou le téléphone du candidat. Ils sont enregistrés pour toutes ses missions dans votre organisation.
           </p>
         </div>
 
-        {/* Existing contacts (info read-only) */}
+        {/* Contacts déjà connus (lecture seule) */}
         {(existingEmails.length > 0 || existingPhones.length > 0) && (
-          <div className="rounded-lg bg-muted/30 border border-border/60 px-2.5 py-2 space-y-1">
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">
-              Déjà connu (LinkedIn / enrichissement)
+          <div className="space-y-1 rounded-lg bg-muted px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Déjà connus (LinkedIn ou recherche automatique)
             </p>
             {existingEmails.map(e => (
-              <p key={e} className="text-[11px] text-foreground/80 inline-flex items-center gap-1">
-                <Mail className="w-2.5 h-2.5" /> {e}
+              <p key={e} className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+                <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {e}
               </p>
             ))}
             {existingPhones.map(p => (
-              <p key={p} className="text-[11px] text-foreground/80 inline-flex items-center gap-1">
-                <Phone className="w-2.5 h-2.5" /> {p}
+              <p key={p} className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+                <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {p}
               </p>
             ))}
           </div>
@@ -163,8 +164,8 @@ export const ManualContactsEditor: React.FC<Props> = ({
         ) : (
           <div className="space-y-2.5">
             <div>
-              <Label htmlFor="manual-email" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 flex items-center gap-1 mb-1">
-                <Mail className="w-3 h-3" /> Email
+              <Label htmlFor="manual-email" className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                <Mail className="w-3 h-3" /> E-mail
               </Label>
               <Input
                 id="manual-email"
@@ -172,11 +173,11 @@ export const ManualContactsEditor: React.FC<Props> = ({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="prenom.nom@example.com"
-                className="h-8 text-[12.5px]"
+                className="h-9 text-sm"
               />
             </div>
             <div>
-              <Label htmlFor="manual-phone" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 flex items-center gap-1 mb-1">
+              <Label htmlFor="manual-phone" className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                 <Phone className="w-3 h-3" /> Téléphone
               </Label>
               <Input
@@ -185,24 +186,24 @@ export const ManualContactsEditor: React.FC<Props> = ({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+33 6 12 34 56 78"
-                className="h-8 text-[12.5px]"
+                className="h-9 text-sm"
               />
             </div>
             <div>
-              <Label htmlFor="manual-notes" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 mb-1 block">
+              <Label htmlFor="manual-notes" className="mb-1 block text-xs font-medium text-muted-foreground">
                 Note (optionnelle)
               </Label>
               <Textarea
                 id="manual-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Ex: email pro, téléphone perso, pas de SMS le soir…"
-                className="min-h-[50px] text-[12px]"
+                placeholder="Exemple : e-mail pro, téléphone perso, pas de SMS le soir"
+                className="min-h-[56px] text-sm"
               />
             </div>
 
             {contacts?.updatedAt && (
-              <p className="text-[10px] text-muted-foreground italic">
+              <p className="text-xs text-muted-foreground">
                 Dernière mise à jour : {new Date(contacts.updatedAt).toLocaleString('fr-FR')}
                 {sourceLabel && ` (${sourceLabel})`}
               </p>
@@ -210,34 +211,27 @@ export const ManualContactsEditor: React.FC<Props> = ({
 
             <div className="flex items-center gap-2 pt-1">
               {(contacts?.email || contacts?.phone || contacts?.notes) && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={handleClear}
                   disabled={saving}
-                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive transition-colors px-2 py-1.5"
-                  title="Effacer tous les contacts manuels"
+                  className="text-foreground-secondary hover:bg-danger-muted hover:text-danger"
+                  title="Effacer tous les contacts saisis à la main"
                 >
-                  <X className="w-3 h-3" />
+                  <X aria-hidden="true" />
                   Effacer
-                </button>
+                </Button>
               )}
               <div className="flex-1" />
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
                 Annuler
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              </Button>
+              <Button type="button" variant="primary" size="sm" onClick={handleSave} loading={saving}>
+                {!saving && <Check aria-hidden="true" />}
                 Enregistrer
-              </button>
+              </Button>
             </div>
           </div>
         )}

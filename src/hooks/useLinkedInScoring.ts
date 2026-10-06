@@ -11,6 +11,7 @@ import { JobMatchResult, BatchScoringStats, isDegradedScore } from '@/components
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
 import { confirmAlert } from '@/lib/confirmAlert';
+import { serializeProfileForStorage } from '@/lib/serializeProfile';
 
 /**
  * Pour un profil Base Konekt (source==='database') affiché en aperçu (données
@@ -237,24 +238,19 @@ interface ScoringOptions {
    * ne s'applique pas (le scoring s'appuie sur l'intitulé + les instructions).
    */
   skipBriefCheck?: boolean;
+  /**
+   * Enregistrement des notes. Lot 0b : la notation n'écarte plus personne ;
+   * un profil peu adapté garde sa note et sa raison (skipReason), l'écart
+   * reste une décision de l'utilisateur.
+   */
   candidateStatus?: {
-    batchDismiss: (profiles: Array<{
-      id: string;
-      name?: string;
-      headline?: string;
-      profileUrl?: string;
-      score?: number;
-      recommendation?: string;
-      skipReason?: string;
-      scoringDetails?: any;
-      linkedinProfileData?: any;
-    }>) => Promise<void>;
     saveScore?: (candidateId: string, data: {
       name?: string;
       headline?: string;
       profileUrl?: string;
       score: number;
       recommendation: string;
+      skipReason?: string;
       scoringDetails?: any;
       linkedinProfileData?: any;
     }) => Promise<void>;
@@ -265,6 +261,7 @@ interface ScoringOptions {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      skipReason?: string;
       scoringDetails?: any;
       linkedinProfileData?: any;
     }>) => Promise<void>;
@@ -604,28 +601,6 @@ function mapScoringResult(raw: any): JobMatchResult {
   };
 }
 
-// Serialize profile for storage (keep essential data, skip huge fields)
-function serializeProfileForStorage(profile: LinkedInProfile): any {
-  return {
-    name: profile.name,
-    first_name: profile.first_name,
-    last_name: profile.last_name,
-    headline: profile.headline,
-    summary: profile.summary,
-    location: profile.location,
-    skills: profile.skills,
-    work_experience: (profile.work_experience || []).slice(0, 8),
-    education: profile.education,
-    languages: (profile as any).languages,
-    open_to_work: profile.open_to_work,
-    open_profile: profile.open_profile,
-    network_distance: profile.network_distance,
-    public_profile_url: profile.public_profile_url,
-    profile_url: profile.profile_url,
-    connections_count: profile.connections_count,
-  };
-}
-
 // ─── Batch report persistence ──────────────────────────────────────────────
 //
 // Le rapport de scoring (`batchReport` + `batchStats` + `batchDurationMs`) est
@@ -842,38 +817,27 @@ export function useLinkedInScoring({
         // Serialize full LinkedIn profile for storage
         const linkedinProfileData = serializeProfileForStorage(profile);
 
-        // Auto-dismiss profiles with 'skip' recommendation.
-        // Pas en mode deep : l'user est en train de REGARDER le profil dans la
-        // fiche — l'écarter sous ses yeux serait brutal. On enregistre le score
-        // (branche saveScore) et il tranche lui-même.
-        if (!options?.deep && mapped.recommendation === 'skip' && candidateStatus) {
-          await candidateStatus.batchDismiss([{
-            id: profile.id,
-            name: profileName,
-            headline: profile.headline,
-            profileUrl,
-            score: mapped.match_score,
-            recommendation: mapped.recommendation,
-            skipReason: mapped.summary || 'Score insuffisant',
-            scoringDetails: mapped,
-            linkedinProfileData,
-          }]);
-          setSelectedProfiles?.(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(profile.id);
-            return newSet;
-          });
-          toast.info(`Profil écarté (score: ${mapped.match_score}%)`);
-        } else if (candidateStatus?.saveScore) {
-          // Persist score for go/maybe profiles too
+        // Lot 0b : la note est toujours enregistrée, sans écart. Un profil peu
+        // adapté reste dans le Sourcing avec sa raison ; il sort seulement de
+        // la sélection (hors mode deep, où l'utilisateur regarde la fiche).
+        const isSkip = mapped.recommendation === 'skip';
+        if (candidateStatus?.saveScore) {
           await candidateStatus.saveScore(profile.id, {
             name: profileName,
             headline: profile.headline,
             profileUrl,
             score: mapped.match_score,
             recommendation: mapped.recommendation,
+            ...(isSkip ? { skipReason: mapped.summary || 'Score insuffisant' } : {}),
             scoringDetails: mapped,
             linkedinProfileData,
+          });
+        }
+        if (!options?.deep && isSkip) {
+          setSelectedProfiles?.(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(profile.id);
+            return newSet;
           });
         }
 
@@ -1130,6 +1094,8 @@ export function useLinkedInScoring({
                 // Marque le placeholder comme dégradé : badge "Analyse IA
                 // incomplète" + re-scorable (sinon le guard batch le figeait).
                 skippedLLM: true,
+                // Lot 0b : affiché seulement, jamais enregistré (pas une note).
+                rateLimitedPlaceholder: true,
               } as any));
               break;
             }
@@ -1176,8 +1142,8 @@ export function useLinkedInScoring({
           name?: string;
           headline?: string;
           profileUrl?: string;
-          score?: number;
-          recommendation?: string;
+          score: number;
+          recommendation: string;
           skipReason?: string;
           scoringDetails?: any;
           linkedinProfileData?: any;
@@ -1201,6 +1167,8 @@ export function useLinkedInScoring({
           if (!profile) return;
           const result = mapScoringResult(rawResult);
           newScores[profile.id] = result;
+          // Résultat factice d'un lot refusé (429) : affiché, jamais enregistré.
+          if (rawResult?.rateLimitedPlaceholder) return;
           const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
           const profileUrl = profile.public_profile_url || profile.profile_url;
           const linkedinProfileData = serializeProfileForStorage(profile);
@@ -1254,16 +1222,15 @@ export function useLinkedInScoring({
 
         const scoredCount = Object.keys(newScores).length;
 
-        // Persist good scores
-        if (goodScoreProfiles.length > 0 && candidateStatus?.batchSaveScores) {
-          await candidateStatus.batchSaveScores(goodScoreProfiles);
+        // Lot 0b : toutes les notes réelles sont enregistrées, sans écart. Les
+        // profils peu adaptés restent dans le Sourcing (filtre « Scorés »).
+        const realScoredProfiles = [...goodScoreProfiles, ...lowScoreProfiles];
+        if (realScoredProfiles.length > 0 && candidateStatus?.batchSaveScores) {
+          await candidateStatus.batchSaveScores(realScoredProfiles);
         }
 
-        // Always auto-dismiss low score profiles after scoring
-        if (lowScoreProfiles.length > 0 && candidateStatus) {
-          await candidateStatus.batchDismiss(lowScoreProfiles);
-
-          // Remove from selection
+        // Les profils peu adaptés sortent seulement de la sélection.
+        if (lowScoreProfiles.length > 0) {
           const lowScoreIds = new Set(lowScoreProfiles.map(p => p.id));
           setSelectedProfiles?.(prev => {
             const newSet = new Set(prev);
@@ -1284,7 +1251,7 @@ export function useLinkedInScoring({
         } else if (rateLimited) {
           toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
         } else if (lowScoreProfiles.length > 0) {
-          toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`);
+          toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}, à confirmer`);
         } else {
           toast.success(`${scoredCount} profils scorés`);
         }
@@ -1292,8 +1259,8 @@ export function useLinkedInScoring({
         // Auto-switch vers les pertinents si on en a — évite que l'user voie
         // une liste vide ("Aucun profil trouvé") quand le filtre par défaut
         // cache les profils traités. Si pas de Go mais des Maybe, on switch
-        // sur Maybe. Si tout est dismissed → reste sur le filtre actuel
-        // (l'user verra Pipeline ou utilisera le filtre Dismissed).
+        // sur Maybe. Si tout est peu adapté, on reste sur le filtre actuel
+        // (ces profils restent visibles dans le filtre « Scorés »).
         if (setStatusFilter && goodCount > 0) {
           const hasGo = goodScoreProfiles.some(p => p.recommendation === 'go');
           const hasMaybe = goodScoreProfiles.some(p => p.recommendation === 'maybe');

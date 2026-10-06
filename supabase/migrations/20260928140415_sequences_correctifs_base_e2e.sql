@@ -1,0 +1,146 @@
+-- =====================================================================
+-- Séquences et actions de l'assistant : correctifs de base relevés par les
+-- tests de bout en bout du 2026-09-27 (lot « db »).
+--
+-- Rejouable sur une base vide (CI e2e) comme en prod : chaque objet visé
+-- existe déjà à ce point de la chaîne ; DROP ... IF EXISTS partout.
+--
+-- 1. SEQ-043  sequence_enrollments : la garde « chacun envoie depuis son
+--             propre compte relié » (déclencheur de B6, à l'insertion) vaut
+--             aussi pour un changement de compte (account_id) ou d'auteur
+--             (created_by) d'une inscription existante. Même fonction, même
+--             refus (42501, HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER). La clause
+--             WHEN ne la déclenche que si l'une des deux valeurs change : une
+--             mise à jour ordinaire (statut, pause, suivi) d'une inscription
+--             héritée déjà posée sur le compte d'un collègue reste possible.
+--             Un auteur remis à NULL (clé étrangère ON DELETE SET NULL, compte
+--             utilisateur supprimé) n'est pas contrôlé : la suppression d'un
+--             utilisateur ne doit jamais échouer sur ce déclencheur.
+--    SEQ-043  assigned_sender_id (compte tiré par la rotation, prioritaire sur
+--             account_id pour l'envoi et la signature) : écrit par le moteur
+--             seul (service_role). Un utilisateur connecté ne peut que le
+--             remettre à NULL, à l'insertion comme à la mise à jour ; sinon
+--             il ferait envoyer son inscription depuis le compte d'un
+--             collègue hors de toute rotation configurée sur la séquence.
+--             Aucun écran ni appel du navigateur n'écrit cette colonne.
+-- 2. sequence_templates, sequence_snippets : created_by référençait
+--             profiles(id) sur une base construite depuis les migrations, alors
+--             que le front écrit l'identifiant auth.users (« Enregistrer comme
+--             modèle » refusé, 23503). La prod (MIGRATION_CLEAN.sql) n'a pas
+--             de clé étrangère sur ces colonnes : on s'aligne sur elle.
+-- 3. SEQ-114 / BUG-016  agent_tool_executions : executed_at est le verrou de
+--             réservation du cron et de l'exécution directe. Le client ne
+--             pouvait pas le poser, mais pouvait l'effacer : une réservation
+--             interrompue ou en cours redevenait exécutable et partait une
+--             seconde fois. Seule la remise en attente d'un échec
+--             (failed → proposed, bouton « Relancer ») l'efface encore.
+-- (D3 / SEQ-119, lecture de agent_tool_executions par son auteur, et par
+--             le propriétaire ou un administrateur pour toute l'organisation :
+--             posée par 20260927233806, lot C1, bloc R3-b, même règle.)
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1. SEQ-043 : changement de compte ou d'auteur d'une inscription
+--    Nom trié après sequence_enrollments_check_org (ordre alphabétique des
+--    déclencheurs), qui refuse déjà un changement d'organisation.
+-- ---------------------------------------------------------------------
+DROP TRIGGER IF EXISTS sequence_enrollments_check_sender_owner_update ON public.sequence_enrollments;
+CREATE TRIGGER sequence_enrollments_check_sender_owner_update
+  BEFORE UPDATE OF account_id, created_by ON public.sequence_enrollments
+  FOR EACH ROW
+  WHEN (OLD.account_id IS DISTINCT FROM NEW.account_id
+        OR (OLD.created_by IS DISTINCT FROM NEW.created_by AND NEW.created_by IS NOT NULL))
+  EXECUTE FUNCTION public.sequence_enrollments_check_sender_owner();
+
+-- Expéditeur de rotation : réservé au moteur. Chemins serveur (service_role,
+-- cron, migrations) non contrôlés ; une valeur répétée à l'identique par une
+-- mise à jour complète passe.
+CREATE OR REPLACE FUNCTION public.sequence_enrollments_check_assigned_sender()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF COALESCE(auth.role(), '') <> 'authenticated' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.assigned_sender_id IS NOT DISTINCT FROM OLD.assigned_sender_id THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'L''expéditeur de la rotation est choisi par le moteur d''envoi : il ne se modifie pas depuis l''application.'
+    USING ERRCODE = '42501', HINT = 'ASSIGNED_SENDER_SERVER_ONLY';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sequence_enrollments_check_assigned_sender() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS sequence_enrollments_check_assigned_sender ON public.sequence_enrollments;
+CREATE TRIGGER sequence_enrollments_check_assigned_sender
+  BEFORE INSERT OR UPDATE OF assigned_sender_id ON public.sequence_enrollments
+  FOR EACH ROW
+  WHEN (NEW.assigned_sender_id IS NOT NULL)
+  EXECUTE FUNCTION public.sequence_enrollments_check_assigned_sender();
+
+-- ---------------------------------------------------------------------
+-- 2. created_by des modèles et des extraits : identifiant auth.users
+-- ---------------------------------------------------------------------
+ALTER TABLE public.sequence_templates DROP CONSTRAINT IF EXISTS sequence_templates_created_by_fkey;
+ALTER TABLE public.sequence_snippets DROP CONSTRAINT IF EXISTS sequence_snippets_created_by_fkey;
+
+-- ---------------------------------------------------------------------
+-- 3. agent_tool_executions : executed_at jamais effacé hors relance d'un échec
+--    Corps repris de 20260903074500 (§ 8) ; seul le contrôle de executed_at
+--    change.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.guard_agent_tool_execution_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'authenticated' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.tool_name IS DISTINCT FROM OLD.tool_name
+     OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
+     OR NEW.user_id IS DISTINCT FROM OLD.user_id
+     OR NEW.conversation_id IS DISTINCT FROM OLD.conversation_id
+     OR NEW.message_id IS DISTINCT FROM OLD.message_id
+     OR NEW.dry_run_result IS DISTINCT FROM OLD.dry_run_result THEN
+    RAISE EXCEPTION 'agent_tool_executions: colonne non modifiable côté client';
+  END IF;
+
+  IF NEW.params IS DISTINCT FROM OLD.params AND OLD.status <> 'proposed' THEN
+    RAISE EXCEPTION 'agent_tool_executions: paramètres modifiables uniquement avant approbation';
+  END IF;
+
+  -- Verrou de réservation : l'effacer rendrait la ligne de nouveau exécutable
+  -- (cron, approbation) alors que l'envoi a pu partir.
+  IF NEW.executed_at IS DISTINCT FROM OLD.executed_at
+     AND NOT (OLD.status = 'failed' AND NEW.status = 'proposed' AND NEW.executed_at IS NULL) THEN
+    RAISE EXCEPTION 'agent_tool_executions: executed_at réservé au serveur';
+  END IF;
+  IF NEW.real_result IS NOT NULL AND NEW.real_result IS DISTINCT FROM OLD.real_result THEN
+    RAISE EXCEPTION 'agent_tool_executions: real_result réservé au serveur';
+  END IF;
+  IF NEW.approved_at IS NOT NULL AND NEW.approved_at IS DISTINCT FROM OLD.approved_at THEN
+    RAISE EXCEPTION 'agent_tool_executions: approved_at réservé au serveur';
+  END IF;
+  IF NEW.scheduled_for IS NOT NULL AND NEW.scheduled_for IS DISTINCT FROM OLD.scheduled_for THEN
+    RAISE EXCEPTION 'agent_tool_executions: scheduled_for réservé au serveur';
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    IF NOT (
+      (OLD.status = 'proposed' AND NEW.status = 'rejected')
+      OR (OLD.status = 'approved' AND NEW.status = 'rejected' AND OLD.executed_at IS NULL)
+      OR (OLD.status = 'failed' AND NEW.status = 'proposed')
+    ) THEN
+      RAISE EXCEPTION 'agent_tool_executions: transition % vers % interdite côté client', OLD.status, NEW.status;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;

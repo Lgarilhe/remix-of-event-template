@@ -2,7 +2,8 @@
  * AgentConnectorsSettings — Connecteurs MCP du Copilot (P3.1).
  *
  * Rendu dans Paramètres › Règles de l’assistant (ancre #connecteurs), sous les ICP.
- * La carte Notion n'est plus ici : elle est dans Paramètres › Connexions.
+ * Les applications que chaque membre connecte lui-même (Notion…) sont dans
+ * Paramètres › Connexions, liste « Applications connectées » (#applications).
  * Un connecteur = un serveur MCP distant (Model Context Protocol, standard
  * ouvert) : Notion, Slack, calendrier, outil interne… Ses outils deviennent
  * disponibles dans le chat du Copilot.
@@ -24,7 +25,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import {
   Collapsible,
   CollapsibleContent,
@@ -40,9 +40,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plug, Plus, Trash2, AlertTriangle, Loader2, Pencil, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorBox } from '@/components/layout/ErrorBox';
+import { Plug, Plus, Trash2, AlertTriangle, Pencil, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
+import { RESERVED_BUILTIN_CONNECTORS } from '@/lib/assistantConnectors';
 
 interface McpServerRow {
   id: string;
@@ -89,7 +94,7 @@ export function AgentConnectorsSettings() {
   const [deleteTarget, setDeleteTarget] = useState<McpServerRow | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const { data: servers = [] } = useQuery({
+  const { data: servers = [], isPending, isError, refetch } = useQuery({
     queryKey: ['org-mcp-servers', organizationId],
     queryFn: async () => {
       // Colonnes explicites obligatoires (token write-only, cf. en-tête)
@@ -112,7 +117,12 @@ export function AgentConnectorsSettings() {
     const slug = name.trim().toLowerCase();
     const allowedTools = parseAllowedTools(allowedToolsText);
     if (!NAME_RE.test(slug)) {
-      toast.error('Nom invalide : 2-40 caractères, minuscules/chiffres/tirets (ex : notion, slack-recrutement).');
+      toast.error('Nom invalide : 2 à 40 caractères, en minuscules, chiffres et tirets (ex : wiki-interne).');
+      return;
+    }
+    // Nom tenu par une connexion personnelle : le chat et le serveur l'ignoreraient sans le dire.
+    if (RESERVED_BUILTIN_CONNECTORS.has(slug)) {
+      toast.error('Ce nom est réservé : Notion et l’e-mail se connectent dans Paramètres › Connexions, liste « Applications connectées ».');
       return;
     }
     if (!url.trim().startsWith('https://')) {
@@ -145,9 +155,10 @@ export function AgentConnectorsSettings() {
       invalidate();
     } catch (e: unknown) {
       const errorMessage = getErrorMessage(e);
+      if (!errorMessage.includes('unique')) console.error('[AgentConnectorsSettings] insert failed:', e);
       toast.error(errorMessage.includes('unique')
         ? 'Un connecteur porte déjà ce nom.'
-        : `Ajout impossible : ${errorMessage}`);
+        : 'Le connecteur n’a pas pu être ajouté. Réessayez.');
     } finally {
       setSaving(false);
     }
@@ -162,7 +173,11 @@ export function AgentConnectorsSettings() {
       .from('organization_mcp_servers')
       .update({ enabled })
       .eq('id', row.id);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      console.error('[AgentConnectorsSettings] toggle failed:', error);
+      toast.error(enabled ? 'Le connecteur n’a pas pu être activé. Réessayez.' : 'Le connecteur n’a pas pu être désactivé. Réessayez.');
+      return;
+    }
     invalidate();
   };
 
@@ -179,12 +194,13 @@ export function AgentConnectorsSettings() {
         .update({ allowed_tools: allowedTools })
         .eq('id', row.id);
       if (error) throw error;
-      toast.success('Liste blanche mise à jour. Vous pouvez activer le connecteur.');
+      toast.success('Liste blanche enregistrée. Vous pouvez activer le connecteur.');
       setEditingToolsId(null);
       setEditingToolsText('');
       invalidate();
     } catch (e: unknown) {
-      toast.error(`Mise à jour impossible : ${getErrorMessage(e)}`);
+      console.error('[AgentConnectorsSettings] allowed tools update failed:', getErrorMessage(e));
+      toast.error('La liste blanche n’a pas pu être enregistrée. Réessayez.');
     } finally {
       setSaving(false);
     }
@@ -196,7 +212,11 @@ export function AgentConnectorsSettings() {
       .from('organization_mcp_servers')
       .delete()
       .eq('id', deleteTarget.id);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      console.error('[AgentConnectorsSettings] delete failed:', error);
+      toast.error('Le connecteur n’a pas pu être supprimé. Réessayez.');
+      return;
+    }
     toast.success(`Connecteur « ${deleteTarget.name} » supprimé.`);
     setDeleteTarget(null);
     invalidate();
@@ -205,17 +225,19 @@ export function AgentConnectorsSettings() {
   return (
     <div className="space-y-3">
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        {/* Revue design : bouton du kit (aria-expanded posé par CollapsibleTrigger), 44 px sur téléphone. */}
         <CollapsibleTrigger asChild>
-          <button
+          <Button
             type="button"
-            className="flex w-full items-center justify-between rounded-lg border border-border/70 bg-muted/20 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40"
+            variant="outline"
+            className="w-full justify-between px-3.5 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-100 max-md:h-11"
           >
-            <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <SlidersHorizontal className="h-3.5 w-3.5" />
+            <span className="flex items-center gap-2">
+              <SlidersHorizontal aria-hidden="true" />
               Options avancées pour développeurs
             </span>
-            <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', advancedOpen && 'rotate-180')} />
-          </button>
+            <ChevronDown className={cn('transition-transform', advancedOpen && 'rotate-180')} aria-hidden="true" />
+          </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2">
           <Card>
@@ -223,24 +245,31 @@ export function AgentConnectorsSettings() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2">
-              <Plug className="w-4 h-4" />
+              <Plug className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               Connecteurs de l'assistant (MCP)
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Branchez des serveurs MCP (Notion, Slack, calendrier, outils internes…) : leurs
+              Branchez des serveurs MCP (wiki, messagerie d’équipe, calendrier, outils internes…) : leurs
               outils deviennent utilisables par l'assistant dans le chat.
             </p>
           </div>
           {isAdmin && (
-            <Button size="sm" variant="outline" onClick={() => setShowForm((v) => !v)} className="shrink-0">
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowForm((v) => !v)}
+              aria-expanded={showForm}
+              className="shrink-0 max-md:h-11"
+            >
+              <Plus aria-hidden="true" />
               Ajouter
             </Button>
           )}
         </div>
 
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-[11px] text-muted-foreground">
-          <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-foreground-secondary">
+          <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
           <span>
             Sécurité renforcée : seuls les outils en lecture seule inscrits dans la liste blanche
             sont exposés à l'assistant. Les écritures via MCP sont interdites ; utilisez les actions
@@ -255,10 +284,10 @@ export function AgentConnectorsSettings() {
                 <label htmlFor="mcp-connector-name" className="sr-only">Nom court du connecteur</label>
                 <Input
                   id="mcp-connector-name"
-                  placeholder="Nom court (ex : notion)"
+                  placeholder="Nom court (ex : wiki-interne)"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="h-8 text-xs"
+                  className="h-8 text-xs max-md:h-11"
                 />
               </div>
               <div>
@@ -268,18 +297,18 @@ export function AgentConnectorsSettings() {
                   placeholder="URL du serveur MCP (https://…)"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  className="h-8 text-xs"
+                  className="h-8 text-xs max-md:h-11"
                 />
               </div>
             </div>
-            <label htmlFor="mcp-connector-token" className="sr-only">Token d’autorisation</label>
+            <label htmlFor="mcp-connector-token" className="sr-only">Jeton d’autorisation</label>
             <Input
               id="mcp-connector-token"
               type="password"
-              placeholder="Token d'autorisation (optionnel — jamais réaffiché)"
+              placeholder="Jeton d’autorisation (facultatif, jamais réaffiché)"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              className="h-8 text-xs"
+              className="h-8 text-xs max-md:h-11"
               autoComplete="off"
             />
             <div className="space-y-1">
@@ -289,24 +318,32 @@ export function AgentConnectorsSettings() {
                 placeholder="Outils autorisés en lecture seule (ex : search read_page)"
                 value={allowedToolsText}
                 onChange={(e) => setAllowedToolsText(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 text-xs max-md:h-11"
                 autoComplete="off"
+                aria-describedby="mcp-connector-tools-help"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p id="mcp-connector-tools-help" className="text-xs text-muted-foreground">
                 Noms exacts fournis par le serveur MCP, séparés par des espaces ou des virgules. 50 maximum.
               </p>
             </div>
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Annuler</Button>
-              <Button size="sm" onClick={handleAdd} disabled={saving}>
-                {saving && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              <Button type="button" size="sm" variant="ghost" className="max-md:h-11" onClick={() => setShowForm(false)}>Annuler</Button>
+              <Button type="button" variant="primary" size="sm" className="max-md:h-11" onClick={handleAdd} loading={saving}>
                 Ajouter le connecteur
               </Button>
             </div>
           </div>
         )}
 
-        {servers.length === 0 ? (
+        {isPending ? (
+          <div>
+            <p role="status" className="sr-only">Chargement des connecteurs…</p>
+            <Skeleton className="h-12 w-full rounded-lg" aria-hidden="true" />
+          </div>
+        ) : isError ? (
+          // Lecture ratée : pas de « Aucun connecteur configuré », qui serait faux.
+          <ErrorBox title="Impossible de charger les connecteurs." onRetry={() => { void refetch(); }} />
+        ) : servers.length === 0 ? (
           <p className="text-xs text-muted-foreground">Aucun connecteur configuré.</p>
         ) : (
           <div className="divide-y divide-border rounded-lg border border-border">
@@ -314,13 +351,18 @@ export function AgentConnectorsSettings() {
               <div key={s.id} className="px-3 py-2 space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium flex items-center gap-2">
+                    <div className="text-sm font-medium flex items-center gap-2">
                       {s.name}
-                      {!s.enabled && <Badge variant="outline" className="text-[10px]">désactivé</Badge>}
+                      {!s.enabled && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
+                          Désactivé
+                        </span>
+                      )}
                     </div>
-                    <div className="text-[11px] text-muted-foreground truncate">{s.url}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {s.allowed_tools.length} outil{s.allowed_tools.length > 1 ? 's' : ''} autorisé{s.allowed_tools.length > 1 ? 's' : ''} en lecture
+                    <div className="text-xs text-muted-foreground truncate">{s.url}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {plural(s.allowed_tools.length, 'outil autorisé', 'outils autorisés')} en lecture
                     </div>
                   </div>
                   {isAdmin && (
@@ -330,33 +372,44 @@ export function AgentConnectorsSettings() {
                         onCheckedChange={(v) => handleToggle(s, v)}
                         aria-label={`${s.enabled ? 'Désactiver' : 'Activer'} le connecteur ${s.name}`}
                       />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title="Modifier la liste blanche"
-                        aria-label={`Modifier les outils autorisés pour ${s.name}`}
-                        className="h-7 w-7 p-0 text-muted-foreground"
-                        onClick={() => {
-                          setEditingToolsId(s.id);
-                          setEditingToolsText(s.allowed_tools.join(' '));
-                        }}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        aria-label={`Supprimer le connecteur ${s.name}`}
-                        onClick={() => setDeleteTarget(s)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            aria-label={`Modifier les outils autorisés pour ${s.name}`}
+                            className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                            onClick={() => {
+                              setEditingToolsId(s.id);
+                              setEditingToolsText(s.allowed_tools.join(' '));
+                            }}
+                          >
+                            <Pencil aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Modifier la liste blanche</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                            aria-label={`Supprimer le connecteur ${s.name}`}
+                            onClick={() => setDeleteTarget(s)}
+                          >
+                            <Trash2 aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Supprimer le connecteur</TooltipContent>
+                      </Tooltip>
                     </div>
                   )}
                 </div>
                 {isAdmin && editingToolsId === s.id && (
-                  <div className="flex flex-col sm:flex-row gap-2 rounded-md bg-muted/30 p-2">
+                  <div className="flex flex-col sm:flex-row gap-2 rounded-lg bg-muted/30 p-2">
                     <label htmlFor={`mcp-tools-${s.id}`} className="sr-only">
                       Outils autorisés pour {s.name}
                     </label>
@@ -365,14 +418,14 @@ export function AgentConnectorsSettings() {
                       value={editingToolsText}
                       onChange={(e) => setEditingToolsText(e.target.value)}
                       placeholder="search read_page"
-                      className="h-8 text-xs flex-1"
+                      className="h-8 text-xs flex-1 max-md:h-11"
                       autoFocus
                     />
                     <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setEditingToolsId(null)}>
+                      <Button type="button" size="sm" variant="ghost" className="max-md:h-11" onClick={() => setEditingToolsId(null)}>
                         Annuler
                       </Button>
-                      <Button size="sm" disabled={saving} onClick={() => handleSaveAllowedTools(s)}>
+                      <Button type="button" variant="primary" size="sm" className="max-md:h-11" loading={saving} onClick={() => handleSaveAllowedTools(s)}>
                         Enregistrer
                       </Button>
                     </div>
@@ -389,7 +442,7 @@ export function AgentConnectorsSettings() {
               <AlertDialogTitle>Supprimer le connecteur ?</AlertDialogTitle>
               <AlertDialogDescription>
                 L'assistant perdra immédiatement l'accès aux outils de
-                « {deleteTarget?.name} ». Cette action est irréversible (le token devra être
+                « {deleteTarget?.name} ». Cette action est irréversible (le jeton devra être
                 ressaisi pour le rebrancher).
               </AlertDialogDescription>
             </AlertDialogHeader>

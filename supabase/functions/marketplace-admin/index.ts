@@ -136,6 +136,13 @@ Deno.serve(async (req) => {
     // validate_partner / suspend_partner : changement de statut d'une
     // organisation.
     // ------------------------------------------------------------------
+    // Décision 17 : Marketplace gelée jusqu'au lot P2, aucune validation de
+    // partenaire (validate_marketplace_partner refuse aussi côté base). La
+    // suspension reste permise.
+    if (action === "validate_partner") {
+      return json({ error: "La validation des partenaires n'est pas encore disponible.", errorType: "MARKETPLACE_FROZEN" }, 403);
+    }
+
     if (action === "validate_partner" || action === "suspend_partner") {
       const organizationId = typeof body?.organization_id === "string" ? body.organization_id.trim() : "";
       if (!organizationId) {

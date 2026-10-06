@@ -1,16 +1,20 @@
 /**
- * TutorialVideoDialog — bouton d'aide « ? » qui ouvre un popup avec un
- * tutoriel vidéo court (screencast où l'on voit le curseur naviguer).
+ * TutorialVideoDialog : bouton d'aide qui ouvre une fenêtre avec un tutoriel
+ * vidéo court (screencast où l'on voit le curseur naviguer).
  *
  * Générique : chaque écran peut monter son propre tuto (title + videoSrc +
- * points clés). Les vidéos vivent dans public/tutos/ (webm, tournées via
- * le harnais Playwright — voir LOGBOOK 2026-07-02).
+ * points clés), et le menu Aide de la barre latérale propose celui de la page
+ * affichée (src/components/help/tutorials.ts). Les vidéos vivent dans
+ * public/tutos/ (webm, tournées via le harnais Playwright, voir LOGBOOK
+ * 2026-07-02). Revue design, lot 12 : boutons du kit, puces neutres (A-15).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CircleHelp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -34,7 +38,7 @@ interface TutorialVideoDialogProps {
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** Masque le bouton « ? » (la fenêtre s'ouvre d'ailleurs). */
+  /** Masque le bouton d'aide (la fenêtre s'ouvre d'ailleurs). */
   hideTrigger?: boolean;
 }
 
@@ -81,23 +85,26 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
   return (
     <>
       {!hideTrigger && (
-        <button
-          type="button"
-          onClick={() => handleOpenChange(true)}
-          title="Aide — tutoriel vidéo"
-          aria-label="Ouvrir le tutoriel vidéo"
-          className={cn(
-            'inline-flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors',
-            className,
-          )}
-        >
-          <CircleHelp className="w-3.5 h-3.5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => handleOpenChange(true)}
+              aria-label="Ouvrir le tutoriel vidéo"
+              className={cn('text-muted-foreground', className)}
+            >
+              <CircleHelp aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Tutoriel vidéo</TooltipContent>
+        </Tooltip>
       )}
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-2xl p-0 overflow-hidden gap-0">
           <DialogHeader className="px-5 pt-4 pb-3">
-            <DialogTitle className="font-display text-[16px]">{title}</DialogTitle>
+            <DialogTitle>{title}</DialogTitle>
             {description && (
               <DialogDescription className="text-2xs">{description}</DialogDescription>
             )}
@@ -117,11 +124,11 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
             </video>
           )}
           {points?.length ? (
-            <ul className="px-5 py-3 space-y-1 border-t border-border">
+            // Puces de liste neutres, de la couleur du texte : l'accent reste aux signaux.
+            <ul className="list-disc space-y-1 border-t border-border py-3 pl-9 pr-5">
               {points.map((p) => (
-                <li key={p} className="text-2xs text-muted-foreground flex gap-1.5">
-                  <span className="text-brand-purple shrink-0">•</span>
-                  <span>{p}</span>
+                <li key={p} className="text-2xs text-muted-foreground">
+                  {p}
                 </li>
               ))}
             </ul>
@@ -135,13 +142,15 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
                 />
                 Ne plus afficher automatiquement
               </label>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="xs"
                 onClick={() => handleOpenChange(false)}
-                className="shrink-0 h-7 px-3 rounded-full bg-foreground text-background text-2xs font-semibold hover:bg-foreground/90 transition-colors"
+                className="shrink-0"
               >
                 C'est compris
-              </button>
+              </Button>
             </div>
           )}
         </DialogContent>

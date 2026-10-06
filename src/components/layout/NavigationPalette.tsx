@@ -17,6 +17,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { getAppTheme, setAppTheme, useAppTheme } from '@/lib/theme';
 import { useNavigate } from 'react-router-dom';
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut,
@@ -24,7 +25,7 @@ import {
 import {
   LayoutDashboard, Target, Kanban, MessageSquare, Calendar as CalendarIcon, CheckSquare,
   Settings as SettingsIcon, Sparkles, Sun, Moon, LogOut,
-  Plus, CreditCard, Users, Search, Bot, ListPlus,
+  Plus, CreditCard, Users, Search, Bot, ListPlus, Send,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAgent } from '@/contexts/AgentContext';
@@ -32,6 +33,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { GlobalTaskShortcut } from '@/components/tasks/GlobalTaskShortcut';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 
 export function NavigationPalette() {
   const [open, setOpen] = useState(false);
@@ -45,6 +47,8 @@ export function NavigationPalette() {
   const { session } = useAuthReady();
   // « Nouvelle tâche » a besoin d'une session et d'une organisation (CreateTaskModal).
   const canCreateTask = !!session && !!organizationId;
+  // Séquences (lot 5c-2) : seulement interrupteur konekt.sequences-v2 allumé.
+  const showSequences = useSequencesBeta();
 
   // Ctrl+J / Cmd+J ouvre la palette
   useEffect(() => {
@@ -76,15 +80,9 @@ export function NavigationPalette() {
 
   const go = useCallback((path: string) => run(() => navigate(path)), [navigate, run]);
 
+  const theme = useAppTheme();
   const toggleTheme = useCallback(() => {
-    run(() => {
-      const root = document.documentElement;
-      if (root.classList.contains('light')) {
-        root.classList.remove('light');
-      } else {
-        root.classList.add('light');
-      }
-    });
+    run(() => setAppTheme(getAppTheme() === 'light' ? 'dark' : 'light'));
   }, [run]);
 
   const signOut = useCallback(() => {
@@ -96,7 +94,7 @@ export function NavigationPalette() {
 
   return (
     <>
-      <CommandDialog open={open} onOpenChange={setOpen}>
+      <CommandDialog open={open} onOpenChange={setOpen} title="Aller à">
         <CommandInput placeholder="Chercher une page, une action…" />
         <CommandList>
           <CommandEmpty>Aucun résultat</CommandEmpty>
@@ -104,7 +102,7 @@ export function NavigationPalette() {
           <CommandGroup heading="Navigation">
             <CommandItem onSelect={() => go('/dashboard')}>
               <LayoutDashboard className="mr-2 h-4 w-4" aria-hidden="true" />
-              Dashboard
+              Tableau de bord
               <CommandShortcut>G D</CommandShortcut>
             </CommandItem>
             <CommandItem onSelect={() => go('/missions')}>
@@ -131,6 +129,13 @@ export function NavigationPalette() {
               Tâches
               <CommandShortcut>G T</CommandShortcut>
             </CommandItem>
+            {showSequences && (
+              <CommandItem onSelect={() => go('/sequences')}>
+                <Send className="mr-2 h-4 w-4" aria-hidden="true" />
+                Séquences
+                <CommandShortcut>G S</CommandShortcut>
+              </CommandItem>
+            )}
             <CommandItem onSelect={() => go('/inbox')}>
               <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
               Messagerie
@@ -179,9 +184,12 @@ export function NavigationPalette() {
               Paramètres
             </CommandItem>
             <CommandItem onSelect={toggleTheme}>
-              <Sun className="mr-2 h-4 w-4 dark:hidden" aria-hidden="true" />
-              <Moon className="mr-2 h-4 w-4 hidden dark:block" aria-hidden="true" />
-              Basculer le thème clair/sombre
+              {theme === 'light' ? (
+                <Moon className="mr-2 h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Sun className="mr-2 h-4 w-4" aria-hidden="true" />
+              )}
+              {theme === 'light' ? 'Passer au thème sombre' : 'Passer au thème clair'}
             </CommandItem>
             <CommandItem onSelect={signOut} className="text-destructive data-[selected=true]:text-destructive">
               <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />

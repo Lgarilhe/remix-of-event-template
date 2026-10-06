@@ -19,7 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Mail, Phone, Loader2, Sparkles, Check, X, AlertTriangle } from 'lucide-react';
+import { Mail, Phone, Loader2, Check, X, AlertTriangle, AtSign } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
 import { useAICredits } from '@/hooks/useAICredits';
 import { useEnrichmentPermission, formatResetDay } from '@/hooks/useEnrichmentPermission';
@@ -73,6 +73,8 @@ interface EnrichContactButtonProps {
    * est déjà géré ailleurs (block CONTACT INFO).
    */
   mode?: 'auto' | 'button-only';
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
 }
 
 function getCurrentCompany(profile: LinkedInProfile): string | undefined {
@@ -86,6 +88,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   compact = false,
   className = '',
   mode = 'auto',
+  quiet = false,
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -218,7 +221,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           <button
             type="button"
             onClick={() => copy(enrichedEmail, 'email')}
-            className="inline-flex items-center gap-1 text-[11px] text-info hover:text-info/80 transition-colors"
+            className="inline-flex items-center gap-1 text-2xs text-info hover:text-info/80 transition-colors"
             title={`Copier ${enrichedEmail}`}
           >
             {emailCopied ? <Check className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
@@ -229,7 +232,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           <button
             type="button"
             onClick={() => copy(enrichedPhone, 'phone')}
-            className="inline-flex items-center gap-1 text-[11px] text-info hover:text-info/80 transition-colors"
+            className="inline-flex items-center gap-1 text-2xs text-info hover:text-info/80 transition-colors"
             title={`Copier ${enrichedPhone}`}
           >
             {phoneCopied ? <Check className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
@@ -249,7 +252,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       <button
         type="button"
         onClick={() => setBackgrounded(false)}
-        className={`inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors ${className}`}
+        className={`inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors ${className}`}
         title="Recherche en arrière-plan, cliquer pour rouvrir"
       >
         <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
@@ -269,7 +272,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         >
           <Loader2 className={compact ? 'w-3 h-3 animate-spin' : 'w-4 h-4 animate-spin'} aria-hidden="true" />
           <span className="text-xs">{progressMessage(elapsed)}</span>
-          <span className="text-[10px] text-muted-foreground tabular-nums ml-1">
+          <span className="text-2xs text-muted-foreground tabular-nums ml-1">
             {formatDuration(elapsed)}
           </span>
         </Button>
@@ -277,7 +280,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           variant="ghost"
           size={compact ? 'sm' : 'default'}
           onClick={() => setBackgrounded(true)}
-          className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-2xs text-muted-foreground hover:text-foreground"
           title="Continuer en arrière-plan (vous pouvez fermer cette card)"
         >
           <X className="w-3 h-3" aria-hidden="true" />
@@ -290,7 +293,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   // ─── Affichage : résultat vide après enrichissement
   if (status === 'terminated' && !hasEnrichedResult) {
     return (
-      <span className={`text-[11px] text-muted-foreground italic ${className}`}>
+      <span className={`text-2xs text-muted-foreground italic ${className}`}>
         Aucun contact trouvé
       </span>
     );
@@ -303,13 +306,13 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   if (!canEnrich) {
     return (
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title="Demandez à votre administrateur d'activer la récupération de coordonnées"
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>Coordonnées</span>
       </Button>
     );
@@ -318,13 +321,13 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   if (isFreePlan) {
     return (
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title="L'enrichissement de contact nécessite un abonnement"
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>{compact ? 'Coordonnées' : 'Coordonnées (abonnement requis)'}</span>
       </Button>
     );
@@ -333,13 +336,13 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   return (
     <>
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`gap-1.5 font-medium bg-muted border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all ${compact ? 'h-7 px-2.5 text-xs rounded-lg border-2' : 'text-xs'} ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title={`Récupérer email & téléphone de ${fullName}`}
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>{compact ? 'Coordonnées' : 'Récupérer email & téléphone'}</span>
       </Button>
 
@@ -364,7 +367,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
               <Mail className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Email professionnel</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   {coveredByPlan ? 'Inclus dans votre forfait' : '1 crédit si trouvé'} · ~30 s à 1 min
                 </div>
               </div>
@@ -379,7 +382,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
               <Phone className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   {coveredByPlan ? 'Inclus dans votre forfait' : '10 crédits si trouvé'} · jusqu'à 3 min · plus rare
                 </div>
               </div>
@@ -438,11 +441,11 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
                 <span>Forfait du mois épuisé et crédits insuffisants. Achetez un pack ou changez de forfait dans Paramètres › Abonnement et crédits.</span>
               </div>
             ) : coveredByPlan ? (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 Cette recherche est comprise dans votre forfait, aucun crédit ne sera débité.
               </div>
             ) : (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 Forfait du mois épuisé : la recherche est facturée en crédits, seulement si un contact est trouvé.
               </div>
             )}

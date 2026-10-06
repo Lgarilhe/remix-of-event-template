@@ -1,38 +1,71 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Check, Clock } from 'lucide-react';
 import { useSubscriptionPlans, type SubscriptionPlan } from '@/hooks/useSubscription';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useOrgManagerName } from '@/hooks/useOrgManagerName';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { withPreviewAccessToken } from '@/lib/previewToken';
+import { MANAGED_FALLBACK_NAME, SETTINGS_PATHS } from '@/lib/settingsRoutes';
 import { SEOHead } from '@/components/SEOHead';
-import { KonektLogo } from '@/components/KonektLogo';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { EmptyState, ErrorState } from '@/components/layout';
+import { PublicHeader } from '@/components/public/PublicHeader';
+import { PublicFooter } from '@/components/public/PublicFooter';
 import { cn } from '@/lib/utils';
-import { Check, Plus, Loader2 } from 'lucide-react';
 
 /** Plan mis en avant dans la grille (essai gratuit sur ce plan). */
 const RECOMMENDED_PLAN_ID = 'cabinet';
 const TRIAL_DAYS = 14;
 
-const FAQS = [
+/** Renvoi vers la rubrique des Paramètres où se gèrent sièges, crédits et abonnement. */
+const BillingLink = () => (
+  <Link
+    to={withPreviewAccessToken(SETTINGS_PATHS.billing)}
+    className="font-medium text-foreground underline underline-offset-4 transition-colors hover:text-foreground-secondary"
+  >
+    Paramètres, Abonnement et crédits
+  </Link>
+);
+
+const FAQS: { q: string; a: ReactNode }[] = [
   {
     q: "Comment fonctionne l'essai gratuit ?",
     a: `Vous disposez de ${TRIAL_DAYS} jours d'essai sur le plan Cabinet, sans carte bancaire. À la fin de l'essai, votre espace passe sur le plan Gratuit : vos missions, candidats et recherches restent accessibles, sans envoi de séquences.`,
   },
   {
     q: 'Comment sont comptés les sièges ?',
-    a: "Chaque membre de votre espace occupe un siège, quel que soit son rôle. Les prix s'entendent par siège et par mois. Pour inviter au-delà des sièges facturés, ajustez la quantité depuis Paramètres, Abonnement et crédits.",
+    a: (
+      <>
+        Chaque membre de votre espace occupe un siège, quel que soit son rôle. Les prix s'entendent par siège et par mois.
+        Pour inviter au-delà des sièges facturés, ajustez la quantité depuis <BillingLink />.
+      </>
+    ),
   },
   {
     q: 'Les crédits IA sont-ils inclus ?',
-    a: "Oui. Chaque plan inclut un volume mensuel de crédits IA pour le scoring des profils, la rédaction des messages et l'assistant. Au-delà, des packs de crédits sont disponibles depuis Paramètres, Abonnement et crédits.",
+    a: (
+      <>
+        Oui. Chaque plan inclut un volume mensuel de crédits IA pour le score des profils, la rédaction des messages et
+        l'assistant. Au-delà, des packs de crédits sont disponibles depuis <BillingLink />.
+      </>
+    ),
   },
   {
     q: 'Puis-je changer de plan ou résilier ?',
-    a: "Oui, à tout moment et sans engagement de durée. Le changement de plan, le moyen de paiement, les factures et la résiliation se gèrent depuis Paramètres, Abonnement et crédits.",
+    a: (
+      <>
+        Oui, à tout moment et sans engagement de durée. Le changement de plan, le moyen de paiement, les factures et la
+        résiliation se gèrent depuis <BillingLink />.
+      </>
+    ),
   },
 ];
 
@@ -63,40 +96,21 @@ const yearlyDiscountPercent = (plan: SubscriptionPlan) => {
 const formatLimit = (value: number | undefined) => {
   if (value === undefined || value === null) return 'Non inclus';
   if (value === -1) return 'Illimité';
-  return value.toLocaleString('fr-FR');
+  return Number(value).toLocaleString('fr-FR');
 };
 
 const formatDaysLeft = (days: number) => (days <= 1 ? `${days} jour restant` : `${days} jours restants`);
 
-function FAQItem({ item }: { item: typeof FAQS[0] }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div
-      className={cn(
-        'border border-border transition-colors',
-        open ? 'border-border' : 'hover:border-border'
-      )}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between p-4 text-left gap-3"
-      >
-        <span className="text-sm font-semibold text-foreground">{item.q}</span>
-        <Plus
-          className={cn(
-            'w-4 h-4 shrink-0 text-foreground transition-transform duration-200',
-            open && 'rotate-45'
-          )}
-        />
-      </button>
-      {open && (
-        <div className="px-4 pb-4 text-sm text-muted-foreground leading-relaxed border-t border-border pt-3">
-          {item.a}
-        </div>
-      )}
-    </div>
-  );
-}
+/** Segment de la bascule mensuel / annuel : même traitement que l'onglet actif du kit. */
+const SEGMENT_CLASS =
+  'h-8 gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=on]:ring-1 data-[state=on]:ring-border-strong max-md:h-11';
+
+/** Message à la place d'un bouton (espace illisible, réglage réservé à un administrateur). */
+const CtaNote = ({ children }: { children: ReactNode }) => (
+  <p className="flex min-h-10 items-center justify-center rounded-lg border border-dashed border-border px-3 py-2 text-center text-xs text-muted-foreground">
+    {children}
+  </p>
+);
 
 const Pricing = () => {
   const navigate = useNavigate();
@@ -104,17 +118,33 @@ const Pricing = () => {
   // vient du store auth global ; l'organisation et l'état d'abonnement ne sont
   // interrogés que si une session existe (requêtes désactivées sinon).
   const { isReady, session } = useAuthReady();
-  const { organizationId, orgType, isAdmin, isLoading: isLoadingOrg, isError: isOrgError } = useOrganization();
+  const {
+    organizationId,
+    orgType,
+    isAdmin,
+    isLoading: isLoadingOrg,
+    isError: isOrgError,
+    refetchOrganization,
+    isRefetchingOrganization,
+  } = useOrganization();
   // Solo est réservé aux indépendants ; un indépendant ne voit pas le plan Entreprise.
   const recommendedPlanId = orgType === 'freelance' ? 'solo' : RECOMMENDED_PLAN_ID;
-  const { data: plans = [], isLoading, isError: isPlansError } = useSubscriptionPlans();
+  const {
+    data: plans = [],
+    isLoading,
+    isError: isPlansError,
+    refetch: refetchPlans,
+    isFetching: isFetchingPlans,
+  } = useSubscriptionPlans();
   const { state, effectivePlanId, isPaid, isTrialing, isTrialPaid, trialDaysLeft, isLoading: isLoadingState } = useSubscriptionState();
   const [yearly, setYearly] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
 
   const isSignedIn = !!session;
+  // Un membre sans droit d'administration lit le nom de la personne qui gère l'abonnement.
+  const manager = useOrgManagerName(isSignedIn && !!organizationId && !isAdmin && !isLoadingOrg);
+
   // Le plan Gratuit n'est pas une colonne : c'est le palier d'atterrissage après l'essai.
   const paidPlans = useMemo(() => plans.filter((plan) => {
     if (plan.id === 'free') return false;
@@ -131,15 +161,9 @@ const Pricing = () => {
     return min === max ? `-${max} %` : `jusqu'à -${max} %`;
   }, [paidPlans]);
 
-  useEffect(() => {
-    const t = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(t);
-  }, []);
-
-  const goToAuth = () => {
-    // Auth.tsx lit location.state.from pour revenir ici après connexion.
-    navigate(withPreviewAccessToken('/auth'), { state: { from: '/pricing' } });
-  };
+  // Auth.tsx lit location.state.from pour revenir ici après connexion ; mode ouvre l'inscription.
+  const goToLogin = () => navigate(withPreviewAccessToken('/auth'), { state: { from: '/pricing' } });
+  const goToSignup = () => navigate(withPreviewAccessToken('/auth'), { state: { from: '/pricing', mode: 'signup' } });
 
   const startCheckout = async (planId: string) => {
     if (!organizationId || checkoutPlanId) return;
@@ -195,471 +219,304 @@ const Pricing = () => {
   const renderCta = (plan: SubscriptionPlan, isRecommended: boolean) => {
     const isCurrent = isPaid && effectivePlanId === plan.id;
     const isCheckingOut = checkoutPlanId === plan.id;
-
-    const buttonClass = cn(
-      'w-full h-12 text-xs uppercase tracking-wider font-bold border-2 transition-all active:translate-y-[1px] inline-flex items-center justify-center gap-2',
-      isCurrent
-        ? 'border-border text-muted-foreground cursor-default bg-transparent'
-        : isRecommended
-          ? 'skalr-gradient-bg text-white border-transparent hover:brightness-110'
-          : 'border-border bg-transparent text-foreground hover:bg-foreground hover:text-background',
-      'disabled:opacity-60 disabled:cursor-default'
-    );
+    const variant = isRecommended ? 'primary' : 'outline';
+    const className = 'w-full max-md:h-11';
 
     if (isResolvingAccount) {
       return (
-        <button type="button" disabled className={buttonClass}>
-          <Loader2 className="w-4 h-4 animate-spin" />
+        <Button variant={variant} size="lg" className={className} loading disabled>
           Chargement
-        </button>
+        </Button>
       );
     }
 
     if (!isSignedIn) {
       return (
-        <button type="button" onClick={goToAuth} className={buttonClass}>
+        <Button variant={variant} size="lg" className={className} onClick={goToSignup}>
           Commencer l'essai gratuit
-        </button>
+        </Button>
       );
     }
 
     // F3 : erreur de chargement de l'espace, on n'envoie jamais vers /onboarding
     if (isOrgError && !organizationId) {
       return (
-        <p className="h-12 flex items-center justify-center text-center text-xs text-muted-foreground border-2 border-dashed border-border px-3">
-          Impossible de charger votre espace. Réessayez plus tard.
-        </p>
+        <CtaNote>
+          <span>
+            Impossible de charger votre espace.{' '}
+            <Button
+              variant="link"
+              size="xs"
+              className="h-auto px-0 text-xs"
+              disabled={isRefetchingOrganization}
+              onClick={() => { void refetchOrganization(); }}
+            >
+              Réessayer
+            </Button>
+          </span>
+        </CtaNote>
       );
     }
 
     if (!organizationId) {
       return (
-        <button type="button" onClick={() => navigate(withPreviewAccessToken('/onboarding'))} className={buttonClass}>
+        <Button variant={variant} size="lg" className={className} onClick={() => navigate(withPreviewAccessToken('/onboarding'))}>
           Créer mon espace
-        </button>
+        </Button>
       );
     }
 
     if (isCurrent) {
       return (
-        <button type="button" disabled className={buttonClass}>
+        <Button variant="outline" size="lg" className={className} disabled>
           Plan actuel
-        </button>
+        </Button>
       );
     }
 
     if (!isAdmin) {
       return (
-        <p className="h-12 flex items-center justify-center text-center text-xs text-muted-foreground border-2 border-dashed border-border px-3">
-          Demandez à un administrateur de votre espace
-        </p>
+        <CtaNote>
+          Demandez à {manager.name || MANAGED_FALLBACK_NAME} {isPaid ? 'de changer de plan' : 'de choisir un plan'}.
+        </CtaNote>
       );
     }
 
     if (state?.has_stripe_subscription) {
       return (
-        <button
-          type="button"
-          disabled={openingPortal}
+        <Button
+          variant={variant}
+          size="lg"
+          className={className}
+          loading={openingPortal}
           onClick={() => { void openPortal(); }}
-          className={buttonClass}
         >
-          {openingPortal && <Loader2 className="w-4 h-4 animate-spin" />}
-          {openingPortal ? 'Ouverture de la gestion' : 'Changer de plan'}
-        </button>
+          {openingPortal ? 'Ouverture de la gestion…' : 'Changer de plan'}
+        </Button>
       );
     }
 
     return (
-      <button
-        type="button"
+      <Button
+        variant={variant}
+        size="lg"
+        className={className}
+        loading={isCheckingOut}
         disabled={!!checkoutPlanId}
         onClick={() => { void startCheckout(plan.id); }}
-        className={buttonClass}
       >
-        {isCheckingOut && <Loader2 className="w-4 h-4 animate-spin" />}
-        {isCheckingOut ? 'Redirection vers le paiement' : `Choisir ${plan.name}`}
-      </button>
+        {isCheckingOut ? 'Redirection vers le paiement…' : `Choisir ${plan.name}`}
+      </Button>
     );
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <SEOHead
         title="Tarifs"
         description={`Plans Konekt par siège et par mois : Solo, Cabinet et Entreprise. ${TRIAL_DAYS} jours d'essai gratuit, sans carte bancaire, crédits IA inclus.`}
         keywords="pricing, tarifs, recrutement, ATS, sourcing"
       />
 
-      {/* Barre publique : logo + retour vers l'application ou connexion */}
-      <header className="border-b border-border bg-background">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => navigate(withPreviewAccessToken(isSignedIn ? '/dashboard' : '/'))}
-            aria-label="Konekt, accueil"
-            className="flex items-center"
-          >
-            <KonektLogo variant="full" theme="dark" size={28} />
-          </button>
-          {isReady && (
-            <button
-              type="button"
-              onClick={() => (isSignedIn ? navigate(withPreviewAccessToken('/dashboard')) : goToAuth())}
-              className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
-            >
-              {isSignedIn ? "Retour à l'application" : 'Se connecter'}
-            </button>
-          )}
-        </div>
-      </header>
+      <PublicHeader
+        homeTo={withPreviewAccessToken(isSignedIn ? '/dashboard' : '/')}
+        homeLabel={isSignedIn ? "Konekt, retour à l'application" : 'Konekt, accueil'}
+        actions={
+          isReady &&
+          (isSignedIn ? (
+            <Button asChild variant="outline" size="sm" className="max-md:h-11">
+              <Link to={withPreviewAccessToken('/dashboard')}>Retour à l'application</Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" className="max-md:h-11" onClick={goToLogin}>
+              Se connecter
+            </Button>
+          ))
+        }
+      />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-20">
-        {/* ── Hero ── */}
-        <div className="text-center mb-12 sm:mb-16">
-          {/* Badge */}
-          <div
-            className="inline-flex items-center gap-1.5 px-3.5 py-1 border border-border mb-6"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-              transition: 'opacity 0.6s ease, transform 0.6s ease',
-            }}
-          >
-            <span className="w-1.5 h-1.5 bg-accent shrink-0" />
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Tarifs transparents
-            </span>
-          </div>
-
-          {/* Title */}
-          <h1
-            className="font-display text-3xl sm:text-4xl md:text-5xl font-black leading-tight mb-4"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-              transition: 'opacity 0.6s ease, transform 0.6s ease',
-              transitionDelay: '80ms',
-            }}
-          >
-            Le bon plan pour
-            <br />
-            <span className="skalr-gradient-text">votre recrutement</span>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-20 pt-12 sm:px-6 sm:pt-16">
+        {/* ── Présentation ── */}
+        <div className="text-center">
+          <p className="eyebrow">Tarifs transparents</p>
+          <h1 className="mt-3 text-balance font-brand text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
+            Le bon plan pour votre recrutement
           </h1>
-
-          <p
-            className="text-sm sm:text-base text-muted-foreground max-w-md mx-auto"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-              transition: 'opacity 0.6s ease, transform 0.6s ease',
-              transitionDelay: '160ms',
-            }}
-          >
+          <p className="mx-auto mt-4 max-w-md text-md text-foreground-secondary">
             {TRIAL_DAYS} jours d'essai gratuit, sans carte bancaire. Ensuite, un prix par siège et par mois, crédits IA inclus.
           </p>
 
-          {/* Bandeau essai en cours */}
           {isSignedIn && isTrialing && trialDaysLeft !== null && (
-            <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 border-2 border-[hsl(var(--skalr-purple))] bg-muted/30 text-xs font-bold uppercase tracking-wider text-foreground">
-              <span className="w-1.5 h-1.5 bg-[hsl(var(--skalr-purple))] shrink-0" />
+            <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground-secondary">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
               Essai en cours : {formatDaysLeft(trialDaysLeft)}
-              {isTrialPaid ? ' — abonnement déjà en place' : ''}
-            </div>
+              {isTrialPaid ? ', abonnement déjà en place' : ''}
+            </p>
           )}
 
-          {/* Toggle */}
-          <div
-            className="flex items-center justify-center gap-3 mt-8"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-              transition: 'opacity 0.6s ease, transform 0.6s ease',
-              transitionDelay: '240ms',
-            }}
-          >
-            <span className={cn('text-xs font-bold uppercase tracking-wider', !yearly ? 'text-foreground' : 'text-muted-foreground')}>
-              Mensuel
-            </span>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={yearly}
-              aria-label="Facturation annuelle"
-              onClick={() => setYearly(!yearly)}
-              className={cn(
-                'relative w-14 h-7 border-2 border-border cursor-pointer transition-colors',
-                yearly && 'bg-foreground'
-              )}
+          <div className="mt-8 flex justify-center">
+            <ToggleGroup
+              type="single"
+              value={yearly ? 'annuel' : 'mensuel'}
+              onValueChange={(value) => { if (value) setYearly(value === 'annuel'); }}
+              aria-label="Période de facturation"
+              className="gap-0.5 rounded-lg bg-muted p-0.5"
             >
-              <div
-                className={cn(
-                  'absolute top-[2px] left-[2px] w-5 h-5 transition-transform duration-200',
-                  yearly
-                    ? 'translate-x-7 bg-accent'
-                    : 'bg-background border border-border'
+              <ToggleGroupItem value="mensuel" className={SEGMENT_CLASS}>
+                Mensuel
+              </ToggleGroupItem>
+              <ToggleGroupItem value="annuel" className={SEGMENT_CLASS}>
+                Annuel
+                {discountLabel && (
+                  <span className="rounded-full border border-border px-1.5 text-2xs font-semibold tabular-nums text-foreground-secondary">
+                    {discountLabel}
+                  </span>
                 )}
-              />
-            </button>
-
-            <span className={cn('text-xs font-bold uppercase tracking-wider flex items-center gap-2', yearly ? 'text-foreground' : 'text-muted-foreground')}>
-              Annuel
-              {discountLabel && (
-                <span className="px-1.5 py-0.5 text-xs font-bold skalr-gradient-bg text-white leading-none normal-case">
-                  {discountLabel}
-                </span>
-              )}
-            </span>
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
         </div>
 
-        {/* ── Plan cards ── */}
-        {isLoading ? (
-          <BrutalLoader />
-        ) : (isPlansError || paidPlans.length === 0) ? (
-          <p className="border-2 border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground mb-6">
-            Impossible de charger les tarifs. Réessayez plus tard.
-          </p>
-        ) : (
-          <>
-            {/* Cards : bordures partagées */}
-            <div className="flex flex-col md:flex-row mb-6">
-              {paidPlans.map((plan, i) => {
-                const isRecommended = plan.id === recommendedPlanId;
-                const isCurrent = isPaid && effectivePlanId === plan.id;
-                const discount = yearlyDiscountPercent(plan);
-                const displayedPrice = yearly ? plan.price_yearly / 12 : plan.price_monthly;
+        {/* ── Plans ── */}
+        <div className="mt-10">
+          {isLoading ? (
+            <div className="grid gap-4 md:grid-cols-3" role="status" aria-label="Chargement des tarifs">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-[26rem] rounded-xl" />
+              ))}
+            </div>
+          ) : isPlansError ? (
+            <ErrorState
+              title="Impossible de charger les tarifs"
+              description="Vérifiez votre connexion, puis réessayez."
+              onRetry={() => { void refetchPlans(); }}
+              retrying={isFetchingPlans}
+            />
+          ) : paidPlans.length === 0 ? (
+            <EmptyState
+              title="Aucun plan n'est proposé pour le moment"
+              description="Les tarifs s'afficheront ici dès leur publication."
+            />
+          ) : (
+            <>
+              <ul className="grid gap-4 md:grid-cols-3">
+                {paidPlans.map((plan) => {
+                  const isRecommended = plan.id === recommendedPlanId;
+                  const isCurrent = isPaid && effectivePlanId === plan.id;
+                  const discount = yearlyDiscountPercent(plan);
+                  const displayedPrice = yearly ? plan.price_yearly / 12 : plan.price_monthly;
 
-                return (
-                  <div
-                    key={plan.id}
-                    className={cn(
-                      'relative flex flex-col flex-1 border-2 transition-all duration-200 group',
-                      isRecommended
-                        ? 'border-[hsl(var(--skalr-purple))] bg-muted/30 z-10'
-                        : 'border-border',
-                      // collapse shared borders
-                      i > 0 && 'md:-ml-[2px]',
-                      // mobile: collapse top borders
-                      i > 0 && '-mt-[2px] md:mt-0'
-                    )}
-                    style={{
-                      opacity: mounted ? 1 : 0,
-                      transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-                      transition: 'opacity 0.6s ease, transform 0.6s ease, box-shadow 0.2s ease',
-                      transitionDelay: `${i * 120 + 400}ms`,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = isRecommended
-                        ? '0 4px 20px hsl(var(--skalr-purple) / 0.15)'
-                        : '0 4px 20px hsl(var(--foreground) / 0.1)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = mounted ? 'translateY(0)' : '';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    {/* Gradient bar for the recommended plan */}
-                    {isRecommended && (
-                      <div
-                        className="h-[3px] w-full skalr-gradient-bg"
-                        style={{
-                          backgroundSize: '200% 100%',
-                          animation: 'gradientShift 3s ease infinite',
-                        }}
-                      />
-                    )}
-
-                    {/* Badges */}
-                    {(isRecommended || isCurrent) && (
-                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-                        <span
-                          className={cn(
-                            'px-3 py-1 text-xs uppercase tracking-wider font-bold text-white',
-                            isCurrent ? 'bg-foreground text-background' : 'bg-[hsl(var(--skalr-purple))]'
-                          )}
-                        >
-                          {isCurrent ? 'Plan actuel' : 'Recommandé'}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="p-5 sm:p-6 flex flex-col flex-1">
-                      {/* Plan name */}
-                      <div className="mb-4">
-                        <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-1">
+                  return (
+                    <li
+                      key={plan.id}
+                      aria-labelledby={`plan-${plan.id}`}
+                      className={cn(
+                        'flex flex-col rounded-xl border bg-card p-6',
+                        isRecommended ? 'border-brand' : 'border-border',
+                      )}
+                    >
+                      <div className="flex min-h-6 items-center justify-between gap-2">
+                        <h2 id={`plan-${plan.id}`} className="text-md font-semibold text-foreground">
                           {plan.name}
-                        </h3>
-                        <p className="text-xs text-muted-foreground/70 leading-relaxed">
-                          {plan.description}
-                        </p>
+                        </h2>
+                        {isCurrent ? (
+                          <Badge variant="muted">Plan actuel</Badge>
+                        ) : isRecommended ? (
+                          <Badge variant="brand">Recommandé</Badge>
+                        ) : null}
                       </div>
+                      <p className="mt-1 text-sm text-muted-foreground md:min-h-10">{plan.description}</p>
 
-                      {/* Price */}
-                      <div className="mb-6">
-                        <span
-                          className={cn(
-                            'font-display text-4xl sm:text-5xl font-extrabold',
-                            isRecommended ? 'text-[hsl(var(--skalr-purple))]' : 'text-foreground'
-                          )}
-                        >
+                      <p className="mt-5 flex flex-wrap items-baseline gap-x-1.5">
+                        <span className="text-4xl font-semibold tracking-tight tabular-nums text-foreground">
                           {formatEuros(displayedPrice)}
                         </span>
-                        <span className="text-sm text-muted-foreground ml-1">/ siège / mois</span>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {yearly
-                            ? `facturé ${formatEuros(plan.price_yearly)} par an${discount > 0 ? `, soit -${discount} %` : ''}`
-                            : 'sans engagement'}
-                        </p>
-                      </div>
+                        <span className="text-sm text-muted-foreground">/ siège / mois</span>
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {yearly
+                          ? `facturé ${formatEuros(plan.price_yearly)} par an${discount > 0 ? `, soit -${discount} %` : ''}`
+                          : 'sans engagement'}
+                      </p>
 
-                      {/* Features */}
-                      <ul className="space-y-2.5 mb-6 flex-1">
+                      <ul className="mt-6 flex-1 space-y-2.5">
                         {plan.features.map((feature, fi) => (
-                          <li
-                            key={fi}
-                            className="flex items-start gap-2.5 text-sm"
-                            style={{
-                              opacity: mounted ? 1 : 0,
-                              transform: mounted ? 'translateX(0)' : 'translateX(-10px)',
-                              transition: 'opacity 0.4s ease, transform 0.4s ease',
-                              transitionDelay: `${i * 120 + 600 + fi * 40}ms`,
-                            }}
-                          >
-                            <span
-                              className={cn(
-                                'w-4 h-4 mt-0.5 shrink-0 flex items-center justify-center border',
-                                isRecommended ? 'border-[hsl(var(--skalr-purple))]' : 'border-border'
-                              )}
-                            >
-                              <Check
-                                className={cn(
-                                  'w-2.5 h-2.5',
-                                  isRecommended ? 'text-[hsl(var(--skalr-purple))]' : 'text-foreground/40'
-                                )}
-                              />
-                            </span>
-                            <span className="text-foreground/80">{feature}</span>
+                          <li key={fi} className="flex items-start gap-2.5 text-sm text-foreground-secondary">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span>{feature}</span>
                           </li>
                         ))}
                       </ul>
 
-                      {/* CTA */}
-                      {renderCta(plan, isRecommended)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      <div className="mt-6">{renderCta(plan, isRecommended)}</div>
+                    </li>
+                  );
+                })}
+              </ul>
 
-            {paidPlans.length > 0 && (
-              <p
-                className="text-center text-xs text-muted-foreground mb-16 sm:mb-20"
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transition: 'opacity 0.6s ease',
-                  transitionDelay: '500ms',
-                }}
-              >
+              <p className="mt-6 text-center text-sm text-muted-foreground">
                 Après l'essai de {TRIAL_DAYS} jours, le plan Gratuit conserve vos données.
               </p>
-            )}
 
-            {/* ── Comparison table ── */}
-            {paidPlans.length > 0 && (
-              <div
-                className="mb-16 sm:mb-20"
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transition: 'opacity 0.6s ease',
-                  transitionDelay: '500ms',
-                }}
-              >
-                <h2 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-accent" />
+              {/* ── Comparatif ── */}
+              <section aria-labelledby="comparatif-titre" className="mt-16">
+                <h2 id="comparatif-titre" className="text-lg font-semibold text-foreground">
                   Comparatif détaillé
                 </h2>
-
-                <div className="border-2 border-border overflow-x-auto">
+                <div className="mt-4 overflow-x-auto rounded-xl border border-border">
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="bg-muted/50">
                       <tr className="border-b border-border">
-                        <th className="text-left p-3 text-xs uppercase tracking-wider text-muted-foreground font-bold">
+                        <th scope="col" className="p-2.5 text-left text-xs font-medium text-muted-foreground sm:p-3">
                           Fonctionnalité
                         </th>
                         {paidPlans.map((plan) => (
-                          <th
-                            key={plan.id}
-                            className={cn(
-                              'p-3 text-center text-xs uppercase tracking-wider font-bold',
-                              plan.id === recommendedPlanId ? 'text-[hsl(var(--skalr-purple))]' : 'text-muted-foreground'
-                            )}
-                          >
+                          <th key={plan.id} scope="col" className="p-2.5 text-center text-xs font-semibold text-foreground sm:p-3">
                             {plan.name}
                           </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {COMPARISON_ROWS.map((row, ri) => (
-                        <tr
-                          key={row.key}
-                          className={cn(
-                            ri < COMPARISON_ROWS.length - 1 && 'border-b border-border'
-                          )}
-                        >
-                          <td className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {COMPARISON_ROWS.map((row) => (
+                        <tr key={row.key} className="border-b border-border last:border-b-0">
+                          <th scope="row" className="p-2.5 text-left font-normal text-foreground-secondary sm:p-3">
                             {row.label}
-                          </td>
-                          {paidPlans.map((plan) => {
-                            const isRecommended = plan.id === recommendedPlanId;
-                            return (
-                              <td key={plan.id} className="p-3 text-center">
-                                <span
-                                  className={cn(
-                                    'font-display font-bold',
-                                    isRecommended
-                                      ? 'text-[hsl(var(--skalr-purple))] text-base'
-                                      : 'text-foreground text-sm'
-                                  )}
-                                >
-                                  {formatLimit(plan.limits?.[row.key])}
-                                </span>
-                              </td>
-                            );
-                          })}
+                          </th>
+                          {paidPlans.map((plan) => (
+                            <td key={plan.id} className="p-2.5 text-center font-medium tabular-nums text-foreground sm:p-3">
+                              {formatLimit(plan.limits?.[row.key])}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
-          </>
-        )}
+              </section>
+            </>
+          )}
+        </div>
 
-        {/* ── FAQ ── */}
-        <div
-          style={{
-            opacity: mounted ? 1 : 0,
-            transition: 'opacity 0.6s ease',
-            transitionDelay: '700ms',
-          }}
-        >
-          <h2 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 bg-accent" />
+        {/* ── Questions fréquentes ── */}
+        <section aria-labelledby="faq-titre" className="mt-16">
+          <h2 id="faq-titre" className="text-lg font-semibold text-foreground">
             Questions fréquentes
           </h2>
-
-          <div className="space-y-2">
+          <Accordion type="single" collapsible className="mt-4 rounded-xl border border-border bg-card px-5">
             {FAQS.map((item, i) => (
-              <FAQItem key={i} item={item} />
+              <AccordionItem key={item.q} value={`question-${i}`} className="last:border-b-0">
+                <AccordionTrigger className="min-h-11 gap-4 text-left text-sm font-semibold hover:no-underline [&>svg]:text-muted-foreground">
+                  {item.q}
+                </AccordionTrigger>
+                <AccordionContent className="text-sm leading-relaxed text-muted-foreground">{item.a}</AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
-        </div>
-      </div>
+          </Accordion>
+        </section>
+      </main>
+
+      <PublicFooter />
     </div>
   );
 };

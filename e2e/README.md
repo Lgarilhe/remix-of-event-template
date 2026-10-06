@@ -28,6 +28,8 @@ npm run test:e2e:api             # API directe (RLS, quota gate)
 npm run test:e2e:ui              # mode interactif
 ```
 
+Sans `supabase start` (pas d'IPv6, registres d'images limités), ou pour faire tourner le moteur de séquences avec de faux prestataires : `bash e2e/local-stack/up.sh`, voir `e2e/local-stack/README.md`. Les tests `e2e/api/sequences-scenarios.spec.ts` n'existent que dans ce mode.
+
 ## Garde-fous
 
 - `guard-prod.ts` **refuse** de tourner si la cible ressemble à la prod (`crckfywoyjxkawathdff`)

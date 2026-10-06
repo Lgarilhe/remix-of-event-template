@@ -1,206 +1,108 @@
 /**
- * Tasks — page globale des rappels/tâches.
+ * Tasks — page globale des tâches (candidate_reminders).
  *
- * Agrège tous les `candidate_reminders` en une vue centralisée. Regroupe par
- * urgence (En retard / Aujourd'hui / Cette semaine / Plus tard / Terminés).
- * Permet de cocher, supprimer et cliquer pour aller au candidat lié.
+ * Regroupées par urgence : en retard, aujourd'hui, cette semaine, plus tard,
+ * terminées. Chaque tâche se coche, se supprime (après confirmation) et mène
+ * au candidat ou à la mission liés. Les suggestions automatiques (compte rendu
+ * manquant, entretien à préparer, candidat à relancer) se créent en un clic,
+ * sous la liste.
  *
- * V2 (mai 2026) : refonte design — passage du brutalism (border-border sharp,
- * font-mono uppercase, bg-foreground active) au V2 (rounded-xl, font-display,
- * icon-tiles vert clair, segmented control rounded-full).
+ * Design simplifié, lot T (docs/design/06-simplicite.md) : un seul bouton plein,
+ * les filtres dans un seul menu, des listes sans cadre, le visage du candidat
+ * ou les initiales du client sur chaque ligne (src/components/tasks/TaskList.tsx).
+ *
+ * Une lecture en échec s'affiche comme une erreur avec « Réessayer », jamais
+ * comme une liste vide (revue design A-34).
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { CheckSquare, Plus } from 'lucide-react';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { SEOHead } from '@/components/SEOHead';
-import { useAllReminders, type Reminder, type ReminderBucket, type TaskScope } from '@/hooks/useAllReminders';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  CheckSquare,
-  Bell,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  CalendarDays,
-  RefreshCw,
-  Trash2,
-  ExternalLink,
-  Loader2,
-  Plus,
-  Sparkles,
-  X,
-} from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
-import { PageLayout } from '@/components/layout';
+import { EmptyState, ErrorState, PageHeader, PageLayout } from '@/components/layout';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAllReminders, type ReminderBucket, type TaskScope } from '@/hooks/useAllReminders';
+import { useAutoTaskSuggestions, type AutoTaskSuggestion } from '@/hooks/useAutoTaskSuggestions';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { useCandidateAvatarsByCandidateId } from '@/hooks/useCandidateAvatars';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useSourcingProjects } from '@/hooks/useSourcingProjects';
+import { supabase } from '@/integrations/supabase/client';
 import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
+import { TaskSection, TaskSuggestions, type TaskMission } from '@/components/tasks/TaskList';
 import {
   TasksFiltersBar,
   applyTasksFilters,
   DEFAULT_TASKS_FILTERS,
   type TasksFilters,
+  type TasksView,
 } from '@/components/tasks/TasksFiltersBar';
-import { useAutoTaskSuggestions } from '@/hooks/useAutoTaskSuggestions';
-import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuthReady } from '@/hooks/useAuthReady';
-import { useOrganization } from '@/hooks/useOrganization';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { useCountUp } from '@/hooks/useCountUp';
-import { useCandidateAvatarsByCandidateId } from '@/hooks/useCandidateAvatars';
-import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
-import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
+import { plural } from '@/lib/plural';
 
-const BUCKET_META: Record<ReminderBucket, {
-  label: string;
-  icon: React.ElementType;
-  iconColor: string;
-  iconBg: string;
-  hint: string;
-}> = {
-  overdue: {
-    label: 'En retard',
-    icon: AlertCircle,
-    iconColor: 'text-destructive',
-    iconBg: 'bg-destructive/10',
-    hint: 'À traiter en priorité',
-  },
-  today: {
-    label: "Aujourd'hui",
-    icon: Clock,
-    iconColor: 'text-warning',
-    iconBg: 'bg-warning/10',
-    hint: 'À traiter aujourd\'hui',
-  },
-  week: {
-    label: 'Cette semaine',
-    icon: CalendarDays,
-    iconColor: 'text-info',
-    iconBg: 'bg-info/10',
-    hint: 'Dans les 7 jours',
-  },
-  later: {
-    label: 'Plus tard',
-    icon: Bell,
-    iconColor: 'text-foreground',
-    iconBg: 'bg-emerald-500/15',
-    hint: 'Au-delà de cette semaine',
-  },
-  done: {
-    label: 'Terminées',
-    icon: CheckCircle2,
-    iconColor: 'text-success',
-    iconBg: 'bg-success/10',
-    hint: 'Tâches archivées',
-  },
-};
-
-const KPICard: React.FC<{
-  bucket: ReminderBucket;
-  count: number;
-  index: number;
-}> = ({ bucket, count, index }) => {
-  const meta = BUCKET_META[bucket];
-  const Icon = meta.icon;
-  const animVal = useCountUp(count, { duration: 700 });
-  const isAlert = bucket === 'overdue' && count > 0;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: 'easeOut', delay: index * 0.05 }}
-      className={cn(
-        'rounded-xl border p-4 transition-colors',
-        isAlert
-          ? 'bg-destructive/[0.04] border-destructive/20'
-          : 'bg-card border-border',
-      )}
-    >
-      <div className="flex items-center gap-3 mb-3">
-        <div
-          className={cn(
-            'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
-            count > 0 ? meta.iconBg : 'bg-emerald-500/15',
-          )}
-        >
-          <Icon
-            className={cn('w-4 h-4', count > 0 ? meta.iconColor : 'text-foreground')}
-            aria-hidden="true"
-          />
-        </div>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          {meta.label}
-        </span>
-      </div>
-      <div className="font-display text-2xl font-bold text-foreground tabular-nums tracking-tight leading-none">
-        {animVal}
-      </div>
-      <div className="text-xs text-muted-foreground mt-1.5">{meta.hint}</div>
-    </motion.div>
-  );
-};
+const BUCKETS: { key: ReminderBucket; label: string }[] = [
+  { key: 'overdue', label: 'En retard' },
+  { key: 'today', label: "Aujourd'hui" },
+  { key: 'week', label: 'Cette semaine' },
+  { key: 'later', label: 'Plus tard' },
+  { key: 'done', label: 'Terminées' },
+];
 
 export default function TasksPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthReady();
   const { organizationId } = useOrganization();
   // Périmètre : « Mes tâches » par défaut ; les compteurs du hook suivent ce choix
   const [scope, setScope] = useState<TaskScope>('mine');
-  const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder, reminders } = useAllReminders({ scope });
-  const [view, setView] = useState<'active' | 'all'>('active');
+  const { grouped, counts, isLoading, isError, error, refetch, toggleComplete, deleteReminder, reminders } =
+    useAllReminders({ scope });
+  const [view, setView] = useState<TasksView>('active');
   const [createOpen, setCreateOpen] = useState(false);
   const [filters, setFilters] = useState<TasksFilters>(DEFAULT_TASKS_FILTERS);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Auto-task suggestions (debrief post-RDV manquants, etc.)
+  // Suggestions automatiques (compte rendu manquant, entretien à préparer, relance)
   const { suggestions } = useAutoTaskSuggestions();
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
+  const [creatingSuggestion, setCreatingSuggestion] = useState<string | null>(null);
 
-  // Apply filters to grouped buckets côté UI (light, ~50 items max)
-  const filteredGrouped = useMemo(() => {
-    const out: typeof grouped = {
+  // Visage du candidat de chaque tâche et suggestion (photo LinkedIn enregistrée, sinon initiales).
+  const candidateIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of reminders) if (r.candidate_id) ids.add(r.candidate_id);
+    for (const s of suggestions) if (s.candidate?.candidateId) ids.add(s.candidate.candidateId);
+    return Array.from(ids);
+  }, [reminders, suggestions]);
+  const photos = useCandidateAvatarsByCandidateId(candidateIds);
+
+  // Mission d'une tâche (job_id « project:… » ou nu) : lien, client et logo enregistré, sinon les initiales.
+  const { projects } = useSourcingProjects();
+  const missionOf = useMemo(() => {
+    const byId = new Map<string, TaskMission>(
+      projects.map((p) => [p.id, { id: p.id, client: p.jd_client || p.client_name || null, logo: p.jd_client_logo ?? null }]),
+    );
+    return (jobId: string | null) => (jobId ? byId.get(jobId.replace(/^project:/, '')) ?? null : null);
+  }, [projects]);
+
+  const filteredGrouped = useMemo(
+    () => ({
       overdue: applyTasksFilters(grouped.overdue, filters),
       today: applyTasksFilters(grouped.today, filters),
       week: applyTasksFilters(grouped.week, filters),
       later: applyTasksFilters(grouped.later, filters),
       done: applyTasksFilters(grouped.done, filters),
-    };
-    return out;
-  }, [grouped, filters]);
-
-  const filteredCounts = useMemo(
-    () => ({
-      overdue: filteredGrouped.overdue.length,
-      today: filteredGrouped.today.length,
-      week: filteredGrouped.week.length,
-      later: filteredGrouped.later.length,
-      done: filteredGrouped.done.length,
-      active:
-        filteredGrouped.overdue.length +
-        filteredGrouped.today.length +
-        filteredGrouped.week.length +
-        filteredGrouped.later.length,
     }),
-    [filteredGrouped],
+    [grouped, filters],
   );
 
-  // Crée la tâche depuis une suggestion auto
-  const acceptSuggestion = async (s: ReturnType<typeof useAutoTaskSuggestions>['suggestions'][0]) => {
+  const filteredActive =
+    filteredGrouped.overdue.length + filteredGrouped.today.length + filteredGrouped.week.length + filteredGrouped.later.length;
+
+  const acceptSuggestion = async (s: AutoTaskSuggestion) => {
     if (!user || !organizationId) return;
-    const { error } = await supabase.from('candidate_reminders').insert({
+    setCreatingSuggestion(s.key);
+    const { error: insertError } = await supabase.from('candidate_reminders').insert({
       organization_id: organizationId,
       created_by: user.id,
       title: s.title,
@@ -212,17 +114,16 @@ export default function TasksPage() {
       source_event_id: s.sourceEventId,
       auto_generated: true,
     } as any);
-    if (error) {
-      console.warn('[acceptSuggestion]', error);
+    setCreatingSuggestion(null);
+    if (insertError) {
+      console.warn('[acceptSuggestion]', insertError);
+      toast.error("La tâche n'a pas pu être créée. Réessayez.");
       return;
     }
     setDismissedSuggestions((prev) => new Set(prev).add(s.key));
+    toast.success('Tâche créée');
     await queryClient.invalidateQueries({ queryKey: ['all-reminders'] });
     await queryClient.invalidateQueries({ queryKey: ['auto-task-suggestions'] });
-  };
-
-  const dismissSuggestion = (key: string) => {
-    setDismissedSuggestions((prev) => new Set(prev).add(key));
   };
 
   const visibleSuggestions = useMemo(
@@ -230,516 +131,125 @@ export default function TasksPage() {
     [suggestions, dismissedSuggestions],
   );
 
-  const visibleBuckets: ReminderBucket[] = view === 'active'
-    ? ['overdue', 'today', 'week', 'later']
-    : ['overdue', 'today', 'week', 'later', 'done'];
-
-  const isEmpty = filteredCounts.active === 0 && (view === 'active' || filteredCounts.done === 0);
-  const isFilteredEmpty =
-    isEmpty && (counts.active > 0 || counts.done > 0); // a des reminders mais filtrés out
-
-  // Batch-fetch les avatars LinkedIn pour tous les candidats des reminders.
-  // On dédoublonne les candidate_ids, et on cap à 50 pour éviter une query
-  // trop large (au-delà l'utilité décroît, le user scrolle peu).
-  const candidateIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of reminders) {
-      if (r.candidate_id) set.add(r.candidate_id);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
     }
-    return Array.from(set).slice(0, 50);
-  }, [reminders]);
-  const avatarMap = useCandidateAvatarsByCandidateId(candidateIds);
+  };
+
+  const visibleBuckets = BUCKETS.filter((b) => view === 'all' || b.key !== 'done');
+  const isEmpty = filteredActive === 0 && (view === 'active' || filteredGrouped.done.length === 0);
+  const hiddenByFilters = counts.active + (view === 'all' ? counts.done : 0);
+  const isFilteredEmpty = isEmpty && hiddenByFilters > 0;
+
+  // Pas de zéro : sans tâche en cours, l'état vide parle.
+  const subtitle = isLoading || isError || counts.active === 0
+    ? undefined
+    : `${plural(counts.active, 'tâche')} en cours${counts.done > 0 ? `, ${plural(counts.done, 'terminée')}` : ''}.`;
 
   return (
     <PageLayout maxWidth="lg">
-      <SEOHead
-        title="Tâches | Konekt"
-        description="Vos rappels et tâches en cours"
+      <SEOHead title="Tâches | Konekt" description="Vos tâches et rappels en cours" />
+
+      <PageHeader
+        title="Tâches"
+        subtitle={subtitle}
+        actions={
+          <Button type="button" variant="primary" onClick={() => setCreateOpen(true)} className="min-h-11 md:min-h-0">
+            <Plus aria-hidden="true" />
+            Nouvelle tâche
+          </Button>
+        }
       />
 
-      {/* Header */}
-      <motion.header
-        className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
-            <CheckSquare className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-foreground text-2xl sm:text-3xl tracking-tight leading-tight">
-              Tâches
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {counts.active > 0
-                ? `${counts.active} en cours · ${counts.done} terminée${counts.done > 1 ? 's' : ''}`
-                : 'Aucune tâche en cours'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Segmented control Actives / Toutes */}
-          <div className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border">
-            {[
-              { key: 'active' as const, label: `Actives (${counts.active})` },
-              { key: 'all' as const, label: 'Toutes' },
-            ].map((opt) => {
-              const isActive = view === opt.key;
-              return (
-                <button
-                  key={opt.key}
-                  onClick={() => setView(opt.key)}
-                  className={cn(
-                    'inline-flex items-center h-8 px-3 rounded-full text-[11.5px] font-medium transition-all shrink-0',
-                    isActive
-                      ? 'bg-foreground text-background shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            onClick={() => refetch()}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors"
-            aria-label="Actualiser les tâches"
-          >
-            <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">Actualiser</span>
-          </button>
-
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-foreground text-background text-[11.5px] font-medium hover:opacity-90 transition-opacity"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Nouvelle tâche
-          </button>
-        </div>
-      </motion.header>
-
-      {/* Suggestions auto (debrief post-RDV manquants, etc.) */}
-      {visibleSuggestions.length > 0 && (
-        <motion.div
-          className="mb-6 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/30 overflow-hidden"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <div className="flex items-center gap-2 px-5 py-3 border-b border-emerald-500/20 bg-emerald-500/[0.04]">
-            <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
-              <Sparkles className="w-3.5 h-3.5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-display font-bold text-foreground tracking-tight">
-                {visibleSuggestions.length} suggestion{visibleSuggestions.length > 1 ? 's' : ''} de tâches automatiques
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Détectées d'après ton activité — clique pour créer ou rejeter
-              </p>
-            </div>
-          </div>
-          <ul className="divide-y divide-emerald-500/10">
-            {visibleSuggestions.map((s) => (
-              <li key={s.key} className="px-5 py-3 flex items-start gap-3 hover:bg-emerald-500/[0.04] transition-colors">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-display font-semibold text-foreground tracking-tight leading-tight">
-                    {s.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                    {s.description}
-                  </p>
-                  <p className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mt-1.5 font-semibold">
-                    {s.reason}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => acceptSuggestion(s)}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors"
-                    title="Créer cette tâche"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Créer
-                  </button>
-                  <button
-                    onClick={() => dismissSuggestion(s.key)}
-                    className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-                    title="Ignorer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </motion.div>
-      )}
-
-      {/* KPI strip — utilise filteredCounts pour refléter les filtres actifs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
-        {(['overdue', 'today', 'week', 'later', 'done'] as const).map((bucket, i) => (
-          <KPICard key={bucket} bucket={bucket} count={filteredCounts[bucket]} index={i} />
-        ))}
-      </div>
-
-      {/* Filtres bar */}
-      <div className="mb-6">
+      <div className="mb-8">
         <TasksFiltersBar
           filters={filters}
           onFiltersChange={setFilters}
           scope={scope}
           onScopeChange={setScope}
+          view={view}
+          onViewChange={setView}
           allReminders={reminders}
         />
       </div>
 
-      {/* Loading / Empty / Content */}
       {isLoading ? (
-        <div className="space-y-4">
+        <div className="space-y-2" role="status" aria-label="Chargement des tâches">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 rounded-xl bg-muted/40 animate-pulse" />
+            <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
-      ) : isEmpty ? (
-        <motion.div
-          className="rounded-xl bg-card border border-border p-10 text-center"
-          initial={{ opacity: 0, scale: 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-        >
-          <div
-            className={cn(
-              'h-12 w-12 rounded-full flex items-center justify-center mx-auto mb-4',
-              isFilteredEmpty ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success',
-            )}
-          >
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-          <p className="font-display font-bold text-foreground text-base">
-            {isFilteredEmpty
-              ? 'Aucune tâche ne correspond à tes filtres'
-              : 'Zéro tâche en cours'}
-          </p>
-          <p className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto mb-4">
-            {isFilteredEmpty
-              ? `${counts.active} tâche${counts.active > 1 ? 's' : ''} active${counts.active > 1 ? 's' : ''} mais toutes filtrées. Relâche un filtre pour les voir.`
-              : 'Les rappels apparaîtront ici. Crée-en une depuis cette page, le modal d\'un candidat ou un événement.'}
-          </p>
-          {isFilteredEmpty ? (
-            <button
-              onClick={() => setFilters(DEFAULT_TASKS_FILTERS)}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
-            >
+      ) : isError ? (
+        <ErrorState
+          title="Impossible de charger vos tâches"
+          description="Vérifiez votre connexion, puis réessayez. Vos tâches ne sont pas perdues."
+          detail={error}
+          onRetry={refresh}
+          retrying={refreshing}
+        />
+      ) : isFilteredEmpty ? (
+        <EmptyState
+          icon={CheckSquare}
+          title="Aucune tâche ne correspond à vos filtres"
+          headingLevel={2}
+          description={`${plural(hiddenByFilters, 'tâche')} masquée${hiddenByFilters > 1 ? 's' : ''} par les filtres.`}
+          action={
+            <Button type="button" variant="outline" size="sm" onClick={() => setFilters(DEFAULT_TASKS_FILTERS)} className="min-h-11 md:min-h-0">
               Effacer les filtres
-            </button>
-          ) : (
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
-            >
-              <Plus className="w-3.5 h-3.5" />
+            </Button>
+          }
+        />
+      ) : isEmpty ? (
+        <EmptyState
+          illustration="taches"
+          title="Aucune tâche en cours"
+          headingLevel={2}
+          description="Créez une tâche ici, depuis la fiche d'un candidat ou depuis un entretien de l'agenda."
+          action={
+            <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="min-h-11 md:min-h-0">
+              <Plus aria-hidden="true" />
               Nouvelle tâche
-            </button>
-          )}
-        </motion.div>
+            </Button>
+          }
+        />
       ) : (
-        <motion.div
-          className="space-y-4"
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: {},
-            visible: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } },
-          }}
-        >
+        <div className="space-y-10">
           {visibleBuckets.map((bucket) => {
-            const items = filteredGrouped[bucket];
-            const meta = BUCKET_META[bucket];
+            const items = filteredGrouped[bucket.key];
             if (items.length === 0) return null;
             return (
-              <BucketSection
-                key={bucket}
-                bucket={bucket}
+              <TaskSection
+                key={bucket.key}
+                bucket={bucket.key}
+                label={bucket.label}
                 items={items}
-                meta={meta}
-                avatarMap={avatarMap}
+                photos={photos}
+                missionOf={missionOf}
                 onToggle={toggleComplete}
                 onDelete={deleteReminder}
-                onNavigate={(candidateId) => navigate(`/pipeline?candidate=${candidateId}`)}
-                onJobNavigate={(jobId) => navigate(`/missions/${jobId}`)}
               />
             );
           })}
-        </motion.div>
+        </div>
       )}
 
-      {/* Modal création de tâche */}
+      {!isLoading && !isError && visibleSuggestions.length > 0 && (
+        <div className="mt-12">
+          <TaskSuggestions
+            suggestions={visibleSuggestions}
+            photos={photos}
+            creatingKey={creatingSuggestion}
+            onAccept={acceptSuggestion}
+            onDismiss={(key) => setDismissedSuggestions((prev) => new Set(prev).add(key))}
+          />
+        </div>
+      )}
+
       <CreateTaskModal open={createOpen} onOpenChange={setCreateOpen} />
     </PageLayout>
   );
 }
-
-function BucketSection({
-  bucket,
-  items,
-  meta,
-  avatarMap,
-  onToggle,
-  onDelete,
-  onNavigate,
-  onJobNavigate,
-}: {
-  bucket: ReminderBucket;
-  items: Reminder[];
-  meta: typeof BUCKET_META[ReminderBucket];
-  avatarMap: Map<string, string | null>;
-  onToggle: (r: Reminder) => void;
-  onDelete: (id: string) => void;
-  onNavigate: (candidateId: string) => void;
-  onJobNavigate: (jobId: string) => void;
-}) {
-  const Icon = meta.icon;
-  return (
-    <motion.section
-      variants={{
-        hidden: { opacity: 0, y: 10 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
-      }}
-      className="rounded-xl bg-card border border-border overflow-hidden"
-    >
-      {/* Section header */}
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border bg-muted/20">
-        <div
-          className={cn(
-            'h-8 w-8 rounded-lg flex items-center justify-center shrink-0',
-            meta.iconBg,
-          )}
-        >
-          <Icon className={cn('w-4 h-4', meta.iconColor)} aria-hidden="true" />
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <h2 className="font-display font-bold text-foreground text-[14px] tracking-tight leading-none">
-            {meta.label}
-          </h2>
-          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-[11px] text-foreground bg-foreground/10 font-bold tabular-nums">
-            {items.length}
-          </span>
-        </div>
-      </div>
-
-      {/* Task list */}
-      <ul className="divide-y divide-border">
-        <AnimatePresence>
-          {items.map((r) => (
-            <TaskRow
-              key={r.id}
-              reminder={r}
-              avatarUrl={avatarMap.get(r.candidate_id) ?? null}
-              onToggle={onToggle}
-              onDelete={onDelete}
-              onNavigate={onNavigate}
-              onJobNavigate={onJobNavigate}
-            />
-          ))}
-        </AnimatePresence>
-      </ul>
-    </motion.section>
-  );
-}
-
-const TaskRow = React.memo(function TaskRow({
-  reminder,
-  avatarUrl,
-  onToggle,
-  onDelete,
-  onNavigate,
-  onJobNavigate,
-}: {
-  reminder: Reminder;
-  avatarUrl: string | null;
-  onToggle: (r: Reminder) => void;
-  onDelete: (id: string) => void;
-  onNavigate: (candidateId: string) => void;
-  onJobNavigate: (jobId: string) => void;
-}) {
-  const [loading, setLoading] = useState<'toggle' | 'delete' | null>(null);
-  const isCompleted = !!reminder.completed_at;
-
-  // Date formatée : si dans la semaine en cours, format relatif court ;
-  // sinon date complète.
-  const { dueLabel, isOverdue, isDueToday } = (() => {
-    try {
-      const d = parseISO(reminder.due_at);
-      const now = new Date();
-      const diffMs = d.getTime() - now.getTime();
-      const isOverdue = diffMs < 0 && !isCompleted;
-      const isDueToday =
-        d.getDate() === now.getDate() &&
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear();
-
-      const time = format(d, 'HH:mm');
-      let label: string;
-      if (isDueToday) {
-        label = `Aujourd'hui · ${time}`;
-      } else if (Math.abs(diffMs) < 24 * 60 * 60 * 1000 && diffMs > 0) {
-        label = `Demain · ${time}`;
-      } else {
-        label = format(d, "d MMM 'à' HH:mm", { locale: fr });
-      }
-      return { dueLabel: label, isOverdue, isDueToday };
-    } catch {
-      return { dueLabel: '—', isOverdue: false, isDueToday: false };
-    }
-  })();
-
-  return (
-    <motion.li
-      initial={{ opacity: 1 }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.2 }}
-      className={cn(
-        'flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-muted/30',
-        isCompleted && 'opacity-60',
-      )}
-    >
-      <Checkbox
-        checked={isCompleted}
-        onCheckedChange={async () => {
-          setLoading('toggle');
-          try {
-            await onToggle(reminder);
-          } finally {
-            setLoading(null);
-          }
-        }}
-        disabled={loading !== null}
-        className="mt-1 shrink-0"
-        aria-label={isCompleted ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
-      />
-
-      {/* Avatar candidat avec logo société overlay (style Calendar EventCard) */}
-      {reminder.candidate_name && (
-        <button
-          type="button"
-          onClick={() => onNavigate(reminder.candidate_id)}
-          className="shrink-0 mt-0.5 hover:scale-105 transition-transform relative"
-          aria-label={`Voir ${reminder.candidate_name}`}
-        >
-          <CandidateAvatar
-            name={reminder.candidate_name}
-            avatarUrl={avatarUrl}
-            size={36}
-          />
-          {reminder.job_title && (
-            <span className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card rounded-md inline-flex">
-              <MissionCompanyLogo company={reminder.job_title} size={16} />
-            </span>
-          )}
-        </button>
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap mb-0.5">
-          <p
-            className={cn(
-              'text-sm font-display font-semibold text-foreground tracking-tight leading-tight',
-              isCompleted && 'line-through text-muted-foreground',
-            )}
-          >
-            {reminder.title}
-          </p>
-          {reminder.job_title && reminder.job_id && (
-            <button
-              type="button"
-              onClick={() => onJobNavigate(reminder.job_id!)}
-              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border bg-foreground/[0.04] text-muted-foreground hover:text-foreground hover:bg-muted/40 uppercase tracking-wider font-semibold transition-colors"
-            >
-              {reminder.job_title}
-            </button>
-          )}
-          {reminder.job_title && !reminder.job_id && (
-            <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full border border-border bg-foreground/[0.04] text-muted-foreground uppercase tracking-wider font-semibold">
-              {reminder.job_title}
-            </span>
-          )}
-        </div>
-        {reminder.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{reminder.description}</p>
-        )}
-        <div className="flex items-center gap-3 mt-1.5 text-xs flex-wrap">
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 tabular-nums font-medium',
-              isOverdue
-                ? 'text-destructive'
-                : isDueToday
-                ? 'text-warning'
-                : 'text-muted-foreground',
-            )}
-          >
-            <Clock className="w-3 h-3" aria-hidden="true" />
-            {dueLabel}
-          </span>
-          {reminder.candidate_name && (
-            <button
-              onClick={() => onNavigate(reminder.candidate_id)}
-              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="w-3 h-3" aria-hidden="true" />
-              {reminder.candidate_name}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <button
-            type="button"
-            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/[0.06] transition-colors shrink-0"
-            aria-label="Supprimer la tâche"
-            disabled={loading !== null}
-          >
-            {loading === 'delete' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-            )}
-          </button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer la tâche ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              "{reminder.title}" sera définitivement supprimée. Cette action est irréversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={async () => {
-                setLoading('delete');
-                try {
-                  await onDelete(reminder.id);
-                } finally {
-                  setLoading(null);
-                }
-              }}
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </motion.li>
-  );
-});
