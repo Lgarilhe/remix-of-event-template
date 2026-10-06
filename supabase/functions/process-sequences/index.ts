@@ -8,6 +8,7 @@ import {
   ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON,
 } from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
+import { aiReviewRequired, AI_REVIEW_REQUIRED_MESSAGE, AI_REVIEW_DEFER_MS } from "../_shared/sequence-send-rules.ts";
 import {
   NUDGE_ACTION_TYPES, isNudgeable, decidePostSendRecheck, hasAlreadySentStep, VISIBLE_SEND_ACTIONS,
   isUncertainSendError, isEmailSentButNotRecorded, UNCERTAIN_SEND_MESSAGE, shouldCloseForNoPreviousMessage,
@@ -2645,6 +2646,36 @@ async function handleProcess(supabase: any, force = false) {
         }
         // L'IA rédigera ce message après le verrou (ni modification du Journal, ni aperçu validé).
         const aiWillGenerate = !!step.use_ai_personalization && needsMessage(step.action_type) && !editedMessage && !usedPreviewOverride;
+
+        // Lot 5a-2 (décision 5) : aucun message rédigé par l'IA ne part sans
+        // relecture. Sans retouche validée à l'inscription ni correction du
+        // Journal (copie périmée du modèle comprise), l'étape reste
+        // 'scheduled', reportée d'une heure avec une raison lisible. Placé
+        // avant hasTimeToLock, le verrou et checkQuotaForAction : aucun appel
+        // au modèle, aucun débit, aucune place du plafond LinkedIn. Inscription
+        // inchangée : ni pause, ni échec, ni retry_count, ni auto-pause. Elle
+        // repart au premier passage après la relecture (final_message écrit
+        // par « Relire le message »).
+        if (aiReviewRequired({
+          useAi: !!step.use_ai_personalization,
+          actionType: step.action_type as string,
+          editedMessage,
+          usedOverride: usedPreviewOverride,
+          staleTemplateSnapshot,
+        })) {
+          console.log(`[process] ✋ Message IA à relire pour ${enrollment.id} (étape ${step.id}) : exécution ${exec.id} reportée d'une heure`);
+          await supabase.from('sequence_step_executions').update({
+            scheduled_at: new Date(Date.now() + AI_REVIEW_DEFER_MS).toISOString(),
+            error_message: AI_REVIEW_REQUIRED_MESSAGE,
+            // Copie périmée du modèle (SEQ-090) : retirée, pour que le suivi et
+            // le Journal proposent « Relire le message » (texte non relu).
+            ...(staleTemplateSnapshot
+              ? { final_message: null, final_subject: null, tracking_data: withContentOrigin(exec.tracking_data, null) }
+              : {}),
+          }).eq('id', exec.id).eq('status', 'scheduled');
+          results.skipped++;
+          continue;
+        }
         const isVisibleAction = !INVISIBLE_ACTIONS.has(step.action_type);
         const isLinkedInStyleSend = isVisibleAction && stepSendChannel(step) !== 'email';
         const sendAccountKey = sendingAccountKey(step, enrollment);

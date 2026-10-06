@@ -71,7 +71,8 @@ test('front-enroll-follow-3 / integration-7 — ni « À venir », ni « En reta
   assert.match(activityLog, /const canSkip = SKIPPABLE_STATUSES\.has\(exec\.status\) && !held && ownRow;/);
   // Le bouton « Ne pas envoyer » n'existe que si canSkip ; « Modifier » reste possible pendant la pause.
   assert.match(activityLog, /\{canSkip && \(\s*<Button[\s\S]*?Ne pas envoyer cette étape/);
-  assert.match(activityLog, /const canEdit = exec\.status === 'scheduled' && !!preview\.message;/);
+  // Lot 5a-2 : une étape IA reportée se relit par « Relire le message », pas par « Modifier ».
+  assert.match(activityLog, /const canEdit = exec\.status === 'scheduled' && !!preview\.message && !aiReview;/);
   // Badge « En pause » à la place de « Programmé », avec l'aide visible sous la ligne.
   assert.match(activityLog, /\{held \? \(\s*<Badge[^>]*>\s*<Pause [^>]*\/>\s*<span className="ml-1">\{held\.label\}<\/span>/);
   assert.match(activityLog, /\{held && \(\s*<p className="text-xs text-muted-foreground mt-0\.5">\{held\.hint\}<\/p>/);
