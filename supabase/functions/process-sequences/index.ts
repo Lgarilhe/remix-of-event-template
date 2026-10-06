@@ -1,5 +1,5 @@
 // Deno.serve used directly
-import { createClient } from "npm:@supabase/supabase-js@2.75.1";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
 import { gen5Params, withThinkingHeadroom } from "../_shared/gen5-models.ts";
@@ -24,14 +24,21 @@ import {
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
   isGdprErasedEnrollment, canActOnEnrollment, trackingWithoutPauseReason, GDPR_ERASED_RESUME_MESSAGE,
-  MAILBOX_DISCONNECTED_SKIP_REASON,
+  MAILBOX_DISCONNECTED_SKIP_REASON, resumeDate,
   type ResumeMode, type ResumeOutcome, type ResumeExecutionRow,
 } from "../_shared/sequence-resume.ts";
 import {
   isGdprBlocked, GDPR_ERASURE_SKIP_REASON, GDPR_ERASED_AT_KEY,
   GdprRegistryUnavailableError, GDPR_REGISTRY_UNAVAILABLE_MESSAGE,
 } from "../_shared/get-or-fetch-contact.ts";
-import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON } from "../_shared/candidate-reply-closure.ts";
+import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON, candidateIds } from "../_shared/candidate-reply-closure.ts";
+import {
+  MANUAL_STOP_SKIP_REASON, STOP_BATCH_MAX, STOP_UNDO_WINDOW_MS, STOP_MESSAGES, UNDO_MESSAGES,
+  stopTracking, undoTracking, undoExpiresAt, withoutManualStop, decideStop, decideUndo, replyAfterStop,
+  undoResumeRefusedMessage, countStopOutcomes, countUndoOutcomes, isManualStop,
+  EVENT_LIFTED_PAUSE_REASONS, pauseCauseHolds,
+  type StopOutcome, type UndoOutcome, type ResumeRefusalReason,
+} from "../_shared/enrollment-stop.ts";
 import {
   CYCLE_BUDGET_MS, hasTimeToLock, readCycleSelection, sendingAccountKey, stepSendChannel, executionChannel,
   MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE,
@@ -99,6 +106,8 @@ const INTERNAL_ONLY_ACTIONS = new Set([
 // organisation, vérifiée dans le handler (MQ-002).
 const MEMBER_ACTIONS = new Set([
   'skip_execution', 'nudge_sequences', 'resume_enrollments', 're_enroll', 'mark_replied',
+  // Lot 5b : arrêt manuel et son annulation (2 minutes, son auteur seulement).
+  'stop_enrollments', 'undo_stop_enrollments',
 ]);
 
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic)
@@ -313,6 +322,23 @@ Deno.serve(async (req) => {
           sequenceId: typeof body.sequence_id === 'string' && body.sequence_id ? body.sequence_id : null,
           pauseReasons: stringArray(body.pause_reasons),
         }, callerUserId);
+        break;
+      case 'stop_enrollments':
+        response = await handleStopEnrollments(
+          supabase,
+          typeof body.organization_id === 'string' ? body.organization_id : null,
+          body.enrollment_ids,
+          callerUserId,
+        );
+        break;
+      case 'undo_stop_enrollments':
+        response = await handleUndoStopEnrollments(
+          supabase,
+          typeof body.organization_id === 'string' ? body.organization_id : null,
+          body.enrollment_ids,
+          body.token,
+          callerUserId,
+        );
         break;
       case 'mark_replied':
         response = await handleMarkReplied(
@@ -968,7 +994,8 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
   const { data: execRows, error: execErr } = await supabase
     .from('sequence_step_executions')
     // Étape jointe : routage de la suite (branche de délai, « Vérifier connexion »), SEQ-082.
-    .select('id, step_id, step_order, status, skip_reason, error_message, scheduled_at, created_at, step:sequence_steps(action_type, timeout_branch_step_id, if_true_goto_step, if_false_goto_step)')
+    // Lot 5b : wait_for_event et condition_type, une attente réarmée garde sa date (waitsForEvent).
+    .select('id, step_id, step_order, status, skip_reason, error_message, scheduled_at, created_at, step:sequence_steps(action_type, wait_for_event, condition_type, timeout_branch_step_id, if_true_goto_step, if_false_goto_step)')
     .eq('enrollment_id', enr.id)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -1016,7 +1043,9 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
     // aussitôt l'inscription relancée.
     activatePatch.replied_at = null;
     activatePatch.completed_at = null;
-    activatePatch.tracking_data = reEnrollTracking(enr.tracking_data, enr.replied_at, nowIso);
+    // Lot 5b : une relance après un arrêt manuel retire sa trace (une fin
+    // ultérieure ne s'affiche pas comme un arrêt).
+    activatePatch.tracking_data = withoutManualStop(reEnrollTracking(enr.tracking_data, enr.replied_at, nowIso));
   }
   // SEQ-082 : le texte de la pause précédente (tracking_data.pause_reason) est
   // retiré à la réactivation, sinon une pause ultérieure sans texte affichait
@@ -1040,7 +1069,13 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
         return { outcome: 'error', message: RESUME_MESSAGES.failed };
       }
     }
-    return await activate() ? { outcome: 'resumed' } : { outcome: 'error', message: RESUME_MESSAGES.changed };
+    if (!await activate()) return { outcome: 'error', message: RESUME_MESSAGES.changed };
+    // Lot 5b : étape lue 'sending', annulée « Arrêt manuel » par le dernier
+    // contrôle du moteur avant la réactivation (arrêt annulé pendant l'envoi) :
+    // réarmée, sinon l'inscription active resterait sans étape en attente.
+    const pending = executions.find((e) => e.id === plan.executionId);
+    if (pending?.status === 'sending') await rearmManualStopCancellation(supabase, pending.id, pending.scheduled_at ?? null);
+    return { outcome: 'resumed' };
   }
 
   if (plan.kind === 'rearm') {
@@ -1173,6 +1208,385 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
     stopped_siblings: closed.stoppedSiblings,
     ...(closed.failed ? { warning: 'Réponse enregistrée. Certaines étapes en attente n\'ont pas pu être annulées : elles ne partiront pas et seront annulées automatiquement.' } : {}),
   });
+}
+
+// ─── Lot 5b : arrêt manuel et son annulation (décision 3) ───────────────────
+//
+// « Arrêter » clôt l'inscription en 'completed' (completion_reason
+// 'manual_stop', comptée par l'anti-doublon de 90 jours) et annule ses étapes
+// en attente avec le motif « Arrêt manuel », jamais 'sending'. « Annuler »,
+// permis 2 minutes à l'auteur de l'arrêt, la remet en pause (raison d'avant,
+// sinon 'manual'), puis la reprise serveur (resumeOneEnrollment) la réactive
+// si elle était active : aucune seconde logique de réarmement. Règles pures :
+// _shared/enrollment-stop.ts.
+
+// Sous le délai d'attente de l'interface (55 s), marge comprise.
+const STOP_DEADLINE_MS = 40_000;
+// Inscriptions traitées en parallèle : 200 arrêts tiennent dans la limite de 60 s.
+const STOP_CONCURRENCY = 10;
+const UNDO_CONCURRENCY = 5;
+const STOP_SELECT = 'id, status, pause_reason, organization_id, sequence_id, account_id, assigned_sender_id, current_step_order, tracking_data, connection_status, user_timezone, created_by, replied_at, completed_at, profile_url, profile_id, resolved_profile_id, provider_id, updated_at, sequence:outreach_sequences(organization_id, is_active)';
+
+interface StopEnrollmentRow extends ResumeEnrollmentRow {
+  profile_id: string | null;
+  resolved_profile_id: string | null;
+  provider_id: string | null;
+  updated_at: string | null;
+}
+
+interface StopResult { enrollment_id: string; outcome: StopOutcome; message?: string }
+interface UndoResult { enrollment_id: string; outcome: UndoOutcome; message?: string; reason?: ResumeRefusalReason; detail?: string }
+
+/** Inscriptions d'une demande d'arrêt ou d'annulation (200 au plus), ou la réponse de refus. */
+function stopTargets(rawIds: unknown): { ids: string[] } | { response: Response } {
+  if (!Array.isArray(rawIds)) return { response: memberError('invalid_request', 'La liste des candidats est invalide.', 400) };
+  const ids = [...new Set(stringArray(rawIds))];
+  if (ids.length === 0) return { response: memberError('invalid_request', 'Aucun candidat sélectionné.', 400) };
+  if (ids.length > STOP_BATCH_MAX) {
+    return { response: memberError('too_many', `${STOP_BATCH_MAX} candidats au plus par demande.`, 400) };
+  }
+  return { ids };
+}
+
+/** Inscriptions relues, et celles qui portent une étape annulée par un effacement RGPD. null si une lecture échoue. */
+async function readStopRows(supabase: SupabaseClient, ids: string[]): Promise<{ rows: Map<string, StopEnrollmentRow>; erased: Set<string> } | null> {
+  const rows = new Map<string, StopEnrollmentRow>();
+  const erased = new Set<string>();
+  for (let i = 0; i < ids.length; i += RESUME_BATCH_MAX) {
+    const chunk = ids.slice(i, i + RESUME_BATCH_MAX);
+    const { data, error } = await supabase.from('sequence_enrollments').select(STOP_SELECT).in('id', chunk);
+    if (error) {
+      console.error('[stop] lecture des inscriptions échouée:', error);
+      return null;
+    }
+    for (const row of (data ?? []) as unknown as StopEnrollmentRow[]) rows.set(row.id, row);
+    const { data: gdprExecs, error: gdprErr } = await supabase.from('sequence_step_executions')
+      .select('enrollment_id').in('enrollment_id', chunk).eq('skip_reason', GDPR_ERASURE_SKIP_REASON);
+    if (gdprErr) {
+      console.error('[stop] lecture des effacements échouée:', gdprErr);
+      return null;
+    }
+    for (const e of (gdprExecs ?? []) as Array<{ enrollment_id: string }>) erased.add(e.enrollment_id);
+  }
+  return { rows, erased };
+}
+
+/** Relecture d'une inscription avant le second essai ('error' si la lecture échoue). */
+async function rereadStopRow(supabase: SupabaseClient, id: string): Promise<StopEnrollmentRow | null | 'error'> {
+  const { data, error } = await supabase.from('sequence_enrollments').select(STOP_SELECT).eq('id', id).maybeSingle();
+  if (error) {
+    console.error(`[stop] relecture de ${id} échouée:`, error);
+    return 'error';
+  }
+  return (data as unknown as StopEnrollmentRow | null) ?? null;
+}
+
+/** Par groupes de `size` en parallèle ; au-delà du délai, ou sur une exception, `fallback`. */
+async function inStopGroups<R>(ids: string[], size: number, startedAt: number, run: (id: string) => Promise<R>, fallback: (id: string) => R): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < ids.length; i += size) {
+    const group = ids.slice(i, i + size);
+    if (Date.now() - startedAt > STOP_DEADLINE_MS) {
+      out.push(...group.map(fallback));
+      continue;
+    }
+    out.push(...await Promise.all(group.map(async (id) => {
+      try {
+        return await run(id);
+      } catch (e) {
+        console.error(`[stop] inscription ${id} non traitée:`, e);
+        return fallback(id);
+      }
+    })));
+  }
+  return out;
+}
+
+/**
+ * `stop_enrollments` { organization_id, enrollment_ids (200 au plus) } :
+ * arrêt manuel, un résultat par inscription (stopped, not_eligible,
+ * gdpr_erased, forbidden, changed, not_found, error) et le jeton
+ * d'annulation, valable 2 minutes.
+ */
+async function handleStopEnrollments(supabase: SupabaseClient, organizationId: string | null, rawIds: unknown, callerUserId: string | null): Promise<Response> {
+  const startedAt = Date.now();
+  const caller = await resolveCallerOrganization(supabase, organizationId, callerUserId);
+  if ('response' in caller) return caller.response;
+  const orgId = caller.orgId;
+  if (!orgId) return memberError('organization_required', 'Organisation introuvable pour cette demande.', 400);
+  const target = stopTargets(rawIds);
+  if ('response' in target) return target.response;
+
+  const token = crypto.randomUUID();
+  const stoppedAt = new Date().toISOString();
+  const results: StopResult[] = target.ids.filter((id) => !UUID_RE.test(id))
+    .map((id) => ({ enrollment_id: id, outcome: 'not_found' as const, message: STOP_MESSAGES.not_found }));
+  const ids = target.ids.filter((id) => UUID_RE.test(id));
+  const read = ids.length > 0 ? await readStopRows(supabase, ids) : { rows: new Map<string, StopEnrollmentRow>(), erased: new Set<string>() };
+  if (!read) return memberError('server_error', STOP_MESSAGES.error, 500);
+
+  const stopOne = async (id: string): Promise<StopResult> => {
+    let enr = read.rows.get(id) ?? null;
+    // Écriture conditionnelle sur le statut et l'updated_at relus ; 0 ligne :
+    // un nouvel essai après relecture, puis « rien n'a changé ».
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        const fresh = await rereadStopRow(supabase, id);
+        if (fresh === 'error') return { enrollment_id: id, outcome: 'error', message: STOP_MESSAGES.error };
+        enr = fresh;
+      }
+      const enrOrgId = enr ? (enr.organization_id ?? enr.sequence?.organization_id ?? null) : null;
+      if (!enr || enrOrgId !== orgId) return { enrollment_id: id, outcome: 'not_found', message: STOP_MESSAGES.not_found };
+      const decision = decideStop({
+        status: enr.status,
+        pauseReason: enr.pause_reason,
+        gdprErased: isGdprErasedEnrollment(enr.tracking_data, read.erased.has(id) ? [{ skip_reason: GDPR_ERASURE_SKIP_REASON }] : []),
+        canAct: canActOnEnrollment({ userId: callerUserId, role: caller.role }, enr.created_by),
+      });
+      if (decision.kind === 'refuse') return { enrollment_id: id, outcome: decision.outcome, message: STOP_MESSAGES[decision.outcome] };
+      let write = supabase.from('sequence_enrollments').update({
+        status: 'completed',
+        completed_at: stoppedAt,
+        pause_reason: null,
+        tracking_data: stopTracking(enr.tracking_data, {
+          token, by: callerUserId, at: stoppedAt,
+          previous_status: decision.previousStatus, previous_pause_reason: decision.previousPauseReason,
+        }),
+      }).eq('id', id).eq('status', enr.status);
+      write = enr.updated_at ? write.eq('updated_at', enr.updated_at) : write.is('updated_at', null);
+      const { data, error } = await write.select('id');
+      if (error) {
+        console.error(`[stop] arrêt de ${id} échoué:`, error);
+        return { enrollment_id: id, outcome: 'error', message: STOP_MESSAGES.error };
+      }
+      if ((data ?? []).length > 0) {
+        // Jamais 'sending' : un message en cours d'envoi part, le moteur
+        // l'enregistre sans planifier la suite. Annulation en échec :
+        // l'inscription est close, le moteur annule ces étapes à leur échéance.
+        await cancelPendingExecutions(supabase, id, MANUAL_STOP_SKIP_REASON);
+        return { enrollment_id: id, outcome: 'stopped' };
+      }
+    }
+    return { enrollment_id: id, outcome: 'changed', message: STOP_MESSAGES.changed };
+  };
+
+  results.push(...await inStopGroups(ids, STOP_CONCURRENCY, startedAt, stopOne,
+    (id) => ({ enrollment_id: id, outcome: 'error' as const, message: STOP_MESSAGES.error })));
+  const counts = countStopOutcomes(results);
+  const expiresAt = undoExpiresAt(stoppedAt);
+  console.log(`[stop_enrollments] org=${orgId} ${results.length} traité(s) en ${Date.now() - startedAt} ms`, counts);
+  return json200({
+    success: true,
+    token,
+    stopped_at: stoppedAt,
+    expires_at: expiresAt,
+    // Temps restant à la réponse : l'interface ferme « Annuler » avant (toast
+    // fermé d'office à 1 min 50 s au plus), « Annuler » visible reste accepté.
+    expires_in_ms: Math.max(0, Math.min(STOP_UNDO_WINDOW_MS, Date.parse(expiresAt) - Date.now())),
+    results,
+    counts,
+  });
+}
+
+/**
+ * Réponse du candidat reçue depuis l'arrêt, ailleurs que sur l'inscription
+ * (son statut « répondu » est lu par decideUndo) : conversation de mission de
+ * l'organisation (last_inbound_at), ou réponse enregistrée sur une autre
+ * inscription du candidat dans l'organisation (replied_at). Candidat :
+ * identifiants LinkedIn et slug exact du profil. null si une lecture échoue.
+ */
+async function replySinceStop(supabase: SupabaseClient, enr: StopEnrollmentRow, orgId: string, stopAt: string): Promise<boolean | null> {
+  const ids = candidateIds([enr.profile_id, enr.resolved_profile_id, enr.provider_id]);
+  const slug = linkedinProfileSlug(enr.profile_url);
+  const conversations = () => supabase.from('mission_conversations').select('last_inbound_at')
+    .eq('organization_id', orgId).gt('last_inbound_at', stopAt).limit(1);
+  const siblings = () => supabase.from('sequence_enrollments').select('replied_at, profile_url')
+    .eq('organization_id', orgId).neq('id', enr.id).gt('replied_at', stopAt);
+  const reads: Array<PromiseLike<{ data: unknown; error: unknown }>> = [
+    conversations().or(ids.length > 0 ? `enrollment_id.eq.${enr.id},candidate_id.in.(${ids.join(',')})` : `enrollment_id.eq.${enr.id}`),
+  ];
+  if (ids.length > 0) reads.push(conversations().overlaps('candidate_ids', ids));
+  if (slug) reads.push(conversations().eq('candidate_slug', slug));
+  const filter = siblingEnrollmentsFilter(ids);
+  if (filter) reads.push(siblings().or(filter).limit(1));
+  const dates: Array<string | null> = [];
+  for (const res of await Promise.all(reads)) {
+    if (res.error) {
+      console.error(`[undo_stop] réponses du candidat de ${enr.id} illisibles:`, res.error);
+      return null;
+    }
+    for (const row of (res.data ?? []) as Array<{ last_inbound_at?: string | null; replied_at?: string | null }>) {
+      dates.push(row.last_inbound_at ?? row.replied_at ?? null);
+    }
+  }
+  if (slug) {
+    const { data, error } = await siblings().ilike('profile_url', `%linkedin.com/in/${slug.replace(/([%_\\])/g, '\\$1')}%`);
+    if (error) {
+      console.error(`[undo_stop] réponses du candidat de ${enr.id} illisibles:`, error);
+      return null;
+    }
+    // Slug exact (le motif accepte « marie-martin-4b2a1 » pour « marie-martin »).
+    for (const row of (data ?? []) as Array<{ replied_at: string | null; profile_url: string | null }>) {
+      if (linkedinProfileSlug(row.profile_url) === slug) dates.push(row.replied_at);
+    }
+  }
+  return replyAfterStop(stopAt, dates);
+}
+
+/**
+ * Cause de la pause d'avant l'arrêt encore présente (pauseCauseHolds) :
+ * séquence relue avec l'inscription, compte d'envoi relu dans
+ * member_linkedin_accounts (connecté si tous ses comptes trouvés sont 'OK'),
+ * abonnement par le contrôle commun. Lecture impossible : présente.
+ */
+async function undoPauseCauseHolds(supabase: SupabaseClient, enr: StopEnrollmentRow, orgId: string, reason: string): Promise<boolean> {
+  if (!EVENT_LIFTED_PAUSE_REASONS.includes(reason)) return true;
+  let accountOk: boolean | null = null;
+  let canSendSequences: boolean | null = null;
+  if (reason === 'account_disconnected') {
+    const accounts = [...new Set([enr.assigned_sender_id, enr.account_id].filter((a): a is string => typeof a === 'string' && a.length > 0))];
+    if (accounts.length > 0) {
+      const { data, error } = await supabase.from('member_linkedin_accounts').select('account_status')
+        .eq('organization_id', orgId).in('linkedin_account_id', accounts);
+      if (error) console.error(`[undo_stop] état du compte de ${enr.id} illisible:`, error);
+      const rows = (data ?? []) as Array<{ account_status: string | null }>;
+      if (!error && rows.length > 0) accountOk = rows.every((r) => r.account_status === 'OK');
+    }
+  } else if (reason === 'subscription_required') {
+    try {
+      // Client typé d'une autre version de supabase-js dans subscription-gate.ts.
+      canSendSequences = (await getSubscriptionGate(supabase as unknown as Parameters<typeof getSubscriptionGate>[0], orgId)).canSendSequences;
+    } catch (e) {
+      console.error(`[undo_stop] abonnement de ${orgId} illisible:`, e);
+    }
+  }
+  return pauseCauseHolds(reason, { sequenceActive: enr.sequence?.is_active ?? null, accountOk, canSendSequences });
+}
+
+/** Inscription active avant l'arrêt : la reprise serveur, dont les refus laissent la pause manuelle. */
+async function resumeAfterUndo(supabase: SupabaseClient, enr: StopEnrollmentRow, enrOrgId: string | null, accountCache: Map<string, boolean>): Promise<Omit<UndoResult, 'enrollment_id'>> {
+  try {
+    const res = await resumeOneEnrollment(supabase, 'resume', enr, enrOrgId, true, accountCache);
+    if (res.outcome === 'resumed') return { outcome: 'resumed', message: UNDO_MESSAGES.resumed };
+    if (res.outcome === 'nothing_to_resume') return { outcome: 'finished', message: UNDO_MESSAGES.finished };
+    const reason: ResumeRefusalReason = res.outcome === 'account_unlinked' ? 'account_unlinked'
+      : res.message === RESUME_MESSAGES.sequenceInactive ? 'sequence_inactive'
+        : res.message === GDPR_ERASED_RESUME_MESSAGE ? 'gdpr_erased'
+          : 'other';
+    return { outcome: 'resume_refused', reason, message: undoResumeRefusedMessage(reason), ...(res.message ? { detail: res.message } : {}) };
+  } catch (e) {
+    console.error(`[undo_stop] reprise de ${enr.id} échouée:`, e);
+    const reason: ResumeRefusalReason = e instanceof GdprRegistryUnavailableError ? 'gdpr_registry_unavailable' : 'other';
+    return {
+      outcome: 'resume_refused', reason, message: undoResumeRefusedMessage(reason),
+      detail: reason === 'gdpr_registry_unavailable' ? GDPR_REGISTRY_UNAVAILABLE_MESSAGE : RESUME_MESSAGES.failed,
+    };
+  }
+}
+
+/**
+ * `undo_stop_enrollments` { organization_id, enrollment_ids, token } :
+ * annulation d'un arrêt par son auteur dans les 2 minutes. Refus : expired,
+ * not_author, moved_since, gdpr_erased, replied (statut, conversation de
+ * mission ou inscription sœur), forbidden, not_found, error. Sinon : retour en
+ * pause (`paused`), ou reprise là où elle en était (`resumed`), ou pause
+ * manuelle gardée si la reprise refuse (`resume_refused` et `reason`), ou
+ * séquence finie (`finished`).
+ */
+async function handleUndoStopEnrollments(supabase: SupabaseClient, organizationId: string | null, rawIds: unknown, rawToken: unknown, callerUserId: string | null): Promise<Response> {
+  const startedAt = Date.now();
+  const caller = await resolveCallerOrganization(supabase, organizationId, callerUserId);
+  if ('response' in caller) return caller.response;
+  const orgId = caller.orgId;
+  if (!orgId) return memberError('organization_required', 'Organisation introuvable pour cette demande.', 400);
+  const target = stopTargets(rawIds);
+  if ('response' in target) return target.response;
+  const token = typeof rawToken === 'string' ? rawToken.trim() : '';
+  if (!token) return memberError('invalid_request', 'Jeton d\'annulation manquant.', 400);
+
+  const results: UndoResult[] = target.ids.filter((id) => !UUID_RE.test(id))
+    .map((id) => ({ enrollment_id: id, outcome: 'not_found' as const, message: UNDO_MESSAGES.not_found }));
+  const ids = target.ids.filter((id) => UUID_RE.test(id));
+  const read = ids.length > 0 ? await readStopRows(supabase, ids) : { rows: new Map<string, StopEnrollmentRow>(), erased: new Set<string>() };
+  if (!read) return memberError('server_error', UNDO_MESSAGES.error, 500);
+  const accountCache = new Map<string, boolean>();
+
+  const undoOne = async (id: string): Promise<UndoResult> => {
+    let enr = read.rows.get(id) ?? null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        const fresh = await rereadStopRow(supabase, id);
+        if (fresh === 'error') return { enrollment_id: id, outcome: 'error', message: UNDO_MESSAGES.error };
+        enr = fresh;
+      }
+      const enrOrgId = enr ? (enr.organization_id ?? enr.sequence?.organization_id ?? null) : null;
+      if (!enr || enrOrgId !== orgId) return { enrollment_id: id, outcome: 'not_found', message: UNDO_MESSAGES.not_found };
+      const decision = decideUndo({
+        status: enr.status,
+        trackingData: enr.tracking_data,
+        token,
+        callerUserId,
+        // Délai de 2 minutes lu à la réception de la demande, pour toutes ses
+        // inscriptions et aux deux essais : « Annuler » cliqué pendant que le
+        // bouton est visible est accepté, même si le traitement de 200
+        // inscriptions finit après l'échéance.
+        nowMs: startedAt,
+        gdprErased: isGdprErasedEnrollment(enr.tracking_data, read.erased.has(id) ? [{ skip_reason: GDPR_ERASURE_SKIP_REASON }] : []),
+        canAct: canActOnEnrollment({ userId: callerUserId, role: caller.role }, enr.created_by),
+      });
+      if (decision.kind === 'refuse') return { enrollment_id: id, outcome: decision.outcome, message: UNDO_MESSAGES[decision.outcome] };
+      // Registre global des effacements : refus avant toute écriture. Registre
+      // illisible : la reprise le relit et refuse avec la raison.
+      if (enr.profile_url) {
+        try {
+          if (await isGdprBlocked(supabase, { linkedinUrl: enr.profile_url })) {
+            return { enrollment_id: id, outcome: 'gdpr_erased', message: UNDO_MESSAGES.gdpr_erased };
+          }
+        } catch (e) {
+          if (!(e instanceof GdprRegistryUnavailableError)) throw e;
+        }
+      }
+      const replied = await replySinceStop(supabase, enr, orgId, decision.stopAt);
+      if (replied === null) return { enrollment_id: id, outcome: 'error', message: UNDO_MESSAGES.error };
+      if (replied) return { enrollment_id: id, outcome: 'replied', message: UNDO_MESSAGES.replied };
+
+      // En pause avant l'arrêt pour une raison qu'un événement lève (compte
+      // reconnecté, paiement, séquence réactivée) : si l'événement est passé
+      // pendant l'arrêt, l'inscription aurait repris. Elle reprend donc comme
+      // une inscription active avant l'arrêt (pause manuelle si la reprise
+      // refuse), au lieu de garder une raison que plus rien ne lèvera.
+      let previousStatus = decision.previousStatus;
+      let pauseReason = decision.pauseReason;
+      if (previousStatus === 'paused' && !await undoPauseCauseHolds(supabase, enr, orgId, pauseReason)) {
+        previousStatus = 'active';
+        pauseReason = 'manual';
+      }
+
+      const tracking = undoTracking(enr.tracking_data, new Date().toISOString());
+      let write = supabase.from('sequence_enrollments').update({
+        status: 'paused', pause_reason: pauseReason, completed_at: null, tracking_data: tracking,
+      }).eq('id', id).eq('status', enr.status);
+      write = enr.updated_at ? write.eq('updated_at', enr.updated_at) : write.is('updated_at', null);
+      const { data, error } = await write.select('id');
+      if (error) {
+        console.error(`[undo_stop] annulation de ${id} échouée:`, error);
+        return { enrollment_id: id, outcome: 'error', message: UNDO_MESSAGES.error };
+      }
+      if ((data ?? []).length === 0) continue;
+      // En pause avant l'arrêt : elle y retourne ; ses étapes annulées
+      // « Arrêt manuel » seront réarmées à la reprise.
+      if (previousStatus === 'paused') return { enrollment_id: id, outcome: 'paused', message: UNDO_MESSAGES.paused };
+      const paused: StopEnrollmentRow = { ...enr, status: 'paused', pause_reason: pauseReason, completed_at: null, tracking_data: tracking };
+      return { enrollment_id: id, ...await resumeAfterUndo(supabase, paused, enrOrgId, accountCache) };
+    }
+    return { enrollment_id: id, outcome: 'moved_since', message: UNDO_MESSAGES.moved_since };
+  };
+
+  results.push(...await inStopGroups(ids, UNDO_CONCURRENCY, startedAt, undoOne,
+    (id) => ({ enrollment_id: id, outcome: 'error' as const, message: UNDO_MESSAGES.error })));
+  const counts = countUndoOutcomes(results);
+  console.log(`[undo_stop_enrollments] org=${orgId} ${results.length} traité(s) en ${Date.now() - startedAt} ms`, counts);
+  return json200({ success: true, results, counts });
 }
 
 // deno-lint-ignore no-explicit-any
@@ -2960,7 +3374,7 @@ async function handleProcess(supabase: any, force = false) {
           // D1 (contrat §7) : la séquence est relue aussi, une désactivation
           // pendant le cycle vaut une pause (rien ne part, l'étape est gardée).
           const { data: lastCall, error: lastCallErr } = await supabase
-            .from('sequence_enrollments').select('status, sequence:outreach_sequences(is_active)').eq('id', enrollment.id).maybeSingle();
+            .from('sequence_enrollments').select('status, tracking_data, sequence:outreach_sequences(is_active)').eq('id', enrollment.id).maybeSingle();
           if (lastCallErr) {
             // Statut illisible : on n'envoie pas sans savoir. Nouvel essai dans
             // 15 min avec le texte déjà résolu (ni nouvelle rédaction, ni modèle brut).
@@ -2996,6 +3410,27 @@ async function handleProcess(supabase: any, force = false) {
               status: 'scheduled', final_message: preLockMessage, final_subject: preLockSubject,
               ...(aiWillGenerate ? { tracking_data: preLockTracking } : {}),
             }).eq('id', exec.id).eq('status', 'sending');
+            await releaseSlot();
+            results.skipped++;
+            continue;
+          }
+          if (isManualStop(lastCall.status, lastCall.tracking_data)) {
+            // Lot 5b : arrêt manuel posé pendant l'envoi (l'arrêt ne touche
+            // jamais 'sending'). Rien n'est parti : l'étape est annulée
+            // « Arrêt manuel », motif réarmable, avec son contenu d'avant le
+            // verrou, pour que « Annuler » ou « Relancer » la réarme à sa date.
+            console.warn(`[process] ⛔ LAST-CALL: enrollment ${enrollment.id} arrêté à la main avant l'envoi — étape ${exec.id} annulée, rien n'est envoyé`);
+            await supabase.from('sequence_step_executions').update({
+              status: 'cancelled', skip_reason: MANUAL_STOP_SKIP_REASON, executed_at: new Date().toISOString(),
+              final_message: preLockMessage, final_subject: preLockSubject,
+              ...(aiWillGenerate ? { tracking_data: preLockTracking } : {}),
+            }).eq('id', exec.id).eq('status', 'sending');
+            // Annulation de l'arrêt arrivée entre la lecture et l'annulation de
+            // l'étape (reprise déjà faite, l'étape lue encore 'sending') :
+            // l'inscription est active sans étape en attente, l'étape est
+            // réarmée ici comme l'aurait fait la reprise.
+            const { data: afterStop } = await supabase.from('sequence_enrollments').select('status').eq('id', enrollment.id).maybeSingle();
+            if (afterStop?.status === 'active') await rearmManualStopCancellation(supabase, exec.id, exec.scheduled_at ?? null);
             await releaseSlot();
             results.skipped++;
             continue;
@@ -6150,6 +6585,23 @@ async function cancelPendingExecutions(supabase: any, enrollmentId: string, reas
   const { error } = await q;
   if (error) console.error(`[cancelPending] exécutions en attente de ${enrollmentId} non annulées:`, error);
   return !error;
+}
+
+/**
+ * Lot 5b : étape annulée « Arrêt manuel » par le dernier contrôle du moteur
+ * alors que l'arrêt a été annulé entre-temps : réarmée à max(date prévue,
+ * maintenant + 1 min), comme par la reprise. Écriture conditionnelle (statut
+ * et motif) : le moteur et la reprise peuvent passer tous les deux, une seule
+ * écriture prend.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function rearmManualStopCancellation(supabase: any, executionId: string, scheduledAt: string | null): Promise<void> {
+  const { error } = await supabase.from('sequence_step_executions').update({
+    status: 'scheduled', scheduled_at: resumeDate(scheduledAt, Date.now()),
+    skip_reason: null, error_message: null, executed_at: null, retry_count: 0,
+  }).eq('id', executionId).eq('status', 'cancelled').eq('skip_reason', MANUAL_STOP_SKIP_REASON);
+  if (error) console.error(`[stop] étape ${executionId} non réarmée après l'annulation de l'arrêt:`, error);
 }
 
 /**

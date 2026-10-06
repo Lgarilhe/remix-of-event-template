@@ -472,7 +472,9 @@ test('SEQ-071 / SEQ-185 — messagerie : mise en pause simple (contrat), vérifi
   // Revue design : l'action est rangée dans le menu « Plus d'actions » de l'en-tête.
   assert.match(messageView, /const canStopSequence = hasActiveEnrollment;/);
   assert.match(messageView, /\{canStopSequence && \(/);
-  assert.match(messageView, /Mettre en pause/);
+  // Lot 5b : l'élément du menu met en pause tout de suite (plus de fenêtre),
+  // sous le même nom que dans le suivi et la fiche.
+  assert.match(messageView, /Mettre en pause pour ce candidat/);
   assert.match(inbox, /onEnrollmentsChanged=\{inbox\.fetchEnrollments\}/);
 });
 

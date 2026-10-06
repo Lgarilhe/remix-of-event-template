@@ -1440,7 +1440,7 @@ test.describe('Journal', () => {
     await expect(sheet.getByRole('button', { name: /^Paula Pause/ })).toContainText('En pause');
     await expect(row.getByRole('button', { name: 'Ne pas envoyer cette étape' })).toHaveCount(0);
     row = await journalRow(sheet, 'Denis Desactive');
-    await expect(row.getByText("Séquence désactivée : ne partira pas tant qu'elle n'est pas réactivée.")).toBeVisible();
+    await expect(row.getByText("Séquence en pause : ne partira pas tant qu'elle n'est pas réactivée.")).toBeVisible();
     await expect(row.getByRole('button', { name: 'Ne pas envoyer cette étape' })).toHaveCount(0);
 
     // Camille : l'étape est sautée par le serveur, la suivante est planifiée.
@@ -1529,7 +1529,8 @@ async function inactiveSequenceWithPauses(org: { orgId: string; owner: TestUser 
 
 test.describe('Liste des séquences', () => {
   // liste-desactiver-jamais-de-faux-succes
-  test('désactiver n\'annonce jamais de succès sans preuve : sans candidat, pas de dialogue ; candidats restés actifs ; refus silencieux ; comptage en échec', async ({ browser, org }) => {
+  // Lot 5b (décision 3) : la mise en pause de la séquence part sans fenêtre, avec « Annuler ».
+  test('désactiver n\'annonce jamais de succès sans preuve : sans candidat, pas de dialogue ; candidats restés actifs ; refus silencieux ; recompte en échec', async ({ browser, org }) => {
     const { missionId, accountId } = await workspace(org);
     const empty = await seedSeq(org.orgId, org.owner.userId, { name: `Sans candidat ui-1 ${rand()}`, projectId: missionId });
     const busy = await seedSeq(org.orgId, org.owner.userId, { name: `Avec candidat ui-1 ${rand()}`, projectId: missionId });
@@ -1541,9 +1542,9 @@ test.describe('Liste des séquences', () => {
     const { page } = await openAs(browser, org.owner, [{ id: accountId }]);
     await openOutreach(page, missionId, empty.name);
 
-    // (a) Aucun candidat en cours : pas de dialogue, désactivée avec preuve.
+    // (a) Aucun candidat en cours : pas de dialogue, mise en pause avec preuve.
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${empty.name}` }).click();
-    await expect(toast(page, /Séquence désactivée\. Aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
+    await expect(toast(page, /Séquence mise en pause : aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     expect(await sequenceActive(empty.id)).toBe(false);
 
@@ -1560,7 +1561,7 @@ test.describe('Liste des séquences', () => {
       return route.fallback();
     });
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${busy.name}` }).click();
-    await page.getByRole('alertdialog', { name: 'Désactiver cette séquence ?' }).getByRole('button', { name: 'Désactiver', exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
     const stillActive = toast(page, 'La séquence reste active');
     await expect(stillActive).toBeVisible({ timeout: 15_000 });
     await expect(stillActive).toHaveAttribute('data-type', 'error');
@@ -1568,7 +1569,7 @@ test.describe('Liste des séquences', () => {
     expect(await sequenceActive(busy.id), 'la séquence reste active').toBe(true);
     await page.unroute('**/rest/v1/sequence_enrollments**');
 
-    // (c) L'interrupteur est refusé en silence (0 ligne) : « Désactivation impossible ».
+    // (c) L'interrupteur est refusé en silence (0 ligne) : « Mise en pause impossible ».
     await page.route('**/rest/v1/outreach_sequences**', async (route) => {
       const req = route.request();
       if (req.method() === 'PATCH' && req.url().includes(refused.id)) {
@@ -1577,24 +1578,28 @@ test.describe('Liste des séquences', () => {
       return route.fallback();
     });
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${refused.name}` }).click();
-    await expect(toast(page, 'Désactivation impossible')).toBeVisible({ timeout: 15_000 });
+    await expect(toast(page, 'Mise en pause impossible')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('switch', { name: `Mettre en pause la séquence ${refused.name}` })).toBeChecked();
     expect(await sequenceActive(refused.id)).toBe(true);
     await page.unroute('**/rest/v1/outreach_sequences**');
 
-    // (d) Le comptage des candidats en cours échoue : aucune écriture.
-    const writes: string[] = [];
+    // (d) Lot 5b : plus de comptage avant la pause. Le recompte qui suit la
+    // mise en pause des inscriptions échoue : l'interrupteur n'est jamais écrit.
+    const seqWrites: string[] = [];
     await page.route('**/rest/v1/sequence_enrollments**', async (route) => {
       const req = route.request();
       if (!req.url().includes(countFail.id)) return route.fallback();
       if (req.method() === 'HEAD') return route.fulfill({ status: 500, headers: { 'access-control-allow-origin': '*' }, body: '' });
-      if (req.method() === 'PATCH') writes.push(req.url());
       return route.fallback();
     });
-    page.on('request', (req) => { if (req.method() === 'PATCH' && req.url().includes(countFail.id)) writes.push(req.url()); });
+    page.on('request', (req) => {
+      if (req.method() === 'PATCH' && req.url().includes('/rest/v1/outreach_sequences') && req.url().includes(countFail.id)) seqWrites.push(req.url());
+    });
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${countFail.name}` }).click();
-    await expect(toast(page, /Les candidats en cours n.ont pas pu être comptés/)).toBeVisible({ timeout: 15_000 });
-    expect(writes, 'aucune écriture').toEqual([]);
+    const recountFailed = toast(page, /n.ont pas pu être recomptés/);
+    await expect(recountFailed).toBeVisible({ timeout: 15_000 });
+    await expect(recountFailed).toContainText('La séquence reste active');
+    expect(seqWrites, 'interrupteur jamais écrit sans preuve').toEqual([]);
     expect(await sequenceActive(countFail.id)).toBe(true);
   });
 
@@ -1710,7 +1715,7 @@ test.describe('Liste des séquences', () => {
 
     // Désactivation d'une séquence active de la même organisation : possible.
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${active.name}` }).click();
-    await expect(toast(page, /Séquence désactivée\. Aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
+    await expect(toast(page, /Séquence mise en pause : aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
     expect(await sequenceActive(active.id)).toBe(false);
 
     // Page rechargée : un seul toast, son bouton « Voir les plans » mène aux offres.
