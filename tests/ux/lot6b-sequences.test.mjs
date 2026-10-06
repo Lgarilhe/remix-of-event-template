@@ -16,6 +16,10 @@ const code = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:
 const list = code('src/components/outreach/SequencesList.tsx');
 const builder = code('src/components/outreach/SequenceBuilder.tsx');
 const selector = code('src/components/outreach/SequenceTemplateSelector.tsx');
+// Lot 5c-1 : fonctions de la liste sorties dans sequenceActions.ts, enregistrement
+// de l'éditeur dans useSequenceSave.ts, « Enregistrer comme modèle » dans son fichier.
+const actions = code('src/lib/sequenceActions.ts');
+const saveHook = code('src/hooks/useSequenceSave.ts');
 
 function filesUnder(rel) {
   const dir = new URL(`../../${rel}/`, import.meta.url);
@@ -28,6 +32,9 @@ const scope = [
   'src/components/outreach/SequencesList.tsx',
   'src/components/outreach/SequenceBuilder.tsx',
   'src/components/outreach/SequenceTemplateSelector.tsx',
+  'src/components/outreach/SaveAsTemplateModal.tsx',
+  'src/lib/sequenceActions.ts',
+  'src/hooks/useSequenceSave.ts',
   ...filesUnder('src/components/outreach/sequence'),
 ];
 
@@ -36,8 +43,8 @@ test('D-30 — la création enregistre expéditeurs et garde-fous, comme la modi
   // Revue design : l'audit a posé le même correctif en ligne (SEQ-019), sans objet
   // `sequenceSettings` : les mêmes colonnes, lues dans l'éditeur, partent à la
   // création et à la modification.
-  const insert = list.slice(list.indexOf(".from('outreach_sequences')\n          .insert({"), list.indexOf('if (createError)'));
-  const update = list.slice(list.indexOf('.update({\n            name: sequence.name'), list.indexOf('if (updateError)'));
+  const insert = saveHook.slice(saveHook.indexOf(".from('outreach_sequences')\n          .insert({"), saveHook.indexOf('if (createError)'));
+  const update = saveHook.slice(saveHook.indexOf('.update({\n            name: sequence.name'), saveHook.indexOf('if (updateError)'));
   assert.ok(insert.length > 0 && update.length > 0, 'création et modification introuvables');
   const fields = { stop_conditions: 'stopConditions', sender_accounts: 'senderAccounts', rotation_mode: 'rotationMode', multi_sender_enabled: 'multiSenderEnabled' };
   for (const [column, field] of Object.entries(fields)) {
@@ -47,7 +54,8 @@ test('D-30 — la création enregistre expéditeurs et garde-fous, comme la modi
 });
 
 test('D-30 — une séquence rouverte garde ses réglages (plus de remise à zéro à l’enregistrement)', () => {
-  const edit = list.slice(list.indexOf('const handleEdit'), list.indexOf('const handleCreateNew'));
+  // Lot 5c-1 : dans sequenceActions.ts, handleEdit est la dernière action de la liste.
+  const edit = actions.slice(actions.indexOf('const handleEdit'), actions.indexOf('return {', actions.indexOf('const handleEdit')));
   // Revue design : relecture de l'audit (SEQ-019), avec les valeurs que l'éditeur affiche par défaut.
   assert.match(edit, /stopConditions: \{ \.\.\.DEFAULT_STOP_CONDITIONS, \.\.\.\(seq\.stop_conditions \?\? \{\}\) \}/);
   assert.match(edit, /senderAccounts: seq\.sender_accounts/);
@@ -216,7 +224,7 @@ test('D-25 — interrupteur nommé, cliquable et expliqué sans abonnement', () 
   // Il n'est grisé que pendant l'appel ou la lecture de l'abonnement, et renvoie au bandeau de l'offre.
   assert.match(list, /aria-label=\{seq\.is_active \? `Mettre en pause la séquence \$\{seq\.name\}` : `Activer la séquence \$\{seq\.name\}`\}/);
   assert.match(list, /disabled=\{togglingId === seq\.id \|\| activationWaitsForPlan\(seq\)\}/);
-  assert.match(list, /toast\.error\("L'envoi de séquences nécessite un abonnement", \{\s*action: \{ label: 'Voir les plans', onClick: \(\) => navigate\('\/pricing'\) \},/);
+  assert.match(actions, /toast\.error\("L'envoi de séquences nécessite un abonnement", \{\s*action: \{ label: 'Voir les plans', onClick: \(\) => navigate\('\/pricing'\) \},/);
   assert.match(list, /aria-describedby=\{activationBlocked \? planNoticeId : undefined\}/);
   assert.match(list, /<span id=\{planNoticeId\}>Votre offre ne permet pas d'envoyer des séquences/);
   assert.match(list, /Voir les offres/);
@@ -230,9 +238,9 @@ test('D-27 — plus de chemin d’inscription mort dans la liste', () => {
 });
 
 test('D-29 — vouvoiement et « inscriptions » dans les messages', () => {
-  assert.doesNotMatch(list, /Active-la quand tu es prêt|Tu pourras|enrollments mis en pause|⚠ Impact/);
+  assert.doesNotMatch(`${list}\n${actions}\n${saveHook}`, /Active-la quand tu es prêt|Tu pourras|enrollments mis en pause|⚠ Impact/);
   // Lot 5b : la fenêtre de désactivation (« Vous pourrez la réactiver à tout
   // moment ») est retirée, la mise en pause part avec « Annuler » ; les
   // messages restants vouvoient.
-  assert.match(list, /Vous n’avez pas les droits sur cette séquence\./);
+  assert.match(actions, /Vous n’avez pas les droits sur cette séquence\./);
 });

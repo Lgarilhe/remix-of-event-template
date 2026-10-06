@@ -484,11 +484,11 @@ Contenu.
   - `sequenceGraph.ts`, `messageTypeUtils.ts`, `SequencesList.tsx` et `SequenceTemplateSelector.tsx` importent le nouveau module ;
   - `SequenceBuilder.tsx` les réexporte jusqu'à 5j, pour les fichiers voués au retrait (`StepEditor`, `WorkflowCanvas`, `nodes/WorkflowStepNode`, `VisualSequenceEditor`, `SequenceValidationChecklist`).
 - `src/lib/sequenceActions.ts`, dépendances passées en paramètres (client, toast, mises à jour d'état), comme les tests les exécutent déjà :
-  - de `SequencesList` : `requestToggle`, `deactivateSequence`, `activateSequence`, `handleDuplicate`, `handleEdit` (lecture), `handleNudgeToday`, `handleDelete`, `sequenceSaveError`, `blockedStepsNotice`, la règle `createInactiveForPlan` ;
+  - de `SequencesList` : `requestToggle`, `deactivateSequence`, `activateSequence`, `handleDuplicate`, `handleEdit` (lecture), `handleNudgeToday`, `handleDelete`, `sequenceSaveError`, `blockedStepsNotice`, la règle `createInactiveForPlan` (exportée sous le nom `shouldCreateInactiveForPlan`, appelée par `useSequenceSave`) ;
   - de `SequenceEnrollmentsPanel` : `stopEnrollment`, `bulkStopActive`, `bulkResumePaused`, `markReplied`, `isGdprErased`, `resumeRetriesFailedStep`, `handleSkipExecution` ;
   - versions issues de 5b.
 - `src/hooks/useSequenceSave.ts` : `handleSaveSequence` (l. 504-679) à l'identique (`save_sequence_steps`, `CONCURRENT_EDIT_MESSAGE`, suppression de l'en-tête créé si les étapes échouent, séquence créée désactivée selon l'offre).
-- `src/components/outreach/SaveAsTemplateModal.tsx` : sorti de `SequenceTemplateSelector.tsx` (l. 437-520), qui l'importe. Gardé après 5j.
+- `src/components/outreach/SaveAsTemplateModal.tsx` : sorti de `SequenceTemplateSelector.tsx` (l. 437-520), importé par `SequencesList`. Les catégories des modèles (`TEMPLATE_CATEGORIES`) passent dans `sequence/sequenceGraph.ts`, lues par le modal et par le choix de modèle. Gardé après 5j.
 - `tests/ux/seq-v2-graphe.test.mjs` : copie des tests de `sequenceGraph.ts` portés par `seq-audit-f1a`, `f1b` et `f1d`, sans charger les fichiers voués au retrait. 5j ne perd aucune couverture.
 
 Migration. Aucune.
