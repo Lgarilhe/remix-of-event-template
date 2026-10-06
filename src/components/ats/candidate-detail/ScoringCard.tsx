@@ -1,24 +1,32 @@
 import React from 'react';
-import { Target, CheckCircle2, AlertTriangle, Briefcase, MapPin, Brain } from 'lucide-react';
 import { ScoringRecord } from '@/hooks/useCandidateFullProfile';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
-import { CollapsibleSection } from './shared';
+import { Badge } from '@/components/ui/badge';
+import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
+import { aiRecommendationMeta } from '@/lib/verdicts';
 
 
-const DIMENSION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
-  skills: { label: 'Compétences', icon: <Target className="w-3 h-3" /> },
-  experience: { label: 'Expérience', icon: <Briefcase className="w-3 h-3" /> },
-  seniority: { label: 'Séniorité', icon: <Briefcase className="w-3 h-3" /> },
-  location: { label: 'Localisation', icon: <MapPin className="w-3 h-3" /> },
-  education: { label: 'Formation', icon: <Target className="w-3 h-3" /> },
-  culture: { label: 'Culture fit', icon: <Brain className="w-3 h-3" /> },
-  motivation: { label: 'Motivation', icon: <Brain className="w-3 h-3" /> },
-  leadership: { label: 'Leadership', icon: <Brain className="w-3 h-3" /> },
-  communication: { label: 'Communication', icon: <Brain className="w-3 h-3" /> },
-  problem_solving: { label: 'Problem solving', icon: <Brain className="w-3 h-3" /> },
-  salary: { label: 'Salaire', icon: <Target className="w-3 h-3" /> },
+const DIMENSION_LABELS: Record<string, string> = {
+  skills: 'Compétences',
+  experience: 'Expérience',
+  seniority: 'Séniorité',
+  location: 'Localisation',
+  education: 'Formation',
+  culture: 'Adéquation culturelle',
+  motivation: 'Motivation',
+  leadership: 'Leadership',
+  communication: 'Communication',
+  problem_solving: 'Résolution de problèmes',
+  salary: 'Salaire',
+};
+
+const dimensionLabel = (key: string) => DIMENSION_LABELS[key] || key;
+
+const EXPERIENCE_LABELS: Record<string, string> = {
+  compatible: 'compatible',
+  trop_senior: 'trop senior',
+  trop_junior: 'trop junior',
 };
 
 interface ScoringCardProps {
@@ -32,208 +40,150 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
   const dimensions = (details?.dimensions ? Object.values(details.dimensions) : []) as any[];
   const weightedDims = dimensions.filter((d: any) => d.weight > 0);
   const llmDims = dimensions.filter((d: any) => d.weight === 0);
+  const recommendation = aiRecommendationMeta(scoring.recommendation);
+  const concerns: string[] = (details?.concerns || details?.weaknesses || []) as string[];
 
   return (
-    <div className="relative border border-border p-3 space-y-3">
-      {scoring.score > 80 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />}
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={cn("h-10 w-10 flex items-center justify-center border text-lg font-black",
-            scoring.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
-            scoring.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
-            'border-destructive/40 bg-destructive/5 text-destructive'
-          )}>{scoring.score}</div>
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              {scoring.jobTitle || 'Score'}
-            </span>
-            <p className="text-xs text-muted-foreground">
-              {format(parseISO(scoring.createdAt), 'd MMM yyyy', { locale: fr })}
-            </p>
-          </div>
+    <article className="space-y-4 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <header className="flex items-center gap-3">
+        {scoring.score != null && <ScorePill score={scoring.score} size={40} />}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{scoring.jobTitle || 'Note'}</p>
+          <p className="text-xs text-muted-foreground">
+            {format(parseISO(scoring.createdAt), 'd MMM yyyy', { locale: fr })}
+          </p>
         </div>
-        {scoring.recommendation && (
-          <span className={cn("text-xs px-2 py-0.5 border font-medium uppercase tracking-wider",
-            scoring.recommendation === 'shortlist' ? 'border-success/30 text-success bg-success/10' :
-            scoring.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-            'border-warning/30 text-warning bg-warning/10'
-          )}>
-            {scoring.recommendation === 'shortlist' ? 'GO' : scoring.recommendation === 'skip' ? 'SKIP' : 'MAYBE'}
-          </span>
-        )}
-      </div>
+        {recommendation && <Badge variant={recommendation.tone}>{recommendation.label}</Badge>}
+      </header>
 
       {details && (
-        <div className="space-y-3">
-          {/* Summary */}
+        <div className="space-y-4">
           {details.summary && (
-            <p className="text-xs text-muted-foreground leading-relaxed">{details.summary}</p>
+            <p className="text-sm leading-relaxed text-foreground-secondary">{details.summary}</p>
           )}
 
-          {/* Dimensions — weighted bars */}
+          {/* Dimensions pondérées */}
           {weightedDims.length > 0 && (
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground mb-2 block">Dimensions</span>
-              <div className="space-y-2">
-                {weightedDims.map((dim: any) => {
-                  const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Target className="w-3 h-3" /> };
-                  return (
-                    <div key={dim.key} className="space-y-0.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          {cfg.icon}
-                          {cfg.label}
-                          <span className="text-3xs text-muted-foreground/60">({dim.weight}%)</span>
-                        </span>
-                        <span className={cn("font-bold",
-                          dim.score >= 70 ? 'text-success' :
-                          dim.score >= 40 ? 'text-warning' : 'text-destructive'
-                        )}>{dim.score}</span>
-                      </div>
-                      <div className="h-1.5 bg-foreground/10 rounded-full overflow-hidden">
-                        <div
-                          className={cn("h-full transition-all duration-500 rounded-full",
-                            dim.score >= 70 ? 'bg-success' :
-                            dim.score >= 40 ? 'bg-warning' : 'bg-destructive'
-                          )}
-                          style={{ width: `${dim.score}%` }}
-                        />
-                      </div>
-                      {dim.details && (
-                        <p className="text-xs text-muted-foreground/70">{dim.details}</p>
-                      )}
+              <h5 className="eyebrow mb-2">Dimensions</h5>
+              <ul className="space-y-3">
+                {weightedDims.map((dim: any) => (
+                  <li key={dim.key}>
+                    <div className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="text-foreground">
+                        {dimensionLabel(dim.key)}
+                        <span className="ml-1.5 text-xs text-muted-foreground">poids {dim.weight} %</span>
+                      </span>
+                      <span className="font-medium tabular-nums text-foreground">{dim.score}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div
+                      role="progressbar"
+                      aria-label={dimensionLabel(dim.key)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={dim.score}
+                      className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"
+                    >
+                      <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, Math.max(0, dim.score))}%` }} />
+                    </div>
+                    {dim.details && <p className="mt-1 text-sm text-muted-foreground">{dim.details}</p>}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
-          {/* LLM dimensions */}
+          {/* Analyse de l'assistant */}
           {llmDims.length > 0 && (
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground mb-1.5 block">Analyse IA</span>
-              <div className="flex flex-wrap gap-2">
-                {llmDims.map((dim: any) => {
-                  const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Brain className="w-3 h-3" /> };
-                  return (
-                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-border text-xs">
-                      {cfg.icon}
-                      <span className="text-muted-foreground">{cfg.label}</span>
-                      <span className={cn("font-bold",
-                        dim.score >= 70 ? 'text-success' :
-                        dim.score >= 40 ? 'text-warning' : 'text-destructive'
-                      )}>{dim.score}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <h5 className="eyebrow mb-2">Analyse de l'assistant</h5>
+              <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                {llmDims.map((dim: any) => (
+                  <li key={dim.key} className="text-muted-foreground">
+                    {dimensionLabel(dim.key)}
+                    <span className="ml-1.5 font-medium tabular-nums text-foreground">{dim.score}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
-          {/* Matching skills */}
           {details.matching_skills?.length > 0 && (
             <div>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-                <span className="text-xs font-bold uppercase tracking-wider text-success">Compétences matchées</span>
-              </div>
+              <h5 className="eyebrow mb-2">Compétences correspondantes</h5>
               <div className="flex flex-wrap gap-1.5">
-                {details.matching_skills.map((s: string) => (
-                  <span key={s} className="text-xs px-2 py-0.5 border border-success/30 text-success bg-success/10 font-medium">{s}</span>
+                {details.matching_skills.map((skill: string) => (
+                  <Badge key={skill} variant="muted">{skill}</Badge>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Missing skills */}
           {details.missing_skills?.length > 0 && (
             <div>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-                <span className="text-xs font-bold uppercase tracking-wider text-warning">Compétences manquantes</span>
-              </div>
+              <h5 className="eyebrow mb-2">Compétences manquantes</h5>
               <div className="flex flex-wrap gap-1.5">
-                {details.missing_skills.map((s: string) => (
-                  <span key={s} className="text-xs px-2 py-0.5 border border-warning/30 text-warning bg-warning/10 font-medium">{s}</span>
+                {details.missing_skills.map((skill: string) => (
+                  <Badge key={skill} variant="warning">{skill}</Badge>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Strengths */}
           {details.strengths?.length > 0 && (
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-success mb-1 block">Forces</span>
-              <ul className="text-xs text-muted-foreground space-y-0.5">
-                {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
+              <h5 className="eyebrow mb-2">Points forts</h5>
+              <ul className="list-disc space-y-1 pl-4 text-sm text-foreground-secondary">
+                {details.strengths.map((item: string, i: number) => <li key={i}>{item}</li>)}
               </ul>
             </div>
           )}
 
-          {/* Concerns */}
-          {(details.concerns || details.weaknesses)?.length > 0 && (
+          {concerns.length > 0 && (
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-warning mb-1 block">Points d'attention</span>
-              <ul className="text-xs text-muted-foreground space-y-0.5">
-                {(details.concerns || details.weaknesses)!.map((w: string, i: number) => <li key={i}>• {w}</li>)}
+              <h5 className="eyebrow mb-2">Points d'attention</h5>
+              <ul className="list-disc space-y-1 pl-4 text-sm text-foreground-secondary">
+                {concerns.map((item: string, i: number) => <li key={i}>{item}</li>)}
               </ul>
             </div>
           )}
 
-          {/* Experience & Location */}
-          <div className="flex flex-wrap gap-3 text-xs">
-            {details.experience_match && (
-              <div className="flex items-center gap-1">
-                <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Expérience :</span>
-                <span className={cn("font-medium",
-                  details.experience_match === 'compatible' ? 'text-success' :
-                  details.experience_match === 'trop_senior' ? 'text-warning' :
-                  details.experience_match === 'trop_junior' ? 'text-destructive' : 'text-muted-foreground'
-                )}>
-                  {details.experience_match === 'compatible' ? 'Compatible' :
-                   details.experience_match === 'trop_senior' ? 'Trop senior' :
-                   details.experience_match === 'trop_junior' ? 'Trop junior' : 'Incertain'}
-                </span>
-              </div>
-            )}
-            {details.location_match !== undefined && (
-              <div className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Localisation :</span>
-                <span className={cn("font-medium", details.location_match ? 'text-success' : 'text-destructive')}>
-                  {details.location_match ? 'Compatible' : 'Non compatible'}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Salary */}
-          {details.salary_analysis && (
-            <div className="pt-2 border-t border-border text-xs text-muted-foreground">
-              💰 {details.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
-                  details.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
-                  details.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' : 'Analyse salariale'}
-              {details.salary_analysis.gap_percent && ` (écart: ${details.salary_analysis.gap_percent}%)`}
-            </div>
-          )}
-
-          {/* LLM Score */}
-          {details.llmScore != null && (
-            <div className="pt-2 border-t border-border flex items-center gap-2 text-xs">
-              <Brain className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground">Score LLM :</span>
-              <span className={cn("font-bold",
-                details.llmScore >= 70 ? 'text-success' :
-                details.llmScore >= 40 ? 'text-warning' : 'text-destructive'
-              )}>{details.llmScore}/100</span>
-            </div>
+          {(details.experience_match || details.location_match !== undefined || details.salary_analysis || details.llmScore != null) && (
+            <dl className="divide-y divide-border border-y border-border text-sm">
+              {details.experience_match && (
+                <div className="flex justify-between gap-4 py-2">
+                  <dt className="text-muted-foreground">Expérience</dt>
+                  <dd className="text-foreground">{EXPERIENCE_LABELS[details.experience_match] ?? 'incertaine'}</dd>
+                </div>
+              )}
+              {details.location_match !== undefined && (
+                <div className="flex justify-between gap-4 py-2">
+                  <dt className="text-muted-foreground">Localisation</dt>
+                  <dd className="text-foreground">{details.location_match ? 'compatible' : 'non compatible'}</dd>
+                </div>
+              )}
+              {details.salary_analysis && (
+                <div className="flex justify-between gap-4 py-2">
+                  <dt className="text-muted-foreground">Salaire</dt>
+                  <dd className="text-foreground">
+                    {details.salary_analysis.status === 'adequate' ? 'adéquat' :
+                     details.salary_analysis.status === 'too_low' ? 'potentiellement bas' :
+                     details.salary_analysis.status === 'too_high' ? 'potentiellement élevé' : 'analysé'}
+                    {details.salary_analysis.gap_percent && ` (écart de ${details.salary_analysis.gap_percent} %)`}
+                  </dd>
+                </div>
+              )}
+              {details.llmScore != null && (
+                <div className="flex justify-between gap-4 py-2">
+                  <dt className="text-muted-foreground">Note de l'analyse</dt>
+                  <dd className="tabular-nums text-foreground">{details.llmScore} sur 100</dd>
+                </div>
+              )}
+            </dl>
           )}
         </div>
       )}
-    </div>
+    </article>
   );
 });
 

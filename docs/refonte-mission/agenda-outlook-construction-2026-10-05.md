@@ -69,7 +69,7 @@ CREATE UNIQUE INDEX ... ON public.qualification_sessions (calendar_account_id, e
 CREATE INDEX ... ON public.qualification_sessions (organization_id, event_start_at);
 ```
 
-Écrite dans la demande A (`20261005222437_agenda_outlook_base.sql`) avec deux écarts de l'esquisse : pas de colonne `write_enabled` (l'agenda n'est que lu, la colonne viendra avec l'écriture) et des bornes de longueur sur `account_id`, `email_address`, `status` et `last_error`. La tâche planifiée n'y est pas : elle vient avec la demande B.
+Écrite dans la demande A (`20261006164408_agenda_outlook_base.sql`) avec deux écarts de l'esquisse : pas de colonne `write_enabled` (l'agenda n'est que lu, la colonne viendra avec l'écriture) et des bornes de longueur sur `account_id`, `email_address`, `status` et `last_error`. La tâche planifiée n'y est pas : elle vient avec la demande B.
 
 Accès de `member_calendar_accounts`, sur le patron de la migration des photos (`20261005121536_photos_candidats_copie_privee.sql`) : RLS active, `REVOKE ALL` à `PUBLIC`, `anon` et `authenticated`, puis `GRANT SELECT` à `authenticated` et `ALL` à `service_role`. Une policy de lecture : la personne lit sa ligne, un propriétaire ou administrateur lit celles de l'organisation (`get_org_role`, comme `member_linkedin_accounts`). Le navigateur n'écrit jamais : tout passe par les fonctions. Déclencheur `update_updated_at_column` comme les autres tables.
 

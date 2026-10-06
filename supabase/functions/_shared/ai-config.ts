@@ -205,6 +205,14 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "qualification",
   },
+  interview_followup: {
+    action: "interview_followup",
+    label: "Message après un entretien",
+    floor: 1,
+    typicalTokens: 3_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
   live_coaching: {
     action: "live_coaching",
     label: "Coaching live (par minute)",
@@ -313,6 +321,22 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 4_000,
     routingTier: "default",
     category: "sourcing",
+  },
+  // Analyse d'une fiche de poste à la création d'une mission (Brief IA). Action
+  // à part de filter_generation : celle-ci est partagée avec nl-filter-edit et
+  // d'autres appelants qui lisent content[0].text, ce que le bloc "thinking"
+  // des modèles 5.5 casse. Sonnet 5.5 par défaut (décision du 2026-10-05, comme
+  // le scoring) ; un modèle choisi par l'organisation ou l'utilisateur l'emporte.
+  // typicalTokens : le prompt système pèse déjà ~7 000 tokens, plus la fiche
+  // (12 000 caractères au plus) et la réponse JSON.
+  brief_analysis: {
+    action: "brief_analysis",
+    label: "Analyse d'une fiche de poste",
+    floor: 2,
+    typicalTokens: 10_000,
+    routingTier: "default",
+    category: "sourcing",
+    autoDefault: "claude-sonnet-5-5",
   },
   filter_assistant_msg: {
     action: "filter_assistant_msg",

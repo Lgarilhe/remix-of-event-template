@@ -1,21 +1,23 @@
 import React from 'react';
 import { Activity, Clock, Target, Send, GitBranch, Calendar, Award, FileText } from 'lucide-react';
-import { formatDistanceToNow, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
-import { EmptyState as EmptyStateUI } from '@/components/ui/EmptyState';
+import { EmptyState } from '@/components/layout/EmptyState';
 import { CenteredLoader } from './shared';
 
-const ACTIVITY_TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
-  scored: { icon: <Target className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  messaged: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  sequence_enrolled: { icon: <GitBranch className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  sequence_step: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground/80 text-background' },
-  inmail_sent: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  qualification_scheduled: { icon: <Calendar className="w-3 h-3" />, color: 'bg-accent text-foreground' },
-  qualification_verdict: { icon: <Award className="w-3 h-3" />, color: 'bg-accent text-foreground' },
-  shortlist_added: { icon: <FileText className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  appointment: { icon: <Calendar className="w-3 h-3" />, color: 'bg-foreground text-background' },
+const ICON_CLASS = 'h-3.5 w-3.5';
+
+/** Une pastille ronde par type d'événement, toutes sur le même fond neutre : la couleur est réservée à ce qui demande d'agir. */
+const ACTIVITY_TYPE_ICON: Record<string, React.ReactNode> = {
+  scored: <Target className={ICON_CLASS} aria-hidden="true" />,
+  messaged: <Send className={ICON_CLASS} aria-hidden="true" />,
+  sequence_enrolled: <GitBranch className={ICON_CLASS} aria-hidden="true" />,
+  sequence_step: <Send className={ICON_CLASS} aria-hidden="true" />,
+  inmail_sent: <Send className={ICON_CLASS} aria-hidden="true" />,
+  qualification_scheduled: <Calendar className={ICON_CLASS} aria-hidden="true" />,
+  qualification_verdict: <Award className={ICON_CLASS} aria-hidden="true" />,
+  shortlist_added: <FileText className={ICON_CLASS} aria-hidden="true" />,
+  appointment: <Calendar className={ICON_CLASS} aria-hidden="true" />,
 };
 
 interface TimelineEvent {
@@ -34,30 +36,40 @@ export const ActivityTab = React.memo<ActivityTabProps>(({ loading, timeline }) 
   if (loading) return <CenteredLoader />;
 
   if (timeline.length === 0) {
-    return <EmptyStateUI icon={<Activity className="w-7 h-7" />} title="Aucune activité enregistrée" description="" compact />;
+    return (
+      <EmptyState
+        className="border-0 py-8"
+        icon={Activity}
+        title="Aucune activité enregistrée"
+        description="Les notes, messages, séquences et rendez-vous de ce candidat apparaîtront ici."
+      />
+    );
   }
 
   return (
-    <div className="relative pl-6 space-y-4">
-      <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-foreground/15" />
+    <ul className="divide-y divide-border">
       {timeline.map((event, i) => {
-        const typeConfig = ACTIVITY_TYPE_CONFIG[event.type] || { icon: <Clock className="w-3 h-3" />, color: 'bg-foreground/10 text-foreground' };
+        const date = parseISO(event.date);
         return (
-          <div key={i} className="relative">
-            <div className={cn("absolute -left-6 top-1 w-5 h-5 flex items-center justify-center", typeConfig.color)}>
-              {typeConfig.icon}
-            </div>
-            <div>
+          <li key={i} className="flex items-start gap-3 py-3 first:pt-0">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground-secondary">
+              {ACTIVITY_TYPE_ICON[event.type] ?? <Clock className={ICON_CLASS} aria-hidden="true" />}
+            </span>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-foreground">{event.title}</p>
-              {event.detail && <p className="text-xs text-muted-foreground mt-0.5">{event.detail}</p>}
-              <p className="text-xs text-muted-foreground mt-1">
-                {formatDistanceToNow(parseISO(event.date), { addSuffix: true, locale: fr })}
-              </p>
+              {event.detail && <p className="mt-0.5 text-sm text-muted-foreground">{event.detail}</p>}
             </div>
-          </div>
+            <time
+              dateTime={event.date}
+              title={format(date, "d MMMM yyyy 'à' HH:mm", { locale: fr })}
+              className="shrink-0 pt-0.5 text-xs text-muted-foreground"
+            >
+              {formatDistanceToNow(date, { addSuffix: true, locale: fr })}
+            </time>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 });
 

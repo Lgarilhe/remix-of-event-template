@@ -209,7 +209,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
               size="icon"
               onClick={handleRefresh}
               disabled={loading}
-              className="h-8 w-8 rounded-lg border-border bg-background"
+              className="h-8 w-8 border-border bg-background"
             >
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
@@ -447,7 +447,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                   variant="outline"
                   onClick={handleLoadMore}
                   disabled={loading}
-                  className="h-9 w-full rounded-lg border-border text-xs"
+                  className="h-9 w-full border-border text-xs"
                 >
                   {loading ? (
                     <>

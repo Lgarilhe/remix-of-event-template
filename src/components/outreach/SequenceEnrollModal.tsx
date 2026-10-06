@@ -23,6 +23,8 @@ import { checkProfilesCompat, pickFirstStep, type CompatIssue } from '@/lib/sequ
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
 import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
+import { RecipientsConfirm } from './enrollment-preview/RecipientsConfirm';
+import { useRecipientsConfirm } from './enrollment-preview/useRecipientsConfirm';
 import {
   alreadyInSequenceLabel,
   alreadyPassedLabel,
@@ -53,6 +55,8 @@ import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { UpgradePrompt } from '@/components/ui/UpgradePrompt';
 import { plural } from '@/lib/plural';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { hasMessage } from '@/hooks/useEnrollmentPreview';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -151,12 +155,17 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // Check if sequence has message steps (to show preview option)
+  // Séquence avec message : préparation avec aperçu (EnrollmentPreviewModal).
+  // Un message compte s'il a un modèle écrit, ou s'il est rédigé par l'IA pour
+  // chaque candidat, même sans modèle : le moteur le rédige et l'envoie, il
+  // doit donc être montré avant l'inscription (lot 5a).
   const hasMessageSteps = useMemo(() => {
     return sequence.steps.some((s: any) => {
       const actionType = s.action_type || s.actionType || '';
       const template = s.message_template || s.messageTemplate || '';
-      return MESSAGE_ACTION_TYPES.includes(actionType) && template.trim();
+      const useAiPersonalization = !!(s.use_ai_personalization ?? s.useAiPersonalization);
+      return (MESSAGE_ACTION_TYPES.includes(actionType) && !!template.trim())
+        || hasMessage({ actionType, messageTemplate: template, useAiPersonalization });
     });
   }, [sequence.steps]);
 
@@ -232,6 +241,18 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     return reasons;
   }, [profiles, profilesToEnroll, excludableCompat, recentEnrollments, excludeIncompatible]);
   const firstAction = useMemo(() => firstActionSummary(sequence.steps), [sequence.steps]);
+  // Lot 5a : case des destinataires dès 5 candidats, sur le nombre du bouton
+  // (enrollCount), décochée dès que la liste change. Cette fenêtre ne sert
+  // qu'aux séquences sans message, ni écrit ni rédigé par l'IA (hasMessageSteps) :
+  // l'aperçu nomme la première action.
+  const recipients = useRecipientsConfirm(profilesToEnroll.map(p => p.id));
+  const firstStepPreviewLabel = useMemo(() => {
+    const { step } = pickFirstStep(sequence.steps, () => 0);
+    const label = step ? sequenceActionLabel(step.action_type || step.actionType) : null;
+    return label
+      ? `Aucun message écrit. Première action : ${label.charAt(0).toLowerCase()}${label.slice(1)}.`
+      : 'Aucun message écrit.';
+  }, [sequence.steps]);
 
   // Plan gratuit : la fenêtre explique pourquoi et renvoie vers les offres,
   // quel que soit le point d'entrée (sourcing, messagerie, liste des séquences).
@@ -282,6 +303,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       toast.error(sendingAccount.blockReason);
       return;
     }
+    // Lot 5a : dès 5 candidats, rien ne part sans la case des destinataires.
+    if (recipients.blocked) return;
 
     setIsEnrolling(true);
     setResults(null);
@@ -793,6 +816,16 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           )}
         </div>
 
+        {(!results || failed) && (
+          <RecipientsConfirm
+            count={enrollCount}
+            confirmed={recipients.confirmed}
+            onConfirmedChange={recipients.setConfirmed}
+            preview={profilesToEnroll[0]
+              ? { candidateName: profilesToEnroll[0].name || 'ce candidat', items: [], emptyLabel: firstStepPreviewLabel }
+              : null}
+          />
+        )}
         {isEnrolling && (
           <p role="status" className="text-right text-xs text-muted-foreground">
             Inscription en cours, ne fermez pas cette fenêtre.
@@ -807,7 +840,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               variant="primary"
               onClick={handleEnroll}
               loading={isEnrolling}
-              disabled={isEnrolling || enrollCount === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
+              disabled={isEnrolling || enrollCount === 0 || duplicatesUnchecked || !!sendingAccount.blockReason || recipients.blocked}
               className="max-md:h-11"
             >
               {isEnrolling ? 'Inscription en cours…' : failed ? 'Réessayer' : <>Inscrire {enrollCount} candidat{enrollCount > 1 ? 's' : ''}</>}

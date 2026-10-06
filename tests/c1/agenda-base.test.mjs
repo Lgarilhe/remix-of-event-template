@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = process.env.C1_ROOT || fileURLToPath(new URL('../../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
-const VERSION = '20261005222437';
+const VERSION = '20261006164408';
 const MIGRATION = `supabase/migrations/${VERSION}_agenda_outlook_base.sql`;
 const CONTACT = 'supabase/functions/_shared/get-or-fetch-contact.ts';
 const ERASE = 'supabase/functions/rgpd-erase-contact/index.ts';
@@ -149,7 +149,7 @@ test('agenda A : export de l\'organisation, séances et agendas reliés', () => 
   assert.doesNotMatch(calendars, /account_id/, 'l\'identifiant du compte chez le prestataire n\'est pas exporté');
   assert.match(calendars, /\.eq\("organization_id", organizationId\)/);
   // Un export incomplet échoue (art. 20) : les deux erreurs sont dans le contrôle commun.
-  assert.match(src, /\|\| qualificationSessionsError \|\| calendarAccountsError;/);
+  assert.match(src, /\|\| qualificationSessionsError \|\| calendarAccountsError( \|\| phoneCallsError)?;/);
   assert.match(src, /qualification_sessions: qualificationSessions \|\| \[\],/);
   assert.match(src, /calendar_accounts: calendarAccounts \|\| \[\],/);
   assert.match(src, /qualification_sessions_count: \(qualificationSessions \|\| \[\]\)\.length,/);

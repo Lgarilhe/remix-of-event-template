@@ -4,7 +4,7 @@
 
 import { deepStrictEqual, strictEqual } from 'node:assert';
 import { ACCOUNT_DISCONNECTED_SKIP_REASON } from './linkedin-quotas.ts';
-import { countOutcomes, planResume, resumeDate, type ResumeExecutionRow } from './sequence-resume.ts';
+import { countOutcomes, planResume, resumeDate, waitsForEvent, type ResumeExecutionRow } from './sequence-resume.ts';
 
 const NOW = Date.parse('2026-09-25T10:00:00Z');
 const inMinutes = (m: number) => new Date(NOW + m * 60_000).toISOString();
@@ -30,6 +30,36 @@ Deno.test('reprise : exécution échue repoussée à maintenant + 1 min, jamais 
 Deno.test('reprise : une attente reste une attente', () => {
   const plan = planResume('resume', 'paused', 1, [row({ id: 'w', status: 'waiting_event' })], NOW);
   deepStrictEqual(plan, { kind: 'keep_pending', executionId: 'w', newScheduledAt: null });
+});
+
+Deno.test('reprise (lot 5b) : une attente annulée par l\'arrêt garde sa date d\'origine, son délai ne repart pas de zéro', () => {
+  // « Si pas de réponse sous 7 jours » qui attend depuis 6 jours, annulée « Arrêt manuel ».
+  const waitingSince = inMinutes(-6 * 24 * 60);
+  for (const step of [
+    { action_type: 'wait_reply' },
+    { action_type: 'wait_connection' },
+    { action_type: 'message', wait_for_event: 'reply_received' },
+    { action_type: 'connection_request', condition_type: 'wait_until_connected' },
+  ]) {
+    const plan = planResume('resume', 'paused', 2, [
+      row({ id: 's0', status: 'sent', step_order: 0, step_id: 's0', created_at: inMinutes(-8 * 24 * 60) }),
+      row({ id: 'w', status: 'cancelled', step_order: 1, skip_reason: 'Arrêt manuel', scheduled_at: waitingSince, step }),
+    ], NOW);
+    deepStrictEqual(plan, { kind: 'rearm', executionId: 'w', fromStatus: 'cancelled', scheduledAt: waitingSince }, JSON.stringify(step));
+    strictEqual(waitsForEvent(step), true);
+  }
+  // Une étape d'envoi échue est toujours repoussée d'une minute.
+  const send = planResume('resume', 'paused', 2, [
+    row({ id: 'm', status: 'cancelled', step_order: 1, skip_reason: 'Arrêt manuel', scheduled_at: waitingSince, step: { action_type: 'message', condition_type: 'if_no_response' } }),
+  ], NOW);
+  deepStrictEqual(send, { kind: 'rearm', executionId: 'm', fromStatus: 'cancelled', scheduledAt: inMinutes(1) });
+  strictEqual(waitsForEvent({ action_type: 'message', condition_type: 'if_no_response' }), false);
+  strictEqual(waitsForEvent(null), false);
+  // Attente sans date lisible : maintenant + 1 min.
+  const noDate = planResume('resume', 'paused', 1, [
+    row({ id: 'w', status: 'cancelled', skip_reason: 'Arrêt manuel', scheduled_at: null, step: { action_type: 'wait_reply' } }),
+  ], NOW);
+  deepStrictEqual(noDate, { kind: 'rearm', executionId: 'w', fromStatus: 'cancelled', scheduledAt: inMinutes(1) });
 });
 
 Deno.test('reprise : réarme la plus récente annulée par une pause, pas une plus ancienne', () => {

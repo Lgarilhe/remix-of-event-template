@@ -32,6 +32,92 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — SHIP — Brief IA : lire une offre, ou toutes les offres d'une société, depuis une adresse web
+
+**Contexte** : « Une adresse web » du Brief IA ne lisait que le texte de l'adresse (poste, société, lieu d'une adresse Welcome to the Jungle) et demandait de coller la fiche. La fonction qui lisait les pages (`scrape-job-url`) avait été retirée le 06/09 faute d'appelant.
+**Décision / Fait** :
+- Nouvelle fonction `fetch-job-source` (`resolve` : une offre ou la liste d'une société ; `read_job` : la fiche d'une offre de la liste). Trois niveaux, du plus propre au plus coûteux : l'interface publique du logiciel de recrutement (Greenhouse, Lever, Ashby, Recruitee), la lecture directe de la page (données `JobPosting`, liens d'offres, sinon texte), Firecrawl en dernier recours, seulement si `FIRECRAWL_API_KEY` est posée, avec un plafond de 60 pages par utilisateur et par jour. Le niveau utilisé est journalisé : c'est la mesure du taux de réussite par site.
+- La fonction lit des adresses saisies par les utilisateurs : https, port 443 et nom de domaine public seulement, aucune adresse IP, résolution DNS refusée vers une adresse privée, redirections manuelles et revalidées, taille et durée bornées, jeton d'ATS validé avant de construire une adresse, LinkedIn jamais lu. Aucun appel de modèle, aucun crédit débité, limite de 30 lectures par minute.
+- Écran : une offre remplit la zone « Fiche de poste » (texte réel, intitulé, société). Une société ouvre la liste de ses offres (gratuite) : au plus 10 cochées, coût annoncé depuis le catalogue (7 crédits par offre pour `brief_analysis`), une offre déjà importée (adresse source `job_details.source_url`) n'est pas cochable. Une seule offre cochée s'ouvre dans le Brief IA pour relecture ; deux ou plus sont lues et analysées trois à la fois, puis créées comme missions (nom : intitulé et lieu, client : la société, brief et filtres comme le Brief IA d'une fiche). Un échec n'arrête pas les autres ; des crédits épuisés arrêtent les suivantes et laissent créer celles qui sont prêtes. Un seul message annonce le lot (`silent` sur `createProject`).
+- Page illisible : retour au comportement d'avant (poste, société et lieu de l'adresse) avec une phrase qui dit de coller la fiche.
+- Premier essai en réel le 05/10 (journaux : lecture par `json_ld`) : le `JobPosting` de Welcome to the Jungle ne porte que le descriptif du poste, il manquait le résumé, les compétences et expertises, le profil recherché et le déroulement des entretiens. Pour ce site seulement, la description devient le texte de la page (contenu de `<main>`, en-tête compris, coupé avant « Offres similaires ») quand il est plus fourni d'un quart, sinon le rendu Firecrawl de la page entière, sinon le `JobPosting` reste. Ailleurs, un `JobPosting` suffit toujours. Le journal de lecture donne maintenant le nombre de caractères de la fiche (`chars`). Deuxième essai le même jour : la page entière faisait 8 700 caractères, offres suggérées d'autres sociétés comprises. Le texte est coupé au premier lien vers une autre offre (`/companies/<société>/jobs/<offre>` différente de celle lue), reculé jusqu'au titre du bloc s'il est à moins de 1 500 caractères, et jamais si ce qui reste fait moins de 600 caractères (fil d'Ariane en tête de page). Une adresse Welcome to the Jungle non reconnue (recherche, accueil) renvoie un message qui dit quelle adresse utiliser. Essai du 06/10 : la page emplois d'une société s'écrit aussi `/fr/companies-v1/<société>/jobs` (elle était classée « quelconque » et refusée) ; `companies-v1` est reconnu comme `companies`, pour la société, l'offre et la coupe des offres suggérées.
+**Raison** : demande du propriétaire du 05/10/2026, « puissant » : l'adresse suffit, pour une offre comme pour toute une société. Les connecteurs de la base (`connector_registry`, 8 entrées, sans écran ni moteur) servent à brancher son propre compte d'ATS ; ici le recruteur lit la page publique d'un client, sans identifiant.
+**Impact** : `supabase/functions/fetch-job-source/` (`guard.ts`, `readers.ts`, `resolve.ts`, `index.ts`), `supabase/config.toml`, `src/components/missions/v2/jobSource.ts`, `JobOffersPicker.tsx`, `CreateMissionV2.tsx`, `briefAnalysis.ts`, `src/hooks/useSourcingProjects.ts` (`silent`, `jd_source_url`), `src/types/jobDetails.ts` (`source_url`) ; tests `tests/ux/lecture-offres-serveur.test.mjs` (39) et `tests/ux/import-offres.test.mjs` (18), job Build de la CI ; `CLAUDE.md` (74 fonctions).
+**Recette** : tests sur réseau simulé (chaque niveau, chaque repli, LinkedIn, plafond de Firecrawl, 130 offres tronquées à 100) et banc visuel sur le vrai composant : liste de six offres dont une déjà importée, trois choisies, analyse, création de trois missions avec leur adresse source, une offre seule ouverte dans le Brief IA, page illisible, crédits épuisés en cours de lot, clair, 1440 px et 390 px. Huit mutations des tests sont détectées : cinq pour ce lot (redirections suivies, http admis, LinkedIn lu, lot qui continue sans crédits, toast par mission) et trois pour le lot précédent. Aucun accès à Welcome to the Jungle ni aux interfaces des ATS depuis cette session (accès réseau refusé) : les formats Greenhouse, Lever, Ashby et Recruitee suivent leur documentation publique et n'ont pas été vérifiés en réel.
+**Reste à faire** :
+- [ ] Après déploiement : lire une page société et une offre Welcome to the Jungle, et relever dans les journaux le niveau utilisé (`ats_api`, `json_ld`, `direct_text`, `firecrawl`). Si le site refuse la lecture directe et que Firecrawl n'est pas configuré, la page reste illisible.
+- [ ] Vérifier que `FIRECRAWL_API_KEY` est posée dans les secrets Supabase : sans elle, le troisième niveau est ignoré.
+- [ ] Faire valider les conditions d'utilisation de Welcome to the Jungle avant d'ouvrir la fonction aux clients (lecture déclenchée par l'utilisateur, une page à la fois ; pas de lecture de sociétés en masse).
+- [ ] Un merge sur `main` redéploie toutes les fonctions (`_shared/ai-config.ts` modifié par le lot précédent) : compter une trentaine de minutes.
+**Refs** : `docs/design/06-simplicite.md`, lot précédent « Brief IA : design simplifié et analyse par Sonnet 5.5 ».
+
+---
+
+## 2026-10-05 — SHIP — Brief IA : design simplifié et analyse par Sonnet 5.5
+
+**Contexte** : la fenêtre de création de mission (`CreateMissionV2`, écran « Brief IA ») était restée dans l'ancien langage (dégradés, emoji, tutoiement, deux croix de fermeture) et appelait `generate-search-filters` sans action ni modèle choisi, donc sur Sonnet 4.6. Une fiche de 6 185 caractères n'était lue que sur ses 800 premiers.
+**Décision / Fait** :
+- Design : règles de `docs/design/01-direction.md` et `06-simplicite.md`. Un seul bouton plein (noir), primitives `Button`/`Input`/`Textarea`/`Label`, pas de cadre autour de la liste détectée, vouvoiement, ni emoji, ni dégradé, ni tiret long. Les trois écrans (choix, brief, saisie manuelle) suivent la même mise en forme. Hauteur fixe sur grand écran, chaque colonne défile seule.
+- Panneau de droite (`BriefAnalysisPanel.tsx`, aides pures dans `briefAnalysis.ts`) : en attente (illustration `brief`), analyse en cours (squelette), erreur avec « Réessayer », résultat en lignes. Les intitulés ciblés et les compétences sont des pastilles (le modèle renvoyait un groupe booléen `"A" OR "B"` affiché tel quel). Les informations absentes de la fiche sont nommées. Une fiche ou un client modifiés après l'analyse font apparaître un bandeau « Relancer l'analyse ».
+- UX : Ctrl ou Cmd + Entrée lance l'action principale ; « Créer sans analyse » reste possible (crédits épuisés, panne) ; le nom proposé par l'IA suit la relance tant que l'utilisateur ne l'a pas saisi ; le texte de l'adresse web n'insère plus une consigne de collage dans la fiche ; la rémunération n'est retenue que si elle est plausible en annuel (10 000 € au moins, un taux journalier n'est pas un salaire).
+- IA : action dédiée `brief_analysis`, Sonnet 5.5 par défaut (`autoDefault`, comme le scoring), dans les deux catalogues. Pas `filter_generation` : elle est partagée avec `nl-filter-edit`, `AutoFillFiltersButton` et d'autres appelants qui lisent `content[0].text`, que le bloc « thinking » des modèles 5.5 casse. `generate-search-filters` lit le bloc texte, règle l'effort (`low`), laisse 2000 tokens de marge, passe `max_tokens` de 2048 à 4096 (2048 laissait peu de marge à une réponse chargée, et un JSON coupé tombait dans le repli sur le titre sans rien dire) et lit la fiche jusqu'à 12 000 caractères. Elle renvoie enfin les champs du brief structuré que le prompt demandait mais que la réponse jetait : le Brief IA remplissait `job_details` avec des valeurs de repli. Drapeau `degraded` quand le JSON est illisible.
+- Brouillon : l'effet de fermeture (UX06) ne s'exécutait jamais, les deux parents démontent la fenêtre au lieu de passer `isOpen` à `false`, et il effaçait ce qu'il venait d'écrire. Enregistrement au démontage et au fil de la saisie, sans écriture si rien n'a changé.
+**Raison** : décision du propriétaire du 05/10/2026, qualité de l'analyse d'abord. Sans la lecture de la fiche entière et sans les champs du brief, un meilleur modèle n'améliorait pas ce que la mission enregistre.
+**Impact** : `src/components/missions/v2/CreateMissionV2.tsx`, `BriefAnalysisPanel.tsx` et `briefAnalysis.ts` (nouveaux), `supabase/functions/generate-search-filters/index.ts`, `supabase/functions/_shared/ai-config.ts`, `src/types/aiCredits.ts` ; test `tests/ux/creation-mission-brief.test.mjs` (26 tests, job Build de la CI). Audit design : effets décoratifs 34 → 16, emoji 142 → 129, tirets longs 83 → 76, couleurs en dur 3 → 1, polices hors système 1 → 0, et cinq `any` de moins dans le fichier.
+**Recette** : banc local (Vite et Playwright sur le vrai composant, création en base et appel IA simulés), sombre et clair, 1440 × 900, 1280 × 720 et 390 × 844 : choix, brief vide, brouillon restauré sous StrictMode, analyse en cours, résultat, fiche modifiée, erreur technique, crédits épuisés, réponse dégradée, saisie manuelle, fermeture puis réouverture. Action `brief_analysis` et fiche entière confirmées dans la requête, `job_details` complet, brouillon effacé après création, aucun débordement horizontal, aucune erreur console. Trois mutations du test (lecture de `content[0]`, tutoiement avec tiret long, Sonnet 5.5 sur `filter_generation`) sont détectées. Pas de recette `qa.md` sur l'application connectée, ni d'appel réel à Sonnet 5.5 depuis cette session.
+**Reste à faire** :
+- [ ] Après déploiement : analyser une vraie fiche de plus de 6 000 caractères. Dans les journaux de la fonction, vérifier l'absence de « Failed to parse AI response », de « truncated at max_tokens », et la durée (délai de l'appel porté à 55 s pour les modèles 5.5).
+- [ ] `output_config.effort` est repris de `score-profile-job` (#268), non vérifié contre l'API depuis cette session.
+- [ ] Recette `qa.md` des quatre personas sur l'application connectée.
+- [ ] Hors périmètre, constaté : la fiche de la capture décrit quatre entretiens, que l'analyse pourrait extraire pour pré-remplir `mission_process_steps`. `nl-filter-edit` utilise `filter_generation`, donc Sonnet 4.6 (PERF-029).
+**Refs** : #268 (scoring Sonnet 5.5), docs/design/06-simplicite.md.
+
+---
+
+---
+
+---
+
+## 2026-10-06 — SHIP — Bandeau du kit : 44 px au doigt pour l'action et la croix
+
+**Contexte** : relevé par la recette de l'état vide de /missions (#294). Sur téléphone, le bandeau d'essai, présent en haut de chaque page pour une organisation dont l'essai se termine ou est terminé, offrait « Choisir un plan » sur 20 px de haut et une croix de 36 px, sous les 44 px de la règle des cibles au doigt.
+**Décision / Fait** :
+- `bannerActionClass` (`src/components/ui/banner.tsx`) : 44 px de haut sur téléphone (`max-md:min-h-11`), texte centré. Vaut pour toutes les actions de bandeau (« Choisir un plan », « Reconnecter », « Voir les offres », « Acheter des crédits »…).
+- Croix : dessin de 36 px gardé, zone invisible de 44 px (`::after`). Une croix de 44 px prenait 8 px au texte, qui passait sur une ligne de plus (bandeau de 137 à 157 px) ; avec la zone, le bandeau garde sa hauteur.
+- Rien ne change sur ordinateur (lien de 20 px, croix de 28 px).
+**Raison** : cibles de 44 px au doigt (01-direction.md), sans changer la mise en page.
+**Impact** : `src/components/ui/banner.tsx` seulement, donc tous les bandeaux du kit (essai, crédits bas, séquences). Test : `tests/ux/bandeau-cibles.test.mjs` (2 tests, nouveau, rendu statique).
+**Recette `qa.md`** (banc local, compte à l'essai terminé, rien d'enregistré) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Sophie | Téléphone 390 px : lien 97 × 44, croix 44 × 44, bandeau de 137 px comme avant ; la croix touchée 3 px au-dessus de son dessin ferme le bandeau | PASS |
+| Guillaume | « Choisir un plan » touché 4 px au-dessus du bas de sa zone : Abonnement et crédits s'ouvre | PASS |
+| Claire | Ordinateur 1 440 px : bandeau de 45 px, lien de 20 px et croix de 28 px, comme avant | PASS |
+| Théo | Écran de 320 px, texte du bandeau sur plusieurs lignes : aucun débordement, croix et lien dans l'écran | PASS |
+**Refs** : #294.
+
+## 2026-10-05 — SHIP — Design simplifié, fin du lot M : l'état vide de /missions
+
+**Contexte** : dernier reste du lot M de `docs/design/06-simplicite.md`. Sans mission, /missions montrait l'ancien langage : titre en capitales, chiffres publicitaires (« 200M+ profils accessibles », « 45s », « 3x plus rapide »), deux grandes cartes animées (réseau de neurones, particules, bouton scintillant), une rangée de logos d'outils que Konekt ne relie pas (Slack, HubSpot, Salesforce), un lien « page carrières » sans action, et pas de titre de page.
+**Décision / Fait** :
+- `EmptyMissionState` devient l'état vide du kit : dessin « dossier » (01-direction.md, § Illustrations), « Lancez votre première mission » en casse de phrase, une phrase (« Une mission, c'est un poste à pourvoir. Collez la fiche de poste : l'assistant en tire le brief et les filtres de recherche. »).
+- Deux entrées, les mêmes qu'avant : « Coller une fiche de poste » (seul bouton plein, mode brief de `CreateMissionV2`) et « Saisir le poste à la main » (bouton discret, mode manuel), 44 px au doigt.
+- La page garde son titre « Missions » (`PageHeader`, sans second bouton) ; les missions confiées par une entreprise restent au-dessus.
+- `src/components/magicui/shimmer-button.tsx` retiré : ce bouton n'avait plus d'autre lecteur.
+**Raison** : règles 2, 7 et 8 du design simplifié, et des chiffres ou des logos que rien ne soutient. Mesures du banc (compte vide), ordinateur 1 440 px : 23 icônes puis 0, hauteur 1 113 puis 900 px ; téléphone : hauteur 1 655 puis 844 px. Cliquet design : effets décoratifs 34 puis 33, boutons faits main 301 puis 300, texte atténué 163 puis 151.
+**Impact** : `src/components/missions/EmptyMissionState.tsx` (réécrit, 578 lignes puis 36), `src/components/outreach/projects/ProjectsListV2.tsx` (titre de page dans l'état vide), `src/components/magicui/shimmer-button.tsx` (supprimé). Aucune lecture ni écriture ne change. Test : `tests/ux/missions-vide-simplicite.test.mjs` (4 tests, nouveau, rendu statique de l'état vide).
+**Recette `qa.md`** (banc local, rien d'enregistré) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Titre « Missions » ; « Coller une fiche de poste » à la souris ouvre la création sur la fiche de poste (nom, client, fiche) ; « Saisir le poste à la main » au clavier l'ouvre sur la saisie (titre, client, description) ; rien de créé | PASS |
+| Claire | Aucun nom de fournisseur, terme technique ni chiffre publicitaire ; un seul bouton plein, « Coller une fiche de poste » | PASS |
+| Théo | Lecture des missions en échec : erreur avec « Réessayer », jamais l'état vide ; compte avec missions : la liste, jamais l'état vide | PASS |
+| Sophie | Téléphone 390 px tactile : deux boutons, aucun sous 44 px, aucun débordement | PASS |
+**Reste à faire** :
+- [ ] Fenêtre de création de mission (`CreateMissionV2`) : libellés en capitales et tutoiement (« Choisis comment tu veux décrire la mission »), contraire au § 9 de 01-direction.md.
+- [ ] Bandeau d'essai (`TrialBanner`, `src/components/ui/banner.tsx`) : « Choisir un plan » (20 px) et la croix (36 px) sous 44 px au doigt, sur toutes les pages.
+**Refs** : docs/design/06-simplicite.md (lot M), #292.
+
 ## 2026-10-05 — SHIP — Design simplifié, lot Suite 3 : les Paramètres, première partie
 
 **Contexte** : troisième écran du lot « Suite » de `docs/design/06-simplicite.md`, après le Pipeline global (#286) et la messagerie (#288). Les Paramètres empilaient des cartes bordées (dix sur Abonnement et crédits), affichaient des compteurs à zéro (« 0 / 40 » sur les plafonds LinkedIn, « 0 / 100 » sur la Base Konekt, « 0 / 200 » sur le forfait de contacts, « 0/200 » et « (0/10) » sur les consignes de rédaction), des pastilles de couleur (« Actif », « Populaire », « -20 % »), « Dissocier » en rouge au repos et deux longues listes dépliées (coût de 39 actions, sept protections du compte LinkedIn). Les PR #260 et #262 touchent la coquille, le Journal et les Règles de l'assistant : ce lot n'y entre pas.
@@ -169,6 +255,45 @@ Sur téléphone (390 px), la page passe de 2 013 à 1 614 px en colonnes, de 2 3
 - [ ] Bandeau d'essai (hors page Tâches) : « Choisir un plan » (20 px) et « Fermer le bandeau » (36 px) restent sous 44 px sur téléphone.
 - [x] Les gardes `lot0c-lectures` (0c-1, jouée par la CI) et `lot12-sourcing` (S-7), cassées sur `main` par le commit 2148cfab (/sourcing refait) : alignées sur la nouvelle page par la PR #264.
 **Refs** : docs/design/06-simplicite.md (lot T), maquette « Konekt simplifié ».
+
+## 2026-10-05 — INSIGHT — Spike S1 : le CDN d'images sert la sortie réseau de la base
+
+**Contexte** : le propriétaire a donné son accord pour S1 (télécharger une vingtaine de vraies photos pour savoir si le CDN répond à un centre de données). Le proxy du poste de développement refuse le CDN et le domaine Supabase, donc l'essai est parti de la base de production par `pg_net`.
+**Décision / Fait** : 25 adresses valides tirées au hasard (20 petites, 5 grandes), tirées et lancées en SQL sans que la session lise une adresse, sans cookie ni `Referer`, plage d'octets 0-4095. 25 réponses sur 25 en 206, 24 JPEG et 1 PNG. Petites : 1,4 à 41 ko (médiane 5,3 ko) ; grandes : 25 à 131 ko et un PNG de 846 ko. Chemin identique pour 64 des 71 candidats relus avec des adresses différentes. Lignes de réponse de l'essai supprimées ensuite.
+**Raison** : la copie côté serveur du lot P dépend de cette réponse ; sans elle, le plan B (image du prestataire de messagerie) s'imposait.
+**Impact** : `docs/design/07-photos-lot-p.md` (S1, risques, porte d'activation de P-4). Aucun code, aucune fonction déployée, aucune donnée conservée.
+**Reste à faire** :
+- [x] Confirmé depuis une fonction le soir même : `capture-candidate-photos` a copié 459 photos (13 h 46 à 22 h 08 UTC) ; 1 176 liens refusés en 403, ce sont les adresses périmées.
+- [ ] Les côtés réels en pixels ne sont pas mesurés : la garde lira les octets de tête.
+**Refs** : docs/design/07-photos-lot-p.md (P-0, S1).
+
+---
+
+## 2026-10-05 — SHIP — P-0b, garder les adresses de photo fraîches
+
+**Contexte** : première étape du lot P, demandée par le propriétaire (« Oui lance »), livrée après la copie privée des photos d'une autre session (PR #271) qu'elle alimente. Les adresses de photo LinkedIn expirent après quelques semaines et une recherche qui retrouvait une personne connue n'écrivait pas son adresse fraîche.
+**Décision / Fait** : migration `20261006132610_photos_lot_p0b_rafraichir_adresses.sql` (`refresh_candidate_pictures`, `candidate_picture_expiry`, `candidate_picture_is_stale`, `candidate_picture_should_replace`) ; `batchDiscover` rafraîchit les adresses des profils de la page ; la découverte garde la grande photo ; la fiche garde la photo en enregistrant le profil visité ; « Retenir » et l'inscription en séquence créent leur ligne avec le profil entier (`src/lib/serializeProfile.ts`). Fusion jsonb côté base, lignes de l'appelant, profil existant seulement, aucune écriture si l'adresse enregistrée est bonne. Une ligne remplacée avance `updated_at`, exprès : `claim_candidate_photos` s'en sert pour relancer une copie expirée.
+**Raison** : 82 % des adresses stockées sont expirées ; la production le confirme (1 176 copies refusées en 403 le premier jour de la capture). Un profil réduit à une photo aurait rendu la ligne éligible à la notation de fond, d'où le profil entier.
+**Impact** : migration, `src/lib/pictureUrl.ts`, `src/lib/serializeProfile.ts`, `useJobCandidateStatus.ts`, `useLinkedInSearchActions.ts`, `useLinkedInScoring.ts`, `ProfileDetailSheet.tsx`, `EnrollmentPreviewModal.tsx`, `AddToProjectButton.tsx`, `CardActions.tsx`, `types.ts`, audit SQL et `e2e.yml`, `ci.yml`, tests, `CLAUDE.md`, plan du lot P. Coût mesuré en local : 200 lignes en 224 ms, 200 appels d'ingestion en file, aucun recalcul d'embedding.
+**QA** : relecture adverse en cinq angles (27 agents) : quatre constats retenus. Corrigés : poids des chunks de la messagerie et du Pipeline (sérialiseur sorti du hook de notation, +17 Ko gzip évités), test avec `esbuild` dans un job sans dépendances (fichier séparé, étape dans le job build), balise `@critical` absente de la spec API. Gardé tel quel et documenté : l'avance de `updated_at` (coût : « Dernière action », portail client, horloge de purge RGPD). Répétition de la migration et de l'audit en transaction sur le schéma de production, annulée proprement.
+**Reste à faire** :
+- [ ] Relever la part des lignes du Pipeline à adresse valide après quelques jours (3 % avant) et le nombre de copies « expirées » relancées.
+- [ ] Décider si le coût sur `updated_at` justifie une colonne dédiée lue par `claim_candidate_photos` (modifie la copie privée).
+**Refs** : docs/design/07-photos-lot-p.md (P-0b).
+
+---
+
+## 2026-10-05 — SPEC — Plan du lot P, copie privée des photos des candidats
+
+**Contexte** : le propriétaire demande de préparer le lot P (copie privée des photos LinkedIn, supprimée avec le candidat) après la mise en ligne des visages. Quatre enquêtes en lecture seule (captures, RGPD, stockage, modèle de données) et des comptages sur la production, puis relecture du plan par deux relecteurs.
+**Décision / Fait** : plan écrit dans `docs/design/07-photos-lot-p.md` : table `candidate_photos` par organisation et personne, bucket privé `candidate-photos`, liens signés d'une heure, déclencheur d'enfilage et worker de copie sans appel LinkedIn, effacement et purge branchés avant la première copie, sous-lots P-0 à P-7 (P-3 en deux parties). Aucun code livré. Deux relectures indépendantes ont corrigé le premier jet : trace d'effacement (ligne `erased`), course entre effacement et copie, verrou de réclamation, boîte d'envoi des suppressions de fichiers, droits par colonne, périmètre de la copie.
+**Raison** : les mesures du 05/10/2026 montrent que 82 % des adresses de photo stockées sont déjà expirées (durée médiane 20 jours entre la création d'une ligne et l'expiration), que 35 des 1 011 personnes du Pipeline ont une adresse valide et que 585 n'en ont aucune ; 27 % des adresses du Pipeline sont déjà expirées à la dernière écriture de la ligne. La copie doit donc se faire au moment où l'adresse est fraîche, et une première étape (P-0b) ferme les pertes d'adresse du navigateur. `rgpd-purge` n'est planifiée nulle part et l'effacement RGPD laisse l'adresse de la photo dans le profil de la ligne.
+**Impact** : `docs/design/07-photos-lot-p.md`, `docs/design/README.md`, `docs/design/06-simplicite.md`.
+**Reste à faire** :
+- [ ] Décisions D1 à D12 du plan (périmètre, durée, planification de `rgpd-purge`, lecture de profil LinkedIn, export des fichiers).
+- [ ] Spike S1 avant le 22/10/2026 : tant qu'il reste des adresses valides, vérifier que le CDN répond à une fonction Supabase.
+- [ ] Questions au juriste (section 10 du plan).
+**Refs** : docs/design/07-photos-lot-p.md.
 
 ---
 

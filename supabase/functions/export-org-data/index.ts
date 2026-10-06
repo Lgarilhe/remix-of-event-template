@@ -84,6 +84,7 @@ Deno.serve(async (req) => {
       { data: candidatePhotos, error: candidatePhotosError },
       { data: qualificationSessions, error: qualificationSessionsError },
       { data: calendarAccounts, error: calendarAccountsError },
+      { data: phoneCalls, error: phoneCallsError },
     ] = await Promise.all([
       adminClient
         .from("job_candidate_status")
@@ -129,12 +130,18 @@ Deno.serve(async (req) => {
         .select("user_id, provider, email_address, status, last_synced_at, created_at")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
+      adminClient
+        .from("phone_calls")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(10000),
     ]);
 
     // RGPD art. 20 : un export incomplet doit échouer explicitement, jamais
     // renvoyer un jeu de données tronqué en silence.
     const queryError = candidatesError || projectsError || transactionsError || membersError
-      || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError;
+      || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError || phoneCallsError;
     if (queryError) {
       console.error("[export-org-data] query failed:", queryError);
       return new Response(
@@ -155,6 +162,7 @@ Deno.serve(async (req) => {
       candidate_photos: candidatePhotos || [],
       qualification_sessions: qualificationSessions || [],
       calendar_accounts: calendarAccounts || [],
+      phone_calls: phoneCalls || [],
       _meta: {
         candidates_count: (candidates || []).length,
         projects_count: (projects || []).length,

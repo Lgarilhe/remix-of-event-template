@@ -4964,6 +4964,95 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_calls: {
+        Row: {
+          agent_email: string | null
+          agent_external_id: string | null
+          agent_name: string | null
+          answered_at: string | null
+          contact_name: string | null
+          contact_number: string | null
+          contact_number_e164: string | null
+          created_at: string
+          direction: string | null
+          ended_at: string | null
+          external_id: string
+          id: string
+          last_event_at: string
+          missed_reason: string | null
+          notes: string | null
+          organization_id: string
+          provider: string
+          recording_url: string | null
+          started_at: string | null
+          status: string | null
+          tags: string[]
+          talk_seconds: number
+          updated_at: string
+          voicemail_url: string | null
+        }
+        Insert: {
+          agent_email?: string | null
+          agent_external_id?: string | null
+          agent_name?: string | null
+          answered_at?: string | null
+          contact_name?: string | null
+          contact_number?: string | null
+          contact_number_e164?: string | null
+          created_at?: string
+          direction?: string | null
+          ended_at?: string | null
+          external_id: string
+          id?: string
+          last_event_at: string
+          missed_reason?: string | null
+          notes?: string | null
+          organization_id: string
+          provider: string
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          tags?: string[]
+          talk_seconds?: number
+          updated_at?: string
+          voicemail_url?: string | null
+        }
+        Update: {
+          agent_email?: string | null
+          agent_external_id?: string | null
+          agent_name?: string | null
+          answered_at?: string | null
+          contact_name?: string | null
+          contact_number?: string | null
+          contact_number_e164?: string | null
+          created_at?: string
+          direction?: string | null
+          ended_at?: string | null
+          external_id?: string
+          id?: string
+          last_event_at?: string
+          missed_reason?: string | null
+          notes?: string | null
+          organization_id?: string
+          provider?: string
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          tags?: string[]
+          talk_seconds?: number
+          updated_at?: string
+          voicemail_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_calls_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active_organization_id: string | null
@@ -6878,6 +6967,7 @@ export type Database = {
           status: string
         }[]
       }
+      get_telephony_status: { Args: { p_organization_id: string }; Returns: Json }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_vivier_candidates: {
         Args: {
@@ -7209,6 +7299,10 @@ export type Database = {
           project_id: string
           via: string
         }[]
+      }
+      refresh_candidate_pictures: {
+        Args: { p_items: Json; p_job_ids: string[] }
+        Returns: number
       }
       resolve_meeting_mission: {
         Args: { p_candidate: Json; p_organization_id: string }

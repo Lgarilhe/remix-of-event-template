@@ -77,6 +77,11 @@ const previewHookModule = await loadModule('src/hooks/useEnrollmentPreview.ts', 
   '@/hooks/useAuthReady': 'export const useAuthReady = () => ({ user: null });',
 });
 const compatModule = await loadModule('src/lib/sequenceCompatibility.ts');
+// Lot 5d-1 : rendu des étapes écrites avec les valeurs du serveur (preview_values).
+const previewValuesModule = await loadModule('src/hooks/usePreviewValues.ts', {
+  react: REACT_STUB,
+  '@/lib/invokeEdgeFunction': 'export const invokeEdgeFunction = async () => ({ data: null, error: null });',
+});
 
 // ---------------------------------------------------------------- SEQ-021
 test('SEQ-021 — « Générer tous les aperçus » et Entrée ne remplacent jamais un message généré ou modifié', () => {
@@ -161,7 +166,9 @@ test('SEQ-043 — le compte d’envoi est affiché et bloque s’il est déconne
   for (const [name, source] of [['aperçu', previewModal], ['inscription simple', enrollModal]]) {
     assert.match(source, /const sendingAccount = useSendingAccount\(accountId\);/, name);
     assert.match(source, /<SendingAccountNotice state=\{sendingAccount\} \/>/, name);
-    assert.match(source, /!!sendingAccount\.blockReason\}/, `${name} : bouton d'inscription désactivé si le compte bloque`);
+    // Lot 5a : la case des destinataires (dès 5 candidats) s'ajoute à la condition ;
+    // lot 5a-2 : dans l'aperçu, les messages IA manquants aussi.
+    assert.match(source, /!!sendingAccount\.blockReason \|\| recipients\.blocked( \|\| aiReviewMissingCount > 0)?\}/, `${name} : bouton d'inscription désactivé si le compte bloque`);
     assert.match(source, /if \(sendingAccount\.blockReason\) \{\s*toast\.error\(sendingAccount\.blockReason\);\s*return;/, name);
   }
 });
@@ -189,8 +196,9 @@ test('SEQ-045 — l’aperçu d’inscription exclut les incompatibles de l’in
   assert.match(previewModal, /checkProfilesCompat\(profiles, sequence\.steps\)/);
   const active = slice(previewModal, 'const activeProfiles = useMemo(() =>', '});\n');
   assert.match(active, /if \(!includeIncompatible && incompatibleIds\.has\(p\.id\)\) return false;/);
-  // Revue design : la clé de session des aperçus gardés (D-46) complète l'appel.
-  assert.match(previewModal, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey \}\)/);
+  // Revue design : la clé de session des aperçus gardés (D-46) complète l'appel ;
+  // lot 5d-1 : le rendu des étapes écrites (preview_values) aussi.
+  assert.match(previewModal, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi \}\)/);
   assert.match(previewModal, /Inclure quand même \(\{compat\.blockers\.length\}\)/);
   // Le hook génère et estime sur les candidats visés, pas sur toute la sélection.
   assert.match(previewHook, /const queue = \[\.\.\.targets\];/);
@@ -331,16 +339,33 @@ test('SEQ-051 — l’InMail groupé transmet les réglages d’approche de la m
 
 // ---------------------------------------------------------------- SEQ-063
 test('SEQ-063 — l’aperçu résout {{city}} et {{sender_name}}, garde {{calendly_link}} pour l’envoi', () => {
-  const { resolveVariables } = previewHookModule;
-  const profile = { name: 'Marie Dupont', location: 'Lyon, Auvergne-Rhône-Alpes, France' };
+  // Lot 5d-1 : resolveVariables est retiré. Les valeurs viennent du serveur
+  // (preview_values : contexte du moteur, alias city de la variable ville,
+  // sender_name = prénom de l'expéditeur, lien d'agenda de la mission) et le
+  // navigateur rend le texte comme le moteur.
+  assert.equal(previewHookModule.resolveVariables, undefined, 'plus de rendu deviné dans le navigateur');
+  const { previewDisplayText, previewEditableText, KEPT_FOR_SEND_KEYS } = previewValuesModule;
+  const values = {
+    prenom: 'Marie', first_name: 'Marie', ville: 'Lyon', city: 'Lyon', mon_prenom: 'Laurent', sender_name: 'Laurent',
+    lien_calendly: 'https://agenda.example/laurent', calendly_link: 'https://agenda.example/laurent',
+  };
+  const sendTime = { salutation: '[Bonjour ou Bonsoir, selon l’heure d’envoi]' };
+  const template = '{{salutation}} {{first_name}}, basée à {{city}} ? {{calendly_link}} {{sender_name}}';
+  // Affiché : le texte qui partira, la salutation de l'heure d'envoi annoncée entre crochets.
   assert.equal(
-    resolveVariables('Bonjour {{first_name}}, basée à {{city}} ? {{calendly_link}} {{sender_name}}', profile, 'Laurent'),
-    'Bonjour Marie, basée à Lyon ? {{calendly_link}} Laurent',
+    previewDisplayText(template, values, sendTime),
+    '[Bonjour ou Bonsoir, selon l’heure d’envoi] Marie, basée à Lyon ? https://agenda.example/laurent Laurent',
   );
-  // Prénom inconnu : la variable reste, le moteur la remplit à l'envoi.
-  assert.equal(resolveVariables('{{sender_name}}', profile), '{{sender_name}}');
+  // Texte de départ d'une retouche : salutation et lien d'agenda gardés, le moteur les remplit à l'envoi.
+  assert.equal(
+    previewEditableText(template, values, [...Object.keys(sendTime), ...KEPT_FOR_SEND_KEYS]),
+    '{{salutation}} Marie, basée à Lyon ? {{calendly_link}} Laurent',
+  );
+  // Prénom de l'expéditeur inconnu : la variable est retirée, comme à l'envoi.
+  assert.equal(previewDisplayText('Merci {{sender_name}}.', {}, sendTime), 'Merci.');
   assert.match(previewModal, /Lien d'agenda, ajouté à l'envoi/);
-  assert.match(previewModal, /\{renderSendTimeVariables\(\(preview\?\.message \|\| ''\)/);
+  // Lot 5d-1 : la note d'invitation retouchée est coupée comme le moteur (shownText) avant la pastille d'agenda.
+  assert.match(previewModal, /\{renderSendTimeVariables\(shownText\(step\.actionType, \(preview\?\.message \|\| ''\)/);
 });
 
 // ---------------------------------------------------------------- Vocabulaire

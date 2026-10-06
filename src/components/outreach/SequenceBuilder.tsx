@@ -112,68 +112,14 @@ import {
   type SequenceArea,
 } from './sequence/sequenceGraph';
 
-export interface SequenceStep {
-  id: string;
-  order: number;
-  actionType: 'inmail' | 'email' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
-  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'if_email_opened' | 'if_email_not_opened' | 'if_link_clicked' | 'if_link_not_clicked' | 'if_has_email' | 'if_no_email' | 'if_has_phone' | 'if_no_phone' | 'if_bounced' | 'if_unsubscribed' | 'if_score_above';
-  conditionValue?: string;
-  delayDays: number;
-  delayHours: number;
-  delayMinutes: number;
-  preferredHourStart: number;
-  preferredHourEnd: number;
-  subjectTemplate?: string;
-  messageTemplate?: string;
-  useAiPersonalization: boolean;
-  aiTone?: 'professional' | 'casual' | 'enthusiastic';
-  timeoutDays?: number;
-  waitForEvent?: 'connection_accepted' | 'reply_received' | 'profile_visited';
-  // « Terminer » au délai dépassé n'est pas proposé : rien ne l'enregistre et le
-  // moteur passait à l'étape suivante. Seule l'étape de repli est persistée.
-  timeoutAction?: 'skip' | 'alternative_step';
-  alternativeStepIndex?: number;
-  ifTrueGotoStep?: string;
-  ifFalseGotoStep?: string;
-  nextStepId?: string;
-  timeoutBranchStepId?: string;
-  variantGroup?: string | null;
-  variantWeight?: number;
-  ccEmails?: string[];
-  bccEmails?: string[];
-  includeUnsubscribe?: boolean;
-  signatureId?: string;
-}
+import type { SequenceStep, StopConditions, Sequence } from '@/types/sequence';
+// « Séquence recommandée » : le modèle Konekt « Séquence longue (17 étapes) » (lot 5c-2).
+import { generateRecommendedSequence } from '@/lib/sequenceStarterTemplates';
 
-export interface StopConditions {
-  on_reply: boolean;
-  on_click: boolean;
-  on_unsubscribe: boolean;
-  on_meeting_booked: boolean;
-}
-
-export interface SenderAccountConfig {
-  account_id: string;
-  /** Ancien champ, plus écrit : la rotation n'envoie que depuis des comptes LinkedIn. */
-  email?: string;
-  daily_limit: number;
-  /** Nom affiché dans « Plusieurs expéditeurs », ignoré par le moteur. */
-  label?: string;
-  /** Canal du compte : la rotation ne sert qu'aux étapes LinkedIn. */
-  channel?: 'linkedin';
-}
-
-export interface Sequence {
-  id?: string;
-  name: string;
-  description?: string;
-  steps: SequenceStep[];
-  isActive: boolean;
-  stopConditions?: StopConditions;
-  senderAccounts?: SenderAccountConfig[];
-  rotationMode?: string;
-  multiSenderEnabled?: boolean;
-}
+// Types sortis au lot 5c-1 dans src/types/sequence.ts, réexportés jusqu'au lot 5j
+// pour les fichiers voués au retrait (StepEditor, WorkflowCanvas,
+// nodes/WorkflowStepNode, VisualSequenceEditor, SequenceValidationChecklist).
+export type { SequenceStep, StopConditions, SenderAccountConfig, Sequence } from '@/types/sequence';
 
 interface SequenceBuilderProps {
   isOpen: boolean;
@@ -265,75 +211,6 @@ const createEmptyStep = (order: number, actionType: string = 'connection_request
     timeoutAction: 'skip',
     waitForEvent: trigger?.waitEvent as SequenceStep['waitForEvent'],
   };
-};
-
-const generateRecommendedSequence = (): SequenceStep[] => {
-  const mkStep = (
-    order: number,
-    actionType: SequenceStep['actionType'],
-    overrides: Partial<SequenceStep> = {}
-  ): SequenceStep => ({
-    id: crypto.randomUUID(),
-    order,
-    actionType,
-    conditionType: 'always',
-    delayDays: 0,
-    delayHours: 0,
-    delayMinutes: 0,
-    preferredHourStart: 9,
-    preferredHourEnd: 18,
-    useAiPersonalization: actionType === 'smart_message',
-    aiTone: 'professional',
-    timeoutDays: 3,
-    timeoutAction: 'skip',
-    ...overrides,
-  });
-
-  const profileVisit = mkStep(0, 'profile_visit');
-  const checkConnection = mkStep(1, 'check_connection', { delayMinutes: 2 });
-  const t1_message = mkStep(2, 'smart_message');
-  const t2_waitReply = mkStep(3, 'wait_connection', { actionType: 'wait_reply', waitForEvent: 'reply_received', timeoutDays: 3, timeoutAction: 'skip' });
-  const t3_relance1 = mkStep(4, 'smart_message');
-  const t4_waitReply2 = mkStep(5, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 4, timeoutAction: 'skip' });
-  const t5_relance2 = mkStep(6, 'smart_message');
-
-  t1_message.nextStepId = t2_waitReply.id;
-  t2_waitReply.nextStepId = t3_relance1.id;
-  t3_relance1.nextStepId = t4_waitReply2.id;
-  t4_waitReply2.nextStepId = t5_relance2.id;
-
-  const f1_invite = mkStep(7, 'connection_request');
-  const f2_waitConnection = mkStep(8, 'wait_connection', { waitForEvent: 'connection_accepted', timeoutDays: 3, timeoutAction: 'skip' });
-  const f3_message = mkStep(9, 'smart_message');
-  const f4_waitReply = mkStep(10, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 3, timeoutAction: 'skip' });
-  const f5_relance1 = mkStep(11, 'smart_message');
-  const f6_waitReply2 = mkStep(12, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 4, timeoutAction: 'skip' });
-  const f7_relance2 = mkStep(13, 'smart_message');
-  const f8_inmail = mkStep(14, 'inmail', { useAiPersonalization: true });
-  const f9_waitReply = mkStep(15, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 5, timeoutAction: 'skip' });
-  const f10_inmailRelance = mkStep(16, 'inmail', { useAiPersonalization: true });
-
-  f1_invite.nextStepId = f2_waitConnection.id;
-  f2_waitConnection.nextStepId = f3_message.id;
-  f3_message.nextStepId = f4_waitReply.id;
-  f4_waitReply.nextStepId = f5_relance1.id;
-  f5_relance1.nextStepId = f6_waitReply2.id;
-  f6_waitReply2.nextStepId = f7_relance2.id;
-  f2_waitConnection.timeoutAction = 'alternative_step';
-  f2_waitConnection.timeoutBranchStepId = f8_inmail.id;
-  f8_inmail.nextStepId = f9_waitReply.id;
-  f9_waitReply.nextStepId = f10_inmailRelance.id;
-
-  checkConnection.ifTrueGotoStep = t1_message.id;
-  checkConnection.ifFalseGotoStep = f1_invite.id;
-
-  return [
-    profileVisit, checkConnection,
-    t1_message, t2_waitReply, t3_relance1, t4_waitReply2, t5_relance2,
-    f1_invite, f2_waitConnection,
-    f3_message, f4_waitReply, f5_relance1, f6_waitReply2, f7_relance2,
-    f8_inmail, f9_waitReply, f10_inmailRelance,
-  ];
 };
 
 const isAction = (actionType: string) => ACTIONS.some(a => a.value === actionType);
@@ -1389,7 +1266,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
                                 <div className="min-w-0">
                                   <Label htmlFor={fieldId('ai')} className="cursor-pointer">Rédaction par l'IA</Label>
-                                  <p className="mt-1 text-xs text-muted-foreground">L'IA écrit le message pour chaque candidat au moment de l'envoi.</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">L'IA écrit un message pour chaque candidat.</p>
                                 </div>
                                 <Switch id={fieldId('ai')} checked={step.useAiPersonalization} onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })} />
                               </div>

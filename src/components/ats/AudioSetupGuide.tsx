@@ -1,7 +1,7 @@
 /**
  * Guide de configuration audio de l'assistant d'entretien : selon la situation
- * (visio, téléphone, sur place), ce qu'il faut régler pour que la transcription
- * reçoive les deux voix. « Compris » ferme le guide ; seul « Démarrer
+ * (visio dans le navigateur, application installée, sur place), ce qu'il faut
+ * choisir pour que la transcription reçoive les deux voix. « Compris » ferme le guide ; seul « Démarrer
  * l'enregistrement » lance l'enregistrement (revue design E-09).
  */
 
@@ -12,62 +12,50 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-type AudioScenario = 'visio_headset' | 'visio_speaker' | 'phone_headset' | 'in_person';
+type AudioScenario = 'visio_browser' | 'visio_app' | 'in_person';
 
 const SCENARIOS = [
   {
-    key: 'visio_headset' as const,
+    key: 'visio_browser' as const,
     icon: Headphones,
-    label: 'Visio + casque',
-    description: 'Google Meet, Teams ou Zoom, avec un casque audio',
-    capturesBoth: false,
-    steps: [
-      { text: "Avant de démarrer, partagez l'onglet de votre visio dans Chrome.", important: true },
-      { text: "Cliquez sur « Partager l'écran », puis choisissez l'onglet de la visio.", important: false },
-      { text: "Cochez « Partager aussi l'audio de l'onglet ».", important: true },
-      { text: "Le service de transcription reçoit alors les deux voix\u00a0: votre micro et l'audio de la visio.", important: false },
-    ],
-    alternativeTitle: 'Autre solution\u00a0: un mixeur audio virtuel',
-    alternative:
-      'Installez VB-Cable (Windows) ou BlackHole (Mac) pour mélanger automatiquement le micro et la sortie audio. Réglage unique, cinq minutes environ.',
-  },
-  {
-    key: 'visio_speaker' as const,
-    icon: Monitor,
-    label: 'Visio en salle',
-    description: 'Visio sur écran avec haut-parleurs (salle de réunion)',
+    label: 'Visio dans le navigateur',
+    description: 'Google Meet ou Teams dans un onglet Chrome ou Edge, avec ou sans casque',
     capturesBoth: true,
     steps: [
-      { text: "Le micro de l'ordinateur capte les deux voix.", important: false },
-      { text: "Placez l'ordinateur près de vous pour une meilleure qualité.", important: true },
-      { text: 'Évitez les bruits de fond (fenêtres, ventilation).', important: false },
+      { text: "Choisissez « Visio ou appel », puis « Démarrer l'enregistrement ».", important: false },
+      { text: "Dans la fenêtre de partage du navigateur, choisissez l'onglet de la visio.", important: true },
+      { text: "Cochez « Partager aussi l'audio de l'onglet ».", important: true },
+      {
+        text: "Votre micro et l'audio de la visio sont transcrits séparément\u00a0: chaque voix est attribuée sans confusion, même avec un casque.",
+        important: false,
+      },
     ],
   },
   {
-    key: 'phone_headset' as const,
-    icon: Headphones,
-    label: 'Téléphone + casque',
-    description: 'Aircall, Ringover ou autre téléphonie en ligne, avec un casque',
+    key: 'visio_app' as const,
+    icon: Monitor,
+    label: 'Application installée ou téléphonie en ligne',
+    description: 'Teams, Zoom ou Aircall installés sur l\u2019ordinateur',
     capturesBoth: false,
     steps: [
-      { text: 'Le micro du casque capte seulement votre voix.', important: false },
-      { text: 'Pour capter aussi le candidat, activez le haut-parleur de votre téléphonie.', important: true },
-      { text: "Ou utilisez l'enregistrement d'appel de votre téléphonie.", important: false },
-      { text: "L'enregistrement pourra être transcrit après l'appel.", important: false },
+      { text: "Choisissez « Visio ou appel », puis « Démarrer l'enregistrement ».", important: false },
+      { text: "Dans la fenêtre de partage du navigateur, ouvrez « Écran entier » et choisissez votre écran.", important: true },
+      { text: "Cochez « Partager aussi l'audio du système ».", important: true },
+      { text: "Cette option n'existe que sous Windows. Sous macOS, ouvrez la visio ou l'appel dans un onglet Chrome ou Edge.", important: false },
     ],
-    alternativeTitle: 'Astuce\u00a0: Aircall',
+    alternativeTitle: 'Appel passé depuis un téléphone',
     alternative:
-      "Avec Aircall, les appels sont enregistrés automatiquement\u00a0: Konekt peut récupérer la transcription après l'appel grâce à l'intégration Aircall.",
+      "Le son d'un téléphone n'entre pas dans l'ordinateur\u00a0: mettez-le sur haut-parleur près du micro et choisissez « Sur place ».",
   },
   {
     key: 'in_person' as const,
     icon: Users,
-    label: 'Entretien sur place',
-    description: 'Le candidat est dans la même pièce que vous',
+    label: 'Sur place, ou téléphone sur haut-parleur',
+    description: 'Le candidat est dans la même pièce, ou sur un téléphone posé près de vous',
     capturesBoth: true,
     steps: [
-      { text: "Le micro de l'ordinateur capte les deux voix dans la pièce.", important: false },
-      { text: "Placez l'ordinateur entre vous et le candidat.", important: true },
+      { text: "Choisissez « Sur place », puis « Démarrer l'enregistrement ».", important: false },
+      { text: "Le micro de l'ordinateur capte les deux voix\u00a0: placez l'ordinateur entre vous et le candidat.", important: true },
       { text: 'Choisissez de préférence un bureau fermé, pour limiter le bruit.', important: false },
       { text: "Prévenez le candidat que l'entretien est transcrit et analysé par l'IA Konekt.", important: true },
     ],
@@ -153,12 +141,12 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
           {hasHeadset ? (
             <>
               <Headphones className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
-              Casque détecté&nbsp;: suivez les instructions de votre situation pour capter les deux voix.
+              Casque détecté&nbsp;: en visio, choisissez « Visio ou appel » pour capter aussi la voix du candidat.
             </>
           ) : (
             <>
               <Monitor className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              Micro intégré détecté&nbsp;: les deux voix seront captées.
+              Micro intégré détecté&nbsp;: en visio, un casque avec micro améliore nettement la transcription de votre voix.
             </>
           )}
         </p>
