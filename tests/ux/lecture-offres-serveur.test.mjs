@@ -579,6 +579,31 @@ test('flux : une adresse Welcome to the Jungle que le lecteur ne reconnaît pas 
   assert.equal((await resolve(fakeNet({ firecrawl: false }), 'https://example.com/')).message, k.MSG_UNREADABLE);
 });
 
+test('Welcome to the Jungle : une adresse « companies-v1 » se lit comme une adresse « companies »', async () => {
+  assert.deepEqual(k.classifyUrl(url('https://www.welcometothejungle.com/fr/companies-v1/numspot/jobs')), { source: 'wttj', kind: 'company', org: 'numspot' });
+  assert.deepEqual(
+    k.classifyUrl(url('https://www.welcometothejungle.com/fr/companies-v1/numspot/jobs/expert-securite_courbevoie')),
+    { source: 'wttj', kind: 'job', org: 'numspot', jobRef: 'expert-securite_courbevoie' },
+  );
+
+  // La liste d'offres d'une page « companies-v1 » : les cartes rendues par Firecrawl sont reconnues.
+  const page = 'https://www.welcometothejungle.com/fr/companies-v1/numspot/jobs';
+  const md = WTTJ_MD.replaceAll('/companies/', '/companies-v1/');
+  const listing = fakeNet({
+    pages: { [page]: '<html><body><div id="__next"></div></body></html>' },
+    rendered: { [page]: { markdown: md, links: k.extractMarkdownLinks(md) } },
+  });
+  const r = await resolve(listing, page);
+  assert.deepEqual([r.kind, r.reader, r.company.name, r.jobs.length], ['company', 'firecrawl', 'Numspot', 2]);
+
+  // Une offre « companies-v1 » : les offres suggérées, elles aussi en « companies-v1 », sont coupées.
+  const job = 'https://www.welcometothejungle.com/fr/companies-v1/numspot/jobs/expert-securite_courbevoie';
+  const withV1 = WTTJ_WITH_SUGGESTIONS.replaceAll('/companies/', '/companies-v1/');
+  const offer = await resolve(fakeNet({ pages: { [job]: withV1 } }), job);
+  assert.match(offer.job.description, /entretien technique/);
+  assert.doesNotMatch(offer.job.description, /DevOps Senior|Data Engineer|Ils recrutent aussi/);
+});
+
 test('flux : un JobPosting réduit à un résumé ne suffit pas, la page est lue plus loin', async () => {
   // La description de JSON_LD_PAGE fait une quarantaine de caractères : un résumé, pas une fiche.
   const md = `# Expert Sécurité Opérationnelle\n\n${LONG(1500)}`;

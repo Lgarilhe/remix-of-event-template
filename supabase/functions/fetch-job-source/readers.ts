@@ -168,7 +168,7 @@ const BLOCK_TITLE_WINDOW = 1500;
  */
 function otherJobsStartInHtml(html: string, jobRef: string | undefined): number {
   if (!jobRef) return -1;
-  const re = /<a\b[^>]*\bhref=["'][^"']*?\/companies\/[^/"'?#]+\/jobs\/([^/"'?#]+)/gi;
+  const re = /<a\b[^>]*\bhref=["'][^"']*?\/companies(?:-v1)?\/[^/"'?#]+\/jobs\/([^/"'?#]+)/gi;
   for (const m of html.matchAll(re)) {
     if (safeDecode(m[1]) === jobRef) continue;
     const title = [...html.slice(0, m.index).matchAll(/<h[1-6]\b/gi)].at(-1);
@@ -179,7 +179,7 @@ function otherJobsStartInHtml(html: string, jobRef: string | undefined): number 
 
 function otherJobsStartInMarkdown(md: string, jobRef: string | undefined): number {
   if (!jobRef) return -1;
-  const re = /\]\([^)\s]*?\/companies\/[^/)\s?#]+\/jobs\/([^/)\s?#]+)/g;
+  const re = /\]\([^)\s]*?\/companies(?:-v1)?\/[^/)\s?#]+\/jobs\/([^/)\s?#]+)/g;
   for (const m of md.matchAll(re)) {
     if (safeDecode(m[1]) === jobRef) continue;
     const lineStart = md.lastIndexOf("\n", m.index) + 1;
@@ -366,6 +366,11 @@ export function extractJsonLdJobs(html: string, pageUrl: string): SourceJob[] {
 const TOKEN_RE = /^[A-Za-z0-9._-]{1,80}$/;
 const WTTJ_LANG_RE = /^[a-z]{2}$/;
 
+/** Les adresses de société de Welcome to the Jungle existent en « companies » et en « companies-v1 ». */
+function wttjCompaniesIndex(segs: string[]): number {
+  return segs.findIndex((s) => s === "companies" || s === "companies-v1");
+}
+
 function pathSegments(url: URL): string[] {
   return url.pathname.split("/").filter(Boolean).map((s) => {
     try {
@@ -415,7 +420,7 @@ export function classifyUrl(url: URL): Classified {
   }
 
   if (host === "welcometothejungle.com") {
-    const i = segs.indexOf("companies");
+    const i = wttjCompaniesIndex(segs);
     if (i >= 0 && segs[i + 1] && TOKEN_RE.test(segs[i + 1]) && (i === 0 || (i === 1 && WTTJ_LANG_RE.test(segs[0])))) {
       if (segs[i + 2] === "jobs" && segs[i + 3]) return { source: "wttj", kind: "job", org: segs[i + 1], jobRef: segs[i + 3] };
       return { source: "wttj", kind: "company", org: segs[i + 1] };
@@ -606,7 +611,7 @@ export function wttjJobsFromLinks(links: PageLink[], companySlug: string): Sourc
     }
     if (u.hostname.toLowerCase().replace(/^www\./, "") !== "welcometothejungle.com") continue;
     const segs = pathSegments(u);
-    const i = segs.indexOf("companies");
+    const i = wttjCompaniesIndex(segs);
     if (i < 0 || segs[i + 1] !== companySlug || segs[i + 2] !== "jobs" || !segs[i + 3]) continue;
     const canonical = `${u.origin}/${segs.slice(0, i + 4).join("/")}`;
     const slug = segs[i + 3];
