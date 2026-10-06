@@ -604,6 +604,31 @@ test('Welcome to the Jungle : une adresse « companies-v1 » se lit comme une ad
   assert.doesNotMatch(offer.job.description, /DevOps Senior|Data Engineer|Ils recrutent aussi/);
 });
 
+test('flux : Welcome to the Jungle, les offres écrites dans les données de la page (sans lien) sont lues sans Firecrawl', async () => {
+  const page = 'https://www.welcometothejungle.com/fr/companies-v1/numspot/jobs';
+  const data = JSON.stringify({ jobs: [
+    { path: '/fr/companies-v1/numspot/jobs/expert-securite_courbevoie' },
+    { path: '/fr/companies-v1/numspot/jobs/devops-senior-kubernetes_paris' },
+    { path: '/fr/companies-v1/numspot/jobs/expert-securite_courbevoie' },
+    { path: '/fr/companies/autre-societe/jobs/data-engineer_lyon' },
+  ] }).replaceAll('/', '\\u002F');
+  const html = `<html><body><div id="__next"></div><script id="__NEXT_DATA__" type="application/json">${data}</script></body></html>`;
+  const net = fakeNet({ pages: { [page]: html } });
+  const r = await resolve(net, page);
+  assert.deepEqual([r.kind, r.reader, r.company.name], ['company', 'direct_text', 'Numspot']);
+  assert.deepEqual(r.jobs.map((j) => j.title), ['Expert Securite', 'Devops Senior Kubernetes'], 'sans doublon ni autre société');
+  assert.deepEqual(r.jobs.map((j) => j.location), ['Courbevoie', 'Paris']);
+  assert.equal(net.calls.scrape.length, 0);
+
+  // Même liste écrite avec des « \/ » (JSON échappé) : lue aussi.
+  const escaped = fakeNet({ pages: { [page]: html.replaceAll('\\u002F', '\\/') } });
+  assert.equal((await resolve(escaped, page)).jobs.length, 2);
+
+  // Rien pour cette société dans la page : toujours illisible, sans invention.
+  const other = fakeNet({ pages: { [page]: '<html><body><script>{"p":"/fr/companies/autre-societe/jobs/data-engineer_lyon"}</script></body></html>' }, firecrawl: false });
+  assert.equal((await resolve(other, page)).kind, 'unreadable');
+});
+
 test('flux : un JobPosting réduit à un résumé ne suffit pas, la page est lue plus loin', async () => {
   // La description de JSON_LD_PAGE fait une quarantaine de caractères : un résumé, pas une fiche.
   const md = `# Expert Sécurité Opérationnelle\n\n${LONG(1500)}`;

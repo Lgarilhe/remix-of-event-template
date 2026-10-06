@@ -638,6 +638,24 @@ export function wttjJobsFromLinks(links: PageLink[], companySlug: string): Sourc
   return jobs;
 }
 
+/**
+ * Adresses d'offres d'une société Welcome to the Jungle écrites dans le texte brut de la page
+ * (données JSON intégrées, `\u002F` compris), quand la liste n'est pas faite de liens <a>.
+ * Aucun titre n'y est lu : wttjJobsFromLinks le déduit de l'adresse.
+ */
+export function wttjLinksFromRawHtml(html: string): PageLink[] {
+  const text = (html ?? "").replace(/\\u002F/gi, "/").replace(/\\\//g, "/");
+  const re = /\/(?:[a-z]{2}\/)?companies(?:-v1)?\/[^/"'\\\s?#<>&]+\/jobs\/[^/"'\\\s?#<>&]+/gi;
+  const out: PageLink[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(re)) {
+    if (seen.has(m[0])) continue;
+    seen.add(m[0]);
+    out.push({ url: `https://www.welcometothejungle.com${m[0]}` });
+  }
+  return out;
+}
+
 const JOB_PATH_RE = /\/(jobs?|offres?|emplois?|careers?|carrieres|positions?|postings?|vacancies|opportunities|recrutement)\/[^/?#]{3,}/i;
 
 /** Liens d'offres d'une page société quelconque : même site, chemin de type /jobs/xyz, sans doublon. */

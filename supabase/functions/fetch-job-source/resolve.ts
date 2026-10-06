@@ -10,7 +10,7 @@ import {
   atsApiUrls, capDescription, classifyUrl, companyFromHost, decodeEntities, extractHtmlLinks,
   extractJsonLdJobs, firstMarkdownHeading, genericJobLinks, htmlToText, jobMarkdownText, jobPageText, looksThin, markdownToText,
   parseAshbyList, parseGreenhouseJob, parseGreenhouseList, parseLeverList, parseLeverPosting,
-  parseRecruiteeList, smartCapitalize, withoutDescriptions, wttjJobsFromLinks, MAX_LIST_JOBS,
+  parseRecruiteeList, smartCapitalize, withoutDescriptions, wttjJobsFromLinks, wttjLinksFromRawHtml, MAX_LIST_JOBS,
   type Classified, type PageLink, type SourceJob,
 } from "./readers.ts";
 
@@ -38,7 +38,7 @@ export interface Deps {
 
 /** Ce que chaque niveau a vu : écrit dans le journal, jamais renvoyé à l'écran. */
 export interface Trace {
-  direct?: { chars: number; ldJobs: number; links: number } | "failed";
+  direct?: { chars: number; ldJobs: number; links: number; jobsMentions: number; nextDataChars: number; title?: string } | "failed";
   firecrawl?: "not_configured" | "failed" | { markdownChars: number; links: number };
 }
 
@@ -175,7 +175,14 @@ async function readPage(url: URL, c: Classified, deps: Deps, trace: Trace): Prom
 
   if (html) {
     const ld = extractJsonLdJobs(html, url.toString());
-    trace.direct = { chars: html.length, ldJobs: ld.length, links: extractHtmlLinks(html, url.toString()).length };
+    trace.direct = {
+      chars: html.length,
+      ldJobs: ld.length,
+      links: extractHtmlLinks(html, url.toString()).length,
+      jobsMentions: (html.match(/\/jobs\b/g) ?? []).length,
+      nextDataChars: /<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i.exec(html)?.[1].length ?? 0,
+      title: pageTitle(html)?.slice(0, 80),
+    };
     const withText = ld.filter((j) => (j.description?.length ?? 0) >= MIN_DESCRIPTION_CHARS);
     if (c.kind !== "company" && withText.length === 1) {
       return c.source === "wttj" ? completeFromPage(url, withText[0], html, deps, c.jobRef) : { kind: "job", job: withText[0], reader: "json_ld" };
@@ -184,6 +191,9 @@ async function readPage(url: URL, c: Classified, deps: Deps, trace: Trace): Prom
     if (c.kind !== "job") {
       const list = listFromLinks(c, url, extractHtmlLinks(html, url.toString()));
       if (list.length) return companyResult(c, url, list, "direct_text");
+      // Welcome to the Jungle : les offres sont parfois dans les données intégrées à la page, sans lien <a>.
+      const embedded = c.source === "wttj" && c.org ? wttjJobsFromLinks(wttjLinksFromRawHtml(html), c.org) : [];
+      if (embedded.length) return companyResult(c, url, embedded, "direct_text");
     }
     if (c.kind !== "company") {
       const text = c.source === "wttj" ? jobPageText(html, c.jobRef) : htmlToText(html);
