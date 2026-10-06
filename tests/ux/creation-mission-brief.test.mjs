@@ -386,3 +386,28 @@ test('edge function : le brief structuré demandé au modèle est renvoyé, et u
   assert.match(server, /success: true,\s*degraded,/);
   assert.match(server, /degraded = true;/);
 });
+
+test('design : les tuiles de choix sont des cartes à coin de carte, pas des pilules', () => {
+  const choose = dialog.slice(dialog.indexOf('const ChooseMode'), dialog.indexOf('// ─── Mode Brief IA'));
+  assert.match(choose, /className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl p-5 text-left"/);
+  assert.doesNotMatch(choose, /rounded-full/);
+});
+
+test('texte : la consigne n\'est dite qu\'une fois, le panneau vide annonce ce qui sera retenu', () => {
+  const empty = code(panel);
+  assert.doesNotMatch(empty, /Collez la fiche de poste, puis lancez l'analyse/);
+  assert.match(empty, /Le poste, le lieu, l'expérience, le contrat et les compétences retenus par l'assistant s'afficheront ici\./);
+  const d = code(dialog);
+  assert.match(d, /placeholder=\{'Collez la fiche de poste ou décrivez le besoin\./);
+  assert.doesNotMatch(d, /glissez-déposez un fichier ou décrivez/, 'le glisser-déposer est dit sous le champ');
+  assert.match(d, /Fichier \.txt ou \.md, ou glisser-déposer/);
+  assert.match(d, /Une offre, ou la page emplois d'une société pour choisir parmi ses offres\./);
+});
+
+test('adresse : « companies-v1 » est reconnue comme « companies », et l\'échec dit quoi faire', () => {
+  const d = code(dialog);
+  assert.ok(d.includes(String.raw`/\/companies(?:-v1)?\/([a-z0-9-]+)\/jobs\/`), 'adresse d\'une offre');
+  assert.ok(d.includes(String.raw`/\/companies(?:-v1)?\/([a-z0-9-]+)/i`), 'adresse d\'une société');
+  assert.match(d, /Ouvrez une offre sur le site et collez son adresse ici, ou collez le texte de la fiche\./);
+  assert.match(d, /Collez l'adresse d'une offre précise, ou directement le texte de la fiche\./);
+});
