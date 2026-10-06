@@ -14,7 +14,7 @@
  * lu chez Aircall puis gardé, et l'analyse part en arrière-plan
  * (analyze-phone-call).
  */
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
 import { mapAircallCall } from '../_shared/aircall-call.ts';
 import { ingestAircallTranscript } from '../_shared/aircall-transcript-ingest.ts';
 import { callIdOfIntelligenceEvent } from '../_shared/aircall-transcript.ts';
@@ -76,7 +76,9 @@ Deno.serve(async (req) => {
       }).catch((err) => {
         console.warn('[aircall-webhook] analyse non lancée:', (err as { message?: string })?.message ?? err);
       });
-      try { (globalThis as any).EdgeRuntime?.waitUntil?.(analysis); } catch { /* sans waitUntil : l'analyse part quand même */ }
+      try {
+        (globalThis as { EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil?.(analysis);
+      } catch { /* sans waitUntil : l'analyse part quand même */ }
       return json({ ok: true, transcribed: true });
     }
 

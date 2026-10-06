@@ -126,7 +126,7 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                 if (!insight || insight.status !== 'done' || !insight.summary) return null;
                 return (
                   <div className="mt-1 space-y-1">
-                    <p className="text-xs text-foreground/80 line-clamp-3">{insight.summary}</p>
+                    <p className="text-xs text-foreground line-clamp-3">{insight.summary}</p>
                     {insight.tags.length > 0 && (
                       <div className="flex items-center gap-1 flex-wrap">
                         {insight.tags.map(tag => (

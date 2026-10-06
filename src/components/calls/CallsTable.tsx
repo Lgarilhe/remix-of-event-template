@@ -160,10 +160,11 @@ export const CallsTable = ({
               const tags = (insights.get(call.id)?.tags ?? []).slice(0, 3);
               return (
                 <li key={call.id}>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     onClick={() => onOpen(call)}
-                    className="flex w-full items-center gap-3 py-3 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-14"
+                    className="h-auto w-full justify-start gap-3 whitespace-normal rounded-none px-0 py-3 text-left font-normal hover:bg-muted/40 hover:text-foreground active:scale-100 max-md:min-h-14"
                   >
                     {known ? (
                       <PersonAvatar name={known.name ?? title} src={known.avatarUrl} candidateId={known.candidateId} size={36} />
@@ -188,7 +189,7 @@ export const CallsTable = ({
                         </span>
                       )}
                     </span>
-                  </button>
+                  </Button>
                 </li>
               );
             })}

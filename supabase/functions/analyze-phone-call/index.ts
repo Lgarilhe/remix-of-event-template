@@ -16,7 +16,8 @@
  * automatique est imputé à la personne qui a relié Aircall (à défaut, un
  * propriétaire de l'organisation), un appel manuel à son auteur.
  */
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
+type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth, verifyOrgMembership } from '../_shared/require-auth.ts';
 import { callClaudeCompat } from '../_shared/call-claude.ts';
 import { settleClaudeUsage } from '../_shared/settle-usage.ts';
@@ -52,7 +53,7 @@ const MAX_CONTACT_PAGES = 20;
  * missions. Rien si le numéro ne désigne qu'un seul candidat sans certitude :
  * l'analyse se fait alors sans contexte, jamais avec celui d'un autre.
  */
-async function loadCandidateContext(admin: any, organizationId: string, numberE164: string | null): Promise<CandidateContext | null> {
+async function loadCandidateContext(admin: SupabaseClient, organizationId: string, numberE164: string | null): Promise<CandidateContext | null> {
   if (!numberE164) return null;
 
   const contacts: Array<{ candidate_id: string; phone: string | null }> = [];
@@ -102,7 +103,7 @@ async function loadCandidateContext(admin: any, organizationId: string, numberE1
 }
 
 /** Qui paie une analyse lancée sans personne devant l'écran : celui qui a relié Aircall, sinon un propriétaire. */
-async function automaticPayer(admin: any, organizationId: string): Promise<string | null> {
+async function automaticPayer(admin: SupabaseClient, organizationId: string): Promise<string | null> {
   const { data: connection } = await admin
     .from('telephony_connections')
     .select('connected_by')

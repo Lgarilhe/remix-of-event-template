@@ -8,9 +8,12 @@
  * Les identifiants Aircall de l'organisation sont lus ici, côté serveur : ils ne
  * sont jamais renvoyés au navigateur (organization_integrations).
  */
+import type { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
 import { mapAircallCall } from './aircall-call.ts';
 import { parseAircallTranscription } from './aircall-transcript.ts';
 import { AIRCALL_API_BASE } from './telephony.ts';
+
+type SupabaseClient = ReturnType<typeof createClient>;
 
 export type IngestResult =
   /** Transcription gardée ; `callId` est l'identifiant de l'appel dans phone_calls. */
@@ -28,7 +31,7 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 }
 
 /** L'en-tête d'authentification Aircall de l'organisation, ou null si l'identifiant ou le jeton manque. */
-export async function loadAircallAuthHeader(admin: any, organizationId: string): Promise<string | null> {
+export async function loadAircallAuthHeader(admin: SupabaseClient, organizationId: string): Promise<string | null> {
   const { data, error } = await admin
     .from('organization_integrations')
     .select('aircall_api_id, aircall_api_token')
@@ -45,7 +48,7 @@ export async function loadAircallAuthHeader(admin: any, organizationId: string):
  * réception n'a pas vu (événement perdu) est relu chez Aircall et enregistré :
  * la transcription n'est jamais orpheline.
  */
-async function ensureCallRow(admin: any, organizationId: string, externalId: string, authHeader: string): Promise<string | 'none' | 'transient'> {
+async function ensureCallRow(admin: SupabaseClient, organizationId: string, externalId: string, authHeader: string): Promise<string | 'none' | 'transient'> {
   const lookup = () => admin
     .from('phone_calls')
     .select('id')
@@ -85,7 +88,7 @@ async function ensureCallRow(admin: any, organizationId: string, externalId: str
   return created?.id ? (created.id as string) : 'none';
 }
 
-export async function ingestAircallTranscript(admin: any, organizationId: string, externalCallId: string): Promise<IngestResult> {
+export async function ingestAircallTranscript(admin: SupabaseClient, organizationId: string, externalCallId: string): Promise<IngestResult> {
   const authHeader = await loadAircallAuthHeader(admin, organizationId);
   if (!authHeader) return { status: 'no_credentials' };
 

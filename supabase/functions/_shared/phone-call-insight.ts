@@ -113,12 +113,16 @@ const clean = (v: unknown, max: number): string | null => {
 
 const amount = (n: number) => Math.round(n).toLocaleString('fr-FR').replace(/\s/g, ' ');
 
-function salaryLabel(jd: any): string | null {
-  const min = typeof jd?.salary_min === 'number' ? jd.salary_min : null;
-  const max = typeof jd?.salary_max === 'number' ? jd.salary_max : null;
+type Json = Record<string, unknown>;
+
+const obj = (v: unknown): Json | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : null);
+
+function salaryLabel(jd: Json): string | null {
+  const min = typeof jd.salary_min === 'number' ? jd.salary_min : null;
+  const max = typeof jd.salary_max === 'number' ? jd.salary_max : null;
   if (min === null && max === null) return null;
-  const currency = clean(jd?.salary_currency, 6) ?? 'EUR';
-  const period = SALARY_PERIOD[jd?.salary_type as string] ?? 'par an';
+  const currency = clean(jd.salary_currency, 6) ?? 'EUR';
+  const period = SALARY_PERIOD[jd.salary_type as string] ?? 'par an';
   const range = min !== null && max !== null ? `${amount(min)} à ${amount(max)}` : `${amount((min ?? max) as number)}`;
   return `${range} ${currency} ${period}`;
 }
@@ -133,14 +137,14 @@ export interface MissionRow {
 
 /** Une mission mise en forme pour le modèle : le titre, le client, l'étape du candidat, et ce que la mission demande. */
 export function missionContextOf(project: MissionRow, generalStage: string | null): MissionContext {
-  const jd = (project.job_details && typeof project.job_details === 'object' ? project.job_details : {}) as any;
+  const jd = obj(project.job_details) ?? {};
   const must = Array.isArray(jd.skills_must_have)
     ? jd.skills_must_have.map((s: unknown) => clean(s, 40)).filter((s: string | null): s is string => !!s).slice(0, 6)
     : [];
   return {
     id: project.id,
     title: clean(jd.title, 120) ?? clean(project.job_title, 120) ?? clean(project.name, 120) ?? 'Mission',
-    client: clean(jd.client?.name, 80) ?? clean(project.client_name, 80),
+    client: clean(obj(jd.client)?.name, 80) ?? clean(project.client_name, 80),
     stage: generalStage ? STAGE_LABEL[generalStage] ?? null : null,
     location: clean(jd.location, 80),
     remote: REMOTE_LABEL[jd.remote_policy as string] ?? null,
@@ -297,8 +301,8 @@ const MAX_STEPS = 5;
  * fournie (`allowedMissionIds`), une rubrique inconnue, un texte trop long.
  */
 export function parseCallInsight(raw: string, allowedMissionIds: ReadonlyArray<string> = []): CallInsight | null {
-  const data = extractJson(raw ?? '') as any;
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const data = obj(extractJson(raw ?? ''));
+  if (!data) return null;
 
   const summary = cut(data.summary, 1200);
   if (!summary) return null;
@@ -312,19 +316,21 @@ export function parseCallInsight(raw: string, allowedMissionIds: ReadonlyArray<s
   }
 
   const facts: Partial<Record<FactKey, string>> = {};
-  if (data.facts && typeof data.facts === 'object' && !Array.isArray(data.facts)) {
+  const rawFacts = obj(data.facts);
+  if (rawFacts) {
     for (const key of FACT_KEYS) {
-      const value = cut(data.facts[key], FACT_MAX);
+      const value = cut(rawFacts[key], FACT_MAX);
       if (value) facts[key] = value;
     }
   }
 
   const next_steps: NextStep[] = [];
-  for (const s of Array.isArray(data.next_steps) ? data.next_steps : []) {
+  for (const item of Array.isArray(data.next_steps) ? data.next_steps : []) {
+    const s = obj(item);
     const action = cut(s?.action, 200);
-    if (!action) continue;
-    const owner = (NEXT_STEP_OWNERS as ReadonlyArray<string>).includes(s?.owner) ? (s.owner as NextStepOwner) : null;
-    next_steps.push({ action, owner, when: cut(s?.when, 80) });
+    if (!s || !action) continue;
+    const owner = (NEXT_STEP_OWNERS as ReadonlyArray<unknown>).includes(s.owner) ? (s.owner as NextStepOwner) : null;
+    next_steps.push({ action, owner, when: cut(s.when, 80) });
     if (next_steps.length >= MAX_STEPS) break;
   }
 

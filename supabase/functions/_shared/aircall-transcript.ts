@@ -46,10 +46,15 @@ const seconds = (v: unknown): number | null => {
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
 
+type Json = Record<string, unknown>;
+
+const obj = (v: unknown): Json | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : null);
+
 /** Identifiant de l'appel d'un événement `transcription.*` ou `summary.*` ; jamais `data.id`, qui est celui de la transcription. */
-export function callIdOfIntelligenceEvent(data: any): string | null {
-  if (!data || typeof data !== 'object') return null;
-  return text(data.call_id) ?? text(data.callId) ?? text(data.call?.id);
+export function callIdOfIntelligenceEvent(data: unknown): string | null {
+  const d = obj(data);
+  if (!d) return null;
+  return text(d.call_id) ?? text(d.callId) ?? text(obj(d.call)?.id);
 }
 
 const speakerOf = (participantType: unknown): Speaker => {
@@ -59,12 +64,14 @@ const speakerOf = (participantType: unknown): Speaker => {
   return 'unknown';
 };
 
-const findUtterances = (payload: any): unknown[] | null => {
+const findUtterances = (payload: unknown): unknown[] | null => {
+  const p = obj(payload);
+  const transcription = obj(p?.transcription);
   const candidates = [
-    payload?.transcription?.content?.utterances,
-    payload?.transcription?.utterances,
-    payload?.content?.utterances,
-    payload?.utterances,
+    obj(transcription?.content)?.utterances,
+    transcription?.utterances,
+    obj(p?.content)?.utterances,
+    p?.utterances,
   ];
   for (const c of candidates) if (Array.isArray(c)) return c;
   return null;
@@ -95,8 +102,9 @@ export function parseAircallTranscription(payload: unknown): ParsedTranscription
   }
   if (utterances.length === 0) return null;
 
-  const p = payload as any;
-  const language = text(p?.transcription?.language) ?? text(p?.transcription?.content?.language) ?? text(p?.language);
+  const p = obj(payload);
+  const transcription = obj(p?.transcription);
+  const language = text(transcription?.language) ?? text(obj(transcription?.content)?.language) ?? text(p?.language);
   return { utterances, language };
 }
 
