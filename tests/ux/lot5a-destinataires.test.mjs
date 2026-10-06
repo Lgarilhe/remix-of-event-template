@@ -219,7 +219,9 @@ test('5a — InMail groupé : case sur readyCount et premier InMail (objet et te
 test('5a — Récapitulatif : « Aperçu du premier message » avec ‹ ›, premier candidat prêt', () => {
   const summary = between(previewModal, 'function SummaryMode(', 'function SummaryRow(');
   assert.match(summary, /<FirstMessagePreviewBlock\s+preview=\{firstMessage\}\s+title="Aperçu du premier message"\s+navigation=\{firstMessageNavigation\}/);
-  assert.match(previewModal, /return messages\.length > 0 && messages\.every\(m => isReady\(p\.id, m\.step\.stepId\)\);/);
+  // Lot 5d-1 : une étape écrite est prête avec les valeurs du serveur (ou retouchée), une étape IA une fois générée.
+  assert.match(previewModal, /return messages\.length > 0 && messages\.every\(m => stepReady\(p\.id, m\.step\)\);/);
+  assert.match(previewModal, /: previewEntryOf\(candidateId\)\?\.status === 'ready' \|\| !!getPreview\(candidateId, step\.stepId\)\?\.isEdited\),/);
   assert.match(previewModal, /onNext: \(\) => setSummaryCandidateIndex\(Math\.min\(activeProfiles\.length - 1, summaryIndex \+ 1\)\),/);
   // Étape rédigée par l'IA non générée : annoncée, jamais inventée, avec sa génération.
   const firstFor = between(previewModal, 'const firstMessageFor = (profile: LinkedInProfile): FirstMessagePreview => {', '// Pied :');
