@@ -76,6 +76,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+---
+
+## 2026-10-06 — SHIP — Bandeau du kit : 44 px au doigt pour l'action et la croix
+
+**Contexte** : relevé par la recette de l'état vide de /missions (#294). Sur téléphone, le bandeau d'essai, présent en haut de chaque page pour une organisation dont l'essai se termine ou est terminé, offrait « Choisir un plan » sur 20 px de haut et une croix de 36 px, sous les 44 px de la règle des cibles au doigt.
+**Décision / Fait** :
+- `bannerActionClass` (`src/components/ui/banner.tsx`) : 44 px de haut sur téléphone (`max-md:min-h-11`), texte centré. Vaut pour toutes les actions de bandeau (« Choisir un plan », « Reconnecter », « Voir les offres », « Acheter des crédits »…).
+- Croix : dessin de 36 px gardé, zone invisible de 44 px (`::after`). Une croix de 44 px prenait 8 px au texte, qui passait sur une ligne de plus (bandeau de 137 à 157 px) ; avec la zone, le bandeau garde sa hauteur.
+- Rien ne change sur ordinateur (lien de 20 px, croix de 28 px).
+**Raison** : cibles de 44 px au doigt (01-direction.md), sans changer la mise en page.
+**Impact** : `src/components/ui/banner.tsx` seulement, donc tous les bandeaux du kit (essai, crédits bas, séquences). Test : `tests/ux/bandeau-cibles.test.mjs` (2 tests, nouveau, rendu statique).
+**Recette `qa.md`** (banc local, compte à l'essai terminé, rien d'enregistré) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Sophie | Téléphone 390 px : lien 97 × 44, croix 44 × 44, bandeau de 137 px comme avant ; la croix touchée 3 px au-dessus de son dessin ferme le bandeau | PASS |
+| Guillaume | « Choisir un plan » touché 4 px au-dessus du bas de sa zone : Abonnement et crédits s'ouvre | PASS |
+| Claire | Ordinateur 1 440 px : bandeau de 45 px, lien de 20 px et croix de 28 px, comme avant | PASS |
+| Théo | Écran de 320 px, texte du bandeau sur plusieurs lignes : aucun débordement, croix et lien dans l'écran | PASS |
+**Refs** : #294.
+
 ## 2026-10-05 — SHIP — Design simplifié, fin du lot M : l'état vide de /missions
 
 **Contexte** : dernier reste du lot M de `docs/design/06-simplicite.md`. Sans mission, /missions montrait l'ancien langage : titre en capitales, chiffres publicitaires (« 200M+ profils accessibles », « 45s », « 3x plus rapide »), deux grandes cartes animées (réseau de neurones, particules, bouton scintillant), une rangée de logos d'outils que Konekt ne relie pas (Slack, HubSpot, Salesforce), un lien « page carrières » sans action, et pas de titre de page.
