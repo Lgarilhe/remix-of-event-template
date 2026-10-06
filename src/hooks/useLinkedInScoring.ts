@@ -11,6 +11,7 @@ import { JobMatchResult, BatchScoringStats, isDegradedScore } from '@/components
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
 import { confirmAlert } from '@/lib/confirmAlert';
+import { serializeProfileForStorage } from '@/lib/serializeProfile';
 
 /**
  * Pour un profil Base Konekt (source==='database') affiché en aperçu (données
@@ -597,31 +598,6 @@ function mapScoringResult(raw: any): JobMatchResult {
     skippedLLM: raw.skippedLLM,
     processingTimeMs: raw.processingTimeMs,
     tokensUsed: raw.tokensUsed,
-  };
-}
-
-// Serialize profile for storage (keep essential data, skip huge fields)
-function serializeProfileForStorage(profile: LinkedInProfile): any {
-  return {
-    name: profile.name,
-    first_name: profile.first_name,
-    last_name: profile.last_name,
-    headline: profile.headline,
-    summary: profile.summary,
-    location: profile.location,
-    skills: profile.skills,
-    work_experience: (profile.work_experience || []).slice(0, 8),
-    education: profile.education,
-    languages: (profile as any).languages,
-    open_to_work: profile.open_to_work,
-    open_profile: profile.open_profile,
-    network_distance: profile.network_distance,
-    public_profile_url: profile.public_profile_url,
-    profile_url: profile.profile_url,
-    connections_count: profile.connections_count,
-    // Photo du candidat : sans elle, la note effaçait celle enregistrée à la découverte.
-    profile_picture_url: profile.profile_picture_url,
-    profile_picture_url_large: profile.profile_picture_url_large,
   };
 }
 
