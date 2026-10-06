@@ -140,16 +140,29 @@ test('front-editor-list-1 — désactivation : tout est en pause, is_active pass
     return { data: [{ id: 'seq-1' }], error: null };
   });
   const { toast, calls: toasts } = fakeToast();
+  // Lot 5b : le succès est annoncé par le toast « Annuler » (offerUndo), dont
+  // l'annulation ne reprend que les inscriptions rendues par l'écriture.
+  const undoToasts = [];
+  const undone = [];
   const deactivate = extract(list, 'deactivateSequence', {
     supabase, toast, candidats, console: quiet,
     setSequences: () => {}, setTogglingId: () => {}, fetchSequences: () => {},
     enrollmentsPanelAction: () => ({}),
+    sequences: [{ id: 'seq-1', project_id: 'p1' }],
+    sequencePauseToastTitle: (n) => `Séquence mise en pause : ${candidats(n)} en pause.`,
+    offerUndo: (options) => { undoToasts.push(options); },
+    undoSequencePause: async (...args) => { undone.push(args); },
   });
   await deactivate('seq-1');
   const seqUpdate = calls.find((c) => c.table === 'outreach_sequences');
   assert.deepEqual(op(seqUpdate, 'update'), ['update', { is_active: false }]);
   assert.ok(op(seqUpdate, 'select'), '.select(\'id\') pour détecter un refus');
-  assert.equal(toasts.find((t) => t.kind === 'success')?.title, 'Séquence désactivée. 1 candidat mis en pause.');
+  assert.equal(toasts.filter((t) => t.kind === 'error').length, 0);
+  assert.equal(undoToasts.length, 1);
+  assert.equal(undoToasts[0].title, 'Séquence mise en pause : 1 candidat en pause.');
+  assert.equal(undoToasts[0].description, null, 'séquence de la mission : pas d’avis de partage');
+  await undoToasts[0].onUndo();
+  assert.deepEqual(undone, [['seq-1', ['e1']]], '« Annuler » ne reprend que les inscriptions mises en pause');
 });
 
 test('front-editor-list-1 — D3 : ni désactivation ni pause groupée proposées à un collaborateur', () => {
@@ -170,13 +183,38 @@ test('front-editor-list-1 — pause groupée : il en reste en cours, jamais de s
     return { count: 3, error: null };
   });
   const { toast, calls: toasts } = fakeToast();
+  const offers = [];
   const bulkStop = extract(panel, 'bulkStopActive', {
     supabase, toast, sequenceId: 'seq-1', fetchEnrollments: async () => {}, console: quiet,
+    offerUndoPause: (options) => { offers.push(options); },
   });
   await bulkStop();
   assert.equal(toasts.filter((t) => t.kind === 'success').length, 0);
+  // Lot 5b : le résultat partiel est dit en avertissement, avec « Annuler » pour
+  // les seules inscriptions mises en pause.
+  assert.equal(offers.length, 1);
+  assert.equal(offers[0].title, '2 candidats mis en pause, 3 encore en cours');
+  assert.equal(offers[0].tone, 'warning');
+  assert.match(offers[0].description, /3 candidats en cours recevront encore des messages/);
+  assert.deepEqual(offers[0].enrollmentIds, ['e1', 'e2']);
+});
+
+test('front-editor-list-1 — pause groupée sans aucune mise en pause : erreur, ni succès ni « Annuler »', async () => {
+  const { supabase } = fakeSupabase((chain) => {
+    if (op(chain, 'update')) return { data: [], count: 0, error: null };
+    return { count: 3, error: null };
+  });
+  const { toast, calls: toasts } = fakeToast();
+  const offers = [];
+  const bulkStop = extract(panel, 'bulkStopActive', {
+    supabase, toast, sequenceId: 'seq-1', fetchEnrollments: async () => {}, console: quiet,
+    offerUndoPause: (options) => { offers.push(options); },
+  });
+  await bulkStop();
+  assert.equal(toasts.filter((t) => t.kind === 'success').length, 0);
+  assert.deepEqual(offers, []);
   const error = toasts.find((t) => t.kind === 'error');
-  assert.equal(error.title, '2 candidats mis en pause, 3 encore en cours');
+  assert.equal(error.title, 'Aucun candidat n’a été mis en pause');
   assert.match(error.options.description, /3 candidats en cours recevront encore des messages/);
 });
 

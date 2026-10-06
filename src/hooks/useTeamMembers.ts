@@ -11,9 +11,11 @@
  * Cache React Query 5min (stable, change rarement).
  */
 
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export interface TeamMember {
   userId: string;
@@ -89,4 +91,20 @@ export function useTeamMembers() {
   });
 
   return { members, isLoading };
+}
+
+/**
+ * Nom affiché d'un membre de l'organisation (nom, sinon e-mail), « vous » pour
+ * la personne connectée sans nom connu, null s'il est inconnu. Sert au statut
+ * d'un arrêt manuel (« Arrêtée par Claire Dubois le 05/10 », lot 5b).
+ */
+export function useMemberName(): (userId: string | null | undefined) => string | null {
+  const { members } = useTeamMembers();
+  const { user } = useAuthReady();
+  const currentUserId = user?.id ?? null;
+  return useCallback((userId: string | null | undefined) => {
+    if (!userId) return null;
+    const member = members.find((m) => m.userId === userId);
+    return member?.displayName || member?.email || (userId === currentUserId ? 'vous' : null);
+  }, [members, currentUserId]);
 }

@@ -39,7 +39,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { type ATSCandidate, daysInStage, stagnantDays } from '@/hooks/useATSData';
-import { enrollmentStatusLabel, pausedLabel } from '@/lib/sequenceLabels';
+import { enrollmentStatusLabel, manualStopLabel, pausedLabel } from '@/lib/sequenceLabels';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/relativeTime';
 
@@ -180,7 +180,9 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
             {candidate.sequenceName ? `Séquence « ${candidate.sequenceName} » :` : 'Séquence :'}
           </span>
           <span className="truncate">
-            {sequenceStatusText(signal.status)}
+            {signal.status === 'completed' && candidate.sequenceManualStop
+              ? manualStopLabel(candidate.sequenceManualStop, candidate.sequenceStoppedByName)
+              : sequenceStatusText(signal.status)}
             {signal.ago && `, ${signal.ago}`}
           </span>
         </>

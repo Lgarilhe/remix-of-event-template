@@ -130,6 +130,9 @@ export interface SequenceEnrollmentInfo {
   current_step_order: number;
   /** Raison d'une pause (compte déconnecté, limite atteinte…), dite par le badge de statut. */
   pause_reason?: string | null;
+  /** tracking_data.completion_reason et tracking_data.manual_stop : statut d'un arrêt manuel (lot 5b). */
+  completion_reason?: string | null;
+  manual_stop?: unknown;
   /** Config outreach de la mission (incarnation IA + anonymisation).
    *  Lue depuis sourcing_projects.job_details.outreach_config. */
   outreach_config?: {
@@ -635,7 +638,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     try {
       let query = supabase
         .from('sequence_enrollments')
-        .select('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason')
+        // Lot 5b : raison de fin et trace d'un arrêt manuel (« Arrêtée par … le … »).
+        // Ligne typée à la main : l'inférence des chemins JSON dépasse la profondeur de TypeScript.
+        .select<string, Omit<SequenceEnrollmentInfo, 'outreach_config' | 'client_name'>>('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop')
         .order('created_at', { ascending: false })
         .limit(500);
 
