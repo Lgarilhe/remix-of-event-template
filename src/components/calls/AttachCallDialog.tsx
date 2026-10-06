@@ -94,7 +94,9 @@ export const AttachCallDialog = ({
 
   return (
     <Dialog open={group !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      {/* grid-cols-[minmax(0,1fr)] : la fenêtre est une grille dont la colonne, sinon, s'élargit à la ligne la plus longue
+          (un intitulé LinkedIn de 150 caractères) et pousse le contenu hors du cadre ; ainsi les lignes se tronquent. */}
+      <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Rattacher à un candidat</DialogTitle>
           <DialogDescription>

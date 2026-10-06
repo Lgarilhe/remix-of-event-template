@@ -130,8 +130,8 @@ export const LinkedInCandidateFinder = ({
               <PersonAvatar name={person.name} src={person.pictureUrl} size={32} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{person.name}</p>
-                {person.headline && <p className="truncate text-xs text-muted-foreground">{person.headline}</p>}
-                {person.location && <p className="truncate text-xs text-muted-foreground">{person.location}</p>}
+                {person.headline && <p className="truncate text-xs text-muted-foreground" title={person.headline}>{person.headline}</p>}
+                {person.location && <p className="truncate text-xs text-muted-foreground" title={person.location}>{person.location}</p>}
               </div>
               <Button
                 type="button"

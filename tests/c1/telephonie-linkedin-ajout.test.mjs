@@ -196,6 +196,16 @@ test('ajout : retrouve l\'existant avant de visiter le profil, écrit une ligne 
   assert.match(lib, /partial: fullProfile === null/);
 });
 
+test('fenêtre Rattacher : un intitulé LinkedIn très long ne fait jamais déborder la fenêtre', () => {
+  // Constaté sur l'aperçu du 06/10 : DialogContent est une grille (colonne « auto »), un intitulé de
+  // 150 caractères en une ligne élargissait la colonne et poussait le contenu hors du cadre.
+  const dialog = read('src/components/calls/AttachCallDialog.tsx');
+  assert.match(dialog, /<DialogContent className="[^"]*grid-cols-\[minmax\(0,1fr\)\]/, 'colonne bornée à la largeur de la fenêtre');
+  const finder = read('src/components/calls/LinkedInCandidateFinder.tsx');
+  assert.match(finder, /<div className="min-w-0 flex-1">/, 'le texte d\'une ligne peut se rétrécir');
+  assert.match(finder, /className="truncate text-xs text-muted-foreground" title=\{person\.headline\}/, 'intitulé coupé, texte complet au survol');
+});
+
 test('fenêtre Rattacher : le choix LinkedIn n\'apparaît que sans candidat choisi, prérempli du nom connu', () => {
   const dialog = read('src/components/calls/AttachCallDialog.tsx');
   assert.match(dialog, /\{!candidate && \(/);
