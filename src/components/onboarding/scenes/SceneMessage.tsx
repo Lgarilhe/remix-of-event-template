@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import React, { useState } from 'react';
 import { PenLine, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,9 +7,6 @@ import { draftFirstMessage, DraftError, type DraftedMessage, type WritingTone } 
 import type { PreviewCandidate } from '@/lib/onboarding/search';
 import { NavRow } from '../parts/NavRow';
 import { SceneHeading } from '../parts/SceneHeading';
-import { useTypewriter } from '../stage/useTypewriter';
-import { SPRING_DROP, SPRING_SOFT } from '../stage/springs';
-import { useDelay } from '../stage/useDelay';
 
 interface Props {
   candidate: PreviewCandidate;
@@ -26,8 +22,6 @@ interface Props {
   /** Ton gardé (ou null : on passe). Le parcours l'écrit sur le profil. */
   onDone: (tone: WritingTone | null) => void;
   onBack: () => void;
-  /** Le bureau suit : l'avion trace sa route quand un brouillon existe. */
-  onDraft: (has: boolean) => void;
 }
 
 const TONES: Array<{ value: WritingTone; label: string; line: string }> = [
@@ -37,48 +31,30 @@ const TONES: Array<{ value: WritingTone; label: string; line: string }> = [
 
 const MAX_DRAFTS = 3;
 
-/** La lettre : papier crème, encre, le texte qui s'écrit à la vitesse d'un stylo rapide. */
-const Letter: React.FC<{ candidate: PreviewCandidate; text: string; typing: boolean }> = ({ candidate, text, typing }) => {
-  const reduced = useReducedMotion();
-  const { shown, done } = useTypewriter(text, { speed: 10, start: typing });
-  return (
-    <motion.figure
-      initial={reduced ? false : { opacity: 0, y: 30, rotate: -2 }}
-      animate={{ opacity: 1, y: 0, rotate: -0.6 }}
-      transition={SPRING_DROP}
-      className="rounded-md p-5 shadow-xl"
-      style={{ background: 'hsl(var(--paper))', color: 'hsl(var(--paper-ink))' }}
-    >
-      <figcaption className="mb-3 flex items-baseline justify-between gap-3 border-b pb-2 text-xs" style={{ borderColor: 'hsl(var(--paper-shade))', color: 'hsl(var(--paper-ink-soft))' }}>
-        <span>
-          À <strong className="font-semibold" style={{ color: 'hsl(var(--paper-ink))' }}>{candidate.name}</strong>
-        </span>
-        <span>Brouillon, rien n'est envoyé</span>
-      </figcaption>
-      <p className="whitespace-pre-line text-md leading-relaxed" aria-label={text}>
-        <span aria-hidden="true">
-          {shown}
-          {!done && <span className="ml-px inline-block h-4 w-px translate-y-0.5 animate-pulse" style={{ background: 'hsl(var(--paper-ink))' }} />}
-        </span>
-      </p>
-    </motion.figure>
-  );
-};
+/** Le brouillon : le message tel qu'il serait envoyé, avec la mention qu'il ne part pas. */
+const Letter: React.FC<{ candidate: PreviewCandidate; text: string }> = ({ candidate, text }) => (
+  <figure className="rounded-xl border border-border bg-card p-5">
+    <figcaption className="mb-3 flex items-baseline justify-between gap-3 border-b border-border pb-2 text-xs text-muted-foreground">
+      <span>
+        À <strong className="font-semibold text-foreground">{candidate.name}</strong>
+      </span>
+      <span>Brouillon, rien n'est envoyé</span>
+    </figcaption>
+    <p className="whitespace-pre-line text-md leading-relaxed text-foreground">{text}</p>
+  </figure>
+);
 
 /**
  * Un premier message, écrit pour un vrai candidat de l'aperçu, avec le ton
  * choisi. C'est aussi là que le ton se règle : il devient celui de tous les
  * messages que Konekt rédigera pour vous.
  */
-export const SceneMessage: React.FC<Props> = ({ candidate, missionId, jobTitle, client, skills, description, location, senderName, tone, onTone, onDone, onBack, onDraft }) => {
+export const SceneMessage: React.FC<Props> = ({ candidate, missionId, jobTitle, client, skills, description, location, senderName, tone, onTone, onDone, onBack }) => {
   const [draft, setDraft] = useState<DraftedMessage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<DraftError | null>(null);
   const [count, setCount] = useState(0);
   const chosen: WritingTone = tone ?? 'vous';
-  const d = useDelay();
-
-  useEffect(() => onDraft(!!draft), [draft, onDraft]);
 
   const write = async () => {
     setBusy(true);
@@ -103,50 +79,47 @@ export const SceneMessage: React.FC<Props> = ({ candidate, missionId, jobTitle, 
 
   return (
     <div className="space-y-6">
-      <SceneHeading eyebrow="Premiers résultats" title="Comment écrivez-vous aux candidats ?" accent={['écrivez-vous']}>
+      <SceneHeading title="Comment écrivez-vous aux candidats ?">
         <p>Choisissez le ton, et regardez ce que Konekt écrirait à {candidate.firstName}. Rien n'est envoyé.</p>
       </SceneHeading>
 
       <div role="radiogroup" aria-label="Ton des messages" className="grid gap-3 sm:grid-cols-2">
-        {TONES.map((t, i) => (
-          <motion.div key={t.value} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING_SOFT, delay: d(0.5 + i * 0.08) }}>
-            <Button
-              variant="outline"
-              role="radio"
-              aria-checked={chosen === t.value}
-              onClick={() => pickTone(t.value)}
-              className={cn(
-                'h-auto w-full flex-col items-start gap-0.5 whitespace-normal p-4 text-left font-normal',
-                chosen === t.value && 'border-brand bg-accent',
-              )}
-            >
-              <span className="text-base font-semibold text-foreground">{t.label}</span>
-              <span className="text-sm text-muted-foreground">{t.line}</span>
-            </Button>
-          </motion.div>
+        {TONES.map((t) => (
+          <Button
+            key={t.value}
+            variant="outline"
+            role="radio"
+            aria-checked={chosen === t.value}
+            onClick={() => pickTone(t.value)}
+            className={cn(
+              'h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl p-4 text-left font-normal',
+              chosen === t.value && 'border-foreground bg-accent',
+            )}
+          >
+            <span className="text-base font-semibold text-foreground">{t.label}</span>
+            <span className="text-sm text-muted-foreground">{t.line}</span>
+          </Button>
         ))}
       </div>
 
-      <AnimatePresence mode="wait">
-        {busy ? (
-          <motion.div key="busy" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2 rounded-md border border-border bg-card p-5" aria-busy="true">
-            <Skeleton className="h-3.5 w-1/3" />
-            <Skeleton className="h-3.5 w-full" />
-            <Skeleton className="h-3.5 w-11/12" />
-            <Skeleton className="h-3.5 w-2/3" />
-            <p role="status" className="pt-1 text-xs text-muted-foreground">Konekt lit le profil de {candidate.firstName} et rédige. De 5 à 15 secondes.</p>
-          </motion.div>
-        ) : draft ? (
-          <motion.div key={`draft-${count}`} exit={{ opacity: 0 }} className="space-y-3">
-            <Letter candidate={candidate} text={draft.message} typing />
-            {draft.points.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Repris de son profil : <span className="text-foreground-secondary">{draft.points.join(' · ')}</span>
-              </p>
-            )}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {busy ? (
+        <div className="space-y-2 rounded-xl border border-border bg-card p-5" aria-busy="true">
+          <Skeleton className="h-3.5 w-1/3" />
+          <Skeleton className="h-3.5 w-full" />
+          <Skeleton className="h-3.5 w-11/12" />
+          <Skeleton className="h-3.5 w-2/3" />
+          <p role="status" className="pt-1 text-xs text-muted-foreground">Konekt lit le profil de {candidate.firstName} et rédige. De 5 à 15 secondes.</p>
+        </div>
+      ) : draft ? (
+        <div className="space-y-3">
+          <Letter candidate={candidate} text={draft.message} />
+          {draft.points.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Repris de son profil : <span className="text-foreground-secondary">{draft.points.join(' · ')}</span>
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {error && (
         <p role="alert" className="rounded-lg border border-border bg-card p-3 text-sm text-foreground-secondary">
@@ -155,7 +128,7 @@ export const SceneMessage: React.FC<Props> = ({ candidate, missionId, jobTitle, 
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant={draft ? 'outline' : 'primary'} size={draft ? 'default' : 'lg'} onClick={() => void write()} disabled={busy || limitReached || error?.kind === 'credits'}>
+        <Button variant="outline" onClick={() => void write()} disabled={busy || limitReached || error?.kind === 'credits'}>
           {draft ? <RefreshCw aria-hidden="true" /> : <PenLine aria-hidden="true" />}
           {draft ? `Réécrire en ${chosen === 'tu' ? 'tutoyant' : 'vouvoyant'}` : `Voir un exemple pour ${candidate.firstName}`}
         </Button>

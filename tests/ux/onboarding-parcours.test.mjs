@@ -1,20 +1,26 @@
 /**
- * Onboarding en scènes : un vrai premier recrutement (prénom, espace, poste,
- * brief lu par l'IA, mission, LinkedIn, premiers candidats, premier message).
+ * Onboarding en scènes : un vrai premier recrutement (prénom et espace, poste,
+ * brief lu par l'IA, mission, LinkedIn, premiers candidats, premier message),
+ * sans décor ni mouvement (docs/design/01-direction.md, § 11).
  *
  * Les modules purs (src/lib/onboarding, onboardingMeta) sont transpilés en
- * mémoire par esbuild, comme dans linkedin-status.test.mjs. Les scènes, les
- * hooks et le bureau sont vérifiés par inspection de source.
+ * mémoire par esbuild, comme dans linkedin-status.test.mjs. Les scènes et les
+ * hooks sont vérifiés par inspection de source.
  *
  * Lancer : npm run test:ux
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 
 const ROOT = new URL('../../', import.meta.url);
+/** Chemin disque d'un fichier du dépôt (valable sous Windows comme ailleurs). */
+const pathOf = (rel) => fileURLToPath(new URL(rel, ROOT));
+/** Chemin d'un fichier absolu, relatif à la racine, avec des barres obliques. */
+const relOf = (abs) => relative(fileURLToPath(ROOT), abs).split(sep).join('/');
 const read = (rel) => readFileSync(new URL(rel, ROOT), 'utf8');
 /** Code sans commentaires : les commentaires citent parfois ce qu'on interdit. */
 const code = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
@@ -40,10 +46,10 @@ function walk(dir) {
   return out;
 }
 const onboardingFiles = [
-  ...walk(new URL('src/components/onboarding/', ROOT).pathname),
-  ...walk(new URL('src/lib/onboarding/', ROOT).pathname),
-  ...walk(new URL('src/hooks/onboarding/', ROOT).pathname),
-  new URL('src/pages/Onboarding.tsx', ROOT).pathname,
+  ...walk(pathOf('src/components/onboarding/')),
+  ...walk(pathOf('src/lib/onboarding/')),
+  ...walk(pathOf('src/hooks/onboarding/')),
+  pathOf('src/pages/Onboarding.tsx'),
 ];
 
 // ------------------------------------------------------------------ prénom
@@ -171,17 +177,47 @@ test('Société : postes dédoublonnés, fiche sans fournisseur, contexte sans i
 });
 
 // ------------------------------------------------------------------ parcours
-test('Parcours : cinq actes, une fin, et un raccourci quand LinkedIn est remis à plus tard', () => {
-  assert.deepEqual(meta.ACTS.map((a) => a.id), ['you', 'space', 'role', 'linkedin', 'results']);
+test('Parcours : quatre étapes, une fin, et un raccourci quand LinkedIn est remis à plus tard', () => {
+  assert.deepEqual(meta.ACTS.map((a) => a.id), ['you', 'role', 'linkedin', 'results']);
   const full = meta.buildFlow({ linkedinSkipped: false });
-  assert.deepEqual(full, ['hello', 'profile', 'structure', 'role', 'brief', 'linkedin', 'candidates', 'message', 'finale']);
+  assert.deepEqual(full, ['you', 'role', 'brief', 'linkedin', 'candidates', 'message', 'finale']);
   const short = meta.buildFlow({ linkedinSkipped: true });
-  assert.deepEqual(short, ['hello', 'profile', 'structure', 'role', 'brief', 'linkedin', 'finale']);
+  assert.deepEqual(short, ['you', 'role', 'brief', 'linkedin', 'finale']);
   for (const scene of full) assert.ok(meta.actIndexOf(scene) >= 0);
-  assert.equal(meta.actIndexOf('finale'), meta.ACTS.length, 'à la fin, tous les actes sont cochés');
+  assert.equal(meta.actIndexOf('finale'), meta.ACTS.length, 'à la fin, toutes les étapes sont cochées');
   assert.equal(meta.progressOf(full, 'finale'), 100);
-  assert.ok(meta.progressOf(full, 'profile') < meta.progressOf(full, 'brief'));
-  assert.ok(meta.remainingMinutes(full, 'hello') >= 3 && meta.remainingMinutes(full, 'hello') <= 5);
+  assert.ok(meta.progressOf(full, 'role') < meta.progressOf(full, 'brief'));
+  assert.ok(meta.remainingMinutes(full, 'you') >= 3 && meta.remainingMinutes(full, 'you') <= 5);
+});
+
+test('Reprise : une scène d’un ancien parcours n’existe plus, on repart du début', () => {
+  for (const scene of meta.buildFlow({ linkedinSkipped: false })) assert.ok(meta.isSceneKey(scene));
+  for (const old of ['hello', 'profile', 'structure', 'ghost', null, 3]) assert.equal(meta.isSceneKey(old), false);
+  const storage = read('src/components/onboarding/onboardingStorage.ts');
+  assert.match(storage, /konekt_onboarding_progress_v8/);
+  assert.match(storage, /LEGACY_STORAGE_KEYS = \[[^\]]*progress_v7/s, 'la progression de l’ancien parcours est effacée');
+  assert.match(storage, /!isSceneKey\(parsed\.scene\)/);
+});
+
+test('Première scène : prénom, type d’espace et nom en un seul écran, l’espace créé à la validation', () => {
+  const scene = code('src/components/onboarding/scenes/SceneYou.tsx');
+  assert.match(scene, /await onSaveFirstName\(\);[\s\S]*createOrganization\(/, 'le prénom est écrit avant la création');
+  assert.match(scene, /confirmSecond: confirmSecond \|\| allowSecondWorkspace/);
+  assert.match(scene, /role="radiogroup"/);
+  assert.match(scene, /disabled=\{!!createdOrgId && !picked\}/, 'un espace créé garde son type');
+  for (const gone of ['SceneHello', 'SceneProfile', 'SceneStructure']) {
+    assert.throws(() => read(`src/components/onboarding/scenes/${gone}.tsx`), `${gone} est fusionnée dans SceneYou`);
+  }
+});
+
+test('Fin : quatre fonctions en ligne teasées, aucune annonce de ce qui n’existe pas encore', () => {
+  const finale = read('src/components/onboarding/scenes/SceneFinale.tsx');
+  assert.equal((finale.match(/key: '/g) ?? []).length, 4);
+  for (const title of ["Assistant d'entretien en direct", 'Appels transcrits et analysés', 'Une adresse web suffit', 'La carte « Maintenant »']) {
+    assert.ok(finale.includes(title), title);
+  }
+  assert.doesNotMatch(finale, /bientôt|prochainement/i);
+  assert.match(finale, /Ouvrir ma mission/);
 });
 
 // ------------------------------------------------------------------ garde-fous de source
@@ -253,7 +289,7 @@ test('Message : rien n’est envoyé, le ton passe par le serveur', () => {
   assert.match(scene, /rien n'est envoyé/i);
 });
 
-test('Champ à trous : un prénom proposé après le focus se remplace en tapant', () => {
+test('Champ de saisie : un prénom proposé après le focus se remplace en tapant', () => {
   // Le prénom deviné arrive dans un effet, après l'autofocus : sélectionner au focus seulement
   // porterait sur un champ vide, et la frappe s'ajouterait (« LaurentLaurent »).
   const src = read('src/components/onboarding/parts/FillIn.tsx');
@@ -261,29 +297,17 @@ test('Champ à trous : un prénom proposé après le focus se remplace en tapant
   assert.match(src, /useEffect\(\(\) => \{[^}]*\.select\(\)/s, 'la sélection est reposée quand la valeur arrive');
 });
 
-test('Le bureau reste collé : aucun conteneur de défilement au-dessus de lui', () => {
-  // position: sticky se rattache au plus proche ancêtre qui défile. Un overflow-x: hidden ou auto
-  // sur le plateau, html ou body le rend inerte : le bureau partirait avec la page sur les scènes longues.
-  const stage = read('src/components/onboarding/stage/Stage.tsx');
-  assert.match(stage, /lg:sticky/);
-  assert.match(stage, /min-h-screen flex-col overflow-x-clip/, 'le plateau coupe sans défiler');
-  assert.match(stage, /classList\.add\('stage-open'\)/);
-  assert.match(read('src/index.css'), /html\.stage-open,\s*html\.stage-open body \{\s*overflow-x: clip;/);
-});
-
-test('Le bureau : des variables de thème, pas de couleur en dur, et le mouvement réduit respecté', () => {
-  const desk = code('src/components/onboarding/stage/Desk.tsx');
-  assert.doesNotMatch(desk, /#[0-9a-fA-F]{6}\b/, 'papier et encre viennent des variables --paper*');
-  assert.match(read('src/index.css'), /--paper: /);
-  // Chaque retard d'entrée passe par useDelay : avec le mouvement réduit, rien n'attend son tour.
-  const files = walk(new URL('src/components/onboarding/', ROOT).pathname).filter((f) => /\/(scenes|parts)\//.test(f));
-  for (const file of files) {
-    const src = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-    assert.doesNotMatch(src, /delay: \d/, `${file} : retard écrit en dur`);
-    assert.doesNotMatch(src, /delay=\{\d/, `${file} : retard écrit en dur`);
+test('Sobriété : aucun mouvement, aucun bureau, aucune lampe qui suit le pointeur', () => {
+  // Décision du propriétaire du 06/10/2026 : l'exception d'animation du 29/09 est retirée.
+  assert.throws(() => readdirSync(pathOf('src/components/onboarding/stage/')), 'le dossier stage/ (bureau, ressorts, confettis) n’existe plus');
+  for (const file of onboardingFiles) {
+    const src = code(relOf(file));
+    assert.doesNotMatch(src, /framer-motion/, `${file} : plus d'animation`);
+    assert.doesNotMatch(src, /useReducedMotion|AnimatePresence|SPRING_|EASE_OUT/, `${file} : plus de ressort`);
   }
-  assert.match(read('src/components/onboarding/stage/Confetti.tsx'), /useReducedMotion\(\)/);
-  assert.match(read('src/components/onboarding/stage/Desk.tsx'), /\(hover: hover\) and \(pointer: fine\)/, 'le glisser-déposer est réservé à la souris');
+  const css = read('src/index.css');
+  assert.doesNotMatch(css, /stage-open/);
+  assert.doesNotMatch(css, /--paper/);
 });
 
 test('Marque : aucun fournisseur dans les textes de l’onboarding', () => {
@@ -298,7 +322,7 @@ test('Marque : aucun fournisseur dans les textes de l’onboarding', () => {
 
 test('Texte : vouvoiement, pas de tiret long, pas d’emoji dans l’interface', () => {
   for (const file of onboardingFiles) {
-    const src = code(file.replace(new URL('.', ROOT).pathname, ''));
+    const src = code(relOf(file));
     assert.doesNotMatch(src, /—/, `${file} : tiret long`);
     assert.doesNotMatch(src, /\p{Extended_Pictographic}/u, `${file} : emoji`);
   }

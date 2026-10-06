@@ -1,16 +1,18 @@
-import type { OrgType, SceneKey } from './onboardingMeta';
+import { isSceneKey, type OrgType, type SceneKey } from './onboardingMeta';
 import type { WritingTone } from '@/lib/onboarding/outreach';
 import type { BriefDraft } from '@/lib/onboarding/brief';
 
 // ⚠️ Bumper la version à chaque changement de forme du parcours (ajout ou
 // retrait de scènes) : une progression enregistrée sur l'ancien parcours serait
 // ignorée plutôt que de pointer sur la mauvaise scène.
-// v7 : parcours en scènes (hello → profile → structure → role → brief → linkedin → candidates → message → finale).
-const STORAGE_KEY = 'konekt_onboarding_progress_v7';
+// v7 : neuf scènes (hello, profile, structure, role, brief, linkedin, candidates, message, finale).
+// v8 : sept scènes sans bureau animé (you, role, brief, linkedin, candidates, message, finale).
+const STORAGE_KEY = 'konekt_onboarding_progress_v8';
 const LEGACY_STORAGE_KEYS = [
   'konekt_onboarding_progress_v4',
   'konekt_onboarding_progress_v5',
   'konekt_onboarding_progress_v6',
+  'konekt_onboarding_progress_v7',
 ];
 
 export interface PersistedProgress {
@@ -42,7 +44,7 @@ export function loadOnboardingProgress(): PersistedProgress | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedProgress;
-    if (typeof parsed !== 'object' || parsed === null || typeof parsed.scene !== 'string') return null;
+    if (typeof parsed !== 'object' || parsed === null || !isSceneKey(parsed.scene)) return null;
     return parsed;
   } catch {
     return null;

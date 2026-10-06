@@ -1,5 +1,4 @@
 import React, { useId, useMemo } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LookupState } from '@/hooks/onboarding/useCompanyLookup';
@@ -8,8 +7,6 @@ import { CompanyCard } from '../parts/CompanyCard';
 import { FillIn } from '../parts/FillIn';
 import { NavRow } from '../parts/NavRow';
 import { SceneHeading } from '../parts/SceneHeading';
-import { SPRING_SOFT } from '../stage/springs';
-import { useDelay } from '../stage/useDelay';
 
 const EXAMPLE_TITLES = ['Développeur back-end senior', 'Product Manager', 'Responsable comptable', 'Commercial grands comptes', 'Data Analyst'];
 
@@ -55,7 +52,6 @@ export const SceneRole: React.FC<Props> = ({
 }) => {
   const titleId = useId();
   const clientId = useId();
-  const d = useDelay();
   const needsClient = orgType !== 'enterprise';
   const ready = title.trim().length >= 3;
 
@@ -64,7 +60,7 @@ export const SceneRole: React.FC<Props> = ({
 
   return (
     <div className="space-y-7">
-      <SceneHeading eyebrow="Votre poste" title="Quel est votre premier poste ?" accent={['premier']}>
+      <SceneHeading title="Quel est votre premier poste ?">
         <p>
           {locked
             ? 'La mission est créée. Le poste et le client se modifient depuis la mission.'
@@ -74,18 +70,16 @@ export const SceneRole: React.FC<Props> = ({
         </p>
       </SceneHeading>
 
-      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING_SOFT, delay: d(0.55) }} className="space-y-5">
+      <div className="space-y-5">
         {needsClient && (
           <FillIn
             id={clientId}
-            lead="Pour le client"
-            label="nom du client, facultatif"
+            lead="Client (facultatif)"
             value={client}
             onChange={onClientChange}
             onSubmit={() => onClientCommit(client)}
-            placeholder="facultatif"
+            placeholder="Nom du client"
             maxLength={80}
-            size="md"
             disabled={locked}
             autoFocus={!locked}
           />
@@ -98,56 +92,49 @@ export const SceneRole: React.FC<Props> = ({
         >
           <FillIn
             id={titleId}
-            lead="Je cherche"
-            label="intitulé du poste"
+            lead="Poste recherché"
             value={title}
             onChange={onTitleChange}
             onSubmit={() => ready && onSubmit()}
-            placeholder="intitulé du poste"
-            examples={EXAMPLE_TITLES}
+            placeholder={`Par exemple : ${EXAMPLE_TITLES[0]}`}
             maxLength={100}
             autoFocus={!needsClient && !locked}
-            size="md"
             disabled={locked}
           />
         </div>
-      </motion.div>
+      </div>
 
       <div className="space-y-3">
-        <AnimatePresence mode="wait">
-          {openRoles.length > 0 ? (
-            <motion.div key="roles" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={SPRING_SOFT} className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Postes ouverts chez {lookup.status === 'ready' ? lookup.company.name : companyName}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {openRoles.map((role, i) => (
-                  <motion.span key={role.title} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ ...SPRING_SOFT, delay: d(i * 0.05) }}>
-                    <Button variant="outline" size="sm" onClick={() => onTitleChange(role.title)} className="h-auto max-w-full whitespace-normal py-1.5 text-left">
-                      <Briefcase aria-hidden="true" />
-                      <span className="min-w-0 truncate">{role.title}</span>
-                    </Button>
-                  </motion.span>
-                ))}
-              </div>
-            </motion.div>
-          ) : loadingRoles ? (
-            <motion.p key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-xs text-muted-foreground">
-              Recherche des postes ouverts chez {lookup.name}… Les suggestions apparaîtront ici.
-            </motion.p>
-          ) : (
-            <motion.div key="examples" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Pas d'idée ? Essayez :</p>
-              <div className="flex flex-wrap gap-2">
-                {EXAMPLE_TITLES.slice(0, 4).map((example) => (
-                  <Button key={example} variant="outline" size="sm" onClick={() => onTitleChange(example)}>
-                    {example}
-                  </Button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {openRoles.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Postes ouverts chez {lookup.status === 'ready' ? lookup.company.name : companyName}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {openRoles.map((role) => (
+                <Button key={role.title} variant="outline" size="sm" onClick={() => onTitleChange(role.title)} className="h-auto max-w-full whitespace-normal py-1.5 text-left">
+                  <Briefcase aria-hidden="true" />
+                  <span className="min-w-0 truncate">{role.title}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : loadingRoles ? (
+          <p className="text-xs text-muted-foreground">
+            Recherche des postes ouverts chez {lookup.name}… Les suggestions apparaîtront ici.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Pas d'idée ? Essayez :</p>
+            <div className="flex flex-wrap gap-2">
+              {EXAMPLE_TITLES.slice(0, 4).map((example) => (
+                <Button key={example} variant="outline" size="sm" onClick={() => onTitleChange(example)}>
+                  {example}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <CompanyCard lookup={lookup} onPick={onPickCandidate} onNone={onNoCandidate} onRetry={onRetryLookup} />
       </div>

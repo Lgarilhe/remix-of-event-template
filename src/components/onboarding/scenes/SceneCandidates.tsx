@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { RefreshCw } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Check, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFirstSearch, type PreviewResults } from '@/hooks/onboarding/useFirstSearch';
@@ -8,39 +7,32 @@ import type { OnboardingLinkedInAccount } from '@/lib/onboarding/linkedin';
 import { CandidateRow } from '../parts/CandidateRow';
 import { NavRow } from '../parts/NavRow';
 import { SceneHeading } from '../parts/SceneHeading';
-import { CountUp } from '../stage/CountUp';
-import { SPRING_SOFT } from '../stage/springs';
-import { useDelay } from '../stage/useDelay';
 
 interface Props {
   missionId: string;
   account: OnboardingLinkedInAccount;
   results: PreviewResults | null;
   onResults: (results: PreviewResults) => void;
+  /** Nombre de compétences retenues au brief et lieu cherché : ce que l'assistant a fait, en toutes lettres. */
+  skillsCount: number;
+  location: string | null;
   onWriteFirst: () => void;
   onSkip: () => void;
   onBack: () => void;
-  /** Le bureau suit : la loupe cherche pendant l'attente, se pose sur les fiches ensuite. */
-  onScanning: (scanning: boolean) => void;
 }
 
 const VISIBLE = 6;
+
+const formatCount = (n: number) => n.toLocaleString('fr-FR');
 
 /**
  * Les premiers candidats : la vraie recherche, sur le vrai compte, avec les
  * filtres du brief. Les cartes arrivent d'abord, les scores ensuite, et les
  * cartes se réordonnent quand ils tombent.
  */
-export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, onResults, onWriteFirst, onSkip, onBack, onScanning }) => {
+export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, onResults, skillsCount, location, onWriteFirst, onSkip, onBack }) => {
   const { state, retry } = useFirstSearch({ missionId, account: { id: account.id, subscriptions: account.subscriptions }, initial: results, onResults });
 
-  useEffect(() => {
-    onScanning(state.status === 'loading');
-  }, [state.status, onScanning]);
-  // Quitter la scène pendant la recherche ne laisse pas la loupe tourner sur le bureau.
-  useEffect(() => () => onScanning(false), [onScanning]);
-
-  const d = useDelay();
   const ready = state.status === 'ready' ? state.results : null;
   const ordered = useMemo(() => {
     if (!ready) return [];
@@ -52,22 +44,34 @@ export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, 
   const total = ready?.total ?? null;
   const count = ready?.candidates.length ?? 0;
 
+  // Ce que Konekt a fait, sans rien inventer : chaque ligne repose sur un chiffre réel de la recherche.
+  const done: string[] = [];
+  if (skillsCount > 0) done.push(`A lu le poste et retenu ${skillsCount} compétence${skillsCount > 1 ? 's' : ''}`);
+  if (ready && count > 0) {
+    done.push(
+      total && total > count
+        ? `A cherché sur LinkedIn${location ? ` autour de ${location}` : ''} : ${formatCount(total)} profils correspondent`
+        : `A cherché sur LinkedIn${location ? ` autour de ${location}` : ''} : ${count} profil${count > 1 ? 's' : ''} trouvé${count > 1 ? 's' : ''}`,
+    );
+    if (ready.scoring === 'done') done.push(`A noté les ${Math.min(count, VISIBLE)} premiers par rapport au brief`);
+  }
+
   return (
     <div className="space-y-6">
       {state.status === 'loading' && (
         <>
-          <SceneHeading eyebrow="Premiers résultats" title="Je cherche vos premiers candidats." accent={['premiers']}>
+          <SceneHeading title="Je cherche vos premiers candidats.">
             <p>Recherche sur LinkedIn avec les filtres du brief. Quelques secondes.</p>
           </SceneHeading>
           <ul className="space-y-3" aria-busy="true" aria-label="Recherche en cours">
             {[0, 1, 2, 3].map((i) => (
-              <motion.li key={i} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING_SOFT, delay: d(0.4 + i * 0.1) }} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+              <li key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                 <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
                 <div className="flex-1 space-y-1.5">
                   <Skeleton className="h-3.5 w-1/3" />
                   <Skeleton className="h-3 w-2/3" />
                 </div>
-              </motion.li>
+              </li>
             ))}
           </ul>
         </>
@@ -75,7 +79,7 @@ export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, 
 
       {state.status === 'error' && (
         <>
-          <SceneHeading eyebrow="Premiers résultats" title="La recherche n'a pas abouti." accent={['abouti']}>
+          <SceneHeading title="La recherche n'a pas abouti.">
             <p>{state.message}</p>
           </SceneHeading>
           <div className="flex flex-wrap gap-2">
@@ -95,40 +99,37 @@ export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, 
       {ready && (
         <>
           {count > 0 ? (
-            <header>
-              <p className="eyebrow">Premiers résultats</p>
-              <h1 className="mt-3 font-brand text-4xl font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-5xl">
-                {total && total > count ? (
-                  <>
-                    <CountUp value={total} className="text-brand" /> profils ressemblent à ce poste.
-                  </>
-                ) : (
-                  <>
-                    Voici vos <span className="text-brand">premiers candidats</span>.
-                  </>
-                )}
-              </h1>
-              <p className="mt-4 max-w-lg text-md text-foreground-secondary" aria-live="polite">
+            <SceneHeading title={total && total > count ? `${formatCount(total)} profils ressemblent à ce poste.` : 'Voici vos premiers candidats.'}>
+              <p aria-live="polite">
                 {ready.scoring === 'pending'
                   ? "L'IA Konekt lit les profils et les note par rapport au brief…"
                   : ready.scoring === 'done'
                     ? 'Classés par adéquation avec votre brief, avec la raison en une ligne.'
                     : `Aperçu des ${count} premiers résultats.`}
               </p>
-            </header>
+            </SceneHeading>
           ) : (
-            <SceneHeading eyebrow="Premiers résultats" title="Aucun profil avec ces filtres." accent={['Aucun']}>
+            <SceneHeading title="Aucun profil avec ces filtres.">
               <p>Rien d'anormal : le brief est peut-être trop précis. Vous pourrez l'élargir depuis la mission.</p>
             </SceneHeading>
           )}
 
+          {done.length > 0 && (
+            <ul className="space-y-1.5 text-sm text-foreground-secondary" aria-label="Ce que Konekt a fait">
+              {done.map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           {ordered.length > 0 && (
             <ul className="space-y-2.5" aria-label="Premiers candidats">
-              <AnimatePresence initial>
-                {ordered.map((c, i) => (
-                  <CandidateRow key={c.id} candidate={c} index={i} score={ready.scores[c.id]} scoring={ready.scoring} />
-                ))}
-              </AnimatePresence>
+              {ordered.map((c) => (
+                <CandidateRow key={c.id} candidate={c} score={ready.scores[c.id]} scoring={ready.scoring} />
+              ))}
             </ul>
           )}
 

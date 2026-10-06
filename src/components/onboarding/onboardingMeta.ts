@@ -1,17 +1,8 @@
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-export type SceneKey =
-  | 'hello'
-  | 'profile'
-  | 'structure'
-  | 'role'
-  | 'brief'
-  | 'linkedin'
-  | 'candidates'
-  | 'message'
-  | 'finale';
+export type SceneKey = 'you' | 'role' | 'brief' | 'linkedin' | 'candidates' | 'message' | 'finale';
 
-/** Les cinq actes du fil, du haut de l'écran : chacun regroupe une ou deux scènes. */
+/** Les quatre étapes du fil, en haut de l'écran : chacune regroupe une ou deux scènes. */
 export interface ActDef {
   id: string;
   label: string;
@@ -19,14 +10,13 @@ export interface ActDef {
 }
 
 export const ACTS: ActDef[] = [
-  { id: 'you', label: 'Vous', scenes: ['hello', 'profile'] },
-  { id: 'space', label: 'Votre espace', scenes: ['structure'] },
+  { id: 'you', label: 'Vous et votre espace', scenes: ['you'] },
   { id: 'role', label: 'Votre poste', scenes: ['role', 'brief'] },
   { id: 'linkedin', label: 'LinkedIn', scenes: ['linkedin'] },
-  { id: 'results', label: 'Premiers résultats', scenes: ['candidates', 'message'] },
+  { id: 'results', label: 'Premiers profils', scenes: ['candidates', 'message'] },
 ];
 
-const FULL_FLOW: SceneKey[] = ['hello', 'profile', 'structure', 'role', 'brief', 'linkedin', 'candidates', 'message', 'finale'];
+const FULL_FLOW: SceneKey[] = ['you', 'role', 'brief', 'linkedin', 'candidates', 'message', 'finale'];
 
 /**
  * Le parcours. Sans LinkedIn relié, il n'y a rien à chercher : la recherche et
@@ -36,7 +26,12 @@ export function buildFlow(opts: { linkedinSkipped: boolean }): SceneKey[] {
   return opts.linkedinSkipped ? FULL_FLOW.filter((s) => s !== 'candidates' && s !== 'message') : FULL_FLOW;
 }
 
-/** Index de l'acte d'une scène ; la fin dépasse le dernier acte (tous cochés). */
+/** Une scène enregistrée par un ancien parcours (ou inconnue) n'existe plus : on repart du début. */
+export function isSceneKey(value: unknown): value is SceneKey {
+  return typeof value === 'string' && (FULL_FLOW as string[]).includes(value);
+}
+
+/** Index de l'étape d'une scène ; la fin dépasse la dernière étape (toutes cochées). */
 export function actIndexOf(scene: SceneKey): number {
   if (scene === 'finale') return ACTS.length;
   return Math.max(0, ACTS.findIndex((a) => a.scenes.includes(scene)));
@@ -51,9 +46,7 @@ export function progressOf(flow: SceneKey[], scene: SceneKey): number {
 
 /** Durées estimées par scène (secondes), pour annoncer le temps du parcours. */
 export const STEP_DURATIONS: Record<Exclude<SceneKey, 'finale'>, number> = {
-  hello: 10,
-  profile: 8,
-  structure: 25,
+  you: 40,
   role: 25,
   brief: 50,
   linkedin: 50,

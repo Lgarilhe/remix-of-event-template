@@ -221,9 +221,6 @@ const SIZES = {
   sm: 'max-h-20 max-w-32',
   md: 'max-h-28 max-w-40',
   lg: 'max-h-36 max-w-48',
-  /** Onboarding : le dessin est le décor de la scène. */
-  xl: 'max-h-56 max-w-72',
-  hero: 'max-h-80 max-w-[22rem]',
 } as const;
 
 /** Variables lues par les animations illu-* (tailwind.config.ts). */
@@ -246,7 +243,7 @@ const motionStyle = (m: Motion) =>
 
 export interface IllustrationProps {
   name: IllustrationName;
-  /** sm : état compact ; md : état vide d'une page ; lg : page entière ; xl et hero : scènes de l'onboarding. */
+  /** sm : état compact ; md : état vide d'une page ; lg : page entière. */
   size?: keyof typeof SIZES;
   className?: string;
 }

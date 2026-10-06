@@ -190,7 +190,7 @@ Visages et pastilles (design simplifié, `06-simplicite.md`) :
 
 Retour d'appui : un bouton descend d'un pixel ou passe à 98 % de sa taille pendant l'appui. Une carte cliquable s'éclaire au survol (fond et filet), sans se soulever de plus d'un pixel.
 
-Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026), icônes qui attendent et fond de l'accueil (§ Fond animé). L'onboarding a sa propre exception (§ 11). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026), icônes qui attendent et fond de l'accueil (§ Fond animé). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
 
 Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto AI) : `PageBackdrop` (`src/components/layout/PageBackdrop.tsx`, styles `.konekt-backdrop` de `src/index.css`) pose sur l'accueil (`/dashboard`, par `PageLayout backdrop`), sur la recherche hors mission (`/sourcing`) et sur le héros et le plan du sourcing d'une mission (`LinkedInSearch`, nouvelle page mission : onglet Sourcing et `/sourcing/:id`, un seul fond posé à la racine, jamais sur les résultats, tableau dense aux cellules opaques) trois taches de dégradé bleu-vert et bleu qui dérivent en 23, 29 et 37 s, un grain SVG fixe, le tout fondu vers le fond de page sur 28 rem. Règles à tenir si on le retouche :
 
@@ -273,21 +273,19 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 - Pas de `div` cliquable : `button` ou `a`.
 - Une information ne passe jamais par la couleur seule : un statut a aussi un mot ou une icône.
 
-## 11. Exception : l'onboarding
+## 11. L'onboarding suit les mêmes règles
 
-Décision du propriétaire du 29/09/2026. Le premier contact avec l'application est un moment de marque, pas un écran de travail : il a le droit au mouvement et aux illustrations que le reste de l'application s'interdit. L'exception est bornée à `src/pages/Onboarding.tsx`, `src/components/onboarding/**`, `src/hooks/onboarding/**` et `src/lib/onboarding/**`. Ni la barre latérale, ni les écrans de mission, ni la modale d'accueil des invités n'y ont droit.
+Décision du propriétaire du 06/10/2026, qui retire l'exception du 29/09/2026 : le bureau illustré et ses animations ont été jugés trop chargés. L'onboarding n'a plus aucun droit particulier au mouvement, il suit les règles des autres écrans (§ 1 à 10).
 
-Ce que l'onboarding se permet :
+Ce qui le caractérise :
 
-- Le bureau : les objets du kit d'illustrations (§ 8) posés sur un sous-main, tous ensemble sur l'écran (plusieurs illustrations, à une taille de décor), qui tombent, flottent, suivent le pointeur (parallaxe), se laissent attraper à la souris et reviennent à leur place. Papier et encre viennent des variables `--paper*` de `src/index.css`.
-- Des animations en boucle : le flottement des objets, la vapeur de la tasse, la loupe qui cherche, l'anneau du fil des étapes.
-- Le titre en Bricolage Grotesque (`font-brand`), révélé mot à mot ; les cartes qui s'inclinent vers le pointeur ; les nombres qui montent ; les barres et les anneaux qui se remplissent ; la lettre du message qui s'écrit.
-- Deux lueurs floutées derrière la scène, qui suivent le pointeur.
-- Une salve de papiers découpés à la fin, jouée une fois.
+- Quatre étapes (Vous et votre espace, Votre poste, LinkedIn, Premiers profils), puis une fin. Le fil des étapes est un simple texte avec l'étape en cours soulignée, et un trait fin de progression.
+- Une colonne centrée (`OnboardingFrame`), un titre, une phrase d'appui, les champs, un seul bouton plein par écran.
+- La première scène réunit le prénom, le type d'espace et son nom : un espace doit exister avant que LinkedIn, la mission et la recherche puissent fonctionner.
+- L'écran des premiers profils donne des chiffres réels (profils trouvés, compétences retenues, profils notés) et rien d'inventé.
+- La fin est une vitrine : ce qui a été mis en place, puis quatre fonctions en ligne de l'application (assistant d'entretien en direct, appels transcrits et analysés, adresse web, carte « Maintenant »). Une fonction qui n'est pas encore livrée ne s'y annonce pas : `tests/ux/onboarding-parcours.test.mjs` refuse « bientôt » et « prochainement ».
 
-Ce qui reste interdit, comme partout : les dégradés violet-rose, les reflets balayants, les textures et le grain, les emoji, les couleurs en dur et les jetons `--k-*`, les tirets longs, le tutoiement, le nom d'un fournisseur dans un texte visible. Les compteurs de `npm run audit:design` ne montent pas (la PR du 29/09 les laisse tous égaux ou plus bas).
-
-Mouvement réduit : rien n'attend son tour (`useDelay`), les objets restent posés, le glisser-déposer et la salve sont coupés. Sur téléphone, le bureau se réduit à une carte au-dessus de la question, sans glisser.
+Ce qui a été retiré : le bureau et ses objets, les animations en boucle, la parallaxe, les lueurs qui suivent le pointeur, les titres révélés mot à mot, les nombres qui montent, le texte qui s'écrit, les confettis. Les variables `--paper*` et la règle `html.stage-open` disparaissent de `src/index.css`.
 
 Ce que l'onboarding produit pour de vrai, et non en démonstration : le prénom (profil et compte, il signe les messages de l'IA), l'espace, le logo et le site trouvés pour l'entreprise, une mission avec son brief structuré, ses filtres IA et ses étapes d'entretien, la liaison LinkedIn, une recherche réelle d'une page sur le compte relié, un scoring facultatif, un exemple de message (rien n'est envoyé) et le ton d'écriture (`profiles.ai_context.tone`). Toute nouvelle question posée dans ce parcours doit écrire quelque chose que le produit lit : une réponse sans lecteur n'a pas sa place (c'est ce qui a retiré la taille d'équipe, le volume annuel et les secteurs, écrits mais jamais lus).
 

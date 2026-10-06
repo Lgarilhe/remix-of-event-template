@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { uniqueList } from '@/lib/onboarding/brief';
-import { SPRING_SOFT } from '../stage/springs';
 
 interface Props {
   id: string;
@@ -21,7 +19,7 @@ interface Props {
 
 /**
  * Liste de puces que l'on corrige : on retire d'un clic, on ajoute en tapant
- * ou en prenant une proposition. Les puces entrent et sortent avec un ressort.
+ * ou en prenant une proposition.
  */
 export const ChipEditor: React.FC<Props> = ({ id, label, values, onChange, addLabel, suggestions = [], max = 12, readOnly }) => {
   const [draft, setDraft] = useState('');
@@ -41,26 +39,19 @@ export const ChipEditor: React.FC<Props> = ({ id, label, values, onChange, addLa
         {label}
       </p>
       <ul aria-labelledby={`${id}-label`} className="flex flex-wrap items-center gap-2">
-        <AnimatePresence initial={false}>
-          {values.map((value) => (
-            <motion.li
-              key={value}
-              layout
-              initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.7 }}
-              transition={SPRING_SOFT}
-              className="flex items-center gap-1 rounded-full border border-border-strong bg-card py-0.5 pl-3 pr-1 text-sm text-foreground"
-            >
-              <span className="max-w-[16rem] truncate">{value}</span>
-              {!readOnly && (
-                <Button variant="ghost" size="icon-xs" aria-label={`Retirer ${value}`} onClick={() => onChange(values.filter((v) => v !== value))} className="h-6 w-6 rounded-full text-muted-foreground">
-                  <X aria-hidden="true" />
-                </Button>
-              )}
-            </motion.li>
-          ))}
-        </AnimatePresence>
+        {values.map((value) => (
+          <li
+            key={value}
+            className="flex items-center gap-1 rounded-full border border-border-strong bg-card py-0.5 pl-3 pr-1 text-sm text-foreground"
+          >
+            <span className="max-w-[16rem] truncate">{value}</span>
+            {!readOnly && (
+              <Button variant="ghost" size="icon-xs" aria-label={`Retirer ${value}`} onClick={() => onChange(values.filter((v) => v !== value))} className="h-6 w-6 rounded-full text-muted-foreground">
+                <X aria-hidden="true" />
+              </Button>
+            )}
+          </li>
+        ))}
         {canAdd && (
           <li>
             <Input

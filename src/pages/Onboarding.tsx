@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -19,11 +18,8 @@ import type { WritingTone } from '@/lib/onboarding/outreach';
 import { saveFirstName, saveWritingTone } from '@/lib/onboarding/profile';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { Spinner } from '@/components/ui/spinner';
-import { Stage } from '@/components/onboarding/stage/Stage';
-import { Desk, type DeskKey, type DeskState } from '@/components/onboarding/stage/Desk';
-import { SceneHello } from '@/components/onboarding/scenes/SceneHello';
-import { SceneProfile } from '@/components/onboarding/scenes/SceneProfile';
-import { SceneStructure } from '@/components/onboarding/scenes/SceneStructure';
+import { OnboardingFrame } from '@/components/onboarding/OnboardingFrame';
+import { SceneYou } from '@/components/onboarding/scenes/SceneYou';
 import { SceneRole } from '@/components/onboarding/scenes/SceneRole';
 import { SceneBrief } from '@/components/onboarding/scenes/SceneBrief';
 import { SceneLinkedIn } from '@/components/onboarding/scenes/SceneLinkedIn';
@@ -32,7 +28,6 @@ import { SceneMessage } from '@/components/onboarding/scenes/SceneMessage';
 import { SceneFinale, type FinaleStat } from '@/components/onboarding/scenes/SceneFinale';
 import {
   ACTS,
-  ORG_TYPE_LABEL,
   actIndexOf,
   buildFlow,
   progressOf,
@@ -46,10 +41,6 @@ import {
   saveOnboardingProgress,
   type PersistedProgress,
 } from '@/components/onboarding/onboardingStorage';
-
-/** Ordre de référence des scènes : le bureau s'éveille objet par objet dans cet ordre, quel que soit le parcours suivi. */
-const ORDER: SceneKey[] = ['hello', 'profile', 'structure', 'role', 'brief', 'linkedin', 'candidates', 'message', 'finale'];
-const reached = (scene: SceneKey, at: SceneKey) => ORDER.indexOf(scene) >= ORDER.indexOf(at);
 
 const TRAIL = ACTS.map((a) => ({ key: a.id, label: a.label }));
 
@@ -71,7 +62,7 @@ const Onboarding = () => {
   });
 
   // ─── État du parcours ───
-  const [scene, setScene] = useState<SceneKey>(() => (returning ? 'linkedin' : restored?.scene ?? 'hello'));
+  const [scene, setScene] = useState<SceneKey>(() => (returning ? 'linkedin' : restored?.scene ?? 'you'));
   const [completed, setCompleted] = useState<Set<SceneKey>>(() => new Set(restored?.completed ?? []));
   const [firstName, setFirstName] = useState(restored?.firstName ?? '');
   const [orgType, setOrgType] = useState<OrgType | null>(restored?.orgType ?? null);
@@ -88,27 +79,19 @@ const Onboarding = () => {
   const [processKey, setProcessKey] = useState<ProcessKey>('standard');
   const [creatingMission, setCreatingMission] = useState(false);
   const [preview, setPreview] = useState<PreviewResults | null>(null);
-  const [savingHello, setSavingHello] = useState(false);
-  const [profilePreview, setProfilePreview] = useState<OrgType | null>(null);
-  const [briefPhase, setBriefPhase] = useState<'loading' | 'ready' | 'failed'>('loading');
-  const [plug, setPlug] = useState<'none' | 'connecting' | 'connected'>('none');
-  const [scanning, setScanning] = useState(false);
-  const [hasDraft, setHasDraft] = useState(false);
 
   const lookup = useCompanyLookup();
   const flow = useMemo(() => buildFlow({ linkedinSkipped }), [linkedinSkipped]);
   const account = useMemo(() => connectedAccounts(accounts)[0] ?? null, [accounts]);
 
   // Départ dans le tunnel : un utilisateur qui a déjà un espace et arrive à l'accueil, sans reprise, n'a rien à faire ici.
-  const tunnelStartedRef = useRef(scene !== 'hello' || !!returning);
+  const tunnelStartedRef = useRef(scene !== 'you' || !!returning);
   useEffect(() => {
-    if (scene !== 'hello') tunnelStartedRef.current = true;
+    if (scene !== 'you') tunnelStartedRef.current = true;
   }, [scene]);
 
   // Le focus suit la scène : un champ qui prend le focus de lui-même le garde, sinon la scène le reçoit
   // (clavier et lecteur d'écran repartent de son titre, pas du bouton de la scène précédente).
-  // Une ref de rappel plutôt qu'un effet sur `scene` : la scène sortante reste montée le temps de
-  // son animation, la nouvelle n'existe qu'après.
   const focusScene = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     requestAnimationFrame(() => {
@@ -182,7 +165,7 @@ const Onboarding = () => {
     if (scene === 'message' && !(preview && preview.candidates.length > 0)) setScene('candidates');
   }, [scene, preview]);
   useEffect(() => {
-    if (scene !== 'hello' && scene !== 'profile' && !orgType) setScene('profile');
+    if (scene !== 'you' && !orgType) setScene('you');
   }, [scene, orgType]);
 
   // ─── Fiche société en arrière-plan ───
@@ -221,39 +204,24 @@ const Onboarding = () => {
   }, [isEnterprise, createdOrgId, company]);
 
   // ─── Handlers de scènes ───
-  const handleHello = useCallback(async () => {
+  const handleSaveFirstName = useCallback(async () => {
     const name = normalizeFirstName(firstName);
-    if (name.length < 2 || savingHello) return;
-    setSavingHello(true);
     setFirstName(name);
     try {
       if (user) await saveFirstName(user.id, name);
     } catch (e) {
       // Non bloquant : le prénom reste dans le parcours, il sera réécrit à la prochaine occasion.
       console.warn('[onboarding] prénom non enregistré :', e);
-    } finally {
-      setSavingHello(false);
     }
-    markCompleted('hello');
-    goNext('hello');
-  }, [firstName, savingHello, user, markCompleted, goNext]);
+  }, [firstName, user]);
 
-  const handleProfile = useCallback(
-    (type: OrgType) => {
-      setOrgType(type);
-      markCompleted('profile');
-      goNext('profile');
-    },
-    [markCompleted, goNext],
-  );
-
-  const handleStructureCreated = useCallback(
+  const handleYouCreated = useCallback(
     ({ orgId, name }: { orgId: string; name: string }) => {
       setCreatedOrgId(orgId);
       setOrgName(name);
-      markCompleted('structure');
+      markCompleted('you');
       if (orgType === 'enterprise') startLookup(name);
-      goNext('structure');
+      goNext('you');
     },
     [orgType, markCompleted, goNext, startLookup],
   );
@@ -360,53 +328,8 @@ const Onboarding = () => {
     [missionId, navigate, queryClient],
   );
 
-  // ─── Le bureau ───
-  const desk = useMemo(() => {
-    const state = (at: SceneKey): DeskState => (reached(scene, at) ? 'ready' : 'idle');
-    const states: Record<DeskKey, DeskState> = {
-      card: 'ready',
-      cup: 'ready',
-      folder: state('structure'),
-      clipboard: state('role'),
-      plug: state('linkedin'),
-      search: linkedinSkipped ? 'idle' : state('candidates'),
-      plane: linkedinSkipped ? 'idle' : state('message'),
-    };
-    const focusByScene: Record<SceneKey, DeskKey | null> = {
-      hello: 'card',
-      profile: 'card',
-      structure: 'folder',
-      role: 'clipboard',
-      brief: briefPhase === 'loading' ? 'cup' : 'clipboard',
-      linkedin: 'plug',
-      candidates: 'search',
-      message: 'plane',
-      finale: null,
-    };
-    const visibleType = scene === 'profile' ? profilePreview ?? orgType : orgType;
-    return (
-      <Desk
-        states={states}
-        focus={focusByScene[scene]}
-        data={{
-          firstName: firstName.trim(),
-          profileLabel: visibleType ? ORG_TYPE_LABEL[visibleType] : '',
-          orgName: orgName.trim(),
-          logoUrl: isEnterprise ? company?.logoUrl ?? null : null,
-          jobTitle: jobTitle.trim(),
-          skills: brief?.skills,
-          linkedIn: plug,
-          candidates: (preview?.candidates ?? []).slice(0, 3).map((c) => ({ photo: c.photo, initials: c.initials })),
-          scanning,
-          messageReady: hasDraft,
-          stamped: scene === 'finale',
-        }}
-      />
-    );
-  }, [scene, linkedinSkipped, briefPhase, profilePreview, orgType, firstName, orgName, isEnterprise, company, jobTitle, brief, plug, preview, scanning, hasDraft]);
-
   // ─── Garde d'entrée : un utilisateur qui a déjà un espace n'a rien à faire à l'accueil ───
-  if (scene === 'hello' && !isExplicitNewWorkspace && !tunnelStartedRef.current) {
+  if (scene === 'you' && !isExplicitNewWorkspace && !tunnelStartedRef.current) {
     if (isOrgLoading) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-background">
@@ -432,122 +355,117 @@ const Onboarding = () => {
   const orgReady = !!(createdOrgId || organization);
 
   return (
-    <Stage
+    <OnboardingFrame
       steps={TRAIL}
       activeIndex={actIndexOf(scene)}
       progress={scene === 'finale' ? 100 : progressOf(flow, scene)}
-      desk={desk}
       onLeave={orgReady && scene !== 'finale' ? () => void handleFinish('dashboard') : undefined}
     >
-      {(scene === 'hello' || scene === 'profile' || scene === 'structure') && (
+      {scene === 'you' && (
         <div className="empty:hidden">
           <InvitationBanner />
         </div>
       )}
-      <AnimatePresence mode="wait">
-        <motion.div key={scene} ref={focusScene} tabIndex={-1} className="outline-none" exit={{ opacity: 0, x: -28 }} transition={{ duration: 0.18, ease: 'easeIn' }}>
-          {scene === 'hello' && (
-            <SceneHello minutes={remainingMinutes(flow, 'hello')} value={firstName} onChange={setFirstName} onSubmit={() => void handleHello()} saving={savingHello} />
-          )}
-          {scene === 'profile' && <SceneProfile initial={orgType} onPreview={setProfilePreview} onSelect={handleProfile} />}
-          {scene === 'structure' && orgType && (
-            <SceneStructure
-              orgType={orgType}
-              value={orgName}
-              onChange={setOrgName}
-              createdOrgId={createdOrgId}
-              allowSecondWorkspace={isExplicitNewWorkspace}
-              onCreated={handleStructureCreated}
-              onBack={goBack}
-            />
-          )}
-          {scene === 'role' && orgType && (
-            <SceneRole
-              orgType={orgType}
-              companyName={lookupClient}
-              title={jobTitle}
-              onTitleChange={setJobTitle}
-              client={clientName}
-              onClientChange={setClientName}
-              onClientCommit={handleClientCommit}
-              lookup={lookup.state}
-              onPickCandidate={(id) => startLookup(lookupClient, id)}
-              onNoCandidate={() => startLookup(lookupClient, '__none__')}
-              onRetryLookup={() => startLookup(lookupClient)}
-              onSubmit={handleRoleSubmit}
-              onBack={goBack}
-              locked={!!missionId}
-            />
-          )}
-          {scene === 'brief' && (
-            <SceneBrief
-              request={briefRequest}
-              draft={brief}
-              onDraft={setBrief}
-              processKey={processKey}
-              onProcessKey={setProcessKey}
-              locked={!!missionId}
-              creating={creatingMission}
-              onCreate={() => void handleCreateMission()}
-              onContinue={() => goNext('brief')}
-              onBack={goBack}
-              onPhase={setBriefPhase}
-            />
-          )}
-          {scene === 'linkedin' && (
-            <SceneLinkedIn
-              orgName={orgName || organization?.name || null}
-              returning={returning}
-              onLeave={() => saveOnboardingProgress(progressRef.current)}
-              onContinue={handleLinkedInContinue}
-              onSkip={handleLinkedInSkip}
-              onBack={goBack}
-              onState={setPlug}
-            />
-          )}
-          {scene === 'candidates' && missionId && account && (
-            <SceneCandidates
-              missionId={missionId}
-              account={account}
-              results={preview}
-              onResults={setPreview}
-              onWriteFirst={handleCandidatesWrite}
-              onSkip={handleCandidatesSkip}
-              onBack={goBack}
-              onScanning={setScanning}
-            />
-          )}
-          {scene === 'message' && missionId && topCandidate && brief && (
-            <SceneMessage
-              candidate={topCandidate}
-              missionId={missionId}
-              jobTitle={brief.title}
-              client={missionClient ? { name: missionClient, sector: company?.industry ?? '' } : null}
-              skills={brief.skills}
-              description={briefRequest.context || brief.rationale || ''}
-              location={brief.location || null}
-              senderName={firstName}
-              tone={tone}
-              onTone={setTone}
-              onDone={(chosen) => void handleMessageDone(chosen)}
-              onBack={goBack}
-              onDraft={setHasDraft}
-            />
-          )}
-          {scene === 'finale' && (
-            <SceneFinale
-              firstName={firstName}
-              jobTitle={brief?.title ?? jobTitle}
-              missionReady={!!missionId}
-              linkedInConnected={!!account}
-              stats={finaleStats}
-              onOpenMission={() => void handleFinish('mission')}
-              onDashboard={() => void handleFinish('dashboard')}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </Stage>
+      <div key={scene} ref={focusScene} tabIndex={-1} className="outline-none">
+        {scene === 'you' && (
+          <SceneYou
+            minutes={remainingMinutes(flow, 'you')}
+            firstName={firstName}
+            onFirstNameChange={setFirstName}
+            onSaveFirstName={handleSaveFirstName}
+            orgType={orgType}
+            onOrgTypeChange={setOrgType}
+            orgName={orgName}
+            onOrgNameChange={setOrgName}
+            createdOrgId={createdOrgId}
+            allowSecondWorkspace={isExplicitNewWorkspace}
+            onCreated={handleYouCreated}
+          />
+        )}
+        {scene === 'role' && orgType && (
+          <SceneRole
+            orgType={orgType}
+            companyName={lookupClient}
+            title={jobTitle}
+            onTitleChange={setJobTitle}
+            client={clientName}
+            onClientChange={setClientName}
+            onClientCommit={handleClientCommit}
+            lookup={lookup.state}
+            onPickCandidate={(id) => startLookup(lookupClient, id)}
+            onNoCandidate={() => startLookup(lookupClient, '__none__')}
+            onRetryLookup={() => startLookup(lookupClient)}
+            onSubmit={handleRoleSubmit}
+            onBack={goBack}
+            locked={!!missionId}
+          />
+        )}
+        {scene === 'brief' && (
+          <SceneBrief
+            request={briefRequest}
+            draft={brief}
+            onDraft={setBrief}
+            processKey={processKey}
+            onProcessKey={setProcessKey}
+            locked={!!missionId}
+            creating={creatingMission}
+            onCreate={() => void handleCreateMission()}
+            onContinue={() => goNext('brief')}
+            onBack={goBack}
+          />
+        )}
+        {scene === 'linkedin' && (
+          <SceneLinkedIn
+            orgName={orgName || organization?.name || null}
+            returning={returning}
+            onLeave={() => saveOnboardingProgress(progressRef.current)}
+            onContinue={handleLinkedInContinue}
+            onSkip={handleLinkedInSkip}
+            onBack={goBack}
+          />
+        )}
+        {scene === 'candidates' && missionId && account && (
+          <SceneCandidates
+            missionId={missionId}
+            account={account}
+            results={preview}
+            onResults={setPreview}
+            skillsCount={brief?.skills.length ?? 0}
+            location={brief?.location?.trim() || null}
+            onWriteFirst={handleCandidatesWrite}
+            onSkip={handleCandidatesSkip}
+            onBack={goBack}
+          />
+        )}
+        {scene === 'message' && missionId && topCandidate && brief && (
+          <SceneMessage
+            candidate={topCandidate}
+            missionId={missionId}
+            jobTitle={brief.title}
+            client={missionClient ? { name: missionClient, sector: company?.industry ?? '' } : null}
+            skills={brief.skills}
+            description={briefRequest.context || brief.rationale || ''}
+            location={brief.location || null}
+            senderName={firstName}
+            tone={tone}
+            onTone={setTone}
+            onDone={(chosen) => void handleMessageDone(chosen)}
+            onBack={goBack}
+          />
+        )}
+        {scene === 'finale' && (
+          <SceneFinale
+            firstName={firstName}
+            jobTitle={brief?.title ?? jobTitle}
+            missionReady={!!missionId}
+            linkedInConnected={!!account}
+            stats={finaleStats}
+            onOpenMission={() => void handleFinish('mission')}
+            onDashboard={() => void handleFinish('dashboard')}
+          />
+        )}
+      </div>
+    </OnboardingFrame>
   );
 };
 
