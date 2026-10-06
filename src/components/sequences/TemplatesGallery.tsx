@@ -1,7 +1,9 @@
 // Onglet « Modèles » de l'écran Séquences (lot 5c-2) : les modèles Konekt,
 // livrés dans le code (src/lib/sequenceStarterTemplates.ts), puis ceux de
 // l'organisation (sequence_templates). « Utiliser ce modèle » ouvre l'éditeur
-// actuel avec ses étapes : rien n'est enregistré avant « Enregistrer ».
+// avec ses étapes (lot 5d-2 : /sequences/nouvelle?depart=modele:<clé>, la clé
+// d'un modèle Konekt ou l'identifiant d'un modèle de l'organisation) : rien
+// n'est enregistré avant « Enregistrer ».
 //
 // Une liste à filets, sans cartes (docs/design/06-simplicite.md, règle 3).
 import { useCallback, useEffect, useState } from 'react';
@@ -64,7 +66,10 @@ function TemplateLine({ name, konektInOrg = false, description, types, onUse }: 
   );
 }
 
-export function TemplatesGallery({ onUse }: { onUse: (sequence: Sequence) => void }) {
+/** Clé du modèle dans &depart=modele:<clé> : clé d'un modèle Konekt, identifiant d'un modèle de l'organisation. */
+export type TemplateKey = string;
+
+export function TemplatesGallery({ onUse }: { onUse: (sequence: Sequence, key: TemplateKey) => void }) {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -106,7 +111,7 @@ export function TemplatesGallery({ onUse }: { onUse: (sequence: Sequence) => voi
               name={template.name}
               description={template.description}
               types={template.build().map((s) => s.actionType)}
-              onUse={() => onUse(starterTemplateToSequence(template))}
+              onUse={() => onUse(starterTemplateToSequence(template), template.key)}
             />
           ))}
         </ul>
@@ -139,7 +144,7 @@ export function TemplatesGallery({ onUse }: { onUse: (sequence: Sequence) => voi
                 konektInOrg={template.is_system}
                 description={template.description}
                 types={(template.steps_config ?? []).map((s) => String(s.action_type ?? s.actionType ?? 'message'))}
-                onUse={() => onUse(templateRowToSequence(template))}
+                onUse={() => onUse(templateRowToSequence(template), template.id)}
               />
             ))}
           </ul>

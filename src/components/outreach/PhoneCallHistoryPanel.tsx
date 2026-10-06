@@ -1,5 +1,7 @@
 import React from 'react';
 import type { PhoneCall } from '@/lib/phoneCalls';
+import { RecruiterTag } from '@/components/calls/RecruiterTag';
+import { useCallRecruiter } from '@/hooks/useCallRecruiter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Phone, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
@@ -46,6 +48,8 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
   totalCalls,
   totalTalkSeconds,
 }) => {
+  const resolveRecruiter = useCallRecruiter();
+
   if (loading) {
     return (
       <div className="p-4 flex items-center gap-2 text-muted-foreground text-sm">
@@ -97,9 +101,12 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                 )}
               </div>
 
-              <div className="text-xs text-muted-foreground">
-                {formatDate(call.startedAt)}
-                {call.agentName && <span> • {call.agentName}</span>}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <span>{formatDate(call.startedAt)}</span>
+                {(() => {
+                  const recruiter = resolveRecruiter(call.agentEmail, call.agentName);
+                  return recruiter ? <RecruiterTag recruiter={recruiter} size={18} /> : null;
+                })()}
               </div>
 
               {/* Notes */}

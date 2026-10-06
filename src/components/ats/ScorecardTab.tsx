@@ -1073,6 +1073,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
             const p = candidate.linkedinProfileData as unknown as { summary?: string; about?: string; headline?: string } | null;
             return p?.summary || p?.about || p?.headline || '';
           })()}
+          candidateEmail={candidate.email}
+          candidateLinkedinUrl={candidate.linkedin}
+          projectId={candidate.projectId}
           jobId={candidate.jobId || ''}
           jobTitle={candidate.jobTitle || ''}
           jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}

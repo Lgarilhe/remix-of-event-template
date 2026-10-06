@@ -23,6 +23,9 @@ export interface PhoneCall {
   startedAt: string | null;
   /** Durée de conversation en secondes (sans la sonnerie). */
   talkSeconds: number;
+  /** Numéro du correspondant tel que reçu, et en E.164 (null : masqué ou ambigu, jamais rapprochable). */
+  contactNumber: string | null;
+  numberE164: string | null;
   contactName: string | null;
   agentName: string | null;
   agentEmail: string | null;
@@ -33,12 +36,13 @@ export interface PhoneCall {
 }
 
 const COLUMNS =
-  'id, provider, direction, started_at, answered_at, talk_seconds, contact_name, agent_name, agent_email, recording_url, voicemail_url, tags, notes';
+  'id, provider, direction, started_at, answered_at, talk_seconds, contact_number, contact_number_e164, contact_name, agent_name, agent_email, recording_url, voicemail_url, tags, notes';
 
 type PhoneCallRow = Pick<
   Database['public']['Tables']['phone_calls']['Row'],
-  'id' | 'provider' | 'direction' | 'started_at' | 'answered_at' | 'talk_seconds' | 'contact_name'
-  | 'agent_name' | 'agent_email' | 'recording_url' | 'voicemail_url' | 'tags' | 'notes'
+  'id' | 'provider' | 'direction' | 'started_at' | 'answered_at' | 'talk_seconds' | 'contact_number'
+  | 'contact_number_e164' | 'contact_name' | 'agent_name' | 'agent_email' | 'recording_url' | 'voicemail_url'
+  | 'tags' | 'notes'
 >;
 
 export function rowToPhoneCall(row: PhoneCallRow): PhoneCall {
@@ -49,6 +53,8 @@ export function rowToPhoneCall(row: PhoneCallRow): PhoneCall {
     outcome: row.voicemail_url ? 'voicemail' : row.answered_at ? 'done' : 'missed',
     startedAt: row.started_at,
     talkSeconds: row.talk_seconds ?? 0,
+    contactNumber: row.contact_number,
+    numberE164: row.contact_number_e164,
     contactName: row.contact_name,
     agentName: row.agent_name,
     agentEmail: row.agent_email,
@@ -107,4 +113,43 @@ export async function fetchPhoneCallsForCandidate(
 ): Promise<PhoneCall[]> {
   const known = await fetchKnownCandidatePhones(candidateId);
   return fetchPhoneCallsForNumbers([...known, ...extraNumbers]);
+}
+
+/** Les appels les plus récents de l'organisation active (la RLS fait le périmètre). */
+export async function fetchRecentPhoneCalls(limit = 300): Promise<PhoneCall[]> {
+  const { data, error } = await supabase
+    .from('phone_calls')
+    .select(COLUMNS)
+    .order('started_at', { ascending: false, nullsFirst: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map(rowToPhoneCall);
+}
+
+const CONTACTS_PAGE = 1000;
+
+/**
+ * Tous les numéros enregistrés pour les candidats de l'organisation active, en E.164.
+ * Un numéro de la base qui ne se normalise pas sûrement est ignoré (jamais de faux rapprochement).
+ */
+export async function fetchOrgContactNumbers(): Promise<Set<string>> {
+  const organizationId = await getActiveOrganizationId();
+  if (!organizationId) return new Set();
+  const numbers = new Set<string>();
+  for (let from = 0; ; from += CONTACTS_PAGE) {
+    const { data, error } = await supabase
+      .from('candidate_contacts')
+      .select('phone')
+      .eq('organization_id', organizationId)
+      .not('phone', 'is', null)
+      .order('candidate_id', { ascending: true })
+      .range(from, from + CONTACTS_PAGE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const e164 = toE164(row.phone);
+      if (e164) numbers.add(e164);
+    }
+    if ((data?.length ?? 0) < CONTACTS_PAGE) break;
+  }
+  return numbers;
 }
