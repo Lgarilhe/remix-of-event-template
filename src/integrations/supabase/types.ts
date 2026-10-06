@@ -4964,6 +4964,124 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_call_insights: {
+        Row: {
+          analyzed_at: string | null
+          call_id: string
+          created_at: string
+          facts: Json
+          mission_fit: string | null
+          mission_id: string | null
+          model: string | null
+          next_steps: Json
+          organization_id: string
+          reason: string | null
+          status: string
+          summary: string | null
+          tags: string[]
+          updated_at: string
+        }
+        Insert: {
+          analyzed_at?: string | null
+          call_id: string
+          created_at?: string
+          facts?: Json
+          mission_fit?: string | null
+          mission_id?: string | null
+          model?: string | null
+          next_steps?: Json
+          organization_id: string
+          reason?: string | null
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          updated_at?: string
+        }
+        Update: {
+          analyzed_at?: string | null
+          call_id?: string
+          created_at?: string
+          facts?: Json
+          mission_fit?: string | null
+          mission_id?: string | null
+          model?: string | null
+          next_steps?: Json
+          organization_id?: string
+          reason?: string | null
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_call_insights_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "phone_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_call_insights_mission_id_fkey"
+            columns: ["mission_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_call_insights_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      phone_call_transcripts: {
+        Row: {
+          call_id: string
+          char_count: number
+          created_at: string
+          language: string | null
+          organization_id: string
+          updated_at: string
+          utterances: Json
+        }
+        Insert: {
+          call_id: string
+          char_count?: number
+          created_at?: string
+          language?: string | null
+          organization_id: string
+          updated_at?: string
+          utterances: Json
+        }
+        Update: {
+          call_id?: string
+          char_count?: number
+          created_at?: string
+          language?: string | null
+          organization_id?: string
+          updated_at?: string
+          utterances?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_call_transcripts_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "phone_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_call_transcripts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       phone_calls: {
         Row: {
           agent_email: string | null
