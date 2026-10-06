@@ -164,7 +164,7 @@ export const CallsTable = ({
                     type="button"
                     variant="ghost"
                     onClick={() => onOpen(call)}
-                    className="h-auto w-full justify-start gap-3 whitespace-normal rounded-none px-0 py-3 text-left font-normal hover:bg-muted/40 hover:text-foreground active:scale-100 max-md:min-h-14"
+                    className="h-auto w-full justify-start gap-3 whitespace-normal rounded-lg px-0 py-3 text-left font-normal hover:bg-muted/40 hover:text-foreground active:scale-100 max-md:min-h-14"
                   >
                     {known ? (
                       <PersonAvatar name={known.name ?? title} src={known.avatarUrl} candidateId={known.candidateId} size={36} />
