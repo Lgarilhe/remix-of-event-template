@@ -64,6 +64,8 @@ interface SequenceEnrollButtonProps {
   triggerLabel?: string;
   /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
   quiet?: boolean;
+  /** Classes ajoutées au bouton (contour plus marqué dans la fiche du Pipeline). */
+  className?: string;
 }
 
 /** Identifiant de mission (sourcing_projects.id) d'un poste synthétique « project:{uuid} ». */
@@ -79,6 +81,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   onCreateSequence,
   triggerLabel = 'Séquence',
   quiet = false,
+  className,
 }) => {
   const [sequences, setSequences] = useState<SequenceOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -224,7 +227,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
             variant={quiet ? 'ghost' : 'outline'}
             size="sm"
             title="Inscrire dans une séquence"
-            className={cn('shrink-0', quiet && 'text-foreground-secondary hover:text-foreground max-sm:min-h-11')}
+            className={cn('shrink-0', quiet && 'text-foreground-secondary hover:text-foreground max-sm:min-h-11', className)}
           >
             <GitBranch aria-hidden="true" />
             {triggerLabel}
