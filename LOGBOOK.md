@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-06 — SHIP — Brief IA : consigne dite une fois, offres filtrables, échec d'adresse plus clair
+
+**Contexte** : retour du propriétaire, « le design et l'UX sont à retravailler », puis « fais au mieux » après une revue de la fenêtre de création (choix, saisie, résultat, offres d'une société) en sombre, clair et téléphone.
+**Décision / Fait** :
+- La consigne « Collez la fiche de poste » n'était dite que par trois endroits à la fois (sous-titre, champ, panneau vide) : le champ la garde sans le glisser-déposer (déjà écrit sous le champ), le panneau vide annonce ce qui sera retenu (poste, lieu, expérience, contrat, compétences).
+- Adresse web : phrase d'aide sur une ligne ; les adresses « companies-v1 » sont reconnues aussi côté écran (`parseJobUrl`), donc la société est préremplie quand la page n'est pas lue ; l'échec dit d'ouvrir une offre et de coller son adresse, ou le texte de la fiche.
+- Offres d'une société : « Voir l'offre » sur chaque ligne (nouvel onglet, icône seule sur téléphone, cible de 44 px) ; au-delà de 8 offres, un champ filtre par intitulé ou lieu, sans accent ni casse, la sélection restant celle de toute la liste.
+- Non retenu : un second « Voir le pipeline » dans la barre du Sourcing (le groupe des profils retenus porte déjà « Ouvrir le Pipeline »), et la lecture automatique au collage d'une adresse (une lecture de page société peut coûter une page du service de rendu, plafonnée à 60 par personne et par jour).
+**Impact** : `CreateMissionV2.tsx`, `BriefAnalysisPanel.tsx`, `JobOffersPicker.tsx`, `tests/ux/import-offres.test.mjs`, `tests/ux/creation-mission-brief.test.mjs` (mutations « filtre retiré » et « companies-v1 retiré » détectées).
+**Refs** : `docs/design/06-simplicite.md`.
+
+---
+
 ## 2026-10-06 — SHIP — Brief IA : les deux tuiles du premier écran redeviennent des cartes
 
 **Contexte** : depuis « tous les boutons sont des pilules » (#279), les deux tuiles « Coller une fiche de poste » et « Saisir à la main » (des `Button` à contenu empilé) s'affichaient en capsules, le texte touchant la courbe.

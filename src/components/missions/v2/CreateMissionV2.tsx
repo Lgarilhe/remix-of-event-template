@@ -111,7 +111,7 @@ function parseJobUrl(url: string): UrlParsedJob | null {
 
     // WTTJ : /fr/companies/{company-slug}/jobs/{job-slug}[_location]
     if (host.includes('welcometothejungle.com')) {
-      const jobMatch = path.match(/\/companies\/([a-z0-9-]+)\/jobs\/([a-z0-9-]+?)(?:_([a-z0-9-]+))?(?:\/|$)/i);
+      const jobMatch = path.match(/\/companies(?:-v1)?\/([a-z0-9-]+)\/jobs\/([a-z0-9-]+?)(?:_([a-z0-9-]+))?(?:\/|$)/i);
       if (jobMatch) {
         return {
           company: smartCapitalize(jobMatch[1]),
@@ -121,7 +121,7 @@ function parseJobUrl(url: string): UrlParsedJob | null {
           isJobUrl: true,
         };
       }
-      const companyMatch = path.match(/\/companies\/([a-z0-9-]+)/i);
+      const companyMatch = path.match(/\/companies(?:-v1)?\/([a-z0-9-]+)/i);
       if (companyMatch) {
         return { company: smartCapitalize(companyMatch[1]), source: 'Welcome to the Jungle', isJobUrl: false };
       }
@@ -488,14 +488,14 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     if (parsed && !parsed.isJobUrl && parsed.company) {
       if (!clientName) setClientName(parsed.company);
       toast.info("La liste des offres n'a pas pu être lue", {
-        description: `Entreprise pré-remplie (${parsed.company}). Collez le texte de la fiche de poste dans la zone prévue.`,
+        description: `Entreprise pré-remplie (${parsed.company}). Ouvrez une offre sur le site et collez son adresse ici, ou collez le texte de la fiche.`,
         duration: 7000,
       });
       return;
     }
 
     toast.warning('Adresse non lue', {
-      description: reason || 'Collez directement le texte de la fiche dans la zone prévue.',
+      description: reason || "Collez l'adresse d'une offre précise, ou directement le texte de la fiche.",
       duration: 6000,
     });
   }, [briefName, clientName]);
@@ -1059,7 +1059,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Adresse d'une offre : sa fiche est lue pour vous. Adresse de la page emplois d'une société : vous choisissez parmi ses offres.
+              Une offre, ou la page emplois d'une société pour choisir parmi ses offres.
             </p>
           </div>
         )}
@@ -1090,7 +1090,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             id="brief-text"
             value={briefText}
             onChange={(e) => setBriefText(e.target.value)}
-            placeholder={'Collez la fiche de poste, glissez-déposez un fichier ou décrivez le besoin.\n\nExemple :\nIngénieur logiciel senior pour Doctolib. Stack React, TypeScript, Node. 5 ans d\'expérience minimum, idéalement en scale-up santé ou fintech. Paris ou télétravail complet en France. Démarrage au T3 2026.'}
+            placeholder={'Collez la fiche de poste ou décrivez le besoin.\n\nExemple :\nIngénieur logiciel senior pour Doctolib. Stack React, TypeScript, Node. 5 ans d\'expérience minimum, idéalement en scale-up santé ou fintech. Paris ou télétravail complet en France. Démarrage au T3 2026.'}
             className="min-h-[240px] resize-none leading-relaxed lg:min-h-0 lg:flex-1"
             autoFocus
           />
