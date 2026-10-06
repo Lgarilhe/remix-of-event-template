@@ -26,7 +26,7 @@ test('sélecteur client : branché sur le Cadrage et sur les deux modes de créa
   assert.match(read('src/components/missions/v3/cadrage/JobSection.tsx'), /<ClientPicker/);
   const create = read('src/components/missions/v2/CreateMissionV2.tsx');
   assert.equal((create.match(/<ClientPicker/g) ?? []).length, 2);
-  assert.match(create, /job_details: { client: clientDetails(clientName.trim()) }/);
+  assert.match(create, /job_details: \{ client: clientDetails\(clientName\.trim\(\)\) \}/);
 });
 
 test('sélecteur client : un site ajouté relance la recherche du logo', () => {
