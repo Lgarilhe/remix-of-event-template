@@ -1,9 +1,10 @@
 /**
  * Rangée basse de la barre (§2.4, D3, D38) : Tâches, Agenda, Séquences
  * (interrupteur konekt.sequences-v2 allumé, lot 5c-2, décision 8 du 05/10),
- * Marketplace (selon le type d'organisation), Paramètres, Aide.
+ * Appels (une fois un premier appel reçu de l'opérateur relié), Marketplace
+ * (selon le type d'organisation), Paramètres, Aide.
  *
- * Quatre liens (cinq avec Séquences) et un bouton (Aide) ; nom au survol (infobulle) et aria-label,
+ * Quatre liens (jusqu'à six avec Séquences et Appels) et un bouton (Aide) ; nom au survol (infobulle) et aria-label,
  * aria-current="page" sur la route active. Déplié : une ligne de cibles de
  * 36 px sur ordinateur, 44 px sur téléphone. Replié : une pile de 32 px.
  * Tâches porte le nombre de mes tâches en retard, en gris (jamais rouge), au
@@ -11,9 +12,10 @@
  * sur une page qui en a une (onOpenTutorial absent sinon, A-15).
  */
 import { Link, useLocation } from 'react-router-dom';
-import { Calendar, ListTodo, Send, Settings, Store, type LucideIcon } from 'lucide-react';
+import { Calendar, ListTodo, Phone, Send, Settings, Store, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useHasPhoneCalls } from '@/hooks/sidebar/useHasPhoneCalls';
 import { useCloseMobileSidebar } from '@/hooks/sidebar/useCloseMobileSidebar';
 import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { hasFeature } from '@/lib/featureGates';
@@ -47,12 +49,15 @@ export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onO
   const showSequences = useSequencesBeta();
 
   const showMarketplace = hasFeature(orgType, 'marketplace_browse') || hasFeature(orgType, 'marketplace_publish');
+  // Téléphonie : le lien n'existe qu'une fois un premier appel reçu de l'opérateur relié.
+  const showCalls = useHasPhoneCalls();
   const overdue = overdueCount !== null && overdueCount > 0 ? overdueCount : null;
 
   const links: BottomLink[] = [
     { to: '/tasks', label: 'Tâches', icon: ListTodo },
     { to: '/calendar', label: 'Agenda', icon: Calendar },
     ...(showSequences ? [{ to: '/sequences', label: 'Séquences', icon: Send }] : []),
+    ...(showCalls ? [{ to: '/calls', label: 'Appels', icon: Phone }] : []),
     ...(showMarketplace ? [{ to: '/marketplace', label: 'Marketplace', icon: Store }] : []),
     { to: '/settings', label: 'Paramètres', icon: Settings },
   ];
