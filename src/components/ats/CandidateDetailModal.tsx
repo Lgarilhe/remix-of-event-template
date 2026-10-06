@@ -401,7 +401,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       label: 'Activité',
       shortLabel: 'Act.',
       icon: ActivityIcon,
-      content: <ActivityTab loading={fullProfile.loading} timeline={fullProfile.timeline} />,
+      content: <ActivityTab loading={fullProfile.loading} timeline={fullProfile.timeline} candidate={{ id: candidate.candidateId, name: candidate.name }} />,
       count: fullProfile.timeline.length,
     },
     {

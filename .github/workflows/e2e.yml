@@ -361,15 +361,16 @@ jobs:
 
       # Téléphonie, lot A1 : appels reçus par organisation (phone_calls),
       # connexions (jeton de webhook, illisibles), record_phone_call et
-      # get_telephony_status. Appels anonymes réels par l'API : refus attendu
-      # (401, code 42501).
+      # get_telephony_status ; puis transcription, résumé et tâches proposées
+      # (phone_call_insights, phone_call_task_suggestions). Appels anonymes
+      # réels par l'API : refus attendu (401, code 42501).
       - name: Audit de la téléphonie (lot A1)
         if: steps.target.outputs.mode == 'local'
         run: |
           DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/telephony_audit.sql -c 'ROLLBACK;'
-          for table in phone_calls telephony_connections; do
+          for table in phone_calls telephony_connections phone_call_insights phone_call_task_suggestions; do
             code=$(curl -sS -o telephony_anon.json -w '%{http_code}' \
               "$E2E_SUPABASE_URL/rest/v1/$table?select=organization_id&limit=1" \
               -H "apikey: $E2E_SUPABASE_ANON_KEY" \

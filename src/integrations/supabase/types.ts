@@ -4964,6 +4964,124 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_call_insights: {
+        Row: {
+          created_at: string
+          error_code: string | null
+          id: string
+          language: string | null
+          organization_id: string
+          phone_call_id: string
+          status: string
+          summary: string | null
+          summary_started_at: string | null
+          transcript: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          language?: string | null
+          organization_id: string
+          phone_call_id: string
+          status?: string
+          summary?: string | null
+          summary_started_at?: string | null
+          transcript?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          language?: string | null
+          organization_id?: string
+          phone_call_id?: string
+          status?: string
+          summary?: string | null
+          summary_started_at?: string | null
+          transcript?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_call_insights_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_call_insights_phone_call_id_fkey"
+            columns: ["phone_call_id"]
+            isOneToOne: true
+            referencedRelation: "phone_calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      phone_call_task_suggestions: {
+        Row: {
+          created_at: string
+          due_in_days: number
+          id: string
+          organization_id: string
+          phone_call_id: string
+          reason: string | null
+          reminder_id: string | null
+          resolved_at: string | null
+          state: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          due_in_days?: number
+          id?: string
+          organization_id: string
+          phone_call_id: string
+          reason?: string | null
+          reminder_id?: string | null
+          resolved_at?: string | null
+          state?: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          due_in_days?: number
+          id?: string
+          organization_id?: string
+          phone_call_id?: string
+          reason?: string | null
+          reminder_id?: string | null
+          resolved_at?: string | null
+          state?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_call_task_suggestions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_call_task_suggestions_phone_call_id_fkey"
+            columns: ["phone_call_id"]
+            isOneToOne: false
+            referencedRelation: "phone_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_call_task_suggestions_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       phone_calls: {
         Row: {
           agent_email: string | null

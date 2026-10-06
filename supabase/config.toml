@@ -40,6 +40,12 @@ verify_jwt = false
 [functions.aircall-connect]
 verify_jwt = false
 
+# Transcription, résumé et tâches proposées d'un appel. Appelée par aircall-webhook
+# (clé de service) et par le navigateur (JWT d'un membre) : le contrôle se fait
+# dans la fonction, par _shared/require-auth.ts et l'appartenance à l'organisation.
+[functions.phone-call-insights]
+verify_jwt = false
+
 [functions.analyze-response]
 verify_jwt = false
 

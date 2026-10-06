@@ -523,6 +523,8 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       date: c.startedAt || '',
       title: `${dirLabel}${statusLabel}${durationLabel}`,
       detail: [c.userName, c.notes].filter(Boolean).join(' · ') || undefined,
+      // Pour afficher le résumé et les tâches proposées sous l'appel (ActivityTab).
+      meta: { callId: c.id, outcome: c.status, talkSeconds: c.duration },
     });
   });
 

@@ -17,10 +17,14 @@
  *
  * Le webhook de Konekt (n8n, tâches Notion) est un autre abonnement du même
  * compte Aircall : cette fonction ne touche que celui qu'elle a créé.
+ *
+ * Événements demandés : fin d'appel, étiquette, commentaire, et la transcription
+ * (AIRCALL_TRANSCRIPTION_EVENT). Si Aircall refuse la création avec ce dernier,
+ * elle est refaite sans lui : `transcription_events` dit ce qui a été obtenu.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { requireAuth } from '../_shared/require-auth.ts';
-import { AIRCALL_API_BASE, AIRCALL_WEBHOOK_EVENTS, sha256Hex } from '../_shared/telephony.ts';
+import { AIRCALL_API_BASE, AIRCALL_TRANSCRIPTION_EVENT, AIRCALL_WEBHOOK_EVENTS, sha256Hex } from '../_shared/telephony.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -141,17 +145,27 @@ Deno.serve(async (req) => {
       return json({ ok: false, code: 'AIRCALL_UNAVAILABLE', error: "Aircall n'a pas pu vérifier ces identifiants. Réessayez dans quelques minutes." }, 502);
     }
 
-    let created: Response;
-    try {
-      created = await fetchWithTimeout(`${AIRCALL_API_BASE}/webhooks`, {
+    const createWebhook = (events: string[]) =>
+      fetchWithTimeout(`${AIRCALL_API_BASE}/webhooks`, {
         method: 'POST',
         headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           custom_name: 'Konekt',
           url: `${supabaseUrl}/functions/v1/aircall-webhook`,
-          events: AIRCALL_WEBHOOK_EVENTS,
+          events,
         }),
       });
+
+    // Avec l'événement de transcription ; si Aircall refuse la création (nom d'événement
+    // inconnu), la liaison se refait avec les seuls événements d'appel.
+    let created: Response;
+    let withTranscription = true;
+    try {
+      created = await createWebhook([...AIRCALL_WEBHOOK_EVENTS, AIRCALL_TRANSCRIPTION_EVENT]);
+      if (created.status === 400 || created.status === 422) {
+        withTranscription = false;
+        created = await createWebhook(AIRCALL_WEBHOOK_EVENTS);
+      }
     } catch {
       return json({ ok: false, code: 'AIRCALL_UNAVAILABLE', error: "Aircall ne répond pas. Réessayez dans quelques minutes." }, 502);
     }
@@ -190,7 +204,7 @@ Deno.serve(async (req) => {
     await deleteRemoteWebhook(existing?.external_webhook_id);
     await admin.from('organization_integrations').update({ aircall_connected: true }).eq('organization_id', organizationId);
 
-    return json({ ok: true, connected: true });
+    return json({ ok: true, connected: true, transcription_events: withTranscription });
   } catch (err) {
     console.error('[aircall-connect] erreur:', (err as { message?: string })?.message ?? err);
     return json({ ok: false, error: 'Erreur interne. Réessayez.' }, 500);

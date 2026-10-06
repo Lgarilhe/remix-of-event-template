@@ -332,7 +332,7 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
             <CandidateSequencesPanel profileId={row.candidateId} hideTitle />
           </PanelSection>
           <PanelSection title="Activité">
-            <ActivityTab loading={fullProfile.loading} timeline={fullProfile.timeline} />
+            <ActivityTab loading={fullProfile.loading} timeline={fullProfile.timeline} candidate={{ id: row.candidateId, name: row.name }} />
           </PanelSection>
         </div>
       ),

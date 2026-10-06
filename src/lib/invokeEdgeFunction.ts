@@ -18,6 +18,7 @@ const HEAVY_AI_FUNCTIONS = new Set([
   'generate-scorecard',
   'score-profile-job',
   'generate-call-report',
+  'phone-call-insights',
 ]);
 const HEAVY_AI_TIMEOUT_MS = 90_000;
 

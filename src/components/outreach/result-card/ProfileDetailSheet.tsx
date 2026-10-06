@@ -1317,6 +1317,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                         loading={phoneHistory.loading}
                         totalCalls={phoneHistory.totalCalls}
                         totalTalkSeconds={phoneHistory.totalTalkSeconds}
+                        candidate={profile?.id ? { id: profile.id, name: [profile.first_name, profile.last_name].filter(Boolean).join(' ') || null } : null}
                       />
                     </div>
                   )}

@@ -37,6 +37,7 @@
 
 // Type seul (aucun import à l'exécution) : le client non typé des appelants s'y assigne.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
+import { toE164 } from "./phone.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -671,6 +672,35 @@ export async function recordGdprErasure(
       );
       if (error) return fail('marquage des photos effacées', error);
     }
+  }
+
+  // 11. Appels et transcriptions (téléphonie), dans le périmètre. Un appel se
+  //     rapproche d'un candidat par son numéro (candidate_contacts.phone, en
+  //     E.164) : les appels portant l'un des numéros du candidat sont effacés, et
+  //     avec eux leur transcription, leur résumé et leurs tâches proposées
+  //     (clés étrangères en cascade). Un candidat sans numéro enregistré n'a
+  //     pas d'appel rapproché : rien à effacer ici.
+  const phoneNumbers = new Set<string>();
+  for (let i = 0; i < knownIds.length; i += 100) {
+    let contactsQuery = supabase
+      .from('candidate_contacts')
+      .select('phone')
+      .in('candidate_id', knownIds.slice(i, i + 100))
+      .not('phone', 'is', null);
+    if (orgId) contactsQuery = contactsQuery.eq('organization_id', orgId);
+    const { data: contacts, error: contactsError } = await contactsQuery;
+    if (contactsError) return fail('lecture des numéros de téléphone', contactsError);
+    for (const c of (contacts ?? []) as Array<{ phone: string | null }>) {
+      const e164 = toE164(c.phone);
+      if (e164) phoneNumbers.add(e164);
+    }
+  }
+  const callNumbers = [...phoneNumbers];
+  for (let i = 0; i < callNumbers.length; i += 100) {
+    let callsDelete = supabase.from('phone_calls').delete().in('contact_number_e164', callNumbers.slice(i, i + 100));
+    if (orgId) callsDelete = callsDelete.eq('organization_id', orgId);
+    const { error } = await callsDelete;
+    if (error) return fail('suppression des appels', error);
   }
 
   return { ...result, success: true };

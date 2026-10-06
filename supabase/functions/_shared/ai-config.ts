@@ -205,6 +205,14 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "qualification",
   },
+  call_summary: {
+    action: "call_summary",
+    label: "Résumé d'un appel téléphonique",
+    floor: 1,
+    typicalTokens: 6_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
   live_coaching: {
     action: "live_coaching",
     label: "Coaching live (par minute)",

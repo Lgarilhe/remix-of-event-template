@@ -3,6 +3,8 @@ import type { PhoneCall } from '@/lib/phoneCalls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Phone, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
+import { usePhoneCallInsights } from '@/hooks/usePhoneCallInsights';
+import { PhoneCallInsights } from './PhoneCallInsights';
 
 interface PhoneCallHistoryPanelProps {
   calls: PhoneCall[];
@@ -10,6 +12,8 @@ interface PhoneCallHistoryPanelProps {
   totalCalls: number;
   /** Somme des durées de conversation, en secondes. */
   totalTalkSeconds: number;
+  /** Candidat de la fiche : les tâches proposées après un appel lui sont rattachées. */
+  candidate?: { id: string; name?: string | null } | null;
 }
 
 const formatDuration = (seconds: number) => {
@@ -45,7 +49,11 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
   loading,
   totalCalls,
   totalTalkSeconds,
+  candidate = null,
 }) => {
+  // Avant les retours anticipés : l'ordre des hooks ne doit pas dépendre de l'état.
+  const { byCallId } = usePhoneCallInsights(calls.map((c) => c.id));
+
   if (loading) {
     return (
       <div className="p-4 flex items-center gap-2 text-muted-foreground text-sm">
@@ -141,6 +149,16 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                   </Button>
                 )}
               </div>
+
+              {/* Résumé, tâches proposées et transcription de l'appel */}
+              <PhoneCallInsights
+                callId={call.id}
+                insight={byCallId.get(call.id)}
+                outcome={call.outcome}
+                talkSeconds={call.talkSeconds}
+                callStartedAt={call.startedAt}
+                candidate={candidate}
+              />
             </div>
           </div>
         ))}
