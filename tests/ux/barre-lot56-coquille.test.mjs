@@ -155,15 +155,20 @@ test('B-C5 — cloche et entrées Notifications et Paramètres retirées', () =>
 });
 
 // ---------------------------------------------------------------- B-C6
-test('B-C6 — rangée basse : quatre liens, Aide en bouton, Marketplace selon les droits', () => {
-  for (const route of ["'/tasks'", "'/calendar'", "'/marketplace'", "'/settings'"]) {
+test('B-C6 — rangée basse : quatre liens (cinq avec Séquences), Aide en bouton, Marketplace selon les droits', () => {
+  for (const route of ["'/tasks'", "'/calendar'", "'/sequences'", "'/marketplace'", "'/settings'"]) {
     assert.ok(bottomRow.includes(route), `SidebarBottomRow.tsx : ${route} absent`);
   }
-  // Les quatre cibles sont rendues par un même <Link> (liste), l'Aide seule est un bouton (HelpMenu).
+  // Les cibles sont rendues par un même <Link> (liste), l'Aide seule est un bouton (HelpMenu).
+  // Lot 5c-2 (décision 8 du 05/10) : cinq liens quand l'interrupteur konekt.sequences-v2 est allumé.
   assert.ok(countOf(bottomRow, '<Link') >= 1, '<Link absent');
-  assert.equal(countOf(bottomRow, '{ to: \''), 4, 'quatre liens dans la liste');
+  assert.equal(countOf(bottomRow, '{ to: \''), 5, 'cinq liens dans la liste, Séquences compris');
+  assert.match(bottomRow, /\.\.\.\(showSequences \? \[\{ to: '\/sequences', label: 'Séquences', icon: Send \}\] : \[\]\)/, 'Séquences seulement drapeau allumé');
+  assert.match(bottomRow, /const showSequences = useSequencesBeta\(\);/);
+  // Entre Agenda et Marketplace.
+  assert.ok(bottomRow.indexOf("'/calendar'") < bottomRow.indexOf("'/sequences'") && bottomRow.indexOf("'/sequences'") < bottomRow.indexOf("'/marketplace'"));
   assert.ok(!bottomRow.includes('<button'), 'seule l\'Aide est un bouton');
-  for (const label of ["'Tâches'", "'Agenda'", "'Marketplace'", "'Paramètres'"]) {
+  for (const label of ["'Tâches'", "'Agenda'", "'Séquences'", "'Marketplace'", "'Paramètres'"]) {
     assert.ok(bottomRow.includes(label), `SidebarBottomRow.tsx : libellé ${label} absent`);
   }
   assert.ok(bottomRow.includes('aria-label={name}'));

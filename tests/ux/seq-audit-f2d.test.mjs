@@ -245,6 +245,9 @@ function duplicateHarness({ stepsCreateError = null, manage = true } = {}) {
     DEFAULT_WAIT_TIMEOUT_DAYS: 3,
     implicitWaitEvent: (type, event) => event || (type === 'wait_reply' ? 'reply_received' : null),
     fetchSequences: async () => {},
+    // Lot 5c-2 : nom de la copie et ouverture de la copie, passés par la page ; défaut de la liste.
+    copyName: (name) => `${name} (copie)`,
+    onDuplicated: undefined,
   });
   const seq = { id: 'src-1', name: 'Relance', description: null, organization_id: 'org-1', sender_accounts: null, multi_sender_enabled: false };
   return { handleDuplicate, seq, calls, toasts, duplicatingRef };
@@ -454,4 +457,59 @@ test('SEQ-165 — compteurs par groupe : chaque ligne compte pour `count` candid
   assert.match(fetch, /stats\.total \+= n;/);
   assert.match(fetch, /const reason = group\.pause_reason \|\| 'manual';/);
   assert.doesNotMatch(fetch, /stats\.total \+= 1;/);
+});
+
+// ---------------------------------------------------------------- Lot 5c-2 : pause groupée de la page d'une séquence
+function pauseHarness(updated) {
+  const { supabase, calls } = fakeSupabase((chain) => (op(chain, 'update') ? { data: updated.map((id) => ({ id })), error: null } : { error: null }));
+  const { toast, calls: toasts } = fakeToast();
+  const offers = [];
+  let rows = [
+    { id: 'e1', status: 'active', pause_reason: null },
+    { id: 'e2', status: 'replied', pause_reason: null },
+    { id: 'e3', status: 'active', pause_reason: null },
+  ];
+  const refreshed = [];
+  const pauseEnrollments = extract(actions, 'pauseEnrollments', {
+    supabase, toast, console: quiet,
+    nameOf: (id) => ({ e1: 'Alice Martin', e3: 'Chloé Durand' }[id] ?? 'ce candidat'),
+    fetchEnrollments: async () => { refreshed.push('list'); },
+    fetchStatusCounts: async () => { refreshed.push('counts'); },
+    setEnrollments: (update) => { rows = update(rows); },
+    offerUndoPause: (options) => { offers.push(options); },
+    candidats,
+    pauseToastTitle: (name) => (name ? `Séquence mise en pause pour ${name}.` : 'Séquence mise en pause.'),
+  });
+  return { pauseEnrollments, calls, toasts, offers, rows: () => rows, refreshed };
+}
+
+test('5c-2 — pause groupée : seules les lignes en cours sont écrites, « Annuler » porte sur les seules lignes rendues', async () => {
+  const h = pauseHarness(['e1']);
+  await h.pauseEnrollments(['e1', 'e2', 'e1']);
+  const write = h.calls.find((c) => op(c, 'update'));
+  assert.deepEqual(op(write, 'update')[1], { status: 'paused', pause_reason: 'manual' }, 'pause manuelle, jamais une reprise');
+  assert.deepEqual(op(write, 'in'), ['in', 'id', ['e1', 'e2']], 'identifiants dédoublonnés');
+  assert.deepEqual(op(write, 'eq'), ['eq', 'status', 'active'], 'écriture gardée sur le statut en cours');
+  assert.ok(op(write, 'select'), 'les lignes écrites sont relues');
+  assert.equal(h.offers.length, 1);
+  assert.deepEqual(h.offers[0].enrollmentIds, ['e1'], '« Annuler » ne reprend que ce que la pause a touché');
+  assert.equal(h.offers[0].title, 'Séquence mise en pause pour Alice Martin.');
+  assert.equal(h.offers[0].description, '1 candidat n’était pas en cours.');
+  assert.deepEqual(h.rows().map((r) => r.status), ['paused', 'replied', 'active'], 'seule la ligne écrite change à l’écran');
+  assert.equal(h.toasts.filter((t) => t.kind === 'success').length, 0, 'pas de succès sans « Annuler »');
+});
+
+test('5c-2 — pause groupée : plusieurs lignes, puis aucune ligne en cours (information, liste relue)', async () => {
+  const many = pauseHarness(['e1', 'e3']);
+  await many.pauseEnrollments(['e1', 'e3']);
+  assert.equal(many.offers[0].title, 'Séquence mise en pause pour 2 candidats.');
+  assert.equal(many.offers[0].description, null);
+  const none = pauseHarness([]);
+  await none.pauseEnrollments(['e2']);
+  assert.deepEqual(none.offers, []);
+  assert.equal(none.toasts.find((t) => t.kind === 'info').title, 'Aucun des candidats choisis n’était en cours.');
+  assert.ok(none.refreshed.includes('list'), 'la liste est relue');
+  const empty = pauseHarness([]);
+  await empty.pauseEnrollments([]);
+  assert.equal(empty.calls.length, 0, 'sélection vide : aucune écriture');
 });

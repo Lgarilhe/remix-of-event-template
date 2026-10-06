@@ -6,7 +6,7 @@ Le 4 octobre 2026, le propriétaire du produit trouve l'application encore trop 
 
 Ses réponses aux questions de cadrage :
 
-- La barre latérale, inspirée de celle de Notion, reste telle qu'elle est.
+- La barre latérale, inspirée de celle de Notion, reste telle qu'elle est. Exception décidée par le fondateur le 05/10/2026 (décision 8 du lot 5) : une entrée « Séquences » dans la rangée basse, entre Agenda et Marketplace, même lien et même infobulle que ses voisines. Elle vit derrière l'interrupteur `konekt.sequences-v2` (lot 5c-2) jusqu'à son ouverture à tous (lot 5h).
 - La page mission suit les mêmes règles que le reste, en accord avec la session de la refonte mission.
 - Les pastilles des candidats montrent leurs vraies photos LinkedIn. Konekt en garde une petite copie privée, supprimée avec le candidat.
 - La perte de la photo à la notation est corrigée tout de suite, à part (PR #257).

@@ -25,7 +25,7 @@ import {
 import {
   LayoutDashboard, Target, Kanban, MessageSquare, Calendar as CalendarIcon, CheckSquare,
   Settings as SettingsIcon, Sparkles, Sun, Moon, LogOut,
-  Plus, CreditCard, Users, Search, Bot, ListPlus,
+  Plus, CreditCard, Users, Search, Bot, ListPlus, Send,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAgent } from '@/contexts/AgentContext';
@@ -33,6 +33,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { GlobalTaskShortcut } from '@/components/tasks/GlobalTaskShortcut';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 
 export function NavigationPalette() {
   const [open, setOpen] = useState(false);
@@ -46,6 +47,8 @@ export function NavigationPalette() {
   const { session } = useAuthReady();
   // « Nouvelle tâche » a besoin d'une session et d'une organisation (CreateTaskModal).
   const canCreateTask = !!session && !!organizationId;
+  // Séquences (lot 5c-2) : seulement interrupteur konekt.sequences-v2 allumé.
+  const showSequences = useSequencesBeta();
 
   // Ctrl+J / Cmd+J ouvre la palette
   useEffect(() => {
@@ -126,6 +129,13 @@ export function NavigationPalette() {
               Tâches
               <CommandShortcut>G T</CommandShortcut>
             </CommandItem>
+            {showSequences && (
+              <CommandItem onSelect={() => go('/sequences')}>
+                <Send className="mr-2 h-4 w-4" aria-hidden="true" />
+                Séquences
+                <CommandShortcut>G S</CommandShortcut>
+              </CommandItem>
+            )}
             <CommandItem onSelect={() => go('/inbox')}>
               <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
               Messagerie

@@ -8,6 +8,8 @@ import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
 import { useSequenceSave } from '@/hooks/useSequenceSave';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
+import { SEQUENCES_PATH, sequencePath } from '@/lib/sequencesBeta';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { ENROLLMENT_STATUSES, sequenceChannels } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
@@ -34,6 +36,7 @@ import {
   Lock,
   AlertTriangle,
   ScrollText,
+  ArrowRight,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -142,6 +145,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const planNoticeId = useId();
+  // Lot 5c-2 : interrupteur konekt.sequences-v2 allumé, chaque séquence mène à
+  // sa page et la liste à l'écran Séquences de l'organisation. Éteint, rien ne change.
+  const sequencesBeta = useSequencesBeta();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
   // plan gratuit. Décision 32 : tant que l'état d'abonnement n'est pas lu
   // (chargement ou lecture en échec), aucune activation, ni par l'interrupteur
@@ -468,7 +474,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 {channels.map(channel => <ChannelIcon key={channel} channel={channel} size="sm" />)}
               </span>
             )}
-            <p className="min-w-0 break-words text-sm font-medium text-foreground">{seq.name}</p>
+            {sequencesBeta ? (
+              <Link
+                to={sequencePath(seq.id, projectId)}
+                className="min-w-0 break-words text-sm font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {seq.name}
+              </Link>
+            ) : (
+              <p className="min-w-0 break-words text-sm font-medium text-foreground">{seq.name}</p>
+            )}
             {/* Séquence rattachée à aucune mission : elle apparaît et envoie dans
                 toutes les missions (ce n'est pas un modèle). */}
             {!seq.project_id && (
@@ -872,6 +887,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       )}
 
       {renderBody()}
+
+      {sequencesBeta && (
+        <Link
+          to={SEQUENCES_PATH}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+        >
+          Toutes les séquences de l'organisation
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+      )}
 
       {/* Template Selector */}
       <SequenceTemplateSelector
