@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOrganization } from '@/hooks/useOrganization';
+import { fetchInsightLights } from '@/lib/phoneCallInsights';
+import type { InsightLight } from '@/lib/phoneCallInsightModel';
 import {
   fetchCandidateNames,
   fetchOrgContactMap,
@@ -24,7 +26,12 @@ export function useCallsHub(days: number) {
     staleTime: 60 * 1000,
     queryFn: async () => {
       const since = new Date(Date.now() - (days + 1) * 24 * 3600 * 1000).toISOString();
-      const [calls, contactMap] = await Promise.all([fetchPhoneCallsSince(since), fetchOrgContactMap()]);
+      // Les étiquettes d'analyse ne bloquent jamais la liste : sans elles, les appels s'affichent quand même.
+      const lightsRead = fetchInsightLights(since).catch((error) => {
+        console.warn('[useCallsHub] analyses illisibles:', (error as { message?: string })?.message);
+        return new Map<string, InsightLight>();
+      });
+      const [calls, contactMap, insights] = await Promise.all([fetchPhoneCallsSince(since), fetchOrgContactMap(), lightsRead]);
       const numbers = new Set(calls.map((c) => c.numberE164).filter((n): n is string => !!n));
       const candidateIds = [...numbers].map((n) => contactMap.get(n)).filter((id): id is string => !!id);
       const names = await fetchCandidateNames(candidateIds);
@@ -35,16 +42,19 @@ export function useCallsHub(days: number) {
         const known = names.get(candidateId);
         attached.set(number, { candidateId, name: known?.name ?? null, avatarUrl: known?.avatarUrl ?? null });
       }
-      return { calls, attached };
+      return { calls, attached, insights };
     },
   });
 
   const calls: PhoneCall[] = useMemo(() => query.data?.calls ?? [], [query.data]);
   const attached = useMemo(() => query.data?.attached ?? new Map<string, AttachedCandidate>(), [query.data]);
+  const insights = useMemo(() => query.data?.insights ?? new Map<string, InsightLight>(), [query.data]);
 
   return {
     calls,
     attached,
+    /** Appel (identifiant) → état et étiquettes de son analyse, pour les appels analysés. */
+    insights,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error instanceof Error ? query.error.message : undefined,

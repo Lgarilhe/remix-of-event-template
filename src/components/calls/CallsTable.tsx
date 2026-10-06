@@ -16,6 +16,7 @@ import {
   type MatchedFilter,
   type OutcomeFilter,
 } from '@/lib/phoneCallFilters';
+import { tagsInUse, type InsightLight } from '@/lib/phoneCallInsightModel';
 import { callTitle, formatPhoneNumber } from '@/lib/phoneCallGroups';
 import { formatTalkTime } from '@/lib/phoneCallStats';
 import type { AttachedCandidate, PhoneCall } from '@/lib/phoneCalls';
@@ -58,6 +59,7 @@ export const CallsTable = ({
   attached,
   resolveRecruiter,
   recruiterOptions,
+  insights,
   onOpen,
 }: {
   calls: PhoneCall[];
@@ -65,6 +67,8 @@ export const CallsTable = ({
   resolveRecruiter: Resolve;
   /** Recruteurs proposés au filtre (vide : pas de filtre par recruteur). */
   recruiterOptions: Array<{ key: string; name: string }>;
+  /** Analyse des appels (lot A5), par appel : ses étiquettes se montrent et se filtrent. */
+  insights: ReadonlyMap<string, InsightLight>;
   onOpen: (call: PhoneCall) => void;
 }) => {
   const [filters, setFilters] = useState<CallFilters>(NO_FILTERS);
@@ -75,7 +79,10 @@ export const CallsTable = ({
   };
 
   const recruiterKey = useMemo(() => recruiterKeyOf(resolveRecruiter), [resolveRecruiter]);
-  const filtered = useMemo(() => filterCalls(calls, filters, { attached, recruiterKey }), [calls, filters, attached, recruiterKey]);
+  const tagsOf = useMemo(() => (call: PhoneCall): ReadonlyArray<string> => insights.get(call.id)?.tags ?? [], [insights]);
+  // Les étiquettes proposées au filtre : celles des appels de la période, seulement s'il y en a.
+  const tagOptions = useMemo(() => tagsInUse(calls.map((c) => insights.get(c.id)).filter((l): l is InsightLight => !!l)), [calls, insights]);
+  const filtered = useMemo(() => filterCalls(calls, filters, { attached, recruiterKey, tagsOf }), [calls, filters, attached, recruiterKey, tagsOf]);
   const shown = filtered.slice(0, limit);
   const filtering = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
@@ -119,6 +126,14 @@ export const CallsTable = ({
             options={[{ value: 'all', label: 'Tous les recruteurs' }, ...recruiterOptions.map((r) => ({ value: r.key, label: r.name }))]}
           />
         )}
+        {tagOptions.length > 0 && (
+          <FilterSelect<string>
+            label="Étiquette de l'analyse"
+            value={filters.tag}
+            onChange={(v) => set('tag', v)}
+            options={[{ value: 'all', label: 'Toutes les étiquettes' }, ...tagOptions.map((t) => ({ value: t, label: t }))]}
+          />
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -142,6 +157,7 @@ export const CallsTable = ({
               const Icon = call.outcome === 'missed' ? PhoneMissed : call.direction === 'outbound' ? PhoneOutgoing : PhoneIncoming;
               const recruiter = resolveRecruiter(call.agentEmail, call.agentName);
               const number = call.numberE164 ? formatPhoneNumber(call.numberE164) : null;
+              const tags = (insights.get(call.id)?.tags ?? []).slice(0, 3);
               return (
                 <li key={call.id}>
                   <button
@@ -163,7 +179,14 @@ export const CallsTable = ({
                         {formatWhen(call.startedAt)} · {callStatusLabel(call)}
                         {call.talkSeconds > 0 ? ` · ${formatTalkTime(call.talkSeconds)}` : ''}
                       </span>
-                      {recruiter && <RecruiterTag recruiter={recruiter} size={18} />}
+                      {(recruiter || tags.length > 0) && (
+                        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {recruiter && <RecruiterTag recruiter={recruiter} size={18} />}
+                          {tags.map((tag) => (
+                            <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{tag}</span>
+                          ))}
+                        </span>
+                      )}
                     </span>
                   </button>
                 </li>

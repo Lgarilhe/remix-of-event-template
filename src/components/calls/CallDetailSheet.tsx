@@ -1,4 +1,5 @@
 import { Mic, Tag } from 'lucide-react';
+import { CallInsightSection } from '@/components/calls/CallInsightSection';
 import { RecruiterTag } from '@/components/calls/RecruiterTag';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
@@ -18,7 +19,8 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
 
 /**
  * Le détail d'un appel : qui, quand, combien de temps, ce que le recruteur en
- * a noté, l'enregistrement. Un numéro qui n'est pas rattaché propose de le faire.
+ * a noté, l'enregistrement, puis l'analyse de la transcription (lot A5). Un
+ * numéro qui n'est pas rattaché propose de le faire.
  */
 export const CallDetailSheet = ({
   call,
@@ -43,7 +45,7 @@ export const CallDetailSheet = ({
 
   return (
     <Sheet open={call !== null} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         {call && (
           <>
             <SheetHeader className="space-y-1 text-left">
@@ -111,6 +113,8 @@ export const CallDetailSheet = ({
                 </Row>
               )}
             </dl>
+
+            <CallInsightSection key={call.id} call={call} />
           </>
         )}
       </SheetContent>

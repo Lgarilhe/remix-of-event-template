@@ -134,6 +134,7 @@ export default function CallsPage() {
         attached={hub.attached}
         resolveRecruiter={resolveRecruiter}
         recruiterOptions={scope === 'team' ? recruiterOptions : []}
+        insights={hub.insights}
         onOpen={setOpenCall}
       />
     );

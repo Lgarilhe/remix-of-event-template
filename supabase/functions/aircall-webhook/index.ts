@@ -9,9 +9,15 @@
  *
  * Aucun appel n'est rattaché à un candidat ici : le rapprochement se fait à
  * la lecture, par le numéro (phone_calls.contact_number_e164).
+ *
+ * `transcription.created` (lot A5) : le texte n'est pas dans l'événement, il est
+ * lu chez Aircall puis gardé, et l'analyse part en arrière-plan
+ * (analyze-phone-call).
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { mapAircallCall } from '../_shared/aircall-call.ts';
+import { ingestAircallTranscript } from '../_shared/aircall-transcript-ingest.ts';
+import { callIdOfIntelligenceEvent } from '../_shared/aircall-transcript.ts';
 import { sha256Hex } from '../_shared/telephony.ts';
 
 const json = (body: unknown, status = 200) =>
@@ -50,6 +56,30 @@ Deno.serve(async (req) => {
     const organizationId = connection.organization_id as string;
 
     const event = typeof body.event === 'string' ? body.event : '';
+
+    // Transcription prête : Aircall n'envoie pas le texte, on le lit puis on lance l'analyse.
+    if (event === 'transcription.created') {
+      const externalCallId = callIdOfIntelligenceEvent(body.data);
+      if (!externalCallId) return json({ ok: true, skipped: true });
+      const ingested = await ingestAircallTranscript(supabase, organizationId, externalCallId);
+      // Erreur passagère : 500, Aircall rejoue l'événement (l'écriture est rejouable).
+      if (ingested.status === 'transient') return json({ error: 'Transcription momentanément illisible' }, 500);
+      if (ingested.status !== 'stored') return json({ ok: true, skipped: true, reason: ingested.status });
+
+      // L'analyse (IA) est longue : elle part en arrière-plan, le webhook répond tout de suite.
+      const analysis = fetch(`${supabaseUrl}/functions/v1/analyze-phone-call`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organization_id: organizationId, call_id: ingested.callId }),
+      }).then((res) => {
+        if (!res.ok) console.warn('[aircall-webhook] analyse non lancée: HTTP', res.status);
+      }).catch((err) => {
+        console.warn('[aircall-webhook] analyse non lancée:', (err as { message?: string })?.message ?? err);
+      });
+      try { (globalThis as any).EdgeRuntime?.waitUntil?.(analysis); } catch { /* sans waitUntil : l'analyse part quand même */ }
+      return json({ ok: true, transcribed: true });
+    }
+
     if (!event.startsWith('call.') || !body.data) return json({ ok: true, skipped: true });
 
     const mapped = mapAircallCall(body.data, body.timestamp);

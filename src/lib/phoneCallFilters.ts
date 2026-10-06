@@ -17,9 +17,11 @@ export interface CallFilters {
   matched: MatchedFilter;
   /** « all », ou la clé d'un recruteur (identifiant du membre, ou « aircall:<nom> »). */
   recruiter: string;
+  /** « all », ou une étiquette posée par l'analyse de l'appel (lot A5). */
+  tag: string;
 }
 
-export const NO_FILTERS: CallFilters = { query: '', direction: 'all', outcome: 'all', matched: 'all', recruiter: 'all' };
+export const NO_FILTERS: CallFilters = { query: '', direction: 'all', outcome: 'all', matched: 'all', recruiter: 'all', tag: 'all' };
 
 /** Minuscules sans accents : « Valérie » se retrouve en tapant « valerie ». */
 export function fold(text: string): string {
@@ -38,6 +40,8 @@ export interface FilterContext {
   attached: ReadonlyMap<string, { name: string | null }>;
   /** Clé du recruteur d'un appel ; null sans agent. */
   recruiterKey: (call: PhoneCall) => string | null;
+  /** Étiquettes d'analyse d'un appel ; absent : aucun appel n'en a. */
+  tagsOf?: (call: PhoneCall) => ReadonlyArray<string>;
 }
 
 export function filterCalls(calls: ReadonlyArray<PhoneCall>, filters: CallFilters, ctx: FilterContext): PhoneCall[] {
@@ -50,6 +54,7 @@ export function filterCalls(calls: ReadonlyArray<PhoneCall>, filters: CallFilter
     if (filters.matched === 'attached' && !attached) return false;
     if (filters.matched === 'unattached' && attached) return false;
     if (filters.recruiter !== 'all' && ctx.recruiterKey(call) !== filters.recruiter) return false;
+    if (filters.tag !== 'all' && !(ctx.tagsOf?.(call) ?? []).includes(filters.tag)) return false;
     if (!q) return true;
     const text = fold([call.contactName, attached?.name, call.contactNumber].filter(Boolean).join(' '));
     if (text.includes(q)) return true;
