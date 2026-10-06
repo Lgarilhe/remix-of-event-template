@@ -174,6 +174,7 @@ export function flattenV2WebhookEnvelope(raw: unknown): Record<string, unknown> 
   const env = raw as Record<string, unknown>;
   if (env.event || typeof env.type !== "string" || !env.payload || typeof env.payload !== "object") return null;
   // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p = env.payload as Record<string, any>;
   const out: Record<string, unknown> = {
     event: env.type,

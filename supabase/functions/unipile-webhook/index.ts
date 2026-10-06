@@ -635,7 +635,7 @@ Deno.serve(async (req) => {
     // (préfixe evt_, cf. GET /v2/webhooks/conversations/) n'est retenu que s'il
     // en a la forme.
     const v2EventId = v2OriginEvent
-      ? [(source as any).event_id, (rawPayload as any).event_id, (rawPayload as any).id]
+      ? [(source as Record<string, unknown>).event_id, (rawPayload as Record<string, unknown>).event_id, (rawPayload as Record<string, unknown>).id]
           .find((v): v is string => typeof v === 'string' && v.startsWith('evt_')) ?? null
       : null;
     if (v2OriginEvent) {
