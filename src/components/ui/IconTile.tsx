@@ -21,7 +21,7 @@ interface IconTileProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const TONE_CLASSES: Record<Tone, string> = {
-  default: 'bg-muted text-foreground-secondary',
+  default: 'bg-muted text-foreground',
   brand: 'bg-brand/15 text-brand',
   success: 'bg-success-muted text-success',
   warning: 'bg-warning-muted text-warning',

@@ -275,8 +275,9 @@ test('Bascule d\'affichage : la variante « quiet » du kit, rendu par défaut i
     { value: 'b', label: 'Tableau' },
   ];
   const quiet = render(kit.SegmentedControl, { 'aria-label': 'Affichage', value: 'a', onValueChange: () => {}, options, variant: 'quiet', iconsOnlyOnPhone: true });
-  assert.match(quiet, /<div role="group" aria-label="Affichage" class="inline-flex shrink-0 items-center rounded-lg bg-muted\/60 p-0\.5 max-md:h-auto">/);
-  assert.match(quiet, /aria-pressed="true" class="[^"]*bg-background font-semibold text-foreground"/);
+  // Contraste (façon Qonto) : rail gris plein, option choisie en carte blanche en clair, creusée en sombre.
+  assert.match(quiet, /<div role="group" aria-label="Affichage" class="inline-flex shrink-0 items-center rounded-lg bg-muted p-0\.5 max-md:h-auto">/);
+  assert.match(quiet, /aria-pressed="true" class="[^"]*bg-card font-semibold text-foreground dark:bg-background"/);
   assert.doesNotMatch(quiet, /shadow-sm|ring-border-strong/);
 
   const plain = render(kit.SegmentedControl, { 'aria-label': 'Affichage', value: 'a', onValueChange: () => {}, options });

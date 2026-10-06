@@ -29,7 +29,7 @@ export interface StatTileProps {
 }
 
 const VARIANT_STYLES: Record<StatTileVariant, { icon: string; value: string; bg: string }> = {
-  default:     { icon: 'text-muted-foreground', value: 'text-foreground', bg: 'bg-card' },
+  default:     { icon: 'text-foreground',       value: 'text-foreground', bg: 'bg-card' },
   primary:     { icon: 'text-brand',            value: 'text-foreground', bg: 'bg-card' },
   success:     { icon: 'text-success',          value: 'text-success',    bg: 'bg-card' },
   warning:     { icon: 'text-warning',          value: 'text-warning',    bg: 'bg-card' },
@@ -57,7 +57,7 @@ export const StatTile: React.FC<StatTileProps> = React.memo(({
       )}
     >
       <div className="flex items-center gap-1.5">
-        {Icon && <Icon className={cn('h-3.5 w-3.5 shrink-0', accent ? styles.icon : 'text-muted-foreground')} aria-hidden={true} />}
+        {Icon && <Icon className={cn('h-3.5 w-3.5 shrink-0', accent ? styles.icon : 'text-foreground')} aria-hidden={true} />}
         <span className="truncate text-xs font-medium text-muted-foreground">
           {label}
         </span>

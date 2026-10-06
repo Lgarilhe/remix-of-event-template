@@ -10,15 +10,23 @@ const badgeVariants = cva(
       variant: {
         default: "border-transparent bg-primary text-primary-foreground",
         secondary: "border-transparent bg-secondary text-secondary-foreground",
-        // Statuts : fond teinté et texte de la couleur du statut, lisibles dans les deux thèmes.
-        destructive: "border-transparent bg-danger-muted text-danger",
-        danger: "border-transparent bg-danger-muted text-danger",
+        // Statuts, à la Qonto (docs/design/01-direction.md, § 2) : fond teinté, texte à l'encre et
+        // pastille de 6 px de la couleur du statut. Une icône posée dans le badge prend cette
+        // couleur et remplace la pastille. La couleur ne porte jamais le texte.
+        destructive:
+          "gap-1.5 border-transparent bg-danger-muted text-foreground before:size-1.5 before:shrink-0 before:rounded-full before:bg-danger before:content-[''] has-[>svg]:before:hidden [&>svg]:text-danger",
+        danger:
+          "gap-1.5 border-transparent bg-danger-muted text-foreground before:size-1.5 before:shrink-0 before:rounded-full before:bg-danger before:content-[''] has-[>svg]:before:hidden [&>svg]:text-danger",
         outline: "text-foreground border-border",
-        success: "border-transparent bg-success-muted text-success",
-        warning: "border-transparent bg-warning-muted text-warning",
-        info: "border-transparent bg-info-muted text-info",
-        brand: "border-transparent bg-brand/15 text-brand",
-        muted: "border-transparent bg-muted text-muted-foreground",
+        success:
+          "gap-1.5 border-transparent bg-success-muted text-foreground before:size-1.5 before:shrink-0 before:rounded-full before:bg-success before:content-[''] has-[>svg]:before:hidden [&>svg]:text-success",
+        warning:
+          "gap-1.5 border-transparent bg-warning-muted text-foreground before:size-1.5 before:shrink-0 before:rounded-full before:bg-warning before:content-[''] has-[>svg]:before:hidden [&>svg]:text-warning",
+        info: "gap-1.5 border-transparent bg-info-muted text-foreground before:size-1.5 before:shrink-0 before:rounded-full before:bg-info before:content-[''] has-[>svg]:before:hidden [&>svg]:text-info",
+        brand:
+          "gap-1.5 border-transparent bg-brand/15 text-foreground before:size-1.5 before:shrink-0 before:rounded-full before:bg-brand before:content-[''] has-[>svg]:before:hidden [&>svg]:text-brand",
+        // Neutre : encre sur le gris, sans pastille.
+        muted: "border-transparent bg-muted text-foreground",
       },
     },
     defaultVariants: {

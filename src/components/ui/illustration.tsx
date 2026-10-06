@@ -9,6 +9,10 @@
  * mobiles rejouent leur geste en boucle, avec une pause entre deux passages
  * (décision du propriétaire, 29/09). Avec le mouvement réduit, le dessin est
  * fixe dans son état final.
+ *
+ * Tuile : le dessin est posé sur une tuile de surface carte (blanche en clair,
+ * sans éblouissement en sombre), jamais à nu sur le fond, jamais inversé ni
+ * filtré. `tile={false}` seulement dans une carte serrée.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -246,9 +250,11 @@ export interface IllustrationProps {
   /** sm : état compact ; md : état vide d'une page ; lg : page entière. */
   size?: keyof typeof SIZES;
   className?: string;
+  /** Tuile de surface carte autour du dessin (vrai par défaut). */
+  tile?: boolean;
 }
 
-function Layers({ name, size = 'md', className }: IllustrationProps) {
+function Layers({ name, size = 'md', className }: Omit<IllustrationProps, 'tile'>) {
   const { width, height, layers, clip } = DRAWINGS[name];
   const refs = useRef<Array<HTMLImageElement | null>>([]);
   const [settled, setSettled] = useState(0);
@@ -294,7 +300,15 @@ function Layers({ name, size = 'md', className }: IllustrationProps) {
   );
 }
 
-export function Illustration(props: IllustrationProps) {
+export function Illustration({ tile = true, className, ...props }: IllustrationProps) {
   // Un autre dessin repart de zéro (chargement et mouvement).
-  return <Layers key={props.name} {...props} />;
+  if (!tile) return <Layers key={props.name} className={className} {...props} />;
+  // La tuile enveloppe le conteneur des calques sans le toucher : les calques sont en
+  // absolute inset-0, une marge sur leur conteneur les décalerait. La classe de
+  // l'appelant (marges, centrage) va sur la tuile.
+  return (
+    <div aria-hidden="true" className={cn('w-fit rounded-xl bg-card p-4', className)}>
+      <Layers key={props.name} {...props} />
+    </div>
+  );
 }

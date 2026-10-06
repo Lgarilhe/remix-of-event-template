@@ -6,19 +6,27 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        // Hiérarchie : primary (l'action de la zone, plein et monochrome), secondary (l'action
-        // suivante, fond teinté), outline (une option, filet appuyé), ghost (le reste, sans contour).
-        default: "border border-border-strong bg-transparent text-foreground hover:bg-accent",
-        primary: "bg-primary font-semibold text-primary-foreground hover:bg-primary/90",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline: "border border-border-strong bg-transparent text-foreground hover:bg-accent",
-        secondary: "bg-foreground/10 text-foreground hover:bg-foreground/15",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-foreground underline-offset-4 hover:underline",
+        // Trois styles, comme Qonto (docs/design/01-direction.md, § 6) : primary, l'action de la
+        // zone, aplat d'encre (une seule par zone) ; default, outline et secondary, une action qui
+        // fait avancer, contour d'encre (blanc à 70 % en sombre) ; ghost et link, discrets à
+        // l'encre. Un geste de retrait ajoute text-muted-foreground à l'appel. Désactivé : libellé
+        // gris sans opacité ; en chargement (aria-busy), un aplat garde sa couleur.
+        default:
+          "border border-foreground bg-transparent text-foreground hover:bg-accent dark:border-foreground/70 disabled:border-border disabled:text-muted-foreground dark:disabled:border-border",
+        primary:
+          "bg-primary font-semibold text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground aria-busy:bg-primary aria-busy:text-primary-foreground",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:bg-muted disabled:text-muted-foreground aria-busy:bg-destructive aria-busy:text-destructive-foreground",
+        outline:
+          "border border-foreground bg-transparent text-foreground hover:bg-accent dark:border-foreground/70 disabled:border-border disabled:text-muted-foreground dark:disabled:border-border",
+        secondary:
+          "border border-foreground bg-transparent text-foreground hover:bg-accent dark:border-foreground/70 disabled:border-border disabled:text-muted-foreground dark:disabled:border-border",
+        ghost: "hover:bg-accent hover:text-accent-foreground disabled:text-muted-foreground",
+        link: "text-foreground underline-offset-4 hover:underline disabled:text-muted-foreground",
       },
       size: {
         // Quatre hauteurs : xs 28, sm 32, défaut 36, lg 40 (docs/design/01-direction.md, § 5).
@@ -55,6 +63,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           className={cn(buttonVariants({ variant, size, className }))}
           ref={ref}
           disabled={disabled || loading}
+          aria-busy={loading || undefined}
           {...props}
         >
           {children}
@@ -67,6 +76,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         disabled={disabled || loading}
+        aria-busy={loading || undefined}
         {...props}
       >
         {loading && <Loader2 className="animate-spin" />}

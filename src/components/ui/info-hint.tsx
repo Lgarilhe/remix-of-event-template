@@ -31,7 +31,7 @@ export function InfoHint({ label, children, side = "top", className }: InfoHintP
           size="icon-xs"
           aria-label={label}
           className={cn(
-            "h-6 w-6 rounded-md text-muted-foreground hover:text-foreground data-[state=open]:text-foreground [&_svg]:size-3.5 max-md:h-11 max-md:w-11",
+            "h-6 w-6 rounded-md [&_svg]:size-3.5 max-md:h-11 max-md:w-11",
             className,
           )}
         >
