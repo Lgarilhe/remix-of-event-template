@@ -87,6 +87,8 @@ export interface AvatarStackProps {
   max?: number;
   /** Côté de chaque visage en px (30 par défaut). */
   size?: number;
+  /** Couleur de l'anneau qui sépare les visages : celle de la surface qui les porte (`ring-background` par défaut). */
+  ringClassName?: string;
   className?: string;
 }
 
@@ -97,7 +99,7 @@ function stackLabel(names: string[], rest: number): string {
   return `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]}`;
 }
 
-export function AvatarStack({ people, total, max = 3, size = 30, className }: AvatarStackProps) {
+export function AvatarStack({ people, total, max = 3, size = 30, ringClassName = 'ring-background', className }: AvatarStackProps) {
   const shown = people.slice(0, max);
   const rest = Math.max(0, (total ?? people.length) - shown.length);
   if (shown.length === 0 && rest === 0) return null;
@@ -112,7 +114,7 @@ export function AvatarStack({ people, total, max = 3, size = 30, className }: Av
           src={person.src}
           candidateId={person.candidateId}
           size={size}
-          className={cn('ring-2 ring-background', index > 0 && '-ml-1.5')}
+          className={cn('ring-2', ringClassName, index > 0 && '-ml-1.5')}
         />
       ))}
       {rest > 0 && (
@@ -120,7 +122,8 @@ export function AvatarStack({ people, total, max = 3, size = 30, className }: Av
           aria-hidden="true"
           style={{ height: size, minWidth: size }}
           className={cn(
-            'inline-flex shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-2xs font-semibold tabular-nums text-foreground-secondary ring-2 ring-background',
+            'inline-flex shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-2xs font-semibold tabular-nums text-foreground-secondary ring-2',
+            ringClassName,
             shown.length > 0 && '-ml-1.5',
           )}
         >
