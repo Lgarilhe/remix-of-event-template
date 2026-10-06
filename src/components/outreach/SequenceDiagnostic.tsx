@@ -122,23 +122,29 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
   open,
   onOpenChange,
   projectId,
-}) => (
-  <Sheet open={open} onOpenChange={onOpenChange}>
-    <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
-      <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
-        <SheetTitle>Diagnostic des envois</SheetTitle>
-        <SheetDescription>
-          État des envois automatiques {projectId ? 'de cette mission' : 'de toutes vos missions'}.
-        </SheetDescription>
-      </SheetHeader>
+}) => {
+  // État gardé ici, hors du contenu du Sheet (démonté à la fermeture) : à la
+  // réouverture, les chiffres déjà lus restent affichés pendant l'actualisation.
+  const diagnostic = useSequenceDiagnosticData({ active: open, projectId });
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+        <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
+          <SheetTitle>Diagnostic des envois</SheetTitle>
+          <SheetDescription>
+            État des envois automatiques {projectId ? 'de cette mission' : 'de toutes vos missions'}.
+          </SheetDescription>
+        </SheetHeader>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-        <SequenceDiagnosticBody active={open} projectId={projectId} />
-      </div>
-    </SheetContent>
-  </Sheet>
-);
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <DiagnosticView diagnostic={diagnostic} />
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
 
+/** Corps du diagnostic hors du panneau (carte « État de l'envoi » du Journal d'une séquence). */
 export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
   active,
   projectId,
@@ -146,6 +152,12 @@ export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
   compact = false,
   onShowJourney,
 }) => {
+  const diagnostic = useSequenceDiagnosticData({ active, projectId, sequenceId });
+  return <DiagnosticView diagnostic={diagnostic} compact={compact} onShowJourney={onShowJourney} />;
+};
+
+/** Lectures du diagnostic : chiffres des envois, dernier passage, plafond d'invitations du compte de l'utilisateur. */
+function useSequenceDiagnosticData({ active, projectId, sequenceId }: { active: boolean; projectId?: string | null; sequenceId?: string | null }) {
   const open = active;
   const [data, setData] = useState<DiagnosticData>(initialState);
   // Panne complète du chargement : état d'erreur avec « Réessayer », jamais des compteurs à zéro.
@@ -285,6 +297,19 @@ export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
     if (myAccountId) void refetchQuota();
   };
 
+  return {
+    data, loadError, handleRefresh, myAccountId, mappingsReady, mappingsError, quota, quotaLoading, quotaError,
+  };
+}
+
+type DiagnosticState = ReturnType<typeof useSequenceDiagnosticData>;
+
+const DiagnosticView: React.FC<{ diagnostic: DiagnosticState; compact?: boolean; onShowJourney?: (enrollmentId: string) => void }> = ({
+  diagnostic,
+  compact = false,
+  onShowJourney,
+}) => {
+  const { data, loadError, handleRefresh, myAccountId, mappingsReady, mappingsError, quota, quotaLoading, quotaError } = diagnostic;
   const lastCronRunAt = data.lastCronRunAt;
   const cronRecent = lastCronRunAt ? Date.now() - lastCronRunAt.getTime() < HEALTHY_DELAY_MS : false;
   // Un passage récent n'est un succès que s'il a vraiment tourné : 'skipped'
@@ -314,7 +339,7 @@ export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
     <>
       {loadError ? (
         <ErrorState
-          title="Impossible de charger le diagnostic"
+          title={compact ? 'État de l’envoi indisponible pour l’instant.' : 'Impossible de charger le diagnostic'}
           description="Vérifiez votre connexion, puis réessayez."
           detail={loadError}
           onRetry={handleRefresh}
@@ -337,7 +362,7 @@ export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
 
           {data.hasError && (
             <div role="alert" className="rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-foreground">
-              Certains chiffres n'ont pas pu être chargés. Vérifiez votre connexion puis actualisez.
+              {compact ? 'Certains chiffres n’ont pas pu être chargés. Vérifiez votre connexion puis actualisez.' : "Certains chiffres n'ont pas pu être chargés. Vérifiez votre connexion puis actualisez."}
             </div>
           )}
 
@@ -391,12 +416,15 @@ export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
           <div className={box}>
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-foreground">Invitations LinkedIn de la semaine</p>
-              {quotaReady && (
+              {quotaReady && (compact && weeklySent === 0 ? (
+                // Page : jamais « 0 sur 25 » (06-simplicite, règle 8).
+                <span className="text-sm text-muted-foreground">Aucune invitation cette semaine (plafond {weeklyCap})</span>
+              ) : (
                 <span className="text-sm font-medium tabular-nums text-foreground">
                   {weeklySent}
                   <span className="text-muted-foreground"> sur {weeklyCap}</span>
                 </span>
-              )}
+              ))}
             </div>
             {!mappingsReady && !mappingsError ? (
               <p className="text-xs text-muted-foreground">Chargement…</p>
@@ -415,22 +443,24 @@ export const SequenceDiagnosticBody: React.FC<SequenceDiagnosticBodyProps> = ({
               <p className="text-xs text-muted-foreground">Plafond indisponible pour votre compte. Actualisez dans quelques instants.</p>
             ) : (
               <>
-                <div
-                  className="h-2 overflow-hidden rounded-full bg-muted"
-                  role="progressbar"
-                  aria-label="Invitations LinkedIn envoyées cette semaine"
-                  aria-valuemin={0}
-                  aria-valuemax={weeklyCap}
-                  aria-valuenow={weeklySent}
-                >
+                {!(compact && weeklySent === 0) && (
                   <div
-                    className={cn(
-                      'h-full rounded-full',
-                      inviteCritical ? 'bg-danger' : inviteWarn ? 'bg-warning' : 'bg-foreground-secondary',
-                    )}
-                    style={{ width: `${Math.min(100, inviteRatio * 100)}%` }}
-                  />
-                </div>
+                    className="h-2 overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-label="Invitations LinkedIn envoyées cette semaine"
+                    aria-valuemin={0}
+                    aria-valuemax={weeklyCap}
+                    aria-valuenow={weeklySent}
+                  >
+                    <div
+                      className={cn(
+                        'h-full rounded-full',
+                        inviteCritical ? 'bg-danger' : inviteWarn ? 'bg-warning' : 'bg-foreground-secondary',
+                      )}
+                      style={{ width: `${Math.min(100, inviteRatio * 100)}%` }}
+                    />
+                  </div>
+                )}
                 <p className="mt-2 text-xs text-muted-foreground">
                   Plafond de votre compte, ajusté pendant sa montée en charge.
                 </p>

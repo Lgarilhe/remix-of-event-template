@@ -58,7 +58,8 @@ export function SequenceStatusPill({ status, isActive, canToggle, disabled, lock
         <DropdownMenuItem onSelect={onToggle} className="items-start gap-2 max-md:min-h-11" title={lockedHint}>
           {isActive ? <Pause className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <Play className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
           <span className="flex min-w-0 flex-col">
-            <span>{isActive ? 'Mettre en pause la séquence' : 'Réactiver la séquence'}</span>
+            {/* Brouillon jamais activé : « Activer », pas « Réactiver ». */}
+            <span>{isActive ? 'Mettre en pause la séquence' : status === 'draft' ? 'Activer la séquence' : 'Réactiver la séquence'}</span>
             {lockedHint && <span className="max-w-[16rem] whitespace-normal text-xs text-muted-foreground">{lockedHint}</span>}
           </span>
         </DropdownMenuItem>

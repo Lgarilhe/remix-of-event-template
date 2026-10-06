@@ -1,7 +1,8 @@
 // Onglet « Candidats » de la page d'une séquence (lot 5c-2) : inscriptions de
-// la séquence, filtrées par puce et par recherche dans la requête (pagination
-// juste), avec leurs exécutions et le lien de la conversation d'un candidat qui
-// a répondu. Mêmes lectures que le suivi des inscrits (SequenceEnrollmentsPanel),
+// la séquence, filtrées par puce et par recherche dans la requête, paginées par
+// curseur sur (created_at, id) : une pause ou un arrêt qui fait sortir une
+// ligne du filtre ne décale pas la page suivante. Avec leurs exécutions et le
+// lien de la conversation d'un candidat qui a répondu. Mêmes lectures que le suivi des inscrits (SequenceEnrollmentsPanel),
 // sous la RLS de la personne connectée : un collaborateur ne lit que ses
 // inscriptions, sauf sur une séquence dont il est l'auteur.
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { EXECUTION_PAGE_SIZE, type Enrollment, type StepExecution } from '@/lib/sequenceActions';
 import { chipFilter, type EnrollmentChip } from '@/lib/enrollmentStatusLine';
+import { enrollmentCursorFilter, nextEnrollmentCursor, type EnrollmentCursor } from '@/lib/journalCursor';
 
 /** Étape de la séquence telle que la lit l'onglet (parcours, statut). */
 export interface DetailStep {
@@ -51,7 +53,7 @@ export function useSequenceEnrollments(
   const [enrollments, setEnrollments] = useState<DetailEnrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
+  const [cursor, setCursor] = useState<EnrollmentCursor | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [chatByEnrollment, setChatByEnrollment] = useState<Map<string, string>>(new Map());
   const stepsRef = useRef(steps);
@@ -97,7 +99,8 @@ export function useSequenceEnrollments(
     return new Map((data ?? []).filter((r) => r.enrollment_id && r.chat_id).map((r) => [r.enrollment_id as string, r.chat_id as string]));
   };
 
-  const load = useCallback(async (append: boolean, offset: number) => {
+  const load = useCallback(async (after: EnrollmentCursor | null) => {
+    const append = after !== null;
     if (!sequenceId) return;
     const request = ++requestRef.current;
     if (append) setLoadingMore(true);
@@ -110,7 +113,9 @@ export function useSequenceEnrollments(
         .eq('sequence_id', sequenceId)
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
-        .range(offset, offset + ENROLLMENT_PAGE_SIZE - 1);
+        .limit(ENROLLMENT_PAGE_SIZE);
+      // Page suivante : après la dernière ligne lue par le serveur, pas après N lignes affichées.
+      if (after) query = query.or(enrollmentCursorFilter(after));
       if (filter.statuses) query = query.in('status', filter.statuses);
       if (filter.pauseReasonsIn) query = query.in('pause_reason', filter.pauseReasonsIn);
       // Pause sans raison : manuelle (même lecture que les compteurs).
@@ -147,7 +152,7 @@ export function useSequenceEnrollments(
       if (request !== requestRef.current) return;
       setEnrollments((prev) => (append ? [...prev, ...enriched.filter((e) => !prev.some((p) => p.id === e.id))] : enriched));
       setChatByEnrollment((prev) => (append ? new Map([...prev, ...chats]) : chats));
-      setHasMore(rows.length === ENROLLMENT_PAGE_SIZE);
+      setCursor(nextEnrollmentCursor(rows, ENROLLMENT_PAGE_SIZE));
       setLoadError(null);
     } catch (err) {
       console.error('Error fetching enrollments:', err);
@@ -161,8 +166,9 @@ export function useSequenceEnrollments(
     }
   }, [sequenceId, options.chip, options.query]);
 
-  const reload = useCallback(() => load(false, 0), [load]);
-  const loadMore = () => load(true, enrollments.length);
+  const reload = useCallback(() => load(null), [load]);
+  const loadMore = () => (cursor ? load(cursor) : Promise.resolve());
+  const hasMore = cursor !== null;
 
   useEffect(() => {
     void reload();

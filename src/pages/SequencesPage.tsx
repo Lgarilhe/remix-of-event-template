@@ -87,6 +87,17 @@ const TAB_PARAM = 'onglet';
 const parseTab = (raw: string | null): SequencesTab =>
   (TABS.some((t) => t.value === raw) ? raw : 'toutes') as SequencesTab;
 
+// Formule sans envoi : bandeau de la spécification (section 4), une fois par personne (« Compris » mémorisé dans ce navigateur).
+const freeNoticeKey = (userId: string) => `konekt:sequences-free-notice-dismissed:${userId}`;
+function isFreeNoticeDismissed(userId: string | null): boolean {
+  if (!userId) return false;
+  try {
+    return localStorage.getItem(freeNoticeKey(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
 const OTHER_ORG_READ_ONLY_HINT = 'Séquence d’une autre organisation : vous pouvez la consulter, pas la modifier.';
 const NOT_AUTHOR_READ_ONLY_HINT = 'Seul l’auteur de cette séquence peut la modifier : dupliquez-la pour l’adapter.';
 
@@ -133,6 +144,7 @@ export default function SequencesPage() {
   const [nudging, setNudging] = useState(false);
   const [nudgeConfirmOpen, setNudgeConfirmOpen] = useState(false);
   const [saveTemplateSeq, setSaveTemplateSeq] = useState<SequenceWithStats | null>(null);
+  const [freeNoticeDismissedFor, setFreeNoticeDismissedFor] = useState<string | null>(null);
 
   const canManage = (seq: SequenceWithStats) => !!organizationId && seq.organization_id === organizationId;
   // Contrat §8 : un collaborateur ne modifie, ne supprime et n'active que ses séquences.
@@ -171,6 +183,8 @@ export default function SequencesPage() {
     missionSequenceIds: nudgeSequenceIds, setNudging, setNudgeConfirmOpen,
     setActivateConfirm, setDeleteConfirmId, duplicatingRef, setDuplicatingId,
     editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
+    // Même nom de copie que la page d'une séquence (vocabulaire figé : « Copie de … »).
+    copyName: (name) => `Copie de ${name}`,
   });
 
   const openEditorWith = (sequence: Sequence | null) => {
@@ -236,9 +250,18 @@ export default function SequencesPage() {
   });
   const deleteTarget = deleteConfirmId ? sequences.find((s) => s.id === deleteConfirmId) : undefined;
 
-  const nudgeHelp = nudgeSequenceIds.length === 0
-    ? 'Aucune séquence active à avancer.'
-    : 'Avance à maintenant les actions prévues plus tard aujourd’hui, sauf les invitations LinkedIn. Elles partent progressivement pendant vos heures d’envoi.';
+  const nudgeHelp = 'Avance à maintenant les actions prévues plus tard aujourd’hui, sauf les invitations LinkedIn. Elles partent progressivement pendant vos heures d’envoi.';
+  const showFreeNotice = !canSendSequences && !planStateUnknown
+    && !(userId && (freeNoticeDismissedFor === userId || isFreeNoticeDismissed(userId)));
+  const dismissFreeNotice = () => {
+    if (!userId) return;
+    setFreeNoticeDismissedFor(userId);
+    try {
+      localStorage.setItem(freeNoticeKey(userId), '1');
+    } catch {
+      // stockage indisponible : le bandeau reste fermé pour la session en cours
+    }
+  };
 
   const renderAll = () => {
     if (loading) return <SequencesTableSkeleton />;
@@ -330,7 +353,7 @@ export default function SequencesPage() {
                   toggleDisabled={togglingId === seq.id || waitsForPlan}
                   toggleLocked={deactivationLocked(seq)}
                   toggleTitle={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : waitsForPlan ? PLAN_STATE_LOADING_MESSAGE : undefined}
-                  activationNoticeId={activationBlocked ? planNoticeId : undefined}
+                  activationNoticeId={activationBlocked && showFreeNotice ? planNoticeId : undefined}
                   duplicating={duplicatingId === seq.id}
                   duplicateDisabled={!!duplicatingId}
                   onToggle={() => { void requestToggle(seq); }}
@@ -356,26 +379,28 @@ export default function SequencesPage() {
         title="Séquences"
         actions={
           <>
-            {/* Enveloppe : un bouton grisé ne reçoit pas le survol, l'aide reste lisible. */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setNudgeConfirmOpen(true)}
-                    disabled={nudging || nudgeSequenceIds.length === 0}
-                    loading={nudging}
-                    className="max-md:h-11"
-                  >
-                    {!nudging && <FastForward aria-hidden="true" />}
-                    {nudging ? 'En cours…' : 'Envoyer les actions du jour'}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">{nudgeHelp}</TooltipContent>
-            </Tooltip>
+            {/* Aucune séquence active : rien à avancer, le bouton n'est pas affiché (06-simplicite, règle 8). */}
+            {nudgeSequenceIds.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setNudgeConfirmOpen(true)}
+                      disabled={nudging}
+                      loading={nudging}
+                      className="max-md:h-11"
+                    >
+                      {!nudging && <FastForward aria-hidden="true" />}
+                      {nudging ? 'En cours…' : 'Envoyer les actions du jour'}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">{nudgeHelp}</TooltipContent>
+              </Tooltip>
+            )}
             <Button type="button" variant="primary" size="sm" onClick={() => setShowTemplateSelector(true)} className="max-md:h-11">
               <Plus aria-hidden="true" />
               Créer une séquence
@@ -384,15 +409,24 @@ export default function SequencesPage() {
         }
       />
 
-      {/* Offre sans envoi, abonnement lu : on prépare, on n'active pas. */}
-      {!canSendSequences && !planStateUnknown && (
+      {/* Formule sans envoi, abonnement lu : texte de la spécification, une fois par personne. */}
+      {showFreeNotice && (
         <Banner
           tone="info"
           icon={Lock}
           className="mb-4 rounded-lg border"
-          action={<Link to="/pricing" className={bannerActionClass}>Voir les offres</Link>}
+          action={
+            <span className="flex shrink-0 items-center gap-4">
+              <Link to="/pricing" className={bannerActionClass}>Voir les offres</Link>
+              <Button type="button" variant="link" onClick={dismissFreeNotice} className={`h-auto p-0 ${bannerActionClass}`}>
+                Compris
+              </Button>
+            </span>
+          }
         >
-          <span id={planNoticeId}>Votre offre ne permet pas d'envoyer des séquences : vous pouvez les préparer, pas les activer.</span>
+          <span id={planNoticeId}>
+            Votre formule permet de préparer des séquences et d’écrire aux candidats un par un. L’envoi automatique, avec les relances, fait partie des formules payantes.
+          </span>
         </Banner>
       )}
 

@@ -148,6 +148,7 @@ const SCREEN_FILES = [
   'src/lib/enrollmentStatusLine.ts',
   'src/lib/journalCursor.ts',
   'src/lib/sequenceFlow.ts',
+  'src/lib/sequenceJourney.ts',
   'src/hooks/useSequencesBeta.ts',
   'src/hooks/useOrgSequences.ts',
   'src/hooks/useSequenceDetail.ts',
@@ -450,7 +451,9 @@ test('5c-2 — enrollmentStatusLine : une ligne par statut de la spécification 
   assert.equal(line({ status: 'active', executions: [{ status: 'scheduled', scheduled_at: at(30, 9), error_message: "Message rédigé par l'IA à relire avant l'envoi.", final_message: 'Bonjour', step: { action_type: 'message' } }] }).label, 'En cours');
 
   // paused, par raison.
-  assert.deepEqual(pick(line({ status: 'paused', pause_reason: 'manual', updated_at: at(25, 9) })), ['en-pause', 'En pause depuis le 25/09', 'resume', 'Reprendre la séquence']);
+  // Pause manuelle : auteur et date non enregistrés (écart à la spécification
+  // acté dans le plan, 5c-2) ; updated_at, réécrit à chaque écriture, ne la date pas.
+  assert.deepEqual(pick(line({ status: 'paused', pause_reason: 'manual', updated_at: at(25, 9) })), ['en-pause', 'En pause', 'resume', 'Reprendre la séquence']);
   assert.deepEqual(pick(line({ status: 'paused', pause_reason: 'account_disconnected' })), ['en-pause', 'En pause : compte LinkedIn déconnecté', 'reconnect', 'Reconnecter le compte']);
   assert.equal(line({ status: 'paused', pause_reason: 'account_disconnected' }, { isAccountHolder: false }).action, null, 'seul le titulaire reconnecte');
   assert.deepEqual(pick(line({ status: 'paused', pause_reason: 'subscription_required' })), ['en-pause', 'En pause : abonnement requis', 'pricing', 'Voir les offres']);
@@ -468,6 +471,19 @@ test('5c-2 — enrollmentStatusLine : une ligne par statut de la spécification 
   assert.deepEqual(pick(line({ status: 'replied', replied_at: at(28, 10) })), ['a-repondu', 'A répondu le 28/09', 'conversation', 'Voir la conversation']);
   assert.deepEqual(pick(line({ status: 'completed', completed_at: at(21, 10) })), ['terminees', 'Terminée le 21/09, sans réponse', 'relaunch', 'Relancer depuis l’étape suivante']);
   assert.equal(line({ status: 'completed', completed_at: at(21, 10) }, { hasNextStep: false }).action, null, 'aucune suite : aucune relance');
+  // Rendez-vous pris (calendly-webhook, condition d'arrêt du moteur) : but atteint, jamais « sans réponse » ni relance.
+  const meeting = line({
+    status: 'completed',
+    completed_at: at(21, 10),
+    tracking_data: { completion_reason: 'meeting_booked', meeting_booked_at: at(21, 10) },
+    executions: [
+      { status: 'sent', step_order: 0, scheduled_at: at(19, 9), step: { action_type: 'message' } },
+      { status: 'cancelled', step_order: 2, scheduled_at: at(23, 9), skip_reason: 'Stop condition: meeting booked', step: { action_type: 'message' } },
+    ],
+  });
+  assert.deepEqual(pick(meeting), ['terminees', 'Terminée le 21/09 : rendez-vous pris', null, null]);
+  assert.equal(m.isMeetingBookedCompletion('completed', { completion_reason: 'meeting_booked' }), true);
+  assert.equal(m.isMeetingBookedCompletion('completed', { completion_reason: 'manual_stop' }), false);
   // Lot 5b : arrêt manuel, clos en completed avec la trace manual_stop.
   assert.deepEqual(pick(line({ status: 'completed', tracking_data: { completion_reason: 'manual_stop', manual_stop: { by: 'u1', at: at(29, 9) } } })),
     ['terminees', 'Arrêtée par Guillaume Martin le 29/09', null, null]);
@@ -479,10 +495,28 @@ test('5c-2 — enrollmentStatusLine : une ligne par statut de la spécification 
   assert.deepEqual(pick(line({ status: 'paused', pause_reason: 'send_failed', tracking_data: { gdpr_erased_at: '2026-09-01' } })).slice(1), ['Données effacées à la demande du candidat', null, null]);
   assert.equal(line({ status: 'completed', executions: [{ status: 'cancelled', scheduled_at: at(29, 9), skip_reason: 'Effacement des données demandé : séquence arrêtée' }] }).action, null);
 
-  // Relance d'une inscription terminée : une étape visible après la dernière faite.
-  const steps = [{ step_order: 0, action_type: 'message' }, { step_order: 1, action_type: 'wait_reply' }, { step_order: 2, action_type: 'message' }];
-  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 0 }], steps), true);
-  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 2 }], steps), false);
+  // Relance d'une inscription terminée : une étape visible après la dernière faite, sur le graphe.
+  const steps = [{ id: 's0', step_order: 0, action_type: 'message' }, { id: 's1', step_order: 1, action_type: 'wait_reply' }, { id: 's2', step_order: 2, action_type: 'message' }];
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 0, step_id: 's0' }], steps), true);
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 2, step_id: 's2' }], steps), false);
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 0, step_id: 's0' }], [{ id: 's0', step_order: 0, action_type: 'message', ends_sequence: true }, ...steps.slice(1)]), false, 'fin de séquence après l’étape faite');
+  // Séquence à branches de la maquette : la relance (ordre 3) finit la séquence, l'invitation (ordre 4) est sur l'autre branche.
+  const branched = [
+    { id: 'visit', step_order: 0, action_type: 'profile_visit' },
+    { id: 'check', step_order: 1, action_type: 'check_connection', if_true_goto_step: 'msg', if_false_goto_step: 'invite' },
+    { id: 'msg', step_order: 2, action_type: 'message', variant_group: 'A', next_step_id: 'relance' },
+    { id: 'relance', step_order: 3, action_type: 'message', ends_sequence: true },
+    { id: 'invite', step_order: 4, action_type: 'connection_request', next_step_id: 'wait' },
+    { id: 'wait', step_order: 5, action_type: 'wait_connection', timeout_days: 10, timeout_branch_step_id: 'inmail', next_step_id: 'relance' },
+    { id: 'inmail', step_order: 6, action_type: 'inmail', ends_sequence: true },
+  ];
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 2, step_id: 'msg' }, { status: 'sent', step_order: 3, step_id: 'relance' }], branched), false, 'branche terminée : aucune suite');
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 6, step_id: 'inmail' }], branched), false);
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 1, step_id: 'check' }], branched), true, 'fourche : une branche mène à un message');
+  assert.equal(m.hasVisibleStepAfterLastDone([{ status: 'sent', step_order: 5, step_id: 'wait' }], branched), true, 'attente : relance ou InMail');
+  // Plafond : une seule forme, selon le type d'étape.
+  assert.equal(m.quotaBlockedLabel('connection_request'), 'Reporté : plafond d’invitations de la semaine atteint');
+  assert.equal(m.quotaBlockedLabel('message'), 'Reporté : plafond LinkedIn du jour atteint');
 
   // Puces : comptes de toute la séquence, échecs à part, pause sans raison = manuelle.
   const counts = m.enrollmentChipCounts({ total: 24, active: 6, replied: 6, paused: 2, pausedByReason: { manual: 1, send_failed: 1 } });
@@ -522,12 +556,42 @@ test('5c-2 — Journal d’une séquence : curseur sur (scheduled_at, id), sans 
   }
   assert.equal(seen.length, 600);
   assert.equal(new Set(seen.map((r) => r.id)).size, 600);
+  // « À venir » : ordre croissant, la page suivante prend les lignes après le curseur.
+  assert.equal(
+    c.journalCursorFilter({ scheduled_at: '2026-10-05T10:00:00+00:00', id: 'b2' }, true),
+    'scheduled_at.gt."2026-10-05T10:00:00+00:00",and(scheduled_at.eq."2026-10-05T10:00:00+00:00",id.gt."b2")',
+  );
   const log = read('src/components/outreach/SequenceActivityLog.tsx');
-  assert.match(log, /if \(after\) query = query\.or\(journalCursorFilter\(after\)\);/);
-  assert.match(log, /query = query\.eq\('sequence_enrollments\.sequence_id', sequenceId\)\.order\('id', \{ ascending: false \}\);/);
-  // Hors séquence : la limite de 500 reste, aucune lecture relancée par les filtres.
+  // Dans une page (Journal d'une séquence ou « À venir » de l'écran Séquences) : curseur, jamais la limite de 500.
+  assert.match(log, /const paginated = embedded \|\| !!sequenceId;/);
+  assert.match(log, /const ascending = paginated && periodFilter === 'upcoming';/);
+  assert.match(log, /\.order\('scheduled_at', \{ ascending \}\);/);
+  assert.match(log, /query = query\.order\('id', \{ ascending \}\);\s*if \(sequenceId\) query = query\.eq\('sequence_enrollments\.sequence_id', sequenceId\);/);
+  assert.match(log, /if \(after\) query = query\.or\(journalCursorFilter\(after, ascending\)\);/);
+  // Recherche du candidat dans la requête : elle porte sur toutes les pages, pas sur les lignes déjà lues.
+  assert.match(log, /if \(serverSearch\) query = query\.ilike\('sequence_enrollments\.profile_name', `%\$\{serverSearch\}%`\);/);
+  assert.match(log, /if \(searchQuery && !paginated\) \{/);
+  // Panneau : la limite de 500 reste, aucune lecture relancée par les filtres.
   assert.match(log, /query = query\.limit\(JOURNAL_LIMIT\);/);
   assert.match(log, /const serverStatus: FilterStatus = paginated \? statusFilter : 'all';/);
+  assert.match(read('src/pages/SequencesPage.tsx'), /<SequenceActivityLog isOpen=\{false\} onClose=\{\(\) => undefined\} embedded defaultPeriod="upcoming" \/>/);
+
+  // Onglet « Candidats » : curseur sur (created_at, id). Une ligne qui sort du
+  // filtre entre deux pages (pause) ne fait sauter personne, contrairement au décalage.
+  assert.equal(
+    c.enrollmentCursorFilter({ created_at: '2026-10-05T10:00:00+00:00', id: 'e9' }),
+    'created_at.lt."2026-10-05T10:00:00+00:00",and(created_at.eq."2026-10-05T10:00:00+00:00",id.lt."e9")',
+  );
+  const all = Array.from({ length: 130 }, (_, i) => ({ created_at: `2026-09-${String(30 - Math.floor(i / 10)).padStart(2, '0')}`, id: `e${String(999 - i).padStart(3, '0')}`, status: 'active' }));
+  const activeAfter = (cur) => all.filter((r) => r.status === 'active' && (!cur || r.created_at < cur.created_at || (r.created_at === cur.created_at && r.id < cur.id)));
+  const first = activeAfter(null).slice(0, 100);
+  all[3].status = 'paused';
+  const second = activeAfter(c.nextEnrollmentCursor(first, 100)).slice(0, 100);
+  assert.equal(second.length, 30, 'les 30 suivants, aucun sauté');
+  assert.equal(new Set([...first, ...second].map((r) => r.id)).size, 130);
+  const hook = read('src/hooks/useSequenceEnrollments.ts');
+  assert.match(hook, /if \(after\) query = query\.or\(enrollmentCursorFilter\(after\)\);/);
+  assert.doesNotMatch(hook, /\.range\(offset/, 'plus de page par décalage');
 });
 
 test('5c-2 — onglet Étapes : fil en lecture fidèle au moteur (fourches, A/B, délais, fin, étape rejointe)', async (t) => {
@@ -614,10 +678,13 @@ test('5c-2 — page d’une séquence : en-tête, menu « ... », onglets, un se
   assert.match(read('src/components/sequences/SendHealthCard.tsx'), /<SequenceDiagnosticBody active=\{active\} sequenceId=\{sequenceId\} compact onShowJourney=\{onShowJourney\} \/>/);
   const diag = read('src/components/outreach/SequenceDiagnostic.tsx');
   assert.match(diag, /export const SequenceDiagnosticBody: React\.FC<SequenceDiagnosticBodyProps>/);
-  assert.match(diag, /<SequenceDiagnosticBody active=\{open\} projectId=\{projectId\} \/>/, 'panneau inchangé : même corps');
+  // Panneau : même corps ; son état vit hors du contenu du Sheet (démonté à la fermeture), la réouverture garde les chiffres lus.
+  assert.match(diag, /const diagnostic = useSequenceDiagnosticData\(\{ active: open, projectId \}\);[\s\S]*?<DiagnosticView diagnostic=\{diagnostic\} \/>/, 'panneau : même corps, état hors du Sheet');
+  assert.match(diag, /const diagnostic = useSequenceDiagnosticData\(\{ active, projectId, sequenceId \}\);\s*return <DiagnosticView diagnostic=\{diagnostic\} compact=\{compact\} onShowJourney=\{onShowJourney\} \/>;/);
   // Réglages : composants actuels sous « Conditions d'arrêt ».
   const settings = read('src/components/sequences/SettingsTab.tsx');
-  assert.match(settings, /<StopConditionsSettings value=\{value\.stopConditions\}/);
+  // Page : conditions à plat sous des filets (plain) ; l'éditeur actuel garde ses cadres.
+  assert.match(settings, /<StopConditionsSettings plain value=\{value\.stopConditions\}/);
   assert.match(settings, /<MultiSenderSettings/);
   assert.match(read('src/components/outreach/sequence/StopConditionsSettings.tsx'), /Conditions d'arrêt/);
   assert.match(page, /stop_conditions: withAlwaysOnStops\(settingsDraft\.stopConditions\) as unknown as Json,/);
@@ -769,4 +836,153 @@ test('5c-2 — onglets de la page : compteur de « Candidats » jamais à zéro,
   assert.equal(model.parseSequenceTab('journal', false), 'etapes', 'Journal masqué sans inscrit');
   assert.equal(model.parseSequenceTab('journal', true), 'journal');
   assert.equal(model.parseSequenceTab('inconnu', true), 'candidats');
+});
+
+// ─── Lot 5c-2, corrections après relecture ───
+
+test('5c-2 — Parcours sur le graphe : branche prise, issues d’une attente en cours, branche non prise, étape rejointe', async (t) => {
+  const j = await loadTs(t, 'src/lib/sequenceJourney.ts');
+  if (!j) return;
+  // Séquence à branches de la maquette (seedDetailSequence).
+  const rows = [
+    { id: 'visit', step_order: 0, action_type: 'profile_visit' },
+    { id: 'check', step_order: 1, action_type: 'check_connection', delay_days: 1, if_true_goto_step: 'msgA', if_false_goto_step: 'invite' },
+    { id: 'msgA', step_order: 2, action_type: 'message', variant_group: 'A', next_step_id: 'relance' },
+    { id: 'msgB', step_order: 2, action_type: 'message', variant_group: 'B', next_step_id: 'relance' },
+    { id: 'relance', step_order: 3, action_type: 'message', delay_days: 5, ends_sequence: true },
+    { id: 'invite', step_order: 4, action_type: 'connection_request', next_step_id: 'wait' },
+    { id: 'wait', step_order: 5, action_type: 'wait_connection', timeout_days: 10, timeout_branch_step_id: 'inmail', next_step_id: 'relance' },
+    { id: 'inmail', step_order: 6, action_type: 'inmail', ends_sequence: true },
+  ];
+  const now = new Date(2026, 9, 6, 10);
+  const ex = (id, step_id, step_order, status, day) => ({
+    id, step_id, step_order, status,
+    scheduled_at: new Date(2026, 9, day, 9).toISOString(),
+    executed_at: status === 'sent' ? new Date(2026, 9, day, 9).toISOString() : null,
+  });
+  const flat = (items) => items.flatMap((i) => (i.kind === 'branches' ? [{ kind: 'branches', labels: i.branches.map((b) => b.label) }, ...i.branches.flatMap((b) => flat(b.items).map((x) => ({ ...x, branch: b.label })))] : [i]));
+
+  // Sophie / Chloé : branche « Non connecté », invitation envoyée, attente en cours.
+  const waiting = flat(j.buildJourney(rows, [ex(1, 'visit', 0, 'sent', 3), ex(2, 'check', 1, 'sent', 4), ex(3, 'invite', 4, 'sent', 5), ex(4, 'wait', 5, 'waiting_event', 5)], { live: true, now }));
+  const notTaken = waiting.find((i) => i.kind === 'not_taken');
+  assert.equal(notTaken.label, 'Connecté (1er degré)');
+  assert.deepEqual(notTaken.steps, ['3 · Message LinkedIn'], 'la relance, rejointe par « Acceptée », n’est pas « non prise »');
+  assert.equal(waiting.find((i) => i.kind === 'step' && i.stepId === 'wait').detail, 'En attente');
+  assert.deepEqual(waiting.find((i) => i.kind === 'branches').labels, ['Si acceptée', 'Si pas acceptée après 10 jours']);
+  const relance = waiting.find((i) => i.kind === 'step' && i.stepId === 'relance');
+  assert.equal(relance.branch, 'Si acceptée');
+  assert.equal(relance.detail, 'À venir · 5 jours après l’acceptation');
+  const inmail = waiting.find((i) => i.kind === 'step' && i.stepId === 'inmail');
+  assert.equal(inmail.branch, 'Si pas acceptée après 10 jours');
+  assert.equal(inmail.detail, 'À venir · à partir du 15/10, sans acceptation', 'le délai de l’issue, jamais « Aussitôt »');
+  // Les étapes de la branche « Non connecté » ne sont jamais annoncées sur la branche prise, et inversement.
+  assert.ok(!waiting.some((i) => i.kind === 'step' && i.stepId === 'msgA'), 'message de la branche non prise jamais « à venir »');
+
+  // Claire : branche « Connecté », version B prévue ; l'invitation et l'InMail ne sont pas annoncés.
+  const connected = flat(j.buildJourney(rows, [ex(1, 'visit', 0, 'sent', 3), ex(2, 'check', 1, 'sent', 4), ex(3, 'msgB', 2, 'scheduled', 7)], { live: true, now }));
+  assert.deepEqual(connected.filter((i) => i.kind === 'step').map((i) => [i.number, i.title, i.state]), [
+    [1, 'Visite de profil', 'done'],
+    [2, 'Vérifier la connexion', 'done'],
+    [3, 'Message LinkedIn · version B', 'current'],
+    [4, 'Message LinkedIn', 'todo'],
+  ]);
+  assert.deepEqual(connected.find((i) => i.kind === 'not_taken').steps, ['5 · Invitation LinkedIn', '7 · InMail']);
+  assert.equal(connected.find((i) => i.kind === 'step' && i.stepId === 'visit').detail, `Fait le 03/10 à 9${NB}h`, 'une visite est faite, pas envoyée');
+
+  // Invitation acceptée : la branche de repli est « non prise », la relance est la suite réelle.
+  const accepted = flat(j.buildJourney(rows, [ex(1, 'visit', 0, 'sent', 1), ex(2, 'check', 1, 'sent', 2), ex(3, 'invite', 4, 'sent', 2), ex(4, 'wait', 5, 'sent', 3), ex(5, 'relance', 3, 'scheduled', 8)], { live: true, now }));
+  assert.deepEqual(accepted.filter((i) => i.kind === 'not_taken').map((i) => [i.label, i.steps]), [['Connecté (1er degré)', ['3 · Message LinkedIn']], ['Pas acceptée après 10 jours', ['7 · InMail']]]);
+  assert.equal(accepted.find((i) => i.kind === 'step' && i.stepId === 'relance').state, 'current');
+
+  // Fourche pas encore jouée : deux issues à venir ; la seconde rejoint l'étape déjà dessinée.
+  const ahead = flat(j.buildJourney(rows, [ex(1, 'visit', 0, 'sent', 5)], { live: true, now }));
+  assert.deepEqual(ahead.find((i) => i.kind === 'branches').labels, ['Si connecté (1er degré)', 'Si non connecté']);
+  assert.ok(ahead.some((i) => i.kind === 'join' && i.number === 4), 'la relance est rejointe, pas répétée');
+
+  // Inscription close : le parcours s'arrête à la dernière étape jouée, sans rien annoncer.
+  const closed = j.buildJourney(rows, [], { live: false, now });
+  assert.deepEqual(closed.map((i) => [i.kind, i.label]), [['end', 'Étapes suivantes non jouées']]);
+
+  // Panneau : inscription de cette séquence seulement, étapes lues par une référence (pas de relecture à chaque rendu).
+  const panel = read('src/components/sequences/JourneyPanel.tsx');
+  assert.match(panel, /\.from\('sequence_enrollments'\)\.select\('\*'\)\.eq\('id', enrollmentId\)\.eq\('sequence_id', sequenceId\)\.maybeSingle\(\)/);
+  assert.match(panel, /title="Parcours indisponible\."/);
+  assert.match(panel, /const stepsRef = useRef\(steps\);/);
+  assert.match(panel, /\}, \[enrollmentId, sequenceId\]\);/, 'la lecture ne dépend pas du tableau des étapes');
+  assert.match(panel, /buildJourney\(steps, enrollment\.executions \?\? \[\]/);
+  assert.match(read('src/components/sequences/CandidatesTab.tsx'), /<JourneyPanel\s+enrollmentId=\{journeyId\}\s+sequenceId=\{sequence\.id\}/);
+});
+
+test('5c-2 — corrections d’écran : statistiques à plat, file « À venir », rythme, brouillon, onglets, barre, formule gratuite', () => {
+  // Statistiques dans une page : jamais « 0 » écrit, taux à partir de 5, versions nommées, aucune carte.
+  const analytics = read('src/components/outreach/SequenceAnalytics.tsx');
+  const pageStats = analytics.slice(analytics.indexOf('function PageStatsView('), analytics.indexOf('/** Squelette des statistiques'));
+  assert.ok(pageStats.length > 0, 'PageStatsView introuvable');
+  assert.match(analytics, /\) : embedded \? \(\s*<PageStatsView/);
+  assert.match(analytics, /const PAGE_RATE_MIN = RESPONSE_RATE_MIN_CONTACTED;/);
+  assert.match(pageStats, /aucune réponse/);
+  assert.match(pageStats, /totals\.invitesSent >= PAGE_RATE_MIN \? `\$\{acceptRate\} % acceptées` : null/);
+  assert.match(pageStats, /\.filter\(\(row\) => row\.value > 0\)/, 'entonnoir sans ligne nulle');
+  assert.match(pageStats, / · version \$\{st\.variant_group\}/);
+  assert.match(pageStats, /'en échec'/, '« En échec » à part, comme les puces');
+  assert.doesNotMatch(pageStats, /rounded-(?:lg|xl) border|<Section\b|<StatTile\b|<ABTestResults\b/, 'aucune carte dans la page');
+  assert.doesNotMatch(pageStats, /text-warning|text-success/, 'taux en couleur neutre');
+  assert.match(analytics, /title=\{embedded \? 'Statistiques indisponibles pour l’instant\.' : 'Impossible de charger les statistiques'\}/);
+
+  // File d'une page : statuts de routine en texte neutre, report par le plafond nommé une seule fois, heure entière.
+  const log = read('src/components/outreach/SequenceActivityLog.tsx');
+  assert.match(log, /exec\.status === 'quota_blocked' \? quotaBlockedLabel\(actionType\)/);
+  assert.match(log, /\{paginated \? clockTime\(new Date\(exec\.scheduled_at\)\) : format\(new Date\(exec\.scheduled_at\), 'HH:mm'\)\}/);
+  assert.match(log, /paginated \? 'break-words' : 'truncate'/, 'l’heure passe à la ligne sur téléphone');
+  assert.match(log, /if \(status === 'failed' \|\| status === 'bounced'\) return 'text-danger';/);
+  assert.match(log, /\{statusSelect\('w-full max-md:h-11 sm:w-40'\)\}/);
+  assert.match(log, /Pour ne plus rien lui envoyer, arrêtez la séquence pour ce candidat\./);
+
+  // Carte « État de l'envoi » : jamais « 0 sur 25 ».
+  assert.match(read('src/components/outreach/SequenceDiagnostic.tsx'), /Aucune invitation cette semaine \(plafond \{weeklyCap\}\)/);
+
+  // Ligne de rythme : un brouillon n'est pas en pause ; prochaine action envoyable seulement ; points entre deux éléments d'une ligne.
+  const rhythm = read('src/components/sequences/RhythmLine.tsx');
+  assert.match(rhythm, /if \(status === 'active' && nextAt\)/);
+  assert.match(rhythm, /if \(status === 'paused'\) parts\.push\('aucun envoi tant que la séquence est en pause'\);/);
+  assert.match(rhythm, /<div className="-mx-1 overflow-hidden px-1 py-0\.5">\s*<p className="-ml-3 flex flex-wrap/);
+  const page = read('src/pages/SequenceDetailPage.tsx');
+  assert.match(page, /const sendable = rows\.find\(\(row\) => !isAiReviewPending\(row\)\);/);
+  assert.match(page, /<SequenceTabs\s+active=\{tab\}/);
+  assert.match(read('src/components/sequences/SequenceStatusPill.tsx'), /status === 'draft' \? 'Activer la séquence' : 'Réactiver la séquence'/);
+  assert.match(read('src/components/sequences/SequenceRow.tsx'), /\{draft && canEdit \? null : canEdit \? \(/, 'aucun interrupteur sur un brouillon');
+  // Onglets : l'onglet actif revient dans la vue, sans défilement vertical.
+  const tabs = read('src/components/sequences/SequenceTabs.tsx');
+  assert.match(tabs, /querySelector<HTMLElement>\('\[role="tab"\]\[data-state="active"\]'\)/);
+  assert.doesNotMatch(tabs, /scrollIntoView/);
+
+  // Réglages : conditions d'arrêt à plat dans la page.
+  const stops = read('src/components/outreach/sequence/StopConditionsSettings.tsx');
+  assert.match(stops, /plain \? 'divide-y divide-border border-y border-border' : 'space-y-2'/);
+
+  // Onglet Candidats : cases de 44 px au doigt, réponse groupée plafonnée et par lots, textes accordés.
+  const cands = read('src/components/sequences/CandidatesTab.tsx');
+  assert.match(cands, /const CHECKBOX_TOUCH = 'relative max-md:after:absolute max-md:after:-inset-3\.5';/);
+  assert.equal((cands.match(/CHECKBOX_TOUCH\b/g) || []).length, 3);
+  assert.match(cands, /const BULK_REPLIED_MAX = 200;/);
+  assert.match(cands, /for \(let i = 0; i < ids\.length; i \+= BULK_REPLIED_CONCURRENCY\)/);
+  assert.match(cands, /Ces \$\{ids\.length\} candidats passeront en « A répondu » et leurs étapes restantes seront annulées\./);
+  assert.match(cands, /passera en « A répondu » et ses étapes restantes seront annulées\./);
+  assert.match(cands, /!isMeetingBookedCompletion\(e\.status, e\.tracking_data\)/, 'jamais de relance après un rendez-vous');
+  assert.doesNotMatch(cands, /mettez ce candidat en pause/);
+
+  // Écran de l'organisation : texte de la spécification (section 4), « Compris » mémorisé, actions du jour masquées sans séquence active, « Copie de … ».
+  const orgPage = read('src/pages/SequencesPage.tsx');
+  assert.ok(orgPage.includes('Votre formule permet de préparer des séquences et d’écrire aux candidats un par un. L’envoi automatique, avec les relances, fait partie des formules payantes.'));
+  assert.match(orgPage, /onClick=\{dismissFreeNotice\}[\s\S]{0,80}Compris/);
+  assert.match(orgPage, /localStorage\.setItem\(freeNoticeKey\(userId\), '1'\)/);
+  assert.match(orgPage, /\{nudgeSequenceIds\.length > 0 && \(/);
+  assert.match(orgPage, /copyName: \(name\) => `Copie de \$\{name\}`,/);
+  assert.doesNotMatch(orgPage, /Votre offre ne permet pas/);
+
+  // Barre : six cibles de 44 px sur téléphone seulement drapeau allumé ; éteint, classes d'avant.
+  const bottom = read('src/components/sidebar/SidebarBottomRow.tsx');
+  assert.match(bottom, /const tight = showSequences && !collapsed;/);
+  assert.match(bottom, /tight \? 'md:gap-0\.5' : 'gap-0\.5'/);
+  assert.match(bottom, /isTasks && !collapsed && overdue !== null && \(tight \? 'md:gap-1 md:px-2' : 'gap-1 px-2'\)/);
 });

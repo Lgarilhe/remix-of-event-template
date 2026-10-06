@@ -23,7 +23,9 @@
  *
  * Exige la stack locale (E2E_EDGE_FUNCTIONS=1) : nudge_sequences et la mise
  * en pause tournent pour de vrai. Seule la liste des comptes LinkedIn du
- * prestataire est simulée dans le navigateur.
+ * prestataire est simulée dans le navigateur. Les gardes drapeau éteint
+ * (premier bloc, @smoke) n'appellent aucune fonction serveur : elles tournent
+ * aussi sur la CI de PR, sans E2E_EDGE_FUNCTIONS.
  */
 import { randomUUID } from 'node:crypto';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
@@ -42,7 +44,7 @@ import {
 } from '../helpers/supabase-admin';
 
 const EDGE_DEPLOYED = process.env.E2E_EDGE_FUNCTIONS === '1';
-test.skip(!EDGE_DEPLOYED, 'process-sequences non déployée sur cet environnement (E2E_EDGE_FUNCTIONS=1 pour activer)');
+const EDGE_SKIP_REASON = 'process-sequences non déployée sur cet environnement (E2E_EDGE_FUNCTIONS=1 pour activer)';
 test.describe.configure({ timeout: 180_000 });
 
 const rand = () => Math.random().toString(36).slice(2, 8);
@@ -118,8 +120,9 @@ async function seedTrackedSequence(orgId: string, ownerId: string, missionId: st
   return { sequenceId, name, active };
 }
 
-test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
-  test('drapeau éteint : /sequences renvoie vers les missions, aucune entrée dans la barre ni la palette', async ({ browser, org }) => {
+// Drapeau éteint : rien de visible ne change (critère de fin du 5c-2). Aucune fonction serveur appelée.
+test.describe('Séquences v2 — drapeau éteint (lot 5c-2)', () => {
+  test('@smoke drapeau éteint : /sequences renvoie vers les missions, aucune entrée dans la barre ni la palette', async ({ browser, org }) => {
     const account = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_e2e_${rand()}`);
     const page = await openAs(browser, org.owner, [account]);
     await page.goto('/sequences', { waitUntil: 'domcontentloaded' });
@@ -132,6 +135,43 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     await expect(palette.getByRole('option', { name: /Tâches/ })).toBeVisible();
     await expect(palette.getByRole('option', { name: /Séquences/ })).toHaveCount(0);
   });
+
+  test('@smoke drapeau éteint : « Diagnostic des envois » de la mission garde ses chiffres à la réouverture', async ({ browser, org }) => {
+    const owner = org.owner;
+    const account = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
+    const missionId = await seedMission(org.orgId, owner.userId, { name: 'Mission diagnostic' });
+    const { sequenceId } = await seedSequence(org.orgId, owner.userId, [{ action_type: 'message' }]);
+    const name = `Séquence diagnostic ${rand()}`;
+    await admin().from('outreach_sequences').update({ name, project_id: missionId }).eq('id', sequenceId);
+    const page = await openAs(browser, owner, [account]);
+    await page.goto(`/missions/${missionId}?tab=outreach`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText(name, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+    // Drapeau éteint : le nom n'est pas un lien vers la page de la séquence.
+    await expect(page.locator('a[href^="/sequences"]')).toHaveCount(0);
+
+    const openDiagnostic = async () => {
+      await page.getByRole('button', { name: 'Plus d\'actions' }).first().click();
+      await page.getByRole('menuitem', { name: 'Diagnostic des envois' }).click();
+      return page.getByRole('dialog', { name: 'Diagnostic des envois' });
+    };
+    let dialog = await openDiagnostic();
+    await expect(dialog.getByText('Invitations LinkedIn de la semaine')).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+
+    // Réouverture avec une lecture lente : les chiffres déjà lus restent affichés pendant l'actualisation.
+    await page.route('**/rest/v1/cron_heartbeat*', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
+    dialog = await openDiagnostic();
+    await expect(dialog.getByText('Invitations LinkedIn de la semaine')).toBeVisible({ timeout: 1_000 });
+    await expect(dialog.getByRole('status', { name: 'Chargement du diagnostic' })).toHaveCount(0);
+  });
+});
+
+test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
+  test.skip(!EDGE_DEPLOYED, EDGE_SKIP_REASON);
 
   test('drapeau allumé : barre latérale, tableau, pause immédiate avec « Annuler », actions du jour, suppression', async ({ browser, org }) => {
     const owner = org.owner;
@@ -170,6 +210,8 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     await expect(draftRow.getByText('Brouillon', { exact: true })).toBeVisible();
     await expect(draftRow.getByText('aucun candidat inscrit').filter({ visible: true })).toBeVisible();
     await expect(draftRow.getByText(/\b0\b/)).toHaveCount(0);
+    // Brouillon : pas d'interrupteur (maquette), il s'active depuis sa page.
+    await expect(draftRow.getByRole('switch')).toHaveCount(0);
     await expect(page.getByText('Un taux s’affiche à partir de 5 candidats contactés.')).toHaveCount(0);
 
     // Pause immédiate de la séquence, puis « Annuler » (lot 5b).
@@ -229,6 +271,21 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     await del.getByRole('button', { name: 'Supprimer définitivement' }).click();
     await expect(toast(page, 'Séquence supprimée')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole('link', { name: draftName })).toHaveCount(0);
+
+    // « Dupliquer » depuis l'écran : même nom de copie que la page (« Copie de … »).
+    await row.getByRole('button', { name: `Actions de la séquence ${tracked.name}` }).click();
+    await page.getByRole('menuitem', { name: 'Dupliquer' }).click();
+    await expect.poll(async () => (await admin().from('outreach_sequences').select('id').eq('organization_id', org.orgId).eq('name', `Copie de ${tracked.name}`)).data?.length ?? 0, { timeout: 20_000 }).toBe(1);
+    await expect(page.getByRole('link', { name: `Copie de ${tracked.name}` })).toBeVisible({ timeout: 20_000 });
+
+    // Panneau de la mission, drapeau allumé : le nom mène à la page de la séquence, et « Toutes les séquences de l'organisation » à l'écran.
+    await page.goto(`/missions/${missionId}?tab=outreach`, { waitUntil: 'domcontentloaded' });
+    const nameLink = page.getByRole('link', { name: tracked.name, exact: true });
+    await expect(nameLink).toHaveAttribute('href', `/sequences/${tracked.sequenceId}?depuis=mission:${missionId}`, { timeout: 30_000 });
+    await expect(page.getByRole('link', { name: /Toutes les séquences de l.organisation/ })).toHaveAttribute('href', '/sequences');
+    await nameLink.click();
+    await expect(page.getByRole('heading', { level: 1, name: tracked.name })).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(new RegExp(`/sequences/${tracked.sequenceId}\\?depuis=mission`));
   });
 
   test('téléphone : la rangée basse tient dans la feuille avec Séquences, cibles de 44 px', async ({ browser, org }, testInfo) => {
@@ -254,10 +311,18 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     // Fin de l'ouverture de la feuille (elle glisse depuis la gauche) avant de mesurer.
     await expect.poll(async () => Math.round((await sheet.boundingBox())?.x ?? -1)).toBe(0);
     const sheetBox = await sheet.boundingBox();
-    for (const target of [entry, sheet.getByRole('link', { name: 'Paramètres', exact: true }), sheet.getByRole('button', { name: 'Aide' })]) {
+    // Rangée entière : aucune cible qui déborde (six cibles de 44 px dans le tiroir).
+    const bottomRow = entry.locator('xpath=..');
+    expect(await bottomRow.evaluate((el) => el.scrollWidth - el.clientWidth), 'rangée sans débordement').toBeLessThanOrEqual(0);
+    const rowBox = await bottomRow.boundingBox();
+    const targets = bottomRow.locator(':scope > a, :scope > button');
+    expect(await targets.count()).toBeGreaterThanOrEqual(5);
+    for (const target of await targets.all()) {
       const box = await target.boundingBox();
       expect(box, 'cible mesurable').not.toBeNull();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect((box?.x ?? 0) + (box?.width ?? 0), 'dans la rangée').toBeLessThanOrEqual((rowBox?.x ?? 0) + (rowBox?.width ?? 0) + 0.5);
       expect((box?.x ?? 0) + (box?.width ?? 0), 'dans la feuille').toBeLessThanOrEqual((sheetBox?.x ?? 0) + (sheetBox?.width ?? 0));
     }
     const path = testInfo.outputPath('barre-360.png');
@@ -387,6 +452,7 @@ async function openDetail(browser: Browser, user: TestUser, account: string, pat
 }
 
 test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
+  test.skip(!EDGE_DEPLOYED, EDGE_SKIP_REASON);
   test('en-tête, puces sans zéro, statuts, Parcours, pause et arrêt avec « Annuler », renommer', async ({ browser, org }) => {
     const owner = org.owner;
     await setOrgPlan(org.orgId);
@@ -451,6 +517,18 @@ test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
     await stopped.getByRole('button', { name: 'Annuler' }).click();
     await expect.poll(async () => (await admin().from('sequence_enrollments').select('status').eq('id', seeded.bruno).single()).data?.status, { timeout: 20_000 }).toBe('active');
 
+    // Barre groupée : une ligne en cours et une qui a répondu ; seule la première est mise en pause, « Annuler » la reprend.
+    await row('Alice Martin').getByRole('checkbox', { name: 'Sélectionner Alice Martin' }).click();
+    await row('Emma Roux').getByRole('checkbox', { name: 'Sélectionner Emma Roux' }).click();
+    await page.getByRole('toolbar', { name: 'Actions sur la sélection' }).getByRole('button', { name: 'Mettre en pause' }).click();
+    const bulkPaused = toast(page, 'Séquence mise en pause pour Alice Martin.');
+    await expect(bulkPaused).toBeVisible({ timeout: 20_000 });
+    await expect(bulkPaused).toContainText('1 candidat n’était pas en cours.');
+    await expect.poll(async () => (await admin().from('sequence_enrollments').select('status').eq('id', seeded.alice).single()).data?.status).toBe('paused');
+    expect((await admin().from('sequence_enrollments').select('status').eq('profile_name', 'Emma Roux').eq('sequence_id', seeded.sequenceId).single()).data?.status).toBe('replied');
+    await bulkPaused.getByRole('button', { name: 'Annuler' }).click();
+    await expect.poll(async () => (await admin().from('sequence_enrollments').select('status').eq('id', seeded.alice).single()).data?.status, { timeout: 20_000 }).toBe('active');
+
     // Parcours : étapes faites, attente en cours, branche non prise, à venir.
     await row('Chloé Durand').getByText('Chloé Durand', { exact: true }).click();
     const journey = page.getByRole('dialog', { name: 'Parcours de Chloé Durand' });
@@ -460,6 +538,11 @@ test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
     await expect(journey.getByText(/^Envoyé le \d{2}\/\d{2} à/).first()).toBeVisible();
     await expect(journey.getByText('Branche non prise').first()).toBeVisible();
     await expect(journey.getByText('En attente', { exact: true })).toBeVisible();
+    // Parcours sur le graphe : les deux issues de l'attente, le délai de l'issue, jamais l'autre branche « à venir ».
+    await expect(journey.getByText('Si acceptée', { exact: true })).toBeVisible();
+    await expect(journey.getByText('Si pas acceptée après 10 jours', { exact: true })).toBeVisible();
+    await expect(journey.getByText(/^À venir · à partir du \d{2}\/\d{2}, sans acceptation$/)).toBeVisible();
+    await expect(journey.getByText('Branche non prise : Connecté (1er degré)')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(journey).toBeHidden();
 
@@ -610,6 +693,93 @@ test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
     await page.getByRole('menuitem', { name: /Mettre en pause la séquence/ }).click();
     await expect(toast(page, 'Mise en pause réservée')).toBeVisible({ timeout: 20_000 });
     expect((await admin().from('outreach_sequences').select('is_active').eq('id', sequenceId).single()).data?.is_active).toBe(true);
+  });
+
+  test('Candidats : « Afficher la suite » après une pause ne saute personne ; Parcours d’une autre séquence refusé', async ({ browser, org }) => {
+    const owner = org.owner;
+    await setOrgPlan(org.orgId);
+    const account = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
+    const missionId = await seedMission(org.orgId, owner.userId, { name: 'Mission pagination' });
+    const { data: seq } = await admin().from('outreach_sequences')
+      .insert({ name: `Volume ${rand()}`, organization_id: org.orgId, created_by: owner.userId, is_active: true, project_id: missionId })
+      .select('id').single();
+    const sequenceId = seq?.id as string;
+    await admin().from('sequence_steps').insert({ id: randomUUID(), sequence_id: sequenceId, step_order: 0, action_type: 'message', message_template: 'Bonjour', delay_days: 0, ends_sequence: false });
+    const base = Date.now() - 10 * DAY;
+    const rows = Array.from({ length: 130 }, (_, i) => ({
+      sequence_id: sequenceId, organization_id: org.orgId, created_by: owner.userId,
+      profile_id: `p_${i}_${rand()}`, profile_name: `Candidat ${String(i).padStart(3, '0')}`,
+      profile_url: `https://www.linkedin.com/in/pag-${i}-${rand()}`,
+      account_id: account, status: 'active', current_step_order: 0, user_timezone: 'Europe/Paris',
+      created_at: new Date(base + i * 60_000).toISOString(),
+    }));
+    const { error } = await admin().from('sequence_enrollments').insert(rows);
+    if (error) throw new Error(`inscriptions : ${error.message}`);
+
+    const page = await openDetail(browser, owner, account, `/sequences/${sequenceId}?statut=en-cours`);
+    const names = page.locator('tbody tr p.truncate.text-md');
+    await expect(names).toHaveCount(100, { timeout: 30_000 });
+    // Plus récentes d'abord : Candidat 129 à Candidat 030. Pause de la première, qui sort du filtre « En cours » en base.
+    const first = page.getByRole('row').filter({ has: page.getByText('Candidat 129', { exact: true }) });
+    await first.getByRole('button', { name: 'Mettre en pause' }).filter({ visible: true }).click();
+    await expect(toast(page, 'Séquence mise en pause pour Candidat 129.')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Afficher la suite' }).click();
+    await expect(names).toHaveCount(130, { timeout: 20_000 });
+    const shown = new Set(await names.allTextContents());
+    expect(rows.map((r) => r.profile_name).filter((n) => !shown.has(n))).toEqual([]);
+    await expect(page.getByRole('button', { name: 'Afficher la suite' })).toHaveCount(0);
+
+    // ?parcours= d'une inscription d'une autre séquence (lien recopié) : rien n'est ouvert, aucun geste proposé.
+    const { data: other } = await admin().from('outreach_sequences')
+      .insert({ name: `Autre ${rand()}`, organization_id: org.orgId, created_by: owner.userId, is_active: false })
+      .select('id').single();
+    const { data: foreign } = await admin().from('sequence_enrollments').insert({
+      sequence_id: other?.id, organization_id: org.orgId, created_by: owner.userId, profile_id: `pb_${rand()}`,
+      profile_name: 'Inscrit ailleurs', account_id: account, status: 'paused', pause_reason: 'sequence_inactive', user_timezone: 'Europe/Paris',
+    }).select('id').single();
+    await page.goto(`/sequences/${sequenceId}?parcours=${foreign?.id}&sequences-v2=1`, { waitUntil: 'domcontentloaded' });
+    const panel = page.getByRole('dialog', { name: 'Parcours du candidat' });
+    await expect(panel.getByText('Parcours indisponible.')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('dialog', { name: 'Parcours de Inscrit ailleurs' })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Réactiver la séquence' })).toHaveCount(0);
+  });
+
+  test('« À venir » de l’organisation : les étapes les plus proches d’abord, au-delà de 500', async ({ browser, org }) => {
+    const owner = org.owner;
+    await setOrgPlan(org.orgId);
+    const account = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
+    const { data: seq } = await admin().from('outreach_sequences')
+      .insert({ name: `Volume à venir ${rand()}`, organization_id: org.orgId, created_by: owner.userId, is_active: true })
+      .select('id').single();
+    const sequenceId = seq?.id as string;
+    const stepId = randomUUID();
+    await admin().from('sequence_steps').insert({ id: stepId, sequence_id: sequenceId, step_order: 0, action_type: 'message', message_template: 'Bonjour', delay_days: 0, ends_sequence: false });
+    const people = [
+      ...Array.from({ length: 5 }, (_, i) => ({ name: `Proche ${i}`, at: Date.now() + (i + 1) * HOUR })),
+      ...Array.from({ length: 505 }, (_, i) => ({ name: `Loin ${i}`, at: Date.now() + 3 * DAY + i * 60_000 })),
+    ];
+    const enrollRows = people.map((p, i) => ({
+      id: randomUUID(), sequence_id: sequenceId, organization_id: org.orgId, created_by: owner.userId,
+      profile_id: `v_${i}_${rand()}`, profile_name: p.name, account_id: account, status: 'active', current_step_order: 0, user_timezone: 'Europe/Paris',
+    }));
+    for (let i = 0; i < enrollRows.length; i += 200) {
+      const { error } = await admin().from('sequence_enrollments').insert(enrollRows.slice(i, i + 200));
+      if (error) throw new Error(`inscriptions : ${error.message}`);
+    }
+    const execRows = people.map((p, i) => ({ enrollment_id: enrollRows[i].id, organization_id: org.orgId, step_id: stepId, step_order: 0, status: 'scheduled', scheduled_at: new Date(p.at).toISOString() }));
+    for (let i = 0; i < execRows.length; i += 200) {
+      const { error } = await admin().from('sequence_step_executions').insert(execRows.slice(i, i + 200));
+      if (error) throw new Error(`exécutions : ${error.message}`);
+    }
+    const page = await openAs(browser, owner, [account]);
+    await page.goto('/sequences?onglet=a-venir&sequences-v2=1', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('510 à venir')).toBeVisible({ timeout: 30_000 });
+    // Première page : les 5 proches puis les plus proches des lointaines, dans l'ordre.
+    await expect(page.getByText(/^Proche \d$/)).toHaveCount(5, { timeout: 30_000 });
+    const firstNames = await page.locator('section[aria-labelledby^="journal-2"] li span.truncate').allTextContents();
+    expect(firstNames.slice(0, 6)).toEqual(['Proche 0', 'Proche 1', 'Proche 2', 'Proche 3', 'Proche 4', 'Loin 0']);
+    await expect(page.locator('section[aria-labelledby^="journal-2"] li')).toHaveCount(100);
+    await expect(page.getByRole('button', { name: 'Afficher la suite' })).toBeVisible();
   });
 
   test('Journal : pagination par curseur sur 600 étapes, sans perte ni doublon', async ({ browser, org }) => {

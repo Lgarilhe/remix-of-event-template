@@ -75,6 +75,7 @@ import {
 import { plural } from '@/lib/plural';
 import { isManualStopTrace } from '@/lib/sequenceLabels';
 import { JOURNAL_PAGE_SIZE, journalCursorFilter, nextJournalCursor, type JournalCursor } from '@/lib/journalCursor';
+import { clockTime, dayMonth, quotaBlockedLabel } from '@/lib/enrollmentStatusLine';
 
 /** Nombre de lignes lues : au-delà, les compteurs portent sur les plus récentes. */
 const JOURNAL_LIMIT = 500;
@@ -139,12 +140,17 @@ interface SequenceActivityLogProps {
   defaultPeriod?: 'all' | 'today' | 'week' | 'upcoming';
   /**
    * Journal d'une séquence (page /sequences/:id, lot 5c-2) : ses seules
-   * étapes, par pages de 100 avec un curseur sur (scheduled_at, id) au lieu
-   * de la limite de 500 ; statut et période filtrés par la requête, compteurs
-   * exacts en une ligne, sans zéro.
+   * étapes. Dans une page (`embedded`, avec ou sans séquence), la file est
+   * lue par pages de 100 avec un curseur sur (scheduled_at, id) au lieu de la
+   * limite de 500 ; statut, période et recherche du candidat filtrés par la
+   * requête, « À venir » du plus proche au plus lointain, compteurs exacts en
+   * une ligne, sans zéro.
    */
   sequenceId?: string | null;
 }
+
+/** Recherche sans les caractères réservés des filtres de l'API. */
+const searchTerm = (query: string) => query.replace(/[%_,()"\\*.:]/g, ' ').trim();
 
 type MessageOverride = { subject?: string; message?: string };
 
@@ -193,6 +199,16 @@ const PREVIEW_TITLES: Record<PreviewSource, string> = {
 
 /** « 26/09 à 10:42 » */
 const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });
+/** Page : « 26/09 à 10 h 42 », même écriture que les onglets Candidats et Parcours. */
+const pageWhen = (value: string) => `${dayMonth(value)} à ${clockTime(new Date(value))}`;
+
+/** Page : couleur d'un statut d'étape, réservée à ce qui demande d'agir. */
+function pageStatusTone(status: string, overdue: boolean, held: boolean): string {
+  if (held) return 'text-muted-foreground';
+  if (status === 'failed' || status === 'bounced') return 'text-danger';
+  if (status === 'quota_blocked') return 'text-warning';
+  return overdue ? 'text-foreground-secondary' : 'text-muted-foreground';
+}
 
 /**
  * Ce qui partira vraiment : le texte figé sur l'exécution (envoyé ou modifié à
@@ -253,11 +269,24 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const userId = user?.id ?? null;
 
   const missionScoped = !!projectId && scope === 'mission';
-  const paginated = !!sequenceId;
-  // Filtres appliqués par la requête : Journal d'une séquence seulement. Hors
-  // séquence, ils restent appliqués à l'écran et ne relancent aucune lecture.
+  // Dans une page (Journal d'une séquence, « À venir » de l'écran Séquences) :
+  // pagination par curseur. Le panneau garde ses 500 lignes.
+  const paginated = embedded || !!sequenceId;
+  // Filtres appliqués par la requête : dans une page seulement. Dans le
+  // panneau, ils restent appliqués à l'écran et ne relancent aucune lecture.
   const serverStatus: FilterStatus = paginated ? statusFilter : 'all';
   const serverPeriod: FilterPeriod = paginated ? periodFilter : 'all';
+  // « À venir » : la prochaine étape d'abord.
+  const ascending = paginated && periodFilter === 'upcoming';
+  // Recherche du candidat, dans la requête (toutes les pages), après une courte pause de frappe.
+  const [serverSearch, setServerSearch] = useState('');
+  useEffect(() => {
+    if (!paginated) return;
+    const timer = window.setTimeout(() => setServerSearch(searchTerm(searchQuery)), 300);
+    return () => window.clearTimeout(timer);
+  }, [paginated, searchQuery]);
+  // Typographie de la page : apostrophe typographique dans les textes affichés.
+  const typo = useCallback((text: string) => (paginated ? text.replace(/'/g, '’') : text), [paginated]);
 
   // Lit une page d'étapes et l'enrichit (aperçus, traces d'arrêt). Hors
   // séquence : les 500 plus récentes, comme avant. Séquence : 100 à partir du
@@ -284,16 +313,18 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           'id, enrollment_id, step_id, step_order, status, scheduled_at, executed_at, final_subject, final_message, error_message, skip_reason, sequence_steps!inner(action_type, message_template, subject_template), sequence_enrollments!inner(status, created_by, profile_name, profile_headline, profile_url, job_id, outreach_sequences(name, is_active))',
         )
         .not('sequence_steps.action_type', 'in', `(${HIDDEN_ACTION_TYPES.join(',')})`)
-        .order('scheduled_at', { ascending: false });
+        .order('scheduled_at', { ascending });
       if (jobIds) query = query.in('sequence_enrollments.job_id', jobIds);
-      if (sequenceId) {
-        query = query.eq('sequence_enrollments.sequence_id', sequenceId).order('id', { ascending: false });
+      if (paginated) {
+        query = query.order('id', { ascending });
+        if (sequenceId) query = query.eq('sequence_enrollments.sequence_id', sequenceId);
         if (serverStatus !== 'all') query = query.in('status', STATUS_FILTER_VALUES[serverStatus]);
         const now = new Date();
         if (serverPeriod === 'today') query = query.gte('scheduled_at', startOfDay(now).toISOString()).lte('scheduled_at', endOfDay(now).toISOString());
         else if (serverPeriod === 'week') query = query.gte('scheduled_at', subDays(now, 7).toISOString());
         else if (serverPeriod === 'upcoming') query = query.gte('scheduled_at', now.toISOString());
-        if (after) query = query.or(journalCursorFilter(after));
+        if (serverSearch) query = query.ilike('sequence_enrollments.profile_name', `%${serverSearch}%`);
+        if (after) query = query.or(journalCursorFilter(after, ascending));
         query = query.limit(JOURNAL_PAGE_SIZE);
       } else {
         query = query.limit(JOURNAL_LIMIT);
@@ -386,19 +417,22 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       });
 
       return enrichedExecutions;
-  }, [projectId, scope, sequenceId, serverStatus, serverPeriod]);
+  }, [projectId, scope, sequenceId, paginated, ascending, serverStatus, serverPeriod, serverSearch]);
 
-  // Compteurs exacts du Journal d'une séquence : étapes visibles, toutes pages.
-  // Une étape d'un candidat en pause ou d'une séquence en pause n'est ni à
-  // venir ni en retard (même règle que heldExecutionNotice).
+  // Compteurs exacts de la file d'une page (une séquence, ou toutes celles que
+  // la personne lit) : étapes visibles, toutes pages. Une étape d'un candidat
+  // en pause ou d'une séquence en pause n'est ni à venir ni en retard (même
+  // règle que heldExecutionNotice).
   const loadSequenceCounts = useCallback(async () => {
-    if (!sequenceId) return;
+    if (!paginated) return;
     const hidden = `(${HIDDEN_ACTION_TYPES.join(',')})`;
-    const base = () => supabase
-      .from('sequence_step_executions')
-      .select('id, sequence_steps!inner(action_type), sequence_enrollments!inner(status, sequence_id, outreach_sequences!inner(is_active))', { count: 'exact', head: true })
-      .eq('sequence_enrollments.sequence_id', sequenceId)
-      .not('sequence_steps.action_type', 'in', hidden);
+    const base = () => {
+      const q = supabase
+        .from('sequence_step_executions')
+        .select('id, sequence_steps!inner(action_type), sequence_enrollments!inner(status, sequence_id, outreach_sequences!inner(is_active))', { count: 'exact', head: true })
+        .not('sequence_steps.action_type', 'in', hidden);
+      return sequenceId ? q.eq('sequence_enrollments.sequence_id', sequenceId) : q;
+    };
     const nowIso = new Date().toISOString();
     const live = <T extends ReturnType<typeof base>>(q: T) => q.eq('sequence_enrollments.status', 'active').eq('sequence_enrollments.outreach_sequences.is_active', true);
     const [upcoming, overdue, sent, failed] = await Promise.all([
@@ -414,7 +448,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       return;
     }
     setSequenceCounts({ upcoming: upcoming.count ?? 0, overdue: overdue.count ?? 0, sent: sent.count ?? 0, failed: failed.count ?? 0 });
-  }, [sequenceId]);
+  }, [paginated, sequenceId]);
 
   const fetchExecutions = useCallback(async () => {
     try {
@@ -428,7 +462,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       console.error('Error fetching executions:', err);
       // Une panne ne se lit pas comme un journal vide : état d'erreur avec « Réessayer ».
       setLoadError(err instanceof Error ? err.message : String(err));
-      toast.error("Impossible de charger le Journal d'activité");
+      if (!paginated) toast.error("Impossible de charger le Journal d'activité");
     } finally {
       setLoading(false);
     }
@@ -515,8 +549,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
   const resetFilters = () => {
     setSearchQuery('');
+    setServerSearch('');
     setStatusFilter('all');
-    setPeriodFilter('all');
+    setPeriodFilter(defaultPeriod);
   };
 
   // Filter and group executions
@@ -550,8 +585,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         }
       }
 
-      // Search filter
-      if (searchQuery) {
+      // Search filter (dans une page : déjà appliqué par la requête, sur le nom du candidat)
+      if (searchQuery && !paginated) {
         const query = searchQuery.toLowerCase();
         const profileName = exec.enrollment?.profile_name?.toLowerCase() || '';
         const sequenceName = exec.enrollment?.sequence?.name?.toLowerCase() || '';
@@ -578,9 +613,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       groups[date].push(exec);
     });
 
-    // Sort groups by date (most recent first for past, upcoming first for future)
-    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
-  }, [filteredExecutions]);
+    // Jours du plus récent au plus ancien ; « À venir » : du plus proche au plus lointain.
+    return Object.entries(groups).sort(([a], [b]) => (ascending ? a.localeCompare(b) : b.localeCompare(a)));
+  }, [filteredExecutions, ascending]);
 
   // Stats — actions visibles seulement (les étapes internes sont exclues par la requête).
   // Une étape retenue (candidat en pause, séquence désactivée) n'est ni à venir ni en retard.
@@ -612,7 +647,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     const dateStart = startOfDay(date);
 
     if (dateStart.getTime() === today.getTime()) {
-      return "Aujourd'hui";
+      return typo("Aujourd'hui");
     }
 
     const yesterday = subDays(today, 1);
@@ -630,6 +665,52 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     return label.charAt(0).toUpperCase() + label.slice(1);
   };
 
+  // Filtres et actualisation, communs au panneau et à la page.
+  const statusSelect = (triggerClass: string) => (
+    <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
+      <SelectTrigger className={triggerClass} aria-label="Filtrer par statut">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tous les statuts</SelectItem>
+        <SelectItem value="scheduled">Planifiées</SelectItem>
+        <SelectItem value="sent">Envoyées</SelectItem>
+        <SelectItem value="failed">En échec</SelectItem>
+        <SelectItem value="skipped">Ignorées ou annulées</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+  const periodSelect = (triggerClass: string) => (
+    <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
+      <SelectTrigger className={triggerClass} aria-label="Filtrer par période">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Toutes les dates</SelectItem>
+        <SelectItem value="today">{typo("Aujourd'hui")}</SelectItem>
+        <SelectItem value="week">7 derniers jours</SelectItem>
+        <SelectItem value="upcoming">À venir</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+  const refreshButton = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon"
+          className="shrink-0 max-md:h-11 max-md:w-11"
+          onClick={fetchExecutions}
+          disabled={loading}
+          aria-label="Rafraîchir les activités"
+        >
+          <RefreshCw aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Rafraîchir les activités</TooltipContent>
+    </Tooltip>
+  );
+
   // Contenu commun au panneau et à la page.
   const body = (
     <>
@@ -645,11 +726,13 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           detail={loadError}
           onRetry={fetchExecutions}
         />
-      ) : executions.length === 0 && !(paginated && (statusFilter !== 'all' || periodFilter !== 'all')) ? (
+      ) : executions.length === 0 && !(paginated && (statusFilter !== 'all' || periodFilter !== defaultPeriod || !!serverSearch)) ? (
         <EmptyState
           icon={Activity}
-          title={missionScoped ? 'Aucune étape pour cette mission' : "Aucune étape pour l'instant"}
-          description="Les étapes envoyées et planifiées de vos séquences s'afficheront ici dès la première inscription."
+          title={missionScoped ? 'Aucune étape pour cette mission' : paginated && defaultPeriod === 'upcoming' ? 'Aucune étape prévue pour l’instant.' : typo("Aucune étape pour l'instant")}
+          description={paginated && defaultPeriod === 'upcoming'
+            ? 'Les prochaines étapes de vos séquences s’afficheront ici, jour par jour.'
+            : typo("Les étapes envoyées et planifiées de vos séquences s'afficheront ici dès la première inscription.")}
           action={missionScoped ? (
             <Button variant="outline" size="sm" onClick={() => setScope('all')}>
               Voir toutes les missions
@@ -685,13 +768,37 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           </div>
           )}
 
-          <div className={cn('flex flex-col gap-2', paginated && 'sm:flex-row sm:items-center')}>
-            <div className={cn('relative', paginated && 'sm:max-w-sm sm:flex-1')}>
+          {paginated ? (
+            // Page : recherche du candidat et actualisation sur une ligne, puis les deux filtres
+            // côte à côte (44 px au doigt, libellés entiers à 360 px).
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex gap-2 sm:max-w-sm sm:flex-1">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    type="search"
+                    aria-label="Rechercher dans le journal"
+                    placeholder="Rechercher un candidat"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 max-md:h-11"
+                  />
+                </div>
+                {refreshButton}
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                {statusSelect('w-full max-md:h-11 sm:w-40')}
+                {periodSelect('w-full max-md:h-11 sm:w-44')}
+              </div>
+            </div>
+          ) : (
+          <div className="flex flex-col gap-2">
+            <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
                 type="search"
                 aria-label="Rechercher dans le journal"
-                placeholder={paginated ? 'Candidat ou étape' : 'Candidat, séquence ou étape'}
+                placeholder="Candidat, séquence ou étape"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-8"
@@ -709,46 +816,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                   </SelectContent>
                 </Select>
               )}
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-                <SelectTrigger className={cn('flex-1 sm:w-40', paginated && 'sm:flex-none')} aria-label="Filtrer par statut">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
-                  <SelectItem value="scheduled">Planifiées</SelectItem>
-                  <SelectItem value="sent">Envoyées</SelectItem>
-                  <SelectItem value="failed">En échec</SelectItem>
-                  <SelectItem value="skipped">Ignorées ou annulées</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-                <SelectTrigger className={cn('flex-1 sm:w-36', paginated && 'sm:w-44 sm:flex-none')} aria-label="Filtrer par période">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les dates</SelectItem>
-                  <SelectItem value="today">Aujourd'hui</SelectItem>
-                  <SelectItem value="week">7 derniers jours</SelectItem>
-                  <SelectItem value="upcoming">À venir</SelectItem>
-                </SelectContent>
-              </Select>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0 max-md:h-11 max-md:w-11"
-                    onClick={fetchExecutions}
-                    disabled={loading}
-                    aria-label="Rafraîchir les activités"
-                  >
-                    <RefreshCw aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Rafraîchir les activités</TooltipContent>
-              </Tooltip>
+              {statusSelect('flex-1 sm:w-40')}
+              {periodSelect('flex-1 sm:w-36')}
+              {refreshButton}
             </div>
           </div>
+          )}
 
           {groupedExecutions.length === 0 ? (
             <EmptyState
@@ -817,24 +890,36 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                   <span className="truncate text-sm font-medium text-foreground">{candidateName}</span>
-                                  {held ? (
-                                    <Badge variant="muted">
-                                      <Pause className="h-3 w-3" aria-hidden="true" />
-                                      <span className="ml-1">{held.label}</span>
-                                    </Badge>
+                                  {paginated ? (
+                                    // Page : statut en texte ; la couleur seulement pour ce qui demande d'agir
+                                    // (échec, retard, report par le plafond), 06-simplicite, règles 7 et 8.
+                                    <span className={cn('text-xs', pageStatusTone(exec.status, isOverdue, !!held))}>
+                                      {held ? held.label : exec.status === 'quota_blocked' ? quotaBlockedLabel(actionType) : typo(executionStatusLabel(exec.status))}
+                                      {isOverdue && <span className="text-warning"> · En retard</span>}
+                                    </span>
                                   ) : (
-                                    // Libellé de la table partagée des statuts d'exécution, ton du catalogue.
-                                    <Badge variant={executionStatusMeta(exec.status).tone}>
-                                      {executionStatusLabel(exec.status)}
-                                    </Badge>
+                                    <>
+                                      {held ? (
+                                        <Badge variant="muted">
+                                          <Pause className="h-3 w-3" aria-hidden="true" />
+                                          <span className="ml-1">{held.label}</span>
+                                        </Badge>
+                                      ) : (
+                                        // Libellé de la table partagée des statuts d'exécution, ton du catalogue.
+                                        <Badge variant={executionStatusMeta(exec.status).tone}>
+                                          {executionStatusLabel(exec.status)}
+                                        </Badge>
+                                      )}
+                                      {isOverdue && <Badge variant="warning">En retard</Badge>}
+                                    </>
                                   )}
-                                  {isOverdue && <Badge variant="warning">En retard</Badge>}
                                 </div>
-                                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                {/* Page : l'heure passe à la ligne au lieu d'être coupée sur téléphone. */}
+                                <p className={cn('mt-0.5 text-xs text-muted-foreground', paginated ? 'break-words' : 'truncate')}>
                                   {actionLabel}
-                                  {!paginated && exec.enrollment?.sequence?.name && ` · ${exec.enrollment.sequence.name}`}
+                                  {!sequenceId && exec.enrollment?.sequence?.name && ` · ${exec.enrollment.sequence.name}`}
                                   {' · '}
-                                  <span className="tabular-nums">{format(new Date(exec.scheduled_at), 'HH:mm')}</span>
+                                  <span className="tabular-nums">{paginated ? clockTime(new Date(exec.scheduled_at)) : format(new Date(exec.scheduled_at), 'HH:mm')}</span>
                                 </p>
                                 {held && (
                                   <p className="text-xs text-muted-foreground mt-0.5">{held.hint}</p>
@@ -855,7 +940,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       exec.status === 'failed' ? 'bg-danger-muted text-danger' : 'bg-warning-muted text-foreground',
                                     )}
                                   >
-                                    {exec.status === 'failed' ? 'Échec' : 'Tentative précédente'} : {formatSequenceError(exec.error_message)}
+                                    {exec.status === 'failed' ? 'Échec' : 'Tentative précédente'} : {typo(formatSequenceError(exec.error_message))}
                                   </p>
                                 )}
                                 {aiReview && (
@@ -865,16 +950,16 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 )}
                                 {showReason && (
                                   <p className="text-xs text-muted-foreground">
-                                    Raison : {formatSkipReason(exec.skip_reason, { manualStop: exec.enrollment?.stoppedManually })}
+                                    Raison : {typo(formatSkipReason(exec.skip_reason, { manualStop: exec.enrollment?.stoppedManually }))}
                                   </p>
                                 )}
 
                                 {hasMessage && (
                                   <div className="rounded-lg border border-border bg-background p-3">
                                     <p className="mb-2 text-xs font-medium text-foreground-secondary">
-                                      {aiReview
+                                      {typo(aiReview
                                         ? (preview.message ? "Modèle de l'étape, à relire avant l'envoi" : "Message rédigé par l'IA, pas encore relu")
-                                        : PREVIEW_TITLES[preview.source]}
+                                        : PREVIEW_TITLES[preview.source])}
                                     </p>
                                     {preview.subject && (
                                       <p className="mb-2 border-b border-border pb-2 text-xs text-muted-foreground">
@@ -895,9 +980,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 )}
 
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                  <span>Prévu : {formatWhen(exec.scheduled_at)}</span>
+                                  <span>Prévu : {paginated ? pageWhen(exec.scheduled_at) : formatWhen(exec.scheduled_at)}</span>
                                   {exec.executed_at && doneVerb && (
-                                    <span>{doneVerb} : {formatWhen(exec.executed_at)}</span>
+                                    <span>{doneVerb} : {paginated ? pageWhen(exec.executed_at) : formatWhen(exec.executed_at)}</span>
                                   )}
                                 </div>
 
@@ -989,12 +1074,14 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Ne pas envoyer cette étape ?</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong className="font-medium text-foreground">{skipConfirm?.candidateName}</strong> ne recevra pas cette étape. La séquence passera à
-              l'étape suivante. Pour tout arrêter, mettez ce candidat en pause.
+              <strong className="font-medium text-foreground">{skipConfirm?.candidateName}</strong>
+              {paginated
+                ? ' ne recevra pas cette étape. La séquence passera à l’étape suivante. Pour ne plus rien lui envoyer, arrêtez la séquence pour ce candidat.'
+                : " ne recevra pas cette étape. La séquence passera à l'étape suivante. Pour tout arrêter, mettez ce candidat en pause."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Garder l'envoi</AlertDialogCancel>
+            {paginated ? <AlertDialogCancel>Garder l’envoi</AlertDialogCancel> : <AlertDialogCancel>Garder l'envoi</AlertDialogCancel>}
             <AlertDialogAction
               onClick={() => {
                 const target = skipConfirm;

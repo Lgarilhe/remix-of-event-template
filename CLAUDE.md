@@ -147,7 +147,8 @@ This applies to (non-exhaustive) :
 /sequences               → SequencesPage (lot 5c-2) : séquences de l'organisation, onglets ?onglet= (toutes, a-venir,
                            modeles, statistiques). /sequences/:id → SequenceDetailPage (&depuis=mission:<id>), onglets
                            ?onglet= (etapes, candidats avec ?statut= et ?parcours=, statistiques, journal, reglages) ;
-                           statut d'un inscrit par src/lib/enrollmentStatusLine.ts, Journal paginé par curseur
+                           statut d'un inscrit par src/lib/enrollmentStatusLine.ts, Parcours sur le graphe
+                           (src/lib/sequenceJourney.ts), Journal, « À venir » et Candidats paginés par curseur
                            (src/lib/journalCursor.ts), gestes de src/lib/sequenceActions.ts et du lot 5b. Derrière
                            l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts : clé locale, ?sequences-v2=1|0,
                            éteint par défaut jusqu'au lot 5h) ; éteint, SequencesGate renvoie vers /missions et aucun lien

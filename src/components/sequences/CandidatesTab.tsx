@@ -51,6 +51,7 @@ import {
   enrollmentChipCounts,
   enrollmentStatusLine,
   hasVisibleStepAfterLastDone,
+  isMeetingBookedCompletion,
   type EnrollmentChip,
   type EnrollmentStatusLine,
 } from '@/lib/enrollmentStatusLine';
@@ -90,6 +91,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { EmptyState, ErrorState } from '@/components/layout';
 import { EditScheduledMessageModal } from '@/components/outreach/activity-log/EditScheduledMessageModal';
+import type { SequenceStepRow } from '@/components/outreach/sequence/sequenceGraph';
 import { JourneyPanel } from './JourneyPanel';
 
 interface CandidatesTabProps {
@@ -120,6 +122,9 @@ const TONE_CLASS: Record<EnrollmentStatusLine['tone'], string> = {
 const RESUMABLE_PAUSE_REASONS = new Set(['manual', 'send_failed']);
 /** « Arrêter » groupé : 200 inscriptions au plus par demande (stop_enrollments). */
 const BULK_STOP_MAX = 200;
+/** « Marquer comme ayant répondu » groupé : même plafond, appels par lots de 5 en parallèle. */
+const BULK_REPLIED_MAX = 200;
+const BULK_REPLIED_CONCURRENCY = 5;
 const PENDING = new Set(['scheduled', 'waiting_event', 'quota_blocked', 'sending']);
 
 type Confirm =
@@ -127,6 +132,9 @@ type Confirm =
   | { type: 'reEnroll'; id: string }
   | { type: 'markReplied'; ids: string[] }
   | { type: 'skip'; exec: DetailExecution; name: string };
+
+/** Téléphone : zone invisible de 44 px autour de la case (01-direction, § 5), sans changer son dessin. */
+const CHECKBOX_TOUCH = 'relative max-md:after:absolute max-md:after:-inset-3.5';
 
 /** Clic sur la ligne : le parcours, sauf depuis un contrôle de la ligne. */
 const INTERACTIVE = 'a,button,input,label,[role="checkbox"],[role="menuitem"],[role="menu"]';
@@ -143,6 +151,8 @@ export function CandidatesTab({
   const myAccountId = userId ? getUserLinkedAccountId(userId) : null;
   const { offerUndoPause, stopEnrollments, resumeIds } = useUndoableEnrollmentAction();
   const steps = sequence.steps as DetailStep[];
+  // Lignes complètes de sequence_steps (renvois, fins de séquence) : la suite se lit sur le graphe.
+  const stepRows = sequence.steps as SequenceStepRow[];
 
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
@@ -192,7 +202,7 @@ export function CandidatesTab({
     sequenceActive: sequence.is_active,
     canManageSequence,
     isAccountHolder: !!myAccountId && e.account_id === myAccountId,
-    hasNextStep: hasVisibleStepAfterLastDone(e.executions ?? [], steps),
+    hasNextStep: hasVisibleStepAfterLastDone(e.executions ?? [], stepRows),
   });
 
   // ── Gestes ──────────────────────────────────────────────────────────────
@@ -263,13 +273,27 @@ export function CandidatesTab({
       await markReplied(ids[0]);
       return;
     }
+    if (ids.length > BULK_REPLIED_MAX) {
+      toast.info(`Réponse groupée limitée à ${BULK_REPLIED_MAX} candidats`, { description: 'Marquez les candidats par groupes.' });
+      return;
+    }
     setBulkBusy('replied');
     let changed = 0;
     let failed = 0;
-    for (const id of ids) {
-      const { data: payload, error } = await invokeEdgeFunction<{ success?: boolean; changed?: boolean }>('process-sequences', { action: 'mark_replied', enrollment_id: id });
-      if (error || !payload?.success) failed += 1;
-      else if (payload.changed) changed += 1;
+    // Par lots de 5 appels en parallèle : chaque appel arrête aussi les autres séquences du candidat.
+    for (let i = 0; i < ids.length; i += BULK_REPLIED_CONCURRENCY) {
+      const batch = ids.slice(i, i + BULK_REPLIED_CONCURRENCY);
+      const results = await Promise.all(batch.map(async (id) => {
+        try {
+          const { data: payload, error } = await invokeEdgeFunction<{ success?: boolean; changed?: boolean }>('process-sequences', { action: 'mark_replied', enrollment_id: id });
+          if (error || !payload?.success) return 'failed' as const;
+          return payload.changed ? 'changed' as const : 'unchanged' as const;
+        } catch {
+          return 'failed' as const;
+        }
+      }));
+      changed += results.filter((r) => r === 'changed').length;
+      failed += results.filter((r) => r === 'failed').length;
     }
     setBulkBusy(null);
     setSelected(new Set());
@@ -384,6 +408,19 @@ export function CandidatesTab({
     onJourneyChange(id);
   };
 
+  // Accordé au nombre ; pour une séquence terminée, seules les séquences commencées avant sa fin sont arrêtées (contrat §8).
+  function markRepliedText(ids: string[]): string {
+    const help = 'Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).';
+    if (ids.length > 1) {
+      return `Ces ${ids.length} candidats passeront en « A répondu » et leurs étapes restantes seront annulées. Leurs autres séquences encore en cours ou en pause seront aussi arrêtées. ${help}`;
+    }
+    const target = enrollments.find((e) => e.id === ids[0]);
+    const others = target?.status === 'completed'
+      ? 'Ses autres séquences encore en cours ou en pause, commencées avant la fin de celle-ci, seront aussi arrêtées.'
+      : 'Ses autres séquences encore en cours ou en pause seront aussi arrêtées.';
+    return `${nameOf(ids[0])} passera en « A répondu » et ses étapes restantes seront annulées. ${others} ${help}`;
+  }
+
   const noEnrollmentAtAll = !countsUnavailable && sequence.enrollments.total === 0 && chip === 'tous' && !query;
 
   const confirmTitle = !confirm ? '' : confirm.type === 'resume'
@@ -398,8 +435,8 @@ export function CandidatesTab({
     : confirm.type === 'reEnroll'
       ? 'La séquence reprend à l’étape suivante, selon ses délais habituels, pendant vos heures d’envoi.'
       : confirm.type === 'markReplied'
-        ? 'Leurs étapes restantes seront annulées, et leurs autres séquences encore en cours ou en pause seront arrêtées. Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).'
-        : `${confirm.name} ne recevra pas cette étape. La séquence passera à l’étape suivante. Pour tout arrêter, mettez ce candidat en pause.`;
+        ? markRepliedText(confirm.ids)
+        : `${confirm.name} ne recevra pas cette étape. La séquence passera à l’étape suivante. Pour ne plus rien lui envoyer, arrêtez la séquence pour ce candidat.`;
   const confirmAction = !confirm ? '' : confirm.type === 'resume' ? 'Reprendre' : confirm.type === 'reEnroll' ? 'Relancer' : confirm.type === 'markReplied' ? 'Marquer comme ayant répondu' : 'Ne pas envoyer';
 
   if (noEnrollmentAtAll) {
@@ -528,6 +565,7 @@ export function CandidatesTab({
                     disabled={selectable.length === 0}
                     onCheckedChange={(on) => setSelected(on ? new Set(selectable.map((e) => e.id)) : new Set())}
                     aria-label="Sélectionner tous les candidats affichés"
+                    className={CHECKBOX_TOUCH}
                   />
                 </th>
                 <th scope="col" className="py-2 pr-3 font-medium">Candidat</th>
@@ -576,7 +614,7 @@ export function CandidatesTab({
                         disabled={!own}
                         onCheckedChange={(on) => toggle(e.id, on === true)}
                         aria-label={`Sélectionner ${name}`}
-                        className="mt-1.5"
+                        className={cn('mt-1.5', CHECKBOX_TOUCH)}
                       />
                     </td>
                     <td className="min-w-0 py-3 pr-3">
@@ -678,7 +716,7 @@ export function CandidatesTab({
                               Marquer comme ayant répondu
                             </DropdownMenuItem>
                           )}
-                          {own && !gdpr && ['replied', 'completed', 'cancelled', 'stopped'].includes(e.status) && (
+                          {own && !gdpr && ['replied', 'completed', 'cancelled', 'stopped'].includes(e.status) && !isMeetingBookedCompletion(e.status, e.tracking_data) && (
                             <DropdownMenuItem onSelect={() => setConfirm({ type: 'reEnroll', id: e.id })} className="gap-2 max-md:min-h-11">
                               <RefreshCw className="h-4 w-4" aria-hidden="true" />
                               {manualStop ? RELAUNCH_AFTER_STOP_LABEL : 'Relancer depuis l’étape suivante'}
@@ -714,7 +752,8 @@ export function CandidatesTab({
 
       <JourneyPanel
         enrollmentId={journeyId}
-        steps={steps}
+        sequenceId={sequence.id}
+        steps={stepRows}
         reloadKey={journeyKey}
         onClose={() => onJourneyChange(null)}
         statusLineOf={(e) => {

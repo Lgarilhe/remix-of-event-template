@@ -60,9 +60,14 @@ export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onO
   const isActive = (to: string) => pathname === to || pathname.startsWith(`${to}/`);
   const targetClass = collapsed ? 'h-8 w-8' : 'min-h-11 min-w-11 md:min-h-9 md:min-w-9 px-1';
   const tooltipSide = collapsed ? 'right' : 'top';
+  // Six cibles sur téléphone (Séquences allumé) : 6 × 44 px tiennent dans les
+  // 271 px du tiroir sans espace fixe entre elles, et le chiffre des tâches en
+  // retard se place dans l'angle au lieu d'élargir sa cible. Interrupteur
+  // éteint : rangée inchangée.
+  const tight = showSequences && !collapsed;
 
   return (
-    <div className={cn(collapsed ? 'flex flex-col items-center gap-1' : 'flex items-center justify-between gap-0.5')}>
+    <div className={cn(collapsed ? 'flex flex-col items-center gap-1' : cn('flex items-center justify-between', tight ? 'md:gap-0.5' : 'gap-0.5'))}>
       {links.map(({ to, label, icon: Icon }) => {
         const isTasks = to === '/tasks';
         const name = isTasks && overdue !== null ? `Tâches, ${overdue} en retard` : label;
@@ -78,7 +83,7 @@ export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onO
                 className={cn(
                   TARGET_BASE,
                   targetClass,
-                  isTasks && !collapsed && overdue !== null && 'gap-1 px-2',
+                  isTasks && !collapsed && overdue !== null && (tight ? 'md:gap-1 md:px-2' : 'gap-1 px-2'),
                   active && 'bg-sidebar-accent text-sidebar-foreground',
                 )}
               >
@@ -89,6 +94,8 @@ export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onO
                     className={cn(
                       'tabular-nums text-muted-foreground',
                       collapsed ? 'absolute bottom-0 right-0 text-3xs leading-none' : 'text-2xs',
+                      // Six cibles sur téléphone : dans l'angle, au plancher de 10 px.
+                      tight && 'max-md:absolute max-md:right-0.5 max-md:top-0.5 max-md:leading-none',
                     )}
                   >
                     {badgeLabel(overdue)}

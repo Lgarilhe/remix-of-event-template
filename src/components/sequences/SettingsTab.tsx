@@ -45,7 +45,7 @@ export function SettingsTab({ value, onChange, canEdit, readOnlyHint, missionLab
       )}
 
       <fieldset disabled={!canEdit} className="space-y-8 disabled:opacity-80">
-        <StopConditionsSettings value={value.stopConditions} onChange={(stopConditions) => onChange({ ...value, stopConditions })} />
+        <StopConditionsSettings plain value={value.stopConditions} onChange={(stopConditions) => onChange({ ...value, stopConditions })} />
 
         <section aria-labelledby="reglages-expediteurs" className="space-y-3 border-t border-border pt-6">
           <h2 id="reglages-expediteurs" className="eyebrow">Expéditeurs</h2>

@@ -40,6 +40,7 @@ import {
 } from '@/lib/sequenceActions';
 import { isDraftSequence } from '@/lib/sequenceTableStats';
 import { parseEnrollmentChip, type EnrollmentChip } from '@/lib/enrollmentStatusLine';
+import { isAiReviewPending } from '@/lib/sequenceErrorMessages';
 import { validateSequence, withAlwaysOnStops } from '@/components/outreach/sequence/sequenceGraph';
 import type { Sequence } from '@/types/sequence';
 import { SEOHead } from '@/components/SEOHead';
@@ -75,6 +76,8 @@ const SequenceAnalytics = React.lazy(() => import('@/components/outreach/Sequenc
 const OTHER_ORG_READ_ONLY_HINT = 'Séquence d’une autre organisation : vous pouvez la consulter, pas la modifier.';
 const NOT_AUTHOR_READ_ONLY_HINT = 'Seul l’auteur de cette séquence peut la modifier : dupliquez-la pour l’adapter.';
 const FAILURE_PAUSE_REASONS = ['send_failed', 'auto_paused'];
+/** Étapes lues pour trouver la prochaine envoyable (au-delà, inconnue). */
+const NEXT_AT_SCAN = 25;
 
 /** Mission d'origine lue dans &depuis=mission:<id>. */
 function fromMission(raw: string | null): string | null {
@@ -186,25 +189,30 @@ export default function SequenceDetailPage() {
     };
   }, [projectId]);
 
-  // Prochaine étape prévue d'un candidat en cours (ligne de rythme).
+  // Prochaine étape envoyable d'un candidat en cours (ligne de rythme). Une
+  // étape rédigée par l'IA en attente de relecture ne part pas (le moteur la
+  // repousse d'une heure à chaque passage, lot 5a-2) : elle n'est pas annoncée.
   const sequenceId = sequence?.id ?? null;
   const enrollmentTotal = sequence?.enrollments.total ?? 0;
   const loadNextAt = useCallback(async () => {
     if (!sequenceId) return;
     const { data, error } = await supabase
       .from('sequence_step_executions')
-      .select('scheduled_at, sequence_enrollments!inner(sequence_id, status)')
+      .select('scheduled_at, status, error_message, final_message, sequence_enrollments!inner(sequence_id, status)')
       .eq('sequence_enrollments.sequence_id', sequenceId)
       .eq('sequence_enrollments.status', 'active')
       .in('status', ['scheduled', 'quota_blocked'])
       .order('scheduled_at', { ascending: true })
-      .limit(1);
+      .limit(NEXT_AT_SCAN);
     if (error) {
       console.warn('[SequenceDetailPage] prochaine action indisponible:', error);
       setNextAt(undefined);
       return;
     }
-    setNextAt(data?.[0]?.scheduled_at ?? null);
+    const rows = data ?? [];
+    const sendable = rows.find((row) => !isAiReviewPending(row));
+    // Toutes les étapes lues attendent une relecture : la prochaine envoyable est inconnue, rien n'est annoncé.
+    setNextAt(sendable?.scheduled_at ?? (rows.length === NEXT_AT_SCAN ? undefined : null));
   }, [sequenceId]);
   useEffect(() => {
     void loadNextAt();
@@ -343,6 +351,7 @@ export default function SequenceDetailPage() {
   const header = sequence && settings && (() => {
     const editable = canEdit(sequence);
     const draft = !countsError && isDraftSequence(sequence.enrollments);
+    const status = draft ? 'draft' : sequence.is_active ? 'active' : 'paused';
     const failed = countsError ? null : FAILURE_PAUSE_REASONS.reduce((sum, r) => sum + (sequence.enrollments.pausedByReason[r] ?? 0), 0);
     const waitsForPlan = !sequence.is_active && isPlanLoading;
     return (
@@ -353,7 +362,7 @@ export default function SequenceDetailPage() {
         onRename={rename}
         status={
           <SequenceStatusPill
-            status={draft ? 'draft' : sequence.is_active ? 'active' : 'paused'}
+            status={status}
             isActive={sequence.is_active}
             canToggle={editable}
             disabled={togglingId === sequence.id || waitsForPlan}
@@ -384,7 +393,7 @@ export default function SequenceDetailPage() {
             hours={hours}
             nextAt={nextAt}
             failedCount={failed}
-            sequenceActive={sequence.is_active}
+            status={status}
             onShowJournal={showDiagnostic}
           />
         }
@@ -424,6 +433,7 @@ export default function SequenceDetailPage() {
           {header}
           <Tabs value={tab} onValueChange={setTab}>
             <SequenceTabs
+              active={tab}
               hasEnrollments={hasEnrollments}
               candidateCount={countsError ? null : sequence.enrollments.total}
               journalAlert={!countsError && FAILURE_PAUSE_REASONS.some((r) => (sequence.enrollments.pausedByReason[r] ?? 0) > 0)}

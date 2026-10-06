@@ -16,6 +16,11 @@ import {
   isHiddenActionType,
 } from './sequenceErrorMessages.ts';
 import { readManualStopFromTracking, manualStopLabel } from './sequenceLabels.ts';
+import {
+  engineNextStepId,
+  rowToSequenceStep,
+  type SequenceStepRow,
+} from '../components/outreach/sequence/sequenceGraph.ts';
 
 /** Couleur du statut : la couleur ne sert qu'à ce qui demande d'agir (06-simplicite, règle 7). */
 export type StatusLineTone = 'default' | 'muted' | 'brand' | 'warning' | 'danger';
@@ -87,7 +92,7 @@ export interface StatusLineContext {
   canManageSequence?: boolean;
   /** Titulaire du compte qui envoie : « Reconnecter le compte » lui est proposé. */
   isAccountHolder?: boolean;
-  /** Le moteur a encore une étape visible après la dernière faite (relance d'une inscription terminée). */
+  /** Le moteur a encore une étape visible après la dernière faite, sur le graphe (relance d'une inscription terminée). */
   hasNextStep?: boolean;
 }
 
@@ -126,6 +131,15 @@ const validDate = (iso: string | null | undefined): iso is string => !!iso && Nu
 
 const PENDING = new Set(['scheduled', 'waiting_event', 'quota_blocked', 'sending']);
 const FAILURE_PAUSES = new Set(['send_failed', 'auto_paused']);
+
+/** Fin d'une inscription par un rendez-vous (calendly-webhook, condition d'arrêt de process-sequences). */
+export const MEETING_BOOKED_REASON = 'meeting_booked';
+
+/** Inscription close par un rendez-vous : jamais relancée depuis l'écran. */
+export function isMeetingBookedCompletion(status: string, trackingData: unknown): boolean {
+  const tracking = trackingData && typeof trackingData === 'object' && !Array.isArray(trackingData) ? trackingData as Record<string, unknown> : null;
+  return status === 'completed' && tracking?.completion_reason === MEETING_BOOKED_REASON;
+}
 
 /** Motif posé par le moteur quand le candidat a répondu sur un autre compte (sequence-engine-rules.ts). */
 const SIBLING_REPLY_PREFIX = 'Le candidat a répondu';
@@ -174,6 +188,18 @@ function nextActionText(exec: StatusLineExecution, now: Date): string {
   return `${actionTypeLabel(type)} ${whenLabel(exec.scheduled_at, now)}`;
 }
 
+/**
+ * Étape reportée par le plafond LinkedIn (exécution `quota_blocked`) : une
+ * seule forme, la même dans la ligne de statut, le Parcours et le Journal de
+ * la page. Une invitation attend le plafond de la semaine, les autres actions
+ * celui du jour.
+ */
+export function quotaBlockedLabel(actionType: string | null | undefined): string {
+  return actionType === 'connection_request'
+    ? 'Reporté : plafond d’invitations de la semaine atteint'
+    : 'Reporté : plafond LinkedIn du jour atteint';
+}
+
 // ─── Règle ─────────────────────────────────────────────────────────────────
 
 const action = (kind: StatusActionKind, label: string): StatusAction => ({ kind, label });
@@ -215,10 +241,9 @@ export function enrollmentStatusLine(enrollment: StatusLineEnrollment, ctx: Stat
       };
     }
     if (pending?.status === 'quota_blocked') {
-      const isInvite = pending.step?.action_type === 'connection_request';
       return {
         chip: 'en-cours',
-        label: isInvite ? 'Reporté : plafond d’invitations de la semaine atteint' : 'Reporté : plafond LinkedIn du jour atteint',
+        label: quotaBlockedLabel(pending.step?.action_type),
         tone: 'warning',
         next: 'Au prochain créneau libre',
         action: null,
@@ -283,10 +308,11 @@ export function enrollmentStatusLine(enrollment: StatusLineEnrollment, ctx: Stat
         return { chip: 'en-pause', label: 'En pause : limite d’envoi atteinte', tone: 'warning', next: null, action: null };
       case 'blocked_by_candidate':
         return { chip: 'en-pause', label: 'En pause : candidat injoignable', tone: 'warning', next: null, action: action('stop', 'Arrêter pour ce candidat') };
-      default: {
-        const since = validDate(enrollment.updated_at) ? ` depuis le ${dayMonth(enrollment.updated_at)}` : '';
-        return { chip: 'en-pause', label: `En pause${since}`, tone: 'warning', next: null, action: action('resume', 'Reprendre la séquence') };
-      }
+      default:
+        // Pause manuelle : ni son auteur ni sa date ne sont enregistrés, et
+        // updated_at change à chaque écriture de la ligne. La ligne ne date donc
+        // pas la pause (écart à la spécification acté dans le plan, 5c-2).
+        return { chip: 'en-pause', label: 'En pause', tone: 'warning', next: null, action: action('resume', 'Reprendre la séquence') };
     }
   }
 
@@ -302,6 +328,11 @@ export function enrollmentStatusLine(enrollment: StatusLineEnrollment, ctx: Stat
       return { chip: 'terminees', label: manualStopLabel(manualStop, ctx.memberName?.(manualStop.by) ?? null), tone: 'muted', next: null, action: null };
     }
     const when = validDate(enrollment.completed_at) ? ` le ${dayMonth(enrollment.completed_at)}` : '';
+    // Rendez-vous pris (Calendly, ou condition d'arrêt du moteur) : la séquence
+    // a atteint son but, rien à relancer.
+    if (tracking?.completion_reason === MEETING_BOOKED_REASON) {
+      return { chip: 'terminees', label: `Terminée${when} : rendez-vous pris`, tone: 'default', next: null, action: null };
+    }
     return {
       chip: 'terminees',
       label: `Terminée${when}, sans réponse`,
@@ -324,14 +355,52 @@ export function enrollmentStatusLine(enrollment: StatusLineEnrollment, ctx: Stat
   return { chip: chipOf(), label: 'Statut inconnu', tone: 'muted', next: null, action: null };
 }
 
-/** Reste-t-il une étape visible après la dernière étape faite ? (relance d'une inscription terminée) */
+/**
+ * Reste-t-il une étape visible après la dernière étape faite ? (relance d'une
+ * inscription terminée). Même lecture que la reprise du serveur
+ * (planResume puis scheduleNextStep) : dernière étape faite la plus avancée,
+ * puis le graphe (fin de séquence, étape suivante choisie, étape visée par un
+ * renvoi, fourches et étape de repli d'une attente). Une fourche dont l'issue
+ * n'est pas connue compte si l'une de ses branches mène à une action visible.
+ */
 export function hasVisibleStepAfterLastDone(
-  executions: readonly Pick<StatusLineExecution, 'status' | 'step_order'>[],
-  steps: readonly { step_order: number; action_type: string }[],
+  executions: readonly (Pick<StatusLineExecution, 'status' | 'step_order'> & { step_id?: string | null })[],
+  rows: readonly SequenceStepRow[],
 ): boolean {
   const DONE = new Set(['sent', 'opened', 'clicked', 'replied', 'skipped']);
-  const lastDone = Math.max(-1, ...executions.filter((e) => DONE.has(e.status)).map((e) => e.step_order ?? -1));
-  return steps.some((s) => s.step_order > lastDone && !isHiddenActionType(s.action_type));
+  const steps = rows.map(rowToSequenceStep);
+  const byId = new Map(steps.map((s) => [s.id, s]));
+  const done = executions
+    .filter((e) => DONE.has(e.status))
+    .sort((a, b) => (b.step_order ?? -1) - (a.step_order ?? -1))[0];
+  if (!done) return steps.some((s) => !isHiddenActionType(s.actionType));
+  const from = (done.step_id ? byId.get(done.step_id) : undefined)
+    ?? steps.find((s) => s.order === done.step_order);
+  if (!from) return false;
+
+  // Issues possibles après une étape (toutes les branches d'une fourche).
+  const nextIds = (step: (typeof steps)[number]): string[] => {
+    if (step.actionType === 'check_connection' || step.actionType === 'condition_branch') {
+      const fallback = engineNextStepId(step, steps);
+      return [step.ifTrueGotoStep ?? fallback, step.ifFalseGotoStep ?? fallback].filter((id): id is string => !!id);
+    }
+    const next = engineNextStepId(step, steps);
+    const timeout = step.timeoutBranchStepId ?? null;
+    return [next, timeout].filter((id): id is string => !!id);
+  };
+
+  const seen = new Set<string>([from.id]);
+  const queue = nextIds(from);
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const step = byId.get(id);
+    if (!step) continue;
+    if (!isHiddenActionType(step.actionType)) return true;
+    queue.push(...nextIds(step));
+  }
+  return false;
 }
 
 // ─── Puces de l'onglet « Candidats » ───────────────────────────────────────

@@ -1,7 +1,10 @@
 // Onglets de la page d'une séquence (lot 5c-2), lus et écrits dans ?onglet=.
 // « Statistiques » et « Journal » n'apparaissent qu'après la première
 // inscription ; le compteur de « Candidats » ne s'écrit pas à zéro. Un point
-// rouge sur « Journal » signale un envoi en échec.
+// rouge sur « Journal » signale un envoi en échec. Sur téléphone, la rangée
+// défile et ramène l'onglet actif dans la vue (lien « 1 candidat en échec »,
+// « Diagnostic des envois », adresse ?onglet=reglages).
+import { useEffect, useRef } from 'react';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { SEQUENCE_TABS, visibleSequenceTabs } from './sequenceTabsModel';
@@ -13,18 +16,32 @@ const TAB_TRIGGER_CLASS = cn(
 );
 
 interface SequenceTabsProps {
+  /** Onglet affiché : ramené dans la vue de la rangée quand elle défile. */
+  active: string;
   hasEnrollments: boolean;
   /** Inscrits de la séquence ; null si le compteur est illisible ou en lecture. */
   candidateCount: number | null;
   journalAlert: boolean;
 }
 
-export function SequenceTabs({ hasEnrollments, candidateCount, journalAlert }: SequenceTabsProps) {
+export function SequenceTabs({ active, hasEnrollments, candidateCount, journalAlert }: SequenceTabsProps) {
   const visible = visibleSequenceTabs(hasEnrollments);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Défilement horizontal de la seule rangée : jamais de saut vertical de la page.
+  useEffect(() => {
+    const list = listRef.current;
+    const trigger = list?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+    if (!list || !trigger) return;
+    const listBox = list.getBoundingClientRect();
+    const box = trigger.getBoundingClientRect();
+    const margin = 16;
+    if (box.left < listBox.left) list.scrollLeft -= listBox.left - box.left + margin;
+    else if (box.right > listBox.right) list.scrollLeft += box.right - listBox.right + margin;
+  }, [active, hasEnrollments]);
   return (
     <div className="border-b border-border">
       {/* Pleine largeur : la rangée défile au lieu de déborder sur téléphone. */}
-      <TabsList className="-mb-px flex h-11 w-full justify-start gap-1 overflow-x-auto bg-transparent p-0 scrollbar-hide">
+      <TabsList ref={listRef} className="-mb-px flex h-11 w-full justify-start gap-1 overflow-x-auto bg-transparent p-0 scrollbar-hide">
         {SEQUENCE_TABS.filter((t) => visible.includes(t.value)).map(({ value, label }) => (
           <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
             {label}

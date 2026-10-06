@@ -118,7 +118,8 @@ export function SequenceRow(props: SequenceRowProps) {
     <tr onClick={openRow} className="group cursor-pointer border-b border-border align-top transition-colors duration-150 last:border-b-0 hover:bg-accent/40">
       <td className="w-16 py-3 pl-3 pr-2">
         <div className="flex h-6 items-center">
-          {canEdit ? (
+          {/* Brouillon (aucune inscription) : pas d'interrupteur, comme la maquette ; il s'active depuis sa page. */}
+          {draft && canEdit ? null : canEdit ? (
             <Switch
               checked={seq.is_active}
               disabled={toggleDisabled}
