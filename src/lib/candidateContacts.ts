@@ -15,6 +15,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { toE164 } from '@/lib/phone';
 
 export interface CandidateContacts {
   organizationId: string;
@@ -112,6 +113,59 @@ export async function clearCandidateContacts(
     .eq('organization_id', organizationId);
 
   if (error) throw error;
+}
+
+/**
+ * Enregistre un numéro sur la fiche d'un candidat SANS toucher à son e-mail,
+ * ses notes ni la provenance de la ligne (upsertCandidateContacts réécrit les
+ * trois : il est fait pour le formulaire, qui les affiche tous).
+ *
+ * Un candidat n'a qu'un numéro. S'il en a déjà un autre, rien n'est écrit et le
+ * résultat est `conflict` (avec ce numéro) : l'appelant le montre, puis rappelle
+ * avec `replace: true`. Remplacer fait cesser de se rattacher à lui les appels
+ * passés avec l'ancien numéro (le rapprochement se fait à la lecture).
+ */
+export type AttachPhoneResult =
+  | { status: 'attached'; previousPhone: string | null }
+  | { status: 'unchanged' }
+  | { status: 'conflict'; previousPhone: string };
+
+export async function attachPhoneToCandidate(
+  candidateId: string,
+  organizationId: string,
+  phone: string,
+  options: { replace?: boolean } = {},
+): Promise<AttachPhoneResult> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Non authentifié');
+
+  const { data: existing, error: readError } = await supabase
+    .from('candidate_contacts')
+    .select('phone')
+    .eq('organization_id', organizationId)
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (readError) throw readError;
+
+  const previousPhone = existing?.phone?.trim() || null;
+  if (previousPhone && toE164(previousPhone) === phone) return { status: 'unchanged' };
+  if (previousPhone && !options.replace) return { status: 'conflict', previousPhone };
+
+  if (existing) {
+    const { error } = await supabase
+      .from('candidate_contacts')
+      .update({ phone, updated_by: user.id })
+      .eq('organization_id', organizationId)
+      .eq('candidate_id', candidateId);
+    if (error) throw error;
+    return { status: 'attached', previousPhone };
+  }
+
+  const { error } = await supabase
+    .from('candidate_contacts')
+    .insert({ organization_id: organizationId, candidate_id: candidateId, phone, source: 'manual', updated_by: user.id });
+  if (error) throw error;
+  return { status: 'attached', previousPhone: null };
 }
 
 // ─── Internal ─────────────────────────────────────────────────────
