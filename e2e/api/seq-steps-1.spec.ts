@@ -34,7 +34,6 @@ import {
 import {
   CRON_SECRET,
   ENGINE_SKIP_REASON,
-  MOCK_URL,
   engineAvailable,
   enroll,
   minutesFromNow,
@@ -491,20 +490,16 @@ test.describe('@critical Étapes de connexion', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe('@critical Rédaction IA', () => {
-  // ai-failure-no-send-retry
-  test('@critical une réponse IA illisible n\'envoie rien : étape replanifiée +30 min avec la cause, jetons débités, échec après trois essais sans le modèle brut', async () => {
-    // Le texte IA n'est réglable que pour tous les comptes ('*') : on garde la
-    // réponse par défaut du faux prestataire (texte non JSON).
-    const modes = await (await fetch(`${MOCK_URL}/__mode`, { method: 'POST', body: '' })).json() as Record<string, { ai_text?: unknown }>;
-    test.skip(modes['*']?.ai_text !== undefined, 'réponse IA réglée pour tous les comptes par une autre suite');
-
+  // ai-failure-no-send-retry — lot 5a-2 : le moteur ne rédige plus à l'envoi.
+  // Une étape IA sans texte relu ne va plus jusqu'au modèle : elle est
+  // reportée d'une heure avec la raison, sans jeton débité ni échec.
+  test('@critical une étape IA sans relecture n\'appelle pas le modèle : reportée d\'une heure avec la raison, aucun jeton débité, jamais d\'échec, le modèle brut ne part pas', async () => {
     const { org, accountId } = await newSendingOrg('E2E steps-1 IA');
-    const template = `Modèle brut ${rand()}`;
+    const marker = `MQ${rand()}${rand()}`;
+    const template = `Modèle brut ${marker}`;
     const seq = await buildSequence(org, org.owner.userId, [
       { action_type: 'message', message_template: template, use_ai_personalization: true },
     ]);
-    const balanceBefore = await admin().from('ai_credit_balances').select('credits_remaining, plan_credits').eq('organization_id', org.orgId).maybeSingle();
-    expect(balanceBefore.data, 'crédits IA disponibles pour l\'organisation').not.toBeNull();
     const { enrollmentId } = await enroll(org, seq.sequenceId, org.owner.userId, accountId);
     const execId = await schedule(org, enrollmentId, seq.steps[0]);
 
@@ -512,26 +507,29 @@ test.describe('@critical Rédaction IA', () => {
     const first = await execById(execId);
     expect(await sentTexts(accountId), 'rien ne part').toEqual([]);
     expect(first.status).toBe('scheduled');
-    expect(first.retry_count).toBe(1);
-    expect(first.error_message).toBe('Réponse IA illisible : nouvel essai 1/3 dans 30 min');
-    expect(first.final_message, 'contenu d\'avant le verrou (aucun) restauré').toBeNull();
+    expect(first.retry_count ?? 0, 'aucun essai compté').toBe(0);
+    expect(first.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
+    expect(first.final_message, 'aucun texte figé').toBeNull();
     const delay = new Date(first.scheduled_at).getTime() - Date.now();
-    expect(delay).toBeGreaterThan(25 * 60_000);
-    expect(delay).toBeLessThan(35 * 60_000);
-    const { data: debits } = await admin().from('ai_credit_transactions').select('id, amount, tokens_input, tokens_output').eq('organization_id', org.orgId);
-    expect((debits ?? []).length, 'jetons consommés débités').toBeGreaterThan(0);
+    expect(delay, 'report d\'une heure').toBeGreaterThan(55 * 60_000);
+    expect(delay).toBeLessThan(65 * 60_000);
 
     for (let i = 0; i < 3; i++) {
       await rewind(execId);
       await runCycle();
     }
     const last = await execById(execId);
-    expect(last.status).toBe('failed');
-    expect(last.error_message).toBe('Réponse IA illisible : message non envoyé après plusieurs essais. Relancez l\'étape plus tard.');
+    expect(last.status, 'toujours reportée, jamais en échec').toBe('scheduled');
+    expect(last.retry_count ?? 0).toBe(0);
+    expect(last.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
+    const { data: debits } = await admin().from('ai_credit_transactions').select('id').eq('organization_id', org.orgId);
+    expect(debits ?? [], 'aucun jeton débité').toEqual([]);
+    const aiCalls = (await mockCalls()).filter((c) => c.method === 'POST' && c.path === '/v1/messages' && JSON.stringify(c.body).includes(marker));
+    expect(aiCalls, 'aucun appel au modèle').toEqual([]);
     const texts = await sentTexts(accountId);
     expect(texts, 'aucun envoi').toEqual([]);
-    expect(texts.some((t) => t.includes(template)), 'le modèle brut ne part jamais').toBe(false);
-    expect((await enrollmentFull(enrollmentId)).status).toBe('active');
+    const enrollment = await enrollmentFull(enrollmentId);
+    expect(enrollment.status, 'inscription ni en pause ni close').toBe('active');
   });
 });
 

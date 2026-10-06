@@ -152,7 +152,8 @@ test('Colonne : titre à 28 px, plus d’« Actualiser », bascule quiet, filtre
 
 test('Conversation : état en mots près du nom, inscription discrète, panneau vide sans cadre', () => {
   const src = read('src/components/outreach/inbox/MessageView.tsx');
-  assert.match(src, /<EnrollmentStatusBadge status=\{enrollmentStatus\} pauseReason=\{enrollmentPauseReason\} plain \/>/);
+  // Arrêt manuel (lot 5b) : mêmes mots, avec l'auteur et la date de l'arrêt.
+  assert.match(src, /<EnrollmentStatusBadge\s+status=\{enrollmentStatus\}\s+pauseReason=\{enrollmentPauseReason\}[^>]*?\bplain\s*\/>/);
   assert.match(src, /<span className="sr-only">Séquence : <\/span>/);
   assert.match(src, /<Button variant="ghost" size="sm" onClick=\{onEnrollInSequence\}/);
   assert.match(src, /className="w-full max-w-sm border-0"/);

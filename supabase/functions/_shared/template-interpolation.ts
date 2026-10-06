@@ -131,6 +131,26 @@ export function interpolatePlaceholders(text: string, ctx: PlaceholderContext): 
 
 // ─── Builder du context pour séquences ───────────────────────────────
 
+/**
+ * Relevé de la construction, pour l'aperçu (lot 5d-1,
+ * sequence-preview-values.ts) : expéditeur retenu, clés tirées de ses
+ * variables personnelles (alias compris), lectures en échec. Sans effet sur
+ * le contexte : le moteur ne le passe pas.
+ */
+export interface SequenceContextTrace {
+  senderUserId: string | null;
+  /** Clés venues de user_template_variables de l'expéditeur, et alias qui les recopient. */
+  personalKeys: string[];
+  /** Tables dont la lecture a échoué (erreur rendue ou exception). */
+  failedReads: string[];
+}
+
+/** Alias recopiés en fin de construction (source, alias), pour suivre une valeur personnelle. */
+const CONTEXT_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ["prenom", "first_name"], ["nom", "last_name"], ["nom_complet", "name"], ["entreprise_actuelle", "company"],
+  ["poste_actuel", "job_title"], ["mon_prenom", "sender_name"], ["lien_calendly", "calendly_link"], ["ville", "city"],
+];
+
 export interface BuildSequenceContextInput {
   enrollment: Record<string, unknown>;
   /**
@@ -148,6 +168,8 @@ export interface BuildSequenceContextInput {
   organizationName?: string | null;
   /** Override du lien de rendez-vous (sinon colonne sourcing_projects.calendly_link, puis job_details) */
   calendlyLink?: string | null;
+  /** Relevé facultatif (aperçu, lot 5d-1), rempli au fil de la construction. */
+  trace?: SequenceContextTrace;
 }
 
 /**
@@ -162,7 +184,7 @@ export async function buildSequenceContext(
   supabase: SupabaseClient,
   input: BuildSequenceContextInput
 ): Promise<PlaceholderContext> {
-  const { enrollment } = input;
+  const { enrollment, trace } = input;
   const ctx: PlaceholderContext = {};
 
   // ─── Contact (depuis enrollment) ──
@@ -217,7 +239,10 @@ export async function buildSequenceContext(
         projectQuery = projectQuery.eq("organization_id", enrollment.organization_id);
       }
       const { data: project, error: projectError } = await projectQuery.maybeSingle();
-      if (projectError) console.warn("[template-interpolation] sourcing_projects read failed:", projectError.message);
+      if (projectError) {
+        console.warn("[template-interpolation] sourcing_projects read failed:", projectError.message);
+        trace?.failedReads.push("sourcing_projects");
+      }
       if (project) {
         const row = project as { name?: string | null; job_details?: unknown; calendly_link?: string | null; client_name?: string | null };
         const jd = (row.job_details || {}) as Record<string, unknown>;
@@ -239,6 +264,7 @@ export async function buildSequenceContext(
       }
     } catch (e) {
       console.warn("[template-interpolation] sourcing_projects fetch failed:", e);
+      trace?.failedReads.push("sourcing_projects");
     }
   }
   if (calendlyLink) ctx.lien_calendly = calendlyLink;
@@ -253,12 +279,16 @@ export async function buildSequenceContext(
   const createdBy = typeof enrollment.created_by === "string" ? enrollment.created_by : null;
   const givenSender = input.senderUserId && UUID_RE.test(input.senderUserId) ? input.senderUserId : null;
   const explicitSender = givenSender && givenSender !== createdBy ? givenSender : null;
+  const ownerDiag: { failed?: boolean } = {};
   const accountOwner = explicitSender ? null : await resolveSendingAccountOwner(
     supabase,
     enrollment,
     input.senderAccountId ? { sender_id: input.senderAccountId } : null,
+    ownerDiag,
   );
+  if (ownerDiag.failed) trace?.failedReads.push("member_linkedin_accounts");
   const senderUserId = explicitSender || accountOwner || givenSender || createdBy || null;
+  if (trace) trace.senderUserId = senderUserId;
   let senderProfile = input.senderProfile;
   if (!senderProfile && senderUserId) {
     try {
@@ -269,10 +299,14 @@ export async function buildSequenceContext(
         .select("display_name, job_title")
         .eq("user_id", senderUserId)
         .maybeSingle();
-      if (error) console.warn("[template-interpolation] sender profile read failed:", error.message);
+      if (error) {
+        console.warn("[template-interpolation] sender profile read failed:", error.message);
+        trace?.failedReads.push("profiles");
+      }
       senderProfile = (data as { display_name?: string | null; job_title?: string | null } | null) ?? null;
     } catch (e) {
       console.warn("[template-interpolation] sender profile fetch failed:", e);
+      trace?.failedReads.push("profiles");
     }
   }
   if (senderProfile) {
@@ -290,14 +324,19 @@ export async function buildSequenceContext(
   let organizationName = input.organizationName;
   if (!organizationName && enrollment.organization_id) {
     try {
-      const { data: org } = await supabase
+      const { data: org, error: orgError } = await supabase
         .from("organizations")
         .select("name")
         .eq("id", enrollment.organization_id)
         .maybeSingle();
+      if (orgError) {
+        console.warn("[template-interpolation] organization read failed:", orgError.message);
+        trace?.failedReads.push("organizations");
+      }
       organizationName = org?.name ?? null;
     } catch (e) {
       console.warn("[template-interpolation] organization fetch failed:", e);
+      trace?.failedReads.push("organizations");
     }
   }
   if (organizationName) ctx.ma_societe = organizationName;
@@ -305,19 +344,25 @@ export async function buildSequenceContext(
   // ─── Variables custom user ──
   if (senderUserId) {
     try {
-      const { data: customs } = await supabase
+      const { data: customs, error: customsError } = await supabase
         .from("user_template_variables")
         .select("key, value")
         .eq("user_id", senderUserId);
+      if (customsError) {
+        console.warn("[template-interpolation] user_template_variables read failed:", customsError.message);
+        trace?.failedReads.push("user_template_variables");
+      }
       if (Array.isArray(customs)) {
         for (const v of customs) {
           if (v.key && v.value && !(v.key in ctx)) {
             ctx[v.key] = v.value;
+            trace?.personalKeys.push(v.key);
           }
         }
       }
     } catch (e) {
       console.warn("[template-interpolation] user_template_variables fetch failed:", e);
+      trace?.failedReads.push("user_template_variables");
     }
   }
 
@@ -354,6 +399,16 @@ export async function buildSequenceContext(
   if (ctx.mon_prenom) ctx.sender_name = ctx.mon_prenom;
   if (ctx.lien_calendly) ctx.calendly_link = ctx.lien_calendly;
   if (ctx.ville) ctx.city = ctx.ville;
+  // Relevé : un alias recopié prend l'origine de sa source (personnelle ou non).
+  if (trace) {
+    for (const [from, to] of CONTEXT_ALIASES) {
+      if (!ctx[from]) continue;
+      const fromPersonal = trace.personalKeys.includes(from);
+      const toIndex = trace.personalKeys.indexOf(to);
+      if (fromPersonal && toIndex < 0) trace.personalKeys.push(to);
+      else if (!fromPersonal && toIndex >= 0) trace.personalKeys.splice(toIndex, 1);
+    }
+  }
 
   return ctx;
 }

@@ -27,6 +27,10 @@ const list = stripComments(read('src/components/outreach/SequencesList.tsx'));
 const panel = stripComments(read('src/components/outreach/SequenceEnrollmentsPanel.tsx'));
 const diagnostic = stripComments(read('src/components/outreach/SequenceDiagnostic.tsx'));
 const mission = stripComments(read('src/components/missions/MissionOutreach.tsx'));
+// Lot 5c-1 : fonctions de la liste et du suivi sorties dans sequenceActions.ts,
+// enregistrement de l'éditeur dans useSequenceSave.ts.
+const actions = stripComments(read('src/lib/sequenceActions.ts'));
+const saveHook = stripComments(read('src/hooks/useSequenceSave.ts'));
 
 /** Corps d'une fonction fléchée `const name = async (...) => { ... }` (accolades équilibrées). */
 function body(src, name) {
@@ -46,9 +50,9 @@ function body(src, name) {
 
 // ---------------------------------------------------------------- SEQ-071 / SEQ-221
 test('SEQ-071 / SEQ-221 — le panneau n’écrit plus aucune exécution depuis le navigateur', () => {
-  assert.doesNotMatch(panel, /from\('sequence_step_executions'\)\s*\.update/);
-  assert.doesNotMatch(panel, /\.eq\('status', 'scheduled'\)\s*;?\s*\n\s*\n?\s*(toast|setEnrollments)/);
-  assert.match(body(panel, 'markReplied'), /action: 'mark_replied'/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /from\('sequence_step_executions'\)\s*\.update/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /\.eq\('status', 'scheduled'\)\s*;?\s*\n\s*\n?\s*(toast|setEnrollments)/);
+  assert.match(body(actions, 'markReplied'), /action: 'mark_replied'/);
 });
 
 // ---------------------------------------------------------------- SEQ-121
@@ -67,7 +71,8 @@ test('SEQ-121 — chaque raison de pause propose l’action qui débloque', () =
 // ---------------------------------------------------------------- SEQ-122 / SEQ-232
 test('SEQ-122 / SEQ-232 — la suppression dit ce qu’elle efface, séquence partagée comprise', () => {
   assert.match(list, /Ces candidats ne seront plus signalés comme déjà contactés lors d'une prochaine inscription\./);
-  assert.match(list, /Préférez la désactivation si vous voulez garder cette protection\./);
+  // Lot 5b : l'interrupteur s'appelle « Mettre en pause la séquence ».
+  assert.match(list, /Préférez la mise en pause de la séquence si vous voulez garder cette protection\./);
   assert.match(list, /Cette séquence est partagée entre toutes vos missions : elle disparaîtra partout/);
   assert.match(list, /const shared = !deleteTarget\.project_id;/);
   assert.doesNotMatch(list, /✨ Template/);
@@ -80,16 +85,16 @@ test('SEQ-122 / SEQ-232 — la suppression dit ce qu’elle efface, séquence pa
 
 // ---------------------------------------------------------------- SEQ-147
 test('SEQ-147 — l’éditeur reçoit les valeurs qu’il affiche par défaut', () => {
-  const edit = body(list, 'handleEdit');
+  const edit = body(actions, 'handleEdit');
   assert.match(edit, /s\.condition_type === 'if_score_above' \? DEFAULT_SCORE_THRESHOLD : undefined/);
   assert.match(edit, /TIMEOUT_REQUIRED_ACTIONS\.includes\(s\.action_type\) \? DEFAULT_WAIT_TIMEOUT_DAYS : undefined/);
-  assert.match(list, /const DEFAULT_SCORE_THRESHOLD = '70';/);
-  assert.match(list, /const DEFAULT_WAIT_TIMEOUT_DAYS = 3;/);
+  assert.match(actions, /const DEFAULT_SCORE_THRESHOLD = '70';/);
+  assert.match(actions, /const DEFAULT_WAIT_TIMEOUT_DAYS = 3;/);
 });
 
 // ---------------------------------------------------------------- SEQ-149
 test('SEQ-149 — un échec des étapes à la création supprime l’en-tête créé', () => {
-  const save = body(list, 'handleSaveSequence');
+  const save = body(saveHook, 'handleSaveSequence');
   assert.match(save, /createdSequenceId = newSeq\.id;/);
   const onError = save.slice(save.indexOf('if (stepsError) {'));
   assert.match(onError, /if \(createdSequenceId\) \{[\s\S]*?from\('outreach_sequences'\)\s*\.delete\(\)\s*\.eq\('id', createdSequenceId\)/);
@@ -99,10 +104,12 @@ test('SEQ-149 — un échec des étapes à la création supprime l’en-tête cr
 test('SEQ-150 / SEQ-154 — l’éditeur connaît les candidats en cours et le droit d’envoi', () => {
   assert.match(list, /activeEnrollmentCount=\{editingSequence\?\.id \? editingActiveCount : 0\}/);
   assert.match(list, /canSendSequences=\{canSendSequences\}/);
-  assert.match(body(list, 'handleEdit'), /setEditingActiveCount\(activeError \? undefined : \(activeNow \?\? 0\)\)/);
-  const save = body(list, 'handleSaveSequence');
+  assert.match(body(actions, 'handleEdit'), /setEditingActiveCount\(activeError \? undefined : \(activeNow \?\? 0\)\)/);
+  const save = body(saveHook, 'handleSaveSequence');
   // Décision 32 : abonnement pas encore lu, la séquence est aussi créée désactivée.
-  assert.match(save, /const createInactiveForPlan = !sequence\.id && sequence\.isActive && \(!canSendSequences \|\| planStateUnknown\);/);
+  // Lot 5c-1 : règle sortie dans sequenceActions.ts, formule inchangée.
+  assert.match(actions, /export const shouldCreateInactiveForPlan = \([\s\S]*?\): boolean => !sequence\.id && sequence\.isActive && \(!canSendSequences \|\| planStateUnknown\);/);
+  assert.match(save, /const createInactiveForPlan = shouldCreateInactiveForPlan\(sequence, canSendSequences, planStateUnknown\);/);
   assert.match(save, /is_active: sequence\.isActive && !createInactiveForPlan,/);
   // En modification, l'interrupteur (pause et reprise des candidats) reste seul à écrire is_active.
   const update = save.slice(save.indexOf(".from('outreach_sequences')\n          .update({"), save.indexOf(".eq('id', sequence.id);"));
@@ -112,16 +119,16 @@ test('SEQ-150 / SEQ-154 — l’éditeur connaît les candidats en cours et le d
 
 // ---------------------------------------------------------------- SEQ-151
 test('SEQ-151 — étapes relues à l’ouverture, étape inconnue refusée à l’enregistrement', () => {
-  const edit = body(list, 'handleEdit');
+  const edit = body(actions, 'handleEdit');
   assert.match(edit, /from\('sequence_steps'\)\s*\.select\('\*'\)\s*\.eq\('sequence_id', seq\.id\)/);
   assert.doesNotMatch(edit, /seq\.steps\.map/);
   assert.match(edit, /editorBaseStepIdsRef\.current = \{ sequenceId: seq\.id, stepIds: new Set\(steps\.map\(s => s\.id\)\) \}/);
-  const save = body(list, 'handleSaveSequence');
+  const save = body(saveHook, 'handleSaveSequence');
   const check = save.indexOf('throw new Error(CONCURRENT_EDIT_MESSAGE)');
   const write = save.indexOf(".from('outreach_sequences')\n          .update(");
   assert.ok(check !== -1, 'le contrôle d’édition concurrente doit exister');
   assert.ok(write === -1 || check < write, 'le contrôle doit précéder toute écriture');
-  assert.match(list, /Cette séquence a été modifiée par un collègue depuis son ouverture\. Rouvrez-la avant d’enregistrer\./);
+  assert.match(saveHook, /Cette séquence a été modifiée par un collègue depuis son ouverture\. Rouvrez-la avant d’enregistrer\./);
 });
 
 // ---------------------------------------------------------------- SEQ-161 / SEQ-163 / SEQ-238
@@ -140,10 +147,11 @@ test('SEQ-161 / SEQ-163 / SEQ-238 — statuts et types d’étape lus dans les t
 
 // ---------------------------------------------------------------- SEQ-162
 test('SEQ-162 — raisons et erreurs du moteur traduites dans le panneau', () => {
-  assert.match(panel, /formatSkipReason\(exec\.skip_reason\)/);
+  // Lot 5b : avec le contexte d'arrêt manuel de l'inscription.
+  assert.match(panel, /formatSkipReason\(exec\.skip_reason, \{ manualStop: hasManualStopTrace\(enrollment\.tracking_data\) \}\)/);
   assert.doesNotMatch(panel, /\{exec\.skip_reason\}/);
   assert.doesNotMatch(panel, /:\s*exec\.skip_reason\s*\n/);
-  assert.doesNotMatch(panel, /skippée/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /skippée/);
 });
 
 // ---------------------------------------------------------------- SEQ-164
@@ -168,8 +176,11 @@ test('SEQ-165 — compteurs exacts au-delà de 1 000 lignes, recompte au clic', 
   assert.ok(fetch.length > 0, 'fetchSequences introuvable');
   // SEQ-165 (B6, vague finale) : compteurs groupés en base, paginés eux aussi.
   assert.match(fetch, /fetchAllPages\(\(from, to\) => supabase\s*\.rpc\('get_sequence_enrollment_counts', \{ p_sequence_ids: sequenceIds \}\)[\s\S]*?\.range\(from, to\)\)/);
-  const toggle = body(list, 'requestToggle');
-  assert.match(toggle, /\.select\('id', \{ count: 'exact', head: true \}\)\s*\.eq\('sequence_id', seq\.id\)\s*\.eq\('status', 'active'\)/);
+  const toggle = body(actions, 'requestToggle');
+  // Lot 5b : plus de confirmation, donc plus de comptage avant la pause ; le
+  // recompte en base suit la mise en pause des inscriptions (deactivateSequence).
+  assert.match(body(actions, 'deactivateSequence'), /\.select\('id', \{ count: 'exact', head: true \}\)\s*\.eq\('sequence_id', sequenceId\)\s*\.eq\('status', 'active'\)/);
+  assert.doesNotMatch(toggle, /setToggleConfirm/);
   assert.doesNotMatch(toggle, /if \(seq\.enrollments\.active > 0\)/);
   assert.match(panel, /const EXECUTION_BATCH_SIZE = 50;/);
   assert.match(body(panel, 'fetchExecutionsFor'), /\.range\(from, from \+ EXECUTION_PAGE_SIZE - 1\)/);
@@ -191,7 +202,8 @@ test('SEQ-167 / SEQ-246 — journal, statistiques et diagnostic limités à la m
   assert.doesNotMatch(diagnostic, /sequenceIds\.length > 0/, 'une mission sans séquence propre montrait toute l’organisation');
   assert.doesNotMatch(diagnostic, /\.in\('enrollment_id'/, 'longues listes d’identifiants dans l’URL');
   assert.match(diagnostic, /Chiffre indisponible/);
-  assert.match(list, /Cette séquence est partagée entre vos missions : ses candidats des autres missions seront aussi mis en pause\./);
+  // Lot 5b : dit par le toast de la mise en pause (plus de fenêtre).
+  assert.match(actions, /Cette séquence est partagée entre vos missions : ses candidats des autres missions sont aussi en pause\./);
 });
 
 // ---------------------------------------------------------------- SEQ-168 / SEQ-169
@@ -237,8 +249,8 @@ test('SEQ-173 — envois et échecs comptés sur la date d’envoi, dernier mess
 
 // ---------------------------------------------------------------- SEQ-172
 test('SEQ-172 — aucun toast ne promet un départ « dans la minute »', () => {
-  for (const src of [list, panel, diagnostic]) assert.doesNotMatch(src, /dans la minute/);
-  assert.match(body(list, 'handleNudgeToday'), /toast\.info\('Rien à avancer pour aujourd’hui\.'\)/);
+  for (const src of [list, panel, diagnostic, actions, saveHook]) assert.doesNotMatch(src, /dans la minute/);
+  assert.match(body(actions, 'handleNudgeToday'), /toast\.info\('Rien à avancer pour aujourd’hui\.'\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-177 / SEQ-178
@@ -256,7 +268,7 @@ test('SEQ-178 — l’onglet Contact montre le chemin pour inscrire des candidat
   assert.match(list, /navigate\(`\/missions\/\$\{projectId\}\?tab=sourcing`\)/);
   // Revue design : une seule ligne responsive par séquence, donc un seul lien de
   // ligne (plus de copie séparée pour téléphone), plus l'action du toast de création.
-  assert.ok((list.match(/Inscrire des candidats/g) || []).length >= 2, 'lien de la ligne et action du toast de création');
+  assert.ok((`${list}\n${saveHook}`.match(/Inscrire des candidats/g) || []).length >= 2, 'lien de la ligne et action du toast de création');
   assert.match(list, /onClick=\{goToSourcing\}[^>]*>\s*Inscrire des candidats/, 'lien de la ligne vers le Sourcing');
   assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
   assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
@@ -300,14 +312,15 @@ test('SEQ-242 — plus de sélecteur de compte sans effet au-dessus des séquenc
 // ---------------------------------------------------------------- SEQ-245
 test('SEQ-245 — vocabulaire commun : pas de jargon ni de tutoiement', () => {
   for (const [src, words] of [
-    [list, ['Analytics<', "'Analytics'", 'Funnel', 'Créé à', 'Sauvegarder comme template']],
-    [panel, ['Workflow', 'Marquer répondu', "Actions de l'inscription"]],
+    [`${list}\n${actions}\n${saveHook}`, ['Analytics<', "'Analytics'", 'Funnel', 'Créé à', 'Sauvegarder comme template']],
+    [`${panel}\n${actions}`, ['Workflow', 'Marquer répondu', "Actions de l'inscription"]],
     [mission, ["séquences d'outreach", '> inscrits<']],
   ]) {
     for (const w of words) assert.ok(!src.includes(w), `texte à remplacer : ${w}`);
   }
   assert.match(panel, /Mettre en pause pour ce candidat/);
-  assert.match(panel, /toast\.success\(`\$\{name\} est en pause`/);
+  // Lot 5b : « Séquence mise en pause pour Claire Dubois. » avec « Annuler ».
+  assert.match(actions, /title: pauseToastTitle\(name\)/);
   assert.match(panel, /Relancer depuis l’étape suivante/);
   assert.match(panel, />\s*Parcours\s*</);
   assert.match(list, /Enregistrer comme modèle/);

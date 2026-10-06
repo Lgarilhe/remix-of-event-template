@@ -234,9 +234,9 @@ const safeDecode = (value: string) => { try { return decodeURIComponent(value); 
 
 /** #ancre : recale tant que les blocs au-dessus passent du chargement à leur taille finale,
  *  jusqu'au premier geste (3 s au plus). Seule une navigation qui porte un hash fixe une
- *  nouvelle cible (lien vers une ancre de la rubrique déjà ouverte, même rejoué). Les lecteurs
- *  de retour (paiement, Notion) réécrivent l'adresse sans hash via setSearchParams : ce
- *  remplacement n'interrompt pas l'alignement en cours. */
+ *  nouvelle cible (lien vers une ancre de la rubrique déjà ouverte, même rejoué). Le lecteur
+ *  de retour de paiement réécrit l'adresse sans hash via setSearchParams : ce remplacement
+ *  n'interrompt pas l'alignement en cours. Celui de Notion pose #applications, nouvelle cible. */
 function useHashScroll(paneRef: RefObject<HTMLElement>) {
   const { hash, key } = useLocation();
   const target = useRef({ id: safeDecode(hash.slice(1)), key });

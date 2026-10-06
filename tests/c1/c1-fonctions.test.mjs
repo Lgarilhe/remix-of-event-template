@@ -312,7 +312,8 @@ test("R4 : l'avis du client ne vise qu'un candidat visible, sans maybeSingle sur
 test('R4 : fonction SQL absente, réponse 503 claire', () => {
   const src = read(PORTAL);
   assert.match(fnBody(src, 'function isMissingPortalFunction('), /PGRST202/);
-  assert.equal((src.match(/jsonResponse\(\{ error: PORTAL_UNAVAILABLE \}, 503\)/g) || []).length, 2);
+  // Affichage, avis du client (validation), puis lecture de l'identifiant du profil (lot 1 scorecard).
+  assert.equal((src.match(/jsonResponse\(\{ error: PORTAL_UNAVAILABLE \}, 503\)/g) || []).length, 3);
 });
 
 // ─── R8 : la notation ne réécrit que son organisation ───────────────────────

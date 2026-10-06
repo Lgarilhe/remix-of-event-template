@@ -16,6 +16,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { LegacySettingsRedirect } from "@/components/settings/shell/LegacySettingsRedirect";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
+import { SequencesGate } from "@/components/sequences/SequencesGate";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { clearOnboardingProgress } from "@/components/onboarding/onboardingStorage";
@@ -53,6 +54,10 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 const AgentsPage = lazy(() => import("./pages/Agents"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
+// Séquences de l'organisation (lot 5c-2) : derrière l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts).
+const SequencesPage = lazy(() => import("./pages/SequencesPage"));
+const SequenceDetailPage = lazy(() => import("./pages/SequenceDetailPage"));
+const CallsPage = lazy(() => import("./pages/Calls"));
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client', '/pricing'];
 
 const AppContent = () => {
@@ -176,6 +181,12 @@ const AppContent = () => {
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><OrganizationGuard><AppLayout><CalendarPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><OrganizationGuard><AppLayout><TasksPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+            {/* Séquences (lot 5c-2) : interrupteur éteint, SequencesGate renvoie vers /missions */}
+            <Route path="/sequences" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequencesPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            {/* Nouvelle séquence (lot 5d-2) : avant /sequences/:id, même garde ; rien n'est écrit avant « Enregistrer » */}
+            <Route path="/sequences/nouvelle" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage creating /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/sequences/:id" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/calls" element={<ProtectedRoute><OrganizationGuard><AppLayout><CallsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Legacy redirects */}
             <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
             <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />

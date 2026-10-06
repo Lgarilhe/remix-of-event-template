@@ -15,8 +15,9 @@ const CardPlainProvider = ({ children }: { children: React.ReactNode }) => (
   <CardPlainContext.Provider value={true}>{children}</CardPlainContext.Provider>
 );
 
-// Sans ombre : la carte se détache par son filet, l'ombre reste aux éléments qui flottent
-// (menus, dialogues, toasts ; 01-direction.md, § 4).
+// La carte se détache du fond par sa luminosité (sombre) ou son ombre légère (clair), et garde
+// son filet. L'ombre marquée reste aux éléments qui flottent (menus, dialogues, toasts ;
+// 01-direction.md, § 4). À plat, aucune ombre : la carte n'a plus de fond ni de cadre à relever.
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => {
   const plain = React.useContext(CardPlainContext);
   return (
@@ -24,7 +25,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
       ref={ref}
       className={cn(
         // À plat, la carte ne reçoit ni rayon, ni cadre, ni fond.
-        plain ? "text-card-foreground" : "rounded-xl border border-border bg-card text-card-foreground",
+        plain ? "text-card-foreground" : "rounded-xl border border-border bg-card text-card-foreground shadow-sm",
         className,
         // Une carte qui suit une autre dans son conteneur s'en sépare par un filet.
         plain && "border-0 bg-transparent px-0 [&:not(:first-child)]:border-t [&:not(:first-child)]:pt-6",

@@ -398,6 +398,23 @@ test('bandeau d\'état : un anneau, un titre, une phrase ; « Dicter » discret 
   assert.match(r, /done > 0 \? \(/);
 });
 
+test('bandeau d\'état : « Aller au sourcing » mène à l\'écran suivant, plein quand le poste est prêt', () => {
+  const r = code(read(`${DIR}/CadrageReadiness.tsx`));
+  assert.match(
+    r,
+    /<Button\s+type="button"\s+variant=\{status === 'ready' \? 'primary' : 'secondary'\}\s+size="sm"\s+onClick=\{onContinue\}/,
+    'plein quand tout est en place, teinté sinon',
+  );
+  assert.match(r, /Aller au sourcing\s*<ArrowRight aria-hidden="true" \/>/);
+  // Jamais verrouillé : le bouton ne dépend ni de la complétude ni des droits d'édition.
+  const next = r.match(/<Button\s+type="button"\s+variant=\{status === 'ready'[\s\S]*?<\/Button>/)[0];
+  assert.doesNotMatch(next, /disabled/, 'aucun verrou');
+  assert.match(r, /\)\}\s*<Button\s+type="button"\s+variant=\{status === 'ready'/, 'après la fin du bloc de la dictée : visible aussi en lecture seule');
+  const screen = code(read(`${DIR}/CadrageScreen.tsx`));
+  assert.match(screen, /goToScreen \} = useMissionV3\(\)/);
+  assert.match(screen, /onContinue=\{\(\) => goToScreen\('sourcing'\)\}/);
+});
+
 test('Qui recrute : une ligne, deux choix sous « Préciser » ou « Modifier », même écriture en base', () => {
   const job = code(read(`${DIR}/JobSection.tsx`));
   assert.match(job, /recruitmentModeLine\(mode, orgType\)/);

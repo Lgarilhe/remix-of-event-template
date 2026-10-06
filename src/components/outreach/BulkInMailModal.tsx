@@ -22,6 +22,8 @@ import {
   useSendingAccount,
 } from './enrollment-preview/useSendingAccount';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
+import { RecipientsConfirm } from './enrollment-preview/RecipientsConfirm';
+import { useRecipientsConfirm } from './enrollment-preview/useRecipientsConfirm';
 import { executionStatusMeta, MESSAGE_TONES, type MessageTone } from '@/lib/sequenceCatalog';
 import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import {
@@ -317,6 +319,18 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     editingMessage !== currentMessage.message
   ));
 
+  // Lot 5a (décision 7 du lot 5) : dès 5 InMails, case des destinataires sur
+  // le nombre du bouton (readyCount = destinataires avec un message), décochée
+  // dès que la liste change, et premier InMail prêt en entier au-dessus
+  // (saisie en cours comprise, comme à la planification).
+  const recipientsConfirm = useRecipientsConfirm(withMessage.map(r => r.id));
+  const firstReady = withMessage[0] ?? null;
+  const firstReadyMessage = firstReady
+    ? (hasUnsavedEdit && currentRecipient?.id === firstReady.id
+        ? { subject: editingSubject, message: editingMessage }
+        : generatedMessages[firstReady.id])
+    : null;
+
   // Save sender name to localStorage
   const handleSenderNameChange = (name: string) => {
     setSenderName(name);
@@ -605,6 +619,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       toast.error(SEQUENCES_PLAN_REQUIRED_MESSAGE);
       return;
     }
+    // Lot 5a : dès 5 InMails, rien ne part sans la case des destinataires.
+    if (recipientsConfirm.blocked) return;
     if (accountBlockReason) {
       toast.error(accountBlockReason);
       return;
@@ -1265,6 +1281,19 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         <div className="shrink-0 space-y-2 border-t border-border px-6 py-3">
           {/* Compte d'envoi : les InMails partent de ce compte et consomment ses crédits. */}
           {activeTab === 'compose' && <SendingAccountNotice state={sendingAccountState} />}
+          {activeTab === 'compose' && hasGeneratedMessages && (
+            <RecipientsConfirm
+              count={readyCount}
+              confirmed={recipientsConfirm.confirmed}
+              onConfirmedChange={recipientsConfirm.setConfirmed}
+              preview={firstReady && firstReadyMessage
+                ? {
+                    candidateName: firstReady.name || 'ce candidat',
+                    items: [{ key: firstReady.id, label: 'InMail', subject: firstReadyMessage.subject || null, text: firstReadyMessage.message }],
+                  }
+                : null}
+            />
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={requestClose} disabled={isQueueing}>
               Fermer
@@ -1274,7 +1303,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               <Button
                 variant="primary"
                 onClick={() => setConfirmQueueOpen(true)}
-                disabled={isQueueing || readyCount === 0 || !canSendInMails || !!accountBlockReason || duplicatesUnchecked}
+                disabled={isQueueing || readyCount === 0 || !canSendInMails || !!accountBlockReason || duplicatesUnchecked || recipientsConfirm.blocked}
                 loading={isQueueing}
               >
                 {!isQueueing && <Send aria-hidden="true" />}

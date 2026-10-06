@@ -1,36 +1,24 @@
 /**
- * OverviewTab — vrai hub candidat.
+ * OverviewTab : le premier onglet de la fiche, ce qui compte sur ce candidat
+ * d'un coup d'œil. Design simplifié (docs/design/06-simplicite.md) : des
+ * sections séparées par un filet, sans cadre ; une ligne n'existe que si elle
+ * a quelque chose à dire (pas de « Aucun appel » ni de « 0 rappel »).
  *
- * Premier onglet par défaut quand on ouvre la modale. Tout ce qui
- * compte sur ce candidat est visible en 1 coup d'œil — pas besoin de
- * cliquer dans 8 onglets pour avoir le contexte.
- *
- * Sections (top-to-bottom) :
- *   1. ALERTES         — bandeau rouge si stagnation / data manquante /
- *                        message à traiter (priorité absolue)
- *   2. Score Hero      — gauge + recommandation + résumé IA
- *   3. Stats grid      — 4 cards : Engagement / CV / Séquences / Rappels
- *   4. POSTES          — toutes les missions où ce candidat apparaît
- *                        (shortlisté, scoré, contacté) avec stage par mission
- *   5. ACTIVITÉ        — 5 derniers événements timeline + lien "voir tout"
- *   6. À PRÉVOIR       — prochains rappels + prochaine étape séquence
- *   7. About           — résumé LinkedIn
- *   8. Expérience      — 2 dernières positions
- *   9. Formation       — école principale
- *  10. Skills + Lang   — chips
- *  11. Notes preview   — 2 dernières notes
+ * Sections, de haut en bas :
+ *   1. À traiter       stagnation, réponse sans suite, données manquantes
+ *   2. Résumé          qui est cette personne (jamais le fit d'une mission)
+ *   3. Repères         appels, CV, séquences, prochain rappel (s'il y en a)
+ *   4. Postes liés     les missions où ce candidat apparaît, avec la note
+ *   5. Activité récente et À prévoir
+ *   6. À propos, expérience, formation, compétences, langues, dernières notes
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import {
-  Target, Phone, FileText, GitBranch, Bell, Briefcase, GraduationCap,
-  Sparkles, Building2, Clock, MessageCircle, StickyNote, Languages,
-  Award, AlertTriangle, AlertCircle, MailWarning, Activity as ActivityIcon,
-  Calendar, History, ArrowRight, CheckCircle2, XCircle, MapPin,
-  PhoneOff, FileQuestion, Send, ChevronRight,
+  Target, Bell, GraduationCap, Building2, Clock, GitBranch,
+  MailWarning, PhoneOff, FileQuestion, Check,
 } from 'lucide-react';
-import { format, formatDistanceToNow, differenceInDays, parseISO } from 'date-fns';
+import { formatDistanceToNow, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ATSCandidate, ATS_STAGES, STAGNATION_DAYS, stagnantDays } from '@/hooks/useATSData';
 import { atsColumnTitle, candidateColumnKey } from '@/lib/stageDisplay';
@@ -38,9 +26,13 @@ import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { CandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { listCVs, CandidateCV } from '@/lib/cvStorage';
 import { listDismissedAlerts, dismissAlert, type AlertKey } from '@/lib/candidateAlerts';
-import { Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
+import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
+import { REVEAL_ON_ROW } from '@/components/missions/v3/cadrage/sectionUi';
 
 interface Note {
   id: string;
@@ -322,17 +314,56 @@ export const OverviewTab: React.FC<Props> = ({
   // ─── Recent timeline (top 5) ────────────────────────────────────
   const recentTimeline = fullProfile.timeline.slice(0, 5);
 
+  // ─── Repères : seulement ce qui existe ──────────────────────────
+  const facts: { label: string; value: string }[] = [];
+  if (aircallStats.count > 0) {
+    facts.push({
+      label: 'Appels',
+      value: [
+        `${aircallStats.count} appel${aircallStats.count > 1 ? 's' : ''}`,
+        `${aircallStats.totalMin} min`,
+        aircallStats.lastDate ? `dernier ${formatDistanceToNow(new Date(aircallStats.lastDate), { addSuffix: true, locale: fr })}` : null,
+      ].filter(Boolean).join(' · '),
+    });
+  }
+  if (primaryCV) {
+    facts.push({
+      label: 'CV',
+      value: [
+        cvs.length > 1 ? `${cvs.length} versions` : null,
+        primaryCV.fileName,
+        formatDistanceToNow(new Date(primaryCV.uploadedAt), { addSuffix: true, locale: fr }),
+      ].filter(Boolean).join(' · '),
+    });
+  }
+  if (activeSequences.length > 0 || repliedSequences.length > 0) {
+    facts.push({
+      label: 'Séquences',
+      value: [
+        activeSequences.length > 0 ? `${activeSequences.length} en cours` : null,
+        repliedSequences.length > 0 ? `${repliedSequences.length} avec réponse` : null,
+      ].filter(Boolean).join(' · '),
+    });
+  }
+  if (nextReminder) {
+    facts.push({
+      label: 'Prochain rappel',
+      value: `${nextReminder.title} · ${formatDistanceToNow(new Date(nextReminder.due_at), { addSuffix: true, locale: fr })}`,
+    });
+  }
+
+  // Le résumé affiche déjà le texte LinkedIn quand il est assez long : pas de second « À propos » identique.
+  const summaryShownAbove = !!summary && summary.trim().length > 30;
+
   return (
-    <div className="space-y-3 sm:space-y-4">
-      {/* ═══ 0. ALERTES — bandeau prioritaire si problèmes détectés ═══ */}
+    <div className="space-y-8">
+      {/* ═══ 1. À TRAITER ═══ */}
       {alerts.length > 0 && <AlertsPanel alerts={alerts} onDismiss={handleDismissAlert} />}
 
-      {/* ═══ 1. RÉSUMÉ PROFIL — synthèse candidat-level (PAS job-fit) ═══
-          Ne parle JAMAIS d'un poste précis : un candidat peut être
-          shortlisté sur plusieurs missions à la fois. C'est juste qui
-          est cette personne, ses points forts généraux et points
-          d'attention sur le profil global. */}
-      <ProfileSummaryCard
+      {/* ═══ 2. RÉSUMÉ DU PROFIL, qui est cette personne (pas le fit d'une mission) ═══
+          Un candidat peut être retenu sur plusieurs missions à la fois : ce
+          texte ne parle jamais d'un poste précis. */}
+      <ProfileSummary
         candidate={candidate}
         enrichedProfile={enrichedProfile}
         linkedinSummary={summary}
@@ -340,235 +371,136 @@ export const OverviewTab: React.FC<Props> = ({
         concerns={concerns}
       />
 
+      {/* ═══ 3. REPÈRES ═══ */}
+      {facts.length > 0 && (
+        <dl className="divide-y divide-border border-y border-border">
+          {facts.map(fact => (
+            <div key={fact.label} className="flex items-baseline gap-4 py-2.5">
+              <dt className="w-32 shrink-0 text-sm text-muted-foreground">{fact.label}</dt>
+              <dd className="min-w-0 flex-1 text-sm text-foreground">{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
-      {/* ═══ 2. STATS GRID — 4 cards en 2x2 sm / 4-cols lg ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-        <StatCard
-          icon={Phone}
-          label="Engagement"
-          tone="info"
-          primary={aircallStats.count > 0 ? `${aircallStats.count} appel${aircallStats.count > 1 ? 's' : ''}` : 'Aucun appel'}
-          secondary={
-            aircallStats.count > 0
-              ? `${aircallStats.totalMin} min · dernier ${aircallStats.lastDate ? formatDistanceToNow(new Date(aircallStats.lastDate), { addSuffix: true, locale: fr }) : ''}`
-              : 'Pas encore contacté par téléphone'
-          }
-        />
-        <StatCard
-          icon={FileText}
-          label="CV / Documents"
-          tone="brand"
-          primary={
-            cvLoading ? '…' :
-            cvs.length === 0 ? 'Aucun CV' :
-            cvs.length === 1 ? '1 CV' : `${cvs.length} versions`
-          }
-          secondary={
-            primaryCV
-              ? `${primaryCV.fileName.length > 24 ? primaryCV.fileName.slice(0, 24) + '…' : primaryCV.fileName} · ${formatDistanceToNow(new Date(primaryCV.uploadedAt), { addSuffix: true, locale: fr })}`
-              : 'Drop un PDF dans l\'onglet CV'
-          }
-          highlight={cvs.length === 0}
-        />
-        <StatCard
-          icon={GitBranch}
-          label="Séquences"
-          tone="success"
-          primary={
-            activeSequences.length === 0 && repliedSequences.length === 0
-              ? 'Aucune'
-              : activeSequences.length > 0
-                ? `${activeSequences.length} active${activeSequences.length > 1 ? 's' : ''}`
-                : `${repliedSequences.length} terminée${repliedSequences.length > 1 ? 's' : ''}`
-          }
-          secondary={(() => {
-            if (activeSequences.length === 0 && repliedSequences.length === 0) return 'Pas dans une séquence';
-            const parts: string[] = [];
-            if (activeSequences.length > 0) parts.push(`${activeSequences.length} en cours`);
-            if (repliedSequences.length > 0) parts.push(`${repliedSequences.length} répondu`);
-            return parts.join(' · ');
-          })()}
-        />
-        <StatCard
-          icon={Bell}
-          label="Prochain rappel"
-          tone={nextReminder ? 'warning' : 'muted'}
-          primary={
-            nextReminder
-              ? formatDistanceToNow(new Date(nextReminder.due_at), { addSuffix: true, locale: fr })
-              : `${reminders.length} rappel${reminders.length > 1 ? 's' : ''}`
-          }
-          secondary={
-            nextReminder
-              ? nextReminder.title
-              : reminders.length === 0
-                ? 'Aucun rappel programmé'
-                : 'Tout est traité'
-          }
-        />
-      </div>
-
-      {/* ═══ 3. POSTES — missions où ce candidat apparaît ═══ */}
+      {/* ═══ 4. POSTES, les missions où ce candidat apparaît ═══ */}
       {positions.length > 0 && (
-        <SectionCard
-          icon={Briefcase}
+        <Section
           title="Postes liés"
-          eyebrow={`${positions.length} mission${positions.length > 1 ? 's' : ''}`}
+          hint={`${positions.length} mission${positions.length > 1 ? 's' : ''}`}
         >
-          <div className="space-y-1.5">
+          <ul className="divide-y divide-border">
             {positions.map(pos => (
               <PositionRow key={pos.jobId} position={pos} />
             ))}
-          </div>
-        </SectionCard>
+          </ul>
+        </Section>
       )}
 
-      {/* ═══ 4. ACTIVITÉ + À PRÉVOIR — 2 cols ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
-        {/* Activité récente */}
-        <SectionCard
-          icon={History}
+      {/* ═══ 5. ACTIVITÉ ET À PRÉVOIR ═══ */}
+      {recentTimeline.length > 0 && (
+        <Section
           title="Activité récente"
-          eyebrow={`${fullProfile.timeline.length} événements · onglet Activité pour tout voir`}
+          hint={fullProfile.timeline.length > recentTimeline.length ? 'Les autres événements sont dans l\'onglet Activité' : undefined}
         >
-          {recentTimeline.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Aucune activité encore enregistrée
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {recentTimeline.map((event, i) => (
-                <TimelineRow key={i} event={event} />
-              ))}
-            </div>
-          )}
-        </SectionCard>
+          <ul className="space-y-3">
+            {recentTimeline.map((event, i) => (
+              <TimelineRow key={i} event={event} />
+            ))}
+          </ul>
+        </Section>
+      )}
 
-        {/* À prévoir */}
-        <SectionCard
-          icon={Calendar}
-          title="À prévoir"
-          eyebrow={
-            upcomingActions.length === 0
-              ? 'Aucune action programmée'
-              : `${upcomingActions.length} action${upcomingActions.length > 1 ? 's' : ''}`
-          }
-        >
-          {upcomingActions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Pas de rappel ni de séquence active
+      {upcomingActions.length > 0 && (
+        <Section title="À prévoir">
+          <ul className="space-y-3">
+            {upcomingActions.slice(0, 4).map((action, i) => (
+              <UpcomingActionRow key={i} action={action} />
+            ))}
+          </ul>
+          {upcomingActions.length > 4 && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              + {upcomingActions.length - 4} autre{upcomingActions.length - 4 > 1 ? 's' : ''}
             </p>
-          ) : (
-            <div className="space-y-2">
-              {upcomingActions.slice(0, 4).map((action, i) => (
-                <UpcomingActionRow key={i} action={action} />
-              ))}
-              {upcomingActions.length > 4 && (
-                <p className="text-xs text-muted-foreground/70 italic pl-9">
-                  +{upcomingActions.length - 4} autre{upcomingActions.length - 4 > 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
           )}
-        </SectionCard>
-      </div>
+        </Section>
+      )}
 
-      {/* ═══ 5. ABOUT ═══ */}
-      {summary && (
-        <SectionCard icon={Sparkles} title="À propos" eyebrow="Résumé LinkedIn">
-          <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-line line-clamp-6">
+      {/* ═══ 6. À PROPOS, quand le résumé n'a pas déjà repris le texte LinkedIn ═══ */}
+      {summary && !summaryShownAbove && (
+        <Section title="À propos">
+          <p className="line-clamp-6 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
             {summary}
           </p>
-        </SectionCard>
+        </Section>
       )}
 
-      {/* ═══ 6. EXPÉRIENCE RÉCENTE ═══ */}
+      {/* ═══ 7. EXPÉRIENCE RÉCENTE ═══ */}
       {(enrichedProfile?.experiences?.length || 0) > 0 && (
-        <SectionCard
-          icon={Briefcase}
+        <Section
           title="Expérience récente"
-          eyebrow={`${enrichedProfile?.experiences?.length || 0} positions`}
+          hint={`${enrichedProfile?.experiences?.length || 0} poste${(enrichedProfile?.experiences?.length || 0) > 1 ? 's' : ''}`}
         >
-          <div className="space-y-2.5">
+          <ul className="space-y-3">
             {enrichedProfile!.experiences.slice(0, 2).map((exp, i) => (
               <ExperienceRow key={i} exp={exp} />
             ))}
-            {(enrichedProfile!.experiences.length || 0) > 2 && (
-              <p className="text-xs text-muted-foreground/70 italic pl-9">
-                +{enrichedProfile!.experiences.length - 2} autres positions, voir Profil
-              </p>
+          </ul>
+          {(enrichedProfile!.experiences.length || 0) > 2 && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              + {enrichedProfile!.experiences.length - 2} autre{enrichedProfile!.experiences.length - 2 > 1 ? 's' : ''} dans l'onglet Profil
+            </p>
+          )}
+        </Section>
+      )}
+
+      {/* ═══ 8. FORMATION ═══ */}
+      {enrichedProfile?.education?.[0]?.school && (
+        <Section title="Formation">
+          <EducationRow edu={enrichedProfile.education[0]} />
+        </Section>
+      )}
+
+      {/* ═══ 9. COMPÉTENCES ET LANGUES ═══ */}
+      {(enrichedProfile?.skills?.length || 0) > 0 && (
+        <Section title="Compétences">
+          <div className="flex flex-wrap gap-1.5">
+            {enrichedProfile!.skills.slice(0, 12).map((skill, i) => (
+              <Badge key={i} variant="muted">{skill}</Badge>
+            ))}
+            {enrichedProfile!.skills.length > 12 && (
+              <Badge variant="outline">+ {enrichedProfile!.skills.length - 12}</Badge>
             )}
           </div>
-        </SectionCard>
+        </Section>
+      )}
+      {(enrichedProfile?.languages?.length || 0) > 0 && (
+        <Section title="Langues">
+          <div className="flex flex-wrap gap-1.5">
+            {enrichedProfile!.languages.map((lang, i) => (
+              <Badge key={i} variant="muted">{lang}</Badge>
+            ))}
+          </div>
+        </Section>
       )}
 
-      {/* ═══ 7. EDUCATION ═══ */}
-      {enrichedProfile?.education?.[0]?.school && (
-        <SectionCard
-          icon={GraduationCap}
-          title="Formation"
-          eyebrow={`${enrichedProfile.education.length} école${enrichedProfile.education.length > 1 ? 's' : ''}`}
-        >
-          <EducationRow edu={enrichedProfile.education[0]} />
-        </SectionCard>
-      )}
-
-      {/* ═══ 8. SKILLS + LANGUAGES ═══ */}
-      {((enrichedProfile?.skills?.length || 0) > 0 || (enrichedProfile?.languages?.length || 0) > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
-          {(enrichedProfile?.skills?.length || 0) > 0 && (
-            <SectionCard icon={Award} title="Compétences" eyebrow={`${enrichedProfile!.skills.length} skills`}>
-              <div className="flex flex-wrap gap-1.5">
-                {enrichedProfile!.skills.slice(0, 12).map((skill, i) => (
-                  <span key={i} className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
-                    {skill}
-                  </span>
-                ))}
-                {enrichedProfile!.skills.length > 12 && (
-                  <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
-                    +{enrichedProfile!.skills.length - 12}
-                  </span>
-                )}
-              </div>
-            </SectionCard>
-          )}
-          {(enrichedProfile?.languages?.length || 0) > 0 && (
-            <SectionCard icon={Languages} title="Langues">
-              <div className="flex flex-wrap gap-1.5">
-                {enrichedProfile!.languages.map((lang, i) => (
-                  <span key={i} className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
-                    {lang}
-                  </span>
-                ))}
-              </div>
-            </SectionCard>
-          )}
-        </div>
-      )}
-
-      {/* ═══ 9. NOTES PREVIEW ═══ */}
+      {/* ═══ 10. DERNIÈRES NOTES ═══ */}
       {notes.length > 0 && (
-        <SectionCard
-          icon={StickyNote}
+        <Section
           title="Dernières notes"
-          eyebrow={`${notes.length} note${notes.length > 1 ? 's' : ''} · voir tout dans Notes`}
+          hint={notes.length > 2 ? `${notes.length} notes, toutes dans l'onglet Notes` : undefined}
         >
-          <div className="space-y-2">
+          <ul className="divide-y divide-border">
             {notes.slice(0, 2).map(note => (
-              <div key={note.id} className="rounded-lg bg-muted/20 border border-border/60 px-3 py-2">
-                <p className="text-xs leading-relaxed text-foreground/85 line-clamp-3">{note.content}</p>
-                <p className="text-xs text-muted-foreground mt-1">
+              <li key={note.id} className="py-3 first:pt-0">
+                <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{note.content}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
                   {formatDistanceToNow(new Date(note.created_at), { addSuffix: true, locale: fr })}
                 </p>
-              </div>
+              </li>
             ))}
-            {notes.length > 2 && (
-              <p className="text-xs text-muted-foreground/70 italic">
-                +{notes.length - 2} autre{notes.length - 2 > 1 ? 's' : ''}
-              </p>
-            )}
-          </div>
-        </SectionCard>
+          </ul>
+        </Section>
       )}
     </div>
   );
@@ -587,6 +519,17 @@ interface Alert {
   detail: string;
 }
 
+/** Une section : un filet au-dessus, un titre, une ligne d'aide au besoin. */
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="border-t border-border pt-6">
+      <h3 className="text-md font-semibold text-foreground">{title}</h3>
+      {hint && <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p>}
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
 function AlertsPanel({
   alerts,
   onDismiss,
@@ -601,87 +544,57 @@ function AlertsPanel({
   });
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="rounded-xl border border-border bg-card overflow-hidden"
-    >
-      <div className="px-3 sm:px-4 py-2 border-b border-border bg-muted/20">
-        <div className="flex items-center gap-2">
-          <AlertCircle className="w-3.5 h-3.5 text-warning" />
-          <span className="text-xs font-medium text-foreground-secondary">
-            À traiter
-          </span>
-          <span className="text-xs tabular-nums px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-bold">
-            {alerts.length}
-          </span>
-        </div>
-      </div>
-      <div className="divide-y divide-border/60">
+    <section aria-label="À traiter">
+      <h3 className="eyebrow mb-2">À traiter</h3>
+      <ul className="divide-y divide-border border-y border-border">
         {sorted.map(alert => (
           <AlertRow key={alert.key} alert={alert} onDismiss={() => onDismiss(alert.key)} />
         ))}
-      </div>
-    </motion.div>
+      </ul>
+    </section>
   );
 }
 
 function AlertRow({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
-  const Icon = alert.icon;
-  const severityStyles = {
-    critical: { tile: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
-    warning: { tile: 'bg-warning/10 text-warning', dot: 'bg-warning' },
-    info: { tile: 'bg-info/10 text-info', dot: 'bg-info' },
-  }[alert.severity];
+  // La couleur dit l'urgence : rouge en retard, orange à surveiller, neutre sinon.
+  const tone = { critical: 'destructive', warning: 'warning', info: 'default' }[alert.severity] as 'destructive' | 'warning' | 'default';
 
   return (
-    <div className="flex items-start gap-2.5 px-3 sm:px-4 py-2.5 group">
-      <div className={cn('h-7 w-7 rounded-lg grid place-items-center shrink-0', severityStyles.tile)}>
-        <Icon className="w-3.5 h-3.5" />
+    <li className="group flex items-start gap-3 py-3">
+      <IconTile tone={tone} size="md" className="rounded-full">
+        <alert.icon className="h-4 w-4" aria-hidden="true" />
+      </IconTile>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{alert.title}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{alert.detail}</p>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground leading-tight flex items-center gap-1.5">
-          <span className={cn('inline-block h-1.5 w-1.5 rounded-full shrink-0', severityStyles.dot)} />
-          {alert.title}
-        </p>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-          {alert.detail}
-        </p>
-      </div>
-      {/* Bouton "✓ Traité" — persiste le dismiss en DB.
-          Visible au hover ou tap mobile pour pas polluer l'UI. */}
-      <button
+      {/* « Traité » persiste en base ; visible au survol, au focus ou au toucher. */}
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={onDismiss}
-        className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs font-semibold border border-border bg-background hover:bg-success/10 hover:text-success hover:border-success/30 transition-all sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
-        aria-label="Marquer cette alerte comme traitée"
+        aria-label={`Marquer comme traité : ${alert.title}`}
+        className={cn('shrink-0 text-foreground-secondary hover:bg-success-muted hover:text-success', REVEAL_ON_ROW)}
       >
-        <Check className="w-3 h-3" />
+        <Check aria-hidden="true" />
         Traité
-      </button>
-    </div>
+      </Button>
+    </li>
   );
 }
 
 /**
- * ProfileSummaryCard — synthèse candidat-level (PAS job-fit).
+ * ProfileSummary : synthèse à l'échelle du candidat, pas du poste.
  *
- * Pourquoi : un candidat peut être shortlisté sur plusieurs missions
- * en parallèle. Mentionner "bon profil pour ce poste" est trompeur car
- * "ce poste" change selon la mission depuis laquelle on ouvre la modale.
- *
- * Cette card affiche donc :
- *   - Synthèse en 1 paragraphe : qui est cette personne (rôle, années
- *     XP, stack principale) — soit depuis le summary LinkedIn, soit
- *     auto-généré depuis les facts
- *   - Points forts génériques (du profil, pas du fit)
- *   - Points d'attention génériques
- *
- * Pas de score ici (il est dans le badge header + Postes liés). Pas de
- * mention de "ce poste" / "cette mission" / nom de client.
+ * Un candidat peut être retenu sur plusieurs missions en parallèle ; dire
+ * « bon profil pour ce poste » serait trompeur, car « ce poste » change selon
+ * la mission d'où la fiche est ouverte. Le texte vient, dans l'ordre : du
+ * résumé LinkedIn (ce que la personne dit d'elle-même), des faits (rôle,
+ * entreprise, années d'expérience), de l'intitulé. Rien du tout : pas de
+ * section.
  */
-function ProfileSummaryCard({
+function ProfileSummary({
   candidate, enrichedProfile, linkedinSummary, strengths, concerns,
 }: {
   candidate: ATSCandidate;
@@ -690,11 +603,6 @@ function ProfileSummaryCard({
   strengths?: string[];
   concerns?: string[];
 }) {
-  // Synthèse 1-paragraphe : ordre de priorité
-  //   1. Résumé LinkedIn (s'il existe — c'est ce que le candidat dit
-  //      lui-même, neutre par construction)
-  //   2. Auto-généré depuis facts (rôle + entreprise + années XP)
-  //   3. Headline simple
   const synthesis = (() => {
     if (linkedinSummary && linkedinSummary.trim().length > 30) {
       return linkedinSummary.trim();
@@ -711,238 +619,104 @@ function ProfileSummaryCard({
     return parts.length > 0 ? parts.join(' · ') : null;
   })();
 
-  // Si on n'a strictement rien (ni summary, ni xp, ni rôle), on n'affiche
-  // simplement pas la card — éviter une carte vide bizarre.
   if (!synthesis && (strengths?.length ?? 0) === 0 && (concerns?.length ?? 0) === 0) {
     return null;
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="rounded-xl border border-border bg-card p-4 sm:p-5"
-    >
-      <div className="flex items-start gap-3">
-        <div className="h-9 w-9 rounded-lg bg-muted grid place-items-center shrink-0">
-          <Sparkles className="w-4 h-4 text-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground">
-            Résumé du profil
-          </p>
-          <h3 className="font-display font-bold text-base sm:text-base tracking-tight text-foreground leading-tight mt-0.5">
-            {candidate.name}
-          </h3>
-        </div>
-      </div>
+    <section aria-label="Résumé du profil">
+      <h3 className="text-md font-semibold text-foreground">Résumé du profil</h3>
 
       {synthesis && (
-        <p className="text-sm leading-relaxed text-foreground/85 mt-3 whitespace-pre-line line-clamp-5">
+        <p className="mt-2 line-clamp-6 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
           {synthesis}
         </p>
       )}
 
       {((strengths?.length ?? 0) > 0 || (concerns?.length ?? 0) > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-border/60">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {(strengths?.length ?? 0) > 0 && (
             <div>
-              <p className="text-xs font-medium text-success mb-1.5">
-                ✓ À retenir
-              </p>
-              <ul className="space-y-1">
-                {strengths!.slice(0, 4).map((s, i) => (
-                  <li key={i} className="text-xs text-foreground/85 leading-snug pl-1">
-                    • {s}
-                  </li>
+              <p className="text-sm font-medium text-success">À retenir</p>
+              <ul className="mt-1.5 space-y-1">
+                {strengths!.slice(0, 4).map((item, i) => (
+                  <li key={i} className="text-sm leading-snug text-foreground-secondary">{item}</li>
                 ))}
               </ul>
             </div>
           )}
           {(concerns?.length ?? 0) > 0 && (
             <div>
-              <p className="text-xs font-medium text-warning mb-1.5">
-                ⚠ Points d'attention
-              </p>
-              <ul className="space-y-1">
-                {concerns!.slice(0, 4).map((s, i) => (
-                  <li key={i} className="text-xs text-foreground/85 leading-snug pl-1">
-                    • {s}
-                  </li>
+              <p className="text-sm font-medium text-warning">Points d'attention</p>
+              <ul className="mt-1.5 space-y-1">
+                {concerns!.slice(0, 4).map((item, i) => (
+                  <li key={i} className="text-sm leading-snug text-foreground-secondary">{item}</li>
                 ))}
               </ul>
             </div>
           )}
         </div>
       )}
-    </motion.div>
-  );
-}
-
-function StatCard({
-  icon: Icon, label, primary, secondary, tone, highlight,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  primary: string;
-  secondary?: string;
-  tone: 'info' | 'success' | 'warning' | 'brand' | 'muted';
-  highlight?: boolean;
-}) {
-  const toneStyles = {
-    info: { iconBg: 'bg-info/10', iconText: 'text-info' },
-    success: { iconBg: 'bg-success/10', iconText: 'text-success' },
-    warning: { iconBg: 'bg-warning/10', iconText: 'text-warning' },
-    brand: { iconBg: 'bg-brand-purple/10', iconText: 'text-brand-purple' },
-    muted: { iconBg: 'bg-muted', iconText: 'text-foreground' },
-  }[tone];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className={cn(
-        'rounded-xl border p-3 transition-all',
-        highlight
-          ? 'border-dashed border-foreground/30 bg-muted/10 hover:bg-muted/20'
-          : 'border-border bg-card hover:bg-muted/20',
-      )}
-    >
-      <div className="flex items-center gap-2 mb-1.5">
-        <div className={cn('h-7 w-7 rounded-lg grid place-items-center shrink-0', toneStyles.iconBg)}>
-          <Icon className={cn('w-3.5 h-3.5', toneStyles.iconText)} />
-        </div>
-        <span className="text-xs text-muted-foreground truncate">
-          {label}
-        </span>
-      </div>
-      <p className="font-display text-base font-bold text-foreground tracking-tight leading-tight tabular-nums">
-        {primary}
-      </p>
-      {secondary && (
-        <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{secondary}</p>
-      )}
-    </motion.div>
-  );
-}
-
-function SectionCard({
-  icon: Icon, title, eyebrow, children,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  eyebrow?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
-      <div className="flex items-center gap-2 mb-2.5">
-        <div className="h-7 w-7 rounded-lg bg-muted grid place-items-center shrink-0">
-          <Icon className="w-3.5 h-3.5 text-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-sm tracking-tight text-foreground">{title}</h3>
-          {eyebrow && (
-            <p className="text-xs text-muted-foreground">
-              {eyebrow}
-            </p>
-          )}
-        </div>
-      </div>
-      {children}
-    </div>
+    </section>
   );
 }
 
 const RAW_JOB_ID = /^(project:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function PositionRow({ position }: { position: { jobId: string; jobTitle: string; score: number | null; stage: string | null; recommendation: string | null; lastUpdate: string | null } }) {
-  const scoreTone =
-    position.score == null ? null :
-    position.score >= 70 ? 'text-success border-success/30 bg-success/10' :
-    position.score >= 50 ? 'text-warning border-warning/30 bg-warning/10' :
-    'text-destructive border-destructive/30 bg-destructive/10';
-
   return (
-    <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-muted/15 border border-border/50 hover:bg-muted/30 transition-colors">
-      <div className="h-7 w-7 rounded-md bg-muted grid place-items-center shrink-0">
-        <Briefcase className="w-3.5 h-3.5 text-foreground" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate leading-tight">
+    <li className="flex items-center gap-3 py-3 first:pt-0">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">
           {RAW_JOB_ID.test(position.jobTitle) ? 'Mission sans titre' : position.jobTitle}
         </p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {position.stage && (
-            <span className="text-xs text-muted-foreground">
-              <Target className="w-2.5 h-2.5 inline mr-0.5" />
-              {atsColumnTitle(position.stage)}
-            </span>
-          )}
-          {position.lastUpdate && (
-            <span className="text-xs text-muted-foreground">
-              · {formatDistanceToNow(new Date(position.lastUpdate), { addSuffix: true, locale: fr })}
-            </span>
-          )}
-        </div>
+        {(position.stage || position.lastUpdate) && (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {position.stage && <span>{atsColumnTitle(position.stage)}</span>}
+            {position.stage && position.lastUpdate && ' · '}
+            {position.lastUpdate && formatDistanceToNow(new Date(position.lastUpdate), { addSuffix: true, locale: fr })}
+          </p>
+        )}
       </div>
-      {position.score != null && scoreTone && (
-        <span className={cn('inline-flex items-center text-xs px-1.5 py-0.5 rounded-full border font-bold tabular-nums shrink-0', scoreTone)}>
-          {position.score}
-        </span>
-      )}
-    </div>
+      {position.score != null && position.score > 0 && <ScorePill score={position.score} />}
+    </li>
   );
 }
 
 function TimelineRow({ event }: { event: { type: string; title: string; detail?: string; date: string } }) {
   const date = event.date ? new Date(event.date) : null;
   return (
-    <div className="flex items-start gap-2.5 text-xs">
-      <div className="h-5 w-5 rounded-full bg-foreground/[0.06] grid place-items-center shrink-0 mt-0.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-foreground/40" />
+    <li className="flex items-start gap-3">
+      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-foreground">{event.title}</p>
+        {event.detail && <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">{event.detail}</p>}
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-foreground/85 leading-snug">{event.title}</p>
-        {event.detail && (
-          <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-1">{event.detail}</p>
-        )}
-        {date && (
-          <p className="text-xs text-muted-foreground/60 mt-0.5">
-            {formatDistanceToNow(date, { addSuffix: true, locale: fr })}
-          </p>
-        )}
-      </div>
-    </div>
+      {date && (
+        <time dateTime={event.date} className="shrink-0 text-xs text-muted-foreground">
+          {formatDistanceToNow(date, { addSuffix: true, locale: fr })}
+        </time>
+      )}
+    </li>
   );
 }
 
 function UpcomingActionRow({ action }: { action: { type: 'reminder' | 'sequence_step'; title: string; detail: string; date: string; icon: React.ComponentType<{ className?: string }> } }) {
-  const Icon = action.icon;
   return (
-    <div className="flex items-start gap-2.5">
-      <div className={cn(
-        'h-7 w-7 rounded-lg grid place-items-center shrink-0',
-        action.type === 'reminder' ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
-      )}>
-        <Icon className="w-3.5 h-3.5" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate leading-tight">
-          {action.title}
-        </p>
-        {action.detail && (
-          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{action.detail}</p>
-        )}
-        <p className="text-xs text-muted-foreground/70 mt-0.5">
+    <li className="flex items-start gap-3">
+      <IconTile size="sm" className="rounded-full">
+        <action.icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </IconTile>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{action.title}</p>
+        {action.detail && <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">{action.detail}</p>}
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {action.type === 'reminder'
             ? formatDistanceToNow(new Date(action.date), { addSuffix: true, locale: fr })
             : `Inscrit ${formatDistanceToNow(new Date(action.date), { addSuffix: true, locale: fr })}`}
         </p>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -952,24 +726,22 @@ function ExperienceRow({
   exp: { title: string; company: string; logo?: string; startDate?: string; endDate?: string; isCurrent?: boolean };
 }) {
   return (
-    <div className="flex items-start gap-2.5">
+    <li className="flex items-start gap-3">
       {exp.logo ? (
-        <img src={exp.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-card border border-border shrink-0" />
+        <img src={exp.logo} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5" />
       ) : (
-        <div className="h-8 w-8 rounded-lg bg-muted grid place-items-center shrink-0">
-          <Building2 className="w-3.5 h-3.5 text-foreground" />
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+          <Building2 className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate leading-tight">
-          {exp.title || 'Poste'}
-        </p>
-        <p className="text-2xs text-muted-foreground truncate">{exp.company || '—'}</p>
-        <p className="text-xs text-muted-foreground/70 tabular-nums mt-0.5">
-          {exp.startDate || '?'} — {exp.isCurrent ? 'Actuel' : (exp.endDate || '?')}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{exp.title || 'Poste'}</p>
+        {exp.company && <p className="truncate text-sm text-foreground-secondary">{exp.company}</p>}
+        <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
+          {exp.startDate || '?'} à {exp.isCurrent ? 'aujourd\'hui' : (exp.endDate || '?')}
         </p>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -979,24 +751,24 @@ function EducationRow({
   edu: { school: string; logo?: string; degree?: string; field?: string; startYear?: string; endYear?: string };
 }) {
   return (
-    <div className="flex items-start gap-2.5">
+    <div className="flex items-start gap-3">
       {edu.logo ? (
-        <img src={edu.logo} alt="" className="w-9 h-9 rounded-lg object-contain bg-card border border-border shrink-0" />
+        <img src={edu.logo} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5" />
       ) : (
-        <div className="h-9 w-9 rounded-lg bg-muted grid place-items-center shrink-0">
-          <GraduationCap className="w-4 h-4 text-foreground" />
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+          <GraduationCap className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate">{edu.school}</p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{edu.school}</p>
         {(edu.degree || edu.field) && (
-          <p className="text-2xs text-muted-foreground truncate">
+          <p className="truncate text-sm text-foreground-secondary">
             {[edu.degree, edu.field].filter(Boolean).join(' · ')}
           </p>
         )}
         {(edu.startYear || edu.endYear) && (
-          <p className="text-xs text-muted-foreground/70 tabular-nums mt-0.5">
-            {edu.startYear || '?'} — {edu.endYear || 'en cours'}
+          <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
+            {edu.startYear || '?'} à {edu.endYear || 'en cours'}
           </p>
         )}
       </div>
