@@ -161,7 +161,8 @@ export default {
   		},
   		borderRadius: {
   			'2xl': 'calc(var(--radius) + 12px)',
-  			xl: 'calc(var(--radius) + 4px)',
+  			// Surfaces (cartes, menus, dialogues) : 16 px, comme Qonto. Les contrôles restent à 8 px.
+  			xl: 'calc(var(--radius) + 8px)',
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'

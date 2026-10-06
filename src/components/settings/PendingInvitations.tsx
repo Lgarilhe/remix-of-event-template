@@ -57,9 +57,11 @@ const sentLabel = (createdAt: string) => {
 /**
  * Revue design (F-14) : un état en mot, précédé d'une pastille de 6 px. La
  * couleur ne sert qu'aux écarts : une invitation expirée demande un renvoi.
+ * Design simplifié (règle 7) : une invitation acceptée ne demande rien, sa
+ * pastille reste neutre.
  */
 const getInvitationStatus = (invitation: Invitation): { label: string; dot: string } => {
-  if (invitation.status === 'accepted') return { label: 'Acceptée', dot: 'bg-success' };
+  if (invitation.status === 'accepted') return { label: 'Acceptée', dot: 'bg-muted-foreground' };
   if (invitation.status === 'cancelled') return { label: 'Annulée', dot: 'bg-muted-foreground' };
   if (isExpired(invitation.expires_at)) return { label: 'Expirée', dot: 'bg-warning' };
   return { label: 'En attente', dot: 'bg-muted-foreground' };
@@ -132,14 +134,13 @@ export const PendingInvitations = ({
     }
   };
 
+  // Design simplifié : sans invitation, rien n'est écrit (le formulaire suit) ; les
+  // invitations forment une liste à plat, séparée par des filets fins.
   return (
-    <div className="space-y-2">
-      {!sortedInvitations.length ? (
-        <p className="rounded-lg bg-muted/50 px-3 py-3 text-xs text-muted-foreground">
-          Aucune invitation envoyée pour le moment.
-        </p>
-      ) : (
-        sortedInvitations.map(inv => {
+    <>
+      {sortedInvitations.length > 0 && (
+        <div className="divide-y divide-border">
+        {sortedInvitations.map(inv => {
           const isInvitationResending = isResending && resendingId === inv.id;
           const status = getInvitationStatus(inv);
           const canResend = canManage && inv.status !== 'accepted';
@@ -149,10 +150,10 @@ export const PendingInvitations = ({
           return (
             <div
               key={inv.id}
-              className="flex flex-col gap-2 rounded-lg bg-muted/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-2.5">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-background" aria-hidden="true">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted" aria-hidden="true">
                   <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                 </span>
                 <div className="min-w-0">
@@ -217,7 +218,8 @@ export const PendingInvitations = ({
               </div>
             </div>
           );
-        })
+        })}
+        </div>
       )}
 
       <AlertDialog open={!!cancelTarget} onOpenChange={(open) => !open && !isCancelling && setCancelTarget(null)}>
@@ -250,6 +252,6 @@ export const PendingInvitations = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 };

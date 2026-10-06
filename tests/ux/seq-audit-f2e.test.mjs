@@ -25,6 +25,8 @@ const stripComments = (src) => src
 
 const list = stripComments(read('src/components/outreach/SequencesList.tsx'));
 const panel = stripComments(read('src/components/outreach/SequenceEnrollmentsPanel.tsx'));
+// Lot 5c-1 : fonctions de la liste et du suivi sorties dans sequenceActions.ts.
+const actions = stripComments(read('src/lib/sequenceActions.ts'));
 
 /** Déclaration `const name = (async)? (...) => { ... }` complète (accolades équilibrées). */
 function body(src, name) {
@@ -119,7 +121,7 @@ test('front-editor-list-1 — un collaborateur ne modifie que les séquences qu�
   // Owner, admin, membre : toutes les séquences de l'organisation.
   assert.equal(canEditFor(false, 'u1')(colleague), true);
   assert.equal(canEditFor(false, 'u1')(otherOrg), false);
-  assert.match(list, /created_by: string \| null;/, 'created_by lu avec la séquence (select \'*\')');
+  assert.match(actions, /created_by: string \| null;/, 'created_by lu avec la séquence (select \'*\')');
   assert.match(list, /const \{ user \} = useAuthReady\(\);\s*const userId = user\?\.id \?\? null;/);
 
   // « Lecture seule » expliqué selon le cas.
@@ -147,7 +149,7 @@ test('front-editor-list-1 — l’éditeur ne s’ouvre pas sur la séquence d�
   const { supabase, calls } = fakeSupabase(() => assert.fail('aucune lecture attendue'));
   const { toast, calls: toasts } = fakeToast();
   let opened = false;
-  const handleEdit = extract(list, 'handleEdit', {
+  const handleEdit = extract(actions, 'handleEdit', {
     supabase, toast, console: quiet,
     canEdit: () => false,
     readOnlyHint: () => NOT_AUTHOR_HINT,
@@ -171,10 +173,10 @@ test('front-editor-list-2 / integration-3 — collaborateur : les pauses des aut
   });
   const { toast } = fakeToast();
   let confirm = null;
-  const requestToggle = extract(list, 'requestToggle', {
+  const requestToggle = extract(actions, 'requestToggle', {
     supabase, toast, console: quiet, SEQUENCE_LEVEL_PAUSE_REASONS,
     togglingId: null, canEdit: () => true, readOnlyHint: () => '', deactivationLocked: () => false,
-    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {}, setToggleConfirm: () => {},
+    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {},
     deactivateSequence: async () => assert.fail('pas de désactivation'),
     // Décision 32 : état d'abonnement lu.
     canSendSequences: true, planStateUnknown: false, navigate: () => {},
@@ -190,10 +192,10 @@ test('front-editor-list-2 / integration-3 — collaborateur : les pauses des aut
   // Owner, admin, membre : aucun filtre d'auteur, tout est repris.
   const admin = fakeSupabase((chain) => (hasOp(chain, 'in', 'pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS) ? { count: 8, error: null } : { count: 10, error: null }));
   let adminConfirm = null;
-  const adminToggle = extract(list, 'requestToggle', {
+  const adminToggle = extract(actions, 'requestToggle', {
     supabase: admin.supabase, toast, console: quiet, SEQUENCE_LEVEL_PAUSE_REASONS,
     togglingId: null, canEdit: () => true, readOnlyHint: () => '', deactivationLocked: () => false,
-    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {}, setToggleConfirm: () => {},
+    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {},
     // Décision 32 : état d'abonnement lu.
     deactivateSequence: async () => {}, canSendSequences: true, planStateUnknown: false, navigate: () => {},
     isCollaborator: false, userId: 'u1',
@@ -216,7 +218,7 @@ async function runActivation({ resumable, otherPaused = 0, otherMembers = 0, ser
   });
   const { toast, calls: toasts } = fakeToast();
   const invokes = [];
-  const activateSequence = extract(list, 'activateSequence', {
+  const activateSequence = extract(actions, 'activateSequence', {
     supabase, toast, console: quiet, candidats, SEQUENCE_LEVEL_PAUSE_REASONS, MAX_RESUME_ROUNDS: 10,
     setTogglingId: () => {}, setSequences: () => {}, fetchSequences: () => {},
     enrollmentsPanelAction: (id) => ({ action: { label: 'Voir les inscrits', id } }),
@@ -309,12 +311,13 @@ test('front-editor-list-3 — interrupteur verrouillé d’un collaborateur : cl
     assert.match(s, /aria-disabled=\{deactivationLocked\(seq\) \|\| undefined\}/);
   }
   const { toast, calls: toasts } = fakeToast();
-  const requestToggle = extract(list, 'requestToggle', {
+  const requestToggle = extract(actions, 'requestToggle', {
     toast, togglingId: null, canEdit: () => true, readOnlyHint: () => '',
     deactivationLocked: () => true, COLLABORATOR_DEACTIVATION_HINT: 'réservé',
   });
   await requestToggle({ id: 'seq-1', is_active: true });
-  assert.deepEqual(toasts, [{ kind: 'error', title: 'Désactivation réservée', options: { description: 'réservé' } }]);
+  // Lot 5b : l'interrupteur s'appelle « Mettre en pause la séquence ».
+  assert.deepEqual(toasts, [{ kind: 'error', title: 'Mise en pause réservée', options: { description: 'réservé' } }]);
 });
 
 // ---------------------------------------------------------------- 5. front-editor-list-4 (low)
@@ -322,7 +325,7 @@ test('front-editor-list-4 — pauses pour une autre raison : le texte ne promet 
   const { final } = await runActivation({ resumable: 0, otherPaused: 4, serverPayload: null });
   assert.equal(final[0].kind, 'success');
   assert.equal(final[0].options.description, '4 candidats restent en pause pour une autre raison (pause manuelle, compte déconnecté, limite d’envoi…) : la liste des inscrits indique comment les reprendre.');
-  assert.doesNotMatch(body(list, 'activateSequence'), /reprenez-les depuis la liste des inscrits\.`\s*:\s*undefined/);
+  assert.doesNotMatch(body(actions, 'activateSequence'), /reprenez-les depuis la liste des inscrits\.`\s*:\s*undefined/);
 });
 
 // ---------------------------------------------------------------- Panneau : D3 par ligne et stopped_siblings
@@ -339,7 +342,7 @@ test('front-editor-list-2 — panneau : « Reprendre » masqué à un collaborat
 test('§8 — « Marquer comme ayant répondu » annonce l’arrêt des autres séquences du candidat', async () => {
   const run = async (payload) => {
     const { toast, calls } = fakeToast();
-    const markReplied = extract(panel, 'markReplied', {
+    const markReplied = extract(actions, 'markReplied', {
       toast, console: quiet, nameOf: () => 'Alice', fetchEnrollments: async () => {},
       invokeEdgeFunction: async () => ({ data: payload, error: null }),
     });
@@ -361,7 +364,8 @@ test('§8 — « Marquer comme ayant répondu » annonce l’arrêt des autres s
 
 test('D3 — sur la ligne d’un autre membre, un collaborateur ne voit ni pause, ni réponse, ni relance, ni saut', () => {
   const src = readFileSync(new URL('../../src/components/outreach/SequenceEnrollmentsPanel.tsx', import.meta.url), 'utf8');
-  assert.match(src, /\{enrollment\.status === 'active' && ownRow \? \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'stop'/);
+  // Lot 5b : pause immédiate (plus de confirmation), même garde.
+  assert.match(src, /\{enrollment\.status === 'active' && ownRow \? \(\s*<DropdownMenuItem\s*onClick=\{\(\) => \{ void stopEnrollment\(enrollment\.id\); \}\}/);
   assert.match(src, /\{ownRow && \(enrollment\.status === 'active' \|\| enrollment\.status === 'paused' \|\| enrollment\.status === 'completed'\) && \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'markReplied'/);
   assert.match(src, /\{ownRow && !gdprErased && \(enrollment\.status === 'replied'/);
   // Revue design : « Sauter » est un bouton du kit (<Button>), même garde.

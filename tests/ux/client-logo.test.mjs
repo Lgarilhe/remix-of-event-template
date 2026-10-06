@@ -11,7 +11,8 @@ test('logo client : la fonction vérifie l’appartenance, copie le logo chez no
   assert.match(fn, /requireAuth\(req, corsHeaders\)/);
   assert.match(fn, /verifyOrgMembership\(admin, auth\.userId, organizationId\)/);
   assert.match(fn, /normalizeName\(org\.name\) === wanted/);
-  assert.match(fn, /\.from\("org-logos"\)/);
+  assert.match(fn, /\.from\("client-logos"\)/);
+  assert.match(fn, /isSafeSvg\(/);
   assert.match(fn, /isSafeLogoUrl\(logoUrl\)/);
   assert.match(fn, /fetchWithTimeout/);
   assert.match(fn, /logo_checked_at/);

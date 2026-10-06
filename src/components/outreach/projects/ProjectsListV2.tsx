@@ -745,13 +745,15 @@ export const ProjectsListV2: React.FC = () => {
   const isLoading = spLoading || (!hasData && !listError);
   const loadFailed = !hasData && listError;
 
-  // Aucune mission : état vide de l'écran entier.
+  // Aucune mission : état vide de l'écran entier, sous le titre de la page
+  // (son bouton suffit, l'en-tête n'en porte pas).
   if (hasData && unifiedProjects.length === 0) {
     return (
-      <>
+      <div className="mx-auto w-full max-w-[1200px]">
+        <PageHeader title="Missions" />
         {/* Missions confiées par une entreprise (cabinets et indépendants) :
             affichées avant l'état vide, qui parle des missions propres. */}
-        <div className="mx-auto mb-6 w-full max-w-[1200px]">
+        <div className="mb-6 empty:hidden">
           <PartnerMissionsSection />
         </div>
         <EmptyMissionState
@@ -769,7 +771,7 @@ export const ProjectsListV2: React.FC = () => {
             }
           />
         )}
-      </>
+      </div>
     );
   }
 

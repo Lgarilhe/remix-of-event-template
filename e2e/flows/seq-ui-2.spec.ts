@@ -319,12 +319,12 @@ test.describe('Suivi des inscrits : actions groupées', () => {
     const page = await openAs(browser, ws.org.owner, [ws.accountId]);
     await openOutreach(page, ws.missionId, seq.name);
     const panel = await openEnrollmentsPanel(page, seq.name);
+    // Lot 5b (décision 3) : sans fenêtre, « Annuler » dans le toast.
     await panel.getByRole('button', { name: 'Mettre en pause tous les candidats actifs (230)' }).click();
-    const confirm = page.getByRole('alertdialog', { name: 'Mettre en pause tous les candidats actifs (230) ?' });
-    await expect(confirm).toContainText('y compris ceux qui ne sont pas affichés');
-    await confirm.getByRole('button', { name: 'Mettre en pause', exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
     await expect(toast(page, '230 candidats mis en pause')).toBeVisible({ timeout: 30_000 });
+    await expect(toast(page, '230 candidats mis en pause').getByRole('button', { name: 'Annuler', exact: true })).toBeVisible();
     await expect(toast(page, 'encore en cours')).toHaveCount(0);
 
     const rows = await enrollmentsOf(seq.id);
@@ -351,10 +351,6 @@ test.describe('Suivi des inscrits : actions groupées', () => {
     const page = await openAs(browser, ws.org.owner, [ws.accountId]);
     await openOutreach(page, ws.missionId, seq.name);
     const panel = await openEnrollmentsPanel(page, seq.name);
-    await panel.getByRole('button', { name: 'Mettre en pause tous les candidats actifs (2)' }).click();
-    const confirm = page.getByRole('alertdialog', { name: 'Mettre en pause tous les candidats actifs (2) ?' });
-    await expect(confirm).toBeVisible();
-
     // Recomptage après la pause (HEAD, status=eq.active) : 3 candidats encore
     // en cours (inscrits entre-temps ou hors des droits de l'utilisateur).
     await page.route('**/rest/v1/sequence_enrollments?*', async (route) => {
@@ -363,7 +359,9 @@ test.describe('Suivi des inscrits : actions groupées', () => {
       const response = await route.fetch();
       await route.fulfill({ response, headers: { ...response.headers(), 'content-range': '*/3' } });
     });
-    await confirm.getByRole('button', { name: 'Mettre en pause', exact: true }).click();
+    // Lot 5b (décision 3) : la pause groupée part sans fenêtre.
+    await panel.getByRole('button', { name: 'Mettre en pause tous les candidats actifs (2)' }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
     const failure = toast(page, '2 candidats mis en pause, 3 encore en cours');
     await expect(failure).toBeVisible({ timeout: 20_000 });
@@ -1298,6 +1296,9 @@ test.describe('Sourcing : écritures et bilan de l\'inscription', () => {
     const page = await openSearchResults(browser, ws, candidates);
     await selectCandidates(page, candidates.map((c) => c.name));
     const dialog = await openEnrollment(page, seq.name);
+    // Lot 5a : dès 5 candidats, l'inscription attend la case des destinataires.
+    await expect(enrollButton(dialog, 20)).toBeDisabled();
+    await dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' }).check();
     await enrollButton(dialog, 20).click();
     await expect(previewOutcome(dialog)).toHaveText('20 candidats inscrits', { timeout: 90_000 });
 
@@ -1599,9 +1600,10 @@ test.describe('Fiche candidat : séquences du candidat', () => {
     await expect(card(seq1.name).getByText(/Envoyé il y a/)).toHaveCount(0);
 
     // Mise en pause : statut et raison, aucune étape annulée, date gardée.
-    await card(seq1.name).getByRole('button', { name: 'Mettre en pause', exact: true }).click();
-    await page.getByRole('alertdialog', { name: `Mettre en pause « ${seq1.name} » ?` }).getByRole('button', { name: 'Mettre en pause' }).click();
-    await expect(toast(page, 'Séquence mise en pause')).toBeVisible({ timeout: 20_000 });
+    // Lot 5b (décision 3) : sans fenêtre, « Annuler » dans le toast.
+    await card(seq1.name).getByRole('button', { name: 'Mettre en pause pour ce candidat', exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(toast(page, 'Séquence mise en pause pour')).toBeVisible({ timeout: 20_000 });
     expect(await enrollment(e1)).toMatchObject({ status: 'paused', pause_reason: 'manual' });
     const pending = (await executionsOf(e1)).find((x) => x.step_order === 2)!;
     expect(pending.status).toBe('scheduled');

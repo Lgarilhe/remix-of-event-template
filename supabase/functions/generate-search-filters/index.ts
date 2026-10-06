@@ -2,7 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
-import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
+import { gen5Params, isGen5Model, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +13,43 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
+// Longueur de fiche transmise au modèle. Avant : 800 caractères, soit 13 % d'une
+// fiche de 6 000 caractères. Alignée sur la limite d'import de fichier du Brief IA.
+const MAX_DESCRIPTION_CHARS = 12000;
+
+const CONTRACT_TYPES = ["cdi", "cdd", "freelance", "stage", "alternance", "interim"] as const;
+const REMOTE_POLICIES = ["onsite", "hybrid", "full_remote"] as const;
+
+function cleanStrings(v: unknown, max: number): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+    .map((s) => s.trim())
+    .slice(0, max);
+}
+function cleanText(v: unknown, max: number): string | null {
+  return typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : null;
+}
+function cleanNumber(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+function cleanEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
+  return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+}
+
+/** JSON de la réponse : tolère les clôtures markdown et un texte autour de l'objet. */
+function parseModelJson(raw: string) {
+  const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end <= start) throw new Error("No JSON object in AI response");
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
 }
 
 interface TransversalCriteria {
@@ -477,7 +514,7 @@ ${job.xpMin !== undefined ? `Expérience min: ${job.xpMin} ans` : ''}
 ${job.xpMax !== undefined ? `Expérience max: ${job.xpMax} ans` : ''}
 ${job.skills?.length ? `Compétences requises: ${job.skills.join(', ')}` : ''}
 ${remotePolicy ? `Politique remote: ${remotePolicy}` : ''}
-${job.description ? `Description: ${job.description.substring(0, 800)}` : ''}
+${job.description ? `Description: ${job.description.substring(0, MAX_DESCRIPTION_CHARS)}` : ''}
 ${job.bodyContent ? `Contenu détaillé de la page du poste:\n${job.bodyContent.substring(0, 1000)}` : ''}
 ${job.sourcingCriteria ? `Critères de sourcing: ${job.sourcingCriteria}` : ''}
 
@@ -514,14 +551,16 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
             },
             body: JSON.stringify({
               model: resolvedModel,
-              max_tokens: withThinkingHeadroom(resolvedModel, 2048),
+              // 2048 laissait peu de marge à une réponse chargée (filtres, brief structuré,
+              // suggestions) : un JSON coupé tombait dans le repli sans que rien ne le dise.
+              max_tokens: withThinkingHeadroom(resolvedModel, 4096),
               ...gen5Params(resolvedModel),
               system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
               messages: [
                 { role: "user", content: jobContext },
               ],
             }),
-          }, 45000);
+          }, isGen5Model(resolvedModel) ? 55000 : 45000);
 
           if (response.ok) {
             return response;
@@ -607,17 +646,22 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     const _tokensOut = aiResult.usage?.output_tokens || 0;
     // Claude API returns content as array of blocks (un bloc "thinking" peut précéder le texte)
     const content = textFromContent(aiResult.content);
+    if (aiResult.stop_reason === "max_tokens") {
+      console.warn("[generate-search-filters] Response truncated at max_tokens");
+    }
 
     console.log("[generate-search-filters] AI response:", content);
 
     // Parse JSON from response (handle potential markdown code blocks)
     let parsed;
+    // Vrai quand la réponse est illisible et que les filtres viennent du seul titre :
+    // le Brief IA s'en sert pour proposer de réessayer au lieu d'afficher un résultat vide.
+    let degraded = false;
     try {
-      // Remove potential markdown code blocks
-      const cleanJson = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      parsed = JSON.parse(cleanJson);
+      parsed = parseModelJson(content);
       console.log("[generate-search-filters] Search rationale:", parsed.search_rationale);
     } catch (e) {
+      degraded = true;
       console.error("[generate-search-filters] Failed to parse AI response:", e);
       // Fallback to basic extraction from job
       parsed = {
@@ -802,6 +846,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     return new Response(
       JSON.stringify({
         success: true,
+        degraded,
         filters,
         analysis: {
           search_rationale: parsed.search_rationale || null,
@@ -816,6 +861,23 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
           years_experience_min: parsed.years_experience_min ?? null,
           years_experience_max: parsed.years_experience_max ?? null,
           suggested_title: parsed.suggested_title || null,
+          // Brief structuré : demandé au modèle (« BRIEF STRUCTURÉ ») mais jamais
+          // renvoyé jusqu'ici, si bien que le Brief IA remplissait job_details avec
+          // des valeurs de repli (compétences de recherche, début de la fiche).
+          detected_company: cleanText(parsed.detected_company, 120),
+          skills_must_have: cleanStrings(parsed.skills_must_have, 8),
+          skills_should_have: cleanStrings(parsed.skills_should_have, 5),
+          skills_nice_to_have: cleanStrings(parsed.skills_nice_to_have, 4),
+          salary_min: cleanNumber(parsed.salary_min),
+          salary_max: cleanNumber(parsed.salary_max),
+          contract_type: cleanEnum(parsed.contract_type, CONTRACT_TYPES),
+          remote_policy: cleanEnum(parsed.remote_policy, REMOTE_POLICIES),
+          remote_days: cleanNumber(parsed.remote_days),
+          start_date: cleanText(parsed.start_date, 60),
+          mission_description: cleanText(parsed.mission_description, 600),
+          context: cleanText(parsed.context, 300),
+          seniority: cleanText(parsed.seniority, 40),
+          evaluation_criteria: cleanStrings(parsed.evaluation_criteria, 6),
         },
         suggestions: {
           alt_skills: parsed.alt_skills || [],

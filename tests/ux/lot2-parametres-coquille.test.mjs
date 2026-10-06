@@ -155,10 +155,10 @@ test('L2-3 — null hors de /settings?tab= ; /settings/ est accepté', () => {
 });
 
 // ---------------------------------------------------------------- 4. Notion
-test('L2-4 — retour Notion : Connexions #notion, notion_* gardés, tab retiré, Notion prime', () => {
+test('L2-4 — retour Notion : Connexions #applications, notion_* gardés, tab retiré, Notion prime', () => {
   const failed = resolve('/settings', '?tab=agent-actions&notion_oauth=error&notion_error=state_missing');
   assert.equal(failed.pathname, '/settings/account/connections');
-  assert.equal(failed.hash, '#notion');
+  assert.equal(failed.hash, '#applications');
   assert.equal(paramsOf(failed).get('notion_oauth'), 'error');
   assert.equal(paramsOf(failed).get('notion_error'), 'state_missing');
   assert.equal(paramsOf(failed).has('tab'), false);
@@ -166,7 +166,7 @@ test('L2-4 — retour Notion : Connexions #notion, notion_* gardés, tab retiré
   const connected = resolve('/settings', '?notion_oauth=connected');
   assert.ok(connected, 'un retour Notion sans tab est redirigé');
   assert.equal(connected.pathname, '/settings/account/connections');
-  assert.equal(connected.hash, '#notion');
+  assert.equal(connected.hash, '#applications');
   assert.equal(paramsOf(connected).get('notion_oauth'), 'connected');
 
   const errorOnly = resolve('/settings', '?notion_error=access_denied');
@@ -174,7 +174,7 @@ test('L2-4 — retour Notion : Connexions #notion, notion_* gardés, tab retiré
 
   const overBilling = resolve('/settings', '?tab=billing&notion_oauth=connected');
   assert.equal(overBilling.pathname, '/settings/account/connections', 'Notion l’emporte sur l’onglet');
-  assert.equal(overBilling.hash, '#notion');
+  assert.equal(overBilling.hash, '#applications');
   assert.equal(paramsOf(overBilling).has('kind'), false);
 });
 
@@ -398,11 +398,11 @@ test('L2-17 — ancre, registre et redirection', () => {
   assert.match(anchor, /empty:hidden/);
 
   const connections = componentBlock(sections, 'ConnectionsSection');
-  const order = ['<MyLinkedInAccount', '<MyEmailAccount', '<NotionConnectionCard', '<ExtensionTokens'].map((t) => connections.indexOf(t));
+  const order = ['<MyLinkedInAccount', '<MyEmailAccount', '<AssistantConnectorsCard', '<ExtensionTokens'].map((t) => connections.indexOf(t));
   assert.ok(order.every((i) => i >= 0), 'une carte de Connexions manque');
-  assert.deepEqual([...order].sort((a, b) => a - b), order, 'ordre : LinkedIn, e-mail, Notion, extension');
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'ordre : LinkedIn, e-mail, applications, extension');
 
-  for (const id of ['linkedin', 'email', 'notion', 'extension', 'style', 'modeles', 'signatures', 'formule', 'credits', 'consignes', 'resume', 'icp', 'connecteurs']) {
+  for (const id of ['linkedin', 'email', 'applications', 'extension', 'style', 'modeles', 'signatures', 'formule', 'credits', 'consignes', 'resume', 'icp', 'connecteurs']) {
     assert.ok(sections.includes(`id="${id}"`), `ancre #${id} absente de sections.tsx`);
   }
 
@@ -425,7 +425,7 @@ test('L2-17 — composants remontés, palette et menu de l’avatar', () => {
   const actions = read('src/components/settings/AgentActionsSettings.tsx');
   assert.doesNotMatch(actions, /<AgentPoliciesSettings/);
   assert.doesNotMatch(actions, /<AgentConnectorsSettings/);
-  assert.doesNotMatch(read('src/components/settings/AgentConnectorsSettings.tsx'), /<NotionConnectionCard/);
+  assert.doesNotMatch(read('src/components/settings/AgentConnectorsSettings.tsx'), /<NotionConnectorRow|<AssistantConnectorsCard/);
 
   const aiContext = read('src/components/settings/AiContextSettings.tsx');
   assert.match(aiContext, /export const UserContextCard/);
@@ -504,7 +504,7 @@ test('L2-18 — aucun nom de fournisseur dans les textes des fichiers de la coqu
 // ---------------------------------------------------------------- 19. Ancres
 /** Rubrique de chaque ancre (§1). */
 const ANCHOR_SECTION = {
-  linkedin: 'connections', email: 'connections', notion: 'connections', extension: 'connections',
+  linkedin: 'connections', email: 'connections', applications: 'connections', extension: 'connections',
   style: 'writing', modeles: 'writing', signatures: 'writing',
   outils: 'general',
   formule: 'billing', credits: 'billing',
@@ -573,8 +573,8 @@ test('§3.2 — les liens du front visent directement les nouvelles rubriques', 
     ['src/hooks/useLinkedInSearchActions.ts', ['/settings/account/connections']],
     ['src/pages/Onboarding.tsx', ['/settings/account/connections']],
     ['src/components/onboarding/WelcomeOnboardingModal.tsx', ['/settings/account/connections']],
-    ['src/components/agent/AgentChatPanel.tsx', ['/settings/account/connections#email']],
-    ['src/components/assistant-ui/connector-menu.tsx', ['/settings/account/connections#notion', '/settings/account/connections#email']],
+    ['src/components/agent/AgentChatPanel.tsx', ['/settings/account/connections#applications', '/settings/account/connections#email']],
+    ['src/components/assistant-ui/connector-menu.tsx', ['/settings/account/connections#applications']],
     ['src/components/outreach/inbox/MessageComposer.tsx', ['/settings/account/writing#modeles']],
     ['src/components/missions/PedigreePresetSelector.tsx', ['/settings/org/assistant#icp']],
     // src/pages/ATS.tsx ne renvoie plus vers #outils : son seul lien était l'état

@@ -136,6 +136,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   rag_rerank: { action: "rag_rerank", label: "Recherche dans les documents : tri des résultats", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
   file_ingest: { action: "file_ingest", label: "Lecture de fichier joint", floor: 1, typicalTokens: 8_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
   filter_generation: { action: "filter_generation", label: "Filtres de recherche proposés", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing" },
+  brief_analysis: { action: "brief_analysis", label: "Analyse d'une fiche de poste", floor: 2, typicalTokens: 10_000, routingTier: "default", category: "sourcing", autoDefault: "claude-sonnet-5-5" },
   filter_assistant_msg: { action: "filter_assistant_msg", label: "Filtres modifiés en langage courant", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   refine_search: { action: "refine_search", label: "Affiner une recherche", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   nurturing_analysis: { action: "nurturing_analysis", label: "Analyse du suivi des candidats", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "outreach" },

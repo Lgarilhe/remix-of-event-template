@@ -229,7 +229,7 @@ test('F-15 — libellés reliés, boutons icône nommés, type d’organisation 
   assert.match(read('src/components/ui/segmented-control.tsx'), /aria-pressed=\{active\}/);
   // En-têtes repliables : bouton du kit sous CollapsibleTrigger (aria-expanded), type="button".
   const header = between(src.integrations, 'const IntegrationHeader', '\n);');
-  assert.match(header, /<h4>\s*<CollapsibleTrigger asChild>\s*<Button\s+type="button"/);
+  assert.match(header, /<h4 className="-mx-2">\s*<CollapsibleTrigger asChild>\s*<Button\s+type="button"/);
   assert.match(src.team, /aria-expanded=\{isExpanded\}/);
   // Plus aucun <button> écrit à la main dans ces fichiers.
   for (const [name, c] of Object.entries(src)) {
@@ -241,7 +241,8 @@ test('F-15 — libellés reliés, boutons icône nommés, type d’organisation 
 test('F-16 — Équipe : rôle lisible en entier, actions sous l’identité sur téléphone', () => {
   assert.doesNotMatch(src.team, /w-28 h-8/);
   assert.match(src.team, /<SelectTrigger className="h-8 w-auto min-w-28 gap-2 text-xs max-md:h-11" aria-label=\{`Rôle de \$\{memberName\}`\}>/);
-  assert.match(src.team, /'flex flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:gap-3'/);
+  // Design simplifié : liste à plat, la ligne part du bord du titre (plus de retrait ni de fond à l'ouverture).
+  assert.match(src.team, /<div className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3">/);
   assert.match(src.team, /<div className="flex shrink-0 items-center gap-1\.5 pl-11 sm:w-48 sm:justify-end sm:pl-0">/);
   // Colonne vide sur la ligne du propriétaire : les chevrons restent alignés d'une ligne à l'autre.
   assert.match(src.team, /\) : isOwner \? \(\s*<div className="hidden sm:block sm:w-48 sm:shrink-0" aria-hidden="true" \/>/);
@@ -255,10 +256,12 @@ test('F-18 — sous-surfaces arrondies, avatars ronds, boutons en casse de phras
   assert.match(src.logo, />\s*Supprimer le logo\s*</);
   assert.match(src.team, /grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted/);
   assert.doesNotMatch(src.team, /bg-foreground text-background/);
-  // Packs de crédits : tuiles du kit, badge arrondi (plus de pastille carrée inversée).
+  // Packs de crédits : tuiles du kit ; la mention du pack en texte neutre posé sur le
+  // filet (design simplifié, règle 7), plus de pastille carrée inversée ni de couleur.
   const packs = between(src.credits, 'CREDIT_PACKS.map', '))}');
   assert.match(packs, /<Button/);
-  assert.match(packs, /badgeVariants\(\{ variant: 'brand' \}\)/);
+  assert.match(packs, /bg-background px-1\.5 text-xs font-medium text-foreground-secondary/);
+  assert.doesNotMatch(packs, /badgeVariants|bg-brand/);
   assert.doesNotMatch(packs, /border-2|rounded-md|bg-foreground text-background/);
   // Aucune sous-surface sans rayon.
   for (const [name, c] of Object.entries(src)) {

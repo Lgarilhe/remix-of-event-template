@@ -114,6 +114,16 @@ jobs:
         env:
           TZ: Europe/Paris
         run: node --test tests/ux/lot3-maintenant.test.mjs
+      # Refonte des séquences, lots 5c-1 et 5c-2 : socle des pages Séquences
+      # (interrupteur éteint par défaut, routes et accès gardés, aucun lien
+      # vers /sequences hors des accès gardés, statut d'une inscription,
+      # Parcours sur le graphe, curseurs), puis la pause groupée. Le socle lit
+      # les modules TypeScript avec Node 22 (lecture native du TypeScript) ;
+      # le second test les transpile avec esbuild.
+      - name: Lot 5c tests (socle des pages Séquences)
+        env:
+          TZ: Europe/Paris
+        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié
@@ -126,6 +136,15 @@ jobs:
       # « En retard » sous le réveil, filtres dans un menu, suggestions sous la liste).
       - name: Tâches du design simplifié
         run: node --test tests/ux/taches-simplicite.test.mjs
+      # Brief IA (création de mission) : design simplifié, analyse par l'action
+      # brief_analysis (Sonnet 5.5), brouillon conservé à la fermeture.
+      - name: Brief IA de la création de mission
+        run: node --test tests/ux/creation-mission-brief.test.mjs
+      # Brief IA, lecture d'offres depuis une adresse web : fonction fetch-job-source
+      # (garde SSRF, lecteurs, flux de décision sur réseau simulé) et écrans de choix,
+      # d'analyse et de création en lot.
+      - name: Lecture d'offres depuis une adresse web
+        run: node --test tests/ux/lecture-offres-serveur.test.mjs tests/ux/import-offres.test.mjs
       # Design simplifié, lot P : copie privée des photos (règles de la copie,
       # réserve d'écran, gardes sur la migration, la tâche et les écrans branchés).
       - name: Copie privée des photos (design simplifié)

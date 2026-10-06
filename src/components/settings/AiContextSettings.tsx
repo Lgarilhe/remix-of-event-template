@@ -206,7 +206,7 @@ const AiContextForm: React.FC<AiContextFormProps> = ({ initial, onSave, isSaving
             setForm({ ...form, tone: v === 'auto' ? null : (v as AiContextTone) })
           }
         >
-          <SelectTrigger id={ids.tone} aria-describedby={ids.toneHint}>
+          <SelectTrigger id={ids.tone} aria-describedby={ids.toneHint} className="max-md:h-11">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -225,6 +225,7 @@ const AiContextForm: React.FC<AiContextFormProps> = ({ initial, onSave, isSaving
         </Label>
         <Input
           id={ids.specialty}
+          className="max-md:h-11"
           value={form.specialty}
           onChange={(e) => setForm({ ...form, specialty: e.target.value.slice(0, MAX_SPECIALTY) })}
           placeholder={
@@ -233,11 +234,14 @@ const AiContextForm: React.FC<AiContextFormProps> = ({ initial, onSave, isSaving
               : 'Ex. : recrutement tech, développeurs confirmés et responsables techniques en télétravail'
           }
           maxLength={MAX_SPECIALTY}
-          aria-describedby={ids.specialtyCount}
+          aria-describedby={form.specialty.length > 0 ? ids.specialtyCount : undefined}
         />
-        <p id={ids.specialtyCount} className="text-xs tabular-nums text-muted-foreground">
-          {form.specialty.length}/{MAX_SPECIALTY}
-        </p>
+        {/* Design simplifié (règle 8) : le compteur apparaît dès le premier caractère, jamais « 0/200 ». */}
+        {form.specialty.length > 0 && (
+          <p id={ids.specialtyCount} className="text-xs tabular-nums text-muted-foreground">
+            {form.specialty.length}/{MAX_SPECIALTY}
+          </p>
+        )}
       </div>
 
       <ContextList
@@ -281,11 +285,13 @@ const AiContextForm: React.FC<AiContextFormProps> = ({ initial, onSave, isSaving
           rows={5}
           className="text-sm leading-relaxed"
           maxLength={MAX_FREE_TEXT}
-          aria-describedby={ids.freeTextCount}
+          aria-describedby={form.free_text.length > 0 ? ids.freeTextCount : undefined}
         />
-        <p id={ids.freeTextCount} className="text-xs tabular-nums text-muted-foreground">
-          {form.free_text.length}/{MAX_FREE_TEXT}
-        </p>
+        {form.free_text.length > 0 && (
+          <p id={ids.freeTextCount} className="text-xs tabular-nums text-muted-foreground">
+            {form.free_text.length}/{MAX_FREE_TEXT}
+          </p>
+        )}
       </div>
 
       {/* Actions : « Enregistrer » et l'état d'enregistrement (F-09) */}
@@ -341,8 +347,10 @@ function ContextList({
   const full = items.length >= MAX_LIST_ITEMS;
   return (
     <div className="space-y-1.5">
+      {/* Le nombre de consignes seulement quand la liste en compte (règle 8). */}
       <Label htmlFor={inputId} className="text-xs font-medium">
-        {label} ({items.length}/{MAX_LIST_ITEMS})
+        {label}
+        {items.length > 0 && <span className="tabular-nums text-muted-foreground"> ({items.length}/{MAX_LIST_ITEMS})</span>}
       </Label>
       <p id={hintId} className="text-xs text-muted-foreground">{hint}</p>
       {items.length > 0 && (
@@ -373,6 +381,7 @@ function ContextList({
       <div className="flex gap-2">
         <Input
           id={inputId}
+          className="max-md:h-11"
           value={inputValue}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={(e) => {

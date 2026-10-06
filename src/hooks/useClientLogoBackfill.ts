@@ -7,7 +7,7 @@
  * par session ; le serveur enregistre le logo pour toutes les missions du même
  * client, et note l'échec pour ne pas chercher de nouveau avant 30 jours.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
@@ -21,6 +21,9 @@ export interface LogoCandidate {
 }
 
 const RETRY_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Clients déjà demandés ou en cours, pour toute la session : quitter la page n'interrompt pas la recherche. */
+const requested = new Set<string>();
 const normalize = (name: string) => name.trim().toLowerCase();
 
 /** Une mission par client sans logo ni recherche récente. */
@@ -43,25 +46,23 @@ export function logoLookups(projects: readonly LogoCandidate[], now = Date.now()
 
 export function useClientLogoBackfill(projects: readonly LogoCandidate[]): void {
   const queryClient = useQueryClient();
-  const asked = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const todo = logoLookups(projects).filter((p) => !asked.current.has(normalize(p.clientName ?? '')));
+    const todo = logoLookups(projects).filter((p) => !requested.has(normalize(p.clientName ?? '')));
     if (todo.length === 0) return;
-    for (const p of todo) asked.current.add(normalize(p.clientName ?? ''));
+    for (const p of todo) requested.add(normalize(p.clientName ?? ''));
     void (async () => {
-      let resolved = false;
       for (const p of todo) {
         try {
           const { data, error } = await invokeEdgeFunction<{ status?: string }>('resolve-client-logo', { project_id: p.id });
-          if (!error && data?.status === 'resolved') resolved = true;
+          // Chaque logo apparaît dès qu'il est enregistré.
+          if (!error && data?.status === 'resolved') {
+            void queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+            void queryClient.invalidateQueries({ queryKey: ['sourcing-project'] });
+          }
         } catch {
           // Le logo est un confort : un échec laisse les initiales.
         }
-      }
-      if (resolved) {
-        void queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-        void queryClient.invalidateQueries({ queryKey: ['sourcing-project'] });
       }
     })();
   }, [projects, queryClient]);

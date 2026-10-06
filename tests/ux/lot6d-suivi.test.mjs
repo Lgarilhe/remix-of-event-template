@@ -48,7 +48,13 @@ const analytics = code(`${OUTREACH}/SequenceAnalytics.tsx`);
 const bulk = code(`${OUTREACH}/BulkInMailModal.tsx`);
 const editor = code(`${OUTREACH}/InMailTextEditor.tsx`);
 const single = code(`${OUTREACH}/OutreachMessageModal.tsx`);
-const FILES = { panel, journal, editModal, diagnostic, analytics, bulk, editor, single };
+// Lot 5c-1 : actions du suivi (toasts compris) sorties du panneau dans la partie
+// « Suivi des inscrits » de sequenceActions.ts, qui commence à StepExecution.
+const actionsSrc = code('src/lib/sequenceActions.ts');
+const suiviStart = actionsSrc.indexOf('export interface StepExecution');
+assert.ok(suiviStart !== -1, 'partie « Suivi des inscrits » introuvable dans sequenceActions.ts');
+const actions = actionsSrc.slice(suiviStart);
+const FILES = { panel, journal, editModal, diagnostic, analytics, bulk, editor, single, actions };
 
 test('D-56 : les raisons écrites par le moteur d’envoi sont traduites', () => {
   // Revue design : libellés de formatSkipReason (audit), repris par le catalogue unifié.
@@ -92,7 +98,8 @@ test('D-54, D-55 : statuts et étapes viennent du socle, sans table locale ni ap
   // Revue design : statut d'inscription lu par les fonctions de l'audit (pausedLabel
   // pour une pause, comme EnrollmentStatusBadge), peint avec le ton du catalogue.
   assert.match(panel, /Object\.entries\(ENROLLMENT_STATUSES\)\.map\(\(\[status, meta\]\) => \[status, \{ tone: meta\.tone \}\]\)/);
-  assert.match(panel, /const statusLabel = enrollment\.status === 'paused'\s*\? pausedLabel\(enrollment\.pause_reason\)\s*: enrollmentStatusLabel\(enrollment\.status\);/);
+  // Lot 5b : un arrêt manuel se lit « Arrêtée par … le … » avant le statut.
+  assert.match(panel, /const statusLabel = manualStop\s*\? manualStopLabel\(manualStop, memberName\(manualStop\.by\)\)\s*: enrollment\.status === 'paused'\s*\? pausedLabel\(enrollment\.pause_reason\)\s*: enrollmentStatusLabel\(enrollment\.status\);/);
   assert.match(panel, /<Badge variant=\{status\.tone\}>\{statusLabel\}<\/Badge>/);
   assert.match(analytics, /EnrollmentStatusBadge/, 'répartition des inscriptions : mêmes libellés');
 });
@@ -103,8 +110,9 @@ test('D-56 : plus d’identifiant brut ni de « Workflow »', () => {
   // (sequences-enrollments.spec.ts) ; raisons et types lus par les fonctions de l'audit.
   assert.match(panel, />\s*Parcours\s*</);
   assert.doesNotMatch(panel, /label: step\.action_type|exec\.skip_reason\}/, 'raison ou type affiché tel quel');
-  assert.match(panel, /formatSkipReason\(exec\.skip_reason\)/);
-  assert.match(journal, /formatSkipReason\(exec\.skip_reason\)/);
+  // Lot 5b : le contexte d'arrêt manuel accompagne la raison.
+  assert.match(panel, /formatSkipReason\(exec\.skip_reason, \{ manualStop: hasManualStopTrace\(enrollment\.tracking_data\) \}\)/);
+  assert.match(journal, /formatSkipReason\(exec\.skip_reason, \{ manualStop: exec\.enrollment\?\.stoppedManually \}\)/);
   assert.doesNotMatch(analytics, /action_type\.replace/, 'type d’étape bricolé en texte');
   assert.match(analytics, /stepTypeLabel\(s\.action_type\)/);
 });
@@ -119,7 +127,9 @@ test('D-57 : registre calme (pas de capitales, actions sur Button, arrêt group�
   // n'avance plus rien, un bandeau dit quand partent les étapes en retard.
   assert.doesNotMatch(panel, /Traiter maintenant|nudge_sequences/);
   assert.match(panel, /Elles partiront au prochain passage, pendant vos heures d’envoi\./);
-  assert.match(panel, /setConfirmAction\(\{ type: 'bulkStop' \}\)/, 'arrêt groupé derrière la confirmation');
+  // Lot 5b (décision 3) : pause groupée immédiate, « Annuler » dans le toast.
+  assert.match(panel, /onClick=\{\(\) => \{ void runBulk\('pause', bulkStopActive\); \}\}/, 'pause groupée sans fenêtre');
+  assert.doesNotMatch(panel, /type: 'bulkStop'/, 'plus de confirmation de la pause groupée');
   assert.doesNotMatch(panel, /calc\(100vh/, 'hauteur de liste par flex');
   assert.doesNotMatch(panel, /BrutalLoader/, 'squelette, pas de phrases simulées');
 });
@@ -177,7 +187,7 @@ test('D-65 à D-72 : jetons, typographie et texte dans les fichiers du lot', () 
     assert.doesNotMatch(src, /enrôl/i, `${name} : « enrôler »`);
   }
   // Les emoji restants de l'éditeur sont le contenu à insérer dans le message (D-70).
-  for (const [name, src] of Object.entries({ panel, journal, editModal, diagnostic, analytics, bulk, single })) {
+  for (const [name, src] of Object.entries({ panel, journal, editModal, diagnostic, analytics, bulk, single, actions })) {
     assert.doesNotMatch(src, /\p{Extended_Pictographic}/u, `${name} : emoji d'interface`);
   }
   assert.match(editor, /aria-label="Gras"/, 'boutons de mise en forme nommés');

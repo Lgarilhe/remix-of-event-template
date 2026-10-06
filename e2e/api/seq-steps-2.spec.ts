@@ -755,8 +755,9 @@ test.describe('Personnalisation IA', () => {
     expect(await aiCallsWith(marker), 'aucun appel au modèle').toEqual([]);
   });
 
-  // ai-credits-exhausted
-  test('Crédits IA épuisés : aucun appel au modèle, étape reportée « Crédits IA épuisés », le modèle brut ne part pas', async () => {
+  // ai-credits-exhausted — lot 5a-2 : sans texte relu, l'étape IA n'atteint
+  // plus la rédaction ni le contrôle des crédits ; elle est reportée.
+  test('Crédits IA épuisés : étape IA sans relecture reportée « à relire », aucun appel au modèle, le modèle brut ne part pas', async () => {
     const { org, accountId } = await paidOrg('E2E steps-2 IA crédits');
     const { error: balErr } = await admin().from('ai_credit_balances').upsert({
       organization_id: org.orgId, plan_credits: 0, topup_credits: 0, credits_remaining: 0, credits_total: 0,
@@ -774,8 +775,8 @@ test.describe('Personnalisation IA', () => {
     await cycleFor(exec);
     const row = await execById(exec);
     expect(row.status, 'étape reportée').toBe('scheduled');
-    expect(row.retry_count).toBe(1);
-    expect(row.error_message ?? '').toMatch(/^Crédits IA épuisés : nouvel essai 1\/3/);
+    expect(row.retry_count ?? 0, 'aucun essai compté').toBe(0);
+    expect(row.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
     expect(row.final_message, 'aucune copie du modèle gardée comme texte à envoyer').toBeNull();
     expect(await aiCallsWith(marker), 'aucun appel au modèle').toEqual([]);
     expect(await sentTexts(accountId), 'le modèle brut ne part jamais').toEqual([]);
@@ -808,7 +809,9 @@ test.describe('Personnalisation IA', () => {
   });
 
   // ai-retry-keeps-generated-text (copie du modèle laissée par un essai interrompu)
-  test('Copie du modèle laissée par un essai interrompu : l’IA est rappelée, le modèle ne part jamais', async () => {
+  // Lot 5a-2 : la copie périmée du modèle n'est pas un texte relu ; l'étape est
+  // reportée sans rappeler l'IA, et le modèle ne part jamais.
+  test('Copie du modèle laissée par un essai interrompu : étape reportée « à relire », sans appel à l’IA, le modèle ne part jamais', async () => {
     const { org, accountId } = await paidOrg('E2E steps-2 IA copie');
     const marker = `MQ${rand()}${rand()}`;
     const template = `Bonjour {{prenom}} ${marker}`;
@@ -819,17 +822,14 @@ test.describe('Personnalisation IA', () => {
     const exec = await schedule(org, enrollmentId, steps[0], { final_message: template, tracking_data: { content_origin: 'template_snapshot' } });
 
     await cycleFor(exec);
-    expect((await aiCallsWith(marker)).length, 'nouvel appel au modèle').toBeGreaterThanOrEqual(1);
+    expect(await aiCallsWith(marker), 'aucun appel au modèle').toEqual([]);
     const texts = await sentTexts(accountId);
-    expect(texts.filter((t) => t.includes(marker) || t.includes('{{')), 'le modèle brut ne part jamais').toEqual([]);
+    expect(texts, 'le modèle brut ne part jamais').toEqual([]);
     const row = await execById(exec);
-    if (texts.length === 0) {
-      // Réponse IA par défaut du faux prestataire (pas du JSON) : étape reportée.
-      expect(row.status).toBe('scheduled');
-      expect(row.final_message, 'copie du modèle retirée').toBeNull();
-    } else {
-      expect(row.status).toBe('sent');
-    }
+    expect(row.status).toBe('scheduled');
+    expect(row.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
+    expect(row.final_message, 'copie du modèle retirée : « Relire le message » proposé').toBeNull();
+    expect((row.tracking_data as Record<string, unknown> | null)?.content_origin, 'marqueur retiré').toBeUndefined();
   });
 });
 

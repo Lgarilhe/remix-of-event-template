@@ -5,7 +5,11 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
+import { useSequenceSave } from '@/hooks/useSequenceSave';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
+import { SEQUENCES_PATH, sequencePath } from '@/lib/sequencesBeta';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { ENROLLMENT_STATUSES, sequenceChannels } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
@@ -32,6 +36,7 @@ import {
   Lock,
   AlertTriangle,
   ScrollText,
+  ArrowRight,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -52,49 +57,26 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { SEQUENCE_LEVEL_PAUSE_REASONS } from '@/lib/sequenceLabels';
-import { actionTypeLabel, sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
-import { SequenceBuilder, Sequence } from './SequenceBuilder';
-import type { StopConditions, SenderAccountConfig } from './SequenceBuilder';
-import { rowToSequenceStep } from './sequence/sequenceGraph';
+import {
+  candidats,
+  COLLABORATOR_DEACTIVATION_HINT,
+  createSequenceListActions,
+  PLAN_STATE_LOADING_MESSAGE,
+  type SequenceWithStats,
+} from '@/lib/sequenceActions';
+import { SequenceBuilder } from './SequenceBuilder';
+import type { Sequence } from '@/types/sequence';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
 import { SequenceDiagnostic } from './SequenceDiagnostic';
 // Q5 — SequenceAnalytics contient recharts (~100KB), lazy-load pour split chunk
 const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
-import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
+import { SequenceTemplateSelector } from './SequenceTemplateSelector';
+import { SaveAsTemplateModal } from './SaveAsTemplateModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { plural } from '@/lib/plural';
 import { timeAgo } from '@/lib/relativeTime';
-
-interface SequenceWithStats {
-  id: string;
-  name: string;
-  description: string | null;
-  is_active: boolean;
-  created_at: string;
-  project_id: string | null;
-  organization_id: string | null;
-  /** Auteur : seul lui modifie la séquence quand il est collaborateur (contrat §8). */
-  created_by: string | null;
-  // Réglages d'en-tête lus par le moteur : à recharger à l'édition et à
-  // recopier à la duplication, sinon ils sont effacés au premier enregistrement.
-  stop_conditions: Partial<StopConditions> | null;
-  sender_accounts: SenderAccountConfig[] | null;
-  rotation_mode: string | null;
-  multi_sender_enabled: boolean | null;
-  steps: any[];
-  enrollments: {
-    total: number;
-    active: number;
-    completed: number;
-    replied: number;
-    paused: number;
-    /** Candidats en pause par raison (sequence_enrollments.pause_reason). */
-    pausedByReason: Record<string, number>;
-  };
-}
 
 interface SequencesListProps {
   // Passés par l'onglet Outreach. La liste n'en a plus besoin depuis le
@@ -117,38 +99,6 @@ interface SequencesListProps {
   layout?: 'auto' | 'compact';
 }
 
-// Conditions d'arrêt affichées par défaut dans l'éditeur : ce qui est montré
-// est ce qui est enregistré quand la séquence n'en a pas encore.
-const DEFAULT_STOP_CONDITIONS: StopConditions = {
-  on_reply: true,
-  on_click: false,
-  on_unsubscribe: true,
-  on_meeting_booked: false,
-};
-
-// Une étape d'attente sans événement est franchie tout de suite par le moteur :
-// « Attendre réponse » clôt l'inscription comme répondue, « Attendre connexion »
-// déclare le candidat connecté. L'éditeur visuel et l'assistant n'en posaient
-// pas : on le déduit du type d'étape.
-const implicitWaitEvent = (actionType: string, waitForEvent: string | null | undefined): string | null => {
-  if (waitForEvent) return waitForEvent;
-  if (actionType === 'wait_reply') return 'reply_received';
-  if (actionType === 'wait_connection') return 'connection_accepted';
-  return null;
-};
-
-// « 1 candidat », « 3 candidats ».
-const candidats = (n: number) => `${n} candidat${n > 1 ? 's' : ''}`;
-
-// Valeurs que l'éditeur affiche par défaut quand la colonne est vide : elles
-// sont désormais chargées dans l'état, sinon l'écran montrait « 70 » ou « 3 »
-// et l'enregistrement refusait un champ vide.
-const DEFAULT_SCORE_THRESHOLD = '70';
-const DEFAULT_WAIT_TIMEOUT_DAYS = 3;
-const TIMEOUT_REQUIRED_ACTIONS = ['wait_connection', 'wait_reply', 'wait_profile_visit'];
-
-const CONCURRENT_EDIT_MESSAGE = 'Cette séquence a été modifiée par un collègue depuis son ouverture. Rouvrez-la avant d’enregistrer.';
-
 // L'API renvoie au plus 1 000 lignes par requête : au-delà, les compteurs
 // étaient faux (« 0 actif » sur une séquence active, désactivation sans
 // confirmation). On lit donc toutes les pages.
@@ -169,78 +119,10 @@ const emptyEnrollmentStats = (): SequenceWithStats['enrollments'] => ({
   total: 0, active: 0, completed: 0, replied: 0, paused: 0, pausedByReason: {},
 });
 
-// Réponse des actions serveur de reprise (process-sequences).
-interface ResumeCounts {
-  resumed?: number;
-  nothing_to_resume?: number;
-  account_unlinked?: number;
-  not_paused?: number;
-  error?: number;
-}
-interface ResumeResponse {
-  success?: boolean;
-  results?: Array<{ enrollment_id: string; outcome: keyof ResumeCounts; message?: string }>;
-  counts?: ResumeCounts;
-  /** Candidats non traités faute de temps côté serveur (reprise par séquence). */
-  remaining?: number;
-  /**
-   * Reprise par séquence d'un collaborateur (contrat §8) : candidats en pause
-   * laissés de côté parce qu'inscrits par d'autres membres. 0 sinon.
-   */
-  other_members?: number;
-  message?: string;
-  error?: string;
-}
-
-// Reprise par séquence : le serveur s'arrête avant la limite de temps d'un appel
-// et compte le reste dans `remaining`. On le rappelle tant qu'il en reste et
-// qu'il progresse.
-const MAX_RESUME_ROUNDS = 10;
-
-// DETAIL du refus STEP_HAS_HISTORY : « Étape(s) concernée(s) : 0, 2 », en
-// step_order (base 0, trié comme du texte). L'éditeur numérote à partir de 1.
-// Après une suppression, l'éditeur a renuméroté les étapes : chaque étape est
-// alors nommée par son type (labelsByOrder, lu en base avant l'enregistrement)
-// et son numéro d'avant les modifications.
-const blockedStepsNotice = (details: string | null | undefined, labelsByOrder?: Map<number, string>): string => {
-  const orders = [...new Set((details?.match(/\d+/g) ?? []).map(Number))].sort((a, b) => a - b);
-  if (orders.length === 0) return '';
-  const names = orders.map(order => {
-    const label = labelsByOrder?.get(order);
-    return label ? `« ${label} » (étape ${order + 1} avant vos modifications)` : String(order + 1);
-  });
-  return names.length > 1 ? ` Étapes concernées : ${names.join(', ')}.` : ` Étape concernée : ${names[0]}.`;
-};
-
-// Erreur de la base traduite pour l'éditeur, qui affiche err.message : jamais
-// le texte brut de PostgreSQL (« row-level security », « not accessible »).
-const sequenceSaveError = (error: { message?: string; code?: string; hint?: string } | null): Error => {
-  console.error('Sequence save error:', error);
-  const refusal = sequenceWriteRefusal(error);
-  if (refusal) return new Error(refusal);
-  const text = error?.message ?? '';
-  if (/not found or not accessible/i.test(text)) {
-    return new Error('Cette séquence n’existe plus ou vous n’y avez plus accès. Actualisez la liste des séquences.');
-  }
-  if (error?.code === '42501' || /row-level security/i.test(text)) {
-    return new Error('Vous n’avez pas les droits nécessaires pour enregistrer cette séquence.');
-  }
-  return new Error('La séquence n’a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.');
-};
-
-// D3 : désactiver met en pause TOUS les candidats en cours. Un collaborateur
-// ne peut mettre en pause que les inscriptions qu'il a créées (RLS) : la
-// désactivation ne lui est pas proposée.
-const COLLABORATOR_DEACTIVATION_HINT = 'Désactiver une séquence met en pause tous ses candidats : réservé aux membres qui gèrent toutes les inscriptions. Mettez vos candidats en pause depuis la liste des inscrits.';
-
 // « Lecture seule » : séquence d'une autre organisation, ou (contrat §8) séquence
 // d'un collègue pour un collaborateur, qui ne modifie que celles qu'il a créées.
 const OTHER_ORG_READ_ONLY_HINT = 'Séquence d’une autre organisation : vous pouvez la consulter, pas la modifier.';
 const NOT_AUTHOR_READ_ONLY_HINT = 'Seul l’auteur de cette séquence peut la modifier : dupliquez-la pour l’adapter.';
-
-// Décision 32 : aucune activation tant que l'état d'abonnement n'est pas lu.
-const PLAN_STATE_LOADING_MESSAGE = 'Vérification de votre abonnement en cours : réessayez dans un instant.';
-const PLAN_STATE_UNREADABLE_MESSAGE = 'Votre abonnement n’a pas pu être vérifié : la séquence n’a pas été activée. Réessayez dans un instant.';
 
 /** Même grille pour l'en-tête et les lignes, à partir de 1 024 px. */
 const ROW_GRID = 'lg:grid-cols-[2.75rem_minmax(0,1fr)_7.5rem_minmax(0,14rem)_9rem_2.25rem]';
@@ -263,6 +145,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const planNoticeId = useId();
+  // Lot 5c-2 : interrupteur konekt.sequences-v2 allumé, chaque séquence mène à
+  // sa page et la liste à l'écran Séquences de l'organisation. Éteint, rien ne change.
+  const sequencesBeta = useSequencesBeta();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
   // plan gratuit. Décision 32 : tant que l'état d'abonnement n'est pas lu
   // (chargement ou lecture en échec), aucune activation, ni par l'interrupteur
@@ -278,7 +163,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [toggleConfirm, setToggleConfirm] = useState<{ id: string; nextActive: boolean; activeCount: number; shared: boolean } | null>(null);
+  // Lot 5b : « Mettre en pause la séquence » part sans fenêtre, avec « Annuler »
+  // dans le toast ; « Réactiver cette séquence ? » garde sa confirmation.
+  const { offerUndo, resumeIds, showSummary } = useUndoableEnrollmentAction();
+  // État d'abonnement lu au clic sur « Annuler » (le toast survit aux rendus).
+  const planRef = React.useRef({ unknown: planStateUnknown, loadError: isPlanLoadError, canSend: canSendSequences });
+  planRef.current = { unknown: planStateUnknown, loadError: isPlanLoadError, canSend: canSendSequences };
   // Réactivation avec des candidats à reprendre : confirmation préalable.
   // `otherMembers` : candidats d'autres membres, que la reprise d'un collaborateur laisse en pause (D3).
   const [activateConfirm, setActivateConfirm] = useState<{ id: string; resumable: number; otherPaused: number; otherMembers: number } | null>(null);
@@ -350,42 +240,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const missionSequenceIds = sequences
     .filter(s => s.project_id === projectId && canManage(s))
     .map(s => s.id);
-
-  const handleNudgeToday = async () => {
-    setNudgeConfirmOpen(false);
-    if (missionSequenceIds.length === 0) return;
-    setNudging(true);
-    try {
-      // Le serveur n'avance que les actions prévues plus tard AUJOURD'HUI (fuseau
-      // de chaque inscription), hors invitations et étapes d'attente, et
-      // seulement pour ces séquences. Les relances des jours suivants gardent
-      // leur date ; le moteur les envoie ensuite avec ses garde-fous.
-      const { data, error } = await invokeEdgeFunction('process-sequences', {
-        action: 'nudge_sequences',
-        organization_id: organizationId,
-        sequence_ids: missionSequenceIds,
-      });
-      const payload = data as { success?: boolean; advanced?: number; message?: string; error?: string } | null;
-      if (error || !payload?.success) {
-        throw new Error(payload?.message || error?.message || payload?.error || 'Réessayez dans un instant.');
-      }
-      const count = payload.advanced ?? 0;
-      if (count > 0) {
-        toast.success(`${count} action${count > 1 ? 's' : ''} avancée${count > 1 ? 's' : ''}`, {
-          description: 'Elles partiront progressivement pendant vos heures d’envoi.',
-        });
-      } else {
-        toast.info('Rien à avancer pour aujourd’hui.');
-      }
-    } catch (err) {
-      console.error('Nudge sequences error:', err);
-      toast.error('Les actions du jour n’ont pas pu être avancées', {
-        description: err instanceof Error ? err.message : undefined,
-      });
-    } finally {
-      setNudging(false);
-    }
-  };
 
   // Audit Opus 2026-05-07 : useCallback avec dep `projectId` pour que le
   // listener visibilitychange ne capture pas une closure périmée après un
@@ -501,725 +355,36 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     setRetrying(false);
   };
 
-  const handleSaveSequence = async (sequence: Sequence) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié');
-      if (!organizationId) throw new Error('Organisation introuvable : rechargez la page');
+  const { handleSaveSequence } = useSequenceSave({
+    organizationId,
+    projectId,
+    canSendSequences,
+    planStateUnknown,
+    editorBaseStepIdsRef,
+    navigate,
+    fetchSequences,
+    setShowBuilder,
+    setEditingSequence,
+  });
 
-      // Payload de steps envoyé à la RPC transactionnelle `save_sequence_steps`.
-      // On garde `id` = id CLIENT (= id DB pour un step existant, id généré pour
-      // un nouveau) : la RPC s'en sert pour faire l'UPDATE in-place des steps
-      // existants (préserve leurs exécutions planifiées) et pour remapper les
-      // refs de branchement (if_true/false_goto, timeout_branch, next_step).
-      const buildStepsPayload = () => sequence.steps.map(step => ({
-        id: step.id,
-        step_order: step.order,
-        action_type: step.actionType,
-        condition_type: step.conditionType,
-        condition_value: step.conditionValue ?? null,
-        delay_days: step.delayDays ?? 0,
-        delay_hours: step.delayHours ?? 0,
-        delay_minutes: step.delayMinutes ?? 0,
-        preferred_hour_start: step.preferredHourStart ?? null,
-        preferred_hour_end: step.preferredHourEnd ?? null,
-        subject_template: step.subjectTemplate ?? null,
-        message_template: step.messageTemplate ?? null,
-        use_ai_personalization: step.useAiPersonalization ?? false,
-        ai_tone: step.aiTone ?? null,
-        timeout_days: step.timeoutDays ?? null,
-        wait_for_event: implicitWaitEvent(step.actionType, step.waitForEvent),
-        variant_group: step.variantGroup ?? null,
-        variant_weight: step.variantWeight ?? 100,
-        // '__end__' = sentinelle « Fin de séquence » du StepEditor : persistée
-        // via ends_sequence (avant, elle devenait next_step_id=null = « auto »
-        // et le moteur enchaînait quand même sur l'étape suivante).
-        ends_sequence: step.nextStepId === '__end__',
-        cc_emails: step.ccEmails ?? null,
-        bcc_emails: step.bccEmails ?? null,
-        include_unsubscribe: step.includeUnsubscribe ?? null,
-        signature_id: step.signatureId ?? null,
-        if_true_goto_step: step.ifTrueGotoStep ?? null,
-        if_false_goto_step: step.ifFalseGotoStep ?? null,
-        timeout_branch_step_id: step.timeoutBranchStepId ?? null,
-        next_step_id: step.nextStepId === '__end__' ? null : (step.nextStepId ?? null),
-      }));
-
-      let targetSequenceId: string;
-      // En-tête créé par cet enregistrement : supprimé si les étapes échouent,
-      // sinon une séquence vide restait et le nouvel essai en créait une seconde.
-      let createdSequenceId: string | null = null;
-      // Type de chaque étape en base, par step_order : nomme une étape refusée
-      // (STEP_HAS_HISTORY) que l'éditeur a renumérotée.
-      const baseStepLabels = new Map<number, string>();
-      // Sans droit d'envoi (plan gratuit) ou abonnement pas encore lu (décision 32),
-      // une nouvelle séquence est créée désactivée.
-      const createInactiveForPlan = !sequence.id && sequence.isActive && (!canSendSequences || planStateUnknown);
-
-      if (sequence.id) {
-        // Une étape en base que l'éditeur n'a jamais vue a été ajoutée par un
-        // collègue depuis l'ouverture : la RPC la supprimerait, avec ses envois
-        // prévus. On refuse avant toute écriture.
-        const base = editorBaseStepIdsRef.current;
-        const { data: currentSteps, error: currentStepsError } = await supabase
-          .from('sequence_steps')
-          .select('id, step_order, action_type')
-          .eq('sequence_id', sequence.id);
-        if (currentStepsError) {
-          throw new Error('La séquence n’a pas pu être vérifiée avant l’enregistrement. Réessayez.');
-        }
-        const knownIds = base?.sequenceId === sequence.id ? base.stepIds : new Set<string>();
-        if ((currentSteps || []).some(s => !knownIds.has(s.id))) {
-          throw new Error(CONCURRENT_EDIT_MESSAGE);
-        }
-        for (const s of currentSteps || []) baseStepLabels.set(s.step_order, actionTypeLabel(s.action_type));
-
-        // UPDATE de l'entête de séquence uniquement (les steps passent par la RPC).
-        // is_active n'est pas réécrit : seul l'interrupteur de la liste l'écrit,
-        // avec la mise en pause ou la reprise des candidats et le contrôle du
-        // plan. L'éditeur renvoyait la valeur lue à l'ouverture, qui pouvait
-        // éteindre l'interrupteur de candidats encore en cours d'envoi.
-        const { error: updateError } = await supabase
-          .from('outreach_sequences')
-          .update({
-            name: sequence.name,
-            description: sequence.description,
-            stop_conditions: sequence.stopConditions || null,
-            sender_accounts: sequence.senderAccounts || null,
-            rotation_mode: sequence.rotationMode || null,
-            multi_sender_enabled: sequence.multiSenderEnabled || false,
-          } as any)
-          .eq('id', sequence.id);
-
-        if (updateError) throw sequenceSaveError(updateError);
-        targetSequenceId = sequence.id;
-      } else {
-        // CREATE de l'entête de séquence.
-        const { data: newSeq, error: createError } = await supabase
-          .from('outreach_sequences')
-          .insert({
-            name: sequence.name,
-            description: sequence.description,
-            is_active: sequence.isActive && !createInactiveForPlan,
-            created_by: user.id,
-            organization_id: organizationId,
-            project_id: projectId || null,
-            // Garde-fous et expéditeurs réglés dans l'éditeur : sans eux, le
-            // moteur ignorait « Arrêter si un rendez-vous est pris » et la rotation.
-            stop_conditions: sequence.stopConditions ?? DEFAULT_STOP_CONDITIONS,
-            sender_accounts: sequence.senderAccounts || null,
-            rotation_mode: sequence.rotationMode || null,
-            multi_sender_enabled: sequence.multiSenderEnabled || false,
-          } as any)
-          .select()
-          .single();
-
-        if (createError) throw sequenceSaveError(createError);
-        targetSequenceId = newSeq.id;
-        createdSequenceId = newSeq.id;
-      }
-
-      // Sauvegarde transactionnelle des steps : UPDATE in-place des existants,
-      // INSERT des nouveaux, DELETE des seuls steps réellement retirés. Ne
-      // détruit PLUS les exécutions planifiées des enrollments actifs (bloquant B1).
-      const { error: stepsError } = await supabase.rpc('save_sequence_steps', {
-        p_sequence_id: targetSequenceId,
-        p_steps: buildStepsPayload(),
-      });
-
-      if (stepsError) {
-        if (createdSequenceId) {
-          const { error: cleanupError } = await supabase
-            .from('outreach_sequences')
-            .delete()
-            .eq('id', createdSequenceId);
-          if (cleanupError) console.error('Error removing empty sequence after failed steps save:', cleanupError);
-        }
-        // Refus de supprimer une étape qui a un historique d'envoi (sinon ses
-        // exécutions et son suivi e-mail disparaissaient, et une réponse à cet
-        // e-mail n'était plus détectée).
-        if (stepsError.hint === 'STEP_HAS_HISTORY' || stepsError.message?.includes('STEP_HAS_HISTORY')) {
-          throw new Error(`Cette étape a déjà été envoyée à des candidats : elle ne peut pas être supprimée. Modifiez son contenu à la place.${blockedStepsNotice(stepsError.details, baseStepLabels)}`);
-        }
-        throw sequenceSaveError(stepsError);
-      }
-
-      if (sequence.id) {
-        toast.success('Séquence mise à jour');
-      } else {
-        // Étape suivante du parcours : inscrire des candidats depuis le Sourcing.
-        const enrollAction = projectId
-          ? { label: 'Inscrire des candidats', onClick: () => navigate(`/missions/${projectId}?tab=sourcing`) }
-          : undefined;
-        // Créée désactivée faute de droit d'envoi : l'éditeur (qui reçoit
-        // canSendSequences) l'annonce avec le lien vers les offres.
-        if (!createInactiveForPlan) {
-          toast.success('Séquence créée', {
-            description: 'Sélectionnez ensuite vos candidats dans l’onglet Sourcing et cliquez sur Séquence.',
-            ...(enrollAction ? { action: enrollAction } : {}),
-          });
-        } else if (canSendSequences) {
-          // Abonnement pas encore lu : l'éditeur n'a rien annoncé.
-          toast.warning('Séquence créée désactivée', {
-            description: 'Votre abonnement n’était pas encore vérifié : activez-la depuis la liste des séquences.',
-          });
-        }
-      }
-
-      editorBaseStepIdsRef.current = null;
-      fetchSequences();
-      setShowBuilder(false);
-      setEditingSequence(null);
-    } catch (err) {
-      // Relancé pour que SequenceBuilder.handleSave n'affiche pas
-      // « Séquence enregistrée » et ne ferme pas le builder sur un échec
-      // (les modifications étaient perdues).
-      console.error('Error saving sequence:', err);
-      throw err;
-    }
-  };
-
-  // Désactivation : les inscriptions d'abord, l'interrupteur ensuite. Le moteur
-  // ne lit que le statut des inscriptions, jamais outreach_sequences.is_active :
-  // un interrupteur « désactivé » sur des inscriptions encore actives laissait
-  // partir les messages. Les étapes prévues gardent leur date (le moteur ignore
-  // celles d'une inscription en pause) et les attentes restent telles quelles.
-  const deactivateSequence = async (sequenceId: string) => {
-    setTogglingId(sequenceId);
-    const pauseFailed = 'La séquence n’a pas pu être mise en pause. Aucun envoi n’a été arrêté. Réessayez.';
-    let pausedCount = 0;
-    try {
-      const { data: paused, count, error: pauseError } = await supabase
-        .from('sequence_enrollments')
-        // Raison propre à la désactivation : la réactivation ne reprend
-        // qu'elle, jamais une pause manuelle, de compte ou d'abonnement.
-        .update({ status: 'paused', pause_reason: 'sequence_inactive' }, { count: 'exact' })
-        .eq('sequence_id', sequenceId)
-        .eq('status', 'active')
-        .select('id');
-      if (pauseError) {
-        toast.error(pauseFailed);
-        return;
-      }
-      pausedCount = count ?? paused?.length ?? 0;
-      // D3 : recompte systématique. La RLS peut ne laisser mettre en pause
-      // qu'une partie des candidats (collaborateur : ses seules inscriptions),
-      // et d'autres ont pu être inscrits entre-temps. Tant qu'il en reste en
-      // cours, la séquence n'est pas affichée désactivée.
-      const { count: stillActive, error: countError } = await supabase
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', sequenceId)
-        .eq('status', 'active');
-      const pausedPart = pausedCount > 0
-        ? `${candidats(pausedCount)} ${pausedCount > 1 ? 'sont' : 'est'} bien en pause. `
-        : 'Aucun candidat n’a été mis en pause. ';
-      if (countError) {
-        toast.error('La séquence reste active', {
-          description: `${pausedPart}Les candidats encore en cours n’ont pas pu être recomptés. Réessayez.`,
-        });
-        return;
-      }
-      const remainingActive = stillActive ?? 0;
-      if (remainingActive > 0) {
-        toast.error('La séquence reste active', {
-          description: `${pausedPart}${candidats(remainingActive)} ${remainingActive > 1 ? 'restent' : 'reste'} en cours et ${remainingActive > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remainingActive > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remainingActive > 1 ? 'ils viennent' : 'il vient'} d’être ${remainingActive > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur de désactiver la séquence.`,
-          // Les candidats déjà mis en pause se reprennent depuis la liste des inscrits.
-          ...(pausedCount > 0 ? enrollmentsPanelAction(sequenceId) : {}),
-        });
-        return;
-      }
-
-      const { data: updated, error: seqError } = await supabase
-        .from('outreach_sequences')
-        .update({ is_active: false })
-        .eq('id', sequenceId)
-        .select('id');
-      if (seqError || !updated || updated.length === 0) {
-        if (pausedCount > 0) {
-          toast.error('La séquence n’a pas pu être désactivée', {
-            description: `${candidats(pausedCount)} ${pausedCount > 1 ? 'sont' : 'est'} bien en pause et ne ${pausedCount > 1 ? 'recevront' : 'recevra'} plus de messages. Réessayez de désactiver la séquence.`,
-          });
-        } else if (seqError) {
-          toast.error('La séquence n’a pas pu être désactivée. Réessayez.');
-        } else {
-          toast.error('Désactivation impossible', { description: 'Vous n’avez pas les droits sur cette séquence.' });
-        }
-        return;
-      }
-
-      setSequences(prev => prev.map(s => s.id === sequenceId ? { ...s, is_active: false } : s));
-      toast.success(pausedCount > 0
-        ? `Séquence désactivée. ${candidats(pausedCount)} mis en pause.`
-        : 'Séquence désactivée. Aucun candidat n’était en cours.');
-    } catch (err) {
-      console.error('Error deactivating sequence:', err);
-      toast.error(pausedCount > 0 ? 'La séquence n’a pas pu être désactivée. Réessayez.' : pauseFailed);
-    } finally {
-      setTogglingId(null);
-      fetchSequences();
-    }
-  };
-
-  // Réactivation : l'interrupteur d'abord (avec preuve d'écriture), puis la
-  // reprise côté serveur des seuls candidats mis en pause par la séquence.
-  // `otherMembers` : pauses de séquence de candidats inscrits par d'autres membres,
-  // que le serveur ne reprend pas pour un collaborateur (D3), comptées au clic.
-  const activateSequence = async (sequenceId: string, resumable: number, otherPaused: number, otherMembers = 0) => {
-    setTogglingId(sequenceId);
-    try {
-      const { data: updated, error: seqError } = await supabase
-        .from('outreach_sequences')
-        .update({ is_active: true })
-        .eq('id', sequenceId)
-        .select('id');
-      if (seqError) {
-        toast.error('La séquence n’a pas pu être réactivée. Réessayez.');
-        return;
-      }
-      if (!updated || updated.length === 0) {
-        toast.error('Réactivation impossible', { description: 'Vous n’avez pas les droits sur cette séquence.' });
-        return;
-      }
-      setSequences(prev => prev.map(s => s.id === sequenceId ? { ...s, is_active: true } : s));
-
-      // Raisons variées (pause manuelle, compte, limite, candidat injoignable) :
-      // toutes ne se reprennent pas depuis le panneau, qui dit quoi faire pour chacun.
-      const stayPaused = otherPaused > 0
-        ? `${candidats(otherPaused)} ${otherPaused > 1 ? 'restent' : 'reste'} en pause pour une autre raison (pause manuelle, compte déconnecté, limite d’envoi…) : la liste des inscrits indique comment ${otherPaused > 1 ? 'les' : 'le'} reprendre.`
-        : undefined;
-      // Contrat §8 : candidats d'autres membres laissés en pause (appelant collaborateur).
-      const otherMembersNotice = (n: number) => (n > 0
-        ? `${candidats(n)} ${n > 1 ? 'inscrits' : 'inscrit'} par d’autres membres ${n > 1 ? 'restent' : 'reste'} en pause : un administrateur ou le membre qui ${n > 1 ? 'les a inscrits peut les' : 'l’a inscrit peut le'} reprendre depuis la liste des inscrits.`
-        : null);
-
-      if (resumable === 0) {
-        const othersText = otherMembersNotice(otherMembers);
-        if (othersText) {
-          toast.warning('Séquence réactivée', {
-            description: [othersText, stayPaused].filter(Boolean).join(' '),
-            ...enrollmentsPanelAction(sequenceId),
-          });
-        } else {
-          toast.success('Séquence réactivée', stayPaused ? { description: stayPaused, ...enrollmentsPanelAction(sequenceId) } : undefined);
-        }
-        return;
-      }
-
-      // Le serveur ne reprend que les pauses de séquence (désactivation,
-      // auto-pause du moteur), garde la date de chaque étape en attente (au plus
-      // tôt dans une minute), ne transforme jamais une attente (acceptation,
-      // réponse) en envoi, et refuse un compte LinkedIn qui n'est plus relié.
-      // Il s'arrête avant la limite de temps d'un appel et compte le reste dans
-      // `remaining` : on le rappelle tant qu'il en reste et qu'il progresse,
-      // puis un seul bilan.
-      // Un candidat resté en pause est relu par l'appel suivant : son dernier
-      // résultat fait foi, il n'est compté qu'une fois.
-      const outcomes = new Map<string, keyof ResumeCounts>();
-      const countsWithoutResults: Required<ResumeCounts> = { resumed: 0, nothing_to_resume: 0, account_unlinked: 0, not_paused: 0, error: 0 };
-      let remaining = 0;
-      // Compte du serveur (contrat §8) quand il le donne ; sinon celui fait au clic.
-      let serverOtherMembers: number | null = null;
-      for (let round = 0; round < MAX_RESUME_ROUNDS; round += 1) {
-        if (round > 0) {
-          toast.loading(`Reprise en cours : ${candidats(remaining)} encore à reprendre…`, { id: `resume-${sequenceId}` });
-        }
-        const { data, error } = await invokeEdgeFunction('process-sequences', {
-          action: 'resume_enrollments',
-          sequence_id: sequenceId,
-          pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS,
-        });
-        const payload = data as ResumeResponse | null;
-        if (error || !payload?.success || !payload.counts) {
-          if (round > 0) break; // Bilan des appels réussis ; le reste est signalé plus bas.
-          // L'interrupteur reste actif : les candidats encore en pause ne
-          // reçoivent rien, rien n'est envoyé à l'insu de l'utilisateur.
-          toast.error('La séquence est réactivée, mais les candidats en pause n’ont pas pu reprendre', {
-            description: `${payload?.message || error?.message || ''} Désactivez puis réactivez la séquence pour réessayer, ou reprenez-les depuis la liste des inscrits.`.trim(),
-            ...enrollmentsPanelAction(sequenceId),
-          });
-          return;
-        }
-        if (serverOtherMembers === null && typeof payload.other_members === 'number') {
-          serverOtherMembers = Math.max(0, payload.other_members);
-        }
-        if (Array.isArray(payload.results)) {
-          for (const r of payload.results) outcomes.set(r.enrollment_id, r.outcome);
-        } else {
-          for (const key of Object.keys(countsWithoutResults) as Array<keyof ResumeCounts>) {
-            countsWithoutResults[key] += payload.counts[key] ?? 0;
-          }
-        }
-        const previous = remaining;
-        remaining = payload.remaining ?? 0;
-        // Plus rien à traiter, ou aucun progrès depuis l'appel précédent.
-        if (remaining === 0 || (round > 0 && remaining >= previous)) break;
-      }
-      toast.dismiss(`resume-${sequenceId}`);
-
-      const tally = { ...countsWithoutResults };
-      for (const outcome of outcomes.values()) {
-        if (outcome in tally) tally[outcome] += 1;
-      }
-      const resumed = tally.resumed;
-      const failed = tally.error;
-      const unlinked = tally.account_unlinked;
-      const nothing = tally.nothing_to_resume;
-      const othersLeft = serverOtherMembers ?? otherMembers;
-
-      // Filet, tous rôles : pauses de séquence encore en place après la reprise.
-      // Celles que le bilan n'explique pas (compte non relié, erreur, reste à
-      // traiter, autres membres) interdisent un succès : il n'y a pas de preuve.
-      const { count: stillPaused, error: recountError } = await supabase
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', sequenceId)
-        .eq('status', 'paused')
-        .in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
-      if (recountError) console.error('Error recounting paused enrollments after resume:', recountError);
-      const unexplained = recountError ? 0 : Math.max(0, (stillPaused ?? 0) - (unlinked + failed + remaining + othersLeft));
-
-      const details = [
-        unlinked > 0 ? `${candidats(unlinked)} ${unlinked > 1 ? 'restent' : 'reste'} en pause : compte LinkedIn qui n’est plus relié.` : null,
-        nothing > 0 ? `${candidats(nothing)} ${nothing > 1 ? 'n’avaient' : 'n’avait'} plus d’étape à envoyer.` : null,
-        remaining > 0 ? `${candidats(remaining)} ${remaining > 1 ? 'n’ont' : 'n’a'} pas encore été ${remaining > 1 ? 'traités' : 'traité'} : reprenez-les depuis la liste des inscrits.` : null,
-        otherMembersNotice(othersLeft),
-        unexplained > 0 ? `${candidats(unexplained)} ${unexplained > 1 ? 'restent' : 'reste'} en pause sans avoir été repris : la liste des inscrits indique comment ${unexplained > 1 ? 'les' : 'le'} reprendre.` : null,
-        recountError ? 'Les candidats encore en pause n’ont pas pu être recomptés : vérifiez la liste des inscrits.' : null,
-        stayPaused ?? null,
-      ].filter((d): d is string => !!d).join(' ');
-      const notAllResumed = othersLeft > 0 || unexplained > 0 || !!recountError;
-      // Candidats restés en pause : la liste des inscrits permet de les reprendre.
-      const panelAction = (remaining > 0 || failed > 0 || unlinked > 0 || stayPaused || notAllResumed) ? enrollmentsPanelAction(sequenceId) : {};
-
-      if (remaining > 0 && failed === 0) {
-        toast.warning(`Séquence réactivée : ${candidats(resumed)} repris pour l’instant`, { description: details, ...panelAction });
-      } else if (failed > 0) {
-        toast.warning(`Séquence réactivée : ${candidats(resumed)} repris, ${failed} en erreur`, {
-          description: `${details} Reprenez les candidats en erreur depuis la liste des inscrits.`.trim(),
-          ...panelAction,
-        });
-      } else if (notAllResumed) {
-        toast.warning(`Séquence réactivée : ${candidats(resumed)} repris`, { description: details, ...panelAction });
-      } else {
-        toast.success(`Séquence réactivée. ${candidats(resumed)} repris.`, details ? { description: details, ...panelAction } : undefined);
-      }
-    } catch (err) {
-      console.error('Error activating sequence:', err);
-      toast.dismiss(`resume-${sequenceId}`);
-      toast.error('La réactivation a échoué. Réessayez.');
-    } finally {
-      setTogglingId(null);
-      fetchSequences();
-    }
-  };
-
-  // Clic sur un interrupteur : confirmation avant de désactiver une séquence
-  // qui a des candidats en cours, ou de réactiver une séquence qui a des
-  // candidats à reprendre.
-  const requestToggle = async (seq: SequenceWithStats) => {
-    if (togglingId) return;
-    // Défense : l'interrupteur n'est rendu que si canEdit.
-    if (!canEdit(seq)) {
-      toast.error('Modification impossible', { description: readOnlyHint(seq) });
-      return;
-    }
-    if (deactivationLocked(seq)) {
-      toast.error('Désactivation réservée', { description: COLLABORATOR_DEACTIVATION_HINT });
-      return;
-    }
-    if (seq.is_active) {
-      // Candidats en cours recomptés en base au clic : le compteur affiché peut
-      // être périmé ou indisponible, et un 0 faux désactivait sans confirmation.
-      setTogglingId(seq.id);
-      const { count: activeNow, error: countError } = await supabase
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', seq.id)
-        .eq('status', 'active');
-      setTogglingId(null);
-      if (countError) {
-        console.error('Error counting active enrollments:', countError);
-        toast.error('Les candidats en cours n’ont pas pu être comptés. Réessayez.');
-        return;
-      }
-      if ((activeNow ?? 0) > 0) {
-        setToggleConfirm({ id: seq.id, nextActive: false, activeCount: activeNow ?? 0, shared: !seq.project_id });
-        return;
-      }
-      await deactivateSequence(seq.id);
-      return;
-    }
-    // Activer (pas désactiver) exige un plan qui autorise l'envoi de séquences,
-    // donc un état d'abonnement lu (décision 32).
-    if (planStateUnknown) {
-      if (isPlanLoadError) {
-        void refetchPlan();
-        toast.error(PLAN_STATE_UNREADABLE_MESSAGE);
-      } else {
-        toast.info(PLAN_STATE_LOADING_MESSAGE);
-      }
-      return;
-    }
-    if (!canSendSequences) {
-      toast.error("L'envoi de séquences nécessite un abonnement", {
-        action: { label: 'Voir les plans', onClick: () => navigate('/pricing') },
-      });
-      return;
-    }
-    setTogglingId(seq.id);
-    let resumable = 0;
-    let otherPaused = 0;
-    let otherMembers = 0;
-    try {
-      const pausedCount = (withReason: boolean, createdBy: string | null = null) => {
-        let q = supabase
-          .from('sequence_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('sequence_id', seq.id)
-          .eq('status', 'paused');
-        if (withReason) q = q.in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
-        if (createdBy) q = q.eq('created_by', createdBy);
-        return q;
-      };
-      // D3 : pour un collaborateur, le serveur ne reprend que les candidats qu'il
-      // a inscrits. Ceux des autres membres (visibles sur sa séquence) restent
-      // en pause : comptés à part pour ne pas les annoncer comme repris.
-      const ownerFilter = isCollaborator ? userId : null;
-      const [resumableRes, pausedRes, ownRes] = await Promise.all([
-        pausedCount(true),
-        pausedCount(false),
-        ownerFilter ? pausedCount(true, ownerFilter) : Promise.resolve(null),
-      ]);
-      if (resumableRes.error || pausedRes.error || ownRes?.error) throw resumableRes.error || pausedRes.error || ownRes?.error;
-      const sequencePaused = resumableRes.count ?? 0;
-      resumable = ownRes ? Math.min(sequencePaused, ownRes.count ?? 0) : sequencePaused;
-      otherMembers = sequencePaused - resumable;
-      otherPaused = Math.max(0, (pausedRes.count ?? 0) - sequencePaused);
-    } catch (err) {
-      console.error('Error counting paused enrollments:', err);
-      toast.error('La séquence n’a pas pu être réactivée. Réessayez.');
-      setTogglingId(null);
-      return;
-    }
-    setTogglingId(null);
-    if (resumable > 0) {
-      setActivateConfirm({ id: seq.id, resumable, otherPaused, otherMembers });
-      return;
-    }
-    await activateSequence(seq.id, 0, otherPaused, otherMembers);
-  };
-
-  const handleDelete = async (sequenceId: string) => {
-    try {
-      // .select('id') : un refus d'accès supprime 0 ligne sans erreur.
-      const { data: deleted, error } = await supabase
-        .from('outreach_sequences')
-        .delete()
-        .eq('id', sequenceId)
-        .select('id');
-
-      if (error) throw error;
-      if (!deleted || deleted.length === 0) {
-        toast.error('Suppression impossible', { description: 'Vous n’avez pas les droits sur cette séquence.' });
-        return;
-      }
-
-      setSequences(prev => prev.filter(s => s.id !== sequenceId));
-      toast.success('Séquence supprimée');
-      // Les chiffres de la mission (inscrits retirés avec la séquence) suivent.
-      void fetchSequences();
-    } catch (err) {
-      console.error('Error deleting sequence:', err);
-      toast.error('Impossible de supprimer la séquence', { description: 'Réessayez dans un instant.' });
-    } finally {
-      setDeleteConfirmId(null);
-    }
-  };
-
-  const handleDuplicate = async (seq: SequenceWithStats) => {
-    // Séquence d'une autre organisation : ses étapes sont illisibles (RLS) et
-    // ses expéditeurs ne sont pas les miens, la copie ne pourrait rien envoyer.
-    // Double clic : une seule copie.
-    if (!canManage(seq) || duplicatingRef.current) return;
-    duplicatingRef.current = true;
-    setDuplicatingId(seq.id);
-    // En-tête créé : supprimé si la copie des étapes échoue (sinon une
-    // séquence vide restait et un nouvel essai en créait une seconde).
-    let createdCopyId: string | null = null;
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié');
-      if (!organizationId) throw new Error('Organisation introuvable : rechargez la page');
-
-      // 1. Charge les steps réelles depuis la DB
-      const { data: steps, error: stepsErr } = await (supabase
-        .from('sequence_steps')
-        .select('*')
-        .eq('sequence_id', seq.id)
-        .order('step_order', { ascending: true }) as any);
-      if (stepsErr) throw sequenceSaveError(stepsErr);
-
-      // 2. Crée la nouvelle séquence avec un nom suffixé "(copie)"
-      const { data: newSeq, error: seqErr } = await (supabase
-        .from('outreach_sequences')
-        .insert({
-          name: `${seq.name} (copie)`,
-          description: seq.description,
-          is_active: false, // toujours inactive par défaut, l'user choisit quand activer
-          created_by: user.id,
-          organization_id: organizationId,
-          ...(projectId ? { project_id: projectId } : {}),
-          // Garde-fous et expéditeurs : la copie doit s'arrêter et tourner
-          // entre comptes comme l'originale.
-          stop_conditions: seq.stop_conditions ?? null,
-          sender_accounts: seq.sender_accounts ?? null,
-          rotation_mode: seq.rotation_mode ?? null,
-          multi_sender_enabled: seq.multi_sender_enabled ?? false,
-        } as any)
-        .select()
-        .single() as any);
-      if (seqErr || !newSeq) throw sequenceSaveError(seqErr);
-      createdCopyId = newSeq.id;
-
-      // 3. Re-crée les steps via la RPC transactionnelle. On passe les ANCIENS
-      // ids comme ids « client » : n'appartenant pas à la nouvelle séquence,
-      // la RPC insère des copies et REMAPPE les refs de branchement
-      // (next_step_id, if_true/false_goto, timeout_branch) vers les nouveaux
-      // ids. L'ancien insert brut copiait ces refs telles quelles → la copie
-      // exécutait les steps de la séquence SOURCE (audit 2026-07, Builder H1).
-      if (steps && steps.length > 0) {
-        const payload = (steps as any[]).map((s: any) => ({
-          id: s.id,
-          step_order: s.step_order,
-          action_type: s.action_type,
-          condition_type: s.condition_type,
-          condition_value: s.condition_value ?? null,
-          delay_days: s.delay_days ?? 0,
-          delay_hours: s.delay_hours ?? 0,
-          delay_minutes: s.delay_minutes ?? 0,
-          preferred_hour_start: s.preferred_hour_start ?? null,
-          preferred_hour_end: s.preferred_hour_end ?? null,
-          subject_template: s.subject_template ?? null,
-          message_template: s.message_template ?? null,
-          use_ai_personalization: s.use_ai_personalization ?? false,
-          ai_tone: s.ai_tone ?? null,
-          // Même délai par défaut qu'à l'ouverture dans l'éditeur : une attente
-          // sans délai attendait sans fin dans la copie (le moteur ne l'applique
-          // qu'aux attentes sans événement).
-          timeout_days: s.timeout_days ?? (TIMEOUT_REQUIRED_ACTIONS.includes(s.action_type) ? DEFAULT_WAIT_TIMEOUT_DAYS : null),
-          wait_for_event: implicitWaitEvent(s.action_type, s.wait_for_event),
-          variant_group: s.variant_group ?? null,
-          variant_weight: s.variant_weight ?? 100,
-          // Mêmes clés que buildStepsPayload : sans elles, la RPC remettait la
-          // fin de séquence à false et les options e-mail (dont le lien de
-          // désinscription) à NULL dans la copie.
-          ends_sequence: s.ends_sequence ?? false,
-          cc_emails: s.cc_emails ?? null,
-          bcc_emails: s.bcc_emails ?? null,
-          include_unsubscribe: s.include_unsubscribe ?? null,
-          signature_id: s.signature_id ?? null,
-          if_true_goto_step: s.if_true_goto_step ?? null,
-          if_false_goto_step: s.if_false_goto_step ?? null,
-          timeout_branch_step_id: s.timeout_branch_step_id ?? null,
-          next_step_id: s.next_step_id ?? null,
-        }));
-        const { error: stepsCreateErr } = await supabase.rpc('save_sequence_steps', {
-          p_sequence_id: newSeq.id,
-          p_steps: payload,
-        });
-        if (stepsCreateErr) throw sequenceSaveError(stepsCreateErr);
-      }
-      createdCopyId = null;
-
-      toast.success(`Séquence dupliquée : "${newSeq.name}"`, {
-        description: 'La copie reste inactive tant que vous ne l’activez pas.',
-      });
-      // Refresh la liste
-      await fetchSequences();
-    } catch (err) {
-      console.error('Error duplicating sequence:', err);
-      if (createdCopyId) {
-        const { error: cleanupError } = await supabase
-          .from('outreach_sequences')
-          .delete()
-          .eq('id', createdCopyId);
-        if (cleanupError) console.error('Error removing empty copy after failed steps copy:', cleanupError);
-      }
-      toast.error('Impossible de dupliquer la séquence', {
-        description: err instanceof Error ? err.message : undefined,
-      });
-    } finally {
-      duplicatingRef.current = false;
-      setDuplicatingId(null);
-    }
-  };
-
-  const handleEdit = async (seq: SequenceWithStats) => {
-    // Contrat §8 : l'éditeur ne s'ouvre pas sur une séquence non modifiable. Un
-    // collaborateur y réécrivait les messages d'un collègue, puis tout était
-    // refusé à l'enregistrement (SEQUENCE_NOT_OWNER), sans brouillon gardé.
-    if (!canEdit(seq)) {
-      toast.error('Modification impossible', { description: readOnlyHint(seq) });
-      return;
-    }
-    // Étapes relues en base à l'ouverture : la liste peut dater de l'arrivée
-    // sur la page (étape ajoutée depuis par un collègue), ou ne pas avoir pu
-    // les charger. Sans elles, l'éditeur ne s'ouvre pas : un enregistrement
-    // depuis un éditeur vide effaçait les étapes réelles et leurs envois prévus.
-    const [{ data: freshSteps, error: stepsError }, { count: activeNow, error: activeError }] = await Promise.all([
-      supabase
-        .from('sequence_steps')
-        .select('*')
-        .eq('sequence_id', seq.id)
-        .order('step_order', { ascending: true }),
-      // Candidats en cours, pour que l'éditeur annonce l'effet des modifications.
-      supabase
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', seq.id)
-        .eq('status', 'active'),
-    ]);
-    if (activeError) console.error('Error counting active enrollments for edit:', activeError);
-    setEditingActiveCount(activeError ? undefined : (activeNow ?? 0));
-    if (stepsError) {
-      console.error('Error loading sequence steps for edit:', stepsError);
-      toast.error('Impossible de charger le détail de cette séquence', {
-        description: 'Vérifiez votre connexion puis réessayez.',
-      });
-      return;
-    }
-    // Même forme que les étapes de la liste (colonnes récentes absentes des types générés).
-    const steps: SequenceWithStats['steps'] = freshSteps || [];
-    editorBaseStepIdsRef.current = { sequenceId: seq.id, stepIds: new Set(steps.map(s => s.id)) };
-
-    const sequence: Sequence = {
-      id: seq.id,
-      name: seq.name,
-      description: seq.description || undefined,
-      isActive: seq.is_active,
-      // Recharger les réglages d'en-tête : sans eux, l'éditeur affichait les
-      // valeurs par défaut et l'enregistrement effaçait ceux de la séquence.
-      stopConditions: { ...DEFAULT_STOP_CONDITIONS, ...(seq.stop_conditions ?? {}) },
-      senderAccounts: seq.sender_accounts ?? [],
-      rotationMode: seq.rotation_mode ?? 'round_robin',
-      multiSenderEnabled: !!seq.multi_sender_enabled,
-      // Même lecture que le choix de modèle (rowToSequenceStep) : variantes,
-      // options e-mail, renvois, « Fin de séquence » et « Si timeout » déduit de
-      // l'étape de repli. S'y ajoutent les valeurs que l'éditeur affiche par
-      // défaut quand la colonne est vide (seuil de score, délai d'attente).
-      steps: steps.map(s => ({
-        ...rowToSequenceStep(s),
-        conditionValue: s.condition_value?.trim()
-          ? s.condition_value
-          : (s.condition_type === 'if_score_above' ? DEFAULT_SCORE_THRESHOLD : undefined),
-        timeoutDays: s.timeout_days
-          ?? (TIMEOUT_REQUIRED_ACTIONS.includes(s.action_type) ? DEFAULT_WAIT_TIMEOUT_DAYS : undefined),
-      })),
-    };
-    setEditingSequence(sequence);
-    setShowBuilder(true);
-  };
+  const {
+    handleNudgeToday,
+    activateSequence,
+    requestToggle,
+    handleDelete,
+    handleDuplicate,
+    handleEdit,
+  } = createSequenceListActions({
+    supabase, invokeEdgeFunction, toast, navigate,
+    organizationId, projectId, userId, isCollaborator,
+    sequences, setSequences, fetchSequences, togglingId, setTogglingId,
+    canManage, canEdit, readOnlyHint, deactivationLocked, enrollmentsPanelAction,
+    offerUndo, resumeIds, showSummary,
+    planRef, refetchPlan, planStateUnknown, isPlanLoadError, canSendSequences,
+    missionSequenceIds, setNudging, setNudgeConfirmOpen,
+    setActivateConfirm, setDeleteConfirmId, duplicatingRef, setDuplicatingId,
+    editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
+  });
 
   const handleCreateNew = () => {
     setShowTemplateSelector(true);
@@ -1309,7 +474,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 {channels.map(channel => <ChannelIcon key={channel} channel={channel} size="sm" />)}
               </span>
             )}
-            <p className="min-w-0 break-words text-sm font-medium text-foreground">{seq.name}</p>
+            {sequencesBeta ? (
+              <Link
+                to={sequencePath(seq.id, projectId)}
+                className="min-w-0 break-words text-sm font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {seq.name}
+              </Link>
+            ) : (
+              <p className="min-w-0 break-words text-sm font-medium text-foreground">{seq.name}</p>
+            )}
             {/* Séquence rattachée à aucune mission : elle apparaît et envoie dans
                 toutes les missions (ce n'est pas un modèle). */}
             {!seq.project_id && (
@@ -1714,6 +888,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {renderBody()}
 
+      {sequencesBeta && (
+        <Link
+          to={SEQUENCES_PATH}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+        >
+          Toutes les séquences de l'organisation
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+      )}
+
       {/* Template Selector */}
       <SequenceTemplateSelector
         isOpen={showTemplateSelector}
@@ -1842,7 +1026,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       {(!countsKnown || total > 0) && (
                         <p>
                           Ces candidats ne seront plus signalés comme déjà contactés lors d'une prochaine inscription.
-                          Préférez la désactivation si vous voulez garder cette protection.
+                          Préférez la mise en pause de la séquence si vous voulez garder cette protection.
                         </p>
                       )}
                     </>
@@ -1858,43 +1042,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               className="bg-destructive hover:bg-destructive/90"
             >
               Supprimer définitivement
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Désactivation d'une séquence qui a des candidats en cours */}
-      <AlertDialog open={!!toggleConfirm} onOpenChange={() => setToggleConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Désactiver cette séquence ?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>
-                  {(toggleConfirm?.activeCount || 0) > 1 ? 'Les ' : 'Le '}
-                  <strong>{toggleConfirm?.activeCount}</strong> candidat{(toggleConfirm?.activeCount || 0) > 1 ? 's' : ''} en
-                  cours {(toggleConfirm?.activeCount || 0) > 1 ? 'seront mis' : 'sera mis'} en pause. Aucun message ne partira tant que la séquence est désactivée.
-                </p>
-                {toggleConfirm?.shared && (
-                  <p className="font-medium text-foreground">
-                    Cette séquence est partagée entre vos missions : ses candidats des autres missions seront aussi mis en pause.
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Vous pourrez la réactiver à tout moment. Les envois prévus pendant la pause partiront à la réactivation, sans être avancés. Les attentes en cours (acceptation, réponse) reprennent telles quelles.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (toggleConfirm) void deactivateSequence(toggleConfirm.id);
-                setToggleConfirm(null);
-              }}
-            >
-              Désactiver
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

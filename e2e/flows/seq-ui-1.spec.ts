@@ -17,6 +17,7 @@
  * ses propres identifiants de compte et de profil ; les exécutions échues
  * sont insérées en dernier.
  */
+import { createHash } from 'node:crypto';
 import type { Browser, BrowserContext, Locator, Page, Route } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import {
@@ -836,6 +837,10 @@ test.describe('Préparation d\'inscription', () => {
     await expect(dialog.getByText(edited)).toBeVisible();
     expect(aiCalls.length).toBe(4);
 
+    // Lot 5a-2 : les deux messages IA de chaque candidat sont générés (4 appels) ;
+    // reste la case de relecture, obligatoire quel que soit le nombre de candidats.
+    await expect(dialog.getByRole('button', { name: 'Inscrire 2 candidats' })).toBeDisabled();
+    await dialog.getByRole('checkbox', { name: "J'ai relu les messages rédigés par l'IA" }).check();
     await dialog.getByRole('button', { name: 'Inscrire 2 candidats' }).click();
     await expect(toast(page, '2 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
 
@@ -989,6 +994,248 @@ test.describe('Préparation d\'inscription', () => {
     await expect(toast(asOwner.page, '2 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
     const { data: enrolled } = await admin().from('sequence_enrollments').select('profile_id').eq('sequence_id', target.id);
     expect((enrolled ?? []).map((r) => r.profile_id).sort()).toEqual([jeanne.id, voisine.id].sort());
+  });
+
+  // lot5a-case-destinataires (décision 4 du lot 5)
+  test('@critical lot 5a : dès 5 candidats, « Inscrire N candidats » reste grisé jusqu\'à la case « Je confirme les destinataires », avec le premier message ; un retrait décoche la case', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Destinataires ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'message', message_template: 'Bonjour {{first_name}}, un poste pourrait vous plaire.', delay_days: 0 }],
+    });
+    const people = ['Alice', 'Bruno', 'Chloe', 'David', 'Emma', 'Fanny'].map((first) => makeProfile(first, 'Destinataire'));
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+
+    const box = dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' });
+    await expect(box).toBeVisible();
+    await expect(box).not.toBeChecked();
+    await expect(box).toHaveAccessibleDescription('Obligatoire à partir de 5 candidats.');
+    // Premier message en entier, au-dessus de la case.
+    const firstMessage = dialog.getByRole('region', { name: /^Premier message, pour / });
+    await expect(firstMessage).toContainText('Bonjour Alice, un poste pourrait vous plaire.');
+    await expect(dialog.getByRole('button', { name: 'Inscrire 6 candidats', exact: true })).toBeDisabled();
+    await box.check();
+    await expect(dialog.getByRole('button', { name: 'Inscrire 6 candidats', exact: true })).toBeEnabled();
+
+    // Un candidat retiré : la liste change, la case se décoche.
+    await dialog.getByRole('button', { name: 'Actions pour Fanny Destinataire' }).click();
+    await page.getByRole('menuitem', { name: 'Retirer de la sélection' }).click();
+    await expect(box).not.toBeChecked();
+    await expect(dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true })).toBeDisabled();
+    await box.check();
+    await dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true }).click();
+    await expect(toast(page, '5 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
+    const { count } = await admin().from('sequence_enrollments').select('id', { count: 'exact', head: true }).eq('sequence_id', seq.id);
+    expect(count).toBe(5);
+  });
+
+  // lot5a-case-destinataires : message rédigé par l'IA sans modèle (l'éditeur l'accepte)
+  test('lot 5a : séquence IA sans modèle, 5 candidats : préparation avec aperçu, premier message annoncé comme rédigé par l\'IA, jamais « Aucun message écrit »', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `IA sans modèle ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [
+        { action_type: 'profile_visit', delay_days: 0 },
+        { action_type: 'message', message_template: null, use_ai_personalization: true, delay_days: 1 },
+        { action_type: 'message', message_template: 'Relance {{first_name}}', delay_days: 3 },
+      ],
+    });
+    const people = ['Alice', 'Bruno', 'Chloe', 'David', 'Emma'].map((first) => makeProfile(first, 'Redaction'));
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], {
+      profiles: people,
+      aiMessage: (body) => ({ subject: '', message: `Message IA pour ${(body.profile as { name?: string } | undefined)?.name}` }),
+    });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+
+    const firstMessage = dialog.getByRole('region', { name: /^Premier message, pour / });
+    await expect(firstMessage).toContainText("Message rédigé par l'IA Konekt pour ce candidat : générez-le pour le relire.");
+    await expect(firstMessage.getByRole('button', { name: "Générer l'aperçu" })).toBeVisible();
+    // La relance écrite n'est pas présentée comme premier message.
+    await expect(firstMessage).not.toContainText('Relance Alice');
+    await expect(dialog.getByText('Aucun message écrit', { exact: false })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true })).toBeDisabled();
+    // Lot 5a-2 : dès 5 candidats, une seule case pour les destinataires et la
+    // relecture, grisée tant qu'un message IA reste à générer.
+    const box = dialog.getByRole('checkbox', { name: "Je confirme les destinataires et j'ai relu les messages rédigés par l'IA" });
+    await expect(box).toBeDisabled();
+    await expect(dialog.getByText("Générez et relisez les messages rédigés par l'IA avant d'inscrire : 5 candidats sur 5 n'en ont pas encore.")).toBeVisible();
+    await dialog.getByRole('button', { name: 'Générer tous les aperçus' }).click();
+    await expect(dialog.getByText(/Générez et relisez les messages rédigés par l'IA avant d'inscrire/)).toHaveCount(0, { timeout: 20_000 });
+    await box.check();
+    await expect(dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true })).toBeEnabled();
+  });
+
+  // lot5a-case-destinataires : sous le seuil
+  test('lot 5a : 4 candidats, pas de case, « Inscrire 4 candidats » actif', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Quatre ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'message', message_template: 'Bonjour {{first_name}}', delay_days: 0 }],
+    });
+    const people = ['Alice', 'Bruno', 'Chloe', 'David'].map((first) => makeProfile(first, 'Quatre'));
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+    await expect(dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Inscrire 4 candidats', exact: true })).toBeEnabled();
+  });
+
+  // lot5a-recapitulatif-apercu (plus de 10 candidats)
+  test('lot 5a : 11 candidats, le Récapitulatif montre « Aperçu du premier message » avec ‹ ›, et la case est obligatoire', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Récapitulatif ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'message', message_template: 'Bonjour {{first_name}}, êtes-vous ouvert à un échange ?', delay_days: 0 }],
+    });
+    const firsts = ['Alice', 'Bruno', 'Chloe', 'David', 'Emma', 'Fanny', 'Gaspard', 'Hugo', 'Ines', 'Jules', 'Karim'];
+    const people = firsts.map((first) => makeProfile(first, 'Recap'));
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+
+    const block = dialog.getByRole('region', { name: 'Aperçu du premier message' });
+    await expect(block).toBeVisible();
+    await expect(block).toContainText('1 sur 11');
+    await expect(block).toContainText('Bonjour Alice, êtes-vous ouvert à un échange ?');
+    await expect(block.getByRole('button', { name: 'Candidat précédent' })).toBeDisabled();
+    await block.getByRole('button', { name: 'Candidat suivant' }).click();
+    await expect(block).toContainText('2 sur 11');
+    await expect(block).toContainText('Bonjour Bruno, êtes-vous ouvert à un échange ?');
+
+    const enrollButton = dialog.getByRole('button', { name: 'Inscrire 11 candidats', exact: true });
+    await expect(enrollButton).toBeDisabled();
+    await dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' }).check();
+    await expect(enrollButton).toBeEnabled();
+  });
+
+  // lot5d1-apercu-reel : étapes écrites rendues avec les valeurs du serveur (preview_values)
+  test('@critical lot 5d-1 : l\'aperçu d\'une étape écrite est le texte que le moteur envoie (prénom non fiable, titre « X chez Y », ville), sans copie dans message_overrides', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    // Variable personnelle « ville » de l'expéditeur : le moteur en fait {{city}}.
+    const { error: varErr } = await admin().from('user_template_variables')
+      .insert({ user_id: org.owner.userId, organization_id: org.orgId, key: 'ville', value: 'Lyon' });
+    if (varErr) throw new Error(`user_template_variables: ${varErr.message}`);
+    const template = 'Bonjour {{prenom | fallback:"à vous"}}, vous êtes {{poste_actuel}} chez {{entreprise_actuelle | fallback:"votre entreprise"}}. '
+      + 'Nous recrutons un {{poste_recherche}} à {{city}}.';
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Aperçu réel ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'message', message_template: template, delay_days: 0 }],
+    });
+    const tag = rand();
+    // « Dr » en tête du nom : prénom non fiable, salutation neutre (règle du moteur).
+    const julie = makeProfile('Dr', 'Julie Martin', { headline: 'Directrice financière chez Acme | Ex-Big4', public_identifier: `julie-martin-${tag}` });
+    const marc = makeProfile('Marc', 'Lefèvre', { headline: 'Développeur Go · Freelance', public_identifier: `marc-lefevre-${tag}` });
+    const sophie = makeProfile('Sophie', 'Bernard', { headline: 'Responsable RH at Initech', public_identifier: `sophie-bernard-${tag}` });
+    const people = [julie, marc, sophie];
+    // Règle du moteur : prénom seulement s'il est fiable, poste et entreprise tirés du titre LinkedIn, mission, ville.
+    const expected = new Map([
+      [julie.id, 'Bonjour à vous, vous êtes Directrice financière chez Acme. Nous recrutons un Senior Backend Engineer à Lyon.'],
+      [marc.id, 'Bonjour Marc, vous êtes Développeur Go chez votre entreprise. Nous recrutons un Senior Backend Engineer à Lyon.'],
+      [sophie.id, 'Bonjour Sophie, vous êtes Responsable RH chez Initech. Nous recrutons un Senior Backend Engineer à Lyon.'],
+    ]);
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+
+    // Chaque candidat : le texte du moteur, rendu d'office (aucun bouton à cliquer, aucun crédit).
+    const card = dialog.getByRole('article', { name: /^Étape 1 :/ });
+    for (const p of people) {
+      await dialog.locator(`[data-candidate-id="${p.id}"]`).click();
+      await expect(card).toContainText(expected.get(p.id)!, { timeout: 30_000 });
+    }
+    await expect(dialog.getByRole('button', { name: /Voir l'aperçu/ })).toHaveCount(0);
+
+    await dialog.getByRole('button', { name: 'Inscrire 3 candidats', exact: true }).click();
+    await expect(toast(page, '3 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
+
+    // Étape écrite non retouchée : aucune copie dans message_overrides, le moteur la rend à l'envoi.
+    const { data: rows } = await admin().from('sequence_enrollments').select('profile_id, tracking_data').eq('sequence_id', seq.id);
+    expect(rows ?? []).toHaveLength(3);
+    for (const row of rows ?? []) {
+      const overrides = (row.tracking_data as { message_overrides?: Record<string, unknown> } | null)?.message_overrides ?? {};
+      expect(overrides[seq.stepIds[0]], `aucune copie de l'aperçu pour ${row.profile_id}`).toBeUndefined();
+    }
+
+    // Le faux LinkedIn reçoit exactement les textes affichés.
+    for (let i = 0; i < 6 && (await sentTexts(accountId)).length < 3; i++) await runCycle({ force: true });
+    expect([...(await sentTexts(accountId))].sort()).toEqual([...expected.values()].sort());
+  });
+
+  // lot5d1-relecture : prêt seulement avec ses valeurs, objet d'un InMail écrit gardé, « Revenir au modèle »
+  test('@critical lot 5d-1 (relecture) : un candidat effacé ne compte jamais prêt, la retouche d\'un InMail écrit garde son objet, « Revenir au modèle » rend le message de la séquence', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Aperçu relecture ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'inmail', subject_template: 'Poste de {{poste_recherche}}', message_template: 'Bonjour {{prenom}}, un mot sur le poste.', delay_days: 0 }],
+    });
+    const tag = rand();
+    // Hors de son réseau : une séquence en InMail seul les atteint.
+    const julie = makeProfile('Julie', 'Martin', { public_identifier: `julie-relecture-${tag}`, network_distance: 'SECOND_DEGREE' });
+    const marc = makeProfile('Marc', 'Lefèvre', { public_identifier: `marc-relecture-${tag}`, network_distance: 'SECOND_DEGREE' });
+    const eve = makeProfile('Eve', 'Efface', { public_identifier: `eve-efface-${tag}`, network_distance: 'SECOND_DEGREE' });
+    // Eve a demandé l'effacement de ses données (registre global, empreinte de l'URL normalisée).
+    const { data: erasure, error: erasureErr } = await admin().from('gdpr_erasures')
+      .insert({ linkedin_url_hash: createHash('sha256').update(eve.profile_url.toLowerCase()).digest('hex'), reason: 'user_request', source: 'e2e-seq-ui-1-5d1' })
+      .select('id').single();
+    if (erasureErr || !erasure) throw new Error(`gdpr_erasures: ${erasureErr?.message}`);
+    cleanups.push(() => admin().from('gdpr_erasures').delete().eq('id', erasure.id));
+    const people = [julie, marc, eve];
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+    const card = dialog.getByRole('article', { name: /^Étape 1 :/ });
+
+    // Effacée : la raison à la place du texte, et jamais comptée prête.
+    await dialog.locator(`[data-candidate-id="${eve.id}"]`).click();
+    await expect(card).toContainText("Ce candidat a demandé l'effacement de ses données : aucun aperçu.", { timeout: 30_000 });
+    await expect(dialog.getByText('Aperçus prêts : 2 sur 3')).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText('Aperçus prêts : 3 sur 3')).toHaveCount(0);
+
+    // Julie : retouche, puis « Revenir au modèle » (une étape écrite ne se régénère pas).
+    await dialog.locator(`[data-candidate-id="${julie.id}"]`).click();
+    await expect(card).toContainText('Bonjour Julie, un mot sur le poste.', { timeout: 30_000 });
+    await card.getByRole('button', { name: 'Modifier le message' }).click();
+    await card.getByRole('textbox').fill('Bonjour Julie, je reviens vers vous.');
+    await card.getByRole('button', { name: 'Voir le message' }).click();
+    await expect(card).toContainText('Bonjour Julie, je reviens vers vous.');
+    await expect(card.getByRole('button', { name: /^Régénérer ce message/ })).toHaveCount(0);
+    await card.getByRole('button', { name: 'Revenir au modèle' }).click();
+    const confirm = page.getByRole('alertdialog', { name: 'Remplacer votre modification ?' });
+    await expect(confirm).toContainText('Votre modification sera remplacée par le message de la séquence, rendu pour ce candidat.');
+    await expect(confirm).not.toContainText('nouvelle version générée');
+    await confirm.getByRole('button', { name: 'Revenir au modèle' }).click();
+    await expect(card).toContainText('Bonjour Julie, un mot sur le poste.');
+    await expect(card.getByText('Modifié', { exact: true })).toHaveCount(0);
+
+    // Nouvelle retouche, gardée à l'inscription : l'objet rendu part avec elle.
+    await card.getByRole('button', { name: 'Modifier le message' }).click();
+    await card.getByRole('textbox').fill('Bonjour Julie, je reviens vers vous.');
+    await card.getByRole('button', { name: 'Voir le message' }).click();
+
+    // Eve retirée : 2 candidats inscrits.
+    await dialog.getByRole('button', { name: 'Actions pour Eve Efface' }).click();
+    await page.getByRole('menuitem', { name: 'Retirer de la sélection' }).click();
+    await dialog.getByRole('button', { name: 'Inscrire 2 candidats', exact: true }).click();
+    await expect(toast(page, '2 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
+    const { data: rows } = await admin().from('sequence_enrollments').select('profile_id, tracking_data').eq('sequence_id', seq.id);
+    expect(rows ?? []).toHaveLength(2);
+    const overridesOf = (profileId: string) => ((rows ?? []).find((r) => r.profile_id === profileId)?.tracking_data as
+      { message_overrides?: Record<string, { subject?: string; message?: string; isEdited?: boolean }> } | null)?.message_overrides ?? {};
+    expect(overridesOf(julie.id)[seq.stepIds[0]]).toEqual({
+      subject: 'Poste de Senior Backend Engineer',
+      message: 'Bonjour Julie, je reviens vers vous.',
+      isEdited: true,
+    });
+    expect(overridesOf(marc.id)[seq.stepIds[0]], 'étape écrite non retouchée : aucune copie').toBeUndefined();
   });
 
   // inmail-groupe-texte-corrige-planifie
@@ -1317,7 +1564,7 @@ test.describe('Journal', () => {
     await expect(sheet.getByRole('button', { name: /^Paula Pause/ })).toContainText('En pause');
     await expect(row.getByRole('button', { name: 'Ne pas envoyer cette étape' })).toHaveCount(0);
     row = await journalRow(sheet, 'Denis Desactive');
-    await expect(row.getByText("Séquence désactivée : ne partira pas tant qu'elle n'est pas réactivée.")).toBeVisible();
+    await expect(row.getByText("Séquence en pause : ne partira pas tant qu'elle n'est pas réactivée.")).toBeVisible();
     await expect(row.getByRole('button', { name: 'Ne pas envoyer cette étape' })).toHaveCount(0);
 
     // Camille : l'étape est sautée par le serveur, la suivante est planifiée.
@@ -1406,7 +1653,8 @@ async function inactiveSequenceWithPauses(org: { orgId: string; owner: TestUser 
 
 test.describe('Liste des séquences', () => {
   // liste-desactiver-jamais-de-faux-succes
-  test('désactiver n\'annonce jamais de succès sans preuve : sans candidat, pas de dialogue ; candidats restés actifs ; refus silencieux ; comptage en échec', async ({ browser, org }) => {
+  // Lot 5b (décision 3) : la mise en pause de la séquence part sans fenêtre, avec « Annuler ».
+  test('désactiver n\'annonce jamais de succès sans preuve : sans candidat, pas de dialogue ; candidats restés actifs ; refus silencieux ; recompte en échec', async ({ browser, org }) => {
     const { missionId, accountId } = await workspace(org);
     const empty = await seedSeq(org.orgId, org.owner.userId, { name: `Sans candidat ui-1 ${rand()}`, projectId: missionId });
     const busy = await seedSeq(org.orgId, org.owner.userId, { name: `Avec candidat ui-1 ${rand()}`, projectId: missionId });
@@ -1418,9 +1666,9 @@ test.describe('Liste des séquences', () => {
     const { page } = await openAs(browser, org.owner, [{ id: accountId }]);
     await openOutreach(page, missionId, empty.name);
 
-    // (a) Aucun candidat en cours : pas de dialogue, désactivée avec preuve.
+    // (a) Aucun candidat en cours : pas de dialogue, mise en pause avec preuve.
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${empty.name}` }).click();
-    await expect(toast(page, /Séquence désactivée\. Aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
+    await expect(toast(page, /Séquence mise en pause : aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     expect(await sequenceActive(empty.id)).toBe(false);
 
@@ -1437,7 +1685,7 @@ test.describe('Liste des séquences', () => {
       return route.fallback();
     });
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${busy.name}` }).click();
-    await page.getByRole('alertdialog', { name: 'Désactiver cette séquence ?' }).getByRole('button', { name: 'Désactiver', exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
     const stillActive = toast(page, 'La séquence reste active');
     await expect(stillActive).toBeVisible({ timeout: 15_000 });
     await expect(stillActive).toHaveAttribute('data-type', 'error');
@@ -1445,7 +1693,7 @@ test.describe('Liste des séquences', () => {
     expect(await sequenceActive(busy.id), 'la séquence reste active').toBe(true);
     await page.unroute('**/rest/v1/sequence_enrollments**');
 
-    // (c) L'interrupteur est refusé en silence (0 ligne) : « Désactivation impossible ».
+    // (c) L'interrupteur est refusé en silence (0 ligne) : « Mise en pause impossible ».
     await page.route('**/rest/v1/outreach_sequences**', async (route) => {
       const req = route.request();
       if (req.method() === 'PATCH' && req.url().includes(refused.id)) {
@@ -1454,24 +1702,28 @@ test.describe('Liste des séquences', () => {
       return route.fallback();
     });
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${refused.name}` }).click();
-    await expect(toast(page, 'Désactivation impossible')).toBeVisible({ timeout: 15_000 });
+    await expect(toast(page, 'Mise en pause impossible')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('switch', { name: `Mettre en pause la séquence ${refused.name}` })).toBeChecked();
     expect(await sequenceActive(refused.id)).toBe(true);
     await page.unroute('**/rest/v1/outreach_sequences**');
 
-    // (d) Le comptage des candidats en cours échoue : aucune écriture.
-    const writes: string[] = [];
+    // (d) Lot 5b : plus de comptage avant la pause. Le recompte qui suit la
+    // mise en pause des inscriptions échoue : l'interrupteur n'est jamais écrit.
+    const seqWrites: string[] = [];
     await page.route('**/rest/v1/sequence_enrollments**', async (route) => {
       const req = route.request();
       if (!req.url().includes(countFail.id)) return route.fallback();
       if (req.method() === 'HEAD') return route.fulfill({ status: 500, headers: { 'access-control-allow-origin': '*' }, body: '' });
-      if (req.method() === 'PATCH') writes.push(req.url());
       return route.fallback();
     });
-    page.on('request', (req) => { if (req.method() === 'PATCH' && req.url().includes(countFail.id)) writes.push(req.url()); });
+    page.on('request', (req) => {
+      if (req.method() === 'PATCH' && req.url().includes('/rest/v1/outreach_sequences') && req.url().includes(countFail.id)) seqWrites.push(req.url());
+    });
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${countFail.name}` }).click();
-    await expect(toast(page, /Les candidats en cours n.ont pas pu être comptés/)).toBeVisible({ timeout: 15_000 });
-    expect(writes, 'aucune écriture').toEqual([]);
+    const recountFailed = toast(page, /n.ont pas pu être recomptés/);
+    await expect(recountFailed).toBeVisible({ timeout: 15_000 });
+    await expect(recountFailed).toContainText('La séquence reste active');
+    expect(seqWrites, 'interrupteur jamais écrit sans preuve').toEqual([]);
     expect(await sequenceActive(countFail.id)).toBe(true);
   });
 
@@ -1587,7 +1839,7 @@ test.describe('Liste des séquences', () => {
 
     // Désactivation d'une séquence active de la même organisation : possible.
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${active.name}` }).click();
-    await expect(toast(page, /Séquence désactivée\. Aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
+    await expect(toast(page, /Séquence mise en pause : aucun candidat n.était en cours\./)).toBeVisible({ timeout: 15_000 });
     expect(await sequenceActive(active.id)).toBe(false);
 
     // Page rechargée : un seul toast, son bouton « Voir les plans » mène aux offres.

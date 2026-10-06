@@ -1,6 +1,6 @@
 // resolve-client-logo : trouve le logo de la société cliente d'une mission, en
-// garde une copie dans le stockage de l'organisation (bucket org-logos, dossier
-// {organization_id}/clients/) et l'enregistre dans job_details.client.logo_url
+// garde une copie dans le stockage (bucket client-logos, dossier
+// {organization_id}/) et l'enregistre dans job_details.client.logo_url
 // de toutes les missions de l'organisation qui ont ce client.
 //
 // Sources, dans l'ordre : Apollo (si une clé existe), puis l'icône du site
@@ -207,6 +207,12 @@ async function findSiteLogos(clientName: string, knownDomain: string | null): Pr
   return [];
 }
 
+/** SVG sans script, sans objet embarqué ni gestionnaire d'événement. */
+function isSafeSvg(text: string): boolean {
+  if (!/<svg[\s>]/i.test(text)) return false;
+  return !/<script|<foreignobject|<iframe|<embed|<object|\son[a-z]+\s*=|javascript:/i.test(text);
+}
+
 function extensionOf(contentType: string): string | null {
   if (contentType.includes("png")) return "png";
   if (contentType.includes("jpeg") || contentType.includes("jpg")) return "jpg";
@@ -294,16 +300,20 @@ Deno.serve(async (req) => {
         if (!res.ok || !extension) continue;
         const bytes = new Uint8Array(await res.arrayBuffer());
         if (bytes.length === 0 || bytes.length > MAX_LOGO_BYTES) continue;
+        if (extension === "svg" && !isSafeSvg(new TextDecoder().decode(bytes))) {
+          console.log("[resolve-client-logo] SVG écarté (contenu actif ou illisible)");
+          continue;
+        }
         const slug = wanted.replace(/\s+/g, "-").slice(0, 60) || "client";
-        const path = `${organizationId}/clients/${slug}-${Date.now()}.${extension}`;
+        const path = `${organizationId}/${slug}-${Date.now()}.${extension}`;
         const { error: uploadError } = await admin.storage
-          .from("org-logos")
-          .upload(path, bytes, { contentType: contentType.split(";")[0], upsert: false });
+          .from("client-logos")
+          .upload(path, bytes, { contentType: extension === "svg" ? "image/svg+xml" : contentType.split(";")[0], upsert: false });
         if (uploadError) {
           console.warn("[resolve-client-logo] upload failed:", uploadError.message);
           continue;
         }
-        storedUrl = admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
+        storedUrl = admin.storage.from("client-logos").getPublicUrl(path).data.publicUrl;
         break;
       } catch (error) {
         console.warn("[resolve-client-logo] download failed:", error);

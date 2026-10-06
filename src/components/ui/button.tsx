@@ -6,15 +6,17 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "border border-border bg-transparent text-foreground hover:border-border-strong hover:bg-accent",
+        // Hiérarchie : primary (l'action de la zone, plein et monochrome), secondary (l'action
+        // suivante, fond teinté), outline (une option, filet appuyé), ghost (le reste, sans contour).
+        default: "border border-border-strong bg-transparent text-foreground hover:bg-accent",
         primary: "bg-primary font-semibold text-primary-foreground hover:bg-primary/90",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline: "border border-border bg-transparent text-foreground hover:border-border-strong hover:bg-accent",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        outline: "border border-border-strong bg-transparent text-foreground hover:bg-accent",
+        secondary: "bg-foreground/10 text-foreground hover:bg-foreground/15",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-foreground underline-offset-4 hover:underline",
       },
