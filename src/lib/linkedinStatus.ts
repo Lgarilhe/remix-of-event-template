@@ -13,18 +13,25 @@
  * - statuts d'événement (RECONNECTED, SYNC_SUCCESS, CREATION_SUCCESS),
  *   normalement ramenés à OK par le webhook : acceptés par sécurité ;
  * - lus par le front sans producteur connu : CONNECTED, DISCONNECTED,
- *   RATE_LIMITED, CAPTCHA.
+ *   RATE_LIMITED, CAPTCHA ;
+ * - API v2 : DEGRADED, PARTIAL et LOCKED écrits par le webhook, et les
+ *   statuts bruts du compte (running, errored, disconnected, degraded, partial)
+ *   quand la liste passera en v2. PARTIAL (un produit, ex. Recruiter, à
+ *   réauthentifier) demande une reconnexion ; DEGRADED (un produit en erreur
+ *   de service) et LOCKED (accès suspendu) ne dépendent pas de l'utilisateur.
  * Module pur, sans import : testé par tests/ux/linkedin-status.test.mjs.
  */
 export type LinkedInHealth = 'connected' | 'connecting' | 'needs_reconnect' | 'unknown';
 /** load_error : lecture ratée (liaisons, ou liste pour un utilisateur relié) sans donnée reçue à montrer. */
 export type MyLinkedInState = 'loading' | 'load_error' | 'not_linked' | 'missing' | LinkedInHealth;
 
-const CONNECTED = new Set(['OK', 'CONNECTED', 'RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS']);
+const CONNECTED = new Set(['OK', 'CONNECTED', 'RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS', 'RUNNING']);
 const CONNECTING = new Set(['CONNECTING']);
-const NEEDS_RECONNECT = new Set(['CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA']);
+const NEEDS_RECONNECT = new Set([
+  'CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA', 'ERRORED', 'PARTIAL',
+]);
 
-/** UNKNOWN, PAUSED, RATE_LIMITED, vide ou valeur nouvelle : 'unknown', jamais une panne. */
+/** UNKNOWN, PAUSED, RATE_LIMITED, DEGRADED, LOCKED, vide ou valeur nouvelle : 'unknown', jamais une panne. */
 export function classifyLinkedInStatus(raw: string | null | undefined): LinkedInHealth {
   const s = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
   if (CONNECTED.has(s)) return 'connected';

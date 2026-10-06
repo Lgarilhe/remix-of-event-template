@@ -17,12 +17,17 @@
  * pendant que l'user lit le chat, le bandeau apparaît automatiquement.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Check, X, AlertTriangle, Loader2, Pencil } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Check, X, AlertTriangle, Loader2, Pencil, ArrowUpRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { businessDaysCutoff } from '@/lib/businessDays';
+import { aiProposalSequencePath } from '@/lib/sequencesBeta';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { EnrollFirstMessagePreview } from './EnrollFirstMessagePreview';
 import { readFirstStepPreview } from './firstStepPreview';
+import { SequenceDraftPreview } from './SequenceDraftPreview';
+import { PROPOSAL_EDITOR_NOTE, readSequenceDraftPreview } from './sequenceDraftPreview';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -242,6 +247,9 @@ const READONLY_FIELDS_BY_TOOL: Record<string, ReadonlySet<string>> = {
   // Lot 5a : premier message construit avec ce nom et la ligne de la mission
   // retrouvée par ce profil.
   enroll_in_sequence: new Set(['profile_name', 'profile_url']),
+  // Lot 5e : forme fixée par le serveur à partir de ces réglages ; seuls les
+  // textes se modifient, et ils repassent les contrôles à l'approbation.
+  create_sequence: new Set(['mission_id', 'first_contact', 'relances', 'profile_visit']),
 };
 
 // Champs typés comme textarea (multilignes)
@@ -254,6 +262,12 @@ const TEXTAREA_FIELDS = new Set([
   'subject',
   'mission_description',
   'context',
+  // create_sequence (lot 5e) : textes des étapes.
+  'invitation_note',
+  'first_message',
+  'relance_1',
+  'relance_2',
+  'relance_3',
 ]);
 
 type FieldType = 'string' | 'textarea' | 'number' | 'boolean' | 'json' | 'readonly';
@@ -284,6 +298,16 @@ const FIELD_LABEL: Record<string, string> = {
   is_inmail: 'Envoyer en InMail',
   reason: 'Motif',
   new_status: 'Nouveau statut',
+  // create_sequence (lot 5e)
+  invitation_note: "Note d'invitation",
+  first_message: 'Premier message',
+  first_message_subject: 'Objet du premier message',
+  relance_1: 'Relance 1',
+  relance_1_subject: 'Objet de la relance 1',
+  relance_2: 'Relance 2',
+  relance_2_subject: 'Objet de la relance 2',
+  relance_3: 'Relance 3',
+  relance_3_subject: 'Objet de la relance 3',
 };
 
 function humanLabel(key: string): string {
@@ -389,11 +413,15 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, t
 
 export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ conversationId }) => {
   const [pending, setPending] = useState<ToolExecutionRow[]>([]);
-  const [actionLoading, setActionLoading] = useState<Record<string, 'approve' | 'reject' | 'save' | null>>({});
+  const [actionLoading, setActionLoading] = useState<Record<string, 'approve' | 'reject' | 'save' | 'open' | null>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedParams, setEditedParams] = useState<Record<string, unknown>>({});
   /** ID de la row pour laquelle un dialog de confirmation sensible est ouvert (Clarif.3) */
   const [confirmDialogId, setConfirmDialogId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  // Lot 5e : « Ouvrir la séquence » mène à l'éditeur des pages Séquences,
+  // derrière l'interrupteur konekt.sequences-v2 ; éteint, pas de bouton.
+  const sequencesBeta = useSequencesBeta();
 
   // Initial fetch + realtime subscription
   useEffect(() => {
@@ -542,6 +570,31 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
     [editedParams],
   );
 
+  // Lot 5e : la séquence proposée est reprise dans l'éditeur, remplie et non
+  // enregistrée ; la proposition est rejetée avec sa note, pour qu'elle ne
+  // puisse plus créer une seconde séquence par « Approuver ».
+  const handleOpenInEditor = useCallback(
+    async (executionId: string) => {
+      setActionLoading((prev) => ({ ...prev, [executionId]: 'open' }));
+      try {
+        const { data, error } = await invokeEdgeFunction<{ success: boolean; error?: string }>(
+          'agent-tool-action',
+          { execution_id: executionId, action: 'reject', reason: PROPOSAL_EDITOR_NOTE },
+        );
+        if (error || !data?.success) {
+          console.warn('[AgentToolApprovalCard] open in editor', data?.error || error?.message);
+          toast.error("La séquence n'a pas pu être ouverte dans l'éditeur. Réessayez dans un instant.");
+          return;
+        }
+        setPending((prev) => prev.filter((p) => p.id !== executionId));
+        navigate(aiProposalSequencePath(executionId));
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [executionId]: null }));
+      }
+    },
+    [navigate],
+  );
+
   const startEditing = useCallback((row: ToolExecutionRow) => {
     setEditingId(row.id);
     setEditedParams({ ...row.params });
@@ -579,6 +632,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           const firstStepPreview = row.tool_name === 'enroll_in_sequence'
             ? readFirstStepPreview(row.dry_run_result?.details)
             : null;
+          const sequencePreview = row.tool_name === 'create_sequence'
+            ? readSequenceDraftPreview(row.dry_run_result?.details)
+            : null;
 
           return (
             <div
@@ -614,6 +670,12 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                 )
               ) : (
                 <p className="text-sm leading-snug text-foreground">{summary}</p>
+              )}
+
+              {/* Lot 5e : textes entiers de la séquence proposée. Masqués en mode
+                  Modifier, où ces textes se réécrivent. */}
+              {row.tool_name === 'create_sequence' && sequencePreview && !isEditing && (
+                <SequenceDraftPreview preview={sequencePreview} />
               )}
 
               {/* Visible aussi en mode Modifier : les champs dont il dépend y sont en lecture seule. */}
@@ -669,6 +731,18 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                       <Pencil aria-hidden="true" />
                       Modifier
                     </Button>
+                    {row.tool_name === 'create_sequence' && sequencesBeta && sequencePreview && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenInEditor(row.id)}
+                        disabled={loading != null}
+                        className="max-md:h-11"
+                      >
+                        {loading === 'open' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <ArrowUpRight aria-hidden="true" />}
+                        Ouvrir la séquence
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="primary"

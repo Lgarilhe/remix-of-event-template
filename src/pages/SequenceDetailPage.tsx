@@ -79,6 +79,7 @@ import { parseSequenceTab } from '@/components/sequences/sequenceTabsModel';
 import { RhythmLine, type SendingHours } from '@/components/sequences/RhythmLine';
 import { StepsReadOnly } from '@/components/sequences/StepsReadOnly';
 import { StepsEditor } from '@/components/sequences/editor/StepsEditor';
+import { useMissionDraftReadiness } from '@/hooks/useSequenceAI';
 import { SaveDialogs } from '@/components/sequences/editor/SaveDialogs';
 import { SequenceCreatePage } from '@/components/sequences/SequenceCreatePage';
 import { CandidatesTab } from '@/components/sequences/CandidatesTab';
@@ -455,6 +456,12 @@ function SequenceView({ id }: { id: string | undefined }) {
     },
   });
   const editorValidation = session.validation;
+  // Lot 5e : « Demander à l'IA » dans le panneau d'étape ; « Rédiger à partir du poste » avec la mission de la séquence.
+  const draftReadiness = useMissionDraftReadiness(sequence?.project_id ?? null);
+  const askAI = useMemo(
+    () => ({ organizationId, missionId: sequence?.project_id ?? null, jobDescribed: draftReadiness.described }),
+    [organizationId, sequence?.project_id, draftReadiness.described],
+  );
   const dirty = editable && (session.dirty || settingsDirty);
   // Enregistrement en cours : étapes et réglages figés, rien de tapé ne peut être remplacé par la version relue.
   const saving = session.flow.saving || savingSettings;
@@ -608,6 +615,7 @@ function SequenceView({ id }: { id: string | undefined }) {
                   extraKeys={session.customKeys}
                   onShowSettings={() => setTab('reglages')}
                   frozen={saving}
+                  askAI={askAI}
                 />
               ) : (
                 <StepsReadOnly

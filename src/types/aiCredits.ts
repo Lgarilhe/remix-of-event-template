@@ -119,11 +119,15 @@ export interface AIActionCost {
 export const ACTION_COSTS: Record<string, AIActionCost> = {
   scoring: { action: "scoring", label: "Évaluation d'un candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-sonnet-5-5" },
   outreach_message: { action: "outreach_message", label: "Message d'approche", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "outreach" },
+  // Séquence entière rédigée depuis le poste (draft-sequence, lot 5e) : environ
+  // 7 000 jetons, 7 crédits avec le modèle par défaut (miroir de ai-config.ts).
+  sequence_draft: { action: "sequence_draft", label: "Rédaction d'une séquence", floor: 3, typicalTokens: 7_000, routingTier: "default", category: "outreach" },
   analyze_response: { action: "analyze_response", label: "Analyse d'une réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   screen_candidate: { action: "screen_candidate", label: "Présélection rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   generate_scorecard: { action: "generate_scorecard", label: "Création d'une scorecard", floor: 2, typicalTokens: 4_000, routingTier: "fast", category: "qualification" },
   call_report: { action: "call_report", label: "Compte-rendu d'appel", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   interview_followup: { action: "interview_followup", label: "Message après un entretien", floor: 1, typicalTokens: 3_000, routingTier: "fast", category: "qualification" },
+  phone_call_analysis: { action: "phone_call_analysis", label: "Analyse d'un appel", floor: 1, typicalTokens: 6_000, routingTier: "fast", category: "qualification" },
   live_coaching: { action: "live_coaching", label: "Coaching en direct (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
   agent_search_calibration: { action: "agent_search_calibration", label: "Agent, calibrage de la recherche", floor: 3, typicalTokens: 3_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
   conversation_title: { action: "conversation_title", label: "Assistant, titre de conversation", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },

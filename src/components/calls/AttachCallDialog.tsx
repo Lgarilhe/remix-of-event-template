@@ -15,6 +15,7 @@ import { CandidateAutocomplete, type SelectedCandidate } from '@/components/cale
 import { LinkedInCandidateFinder } from '@/components/calls/LinkedInCandidateFinder';
 import type { AddFromLinkedInResult } from '@/lib/linkedinQuickFind';
 import type { MissionOption } from '@/lib/linkedinQuickFindModel';
+import { CALLS_HUB_KEY } from '@/hooks/useCallsHub';
 import { UNATTACHED_CALLS_KEY } from '@/hooks/useUnattachedCalls';
 import { useOrganization } from '@/hooks/useOrganization';
 import { attachPhoneToCandidate } from '@/lib/candidateContacts';
@@ -92,7 +93,10 @@ export const AttachCallDialog = ({
           ? `${candidate.name} avait déjà ce numéro.`
           : `Numéro enregistré sur la fiche de ${candidate.name}. ${plural(n, 'appel')} ${n > 1 ? 'y apparaissent' : 'y apparaît'}.`,
       );
-      await queryClient.invalidateQueries({ queryKey: [UNATTACHED_CALLS_KEY] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [UNATTACHED_CALLS_KEY] }),
+        queryClient.invalidateQueries({ queryKey: [CALLS_HUB_KEY] }),
+      ]);
       onOpenChange(false);
     } catch (e) {
       console.warn('[AttachCallDialog]', e);

@@ -37,6 +37,7 @@
 
 // Type seul (aucun import à l'exécution) : le client non typé des appelants s'y assigne.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
+import { planCallErasure, type ContactNumberRow, type ErasedCandidate } from "./phone-call-erasure.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -327,8 +328,14 @@ export interface GdprErasureResult {
   /** Inscriptions (tous statuts) dont les données du candidat ont été effacées. */
   anonymizedEnrollments: number;
   cancelledInmails: number;
+  /** Séances de qualification (agenda, Calendly) supprimées. */
+  deletedSessions: number;
   /** Adresse ajoutée à la liste de suppression des envois e-mail. */
   emailSuppressed: boolean;
+  /** Appels téléphoniques supprimés (avec leur transcription et leur analyse). */
+  deletedCalls: number;
+  /** Numéros dont les appels sont gardés parce qu'un autre candidat de l'organisation les porte aussi. */
+  keptSharedNumbers: number;
 }
 
 /**
@@ -349,7 +356,11 @@ export interface GdprErasureResult {
  * (reason 'unsubscribe'), puis nom, titre, adresse, téléphone et textes
  * envoyés sont effacés des lignes de séquence. Ses liens conversation–mission
  * sont supprimés et ses résumés de réponse effacés (lot 0b). Ses copies privées
- * de photo sont supprimées et marquées pour ne plus être reprises (lot P). Le succès n'est
+ * de photo sont supprimées et marquées pour ne plus être reprises (lot P). Ses appels
+ * téléphoniques sont supprimés, avec leur transcription et leur analyse (lot A6), sauf
+ * ceux d'un numéro qu'un autre candidat de l'organisation porte aussi. Ses séances de
+ * qualification (rendez-vous lus dans un agenda ou pris par Calendly) sont supprimées,
+ * avec les extraits de connaissance qui en sont tirés (agenda Outlook). Le succès n'est
  * renvoyé qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
  */
 export async function recordGdprErasure(
@@ -368,7 +379,10 @@ export async function recordGdprErasure(
     stoppedEnrollments: 0,
     anonymizedEnrollments: 0,
     cancelledInmails: 0,
+    deletedSessions: 0,
     emailSuppressed: false,
+    deletedCalls: 0,
+    keptSharedNumbers: 0,
   };
   const fail = (step: string, error: unknown): GdprErasureResult => {
     console.error(`[recordGdprErasure] ${step} failed:`, error);
@@ -671,6 +685,137 @@ export async function recordGdprErasure(
       );
       if (error) return fail('marquage des photos effacées', error);
     }
+  }
+
+  // 11. Appels téléphoniques du candidat (téléphonie, lot A6), dans le périmètre.
+  //     Un appel se rattache par le numéro : on part des coordonnées enregistrées
+  //     pour ce candidat (identifiants connus ci-dessus, ou adresse e-mail) et on
+  //     efface les appels de ces numéros ; la transcription et l'analyse suivent
+  //     par cascade. Un numéro que porte aussi un autre candidat de l'organisation
+  //     est gardé (planCallErasure) : l'appel peut être le sien. Les coordonnées
+  //     elles-mêmes (candidate_contacts) ne sont pas touchées ici.
+  const erasedCandidates = new Map<string, ErasedCandidate>();
+  const collectErased = (rows: Array<{ organization_id: string | null; candidate_id: string | null }> | null) => {
+    for (const r of rows ?? []) {
+      if (r.organization_id && r.candidate_id) {
+        erasedCandidates.set(`${r.organization_id}|${r.candidate_id}`, { organization_id: r.organization_id, candidate_id: r.candidate_id });
+      }
+    }
+  };
+  for (let i = 0; i < knownIds.length; i += 100) {
+    let contactsQuery = supabase
+      .from('candidate_contacts')
+      .select('organization_id, candidate_id')
+      .in('candidate_id', knownIds.slice(i, i + 100));
+    if (orgId) contactsQuery = contactsQuery.eq('organization_id', orgId);
+    const { data, error } = await contactsQuery;
+    if (error) return fail('lecture des coordonnées', error);
+    collectErased(data);
+  }
+  if (emailNorm) {
+    let byEmailQuery = supabase
+      .from('candidate_contacts')
+      .select('organization_id, candidate_id')
+      .ilike('email', escapeLikePattern(emailNorm))
+      .limit(1000);
+    if (orgId) byEmailQuery = byEmailQuery.eq('organization_id', orgId);
+    const { data, error } = await byEmailQuery;
+    if (error) return fail('lecture des coordonnées', error);
+    collectErased(data);
+  }
+  if (erasedCandidates.size > 0) {
+    const orgIds = [...new Set([...erasedCandidates.values()].map((c) => c.organization_id))];
+    const contacts: ContactNumberRow[] = [];
+    for (let from = 0; from < 50_000; from += 1000) {
+      const { data, error } = await supabase
+        .from('candidate_contacts')
+        .select('organization_id, candidate_id, phone')
+        .in('organization_id', orgIds)
+        .not('phone', 'is', null)
+        .order('organization_id', { ascending: true })
+        .order('candidate_id', { ascending: true })
+        .range(from, from + 999);
+      if (error) return fail('lecture des numéros', error);
+      contacts.push(...((data ?? []) as ContactNumberRow[]));
+      if ((data?.length ?? 0) < 1000) break;
+    }
+    const plan = planCallErasure(contacts, [...erasedCandidates.values()]);
+    result.keptSharedNumbers = plan.sharedKept.length;
+    for (const number of plan.erase) {
+      const { data: deleted, error } = await supabase
+        .from('phone_calls')
+        .delete()
+        .eq('organization_id', number.organization_id)
+        .eq('contact_number_e164', number.e164)
+        .select('id');
+      if (error) return fail('suppression des appels', error);
+      result.deletedCalls += (deleted ?? []).length;
+    }
+    if (plan.sharedKept.length > 0) {
+      console.warn(`[recordGdprErasure] ${plan.sharedKept.length} numéro(s) partagé(s) avec un autre candidat : appels gardés`);
+    }
+  }
+
+  // 12. Séances de qualification (agenda Outlook, Calendly), dans le périmètre :
+  //     elles portent le nom, le titre, l'adresse e-mail du candidat et les notes
+  //     de l'entretien. Supprimées, après les extraits de connaissance qui en sont
+  //     tirés (knowledge_chunks) : une reprise après échec retrouve ainsi ses
+  //     séances. Trouvées par l'identifiant du candidat, l'adresse de son profil
+  //     LinkedIn et l'adresse e-mail de l'invité.
+  const sessionIds = new Set<string>();
+  const addSessions = (rows: unknown) => {
+    for (const row of (rows ?? []) as Array<{ id: string }>) sessionIds.add(row.id);
+  };
+  for (let i = 0; i < knownIds.length; i += 100) {
+    let query = supabase
+      .from('qualification_sessions')
+      .select('id')
+      .in('candidate_profile_id', knownIds.slice(i, i + 100))
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des séances', error);
+    addSessions(data);
+  }
+  for (const lookup of lookups.filter((l) => !l.byEmail)) {
+    let query = supabase
+      .from('qualification_sessions')
+      .select('id')
+      .ilike('candidate_linkedin_url', lookup.pattern)
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des séances', error);
+    addSessions(data);
+  }
+  if (emailNorm) {
+    let query = supabase
+      .from('qualification_sessions')
+      .select('id')
+      .ilike('invitee_email', escapeLikePattern(emailNorm))
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des séances', error);
+    addSessions(data);
+  }
+  const sessionList = [...sessionIds];
+  for (let i = 0; i < sessionList.length; i += 100) {
+    const batch = sessionList.slice(i, i + 100);
+    let chunksQuery = supabase
+      .from('knowledge_chunks')
+      .delete()
+      .eq('source_table', 'qualification_sessions')
+      .in('source_id', batch);
+    if (orgId) chunksQuery = chunksQuery.eq('organization_id', orgId);
+    const { error: chunksError } = await chunksQuery;
+    if (chunksError) return fail('suppression des extraits de séances', chunksError);
+
+    let deleteQuery = supabase.from('qualification_sessions').delete().in('id', batch);
+    if (orgId) deleteQuery = deleteQuery.eq('organization_id', orgId);
+    const { data: deleted, error: deleteError } = await deleteQuery.select('id');
+    if (deleteError) return fail('suppression des séances', deleteError);
+    result.deletedSessions += (deleted ?? []).length;
   }
 
   return { ...result, success: true };

@@ -34,6 +34,7 @@ import { IconTile } from '@/components/ui/IconTile';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ClientPicker, type ClientValue } from '@/components/missions/ClientPicker';
 import { useSourcingProjects, CreateProjectInput } from '@/hooks/useSourcingProjects';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { estimateActionCredits, invokeWithCredits } from '@/lib/invokeWithCredits';
@@ -111,7 +112,7 @@ function parseJobUrl(url: string): UrlParsedJob | null {
 
     // WTTJ : /fr/companies/{company-slug}/jobs/{job-slug}[_location]
     if (host.includes('welcometothejungle.com')) {
-      const jobMatch = path.match(/\/companies\/([a-z0-9-]+)\/jobs\/([a-z0-9-]+?)(?:_([a-z0-9-]+))?(?:\/|$)/i);
+      const jobMatch = path.match(/\/companies(?:-v1)?\/([a-z0-9-]+)\/jobs\/([a-z0-9-]+?)(?:_([a-z0-9-]+))?(?:\/|$)/i);
       if (jobMatch) {
         return {
           company: smartCapitalize(jobMatch[1]),
@@ -121,7 +122,7 @@ function parseJobUrl(url: string): UrlParsedJob | null {
           isJobUrl: true,
         };
       }
-      const companyMatch = path.match(/\/companies\/([a-z0-9-]+)/i);
+      const companyMatch = path.match(/\/companies(?:-v1)?\/([a-z0-9-]+)/i);
       if (companyMatch) {
         return { company: smartCapitalize(companyMatch[1]), source: 'Welcome to the Jungle', isJobUrl: false };
       }
@@ -245,6 +246,19 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const [briefText, setBriefText] = useState('');
   const [briefName, setBriefName] = useState('');
   const [clientName, setClientName] = useState('');
+  // Site et logo du client choisi dans la liste (ou site saisi pour une société hors liste).
+  const [clientPick, setClientPick] = useState<Omit<ClientValue, 'name'>>({});
+  const pickClient = (v: ClientValue) => {
+    setClientName(v.name ?? '');
+    setClientPick({ website: v.website, logo_url: v.logo_url });
+  };
+  const clientDetails = useCallback(
+    (name: string): Record<string, string> | null =>
+      name && (clientPick.website || clientPick.logo_url)
+        ? { name, ...(clientPick.website ? { website: clientPick.website } : {}), ...(clientPick.logo_url ? { logo_url: clientPick.logo_url } : {}) }
+        : null,
+    [clientPick],
+  );
   const [description, setDescription] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BriefAnalysis | null>(null);
@@ -338,6 +352,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     setBriefName(brouillon.briefName || '');
     userNamedRef.current = !!brouillon.briefName?.trim();
     setClientName(brouillon.clientName || '');
+    setClientPick({});
     setDescription(brouillon.description || '');
     const quand = editorDraftSavedAt(MISSION_DRAFT_KEY);
     toast.info('Brouillon repris', {
@@ -423,6 +438,11 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
           clientName: clientName.trim(),
           sourceUrl: sourceUrl ?? undefined,
         });
+        const details = clientDetails(clientName.trim());
+        if (details) input.job_details = { ...input.job_details, client: details };
+      } else {
+        const details = clientDetails(clientName.trim());
+        if (details) input.job_details = { client: details };
       }
 
       const project = await createProject(input);
@@ -438,7 +458,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [creating, briefName, briefText, clientName, analysis, sourceUrl, createProject, onClose, navigate]);
+  }, [creating, briefName, briefText, clientName, clientDetails, analysis, sourceUrl, createProject, onClose, navigate]);
 
   // ── Adresse web : fonction fetch-job-source, qui lit une offre ou les offres d'une société.
   //
@@ -488,14 +508,14 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     if (parsed && !parsed.isJobUrl && parsed.company) {
       if (!clientName) setClientName(parsed.company);
       toast.info("La liste des offres n'a pas pu être lue", {
-        description: `Entreprise pré-remplie (${parsed.company}). Collez le texte de la fiche de poste dans la zone prévue.`,
+        description: `Entreprise pré-remplie (${parsed.company}). Ouvrez une offre sur le site et collez son adresse ici, ou collez le texte de la fiche.`,
         duration: 7000,
       });
       return;
     }
 
     toast.warning('Adresse non lue', {
-      description: reason || 'Collez directement le texte de la fiche dans la zone prévue.',
+      description: reason || "Collez l'adresse d'une offre précise, ou directement le texte de la fiche.",
       duration: 6000,
     });
   }, [briefName, clientName]);
@@ -688,6 +708,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         name: briefName.trim(),
         description: description || undefined,
         client_name: clientName.trim() || undefined,
+        ...(clientDetails(clientName.trim()) ? { job_details: { client: clientDetails(clientName.trim()) } } : {}),
       });
       creationReussieRef.current = true;
       clearEditorDraft(MISSION_DRAFT_KEY);
@@ -700,7 +721,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [creating, briefName, description, clientName, createProject, onClose, navigate]);
+  }, [creating, briefName, description, clientName, clientDetails, createProject, onClose, navigate]);
 
   // Ctrl + Entrée (Cmd sur Mac) : l'action principale de l'écran.
   const handleShortcut = (e: React.KeyboardEvent) => {
@@ -771,7 +792,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               briefName={briefName}
               onNameChange={onNameChange}
               clientName={clientName}
-              setClientName={setClientName}
+              clientPick={clientPick}
+              pickClient={pickClient}
               analyzing={analyzing}
               analysis={analysis}
               analysisError={analysisError}
@@ -804,7 +826,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               name={briefName}
               onNameChange={onNameChange}
               clientName={clientName}
-              setClientName={setClientName}
+              clientPick={clientPick}
+              pickClient={pickClient}
               description={description}
               setDescription={setDescription}
             />
@@ -895,7 +918,8 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
         type="button"
         variant="outline"
         onClick={() => onPick(opt.value)}
-        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal p-5 text-left"
+        // Une tuile de choix est une carte (coin de carte), pas une pilule : sinon son texte touche la courbe.
+        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl p-5 text-left"
       >
         <IconTile icon={opt.icon} tone={opt.recommended ? 'brand' : 'default'} size="md" />
         <span className="block space-y-1">
@@ -918,7 +942,8 @@ interface BriefModeProps {
   briefName: string;
   onNameChange: (v: string) => void;
   clientName: string;
-  setClientName: (v: string) => void;
+  clientPick: Omit<ClientValue, 'name'>;
+  pickClient: (v: ClientValue) => void;
   analyzing: boolean;
   analysis: BriefAnalysis | null;
   analysisError: string | null;
@@ -935,7 +960,7 @@ interface BriefModeProps {
 }
 
 const BriefMode: React.FC<BriefModeProps> = ({
-  briefText, setBriefText, briefName, onNameChange, clientName, setClientName,
+  briefText, setBriefText, briefName, onNameChange, clientName, clientPick, pickClient,
   analyzing, analysis, analysisError, isStale, extractedFields, missingFields, onAnalyze,
   urlSuggestion, scanningUrl, onScanUrl, uploadingFile, onFileUpload,
 }) => {
@@ -985,10 +1010,10 @@ const BriefMode: React.FC<BriefModeProps> = ({
             <Label htmlFor="brief-client" className="text-xs text-foreground-secondary">
               Client <span className="font-normal text-muted-foreground">(facultatif)</span>
             </Label>
-            <Input
+            <ClientPicker
               id="brief-client"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
+              value={{ name: clientName, ...clientPick }}
+              onChange={pickClient}
               placeholder="Ex : Numspot"
             />
           </div>
@@ -1058,7 +1083,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Adresse d'une offre : sa fiche est lue pour vous. Adresse de la page emplois d'une société : vous choisissez parmi ses offres.
+              Une offre, ou la page emplois d'une société pour choisir parmi ses offres.
             </p>
           </div>
         )}
@@ -1089,7 +1114,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             id="brief-text"
             value={briefText}
             onChange={(e) => setBriefText(e.target.value)}
-            placeholder={'Collez la fiche de poste, glissez-déposez un fichier ou décrivez le besoin.\n\nExemple :\nIngénieur logiciel senior pour Doctolib. Stack React, TypeScript, Node. 5 ans d\'expérience minimum, idéalement en scale-up santé ou fintech. Paris ou télétravail complet en France. Démarrage au T3 2026.'}
+            placeholder={'Collez la fiche de poste ou décrivez le besoin.\n\nExemple :\nIngénieur logiciel senior pour Doctolib. Stack React, TypeScript, Node. 5 ans d\'expérience minimum, idéalement en scale-up santé ou fintech. Paris ou télétravail complet en France. Démarrage au T3 2026.'}
             className="min-h-[240px] resize-none leading-relaxed lg:min-h-0 lg:flex-1"
             autoFocus
           />
@@ -1140,13 +1165,14 @@ interface ManualModeProps {
   name: string;
   onNameChange: (v: string) => void;
   clientName: string;
-  setClientName: (v: string) => void;
+  clientPick: Omit<ClientValue, 'name'>;
+  pickClient: (v: ClientValue) => void;
   description: string;
   setDescription: (v: string) => void;
 }
 
 const ManualMode: React.FC<ManualModeProps> = ({
-  name, onNameChange, clientName, setClientName, description, setDescription,
+  name, onNameChange, clientName, clientPick, pickClient, description, setDescription,
 }) => (
   <div className="konekt-fade-up mx-auto max-w-xl space-y-4 px-8 py-8">
     <div className="space-y-1.5">
@@ -1166,10 +1192,10 @@ const ManualMode: React.FC<ManualModeProps> = ({
       <Label htmlFor="manual-client">
         Client <span className="font-normal text-muted-foreground">(facultatif)</span>
       </Label>
-      <Input
+      <ClientPicker
         id="manual-client"
-        value={clientName}
-        onChange={(e) => setClientName(e.target.value)}
+        value={{ name: clientName, ...clientPick }}
+        onChange={pickClient}
         placeholder="Ex : Doctolib"
       />
     </div>

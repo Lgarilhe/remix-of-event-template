@@ -361,15 +361,19 @@ jobs:
 
       # Téléphonie, lot A1 : appels reçus par organisation (phone_calls),
       # connexions (jeton de webhook, illisibles), record_phone_call et
-      # get_telephony_status. Appels anonymes réels par l'API : refus attendu
-      # (401, code 42501).
-      - name: Audit de la téléphonie (lot A1)
+      # get_telephony_status. Lot A5 : transcriptions et analyses des appels
+      # (phone_call_transcripts, phone_call_insights), record_phone_call_transcript
+      # et claim_phone_call_analysis. Appels anonymes réels par l'API : refus
+      # attendu (401, code 42501).
+      - name: Audit de la téléphonie (lots A1 et A5)
         if: steps.target.outputs.mode == 'local'
         run: |
           DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/telephony_audit.sql -c 'ROLLBACK;'
-          for table in phone_calls telephony_connections; do
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/telephony_transcripts_audit.sql -c 'ROLLBACK;'
+          for table in phone_calls telephony_connections phone_call_transcripts phone_call_insights; do
             code=$(curl -sS -o telephony_anon.json -w '%{http_code}' \
               "$E2E_SUPABASE_URL/rest/v1/$table?select=organization_id&limit=1" \
               -H "apikey: $E2E_SUPABASE_ANON_KEY" \
@@ -381,7 +385,9 @@ jobs:
           done
           for call in \
             'record_phone_call|{"p_organization_id":"00000000-0000-0000-0000-000000000000","p_provider":"aircall","p_external_id":"x","p_event_at":"2026-10-05T10:00:00Z","p_call":{}}' \
-            'get_telephony_status|{"p_organization_id":"00000000-0000-0000-0000-000000000000"}'; do
+            'get_telephony_status|{"p_organization_id":"00000000-0000-0000-0000-000000000000"}' \
+            'record_phone_call_transcript|{"p_organization_id":"00000000-0000-0000-0000-000000000000","p_provider":"aircall","p_external_id":"x","p_utterances":[]}' \
+            'claim_phone_call_analysis|{"p_organization_id":"00000000-0000-0000-0000-000000000000","p_call_id":"00000000-0000-0000-0000-000000000000"}'; do
             fn="${call%%|*}"; payload="${call#*|}"
             code=$(curl -sS -o telephony_anon.json -w '%{http_code}' -X POST \
               "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
@@ -424,6 +430,24 @@ jobs:
           DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/scorecard_live_lot1_audit.sql -c 'ROLLBACK;'
+
+      # Agenda Outlook (lot I3), demande A : table member_calendar_accounts et
+      # colonnes d'agenda de qualification_sessions. Appel anonyme réel par
+      # l'API : refus attendu (401, code 42501).
+      - name: Audit des agendas reliés (agenda Outlook)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/calendar_accounts_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o calendar_anon.json -w '%{http_code}' \
+            "$E2E_SUPABASE_URL/rest/v1/member_calendar_accounts?select=id&limit=1" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+          if [ "$code" != "401" ] || ! grep -q '"42501"' calendar_anon.json; then
+            echo "::error::lecture anonyme de member_calendar_accounts : HTTP $code (401 et 42501 attendus)"
+            cat calendar_anon.json; exit 1
+          fi
 
       - name: Build front
         run: npm run build

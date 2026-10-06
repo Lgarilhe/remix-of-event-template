@@ -178,10 +178,17 @@ test('SEQ-024 — assistant : la reprise vérifie le plan puis passe par resume_
 });
 
 // ------------------------------------------------------------------ SEQ-031
-test('SEQ-031 — assistant : « attendre une réponse » attend vraiment, avec un délai', () => {
+test('SEQ-031 — assistant : l’attente de la séquence rédigée attend vraiment, avec un délai', () => {
+  // Lot 5e : create_sequence ne pose plus ses étapes lui-même. La forme commune
+  // (buildDraftSkeleton) attend l'acceptation de l'invitation avec son
+  // événement et son délai, et la ligne enregistrée les porte.
   const create = toolBlock('create_sequence');
-  assert.match(create, /wait_for_event: 'reply_received', timeout_days:/);
-  assert.match(mutations, /const WAIT_REPLY_DEFAULT_TIMEOUT_DAYS = 3;/);
+  assert.match(mutations, /const skeleton = buildDraftSkeleton\(parsed\.options\);/);
+  assert.match(create, /p_steps: plan\.steps\.map\(draftStepToSaveRow\),/);
+  const draft = read('supabase/functions/_shared/sequence-draft.ts');
+  assert.match(draft, /export const DRAFT_WAIT_CONNECTION_DAYS = 14;/);
+  assert.match(draft, /push\('wait_connection', \{ waitForEvent: 'connection_accepted', timeoutDays: DRAFT_WAIT_CONNECTION_DAYS \}\);/);
+  assert.match(draft, /timeout_days: step\.timeoutDays \?\? null,\s*wait_for_event: step\.waitForEvent \?\? null,/);
 });
 
 // ------------------------------------------------------------------ SEQ-039
@@ -263,8 +270,11 @@ test('SEQ-044 — assistant : la première étape est planifiée à l’inscript
   assert.match(insert, /organization_id: ctx\.organizationId,/);
   assert.match(exec, /if \(execError\) \{[\s\S]*?\.from\('sequence_enrollments'\)\s*\.delete\(\)[\s\S]*?success: false/);
   assert.match(exec, /status: 'active',\s*user_timezone: userTimezone,/);
-  assert.match(toolBlock('create_sequence'), /step_order: i,/);
-  assert.doesNotMatch(toolBlock('create_sequence'), /step_order: i \+ 1,/);
+  // Lot 5e : étapes de create_sequence numérotées par la forme commune, à partir de 0.
+  const draft = read('supabase/functions/_shared/sequence-draft.ts');
+  assert.match(draft, /id: newId\(\),\s*order: steps\.length,/);
+  assert.match(draft, /step_order: step\.order,/);
+  assert.match(toolBlock('create_sequence'), /\.rpc\('save_sequence_steps', \{\s*p_sequence_id: seq\.id,\s*p_steps: plan\.steps\.map\(draftStepToSaveRow\),/);
 });
 
 // ------------------------------------------------------------------ SEQ-046 / SEQ-128

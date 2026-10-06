@@ -41,6 +41,7 @@ export interface SourcingProject {
   jd_client?: string | null;
   /** Logo du client enregistré dans le brief, et date de la dernière recherche infructueuse. */
   jd_client_logo?: string | null;
+  jd_client_website?: string | null;
   jd_client_logo_checked?: string | null;
   jd_location?: string | null;
   /** Adresse de l'offre d'origine, quand la mission vient d'une offre lue en ligne. */
@@ -99,7 +100,7 @@ export interface SourcingProjectsOptions {
 // compris) dépasse la profondeur admise par TypeScript ; le résultat est
 // relu comme SourcingProject[].
 const PROJECT_LIST_COLUMNS: string =
-  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_client_logo:job_details->client->>logo_url, jd_client_logo_checked:job_details->client->>logo_checked_at, jd_location:job_details->>location, jd_source_url:job_details->>source_url';
+  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_client_logo:job_details->client->>logo_url, jd_client_website:job_details->client->>website, jd_client_logo_checked:job_details->client->>logo_checked_at, jd_location:job_details->>location, jd_source_url:job_details->>source_url';
 
 export const useSourcingProjects = (
   kind: 'mission' | 'search' = 'mission',

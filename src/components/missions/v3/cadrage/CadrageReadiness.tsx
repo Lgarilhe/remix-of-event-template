@@ -6,9 +6,11 @@
 // Design simplifié (04/10/2026) : une seule ligne calme, sans cadre. Un anneau
 // d'avancement, un titre et une phrase qui nomme ce qu'il reste à faire ; ce qui
 // est déjà complet ne s'écrit plus en coches (la liste reste pour les lecteurs
-// d'écran). « Dicter » est un bouton discret.
+// d'écran). « Dicter » est un bouton discret. « Aller au sourcing » ferme la
+// ligne : plein quand le poste est prêt, teinté sinon (les écrans ne sont jamais
+// verrouillés, conception 3.1).
 import { useCallback, useId, useState } from 'react';
-import { AlertCircle, Check, Loader2, Mic, X } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, Loader2, Mic, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { VoiceDictation } from '@/components/missions/VoiceDictation';
@@ -27,6 +29,8 @@ export interface CadrageReadinessProps {
   /** Dictée permise (brief modifiable). */
   canDictate: boolean;
   updateField: (patch: Partial<JobDetails>) => void;
+  /** Passe à l'écran Sourcing. */
+  onContinue: () => void;
 }
 
 function SaveState({ status, onRetry }: { status: JobDetailsSaveStatus; onRetry: () => void }) {
@@ -97,7 +101,7 @@ function ProgressRing({ done, total, ready }: { done: number; total: number; rea
   );
 }
 
-export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetry, canDictate, updateField }: CadrageReadinessProps) {
+export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetry, canDictate, updateField, onContinue }: CadrageReadinessProps) {
   const { markers, status, title, sentence, done, total } = cadrageReadiness(jd, stepCount, stepsState);
   const [dictating, setDictating] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -142,6 +146,16 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
             {dictating ? 'Fermer la dictée' : 'Dicter'}
           </Button>
         )}
+        <Button
+          type="button"
+          variant={status === 'ready' ? 'primary' : 'secondary'}
+          size="sm"
+          onClick={onContinue}
+          className={cn('shrink-0', TOUCH)}
+        >
+          Aller au sourcing
+          <ArrowRight aria-hidden="true" />
+        </Button>
       </div>
 
       {/* Les repères, pour les lecteurs d'écran : la phrase dit ce qui manque, la liste dit aussi ce qui est fait. */}
