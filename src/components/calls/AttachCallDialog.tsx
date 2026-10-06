@@ -12,6 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { CandidateAutocomplete, type SelectedCandidate } from '@/components/calendar/CandidateAutocomplete';
+import { LinkedInCandidateFinder } from '@/components/calls/LinkedInCandidateFinder';
+import type { AddFromLinkedInResult } from '@/lib/linkedinQuickFind';
 import { UNATTACHED_CALLS_KEY } from '@/hooks/useUnattachedCalls';
 import { useOrganization } from '@/hooks/useOrganization';
 import { attachPhoneToCandidate } from '@/lib/candidateContacts';
@@ -24,6 +26,10 @@ import { plural } from '@/lib/plural';
  * fiche, et tous les appels de ce numéro (passés et à venir) y apparaissent,
  * puisque le rapprochement se fait à la lecture. Un candidat n'a qu'un numéro :
  * s'il en a déjà un autre, la bascule est annoncée avant d'être faite.
+ *
+ * Candidat absent de l'app : « Chercher sur LinkedIn » l'y ajoute (recherche
+ * par nom avec le compte LinkedIn de la personne connectée), puis le choisit
+ * d'office pour le rattachement.
  */
 export const AttachCallDialog = ({
   group,
@@ -37,13 +43,27 @@ export const AttachCallDialog = ({
   const [candidate, setCandidate] = useState<SelectedCandidate | null>(null);
   const [conflictPhone, setConflictPhone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [finderOpen, setFinderOpen] = useState(false);
 
   // Un autre numéro ouvert repart de zéro.
   useEffect(() => {
     setCandidate(null);
     setConflictPhone(null);
     setSaving(false);
+    setFinderOpen(false);
   }, [group?.numberE164]);
+
+  // Un candidat ajouté depuis LinkedIn (ou retrouvé déjà dans l'app) est choisi d'office :
+  // il ne reste qu'à confirmer le rattachement.
+  const handleAdded = (result: AddFromLinkedInResult) => {
+    setCandidate(result.candidate);
+    setConflictPhone(null);
+    setFinderOpen(false);
+    const name = result.candidate.name;
+    if (result.existing) toast.info(`${name} est déjà dans l'app.`);
+    else if (result.partial) toast.warning(`${name} est ajouté, mais son profil complet n'a pas pu être lu. Les données de la recherche sont gardées.`);
+    else toast.success(`${name} est ajouté depuis LinkedIn.`);
+  };
 
   const submit = async (replace: boolean) => {
     if (!group || !candidate?.candidateId || !organizationId) return;
@@ -102,6 +122,22 @@ export const AttachCallDialog = ({
             </p>
           )}
         </div>
+
+        {!candidate && (
+          <div className="space-y-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="-ml-3"
+              aria-expanded={finderOpen}
+              onClick={() => setFinderOpen((open) => !open)}
+            >
+              Pas dans l'app ? Chercher sur LinkedIn
+            </Button>
+            {finderOpen && <LinkedInCandidateFinder defaultQuery={group?.contactName ?? ''} onAdded={handleAdded} />}
+          </div>
+        )}
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
