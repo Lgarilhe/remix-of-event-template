@@ -645,6 +645,15 @@ Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par 
 - **Tests du moteur** : `e2e/local-stack` (stack locale, faux prestataires scriptables par compte), `e2e/helpers/sequence-engine.ts`, fichiers `e2e/api/seq-*.spec.ts`, `e2e/flows/seq-*.spec.ts`, `supabase/tests/seq_*_audit.sql`.
 - Libellés communs : `src/lib/sequenceLabels.ts` (statuts, raisons de pause), `src/lib/sequenceErrorMessages.ts` (erreurs, `formatSkipReason`), `stepTypeLabel` de `src/components/outreach/sequence/sequenceGraph.ts` (types d'étape).
 
+### Assistant d'entretien en direct : capture audio (05/10/2026)
+Le micro seul n'entend pas le candidat quand on porte un casque : sa voix ne passe que dans les écouteurs. `LiveCoachingPanel` propose « Visio ou appel » (micro et audio partagé par `getDisplayMedia`, onglet ou écran entier ; choix gardé sous `konekt.live-capture-mode`) ou « Sur place » (micro seul). Règles pures dans `src/lib/liveAudioCapture.ts`.
+- Une connexion de transcription par flux : le micro est le Recruteur, l'audio partagé le Candidat, sans distinction des voix à demander au service (`diarize=false`). Le texte envoyé à `live-coach` et `generate-call-report` porte alors une ligne « [Recruteur] » ou « [Candidat] » à chaque changement de locuteur. Avec une seule piste (« Sur place », navigateur sans partage audio), le texte reste continu et la distinction des voix du service s'applique, comme avant.
+- Partage audio : Chrome et Edge sur ordinateur seulement (Firefox, Safari et mobiles l'ignorent). L'audio du système (application installée) n'existe que sous Windows ; sous macOS, seul l'audio d'un onglet se partage. `getDisplayMedia` passe avant `getUserMedia` (il exige un geste récent de la personne). La vidéo du partage est demandée au minimum (160 x 90, 1 image par seconde) et gardée : elle sert de témoin d'arrêt.
+- La clé temporaire (`deepgram-temp-key`) est demandée avant la création de la séance et de l'introduction : un démarrage qui échoue ne laisse plus de séance vide ni d'introduction facturée.
+- « Relancer le partage » et « Changer le partage » remplacent la source du candidat sans arrêter le micro.
+- Garde statique et comportement : `tests/ux/live-capture-audio.test.mjs`.
+- Cadence des suggestions (`src/lib/liveCoachCadence.ts`, garde `tests/ux/live-coach-cadence.test.mjs`) : une analyse seulement avec au moins 120 caractères de texte neuf ET 25 s depuis la précédente (la pause de la voix ne déclenche plus rien seule) ; un sujet suivant reste affiché au moins 45 s, une nouvelle suggestion attend l'analyse suivante ; 3 points à creuser au plus à l'écran, les plus récents. L'analyse finale à l'arrêt reste libre.
+
 ### Destructive actions — ALWAYS use AlertDialog
 ```typescript
 // ❌ WRONG — breaks design language
