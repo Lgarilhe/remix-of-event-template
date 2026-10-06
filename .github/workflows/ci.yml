@@ -131,10 +131,11 @@ jobs:
       - name: Copie privée des photos (design simplifié)
         run: node --test tests/c1/photos-copie-privee.test.mjs
       # Téléphonie : transcription d'un appel, résumé et tâches proposées. Le second
-      # fichier exécute la vraie fonction phone-call-insights avec un faux réseau :
-      # Node lit les .ts avec --experimental-strip-types.
+      # fichier exécute la vraie fonction phone-call-insights avec un faux réseau, le
+      # troisième la vraie fonction rgpd-purge (purge des transcriptions) : Node lit
+      # les .ts avec --experimental-strip-types.
       - name: Transcription des appels (téléphonie)
-        run: node --experimental-strip-types --test tests/c1/telephonie-transcription.test.mjs tests/c1/telephonie-transcription-flux.test.mjs
+        run: node --experimental-strip-types --test tests/c1/telephonie-transcription.test.mjs tests/c1/telephonie-transcription-flux.test.mjs tests/c1/telephonie-purge.test.mjs
       - name: Vite production build
         run: npx vite build
 

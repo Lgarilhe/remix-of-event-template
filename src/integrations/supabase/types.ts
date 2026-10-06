@@ -7460,6 +7460,18 @@ export type Database = {
           row_id: string
         }[]
       }
+      rgpd_purge_phone_call_insights: {
+        Args: {
+          p_before: string
+          p_dry_run?: boolean
+          p_limit?: number
+        }
+        Returns: {
+          insight_id: string
+          organization_id: string
+          phone_call_id: string
+        }[]
+      }
       retrieve_context_multi: {
         Args: {
           p_chunk_types?: string[]

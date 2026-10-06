@@ -1,7 +1,8 @@
 -- =====================================================================
 -- Téléphonie, lot A1 : phone_calls, telephony_connections, record_phone_call,
 -- get_telephony_status. Puis transcription, résumé et tâches proposées :
--- phone_call_insights et phone_call_task_suggestions (contrôles 16 à 22).
+-- phone_call_insights et phone_call_task_suggestions (contrôles 16 à 22), puis
+-- leur purge par durée (contrôles 23 à 27).
 -- À exécuter DANS UNE TRANSACTION puis ROLLBACK, sur une base locale
 -- reconstruite (jamais en prod) :
 --   BEGIN; \i supabase/tests/telephony_audit.sql; ROLLBACK;
@@ -21,7 +22,10 @@
 --     par la clé de service seulement ; une ligne par appel ;
 --   - tâches proposées : le navigateur ne change que l'état (proposée vers
 --     acceptée ou ignorée, une seule fois), le lien vers la tâche et la date ;
---     effacement en cascade avec l'appel.
+--     effacement en cascade avec l'appel ;
+--   - purge par durée (rgpd_purge_phone_call_insights) : service_role seulement,
+--     fenêtre minimale de 6 mois, compte seulement par défaut, la date de
+--     l'appel fait foi, la ligne de l'appel reste.
 -- A propriétaire de O1, B membre de O1, C propriétaire de O2 (ids fixes).
 -- Aucune fonction refusée n'est appelée sous SET ROLE (CLAUDE.md, supautils) :
 -- les droits se lisent par has_*_privilege, et les fonctions se jouent avec les
@@ -57,6 +61,12 @@ DECLARE
   v_sug1 uuid;
   v_sug2 uuid;
   v_pol text;
+  v_p1 uuid;
+  v_p2 uuid;
+  v_p3 uuid;
+  v_p4 uuid;
+  v_ids uuid[];
+  v_hint text;
   failures text := '';
 BEGIN
   -- 1. phone_calls : RLS active, une seule policy, en lecture, pour authenticated.
@@ -468,8 +478,111 @@ BEGIN
     failures := failures || format('[22. appel effacé : %s transcription(s) et %s suggestion(s) restent] ', n, v_talk);
   END IF;
 
+  -- 23 à 27. Purge des transcriptions (rgpd_purge_phone_call_insights).
+  -- Quatre appels : P1 (O1) et P2 (O2, sans started_at, créé il y a 13 mois)
+  -- à purger ; P3 (1 mois) et P4 (11 mois) à garder. Dates relatives à now() :
+  -- l'audit se rejoue à n'importe quelle date. Les contrôles ne lisent que
+  -- ces quatre appels.
+  INSERT INTO public.phone_calls (organization_id, provider, external_id, started_at, last_event_at, created_at)
+  VALUES (o1, 'aircall', 'P-old',    now() - interval '13 months', now(), now() - interval '13 months'),
+         (o2, 'aircall', 'P-null',   NULL,                         now(), now() - interval '13 months'),
+         (o1, 'aircall', 'P-recent', now() - interval '1 month',   now(), now() - interval '1 month'),
+         (o1, 'aircall', 'P-edge',   now() - interval '11 months', now(), now() - interval '13 months');
+  SELECT id INTO v_p1 FROM public.phone_calls WHERE organization_id = o1 AND external_id = 'P-old';
+  SELECT id INTO v_p2 FROM public.phone_calls WHERE organization_id = o2 AND external_id = 'P-null';
+  SELECT id INTO v_p3 FROM public.phone_calls WHERE organization_id = o1 AND external_id = 'P-recent';
+  SELECT id INTO v_p4 FROM public.phone_calls WHERE organization_id = o1 AND external_id = 'P-edge';
+  INSERT INTO public.phone_call_insights (organization_id, phone_call_id, status, transcript, summary)
+  VALUES (o1, v_p1, 'ready', '[{"speaker":"contact","text":"a"}]'::jsonb, 'S1'),
+         (o2, v_p2, 'ready', '[{"speaker":"contact","text":"b"}]'::jsonb, 'S2'),
+         (o1, v_p3, 'ready', '[{"speaker":"contact","text":"c"}]'::jsonb, 'S3'),
+         (o1, v_p4, 'ready', '[{"speaker":"contact","text":"d"}]'::jsonb, 'S4');
+  INSERT INTO public.phone_call_task_suggestions (organization_id, phone_call_id, title)
+  VALUES (o1, v_p1, 'T1a'), (o1, v_p1, 'T1b'), (o2, v_p2, 'T2'), (o1, v_p3, 'T3'), (o1, v_p4, 'T4');
+  v_ids := ARRAY[v_p1, v_p2, v_p3, v_p4];
+
+  -- 23. Droits : service_role seulement (ni PUBLIC, ni anon, ni authenticated).
+  SELECT count(*) INTO n FROM pg_proc p, aclexplode(p.proacl) a
+   WHERE p.oid = 'public.rgpd_purge_phone_call_insights(timestamptz, boolean, integer)'::regprocedure
+     AND a.grantee = 0;
+  IF n <> 0 THEN failures := failures || '[23. EXECUTE reste accordé à PUBLIC] '; END IF;
+  IF has_function_privilege('anon', 'public.rgpd_purge_phone_call_insights(timestamptz, boolean, integer)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.rgpd_purge_phone_call_insights(timestamptz, boolean, integer)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.rgpd_purge_phone_call_insights(timestamptz, boolean, integer)', 'EXECUTE') THEN
+    failures := failures || '[23. droits d''exécution : service_role seulement attendu] ';
+  END IF;
+
+  -- 24. Fenêtre sous 6 mois, date absente et limite hors bornes : refusées.
+  BEGIN
+    PERFORM * FROM public.rgpd_purge_phone_call_insights(now() - interval '5 months');
+    failures := failures || '[24. fenêtre de 5 mois acceptée] ';
+  EXCEPTION WHEN SQLSTATE '22023' THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'PURGE_WINDOW_TOO_SHORT' THEN failures := failures || format('[24. fenêtre courte : indice %s] ', v_hint); END IF;
+  END;
+  BEGIN
+    PERFORM * FROM public.rgpd_purge_phone_call_insights(NULL);
+    failures := failures || '[24. date absente acceptée] ';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+  BEGIN
+    PERFORM * FROM public.rgpd_purge_phone_call_insights(now() - interval '12 months', true, 0);
+    failures := failures || '[24. limite 0 acceptée] ';
+  EXCEPTION WHEN SQLSTATE '22023' THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'PURGE_LIMIT_INVALID' THEN failures := failures || format('[24. limite : indice %s] ', v_hint); END IF;
+  END;
+  BEGIN
+    PERFORM * FROM public.rgpd_purge_phone_call_insights(now() - interval '12 months', true, 5001);
+    failures := failures || '[24. limite 5001 acceptée] ';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
+
+  -- 25. Compte seulement (défaut) : rend P1 et P2, ne supprime rien. Joué avec
+  -- le rôle de la fonction serveur (service_role), pour prouver ses droits.
+  SET LOCAL ROLE service_role;
+  SELECT array_agg(f.phone_call_id ORDER BY f.phone_call_id) INTO v_ids
+    FROM public.rgpd_purge_phone_call_insights(now() - interval '12 months', true, 5000) f
+   WHERE f.phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  SELECT count(*) INTO n FROM public.rgpd_purge_phone_call_insights(now() - interval '12 months', true, 1);
+  RESET ROLE;
+  IF v_ids IS DISTINCT FROM (SELECT array_agg(x ORDER BY x) FROM unnest(ARRAY[v_p1, v_p2]) x) THEN
+    failures := failures || format('[25. compte seulement : appels rendus %s, attendu P1 et P2] ', v_ids);
+  END IF;
+  IF n <> 1 THEN failures := failures || format('[25. limite 1 : %s ligne(s)] ', n); END IF;
+  SELECT count(*) INTO n FROM public.phone_call_insights WHERE phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  SELECT count(*) INTO v_talk FROM public.phone_call_task_suggestions WHERE phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  IF n <> 4 OR v_talk <> 5 THEN
+    failures := failures || format('[25. compte seulement a supprimé : %s transcription(s) et %s suggestion(s) restent, attendu 4 et 5] ', n, v_talk);
+  END IF;
+
+  -- 26. Suppression : P1 et P2 (transcription et suggestions) partent, P3 et P4
+  -- restent, les quatre appels restent (la trace de l'appel n'est pas purgée).
+  SET LOCAL ROLE service_role;
+  SELECT array_agg(f.phone_call_id ORDER BY f.phone_call_id) INTO v_ids
+    FROM public.rgpd_purge_phone_call_insights(now() - interval '12 months', false, 5000) f
+   WHERE f.phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  RESET ROLE;
+  IF v_ids IS DISTINCT FROM (SELECT array_agg(x ORDER BY x) FROM unnest(ARRAY[v_p1, v_p2]) x) THEN
+    failures := failures || format('[26. suppression : appels rendus %s, attendu P1 et P2] ', v_ids);
+  END IF;
+  SELECT string_agg(c.external_id, ',' ORDER BY c.external_id) INTO v_text
+    FROM public.phone_call_insights i JOIN public.phone_calls c ON c.id = i.phone_call_id
+   WHERE i.phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  IF v_text IS DISTINCT FROM 'P-edge,P-recent' THEN failures := failures || format('[26. transcriptions restantes : %s] ', v_text); END IF;
+  SELECT string_agg(t.title, ',' ORDER BY t.title) INTO v_text
+    FROM public.phone_call_task_suggestions t WHERE t.phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  IF v_text IS DISTINCT FROM 'T3,T4' THEN failures := failures || format('[26. suggestions restantes : %s] ', v_text); END IF;
+  SELECT count(*) INTO n FROM public.phone_calls WHERE id IN (v_p1, v_p2, v_p3, v_p4);
+  IF n <> 4 THEN failures := failures || format('[26. %s appel(s) sur 4 : la purge ne touche pas phone_calls] ', n); END IF;
+
+  -- 27. Rejouable : un second passage ne trouve plus rien à purger sur ces appels.
+  SELECT count(*) INTO n FROM public.rgpd_purge_phone_call_insights(now() - interval '12 months', false, 5000) f
+   WHERE f.phone_call_id IN (v_p1, v_p2, v_p3, v_p4);
+  IF n <> 0 THEN failures := failures || format('[27. second passage : %s ligne(s) purgée(s)] ', n); END IF;
+
   IF failures <> '' THEN
     RAISE EXCEPTION 'telephony_audit : %', failures;
   END IF;
-  RAISE NOTICE 'telephony_audit : 22 contrôles passés';
+  RAISE NOTICE 'telephony_audit : 27 contrôles passés';
 END $$;

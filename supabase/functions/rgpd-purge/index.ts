@@ -12,6 +12,10 @@
  *    finished InMails with no activity for > 24 months — never active or
  *    paused enrollments, never pending InMails
  * 5. Conversation–mission links (lot 0b) with no event for > 24 months
+ * 6. Transcription, résumé et tâches proposées d'un appel (téléphonie) pour un
+ *    appel de plus de 12 mois ; la ligne de l'appel et les tâches déjà créées
+ *    restent (fonction SQL rgpd_purge_phone_call_insights, fenêtre minimale de
+ *    6 mois, date de l'appel)
  *
  * Lignes candidat (1 et 3) : sélection et suppression par la fonction SQL
  * rgpd_purge_candidate_rows (lot 0c-2), sur l'étape générale : 24 mois sans
@@ -70,6 +74,7 @@ Deno.serve(async (req) => {
       sequence_enrollments_purged: 0,
       inmails_purged: 0,
       conversation_links_purged: 0,
+      phone_call_insights_purged: 0,
       knowledge_chunks_purged: 0,
       errors: [] as string[],
     };
@@ -322,6 +327,31 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       stats.errors.push(`conversation links purge: ${e}`);
+    }
+
+    // ── 6. Transcriptions d'appels après 12 mois (téléphonie) ────────
+    // Transcription, résumé et tâches proposées portent le contenu d'une
+    // conversation avec un candidat. L'âge est celui de l'appel ; la fonction SQL
+    // refuse toute fenêtre sous 6 mois et ne touche ni la ligne de l'appel ni les
+    // tâches déjà créées. Même marge d'un jour que pour les lignes candidat.
+    const callInsightsBefore = new Date(cutoff12m);
+    callInsightsBefore.setDate(callInsightsBefore.getDate() - 1);
+    try {
+      const { data: purgedInsights, error: insightsError } = await adminClient.rpc("rgpd_purge_phone_call_insights", {
+        p_before: callInsightsBefore.toISOString(),
+        p_dry_run: dryRun,
+        p_limit: 500,
+      });
+      if (insightsError) {
+        stats.errors.push(`phone call insights purge: ${insightsError.message}`);
+      } else {
+        stats.phone_call_insights_purged = (purgedInsights ?? []).length;
+        if (stats.phone_call_insights_purged > 0) {
+          console.log(`[rgpd-purge] (${mode}) ${stats.phone_call_insights_purged} call transcriptions (> 12 months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`phone call insights purge: ${e}`);
     }
 
     // ── Summary ─────────────────────────────────────────────────────
