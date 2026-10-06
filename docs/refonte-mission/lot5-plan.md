@@ -583,8 +583,10 @@ Tests existants à adapter.
 - À relire : `tests/ux/lot12c-barre-laterale.test.mjs` (rangée basse) ; `seq-audit-f2b` et `f2c` (props du Journal, Statistiques et Diagnostic bornés à la mission) ; `lot6d-suivi` (Journal, Diagnostic).
 
 Critère de fin.
-- Drapeau éteint : toutes les suites existantes vertes, rien de visible ne change (barre comprise).
+- Drapeau éteint : toutes les suites existantes vertes, rien de visible ne change (barre comprise). Seule différence voulue (§1.3, les routes nouvelles existent) : `/sequences` et `/sequences/:id` mènent à `/missions` (`SequencesGate`) au lieu de la page introuvable. Gardé par `seq-v2-suivi` (bloc « drapeau éteint », @smoke, sans fonction serveur) et `tests/ux/seq-v2-socle.test.mjs`, joués par la CI de PR.
 - Drapeau allumé : `seq-v2-suivi` vert ; l'écran est accessible par la barre, Ctrl J et « G puis S ».
+
+Écart acté à la spec-cible (tableau 3.1, pause manuelle). Ni l'auteur ni la date d'une pause « un par un » ne sont enregistrés : aucune colonne ne les porte, et `updated_at` est réécrit par le déclencheur à chaque écriture de l'inscription. La ligne dit donc « En pause », sans auteur ni date, au lieu de « En pause (par Guillaume Martin, le 25/09) ». Les enregistrer demande que chaque geste de pause (suivi, fiche, messagerie, page) écrive une trace dans `tracking_data` côté serveur : à prévoir avec les gestes du lot 5h, pas en 5c-2.
 
 Risques.
 - Place de la rangée basse sur téléphone (cinq liens plus l'Aide) : vérifiée en recette visuelle à 360 px.

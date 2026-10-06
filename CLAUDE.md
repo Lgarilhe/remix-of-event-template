@@ -147,6 +147,15 @@ Notion n'apparaît dans l'application que comme connecteur de l'assistant : une 
 /inbox                   → Inbox
 /calendar                → CalendarPage
 /tasks                   → TasksPage
+/sequences               → SequencesPage (lot 5c-2) : séquences de l'organisation, onglets ?onglet= (toutes, a-venir,
+                           modeles, statistiques). /sequences/:id → SequenceDetailPage (&depuis=mission:<id>), onglets
+                           ?onglet= (etapes, candidats avec ?statut= et ?parcours=, statistiques, journal, reglages) ;
+                           statut d'un inscrit par src/lib/enrollmentStatusLine.ts, Parcours sur le graphe
+                           (src/lib/sequenceJourney.ts), Journal, « À venir » et Candidats paginés par curseur
+                           (src/lib/journalCursor.ts), gestes de src/lib/sequenceActions.ts et du lot 5b. Derrière
+                           l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts : clé locale, ?sequences-v2=1|0,
+                           éteint par défaut jusqu'au lot 5h) ; éteint, SequencesGate renvoie vers /missions et aucun lien
+                           n'y mène.
 /marketplace             → Marketplace
 /settings                → Settings, coquille à deux portes (src/pages/Settings.tsx, registre src/components/settings/shell/sections.tsx).
   Mon compte : /settings/account/connections | writing | journal (provisoire, part dans /agents au lot 9).
@@ -391,7 +400,7 @@ OutreachSearchContext       — legacy global search (mostly replaced by useLink
 ```
 
 ### Barre latérale (lots 5 et 6, 2026-09)
-`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Marketplace, Paramètres, Aide), menu de l'avatar. Plus de cloche. La bulle ronde de l'assistant est revenue le 2026-10-05 (`src/components/agent/AssistantLauncher.tsx`, montée par `AppLayout`, masquée sur /agents et /inbox, `openAgent()`) ; Ctrl K reste.
+`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Séquences si l'interrupteur konekt.sequences-v2 est allumé (décision 8 du 05/10, lot 5c-2), Marketplace, Paramètres, Aide), menu de l'avatar. Même interrupteur pour l'entrée « Séquences » de la palette Ctrl J, le raccourci « G puis S » (`GoShortcuts`, ligne de `KeyboardShortcutsDialog`) et les liens de `SequencesList` (page de chaque séquence, « Toutes les séquences de l'organisation »). Plus de cloche. La bulle ronde de l'assistant est revenue le 2026-10-05 (`src/components/agent/AssistantLauncher.tsx`, montée par `AppLayout`, masquée sur /agents et /inbox, `openAgent()`) ; Ctrl K reste.
 - Composants dans `src/components/sidebar/**`, hooks dans `src/hooks/sidebar/**`, clés React Query sous `['sidebar', …]`, un seul canal temps réel (`useSidebarRealtime`).
 - Un seul chiffre coloré : À traiter = panne LinkedIn + réponses de candidats non lues (3 jours ouvrés) + mes validations + notifications « action » non lues (`src/lib/sidebarSignals.ts`, `todoCount` : `null` si une source n'a rien renvoyé, jamais 0 inventé).
 - La messagerie ne marque lues que les notifications de la conversation ouverte (`metadata->>chat_id`, `Inbox.tsx`).

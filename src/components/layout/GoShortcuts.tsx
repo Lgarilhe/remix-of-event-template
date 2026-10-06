@@ -8,6 +8,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { shouldIgnoreShortcut } from '@/lib/keyboardShortcuts';
+import { getSequencesBeta, isSequencesPath } from '@/lib/sequencesBeta';
 
 const G_ROUTES: Record<string, string> = {
   d: '/dashboard',
@@ -17,6 +18,8 @@ const G_ROUTES: Record<string, string> = {
   t: '/tasks',
   c: '/inbox',
   i: '/agents',
+  // Séquences (lot 5c-2) : seulement interrupteur konekt.sequences-v2 allumé.
+  s: '/sequences',
 };
 const G_SEQUENCE_WINDOW_MS = 1200;
 
@@ -36,7 +39,7 @@ export function GoShortcuts() {
       if (pendingSince && e.timeStamp - pendingSince < G_SEQUENCE_WINDOW_MS) {
         pendingSince = 0;
         const path = G_ROUTES[key];
-        if (path) {
+        if (path && (!isSequencesPath(path) || getSequencesBeta())) {
           e.preventDefault();
           e.stopPropagation();
           navigate(path);

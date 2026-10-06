@@ -179,6 +179,9 @@ test('B6A-7 : palette, un nom par page', () => {
   assert.match(item('/calendar'), /\n\s*Agenda\n/);
   assert.match(item('/inbox'), /\n\s*Messagerie\n/);
   assert.match(item('/agents'), /\n\s*Assistant\n/);
+  // Lot 5c-2 : entrée « Séquences », seulement interrupteur konekt.sequences-v2 allumé.
+  assert.match(item('/sequences'), /\n\s*Séquences\n/);
+  assert.match(palette, /\{showSequences && \(\s*<CommandItem onSelect=\{\(\) => go\('\/sequences'\)\}>/);
   const texts = visibleStrings(palette);
   assert.ok(!texts.some((t) => t.includes('Calendrier')), 'Calendrier encore présent');
   assert.ok(!texts.some((t) => /Agents IA/.test(t)), 'Agents IA encore présent');
