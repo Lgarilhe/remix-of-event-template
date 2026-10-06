@@ -24,6 +24,10 @@ const stripComments = (src) => src
 
 const list = stripComments(read('src/components/outreach/SequencesList.tsx'));
 const panel = stripComments(read('src/components/outreach/SequenceEnrollmentsPanel.tsx'));
+// Lot 5c-1 : fonctions de la liste et du suivi sorties dans sequenceActions.ts,
+// enregistrement de l'éditeur dans useSequenceSave.ts.
+const actions = stripComments(read('src/lib/sequenceActions.ts'));
+const saveHook = stripComments(read('src/hooks/useSequenceSave.ts'));
 
 /** Déclaration `const name = (async)? (...) => { ... }` complète (accolades équilibrées). */
 function body(src, name) {
@@ -113,7 +117,7 @@ test('front-editor-list-1 — désactivation : pause partielle, la séquence res
   });
   const { toast, calls: toasts } = fakeToast();
   const setSequences = () => assert.fail('la séquence ne doit pas être affichée désactivée');
-  const deactivate = extract(list, 'deactivateSequence', {
+  const deactivate = extract(actions, 'deactivateSequence', {
     supabase, toast, candidats, setSequences, console: quiet,
     setTogglingId: () => {}, fetchSequences: () => {},
     enrollmentsPanelAction: (id) => ({ action: { label: 'Voir les inscrits', id } }),
@@ -144,7 +148,7 @@ test('front-editor-list-1 — désactivation : tout est en pause, is_active pass
   // l'annulation ne reprend que les inscriptions rendues par l'écriture.
   const undoToasts = [];
   const undone = [];
-  const deactivate = extract(list, 'deactivateSequence', {
+  const deactivate = extract(actions, 'deactivateSequence', {
     supabase, toast, candidats, console: quiet,
     setSequences: () => {}, setTogglingId: () => {}, fetchSequences: () => {},
     enrollmentsPanelAction: () => ({}),
@@ -168,10 +172,10 @@ test('front-editor-list-1 — désactivation : tout est en pause, is_active pass
 test('front-editor-list-1 — D3 : ni désactivation ni pause groupée proposées à un collaborateur', () => {
   assert.match(list, /const \{ organizationId, isCollaborator \} = useOrganization\(\);/);
   assert.match(list, /const deactivationLocked = \(seq: SequenceWithStats\) => seq\.is_active && isCollaborator;/);
-  const toggle = body(list, 'requestToggle');
+  const toggle = body(actions, 'requestToggle');
   assert.ok(toggle.indexOf('deactivationLocked(seq)') < toggle.indexOf('if (seq.is_active)'), 'refus avant tout comptage');
   // Plus de recompte conditionnel à « 0 ligne touchée ».
-  assert.doesNotMatch(body(list, 'deactivateSequence'), /pausedCount === 0 && expectedActive/);
+  assert.doesNotMatch(body(actions, 'deactivateSequence'), /pausedCount === 0 && expectedActive/);
   // Panneau : pause (et reprise) groupées masquées pour un collaborateur.
   assert.match(panel, /const canBulkManage = !isCollaborator;/);
   assert.match(panel, /\{canBulkManage && activeCount > 0 && \(/);
@@ -184,7 +188,7 @@ test('front-editor-list-1 — pause groupée : il en reste en cours, jamais de s
   });
   const { toast, calls: toasts } = fakeToast();
   const offers = [];
-  const bulkStop = extract(panel, 'bulkStopActive', {
+  const bulkStop = extract(actions, 'bulkStopActive', {
     supabase, toast, sequenceId: 'seq-1', fetchEnrollments: async () => {}, console: quiet,
     offerUndoPause: (options) => { offers.push(options); },
   });
@@ -206,7 +210,7 @@ test('front-editor-list-1 — pause groupée sans aucune mise en pause : erreur,
   });
   const { toast, calls: toasts } = fakeToast();
   const offers = [];
-  const bulkStop = extract(panel, 'bulkStopActive', {
+  const bulkStop = extract(actions, 'bulkStopActive', {
     supabase, toast, sequenceId: 'seq-1', fetchEnrollments: async () => {}, console: quiet,
     offerUndoPause: (options) => { offers.push(options); },
   });
@@ -230,7 +234,7 @@ function duplicateHarness({ stepsCreateError = null, manage = true } = {}) {
   }, { auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) } });
   const { toast, calls: toasts } = fakeToast();
   const duplicatingRef = { current: false };
-  const handleDuplicate = extract(list, 'handleDuplicate', {
+  const handleDuplicate = extract(actions, 'handleDuplicate', {
     supabase, toast, duplicatingRef, console: quiet,
     canManage: () => manage,
     setDuplicatingId: () => {},
@@ -297,7 +301,7 @@ test('front-editor-list-4 — pause de séquence restée alors que la séquence 
   assert.match(panel, /sequencePauseResumable \? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint\(enrollment\.pause_reason\)/);
   // La liste renvoie vers le panneau depuis les toasts de réactivation.
   assert.match(list, /action: \{ label: 'Voir les inscrits', onClick: \(\) => setEnrollmentsPanelSequence\(seq\) \}/);
-  assert.match(body(list, 'activateSequence'), /\.\.\.enrollmentsPanelAction\(sequenceId\)/);
+  assert.match(body(actions, 'activateSequence'), /\.\.\.enrollmentsPanelAction\(sequenceId\)/);
 });
 
 // ---------------------------------------------------------------- 4. front-editor-list-5 (D6)
@@ -312,7 +316,7 @@ test('front-editor-list-5 — « Reprendre tous les candidats en pause » : tout
   };
   const { toast, calls: toasts } = fakeToast();
   const reasons = ['manual', 'sequence_inactive', 'auto_paused'];
-  const bulkResume = extract(panel, 'bulkResumePaused', {
+  const bulkResume = extract(actions, 'bulkResumePaused', {
     supabase, toast, invokeEdgeFunction, console: quiet,
     setBulkResuming: () => {}, sequenceId: 'seq-1', fetchEnrollments: async () => {},
     EXECUTION_PAGE_SIZE: 1000, BULK_RESUME_PAUSE_REASONS: reasons, BULK_RESUME_CHUNK: 25,
@@ -328,7 +332,7 @@ test('front-editor-list-5 — « Reprendre tous les candidats en pause » : tout
   assert.equal(toasts.find((t) => t.kind === 'success')?.title, '30 candidats repris');
 
   // Pauses héritées de l'ancienne désactivation (manual) comprises ; séquence active, pas de collaborateur.
-  assert.match(panel, /const BULK_RESUME_PAUSE_REASONS: string\[\] = \['manual', \.\.\.SEQUENCE_LEVEL_PAUSE_REASONS\];/);
+  assert.match(actions, /const BULK_RESUME_PAUSE_REASONS: string\[\] = \['manual', \.\.\.SEQUENCE_LEVEL_PAUSE_REASONS\];/);
   assert.match(panel, /\{canBulkManage && sequenceActive === true && bulkResumableCount > 0 && \(/);
   assert.match(panel, /`Reprendre tous les candidats en pause \(\$\{bulkResumableCount\}\)`/);
   // Confirmée par un AlertDialog, compteur lu en base sur toute la séquence.
@@ -347,7 +351,7 @@ test('front-editor-list-5 — reprise groupée : un appel refusé laisse le rest
     return { data: { success: true, counts: { resumed: payload.enrollment_ids.length } }, error: null };
   };
   const { toast, calls: toasts } = fakeToast();
-  const bulkResume = extract(panel, 'bulkResumePaused', {
+  const bulkResume = extract(actions, 'bulkResumePaused', {
     supabase, toast, invokeEdgeFunction, console: quiet,
     setBulkResuming: () => {}, sequenceId: 'seq-1', fetchEnrollments: async () => {},
     EXECUTION_PAGE_SIZE: 1000, BULK_RESUME_PAUSE_REASONS: ['manual'], BULK_RESUME_CHUNK: 25,
@@ -361,7 +365,7 @@ test('front-editor-list-5 — reprise groupée : un appel refusé laisse le rest
 
 // ---------------------------------------------------------------- 5, 6. Reprise d'un échec d'envoi, relance
 test('front-editor-list-7 / integration-8 — pause « échec d’envoi » : c’est l’étape en échec qui est retentée', () => {
-  const retries = extract(panel, 'resumeRetriesFailedStep', {
+  const retries = extract(actions, 'resumeRetriesFailedStep', {
     isPendingStatus: (s) => ['scheduled', 'waiting_event', 'quota_blocked'].includes(s),
     isDoneStatus: (s) => ['sent', 'opened', 'clicked', 'replied', 'skipped'].includes(s),
     UNCERTAIN_FAILURE_PREFIXES: ['Interrompu pendant l’envoi', "Interrompu pendant l'envoi", 'Envoi incertain'],
@@ -378,17 +382,17 @@ test('front-editor-list-7 / integration-8 — pause « échec d’envoi » : c�
   // Autres pauses : jamais.
   assert.equal(retries({ status: 'paused', pause_reason: 'manual', executions: [{ status: 'failed', step_order: 1 }] }), false);
 
-  assert.doesNotMatch(panel, /Reprendre à l’étape suivante/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /Reprendre à l’étape suivante/);
   assert.match(panel, /\{retriesFailedStep \? 'Réessayer l’étape en échec' : 'Reprendre la séquence'\}/);
   assert.match(panel, /`Réessayer l’étape en échec pour \$\{confirmName\} \?`/);
   assert.match(panel, /'L’étape en échec sera retentée après son délai habituel, pendant vos heures d’envoi\./);
   // « Chaque étape garde sa date prévue ; celles déjà passées partiront… » était faux sur le chemin schedule_next.
-  assert.doesNotMatch(panel, /celles déjà passées partiront dans les prochaines minutes/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /celles déjà passées partiront dans les prochaines minutes/);
   assert.match(panel, /'Une étape déjà programmée garde sa date \(au plus tôt dans une minute\) ; sinon, l’étape suivante est programmée selon son délai habituel, pendant vos heures d’envoi\.'/);
 });
 
 test('integration-8 / front-editor-list-8 — « Relancer » ne promet plus d’envoi dans les prochaines minutes', () => {
-  assert.doesNotMatch(panel, /partira dans les prochaines minutes/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /partira dans les prochaines minutes/);
   assert.match(panel, /`La séquence reprend à l’étape suivante, selon ses délais habituels\$\{confirmNextAction \? ` \(prochaine action estimée : \$\{confirmNextAction\}\)` : ', s’il en reste une'\}\./);
   assert.match(body(panel, 'reEnroll'), /'La prochaine action est programmée selon les délais de la séquence, pendant vos heures d’envoi\.'/);
   // L'estimation ne prend plus une étape annulée par la réponse pour « réarmable ».
@@ -397,8 +401,8 @@ test('integration-8 / front-editor-list-8 — « Relancer » ne promet plus d’
 
 // ---------------------------------------------------------------- D5 : effacement RGPD
 test('D5 — effacement RGPD : ni « Reprendre » ni « Relancer »', () => {
-  const prefix = panel.match(/const GDPR_ERASURE_SKIP_PREFIX = '([^']+)';/)[1];
-  const erased = extract(panel, 'isGdprErased', { GDPR_ERASURE_SKIP_PREFIX: prefix });
+  const prefix = actions.match(/const GDPR_ERASURE_SKIP_PREFIX = '([^']+)';/)[1];
+  const erased = extract(actions, 'isGdprErased', { GDPR_ERASURE_SKIP_PREFIX: prefix });
   assert.equal(erased({ tracking_data: { gdpr_erased_at: '2026-09-26T10:00:00Z' }, executions: [] }), true);
   // Même motif que le moteur (GDPR_ERASURE_SKIP_REASON de _shared/get-or-fetch-contact.ts).
   const engine = read('supabase/functions/_shared/get-or-fetch-contact.ts').match(/GDPR_ERASURE_SKIP_REASON = '([^']+)'/)[1];
@@ -416,7 +420,7 @@ test('D5 — effacement RGPD : ni « Reprendre » ni « Relancer »', () => {
 
 // ---------------------------------------------------------------- 10. front-editor-list-10
 test('front-editor-list-10 — erreurs d’enregistrement traduites, étape refusée nommée par son type', () => {
-  const sequenceSaveError = extract(list, 'sequenceSaveError', {
+  const sequenceSaveError = extract(actions, 'sequenceSaveError', {
     console: quiet,
     sequenceWriteRefusal: (e) => (e?.hint === 'SEQUENCE_ORG_MISMATCH' ? 'Action refusée : cet élément appartient à une autre séquence ou organisation.' : null),
   });
@@ -428,10 +432,10 @@ test('front-editor-list-10 — erreurs d’enregistrement traduites, étape refu
     'Action refusée : cet élément appartient à une autre séquence ou organisation.');
   assert.doesNotMatch(sequenceSaveError({ message: 'duplicate key value violates unique constraint' }).message, /duplicate key/);
 
-  const blockedStepsNotice = extract(list, 'blockedStepsNotice');
+  const blockedStepsNotice = extract(actions, 'blockedStepsNotice');
   const labels = new Map([[2, 'Message IA']]);
   assert.equal(blockedStepsNotice('Étape(s) concernée(s) : 2', labels), ' Étape concernée : « Message IA » (étape 3 avant vos modifications).');
-  const save = body(list, 'handleSaveSequence');
+  const save = body(saveHook, 'handleSaveSequence');
   assert.match(save, /\.select\('id, step_order, action_type'\)/);
   assert.match(save, /baseStepLabels\.set\(s\.step_order, actionTypeLabel\(s\.action_type\)\)/);
   assert.doesNotMatch(save, /throw (stepsError|updateError|createError);/);

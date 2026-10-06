@@ -48,7 +48,13 @@ const analytics = code(`${OUTREACH}/SequenceAnalytics.tsx`);
 const bulk = code(`${OUTREACH}/BulkInMailModal.tsx`);
 const editor = code(`${OUTREACH}/InMailTextEditor.tsx`);
 const single = code(`${OUTREACH}/OutreachMessageModal.tsx`);
-const FILES = { panel, journal, editModal, diagnostic, analytics, bulk, editor, single };
+// Lot 5c-1 : actions du suivi (toasts compris) sorties du panneau dans la partie
+// « Suivi des inscrits » de sequenceActions.ts, qui commence à StepExecution.
+const actionsSrc = code('src/lib/sequenceActions.ts');
+const suiviStart = actionsSrc.indexOf('export interface StepExecution');
+assert.ok(suiviStart !== -1, 'partie « Suivi des inscrits » introuvable dans sequenceActions.ts');
+const actions = actionsSrc.slice(suiviStart);
+const FILES = { panel, journal, editModal, diagnostic, analytics, bulk, editor, single, actions };
 
 test('D-56 : les raisons écrites par le moteur d’envoi sont traduites', () => {
   // Revue design : libellés de formatSkipReason (audit), repris par le catalogue unifié.
@@ -181,7 +187,7 @@ test('D-65 à D-72 : jetons, typographie et texte dans les fichiers du lot', () 
     assert.doesNotMatch(src, /enrôl/i, `${name} : « enrôler »`);
   }
   // Les emoji restants de l'éditeur sont le contenu à insérer dans le message (D-70).
-  for (const [name, src] of Object.entries({ panel, journal, editModal, diagnostic, analytics, bulk, single })) {
+  for (const [name, src] of Object.entries({ panel, journal, editModal, diagnostic, analytics, bulk, single, actions })) {
     assert.doesNotMatch(src, /\p{Extended_Pictographic}/u, `${name} : emoji d'interface`);
   }
   assert.match(editor, /aria-label="Gras"/, 'boutons de mise en forme nommés');

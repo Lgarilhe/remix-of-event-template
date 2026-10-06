@@ -271,8 +271,9 @@ test('SEQ-059 — supprimer une étape déjà envoyée est refusé avant toute s
     assert.ok(history.includes(`'${s}'`), `statut d'historique oublié : ${s}`);
   }
   assert.match(fn, /SECURITY INVOKER/, 'reste soumise à la RLS de l’appelant');
-  // Le front traduit ce HINT (lot F2).
-  assert.match(read('src/components/outreach/SequencesList.tsx'), /STEP_HAS_HISTORY/);
+  // Le front traduit ce HINT (lot F2) ; enregistrement de l'éditeur sorti de
+  // SequencesList dans useSequenceSave au lot 5c-1.
+  assert.match(read('src/hooks/useSequenceSave.ts'), /STEP_HAS_HISTORY/);
 });
 
 // ---------------------------------------------------------------- SEQ-075

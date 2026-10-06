@@ -39,6 +39,8 @@ const candidatePanel = stripComments(read('src/components/outreach/CandidateSequ
 const candidateHook = stripComments(read('src/hooks/useCandidateEnrollments.ts'));
 const pipelineTable = stripComments(read('src/components/outreach/projects/ProjectCandidatesTableEnhanced.tsx'));
 const enrollmentsPanel = stripComments(read('src/components/outreach/SequenceEnrollmentsPanel.tsx'));
+// Lot 5c-1 : actions du suivi des inscrits sorties dans sequenceActions.ts.
+const enrollmentActions = stripComments(read('src/lib/sequenceActions.ts'));
 const engine = read('supabase/functions/process-sequences/index.ts');
 const invoke = read('src/lib/invokeEdgeFunction.ts');
 
@@ -207,7 +209,7 @@ test('Décision — fiche candidat : même bilan que le suivi des inscrits (stop
   };
   const runPanel = async (response) => {
     const { toast, calls } = fakeToast();
-    const markReplied = extract(enrollmentsPanel, 'markReplied', {
+    const markReplied = extract(enrollmentActions, 'markReplied', {
       toast, console: quiet, nameOf: () => 'Alice', fetchEnrollments: async () => {},
       invokeEdgeFunction: async () => response,
     });
