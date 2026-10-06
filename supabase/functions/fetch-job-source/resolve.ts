@@ -36,6 +36,12 @@ export interface Deps {
   scrape(url: string, mainContentOnly: boolean): Promise<RenderedPage>;
 }
 
+/** Ce que chaque niveau a vu : écrit dans le journal, jamais renvoyé à l'écran. */
+export interface Trace {
+  direct?: { chars: number; ldJobs: number; links: number } | "failed";
+  firecrawl?: "not_configured" | "failed" | { markdownChars: number; links: number };
+}
+
 /** Une fiche plus courte est un résumé, pas une fiche : on passe au niveau suivant. */
 const MIN_DESCRIPTION_CHARS = 300;
 const MIN_PAGE_TEXT_CHARS = 800;
@@ -157,17 +163,19 @@ async function completeFromPage(url: URL, job: SourceJob, html: string, deps: De
   return { kind: "job", job, reader: "json_ld" };
 }
 
-async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved | null> {
+async function readPage(url: URL, c: Classified, deps: Deps, trace: Trace): Promise<Resolved | null> {
   // Niveau 2 : lecture directe.
   let html = "";
   try {
     html = await deps.fetchPage(url.toString());
   } catch (e) {
+    trace.direct = "failed";
     console.warn("[fetch-job-source] lecture directe impossible:", e instanceof Error ? e.message : e);
   }
 
   if (html) {
     const ld = extractJsonLdJobs(html, url.toString());
+    trace.direct = { chars: html.length, ldJobs: ld.length, links: extractHtmlLinks(html, url.toString()).length };
     const withText = ld.filter((j) => (j.description?.length ?? 0) >= MIN_DESCRIPTION_CHARS);
     if (c.kind !== "company" && withText.length === 1) {
       return c.source === "wttj" ? completeFromPage(url, withText[0], html, deps, c.jobRef) : { kind: "job", job: withText[0], reader: "json_ld" };
@@ -186,9 +194,13 @@ async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved |
   }
 
   // Niveau 3 : rendu JavaScript par Firecrawl.
-  if (!(await deps.allowFirecrawl())) return null;
+  if (!(await deps.allowFirecrawl())) {
+    trace.firecrawl = "not_configured";
+    return null;
+  }
   try {
     const page = await deps.scrape(url.toString(), c.kind === "job");
+    trace.firecrawl = { markdownChars: page.markdown.length, links: page.links.length };
     if (c.kind !== "job") {
       const list = listFromLinks(c, url, page.links);
       if (list.length) return companyResult(c, url, list, "firecrawl");
@@ -198,6 +210,7 @@ async function readPage(url: URL, c: Classified, deps: Deps): Promise<Resolved |
       if (!looksThin(text, 400)) return jobFromText(c, url, firstMarkdownHeading(page.markdown), text, "firecrawl");
     }
   } catch (e) {
+    trace.firecrawl = "failed";
     console.warn("[fetch-job-source] Firecrawl impossible:", e instanceof Error ? e.message : e);
   }
   return null;
@@ -219,7 +232,8 @@ export async function resolveUrl(url: URL, deps: Deps, expectJob: boolean): Prom
       console.warn("[fetch-job-source] interface du logiciel de recrutement impossible:", e instanceof Error ? e.message : e);
     }
   }
-  if (!result) result = await readPage(url, c, deps);
+  const trace: Trace = {};
+  if (!result) result = await readPage(url, c, deps, trace);
 
   console.log("[fetch-job-source]", expectJob ? "read_job" : "resolve", {
     host: url.hostname,
@@ -228,6 +242,7 @@ export async function resolveUrl(url: URL, deps: Deps, expectJob: boolean): Prom
     reader: result && result.kind !== "unreadable" ? result.reader : "none",
     jobs: result?.kind === "company" ? result.jobs.length : undefined,
     chars: result?.kind === "job" ? result.job.description?.length : undefined,
+    ...(result ? {} : { trace }),
   });
 
   if (!result) {
