@@ -240,10 +240,13 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     setClientName(v.name ?? '');
     setClientPick({ website: v.website, logo_url: v.logo_url });
   };
-  const clientDetails = (name: string): Record<string, string> | null =>
-    name && (clientPick.website || clientPick.logo_url)
-      ? { name, ...(clientPick.website ? { website: clientPick.website } : {}), ...(clientPick.logo_url ? { logo_url: clientPick.logo_url } : {}) }
-      : null;
+  const clientDetails = useCallback(
+    (name: string): Record<string, string> | null =>
+      name && (clientPick.website || clientPick.logo_url)
+        ? { name, ...(clientPick.website ? { website: clientPick.website } : {}), ...(clientPick.logo_url ? { logo_url: clientPick.logo_url } : {}) }
+        : null,
+    [clientPick],
+  );
   const [description, setDescription] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BriefAnalysis | null>(null);
@@ -448,7 +451,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [briefName, briefText, clientName, clientPick, analysis, createProject, onClose, navigate]);
+  }, [briefName, briefText, clientName, clientDetails, analysis, createProject, onClose, navigate]);
 
   // ── Scan d'URL — parsing local du slug uniquement.
   //
@@ -572,7 +575,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [briefName, description, clientName, clientPick, createProject, onClose, navigate]);
+  }, [briefName, description, clientName, clientDetails, createProject, onClose, navigate]);
 
   // Détecte les fields extraits pour le panneau live
   const extractedFields = analysis?.analysis ? buildExtractedFields(analysis.analysis) : [];
