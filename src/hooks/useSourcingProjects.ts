@@ -43,6 +43,8 @@ export interface SourcingProject {
   jd_client_logo?: string | null;
   jd_client_logo_checked?: string | null;
   jd_location?: string | null;
+  /** Adresse de l'offre d'origine, quand la mission vient d'une offre lue en ligne. */
+  jd_source_url?: string | null;
   hunt_mode: boolean;
   hunt_bounty_percent: number | null;
   hunt_max_recruiters: number | null;
@@ -59,6 +61,8 @@ export interface CreateProjectInput {
   client_name?: string;
   job_details?: Record<string, any>;
   filters_snapshot?: Record<string, any>;
+  /** Pas de toast de confirmation : l'appelant annonce lui-même le résultat (création en lot). */
+  silent?: boolean;
 }
 
 export interface UpdateProjectInput {
@@ -95,7 +99,7 @@ export interface SourcingProjectsOptions {
 // compris) dépasse la profondeur admise par TypeScript ; le résultat est
 // relu comme SourcingProject[].
 const PROJECT_LIST_COLUMNS: string =
-  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_client_logo:job_details->client->>logo_url, jd_client_logo_checked:job_details->client->>logo_checked_at, jd_location:job_details->>location';
+  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_client_logo:job_details->client->>logo_url, jd_client_logo_checked:job_details->client->>logo_checked_at, jd_location:job_details->>location, jd_source_url:job_details->>source_url';
 
 export const useSourcingProjects = (
   kind: 'mission' | 'search' = 'mission',
@@ -138,10 +142,12 @@ export const useSourcingProjects = (
       if (!user) throw new Error('Not authenticated');
       if (!organizationId) throw new Error('No organization selected');
 
+      // `silent` ne concerne que l'écran : il n'est pas une colonne.
+      const { silent, ...row } = input;
       const { data, error } = await supabase
         .from('sourcing_projects')
         .insert({
-          ...input,
+          ...row,
           created_by: user.id,
           organization_id: organizationId,
           filters_snapshot: input.filters_snapshot || {},
@@ -152,11 +158,11 @@ export const useSourcingProjects = (
       if (error) throw error;
       return data as SourcingProject;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, input) => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
       // Compte du plafond de missions (useQuotaGate) : création, fin ou archivage le changent.
       queryClient.invalidateQueries({ queryKey: ['quota-job-count'] });
-      toast.success(data?.kind === 'search' ? 'Recherche créée' : 'Projet créé avec succès');
+      if (!input.silent) toast.success(data?.kind === 'search' ? 'Recherche créée' : 'Projet créé avec succès');
     },
     onError: (err: Error) => {
       toast.error(`Erreur: ${err.message}`);

@@ -434,7 +434,8 @@ Enrichment & sociétés: enrich-company, enrich-candidate-contact, get-enrichmen
                     resolve-pedigree-directory, refresh-pedigree-by-funding-stage
 LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
 Missions / pipeline: add-to-shortlist, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
-                    accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin, resolve-client-logo (logo du client enregistré dans le brief, copie dans org-logos/{org}/clients/, appelée à l'affichage de la liste et de la mission)
+                    accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin, resolve-client-logo (logo du client enregistré dans le brief, copie dans org-logos/{org}/clients/, appelée à l'affichage de la liste et de la mission),
+                    fetch-job-source (Brief IA : lit une offre, ou les offres d'une société, depuis une adresse web ; trois niveaux, interface publique d'un ATS (Greenhouse, Lever, Ashby, Recruitee), lecture directe avec données JobPosting, Firecrawl en secours ; garde SSRF dans `guard.ts`, aucun appel de modèle, aucun crédit débité ; LinkedIn jamais lu)
 Notion:             notion-mcp-oauth (connexion Notion de l'assistant)
 Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook (reçoit les appels, organisation retrouvée par le jeton de la liaison), aircall-connect (relier ou délier le compte Aircall d'une organisation, owner/admin), calendly-webhook,
                     setup-calendly-webhook, backfill-calendly
@@ -442,7 +443,7 @@ Extension Chrome:   extension-token, extension-quick-add, extension-pipeline-sta
 RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge (compte seulement par défaut, lot 0c-2)
 Photos:             capture-candidate-photos (copie privée des photos LinkedIn des candidats, cron toutes les 2 min, lot P)
 ```
-74 fonctions (2026-10-06, draft-sequence ajoutée par le lot 5d-1 ; 73 au 2026-10-05, aircall-connect ajoutée par la téléphonie lot A1 ; 72 après resolve-client-logo puis capture-candidate-photos ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
+75 fonctions (2026-10-06, draft-sequence ajoutée par le lot 5d-1 ; 74 au 2026-10-05, fetch-job-source ajoutée par le Brief IA ; 73 avec aircall-connect ajoutée par la téléphonie lot A1 ; 72 après resolve-client-logo puis capture-candidate-photos ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
 
 ---
 
@@ -491,7 +492,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `EMAIL_LINK_SIGNING_SECRET` (+ `EMAIL_LINK_SIGNING_SECRET_PREVIOUS` pour une rotation) | sequence-send-email, sequence-email-track : signature des liens suivis et du pixel des e-mails de séquence. Repli sur la clé de service si absent |
 
 ### OPTIONAL — fallback/dev
-`DEEPGRAM_API_KEY` + `DEEPGRAM_PROJECT_ID` (deepgram-temp-key), `PERPLEXITY_API_KEY` (enrich-company), `FIRECRAWL_API_KEY` (enrich-company), `CANDIDATE_PHOTO_ORIGINS` (capture-candidate-photos : origines de photos ajoutées à https://media.licdn.com, banc local seulement, jamais en prod).
+`DEEPGRAM_API_KEY` + `DEEPGRAM_PROJECT_ID` (deepgram-temp-key), `PERPLEXITY_API_KEY` (enrich-company), `FIRECRAWL_API_KEY` (enrich-company, et fetch-job-source en dernier recours : une page lue y est facturée, plafond de 60 par utilisateur et par jour via `check_rate_limit`, sans clé le niveau est simplement ignoré), `CANDIDATE_PHOTO_ORIGINS` (capture-candidate-photos : origines de photos ajoutées à https://media.licdn.com, banc local seulement, jamais en prod).
 
 `PDL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL` et `MICROSOFT_GRAPH_TOKEN` ne sont plus lus par aucune fonction depuis le nettoyage du 2026-09-06 : inutiles sur un nouvel environnement, à retirer des secrets existants à l'occasion.
 
@@ -614,6 +615,7 @@ await settleCredits(adminClient, {
 - `claude-haiku-4-5-20251001` — for fast/cheap tasks
 - Resolve via `getAnthropicModelId()` from `_shared/ai-config.ts`
 - **NEVER hardcode deprecated IDs** like `claude-sonnet-4-20250514`
+- Génération 5 (`claude-sonnet-5-5`, `claude-opus-5-5`) : température refusée (400), réflexion active par défaut, premier bloc de la réponse = `thinking`. Lire le bloc `type: "text"` (jamais `content[0]`), régler `output_config: { effort }`, laisser de la marge sur `max_tokens`. Modèle par défaut seulement pour `scoring` et `brief_analysis` (`autoDefault`) : ne jamais le poser sur une action partagée avec un appelant qui lit `content[0].text` (c'est le cas de `filter_generation`, utilisée par `nl-filter-edit`).
 
 ### DSN format for Unipile
 - `resolveUnipileCredentials()` returns dsn WITH `https://` prefix
