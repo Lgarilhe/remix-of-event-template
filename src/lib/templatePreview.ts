@@ -120,6 +120,46 @@ export function renderTemplatePreview(text: string, values: PreviewValues): Rend
   return { text: stripped, missing };
 }
 
+export type PreviewSegment =
+  | { kind: 'text'; text: string }
+  /** Variable sans valeur ni repli, retirée du texte envoyé : à surligner à cet endroit. */
+  | { kind: 'missing'; key: string };
+
+const MISSING_OPEN = '';
+const MISSING_CLOSE = '';
+
+/**
+ * Même rendu que renderTemplatePreview, découpé pour l'écran : les morceaux
+ * de texte, mis bout à bout, donnent exactement le texte envoyé ; chaque
+ * variable retirée laisse un repère `missing` là où elle était (éditeur de
+ * séquence, lot 5d-2). Mêmes trois retraits que le moteur, appliqués dans le
+ * même ordre ; le repère remplace la variable au lieu du vide, sans changer
+ * ce que les retraits suivants retirent.
+ */
+export function renderTemplatePreviewSegments(text: string, values: PreviewValues): { segments: PreviewSegment[]; missing: string[] } {
+  const interpolated = interpolate(text ?? '', values);
+  const leftover = interpolated.match(/\{\{[^}]+\}\}/g) || [];
+  const missing = [...new Set(leftover.map(placeholderKey).filter(Boolean))];
+  const mark = (raw: string) => `${MISSING_OPEN}${placeholderKey(raw.trim())}${MISSING_CLOSE}`;
+  const marked = leftover.length === 0
+    ? interpolated
+    : interpolated
+      .replace(/[ \t]*\{\{[^}]+\}\}(?=[,.])/g, (m) => mark(m.replace(/^[ \t]+/, '')))
+      .replace(/ \{\{[^}]+\}\}(?= )/g, (m) => mark(m.slice(1)))
+      .replace(/\{\{[^}]+\}\}/g, mark);
+  const segments: PreviewSegment[] = [];
+  const re = new RegExp(`${MISSING_OPEN}([^${MISSING_CLOSE}]*)${MISSING_CLOSE}`, 'g');
+  let cursor = 0;
+  for (const m of marked.matchAll(re)) {
+    const start = m.index ?? 0;
+    if (start > cursor) segments.push({ kind: 'text', text: marked.slice(cursor, start) });
+    segments.push({ kind: 'missing', key: m[1] });
+    cursor = start + m[0].length;
+  }
+  if (cursor < marked.length) segments.push({ kind: 'text', text: marked.slice(cursor) });
+  return { segments, missing };
+}
+
 /**
  * Clés des variables d'une liste de textes, comme le moteur les lit (clé avant
  * le premier « | », en minuscules), sans doublon, dans l'ordre. Une clé d'une

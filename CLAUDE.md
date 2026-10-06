@@ -149,7 +149,15 @@ This applies to (non-exhaustive) :
                            ?onglet= (etapes, candidats avec ?statut= et ?parcours=, statistiques, journal, reglages) ;
                            statut d'un inscrit par src/lib/enrollmentStatusLine.ts, Parcours sur le graphe
                            (src/lib/sequenceJourney.ts), Journal, « À venir » et Candidats paginés par curseur
-                           (src/lib/journalCursor.ts), gestes de src/lib/sequenceActions.ts et du lot 5b. Derrière
+                           (src/lib/journalCursor.ts), gestes de src/lib/sequenceActions.ts et du lot 5b.
+                           /sequences/nouvelle?mission=<id>&depart=zero|modele:<clé>|copie:<id> → même page en création
+                           (lot 5d-2, onglets Étapes et Réglages) : rien n'est écrit avant « Enregistrer ». Éditeur unique
+                           (lot 5d-2) : l'onglet Étapes est le seul éditeur sous l'interrupteur (src/components/sequences/editor/ :
+                           fil en liste, palette jugée par isStepAllowedAt, panneau d'étape, variables de
+                           src/lib/sequenceVariables.ts, aperçu réel par preview_values, validateSequence seule règle,
+                           enregistrement explicite par useSequenceSave, brouillon local) ; « Modifier » et « Créer une
+                           séquence » du panneau de mission y mènent (NewSequenceDialog) ; interrupteur éteint,
+                           SequenceBuilder reste le seul éditeur. Derrière
                            l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts : clé locale, ?sequences-v2=1|0,
                            éteint par défaut jusqu'au lot 5h) ; éteint, SequencesGate renvoie vers /missions et aucun lien
                            n'y mène.

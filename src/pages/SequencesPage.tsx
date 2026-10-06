@@ -9,8 +9,10 @@
  *
  * En-tête : « Envoyer les actions du jour » sur les séquences actives de
  * l'organisation (nudge_sequences, avec la confirmation actuelle) et « Créer
- * une séquence », seul bouton plein, qui ouvre le créateur actuel jusqu'au
- * lot 5d-2.
+ * une séquence », seul bouton plein, qui ouvre « Nouvelle séquence »
+ * (NewSequenceDialog). Depuis le lot 5d-2, la création et la modification
+ * passent par l'éditeur unique : /sequences/nouvelle et l'onglet Étapes de
+ * /sequences/:id (rien n'est écrit avant « Enregistrer »).
  *
  * Les gestes reprennent les actions de la liste des séquences
  * (src/lib/sequenceActions.ts) : mise en pause immédiate avec « Annuler »
@@ -29,14 +31,13 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
-import { useSequenceSave } from '@/hooks/useSequenceSave';
 import { useOrgSequences } from '@/hooks/useOrgSequences';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useMemberName } from '@/hooks/useTeamMembers';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
-import { sequencePath } from '@/lib/sequencesBeta';
+import { newSequencePath, sequencePath } from '@/lib/sequencesBeta';
 import {
   candidats,
   COLLABORATOR_DEACTIVATION_HINT,
@@ -47,7 +48,6 @@ import {
   type SequenceWithStats,
 } from '@/lib/sequenceActions';
 import { sequenceRates } from '@/lib/sequenceTableStats';
-import type { Sequence } from '@/types/sequence';
 import { SEOHead } from '@/components/SEOHead';
 import { EmptyState, ErrorState, PageHeader, PageLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -65,13 +65,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { SequenceBuilder } from '@/components/outreach/SequenceBuilder';
-import { SequenceTemplateSelector } from '@/components/outreach/SequenceTemplateSelector';
 import { SaveAsTemplateModal } from '@/components/outreach/SaveAsTemplateModal';
 import { SequenceActivityLog } from '@/components/outreach/SequenceActivityLog';
 import { SequenceRow, type RowFigures } from '@/components/sequences/SequenceRow';
 import { SequencesTable, SequencesTableSkeleton } from '@/components/sequences/SequencesTable';
 import { TemplatesGallery } from '@/components/sequences/TemplatesGallery';
+import { NewSequenceDialog } from '@/components/sequences/NewSequenceDialog';
 
 // Statistiques : recharts (~100 Ko) chargé à l'ouverture de l'onglet.
 const SequenceAnalytics = React.lazy(() => import('@/components/outreach/SequenceAnalytics'));
@@ -131,10 +130,8 @@ export default function SequencesPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [retrying, setRetrying] = useState(false);
-  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
-  const [showBuilder, setShowBuilder] = useState(false);
-  const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
-  const [editingActiveCount, setEditingActiveCount] = useState<number | undefined>(0);
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
+  // L'ancien éditeur n'est plus ouvert ici : la modification passe par la page de la séquence.
   const editorBaseStepIdsRef = useRef<EditorBaseStepIds>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [activateConfirm, setActivateConfirm] = useState<ActivateConfirm>(null);
@@ -161,19 +158,7 @@ export default function SequencesPage() {
   // « Envoyer les actions du jour » : les séquences actives que la personne peut gérer.
   const nudgeSequenceIds = sequences.filter((s) => canManage(s) && s.is_active).map((s) => s.id);
 
-  const { handleSaveSequence } = useSequenceSave({
-    organizationId,
-    projectId: null,
-    canSendSequences,
-    planStateUnknown,
-    editorBaseStepIdsRef,
-    navigate,
-    fetchSequences,
-    setShowBuilder,
-    setEditingSequence,
-  });
-
-  const { handleNudgeToday, activateSequence, requestToggle, handleDelete, handleDuplicate, handleEdit } = createSequenceListActions({
+  const { handleNudgeToday, activateSequence, requestToggle, handleDelete, handleDuplicate } = createSequenceListActions({
     supabase, invokeEdgeFunction, toast, navigate,
     organizationId, projectId: null, userId, isCollaborator,
     sequences, setSequences, fetchSequences, togglingId, setTogglingId,
@@ -182,17 +167,13 @@ export default function SequencesPage() {
     planRef, refetchPlan, planStateUnknown, isPlanLoadError, canSendSequences,
     missionSequenceIds: nudgeSequenceIds, setNudging, setNudgeConfirmOpen,
     setActivateConfirm, setDeleteConfirmId, duplicatingRef, setDuplicatingId,
-    editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
+    editorBaseStepIdsRef, setEditingActiveCount: () => undefined, setEditingSequence: () => undefined, setShowBuilder: () => undefined,
     // Même nom de copie que la page d'une séquence (vocabulaire figé : « Copie de … »).
     copyName: (name) => `Copie de ${name}`,
   });
 
-  const openEditorWith = (sequence: Sequence | null) => {
-    setShowTemplateSelector(false);
-    setEditingActiveCount(0);
-    setEditingSequence(sequence);
-    setShowBuilder(true);
-  };
+  // « Modifier » : l'onglet Étapes de la page de la séquence (éditeur unique).
+  const editSequence = (seq: SequenceWithStats) => navigate(`${sequencePath(seq.id)}?onglet=etapes`);
 
   const handleRetry = async () => {
     setRetrying(true);
@@ -357,7 +338,7 @@ export default function SequencesPage() {
                   duplicating={duplicatingId === seq.id}
                   duplicateDisabled={!!duplicatingId}
                   onToggle={() => { void requestToggle(seq); }}
-                  onEdit={() => { void handleEdit(seq); }}
+                  onEdit={() => editSequence(seq)}
                   onDuplicate={() => { void handleDuplicate(seq); }}
                   onSaveTemplate={() => setSaveTemplateSeq(seq)}
                   onDelete={() => setDeleteConfirmId(seq.id)}
@@ -401,7 +382,7 @@ export default function SequencesPage() {
                 <TooltipContent className="max-w-xs">{nudgeHelp}</TooltipContent>
               </Tooltip>
             )}
-            <Button type="button" variant="primary" size="sm" onClick={() => setShowTemplateSelector(true)} className="max-md:h-11">
+            <Button type="button" variant="primary" size="sm" onClick={() => setNewDialogOpen(true)} className="max-md:h-11">
               <Plus aria-hidden="true" />
               Créer une séquence
             </Button>
@@ -460,7 +441,7 @@ export default function SequencesPage() {
           <SequenceActivityLog isOpen={false} onClose={() => undefined} embedded defaultPeriod="upcoming" />
         </TabsContent>
         <TabsContent value="modeles" className="mt-6">
-          <TemplatesGallery onUse={(sequence) => openEditorWith(sequence)} />
+          <TemplatesGallery onUse={(_sequence, key) => navigate(newSequencePath({ kind: 'modele', key }))} />
         </TabsContent>
         <TabsContent value="statistiques" className="mt-6">
           <React.Suspense fallback={null}>
@@ -469,29 +450,13 @@ export default function SequencesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Créateur actuel (jusqu'au lot 5d-2) : départ vide, modèle ou copie, puis l'éditeur. */}
-      <SequenceTemplateSelector
-        isOpen={showTemplateSelector}
-        onClose={() => setShowTemplateSelector(false)}
-        onSelectBlank={() => openEditorWith(null)}
-        onSelectTemplate={(sequence) => openEditorWith(sequence)}
-        existingSequences={sequences}
+      {/* « Nouvelle séquence » : départ vide, modèle ou copie, puis l'éditeur unique (/sequences/nouvelle). */}
+      <NewSequenceDialog
+        open={newDialogOpen}
+        onOpenChange={setNewDialogOpen}
+        missionId={null}
+        existingSequences={sequences.filter(canManage)}
       />
-
-      {showBuilder && (
-        <SequenceBuilder
-          isOpen={showBuilder}
-          onClose={() => {
-            setShowBuilder(false);
-            setEditingSequence(null);
-            editorBaseStepIdsRef.current = null;
-          }}
-          onSave={handleSaveSequence}
-          initialSequence={editingSequence || undefined}
-          activeEnrollmentCount={editingSequence?.id ? editingActiveCount : 0}
-          canSendSequences={canSendSequences}
-        />
-      )}
 
       {saveTemplateSeq && (
         <SaveAsTemplateModal
