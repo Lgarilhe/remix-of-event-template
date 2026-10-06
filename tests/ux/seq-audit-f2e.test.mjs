@@ -174,7 +174,7 @@ test('front-editor-list-2 / integration-3 — collaborateur : les pauses des aut
   const requestToggle = extract(list, 'requestToggle', {
     supabase, toast, console: quiet, SEQUENCE_LEVEL_PAUSE_REASONS,
     togglingId: null, canEdit: () => true, readOnlyHint: () => '', deactivationLocked: () => false,
-    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {}, setToggleConfirm: () => {},
+    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {},
     deactivateSequence: async () => assert.fail('pas de désactivation'),
     // Décision 32 : état d'abonnement lu.
     canSendSequences: true, planStateUnknown: false, navigate: () => {},
@@ -193,7 +193,7 @@ test('front-editor-list-2 / integration-3 — collaborateur : les pauses des aut
   const adminToggle = extract(list, 'requestToggle', {
     supabase: admin.supabase, toast, console: quiet, SEQUENCE_LEVEL_PAUSE_REASONS,
     togglingId: null, canEdit: () => true, readOnlyHint: () => '', deactivationLocked: () => false,
-    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {}, setToggleConfirm: () => {},
+    COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {},
     // Décision 32 : état d'abonnement lu.
     deactivateSequence: async () => {}, canSendSequences: true, planStateUnknown: false, navigate: () => {},
     isCollaborator: false, userId: 'u1',
@@ -314,7 +314,8 @@ test('front-editor-list-3 — interrupteur verrouillé d’un collaborateur : cl
     deactivationLocked: () => true, COLLABORATOR_DEACTIVATION_HINT: 'réservé',
   });
   await requestToggle({ id: 'seq-1', is_active: true });
-  assert.deepEqual(toasts, [{ kind: 'error', title: 'Désactivation réservée', options: { description: 'réservé' } }]);
+  // Lot 5b : l'interrupteur s'appelle « Mettre en pause la séquence ».
+  assert.deepEqual(toasts, [{ kind: 'error', title: 'Mise en pause réservée', options: { description: 'réservé' } }]);
 });
 
 // ---------------------------------------------------------------- 5. front-editor-list-4 (low)
@@ -361,7 +362,8 @@ test('§8 — « Marquer comme ayant répondu » annonce l’arrêt des autres s
 
 test('D3 — sur la ligne d’un autre membre, un collaborateur ne voit ni pause, ni réponse, ni relance, ni saut', () => {
   const src = readFileSync(new URL('../../src/components/outreach/SequenceEnrollmentsPanel.tsx', import.meta.url), 'utf8');
-  assert.match(src, /\{enrollment\.status === 'active' && ownRow \? \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'stop'/);
+  // Lot 5b : pause immédiate (plus de confirmation), même garde.
+  assert.match(src, /\{enrollment\.status === 'active' && ownRow \? \(\s*<DropdownMenuItem\s*onClick=\{\(\) => \{ void stopEnrollment\(enrollment\.id\); \}\}/);
   assert.match(src, /\{ownRow && \(enrollment\.status === 'active' \|\| enrollment\.status === 'paused' \|\| enrollment\.status === 'completed'\) && \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'markReplied'/);
   assert.match(src, /\{ownRow && !gdprErased && \(enrollment\.status === 'replied'/);
   // Revue design : « Sauter » est un bouton du kit (<Button>), même garde.

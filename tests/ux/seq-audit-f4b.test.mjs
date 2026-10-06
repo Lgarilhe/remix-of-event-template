@@ -269,7 +269,10 @@ test('SEQ-131 — génération en échec : texte juste, « Réessayer » et « M
   assert.equal(previewHook.PREVIEW_GENERATION_FAILED_MESSAGE, "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le.");
   const card = slice(previewModal, 'function MessageStepCard(', 'function SummaryMode(');
   assert.match(card, /const hasContent = !!\(preview\?\.isGenerated \|\| preview\?\.isEdited \|\| preview\?\.error\);/);
-  assert.match(card, /\{hasContent && !preview\?\.isGenerating && \(/, 'boutons visibles aussi en cas d’échec');
+  // Lot 5d-1 : les boutons valent aussi pour une étape écrite prête (Modifier) ; « Régénérer » garde la règle d'avant.
+  assert.match(card, /const showActions = hasContent \|\| !!writtenReady;/);
+  assert.match(card, /\{showActions && !preview\?\.isGenerating && \(/, 'boutons visibles aussi en cas d’échec');
+  assert.match(card, /\{hasContent && !generationFailed && \(/);
   assert.match(card, /Réessayer/);
   // Modifier un aperçu en échec lève l'avis d'échec : le texte modifié partira.
   const edit = slice(previewHookSrc, 'const editMessage = useCallback(', '}, [setPreview]);');
@@ -472,7 +475,9 @@ test('SEQ-071 / SEQ-185 — messagerie : mise en pause simple (contrat), vérifi
   // Revue design : l'action est rangée dans le menu « Plus d'actions » de l'en-tête.
   assert.match(messageView, /const canStopSequence = hasActiveEnrollment;/);
   assert.match(messageView, /\{canStopSequence && \(/);
-  assert.match(messageView, /Mettre en pause/);
+  // Lot 5b : l'élément du menu met en pause tout de suite (plus de fenêtre),
+  // sous le même nom que dans le suivi et la fiche.
+  assert.match(messageView, /Mettre en pause pour ce candidat/);
   assert.match(inbox, /onEnrollmentsChanged=\{inbox\.fetchEnrollments\}/);
 });
 
@@ -540,9 +545,13 @@ test('SEQ-225 — crédits affichés seulement pour une étape IA, compteur d’
   assert.match(card, /const cost = step\.useAiPersonalization \? creditsLabel\(creditsPerMessage\) : 'aucun crédit';/);
   assert.match(card, /\{step\.useAiPersonalization && <p className="text-xs text-muted-foreground">\{cost\}<\/p>\}/);
   assert.match(previewHookSrc, /const creditsPerMessage = estimateActionCredits\('outreach_message'\);/);
-  assert.match(card, /Voir l'aperçu \(gratuit\)/);
+  // Lot 5d-1 : une étape écrite est rendue d'office avec les valeurs du serveur
+  // (preview_values), gratuite, sans bouton « Voir l'aperçu » ; seule une étape
+  // IA se génère, et le compteur ne compte qu'elles.
+  assert.doesNotMatch(card, /Voir l'aperçu \(gratuit\)/);
+  assert.match(previewModal, /written=\{step\.useAiPersonalization \? null : writtenPreviewOf\(selectedProfile, step\)\}/);
   assert.doesNotMatch(previewHookSrc, /setGeneratedCount/, 'le compteur ne s’incrémente plus à chaque clic');
-  assert.match(previewHookSrc, /const generatedCount = messageSteps\.length === 0/);
+  assert.match(previewHookSrc, /const generatedSteps = messageSteps\.filter\(s => s\.useAiPersonalization\);\n\s*const generatedCount = generatedSteps\.length === 0/);
 });
 
 // ---------------------------------------------------------------- SEQ-226

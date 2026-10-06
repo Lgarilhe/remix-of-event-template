@@ -67,7 +67,8 @@ test('SEQ-121 — chaque raison de pause propose l’action qui débloque', () =
 // ---------------------------------------------------------------- SEQ-122 / SEQ-232
 test('SEQ-122 / SEQ-232 — la suppression dit ce qu’elle efface, séquence partagée comprise', () => {
   assert.match(list, /Ces candidats ne seront plus signalés comme déjà contactés lors d'une prochaine inscription\./);
-  assert.match(list, /Préférez la désactivation si vous voulez garder cette protection\./);
+  // Lot 5b : l'interrupteur s'appelle « Mettre en pause la séquence ».
+  assert.match(list, /Préférez la mise en pause de la séquence si vous voulez garder cette protection\./);
   assert.match(list, /Cette séquence est partagée entre toutes vos missions : elle disparaîtra partout/);
   assert.match(list, /const shared = !deleteTarget\.project_id;/);
   assert.doesNotMatch(list, /✨ Template/);
@@ -140,7 +141,8 @@ test('SEQ-161 / SEQ-163 / SEQ-238 — statuts et types d’étape lus dans les t
 
 // ---------------------------------------------------------------- SEQ-162
 test('SEQ-162 — raisons et erreurs du moteur traduites dans le panneau', () => {
-  assert.match(panel, /formatSkipReason\(exec\.skip_reason\)/);
+  // Lot 5b : avec le contexte d'arrêt manuel de l'inscription.
+  assert.match(panel, /formatSkipReason\(exec\.skip_reason, \{ manualStop: hasManualStopTrace\(enrollment\.tracking_data\) \}\)/);
   assert.doesNotMatch(panel, /\{exec\.skip_reason\}/);
   assert.doesNotMatch(panel, /:\s*exec\.skip_reason\s*\n/);
   assert.doesNotMatch(panel, /skippée/);
@@ -169,7 +171,10 @@ test('SEQ-165 — compteurs exacts au-delà de 1 000 lignes, recompte au clic', 
   // SEQ-165 (B6, vague finale) : compteurs groupés en base, paginés eux aussi.
   assert.match(fetch, /fetchAllPages\(\(from, to\) => supabase\s*\.rpc\('get_sequence_enrollment_counts', \{ p_sequence_ids: sequenceIds \}\)[\s\S]*?\.range\(from, to\)\)/);
   const toggle = body(list, 'requestToggle');
-  assert.match(toggle, /\.select\('id', \{ count: 'exact', head: true \}\)\s*\.eq\('sequence_id', seq\.id\)\s*\.eq\('status', 'active'\)/);
+  // Lot 5b : plus de confirmation, donc plus de comptage avant la pause ; le
+  // recompte en base suit la mise en pause des inscriptions (deactivateSequence).
+  assert.match(body(list, 'deactivateSequence'), /\.select\('id', \{ count: 'exact', head: true \}\)\s*\.eq\('sequence_id', sequenceId\)\s*\.eq\('status', 'active'\)/);
+  assert.doesNotMatch(toggle, /setToggleConfirm/);
   assert.doesNotMatch(toggle, /if \(seq\.enrollments\.active > 0\)/);
   assert.match(panel, /const EXECUTION_BATCH_SIZE = 50;/);
   assert.match(body(panel, 'fetchExecutionsFor'), /\.range\(from, from \+ EXECUTION_PAGE_SIZE - 1\)/);
@@ -191,7 +196,8 @@ test('SEQ-167 / SEQ-246 — journal, statistiques et diagnostic limités à la m
   assert.doesNotMatch(diagnostic, /sequenceIds\.length > 0/, 'une mission sans séquence propre montrait toute l’organisation');
   assert.doesNotMatch(diagnostic, /\.in\('enrollment_id'/, 'longues listes d’identifiants dans l’URL');
   assert.match(diagnostic, /Chiffre indisponible/);
-  assert.match(list, /Cette séquence est partagée entre vos missions : ses candidats des autres missions seront aussi mis en pause\./);
+  // Lot 5b : dit par le toast de la mise en pause (plus de fenêtre).
+  assert.match(list, /Cette séquence est partagée entre vos missions : ses candidats des autres missions sont aussi en pause\./);
 });
 
 // ---------------------------------------------------------------- SEQ-168 / SEQ-169
@@ -307,7 +313,8 @@ test('SEQ-245 — vocabulaire commun : pas de jargon ni de tutoiement', () => {
     for (const w of words) assert.ok(!src.includes(w), `texte à remplacer : ${w}`);
   }
   assert.match(panel, /Mettre en pause pour ce candidat/);
-  assert.match(panel, /toast\.success\(`\$\{name\} est en pause`/);
+  // Lot 5b : « Séquence mise en pause pour Claire Dubois. » avec « Annuler ».
+  assert.match(panel, /title: pauseToastTitle\(name\)/);
   assert.match(panel, /Relancer depuis l’étape suivante/);
   assert.match(panel, />\s*Parcours\s*</);
   assert.match(list, /Enregistrer comme modèle/);

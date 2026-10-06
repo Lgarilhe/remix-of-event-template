@@ -73,6 +73,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { plural } from '@/lib/plural';
+import { isManualStopTrace } from '@/lib/sequenceLabels';
 
 /** Nombre de lignes lues : au-delà, les compteurs portent sur les plus récentes. */
 const JOURNAL_LIMIT = 500;
@@ -105,6 +106,8 @@ interface StepExecution {
     profile_name: string | null;
     profile_headline: string | null;
     profile_url: string | null;
+    /** Lot 5b : trace d'un arrêt manuel (motif « Arrêt manuel » lu comme un arrêt). */
+    stoppedManually: boolean;
     sequence?: {
       name: string;
       is_active: boolean | null;
@@ -273,6 +276,23 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         }
       }
 
+      // Lot 5b : le motif « Arrêt manuel » est lu comme un arrêt seulement si
+      // l'inscription porte la trace d'un arrêt manuel (c'était aussi le motif
+      // d'une simple pause avant le 28/09). Lecture du seul chemin JSON utile.
+      const stopReasonIds = [...new Set(rows.filter(r => r.skip_reason?.startsWith('Arrêt manuel')).map(r => r.enrollment_id))];
+      const stoppedManually = new Set<string>();
+      for (let i = 0; i < stopReasonIds.length; i += 100) {
+        const { data: stopRows, error: stopError } = await supabase
+          .from('sequence_enrollments')
+          .select<string, { id: string; manual_stop: unknown }>('id, manual_stop:tracking_data->manual_stop')
+          .in('id', stopReasonIds.slice(i, i + 100));
+        if (stopError) {
+          console.warn('[SequenceActivityLog] traces d’arrêt indisponibles:', stopError);
+          break;
+        }
+        for (const t of stopRows || []) if (isManualStopTrace(t.manual_stop)) stoppedManually.add(t.id);
+      }
+
       const enrichedExecutions: StepExecution[] = rows.map(exec => {
         const stepRel = exec.sequence_steps;
         const enrollmentRel = exec.sequence_enrollments;
@@ -299,6 +319,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 profile_name: enrollmentRel.profile_name,
                 profile_headline: enrollmentRel.profile_headline,
                 profile_url: enrollmentRel.profile_url,
+                stoppedManually: stoppedManually.has(exec.enrollment_id),
                 sequence: sequenceRel ? { name: sequenceRel.name, is_active: sequenceRel.is_active } : undefined,
               }
             : undefined,
@@ -717,7 +738,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     )}
                                     {showReason && (
                                       <p className="text-xs text-muted-foreground">
-                                        Raison : {formatSkipReason(exec.skip_reason)}
+                                        Raison : {formatSkipReason(exec.skip_reason, { manualStop: exec.enrollment?.stoppedManually })}
                                       </p>
                                     )}
 

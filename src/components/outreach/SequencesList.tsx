@@ -5,6 +5,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { ENROLLMENT_STATUSES, sequenceChannels } from '@/lib/sequenceCatalog';
@@ -53,7 +54,14 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { SEQUENCE_LEVEL_PAUSE_REASONS } from '@/lib/sequenceLabels';
-import { actionTypeLabel, sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
+import {
+  actionTypeLabel,
+  PAUSE_UNDO_FAILED_MESSAGE,
+  PAUSE_UNDONE_MESSAGE,
+  sequencePauseToastTitle,
+  sequenceWriteRefusal,
+  summarizeUndoPause,
+} from '@/lib/sequenceErrorMessages';
 import { SequenceBuilder, Sequence } from './SequenceBuilder';
 import type { StopConditions, SenderAccountConfig } from './SequenceBuilder';
 import { rowToSequenceStep } from './sequence/sequenceGraph';
@@ -231,7 +239,7 @@ const sequenceSaveError = (error: { message?: string; code?: string; hint?: stri
 // D3 : désactiver met en pause TOUS les candidats en cours. Un collaborateur
 // ne peut mettre en pause que les inscriptions qu'il a créées (RLS) : la
 // désactivation ne lui est pas proposée.
-const COLLABORATOR_DEACTIVATION_HINT = 'Désactiver une séquence met en pause tous ses candidats : réservé aux membres qui gèrent toutes les inscriptions. Mettez vos candidats en pause depuis la liste des inscrits.';
+const COLLABORATOR_DEACTIVATION_HINT = 'La mise en pause de la séquence s’applique à tous ses candidats : réservée aux membres qui gèrent toutes les inscriptions. Mettez vos candidats en pause depuis la liste des inscrits.';
 
 // « Lecture seule » : séquence d'une autre organisation, ou (contrat §8) séquence
 // d'un collègue pour un collaborateur, qui ne modifie que celles qu'il a créées.
@@ -278,7 +286,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [toggleConfirm, setToggleConfirm] = useState<{ id: string; nextActive: boolean; activeCount: number; shared: boolean } | null>(null);
+  // Lot 5b : « Mettre en pause la séquence » part sans fenêtre, avec « Annuler »
+  // dans le toast ; « Réactiver cette séquence ? » garde sa confirmation.
+  const { offerUndo, resumeIds, showSummary } = useUndoableEnrollmentAction();
+  // État d'abonnement lu au clic sur « Annuler » (le toast survit aux rendus).
+  const planRef = React.useRef({ unknown: planStateUnknown, loadError: isPlanLoadError, canSend: canSendSequences });
+  planRef.current = { unknown: planStateUnknown, loadError: isPlanLoadError, canSend: canSendSequences };
   // Réactivation avec des candidats à reprendre : confirmation préalable.
   // `otherMembers` : candidats d'autres membres, que la reprise d'un collaborateur laisse en pause (D3).
   const [activateConfirm, setActivateConfirm] = useState<{ id: string; resumable: number; otherPaused: number; otherMembers: number } | null>(null);
@@ -684,10 +697,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // un interrupteur « désactivé » sur des inscriptions encore actives laissait
   // partir les messages. Les étapes prévues gardent leur date (le moteur ignore
   // celles d'une inscription en pause) et les attentes restent telles quelles.
+  //
+  // Lot 5b : sans fenêtre. L'écriture des inscriptions rend leurs identifiants,
+  // les seuls que « Annuler » reprend (jamais par séquence et raisons : une
+  // pause qu'elle n'a pas posée, auto_paused par exemple, reste).
   const deactivateSequence = async (sequenceId: string) => {
     setTogglingId(sequenceId);
     const pauseFailed = 'La séquence n’a pas pu être mise en pause. Aucun envoi n’a été arrêté. Réessayez.';
     let pausedCount = 0;
+    let pausedIds: string[] = [];
     try {
       const { data: paused, count, error: pauseError } = await supabase
         .from('sequence_enrollments')
@@ -702,6 +720,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         return;
       }
       pausedCount = count ?? paused?.length ?? 0;
+      pausedIds = (paused ?? []).map(row => row.id);
       // D3 : recompte systématique. La RLS peut ne laisser mettre en pause
       // qu'une partie des candidats (collaborateur : ses seules inscriptions),
       // et d'autres ont pu être inscrits entre-temps. Tant qu'il en reste en
@@ -723,7 +742,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const remainingActive = stillActive ?? 0;
       if (remainingActive > 0) {
         toast.error('La séquence reste active', {
-          description: `${pausedPart}${candidats(remainingActive)} ${remainingActive > 1 ? 'restent' : 'reste'} en cours et ${remainingActive > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remainingActive > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remainingActive > 1 ? 'ils viennent' : 'il vient'} d’être ${remainingActive > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur de désactiver la séquence.`,
+          description: `${pausedPart}${candidats(remainingActive)} ${remainingActive > 1 ? 'restent' : 'reste'} en cours et ${remainingActive > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remainingActive > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remainingActive > 1 ? 'ils viennent' : 'il vient'} d’être ${remainingActive > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur de mettre la séquence en pause.`,
           // Les candidats déjà mis en pause se reprennent depuis la liste des inscrits.
           ...(pausedCount > 0 ? enrollmentsPanelAction(sequenceId) : {}),
         });
@@ -737,24 +756,82 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .select('id');
       if (seqError || !updated || updated.length === 0) {
         if (pausedCount > 0) {
-          toast.error('La séquence n’a pas pu être désactivée', {
-            description: `${candidats(pausedCount)} ${pausedCount > 1 ? 'sont' : 'est'} bien en pause et ne ${pausedCount > 1 ? 'recevront' : 'recevra'} plus de messages. Réessayez de désactiver la séquence.`,
+          toast.error('La séquence n’a pas pu être mise en pause', {
+            description: `${candidats(pausedCount)} ${pausedCount > 1 ? 'sont' : 'est'} bien en pause et ne ${pausedCount > 1 ? 'recevront' : 'recevra'} plus de messages. Réessayez de mettre la séquence en pause.`,
           });
         } else if (seqError) {
-          toast.error('La séquence n’a pas pu être désactivée. Réessayez.');
+          toast.error('La séquence n’a pas pu être mise en pause. Réessayez.');
         } else {
-          toast.error('Désactivation impossible', { description: 'Vous n’avez pas les droits sur cette séquence.' });
+          toast.error('Mise en pause impossible', { description: 'Vous n’avez pas les droits sur cette séquence.' });
         }
         return;
       }
 
       setSequences(prev => prev.map(s => s.id === sequenceId ? { ...s, is_active: false } : s));
-      toast.success(pausedCount > 0
-        ? `Séquence désactivée. ${candidats(pausedCount)} mis en pause.`
-        : 'Séquence désactivée. Aucun candidat n’était en cours.');
+      // Résultat réel, « Annuler » pendant que le toast est affiché.
+      const shared = sequences.some(s => s.id === sequenceId && !s.project_id);
+      const undoIds = pausedIds;
+      offerUndo({
+        title: sequencePauseToastTitle(pausedCount),
+        description: shared && pausedCount > 0
+          ? 'Cette séquence est partagée entre vos missions : ses candidats des autres missions sont aussi en pause.'
+          : null,
+        onUndo: () => undoSequencePause(sequenceId, undoIds),
+      });
     } catch (err) {
       console.error('Error deactivating sequence:', err);
-      toast.error(pausedCount > 0 ? 'La séquence n’a pas pu être désactivée. Réessayez.' : pauseFailed);
+      toast.error(pausedCount > 0 ? 'La séquence n’a pas pu être mise en pause. Réessayez.' : pauseFailed);
+    } finally {
+      setTogglingId(null);
+      fetchSequences();
+    }
+  };
+
+  // « Annuler » d'une mise en pause de séquence (lot 5b) : l'interrupteur
+  // d'abord, avec les contrôles d'offre de « Réactiver » (décision 32) et une
+  // preuve d'écriture, puis la reprise serveur (resume_enrollments) des seules
+  // inscriptions que la pause a touchées.
+  const undoSequencePause = async (sequenceId: string, enrollmentIds: string[]) => {
+    const plan = planRef.current;
+    if (plan.unknown) {
+      if (plan.loadError) {
+        void refetchPlan();
+        toast.error(PLAN_STATE_UNREADABLE_MESSAGE);
+      } else {
+        toast.info(PLAN_STATE_LOADING_MESSAGE);
+      }
+      return;
+    }
+    if (!plan.canSend) {
+      toast.error("L'envoi de séquences nécessite un abonnement", {
+        action: { label: 'Voir les plans', onClick: () => navigate('/pricing') },
+      });
+      return;
+    }
+    setTogglingId(sequenceId);
+    try {
+      const { data: updated, error: seqError } = await supabase
+        .from('outreach_sequences')
+        .update({ is_active: true })
+        .eq('id', sequenceId)
+        .select('id');
+      if (seqError || !updated || updated.length === 0) {
+        toast.error(PAUSE_UNDO_FAILED_MESSAGE, {
+          description: seqError ? 'La séquence n’a pas pu être réactivée. Réessayez.' : 'Vous n’avez pas les droits sur cette séquence.',
+        });
+        return;
+      }
+      setSequences(prev => prev.map(s => s.id === sequenceId ? { ...s, is_active: true } : s));
+      if (enrollmentIds.length === 0) {
+        toast.success(PAUSE_UNDONE_MESSAGE);
+        return;
+      }
+      const loadingId = toast.loading('Annulation de la pause…');
+      const result = await resumeIds(enrollmentIds);
+      showSummary(summarizeUndoPause({ ...result, total: enrollmentIds.length }), loadingId);
+    } catch (err) {
+      console.error('Error undoing sequence pause:', err);
+      toast.error(PAUSE_UNDO_FAILED_MESSAGE, { description: 'Réessayez dans un instant.' });
     } finally {
       setTogglingId(null);
       fetchSequences();
@@ -835,7 +912,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           // L'interrupteur reste actif : les candidats encore en pause ne
           // reçoivent rien, rien n'est envoyé à l'insu de l'utilisateur.
           toast.error('La séquence est réactivée, mais les candidats en pause n’ont pas pu reprendre', {
-            description: `${payload?.message || error?.message || ''} Désactivez puis réactivez la séquence pour réessayer, ou reprenez-les depuis la liste des inscrits.`.trim(),
+            description: `${payload?.message || error?.message || ''} Mettez la séquence en pause puis réactivez-la pour réessayer, ou reprenez-les depuis la liste des inscrits.`.trim(),
             ...enrollmentsPanelAction(sequenceId),
           });
           return;
@@ -914,9 +991,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     }
   };
 
-  // Clic sur un interrupteur : confirmation avant de désactiver une séquence
-  // qui a des candidats en cours, ou de réactiver une séquence qui a des
-  // candidats à reprendre.
+  // Clic sur un interrupteur : mise en pause immédiate de la séquence (lot 5b,
+  // « Annuler » dans le toast), ou confirmation avant de réactiver une
+  // séquence qui a des candidats à reprendre.
   const requestToggle = async (seq: SequenceWithStats) => {
     if (togglingId) return;
     // Défense : l'interrupteur n'est rendu que si canEdit.
@@ -925,28 +1002,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       return;
     }
     if (deactivationLocked(seq)) {
-      toast.error('Désactivation réservée', { description: COLLABORATOR_DEACTIVATION_HINT });
+      toast.error('Mise en pause réservée', { description: COLLABORATOR_DEACTIVATION_HINT });
       return;
     }
     if (seq.is_active) {
-      // Candidats en cours recomptés en base au clic : le compteur affiché peut
-      // être périmé ou indisponible, et un 0 faux désactivait sans confirmation.
-      setTogglingId(seq.id);
-      const { count: activeNow, error: countError } = await supabase
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', seq.id)
-        .eq('status', 'active');
-      setTogglingId(null);
-      if (countError) {
-        console.error('Error counting active enrollments:', countError);
-        toast.error('Les candidats en cours n’ont pas pu être comptés. Réessayez.');
-        return;
-      }
-      if ((activeNow ?? 0) > 0) {
-        setToggleConfirm({ id: seq.id, nextActive: false, activeCount: activeNow ?? 0, shared: !seq.project_id });
-        return;
-      }
+      // Sans fenêtre : deactivateSequence met les inscriptions en pause, les
+      // recompte et n'écrit l'interrupteur qu'avec la preuve qu'il n'en reste
+      // aucune en cours.
       await deactivateSequence(seq.id);
       return;
     }
@@ -1842,7 +1904,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       {(!countsKnown || total > 0) && (
                         <p>
                           Ces candidats ne seront plus signalés comme déjà contactés lors d'une prochaine inscription.
-                          Préférez la désactivation si vous voulez garder cette protection.
+                          Préférez la mise en pause de la séquence si vous voulez garder cette protection.
                         </p>
                       )}
                     </>
@@ -1858,43 +1920,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               className="bg-destructive hover:bg-destructive/90"
             >
               Supprimer définitivement
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Désactivation d'une séquence qui a des candidats en cours */}
-      <AlertDialog open={!!toggleConfirm} onOpenChange={() => setToggleConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Désactiver cette séquence ?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>
-                  {(toggleConfirm?.activeCount || 0) > 1 ? 'Les ' : 'Le '}
-                  <strong>{toggleConfirm?.activeCount}</strong> candidat{(toggleConfirm?.activeCount || 0) > 1 ? 's' : ''} en
-                  cours {(toggleConfirm?.activeCount || 0) > 1 ? 'seront mis' : 'sera mis'} en pause. Aucun message ne partira tant que la séquence est désactivée.
-                </p>
-                {toggleConfirm?.shared && (
-                  <p className="font-medium text-foreground">
-                    Cette séquence est partagée entre vos missions : ses candidats des autres missions seront aussi mis en pause.
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Vous pourrez la réactiver à tout moment. Les envois prévus pendant la pause partiront à la réactivation, sans être avancés. Les attentes en cours (acceptation, réponse) reprennent telles quelles.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (toggleConfirm) void deactivateSequence(toggleConfirm.id);
-                setToggleConfirm(null);
-              }}
-            >
-              Désactiver
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

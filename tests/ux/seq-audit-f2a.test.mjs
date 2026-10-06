@@ -124,8 +124,11 @@ test('SEQ-004 / SEQ-023 — la réactivation ne réécrit plus aucune exécution
   assert.match(list, /repris, \$\{failed\} en erreur/);
 });
 
-test('SEQ-023 — le dialogue de désactivation dit ce qui se passera vraiment', () => {
-  assert.match(list, /Les envois prévus pendant la pause partiront à la réactivation, sans être avancés\./);
+test('SEQ-023 / lot 5b — la mise en pause de la séquence part sans fenêtre et dit le résultat réel', () => {
+  // Décision 3 : plus de dialogue « Désactiver cette séquence ? », le toast
+  // dit le nombre de candidats réellement mis en pause, avec « Annuler ».
+  assert.doesNotMatch(list, /Désactiver cette séquence \?/);
+  assert.match(body(list, 'deactivateSequence'), /title: sequencePauseToastTitle\(pausedCount\)/);
   assert.doesNotMatch(list, /les enrollments reprendront là où ils en étaient/);
 });
 
@@ -140,7 +143,8 @@ test('SEQ-025 — désactiver : pause des inscriptions vérifiée avant l’inte
   assert.match(off.slice(pauseAt, flagAt), /if \(pauseError\) \{\s*toast\.error\(pauseFailed\);\s*return;/);
   assert.match(off.slice(flagAt), /\.select\('id'\)/);
   assert.match(off, /Aucun envoi n’a été arrêté\. Réessayez\./);
-  assert.match(off, /Séquence désactivée\. \$\{candidats\(pausedCount\)\} mis en pause\./);
+  // Lot 5b : succès avec preuve, annoncé par le toast « Annuler ».
+  assert.match(off, /offerUndo\(\{\s*title: sequencePauseToastTitle\(pausedCount\)/);
 });
 
 test('SEQ-025 — interrupteur désactivé pendant l’appel, masqué hors de mon organisation', () => {

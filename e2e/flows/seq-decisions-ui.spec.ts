@@ -545,7 +545,7 @@ test.describe('Décision 29 : colonne « A répondu » du pipeline de mission', 
 // ═══ Décision 31 : fiche candidat d'un collaborateur ════════════════════════
 
 test.describe('Décision 31 : fiche candidat, inscriptions d’un autre membre', () => {
-  test('un collaborateur ne voit ni pause, ni reprise, ni « Marquer comme ayant répondu » sur les inscriptions d’un collègue, et les garde sur les siennes', async ({ browser }) => {
+  test('un collaborateur ne voit ni pause, ni arrêt, ni reprise, ni « Marquer comme ayant répondu » sur les inscriptions d’un collègue, et les garde sur les siennes', async ({ browser }) => {
     const ws = await workspace('E2E déc-ui fiche collab');
     const collab = await addMember(ws.org.orgId, 'collaborator', 'collab');
     ws.extra.push(collab);
@@ -586,10 +586,12 @@ test.describe('Décision 31 : fiche candidat, inscriptions d’un autre membre',
     await expect(card(ownerOnly.name)).toHaveCount(0);
 
     // Inscription active d'un collègue : consultation seule.
-    await expect(card(ownerActive.name).getByRole('button', { name: 'Mettre en pause', exact: true })).toHaveCount(0);
+    await expect(card(ownerActive.name).getByRole('button', { name: 'Mettre en pause pour ce candidat', exact: true })).toHaveCount(0);
     await card(ownerActive.name).getByRole('button', { name: 'Actions de l\'inscription' }).click();
     await expect(page.getByRole('menuitem', { name: /Voir l'historique/ })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Marquer comme ayant répondu' })).toHaveCount(0);
+    // Lot 5b : « Arrêter pour ce candidat » suit la même règle.
+    await expect(page.getByRole('menuitem', { name: 'Arrêter pour ce candidat' })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menuitem')).toHaveCount(0);
 
@@ -597,14 +599,15 @@ test.describe('Décision 31 : fiche candidat, inscriptions d’un autre membre',
     await expect(card(ownerPaused.name).getByText(OTHER_MEMBER_RESUME_HINT)).toBeVisible();
     await expect(card(ownerPaused.name).getByRole('button', { name: 'Reprendre', exact: true })).toHaveCount(0);
     await card(ownerPaused.name).getByRole('button', { name: 'Actions de l\'inscription' }).click();
-    await expect(page.getByRole('menuitem', { name: /Reprendre la séquence|Marquer comme ayant répondu/ })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: /Reprendre la séquence|Marquer comme ayant répondu|Arrêter pour ce candidat/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menuitem')).toHaveCount(0);
 
     // Sa propre inscription : actions présentes.
-    await expect(card(mine.name).getByRole('button', { name: 'Mettre en pause', exact: true })).toBeVisible();
+    await expect(card(mine.name).getByRole('button', { name: 'Mettre en pause pour ce candidat', exact: true })).toBeVisible();
     await card(mine.name).getByRole('button', { name: 'Actions de l\'inscription' }).click();
     await expect(page.getByRole('menuitem', { name: 'Marquer comme ayant répondu' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Arrêter pour ce candidat' })).toBeVisible();
   });
 });
 

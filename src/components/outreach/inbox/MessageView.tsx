@@ -31,6 +31,10 @@ import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMemberName } from '@/hooks/useTeamMembers';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
+import { pauseToastTitle } from '@/lib/sequenceErrorMessages';
+import { readManualStop } from '@/lib/sequenceLabels';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft, readChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
@@ -410,8 +414,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // les relances automatiques ne partent plus. Les inscriptions actives du
   // candidat sont lues à l'ouverture de la conversation (pas dans la carte des
   // 500 dernières inscriptions, ni déduites du statut d'une mission).
-  const [stopSeqConfirm, setStopSeqConfirm] = useState(false);
+  // Lot 5b : sans fenêtre, « Annuler » dans le toast (reprise serveur).
   const [stoppingSeq, setStoppingSeq] = useState(false);
+  const { offerUndoPause } = useUndoableEnrollmentAction();
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
   const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
   const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
@@ -493,22 +498,30 @@ export const MessageView: React.FC<MessageViewProps> = ({
       setSeqStoppedLocal(true);
       setActiveEnrollmentsKey(k => k + 1);
       onEnrollmentsChanged?.();
-      const name = getChatDisplayName(selectedChat) || 'Le candidat';
-      if (pausedCount < ids.length) {
-        toast.warning(`${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`, {
-          description: 'Les autres n’ont pas pu être mises en pause. Réessayez.',
-        });
-      } else {
-        toast.success(`${name} est en pause`, {
-          description: 'Aucune relance ne partira tant que vous ne reprenez pas la séquence.',
-        });
-      }
+      const name = getChatDisplayName(selectedChat) || null;
+      const partial = pausedCount < ids.length;
+      // « Annuler » ne reprend que les inscriptions que cette pause a touchées,
+      // y compris quand elle n'en a touché qu'une partie (le titre le dit).
+      offerUndoPause({
+        title: partial
+          ? `${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`
+          : pausedCount > 1
+            ? `${pausedCount} séquences mises en pause pour ${name || 'ce candidat'}.`
+            : pauseToastTitle(name),
+        ...(partial ? { description: 'Les autres n’ont pas pu être mises en pause. Réessayez.', tone: 'warning' as const } : {}),
+        enrollmentIds: (paused ?? []).map(e => e.id),
+        candidateName: name,
+        onSettled: () => {
+          setSeqStoppedLocal(false);
+          setActiveEnrollmentsKey(k => k + 1);
+          onEnrollmentsChanged?.();
+        },
+      });
     } catch (err) {
       console.error('[MessageView] pause sequence error:', err);
       toast.error('Mise en pause impossible', { description: 'Réessayez dans un instant.' });
     } finally {
       setStoppingSeq(false);
-      setStopSeqConfirm(false);
     }
   };
 
@@ -555,6 +568,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     setSummaryOpen(false);
   }, [selectedChat?.id]);
   const { organization } = useOrganization();
+  const memberName = useMemberName();
   const { asMap: customVariablesMap } = useUserTemplateVariables();
 
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
@@ -692,6 +706,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
           : jobInfo.status
         : null;
   const enrollmentPauseReason = seqStoppedLocal ? 'manual' : jobInfo?.pause_reason ?? null;
+  // Lot 5b : « Arrêtée par Claire Dubois le 05/10 » pour un arrêt manuel.
+  const enrollmentManualStop = jobInfo ? readManualStop(enrollmentStatus, jobInfo.completion_reason, jobInfo.manual_stop) : null;
   // Mise en pause seulement si une inscription ACTIVE du candidat a été lue en
   // base (jamais d'après le statut d'une mission, ni d'une mission déduite).
   const canStopSequence = hasActiveEnrollment;
@@ -817,7 +833,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                   <GitBranch className="h-3 w-3 self-center" aria-hidden="true" />
                   <span className="sr-only">Séquence : </span>
-                  <EnrollmentStatusBadge status={enrollmentStatus} pauseReason={enrollmentPauseReason} plain />
+                  <EnrollmentStatusBadge
+                    status={enrollmentStatus}
+                    pauseReason={enrollmentPauseReason}
+                    manualStop={enrollmentManualStop}
+                    stoppedByName={memberName(enrollmentManualStop?.by)}
+                    plain
+                  />
                 </span>
               )}
             </div>
@@ -912,9 +934,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {canStopSequence && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className={MENU_ITEM} onSelect={() => setStopSeqConfirm(true)}>
+                    {/* Lot 5b : pause immédiate, « Annuler » dans le toast. */}
+                    <DropdownMenuItem className={MENU_ITEM} disabled={stoppingSeq} onSelect={() => { void handleStopSequence(); }}>
                       <CircleStop className="mr-2 h-4 w-4" aria-hidden="true" />
-                      Mettre la séquence en pause
+                      Mettre en pause pour ce candidat
                     </DropdownMenuItem>
                   </>
                 )}
@@ -1335,36 +1358,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Mettre la séquence en pause */}
-      <AlertDialog open={stopSeqConfirm} onOpenChange={(open) => !open && setStopSeqConfirm(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mettre la séquence en pause ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {displayName || 'Ce candidat'} ne recevra plus de messages de la séquence tant que vous ne la reprenez pas.
-              Vous pourrez la reprendre depuis le suivi de la séquence.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={stoppingSeq}
-              onClick={(e) => {
-                // La fenêtre reste ouverte pendant l'écriture ; elle se ferme à la fin.
-                e.preventDefault();
-                void handleStopSequence();
-              }}
-            >
-              {stoppingSeq ? (
-                <Loader2 className="animate-spin" aria-hidden="true" />
-              ) : (
-                <CircleStop aria-hidden="true" />
-              )}
-              Mettre en pause
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

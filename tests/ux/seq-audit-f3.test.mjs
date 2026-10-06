@@ -217,7 +217,7 @@ test('SEQ-162 — raisons et erreurs du moteur traduites', () => {
   for (const codeErr of ['rate_limit', 'unauthorized', 'email_send_failed', 'linkedin_send_failed_401: {}']) {
     assert.doesNotMatch(lib.formatSequenceError(codeErr), /provider|réessaie|reconnecte-le/, codeErr);
   }
-  assert.match(candidatePanel, /Raison : \{formatSkipReason\(execution\.skip_reason\)\}/);
+  assert.match(candidatePanel, /Raison : \{formatSkipReason\(execution\.skip_reason, \{ manualStop: stoppedManually \}\)\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-169

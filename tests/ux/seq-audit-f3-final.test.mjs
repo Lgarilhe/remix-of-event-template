@@ -46,8 +46,9 @@ test('front-enroll-follow-3 / integration-7 — une étape en attente d’un can
   }
   // Candidat sorti de la séquence (reste d'avant l'audit) : ni en pause, ni à venir.
   assert.equal(lib.heldExecutionNotice('scheduled', 'replied', true).label, 'Ne partira pas');
-  // D1 : une séquence désactivée n'envoie rien, même pour une inscription active.
-  assert.match(lib.heldExecutionNotice('scheduled', 'active', false).hint, /^Séquence désactivée/);
+  // D1 : une séquence désactivée n'envoie rien, même pour une inscription active
+  // (lot 5b : l'interrupteur s'appelle « Mettre en pause la séquence »).
+  assert.match(lib.heldExecutionNotice('scheduled', 'active', false).hint, /^Séquence en pause/);
   // L'étape suit son cours : aucune retenue.
   assert.equal(lib.heldExecutionNotice('scheduled', 'active', true), null);
   assert.equal(lib.heldExecutionNotice('scheduled', null, null), null);
