@@ -10,10 +10,15 @@
  * États distincts (D-09) : chargement (squelette), erreur avec « Réessayer »,
  * aucune conversation, aucune conversation pour ces filtres (« Effacer les
  * filtres »).
+ *
+ * Design simplifié (lot Suite, docs/design/06-simplicite.md) : titre de page à
+ * 28 px, plus de bouton « Actualiser » (la liste se relit toutes les 30 s,
+ * useMessagesInbox), bascule de la page mission (variante quiet), filtres sans
+ * compte, donc sans « (0) ».
  */
 
 import React, { useState, useEffect } from 'react';
-import { ListFilter, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, X } from 'lucide-react';
+import { ListFilter, MessageSquare, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,7 +29,6 @@ import { EmptyState, ErrorState } from '@/components/layout';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
-import { isRecruiterChat, isClassicChat, hasUnread } from '@/hooks/useMessagesInboxHelpers';
 import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
 import { useChatIntents } from '@/hooks/useChatIntents';
 
@@ -46,7 +50,6 @@ interface ChatListSidebarProps {
   responseFilter: ResponseFilter;
   /** Statut de mise en sommeil ou d'archive */
   statusFilter?: StatusFilter;
-  statusCounts?: { active: number; snoozed: number; archived: number };
   onStatusFilterChange?: (filter: StatusFilter) => void;
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   categoriesMap: Map<string, ChatCategory>;
@@ -77,8 +80,6 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 };
 
 const CATEGORY_ENTRIES = Object.entries(CHAT_CATEGORIES) as [ChatCategory, (typeof CHAT_CATEGORIES)[ChatCategory]][];
-
-const withCount = (label: string, count: number) => `${label} (${count})`;
 
 /** Bouton icône de l'en-tête : nom accessible et infobulle (01-direction.md, § 6). */
 const HeaderIconButton: React.FC<{
@@ -117,7 +118,6 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   categoryFilter,
   responseFilter,
   statusFilter = 'active',
-  statusCounts = { active: 0, snoozed: 0, archived: 0 },
   onStatusFilterChange,
   enrollmentsMap,
   categoriesMap,
@@ -157,22 +157,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   const visibleAccountId = filteredChats[0]?.account_id || chats[0]?.account_id || null;
   const { data: intentsMap } = useChatIntents(filteredChats, visibleAccountId);
 
-  const classicCount = chats.filter(c => isClassicChat(c)).length;
-  const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
-  const unreadCount = chats.filter(c => hasUnread(c)).length;
   const waitingMeCount = chats.filter(c => c.last_message?.is_sender === false).length;
-
-  // Étiquettes comptées sur toutes les conversations étiquetées, chargées ou non
-  const categoryCounts: Record<ChatCategory, number> = {
-    interested: 0,
-    not_interested: 0,
-    to_recontact: 0,
-    no_response: 0,
-  };
-  categoriesMap.forEach((cat) => {
-    if (cat in categoryCounts) categoryCounts[cat]++;
-  });
-  const statusTotal = statusCounts.active + statusCounts.snoozed + statusCounts.archived;
 
   // Filtres du menu « Filtres » (le tri visible et la recherche sont à part)
   const filterCount = [
@@ -236,12 +221,6 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               icon={MessageSquare}
               title="Aucune conversation pour l'instant"
               description="Les messages échangés avec vos candidats sur LinkedIn apparaîtront ici."
-              action={
-                <Button variant="outline" size="sm" onClick={onRefresh} disabled={loadingChats}>
-                  <RefreshCw aria-hidden="true" />
-                  Actualiser
-                </Button>
-              }
             />
           </div>
         );
@@ -335,13 +314,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       <div className={cn('shrink-0 border-b border-border', collapsed ? 'px-2 py-3' : 'space-y-2.5 p-3')}>
         {/* Titre et actions de la liste */}
         <div className={cn('flex items-center', collapsed ? 'flex-col gap-1' : 'justify-between gap-2')}>
-          {!collapsed && <h1 className="text-md font-semibold text-foreground">Messagerie</h1>}
+          {!collapsed && <h1 className="text-title font-semibold text-foreground">Messagerie</h1>}
           <div className={cn('flex items-center gap-0.5', collapsed && 'flex-col')}>
-            {!collapsed && (
-              <HeaderIconButton label="Actualiser les conversations" onClick={onRefresh} disabled={loadingChats}>
-                <RefreshCw className={cn(loadingChats && 'animate-spin')} aria-hidden="true" />
-              </HeaderIconButton>
-            )}
             <HeaderIconButton
               label={collapsed ? 'Déplier la liste des conversations' : 'Replier la liste des conversations'}
               onClick={() => setCollapsed(!collapsed)}
@@ -379,7 +353,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                         checked={statusFilter === key}
                         onCheckedChange={(on) => onStatusFilterChange(on ? key : 'active')}
                       >
-                        {withCount(STATUS_LABELS[key], key === 'all' ? statusTotal : statusCounts[key])}
+                        {STATUS_LABELS[key]}
                       </FilterOption>
                     ))}
                   </div>
@@ -392,7 +366,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                       checked={categoryFilter === key}
                       onCheckedChange={(on) => onCategoryFilterChange(on ? key : 'all')}
                     >
-                      {withCount(info.label, categoryCounts[key])}
+                      {info.label}
                     </FilterOption>
                   ))}
                 </div>
@@ -402,18 +376,18 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                     checked={sourceFilter === 'classic'}
                     onCheckedChange={(on) => onSourceFilterChange(on ? 'classic' : 'all')}
                   >
-                    {withCount('Classique', classicCount)}
+                    Classique
                   </FilterOption>
                   <FilterOption
                     checked={sourceFilter === 'recruiter'}
                     onCheckedChange={(on) => onSourceFilterChange(on ? 'recruiter' : 'all')}
                   >
-                    {withCount('Recruiter', recruiterCount)}
+                    Recruiter
                   </FilterOption>
                 </div>
                 <div className="mt-1 border-t border-border pt-1">
                   <FilterOption checked={showUnreadOnly} onCheckedChange={onShowUnreadOnlyChange}>
-                    {withCount('Non lues uniquement', unreadCount)}
+                    Non lues uniquement
                   </FilterOption>
                 </div>
                 {filterCount > 0 && (
@@ -440,6 +414,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             {/* Tri visible : qui doit répondre */}
             <SegmentedControl
               aria-label="Conversations affichées"
+              variant="quiet"
               value={responseFilter}
               onValueChange={onResponseFilterChange}
               options={[

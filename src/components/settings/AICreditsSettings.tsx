@@ -7,12 +7,12 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { readCheckoutReturn, withoutCheckoutReturn } from '@/lib/checkoutReturn';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Progress } from '@/components/ui/progress';
-import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorBox } from '@/components/layout/ErrorBox';
-import { Wallet, TrendingDown, Clock, ArrowUpRight, Coins, PlusCircle, ShoppingCart, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Wallet, TrendingDown, Clock, ArrowUpRight, Coins, PlusCircle, ShoppingCart, Loader2, CheckCircle2, AlertTriangle, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { EnrichmentAnalytics } from '@/components/settings/EnrichmentAnalytics';
 import { BaseKonektCard } from '@/components/settings/BaseKonektCard';
@@ -76,6 +76,8 @@ export const AICreditsSettings = () => {
   const { creditsRemaining, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, hasBalance, periodEnd, refetch } = useAICredits();
   const { data: history = [], isLoading: isLoadingHistory, isError: isHistoryError, refetch: refetchHistory } = useAICreditHistory();
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
+  const [costsOpen, setCostsOpen] = useState(false);
+  const showHistory = isLoadingHistory || isHistoryError || history.length > 0;
 
   // Retour d'un achat de pack (kind=pack). Un retour d'abonnement appartient à
   // BillingSettings : on n'y touche pas. Le ref évite un second toast (double
@@ -240,8 +242,9 @@ export const AICreditsSettings = () => {
                 )}
               >
                 <span className="sr-only">Acheter </span>
+                {/* Design simplifié : la mention du pack en texte neutre, posée sur le filet, sans pastille de couleur. */}
                 {pack.badge && (
-                  <span className={cn(badgeVariants({ variant: 'brand' }), 'absolute -top-2.5 left-1/2 -translate-x-1/2')}>
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-background px-1.5 text-xs font-medium text-foreground-secondary">
                     {pack.badge}
                   </span>
                 )}
@@ -283,8 +286,17 @@ export const AICreditsSettings = () => {
             Estimation selon la taille habituelle d’une demande. Le coût réel est calculé après chaque appel.
           </p>
         </CardHeader>
+        {/* Design simplifié : la grille des coûts (une quarantaine d'actions) se lit à la demande. */}
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Collapsible open={costsOpen} onOpenChange={setCostsOpen}>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="-ml-2 max-md:h-11">
+              <ChevronDown className={cn('transition-transform duration-150', costsOpen && 'rotate-180')} aria-hidden="true" />
+              {costsOpen ? 'Masquer le coût de chaque action' : 'Voir le coût de chaque action'}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
             {Object.entries(AI_CREDIT_COSTS).map(([key, action]) => {
               const minCost = estimateCredits(key, 'claude-haiku-4-5');
               const defaultCost = estimateCredits(key, 'claude-sonnet-4-6');
@@ -300,10 +312,13 @@ export const AICreditsSettings = () => {
               );
             })}
           </div>
+          </CollapsibleContent>
+          </Collapsible>
         </CardContent>
       </Card>
 
-      {/* History */}
+      {/* History : sans utilisation, pas de section (rien à lire). */}
+      {showHistory && (
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-semibold">Historique récent</CardTitle>
@@ -316,8 +331,6 @@ export const AICreditsSettings = () => {
             </div>
           ) : isHistoryError ? (
             <ErrorBox title="Historique indisponible pour le moment." onRetry={() => { void refetchHistory(); }} />
-          ) : history.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Aucune utilisation pour le moment</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {history.slice(0, 30).map((tx) => {
@@ -371,6 +384,7 @@ export const AICreditsSettings = () => {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Section analytics enrichment (cascade Better Contact) */}
       <EnrichmentAnalytics />

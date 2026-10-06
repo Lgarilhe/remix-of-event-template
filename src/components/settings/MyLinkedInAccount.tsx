@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useId, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -385,7 +384,7 @@ export const MyLinkedInAccount = () => {
                 )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-danger hover:text-danger max-sm:flex-1 max-md:h-11" disabled={isUnlinking}>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-danger max-sm:flex-1 max-md:h-11" disabled={isUnlinking}>
                       <Unlink aria-hidden="true" />
                       Dissocier
                     </Button>
@@ -460,7 +459,7 @@ export const MyLinkedInAccount = () => {
               {/* Relances mises en pause, InMails annulés : confirmation obligatoire */}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-danger hover:text-danger max-md:h-11" disabled={isUnlinking}>
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-danger max-md:h-11" disabled={isUnlinking}>
                     <Unlink aria-hidden="true" />
                     Dissocier
                   </Button>
@@ -505,7 +504,7 @@ export const MyLinkedInAccount = () => {
                           <ChannelIcon channel="linkedin" size="md" decorative />
                           <span className="truncate text-sm text-foreground">{acc.name || acc.identifier || acc.id}</span>
                           {classifyLinkedInStatus(acc.status) === 'connected' && (
-                            <Badge variant="muted" className="shrink-0">Actif</Badge>
+                            <span className="shrink-0 text-xs text-muted-foreground">Actif</span>
                           )}
                         </div>
                         <Button size="sm" variant="outline" onClick={() => handleLinkAccount(acc.id)} className="shrink-0 max-md:h-11">
@@ -986,12 +985,23 @@ function isAnotherDay(iso: string, timeZone: string): boolean {
   }
 }
 
-/** Consommation d'un plafond : barre neutre, la couleur ne signale que l'approche du plafond (F-14). */
+/**
+ * Consommation d'un plafond : barre neutre, la couleur ne signale que l'approche du plafond (F-14).
+ * Design simplifié (règle 8) : rien d'utilisé, ni « 0 / 40 » ni barre vide, seulement le plafond.
+ */
 function QuotaRow({ label, used, cap }: { label: string; used: number; cap: number }) {
   const labelId = useId();
   const percent = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
   const isWarning = percent >= 80;
   const isCritical = percent >= 95;
+  if (used <= 0) {
+    return (
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="tabular-nums text-muted-foreground">jusqu’à {cap}</span>
+      </div>
+    );
+  }
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
@@ -1049,7 +1059,10 @@ function LinkedInQuotaCard({ accountId }: { accountId: string }) {
           <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Plafonds du jour
         </CardTitle>
-        <Badge variant="muted">{rampStageLabel(status.ramp_stage)}</Badge>
+        {/* Design simplifié : le palier en texte, absent une fois le compte mature (rien à savoir). */}
+        {status.ramp_stage && status.ramp_stage !== 'mature' && (
+          <span className="text-xs text-muted-foreground">{rampStageLabel(status.ramp_stage)}</span>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {disconnected && (
