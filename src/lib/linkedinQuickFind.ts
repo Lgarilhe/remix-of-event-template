@@ -140,9 +140,23 @@ export async function addCandidateFromLinkedIn(input: {
 
   const projectId = await ensureCallsSearchProject(organizationId, userId);
   const row = buildCandidateRow({ projectId, organizationId, userId, person, fullProfile });
+  // Champ par champ, jamais « ...row » : le garde-fou des écrivains de l'étape
+  // (tests/c1/lot0b-ecrivains.test.mjs) relit cette charge et exige qu'elle ne pose
+  // ni status, ni pipeline_stage, ni colonne du modèle d'étapes (le déclencheur
+  // pose « À trier »).
   const { error } = await supabase
     .from('job_candidate_status')
-    .upsert({ ...row, linkedin_profile_data: row.linkedin_profile_data as Json }, { onConflict: 'job_id,candidate_id,created_by', ignoreDuplicates: true });
+    .upsert({
+      job_id: row.job_id,
+      project_id: row.project_id,
+      organization_id: row.organization_id,
+      created_by: row.created_by,
+      candidate_id: row.candidate_id,
+      candidate_name: row.candidate_name,
+      candidate_headline: row.candidate_headline,
+      linkedin_profile_url: row.linkedin_profile_url,
+      linkedin_profile_data: row.linkedin_profile_data as Json,
+    }, { onConflict: 'job_id,candidate_id,created_by', ignoreDuplicates: true });
   if (error) throw error;
 
   const picture = row.linkedin_profile_data.profile_picture_url;
