@@ -16,6 +16,7 @@ import { ChevronDown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input, type InputProps } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { ClientPicker } from '@/components/missions/ClientPicker';
 import { useOrganization } from '@/hooks/useOrganization';
 import type { JobDetails, SenderRole } from '@/types/jobDetails';
 import { cn } from '@/lib/utils';
@@ -277,12 +278,16 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
             />
           </Field>
           <Field label="Client" htmlFor={id('client')}>
-            <FieldInput
+            <ClientPicker
               id={id('client')}
-              value={client.name ?? ''}
-              onChange={(e) => setClient({ name: e.target.value })}
+              value={{ name: client.name, website: client.website, logo_url: client.logo_url }}
+              onChange={(c) =>
+                // Un autre client ou un nouveau site : l'ancien logo et sa recherche sont oubliés.
+                updateField({
+                  client: { ...client, name: c.name, website: c.website, logo_url: c.logo_url, logo_checked_at: undefined },
+                })}
               disabled={readOnly}
-              autoComplete="off"
+              inputClassName={TOUCH_FIELD}
             />
           </Field>
           <Field label="Contrat" htmlFor={id('contrat')}>

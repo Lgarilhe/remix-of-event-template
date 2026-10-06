@@ -26,6 +26,7 @@
  *   - Logique de redirection vers /missions/:id
  */
 
+import { ClientPicker, type ClientValue } from '@/components/missions/ClientPicker';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   saveEditorDraft,
@@ -233,6 +234,16 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const [briefText, setBriefText] = useState('');
   const [briefName, setBriefName] = useState('');
   const [clientName, setClientName] = useState('');
+  // Site et logo du client choisi dans la liste (ou site saisi pour une société hors liste).
+  const [clientPick, setClientPick] = useState<Omit<ClientValue, 'name'>>({});
+  const pickClient = (v: ClientValue) => {
+    setClientName(v.name ?? '');
+    setClientPick({ website: v.website, logo_url: v.logo_url });
+  };
+  const clientDetails = (name: string): Record<string, string> | null =>
+    name && (clientPick.website || clientPick.logo_url)
+      ? { name, ...(clientPick.website ? { website: clientPick.website } : {}), ...(clientPick.logo_url ? { logo_url: clientPick.logo_url } : {}) }
+      : null;
   const [description, setDescription] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BriefAnalysis | null>(null);
@@ -274,6 +285,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
       setBriefText('');
       setBriefName('');
       setClientName('');
+      setClientPick({});
       setDescription('');
       setAnalysis(null);
       setAnalyzing(false);
@@ -379,7 +391,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         };
         if (a.context) jobDetails.context = a.context;
         if (clientName || a.detected_company) {
-          jobDetails.client = {
+          jobDetails.client = clientDetails(clientName) ?? {
             name: clientName || a.detected_company,
           };
         }
@@ -420,6 +432,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
           }));
         }
         (input as any).job_details = jobDetails;
+      } else if (clientDetails(clientName)) {
+        input.job_details = { client: clientDetails(clientName) };
       }
 
       const project = await createProject(input);
@@ -434,7 +448,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [briefName, briefText, clientName, analysis, createProject, onClose, navigate]);
+  }, [briefName, briefText, clientName, clientPick, analysis, createProject, onClose, navigate]);
 
   // ── Scan d'URL — parsing local du slug uniquement.
   //
@@ -546,6 +560,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         name: briefName.trim(),
         description: description || undefined,
         client_name: clientName || undefined,
+        ...(clientDetails(clientName) ? { job_details: { client: clientDetails(clientName) } } : {}),
       });
       creationReussieRef.current = true;
       onClose();
@@ -557,7 +572,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [briefName, description, clientName, createProject, onClose, navigate]);
+  }, [briefName, description, clientName, clientPick, createProject, onClose, navigate]);
 
   // Détecte les fields extraits pour le panneau live
   const extractedFields = analysis?.analysis ? buildExtractedFields(analysis.analysis) : [];
@@ -625,7 +640,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               briefName={briefName}
               setBriefName={setBriefName}
               clientName={clientName}
-              setClientName={setClientName}
+              clientPick={clientPick}
+              pickClient={pickClient}
               analyzing={analyzing}
               analysis={analysis}
               extractedFields={extractedFields}
@@ -642,7 +658,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               name={briefName}
               setName={setBriefName}
               clientName={clientName}
-              setClientName={setClientName}
+              clientPick={clientPick}
+              pickClient={pickClient}
               description={description}
               setDescription={setDescription}
             />
@@ -785,7 +802,8 @@ interface BriefModeProps {
   briefName: string;
   setBriefName: (v: string) => void;
   clientName: string;
-  setClientName: (v: string) => void;
+  clientPick: Omit<ClientValue, 'name'>;
+  pickClient: (v: ClientValue) => void;
   analyzing: boolean;
   analysis: BriefAnalysis | null;
   extractedFields: ExtractedField[];
@@ -798,7 +816,7 @@ interface BriefModeProps {
 }
 
 const BriefMode: React.FC<BriefModeProps> = ({
-  briefText, setBriefText, briefName, setBriefName, clientName, setClientName,
+  briefText, setBriefText, briefName, setBriefName, clientName, clientPick, pickClient,
   analyzing, analysis, extractedFields,
   urlSuggestion, scanningUrl, onScanUrl, uploadingFile, onFileUpload,
 }) => {
@@ -836,11 +854,11 @@ const BriefMode: React.FC<BriefModeProps> = ({
           <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             Client (optionnel)
           </label>
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
+          <ClientPicker
+            className="mt-1"
+            value={{ name: clientName, ...clientPick }}
+            onChange={pickClient}
             placeholder="Ex: Doctolib"
-            className="w-full h-9 px-3 mt-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
           />
         </div>
       </div>
@@ -1050,13 +1068,14 @@ interface ManualModeProps {
   name: string;
   setName: (v: string) => void;
   clientName: string;
-  setClientName: (v: string) => void;
+  clientPick: Omit<ClientValue, 'name'>;
+  pickClient: (v: ClientValue) => void;
   description: string;
   setDescription: (v: string) => void;
 }
 
 const ManualMode: React.FC<ManualModeProps> = ({
-  name, setName, clientName, setClientName, description, setDescription,
+  name, setName, clientName, clientPick, pickClient, description, setDescription,
 }) => (
   <div className="px-8 py-8 max-w-xl mx-auto space-y-4 konekt-fade-up">
     <div>
@@ -1075,11 +1094,12 @@ const ManualMode: React.FC<ManualModeProps> = ({
       <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         Client / Entreprise (optionnel)
       </label>
-      <input
-        value={clientName}
-        onChange={(e) => setClientName(e.target.value)}
+      <ClientPicker
+        className="mt-1"
+        value={{ name: clientName, ...clientPick }}
+        onChange={pickClient}
         placeholder="Ex: Doctolib"
-        className="w-full h-10 px-3 mt-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+        inputClassName="h-10"
       />
     </div>
     <div>

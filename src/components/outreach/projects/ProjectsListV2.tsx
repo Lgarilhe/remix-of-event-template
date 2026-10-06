@@ -592,6 +592,7 @@ export const ProjectsListV2: React.FC = () => {
       clientName: p.clientName,
       logoUrl: p.clientLogoUrl,
       logoCheckedAt: p.sourcingProject.jd_client_logo_checked ?? null,
+      website: p.sourcingProject.jd_client_website ?? null,
     })),
     [unifiedProjects],
   );
