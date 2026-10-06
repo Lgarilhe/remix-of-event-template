@@ -42,7 +42,7 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 - Page illisible : retour au comportement d'avant (poste, société et lieu de l'adresse) avec une phrase qui dit de coller la fiche.
 - Premier essai en réel le 05/10 (journaux : lecture par `json_ld`) : le `JobPosting` de Welcome to the Jungle ne porte que le descriptif du poste, il manquait le résumé, les compétences et expertises, le profil recherché et le déroulement des entretiens. Pour ce site seulement, la description devient le texte de la page (contenu de `<main>`, en-tête compris, coupé avant « Offres similaires ») quand il est plus fourni d'un quart, sinon le rendu Firecrawl de la page entière, sinon le `JobPosting` reste. Ailleurs, un `JobPosting` suffit toujours. Le journal de lecture donne maintenant le nombre de caractères de la fiche (`chars`). Deuxième essai le même jour : la page entière faisait 8 700 caractères, offres suggérées d'autres sociétés comprises. Le texte est coupé au premier lien vers une autre offre (`/companies/<société>/jobs/<offre>` différente de celle lue), reculé jusqu'au titre du bloc s'il est à moins de 1 500 caractères, et jamais si ce qui reste fait moins de 600 caractères (fil d'Ariane en tête de page). Une adresse Welcome to the Jungle non reconnue (recherche, accueil) renvoie un message qui dit quelle adresse utiliser.
 **Raison** : demande du propriétaire du 05/10/2026, « puissant » : l'adresse suffit, pour une offre comme pour toute une société. Les connecteurs de la base (`connector_registry`, 8 entrées, sans écran ni moteur) servent à brancher son propre compte d'ATS ; ici le recruteur lit la page publique d'un client, sans identifiant.
-**Impact** : `supabase/functions/fetch-job-source/` (`guard.ts`, `readers.ts`, `resolve.ts`, `index.ts`), `supabase/config.toml`, `src/components/missions/v2/jobSource.ts`, `JobOffersPicker.tsx`, `CreateMissionV2.tsx`, `briefAnalysis.ts`, `src/hooks/useSourcingProjects.ts` (`silent`, `jd_source_url`), `src/types/jobDetails.ts` (`source_url`) ; tests `tests/ux/lecture-offres-serveur.test.mjs` (38) et `tests/ux/import-offres.test.mjs` (18), job Build de la CI ; `CLAUDE.md` (72 fonctions).
+**Impact** : `supabase/functions/fetch-job-source/` (`guard.ts`, `readers.ts`, `resolve.ts`, `index.ts`), `supabase/config.toml`, `src/components/missions/v2/jobSource.ts`, `JobOffersPicker.tsx`, `CreateMissionV2.tsx`, `briefAnalysis.ts`, `src/hooks/useSourcingProjects.ts` (`silent`, `jd_source_url`), `src/types/jobDetails.ts` (`source_url`) ; tests `tests/ux/lecture-offres-serveur.test.mjs` (38) et `tests/ux/import-offres.test.mjs` (18), job Build de la CI ; `CLAUDE.md` (74 fonctions).
 **Recette** : tests sur réseau simulé (chaque niveau, chaque repli, LinkedIn, plafond de Firecrawl, 130 offres tronquées à 100) et banc visuel sur le vrai composant : liste de six offres dont une déjà importée, trois choisies, analyse, création de trois missions avec leur adresse source, une offre seule ouverte dans le Brief IA, page illisible, crédits épuisés en cours de lot, clair, 1440 px et 390 px. Huit mutations des tests sont détectées : cinq pour ce lot (redirections suivies, http admis, LinkedIn lu, lot qui continue sans crédits, toast par mission) et trois pour le lot précédent. Aucun accès à Welcome to the Jungle ni aux interfaces des ATS depuis cette session (accès réseau refusé) : les formats Greenhouse, Lever, Ashby et Recruitee suivent leur documentation publique et n'ont pas été vérifiés en réel.
 **Reste à faire** :
 - [ ] Après déploiement : lire une page société et une offre Welcome to the Jungle, et relever dans les journaux le niveau utilisé (`ats_api`, `json_ld`, `direct_text`, `firecrawl`). Si le site refuse la lecture directe et que Firecrawl n'est pas configuré, la page reste illisible.
@@ -73,6 +73,30 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Refs** : #268 (scoring Sonnet 5.5), docs/design/06-simplicite.md.
 
 ---
+
+---
+
+## 2026-10-05 — SHIP — Design simplifié, fin du lot M : l'état vide de /missions
+
+**Contexte** : dernier reste du lot M de `docs/design/06-simplicite.md`. Sans mission, /missions montrait l'ancien langage : titre en capitales, chiffres publicitaires (« 200M+ profils accessibles », « 45s », « 3x plus rapide »), deux grandes cartes animées (réseau de neurones, particules, bouton scintillant), une rangée de logos d'outils que Konekt ne relie pas (Slack, HubSpot, Salesforce), un lien « page carrières » sans action, et pas de titre de page.
+**Décision / Fait** :
+- `EmptyMissionState` devient l'état vide du kit : dessin « dossier » (01-direction.md, § Illustrations), « Lancez votre première mission » en casse de phrase, une phrase (« Une mission, c'est un poste à pourvoir. Collez la fiche de poste : l'assistant en tire le brief et les filtres de recherche. »).
+- Deux entrées, les mêmes qu'avant : « Coller une fiche de poste » (seul bouton plein, mode brief de `CreateMissionV2`) et « Saisir le poste à la main » (bouton discret, mode manuel), 44 px au doigt.
+- La page garde son titre « Missions » (`PageHeader`, sans second bouton) ; les missions confiées par une entreprise restent au-dessus.
+- `src/components/magicui/shimmer-button.tsx` retiré : ce bouton n'avait plus d'autre lecteur.
+**Raison** : règles 2, 7 et 8 du design simplifié, et des chiffres ou des logos que rien ne soutient. Mesures du banc (compte vide), ordinateur 1 440 px : 23 icônes puis 0, hauteur 1 113 puis 900 px ; téléphone : hauteur 1 655 puis 844 px. Cliquet design : effets décoratifs 34 puis 33, boutons faits main 301 puis 300, texte atténué 163 puis 151.
+**Impact** : `src/components/missions/EmptyMissionState.tsx` (réécrit, 578 lignes puis 36), `src/components/outreach/projects/ProjectsListV2.tsx` (titre de page dans l'état vide), `src/components/magicui/shimmer-button.tsx` (supprimé). Aucune lecture ni écriture ne change. Test : `tests/ux/missions-vide-simplicite.test.mjs` (4 tests, nouveau, rendu statique de l'état vide).
+**Recette `qa.md`** (banc local, rien d'enregistré) :
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Titre « Missions » ; « Coller une fiche de poste » à la souris ouvre la création sur la fiche de poste (nom, client, fiche) ; « Saisir le poste à la main » au clavier l'ouvre sur la saisie (titre, client, description) ; rien de créé | PASS |
+| Claire | Aucun nom de fournisseur, terme technique ni chiffre publicitaire ; un seul bouton plein, « Coller une fiche de poste » | PASS |
+| Théo | Lecture des missions en échec : erreur avec « Réessayer », jamais l'état vide ; compte avec missions : la liste, jamais l'état vide | PASS |
+| Sophie | Téléphone 390 px tactile : deux boutons, aucun sous 44 px, aucun débordement | PASS |
+**Reste à faire** :
+- [ ] Fenêtre de création de mission (`CreateMissionV2`) : libellés en capitales et tutoiement (« Choisis comment tu veux décrire la mission »), contraire au § 9 de 01-direction.md.
+- [ ] Bandeau d'essai (`TrialBanner`, `src/components/ui/banner.tsx`) : « Choisir un plan » (20 px) et la croix (36 px) sous 44 px au doigt, sur toutes les pages.
+**Refs** : docs/design/06-simplicite.md (lot M), #292.
 
 ## 2026-10-05 — SHIP — Design simplifié, lot Suite 3 : les Paramètres, première partie
 

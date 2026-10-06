@@ -14,6 +14,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ErrorBox } from '@/components/layout/ErrorBox';
 import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
+import { useAircallConnectionActions, useTelephonyStatus } from '@/hooks/useTelephonyStatus';
+import { AircallConnectionPanel } from './AircallConnectionPanel';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
@@ -65,6 +67,8 @@ interface IntegrationConfig {
   hostedAuth?: boolean;
   /** Retirée de « Ajouter une intégration » : la carte ne reste que si une clé est posée, pour pouvoir la retirer. */
   retired?: boolean;
+  /** L'état « connecté » est posé par le serveur (liaison réussie), jamais par l'enregistrement des champs. */
+  serverManagedConnection?: boolean;
 }
 
 const INTEGRATIONS: IntegrationConfig[] = [
@@ -91,10 +95,10 @@ const INTEGRATIONS: IntegrationConfig[] = [
   {
     id: 'aircall',
     name: 'Aircall',
-    description: 'Suivi des appels et correspondance automatique avec les candidats.',
+    description: 'Appels reçus et émis, rattachés aux candidats par leur numéro de téléphone.',
     logoSrc: aircallLogo,
     connectedKey: 'aircall_connected',
-    retired: true,
+    serverManagedConnection: true,
     fields: [
       { key: 'aircall_api_id', label: 'Identifiant API Aircall', placeholder: 'xxx…' },
       { key: 'aircall_api_token', label: 'Jeton API Aircall', placeholder: 'xxx…', secret: true },
@@ -410,11 +414,17 @@ const IntegrationCard = ({
   values,
   onSave,
   isSaving,
+  statusOverride,
+  renderExtra,
 }: {
   config: IntegrationConfig;
   values: Record<string, string | null>;
   onSave: (updates: Record<string, string | boolean | null>) => Promise<void>;
   isSaving: boolean;
+  /** Remplace l'état de l'en-tête (liaison dont l'état vient du serveur). */
+  statusOverride?: ReactNode;
+  /** Contenu sous les champs, avec l'état « champs modifiés, non enregistrés ». */
+  renderExtra?: (ctx: { hasChanges: boolean }) => ReactNode;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
@@ -448,7 +458,7 @@ const IntegrationCard = ({
       !!localValues[f.key]?.trim() ||
       (!!f.secret && !!values[`${f.key}_hint`])
     );
-    updates[config.connectedKey] = allFilled;
+    if (!config.serverManagedConnection) updates[config.connectedKey] = allFilled;
     await onSave(updates);
   };
 
@@ -458,9 +468,9 @@ const IntegrationCard = ({
         <IntegrationHeader
           config={config}
           open={expanded}
-          status={isConnected
+          status={statusOverride ?? (isConnected
             ? <StatusText tone="success">Connecté</StatusText>
-            : <StatusText tone="muted">Non configuré</StatusText>}
+            : <StatusText tone="muted">Non configuré</StatusText>)}
         />
 
         <CollapsibleContent className="space-y-4 pb-4 pt-2">
@@ -498,7 +508,7 @@ const IntegrationCard = ({
                       confirmLabel: 'Retirer',
                       destructive: true,
                     });
-                    if (ok) await onSave({ [field.key]: null, [config.connectedKey]: false });
+                    if (ok) await onSave({ [field.key]: null, ...(config.serverManagedConnection ? {} : { [config.connectedKey]: false }) });
                   }}
                 >
                   Retirer la clé
@@ -519,9 +529,69 @@ const IntegrationCard = ({
             {!isSaving && <Check aria-hidden="true" />}
             Enregistrer
           </Button>
+
+          {renderExtra?.({ hasChanges })}
         </CollapsibleContent>
       </Collapsible>
     </Card>
+  );
+};
+
+/* ──────────────────────────────────────────────
+ *  Carte Aircall : identifiants, puis liaison dont l'état vient du serveur
+ * ────────────────────────────────────────────── */
+const AircallCard = ({
+  config,
+  values,
+  onSave,
+  isSaving,
+}: {
+  config: IntegrationConfig;
+  values: Record<string, string | null>;
+  onSave: (updates: Record<string, string | boolean | null>) => Promise<void>;
+  isSaving: boolean;
+}) => {
+  const { data: status, isLoading, isError } = useTelephonyStatus();
+  const { disconnect } = useAircallConnectionActions();
+  const hasCredentials = !!values.aircall_api_id && !!values.aircall_api_token_hint;
+
+  const statusNode = isLoading ? (
+    <StatusText tone="muted">Vérification…</StatusText>
+  ) : isError ? (
+    <StatusText tone="muted">État indisponible</StatusText>
+  ) : status?.connected ? (
+    <StatusText tone="success">Relié</StatusText>
+  ) : hasCredentials ? (
+    <StatusText tone="warning">À relier</StatusText>
+  ) : (
+    <StatusText tone="muted">Non configuré</StatusText>
+  );
+
+  // Retirer le jeton pendant que la liaison est active : la liaison part d'abord,
+  // elle a besoin du jeton pour se retirer chez Aircall.
+  const handleSave = async (updates: Record<string, string | boolean | null>) => {
+    if (updates.aircall_api_token === null && status?.connected) {
+      try {
+        await disconnect();
+      } catch (e) {
+        toast.error(e instanceof Error && e.message ? e.message : 'La liaison n\'a pas pu être retirée. Réessayez.');
+        return;
+      }
+    }
+    await onSave(updates);
+  };
+
+  return (
+    <IntegrationCard
+      config={config}
+      values={values}
+      onSave={handleSave}
+      isSaving={isSaving}
+      statusOverride={statusNode}
+      renderExtra={({ hasChanges }) => (
+        <AircallConnectionPanel hasCredentials={hasCredentials} hasUnsavedChanges={hasChanges} />
+      )}
+    />
   );
 };
 
@@ -548,12 +618,13 @@ export const IntegrationsSettings = () => {
   const visibleIntegrations = INTEGRATIONS.filter(config => {
     if (config.hostedAuth) return true;
     if (values[config.connectedKey]) return true;
-    // Une clé encore enregistrée garde la carte retirée, pour pouvoir la retirer.
-    return !!config.retired && config.fields.some(f => f.secret && !!values[`${f.key}_hint`]);
+    // Une clé encore enregistrée garde la carte visible : pour la retirer (carte retirée du menu)
+    // ou pour finir la liaison (Aircall, dont l'état « connecté » n'est posé qu'après la liaison).
+    return config.fields.some(f => f.secret && !!values[`${f.key}_hint`]);
   });
 
-  const hiddenIntegrations = INTEGRATIONS.filter(config => 
-    !config.hostedAuth && !config.retired && !values[config.connectedKey]
+  const hiddenIntegrations = INTEGRATIONS.filter(config =>
+    !config.hostedAuth && !config.retired && !visibleIntegrations.some(v => v.id === config.id)
   );
 
   const allVisible = [
@@ -568,6 +639,14 @@ export const IntegrationsSettings = () => {
       {allVisible.map(config =>
         config.hostedAuth ? (
           <LinkedInHostedAuthCard
+            key={config.id}
+            config={config}
+            values={values}
+            onSave={updateIntegration}
+            isSaving={isUpdating}
+          />
+        ) : config.id === 'aircall' ? (
+          <AircallCard
             key={config.id}
             config={config}
             values={values}

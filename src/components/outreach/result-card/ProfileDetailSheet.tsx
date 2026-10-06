@@ -18,8 +18,8 @@ import { CardStatusBadges } from './CardStatusBadges';
 import { useProfileData } from './useProfileData';
 import { useCandidateHistory } from '@/hooks/useCandidateHistory';
 import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
-import { useAircallHistory } from '@/hooks/useAircallHistory';
-import { AircallHistoryPanel } from '../AircallHistoryPanel';
+import { usePhoneCallHistory } from '@/hooks/usePhoneCallHistory';
+import { PhoneCallHistoryPanel } from '../PhoneCallHistoryPanel';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
@@ -616,12 +616,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         : null
   );
 
-  // Aircall history
-  const aircallHistory = useAircallHistory(
-    airtableMatch?.airtable_id || null,
-    profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') : null,
-    historyData?.candidate?.phone || null
-  );
+  // Appels de l'opérateur relié, par les numéros connus du candidat
+  const phoneHistory = usePhoneCallHistory(profile?.id);
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
@@ -1313,14 +1309,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     </div>
                   )}
 
-                  {/* Aircall History */}
-                  {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
+                  {/* Historique des appels (opérateur relié) */}
+                  {(phoneHistory.loading || phoneHistory.calls.length > 0) && (
                     <div className="overflow-hidden rounded-xl border border-border p-3 sm:p-4">
-                      <AircallHistoryPanel
-                        calls={aircallHistory.calls}
-                        loading={aircallHistory.loading}
-                        totalCalls={aircallHistory.totalCalls}
-                        totalDuration={aircallHistory.totalDuration}
+                      <PhoneCallHistoryPanel
+                        calls={phoneHistory.calls}
+                        loading={phoneHistory.loading}
+                        totalCalls={phoneHistory.totalCalls}
+                        totalTalkSeconds={phoneHistory.totalTalkSeconds}
                       />
                     </div>
                   )}

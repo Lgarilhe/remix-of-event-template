@@ -1,22 +1,50 @@
 import React from 'react';
-import { AircallCall } from '@/hooks/useAircallHistory';
+import type { PhoneCall } from '@/lib/phoneCalls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
-import aircallLogo from '@/assets/aircall-logo.webp';
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Phone, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
 
-interface AircallHistoryPanelProps {
-  calls: AircallCall[];
+interface PhoneCallHistoryPanelProps {
+  calls: PhoneCall[];
   loading: boolean;
   totalCalls: number;
-  totalDuration: number;
+  /** Somme des durées de conversation, en secondes. */
+  totalTalkSeconds: number;
 }
 
-export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
+const formatDuration = (seconds: number) => {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return `${m}min${s > 0 ? ` ${s}s` : ''}`;
+  const h = Math.floor(m / 60);
+  return `${h}h${m % 60 > 0 ? ` ${m % 60}min` : ''}`;
+};
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
+    ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+};
+
+const statusIcon = (call: PhoneCall) => {
+  if (call.outcome === 'missed') return <PhoneMissed className="w-3.5 h-3.5 text-destructive" />;
+  if (call.direction === 'inbound') return <PhoneIncoming className="w-3.5 h-3.5 text-emerald-600" />;
+  return <PhoneOutgoing className="w-3.5 h-3.5 text-primary" />;
+};
+
+const statusLabel = (call: PhoneCall) => {
+  if (call.outcome === 'voicemail') return 'Messagerie';
+  if (call.outcome === 'missed') return call.direction === 'outbound' ? 'Sans réponse' : 'Manqué';
+  return call.direction === 'inbound' ? 'Reçu' : 'Émis';
+};
+
+export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
   calls,
   loading,
   totalCalls,
-  totalDuration,
+  totalTalkSeconds,
 }) => {
   if (loading) {
     return (
@@ -29,52 +57,19 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
 
   if (calls.length === 0) return null;
 
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    if (m < 60) return `${m}min${s > 0 ? ` ${s}s` : ''}`;
-    const h = Math.floor(m / 60);
-    return `${h}h${m % 60 > 0 ? ` ${m % 60}min` : ''}`;
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
-      ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const getStatusIcon = (call: AircallCall) => {
-    if (call.status === 'missed' || call.status === 'no-answer') {
-      return <PhoneMissed className="w-3.5 h-3.5 text-destructive" />;
-    }
-    if (call.direction === 'inbound') {
-      return <PhoneIncoming className="w-3.5 h-3.5 text-emerald-600" />;
-    }
-    return <PhoneOutgoing className="w-3.5 h-3.5 text-primary" />;
-  };
-
-  const getStatusLabel = (call: AircallCall) => {
-    if (call.status === 'missed' || call.status === 'no-answer') return 'Manqué';
-    if (call.status === 'voicemail') return 'Messagerie';
-    if (call.status === 'done') return call.direction === 'inbound' ? 'Reçu' : 'Émis';
-    return call.status;
-  };
-
   return (
     <div className="space-y-3">
       {/* Stats header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <img src={aircallLogo} alt="Aircall" className="w-4 h-4" />
-          <span className="text-sm font-semibold text-foreground">Historique Aircall</span>
+          <Phone className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          <span className="text-sm font-semibold text-foreground">Historique des appels</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>{totalCalls} appel{totalCalls > 1 ? 's' : ''}</span>
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            {formatDuration(totalDuration)} total
+            {formatDuration(totalTalkSeconds)} total
           </span>
         </div>
       </div>
@@ -84,27 +79,27 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
         {calls.map(call => (
           <div key={call.id} className="flex items-start gap-2.5 p-2.5 border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors">
             <div className="mt-0.5 shrink-0">
-              {getStatusIcon(call)}
+              {statusIcon(call)}
             </div>
             <div className="flex-1 min-w-0 space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-foreground">
-                  {call.direction === 'inbound' ? call.callerName || 'Appelant inconnu' : call.calleeName || 'Destinataire inconnu'}
+                  {call.contactName || 'Correspondant inconnu'}
                 </span>
                 <Badge variant="outline" className="text-xs px-1.5 py-0">
-                  {getStatusLabel(call)}
+                  {statusLabel(call)}
                 </Badge>
-                {call.duration > 0 && (
+                {call.talkSeconds > 0 && (
                   <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                     <Clock className="w-2.5 h-2.5" />
-                    {formatDuration(call.duration)}
+                    {formatDuration(call.talkSeconds)}
                   </span>
                 )}
               </div>
 
               <div className="text-xs text-muted-foreground">
                 {formatDate(call.startedAt)}
-                {call.userName && <span> • {call.userName}</span>}
+                {call.agentName && <span> • {call.agentName}</span>}
               </div>
 
               {/* Notes */}
