@@ -47,6 +47,29 @@ Deno.serve(async (req) => {
       alerts_log,
     } = await req.json();
 
+    // Un compte rendu ne s'écrit que sur la séance de son auteur (SEC-023 de
+    // l'audit du 01/09). L'écriture plus bas passe par la clé de service, donc
+    // contourne la RLS : sans ce contrôle, tout utilisateur connecté qui connaît
+    // un identifiant de séance pouvait en remplacer le compte rendu et la
+    // transcription. Lu et refusé AVANT l'appel au modèle, comme live-coach :
+    // une séance étrangère ne doit pas consommer d'abord un appel payant. Un
+    // appel de service (sans utilisateur) n'a pas d'auteur à comparer.
+    if (session_id && auth.method !== "service_role") {
+      const { data: sessionRow, error: sessionError } = await svc
+        .from("call_coaching_sessions")
+        .select("created_by")
+        .eq("id", session_id)
+        .maybeSingle();
+      // Une lecture en échec n'est pas une séance volée : 503, pas 403.
+      if (sessionError) {
+        console.error("[generate-call-report] lecture de séance impossible:", sessionError);
+        return new Response(JSON.stringify({ error: "Session unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!sessionRow || sessionRow.created_by !== userId) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     // Load AI context (Settings → Contexte IA) — resolves user's active org
     let reportOrgId: string | null = null;
     if (userId) {

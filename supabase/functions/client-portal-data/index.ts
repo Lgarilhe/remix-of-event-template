@@ -222,12 +222,36 @@ async function handleSubmitEvaluation(req: Request, supabase: any) {
     return jsonResponse({ error: "Ce candidat n'est plus disponible dans votre portail." }, 404);
   }
 
-  // 5. Insert evaluation — use DB-resolved project_id, not client-supplied job_id
+  // 5. Le candidat s'enregistre comme partout ailleurs : par l'identifiant de son
+  //    profil (job_candidate_status.candidate_id), pas par celui de la ligne que
+  //    renvoie client_portal_candidates. Sous l'identifiant de la ligne, la grille
+  //    d'un recruteur, la fiche et l'assistant ne retrouvaient jamais cet avis.
+  //    Lu par une fonction SQL à part, jamais renvoyé au navigateur : cet
+  //    identifiant désigne un candidat que le portail peut avoir anonymisé.
+  const { data: profileId, error: profileErr } = await supabase.rpc(
+    "client_portal_candidate_profile_id",
+    { p_token: token, p_row_id: candidate.id }
+  );
+
+  if (profileErr) {
+    if (isMissingPortalFunction(profileErr)) {
+      console.error("client_portal_candidate_profile_id missing:", profileErr.message);
+      return jsonResponse({ error: PORTAL_UNAVAILABLE }, 503);
+    }
+    console.error("client_portal_candidate_profile_id error:", profileErr.message);
+    return jsonResponse({ error: "Internal server error" }, 500);
+  }
+  if (typeof profileId !== "string" || profileId === "") {
+    return jsonResponse({ error: "Ce candidat n'est plus disponible dans votre portail." }, 404);
+  }
+
+  // 6. Insert evaluation — use DB-resolved project_id, not client-supplied job_id
   const { error: insertErr } = await supabase
     .from("candidate_evaluations")
     .insert({
-      candidate_id: evaluation.candidate_id,
+      candidate_id: profileId,
       job_id: candidate.project_id,
+      project_id: candidate.project_id,
       organization_id: tokenRow.organization_id,
       criteria: evaluation.criteria,
       ratings: evaluation.ratings,

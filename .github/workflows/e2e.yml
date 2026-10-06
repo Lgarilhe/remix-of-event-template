@@ -415,6 +415,16 @@ jobs:
             cat pictures_anon.json; exit 1
           fi
 
+      # Refonte scorecard et assistant en direct, lot 1 : rattachement des grilles
+      # et des séances à la mission et à l'étape, écriture par l'auteur seul,
+      # expiration de la transcription et consentement posés par le serveur.
+      - name: Audit des grilles d'entretien et des séances (scorecard lot 1)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/scorecard_live_lot1_audit.sql -c 'ROLLBACK;'
+
       - name: Build front
         run: npm run build
         env:
