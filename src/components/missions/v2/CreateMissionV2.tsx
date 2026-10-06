@@ -34,6 +34,7 @@ import { IconTile } from '@/components/ui/IconTile';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ClientPicker, type ClientValue } from '@/components/missions/ClientPicker';
 import { useSourcingProjects, CreateProjectInput } from '@/hooks/useSourcingProjects';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { estimateActionCredits, invokeWithCredits } from '@/lib/invokeWithCredits';
@@ -245,6 +246,19 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const [briefText, setBriefText] = useState('');
   const [briefName, setBriefName] = useState('');
   const [clientName, setClientName] = useState('');
+  // Site et logo du client choisi dans la liste (ou site saisi pour une société hors liste).
+  const [clientPick, setClientPick] = useState<Omit<ClientValue, 'name'>>({});
+  const pickClient = (v: ClientValue) => {
+    setClientName(v.name ?? '');
+    setClientPick({ website: v.website, logo_url: v.logo_url });
+  };
+  const clientDetails = useCallback(
+    (name: string): Record<string, string> | null =>
+      name && (clientPick.website || clientPick.logo_url)
+        ? { name, ...(clientPick.website ? { website: clientPick.website } : {}), ...(clientPick.logo_url ? { logo_url: clientPick.logo_url } : {}) }
+        : null,
+    [clientPick],
+  );
   const [description, setDescription] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BriefAnalysis | null>(null);
@@ -338,6 +352,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     setBriefName(brouillon.briefName || '');
     userNamedRef.current = !!brouillon.briefName?.trim();
     setClientName(brouillon.clientName || '');
+    setClientPick({});
     setDescription(brouillon.description || '');
     const quand = editorDraftSavedAt(MISSION_DRAFT_KEY);
     toast.info('Brouillon repris', {
@@ -423,6 +438,11 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
           clientName: clientName.trim(),
           sourceUrl: sourceUrl ?? undefined,
         });
+        const details = clientDetails(clientName.trim());
+        if (details) input.job_details = { ...input.job_details, client: details };
+      } else {
+        const details = clientDetails(clientName.trim());
+        if (details) input.job_details = { client: details };
       }
 
       const project = await createProject(input);
@@ -438,7 +458,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [creating, briefName, briefText, clientName, analysis, sourceUrl, createProject, onClose, navigate]);
+  }, [creating, briefName, briefText, clientName, clientDetails, analysis, sourceUrl, createProject, onClose, navigate]);
 
   // ── Adresse web : fonction fetch-job-source, qui lit une offre ou les offres d'une société.
   //
@@ -688,6 +708,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         name: briefName.trim(),
         description: description || undefined,
         client_name: clientName.trim() || undefined,
+        ...(clientDetails(clientName.trim()) ? { job_details: { client: clientDetails(clientName.trim()) } } : {}),
       });
       creationReussieRef.current = true;
       clearEditorDraft(MISSION_DRAFT_KEY);
@@ -700,7 +721,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [creating, briefName, description, clientName, createProject, onClose, navigate]);
+  }, [creating, briefName, description, clientName, clientDetails, createProject, onClose, navigate]);
 
   // Ctrl + Entrée (Cmd sur Mac) : l'action principale de l'écran.
   const handleShortcut = (e: React.KeyboardEvent) => {
@@ -771,7 +792,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               briefName={briefName}
               onNameChange={onNameChange}
               clientName={clientName}
-              setClientName={setClientName}
+              clientPick={clientPick}
+              pickClient={pickClient}
               analyzing={analyzing}
               analysis={analysis}
               analysisError={analysisError}
@@ -804,7 +826,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               name={briefName}
               onNameChange={onNameChange}
               clientName={clientName}
-              setClientName={setClientName}
+              clientPick={clientPick}
+              pickClient={pickClient}
               description={description}
               setDescription={setDescription}
             />
@@ -919,7 +942,8 @@ interface BriefModeProps {
   briefName: string;
   onNameChange: (v: string) => void;
   clientName: string;
-  setClientName: (v: string) => void;
+  clientPick: Omit<ClientValue, 'name'>;
+  pickClient: (v: ClientValue) => void;
   analyzing: boolean;
   analysis: BriefAnalysis | null;
   analysisError: string | null;
@@ -936,7 +960,7 @@ interface BriefModeProps {
 }
 
 const BriefMode: React.FC<BriefModeProps> = ({
-  briefText, setBriefText, briefName, onNameChange, clientName, setClientName,
+  briefText, setBriefText, briefName, onNameChange, clientName, clientPick, pickClient,
   analyzing, analysis, analysisError, isStale, extractedFields, missingFields, onAnalyze,
   urlSuggestion, scanningUrl, onScanUrl, uploadingFile, onFileUpload,
 }) => {
@@ -986,10 +1010,10 @@ const BriefMode: React.FC<BriefModeProps> = ({
             <Label htmlFor="brief-client" className="text-xs text-foreground-secondary">
               Client <span className="font-normal text-muted-foreground">(facultatif)</span>
             </Label>
-            <Input
+            <ClientPicker
               id="brief-client"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
+              value={{ name: clientName, ...clientPick }}
+              onChange={pickClient}
               placeholder="Ex : Numspot"
             />
           </div>
@@ -1141,13 +1165,14 @@ interface ManualModeProps {
   name: string;
   onNameChange: (v: string) => void;
   clientName: string;
-  setClientName: (v: string) => void;
+  clientPick: Omit<ClientValue, 'name'>;
+  pickClient: (v: ClientValue) => void;
   description: string;
   setDescription: (v: string) => void;
 }
 
 const ManualMode: React.FC<ManualModeProps> = ({
-  name, onNameChange, clientName, setClientName, description, setDescription,
+  name, onNameChange, clientName, clientPick, pickClient, description, setDescription,
 }) => (
   <div className="konekt-fade-up mx-auto max-w-xl space-y-4 px-8 py-8">
     <div className="space-y-1.5">
@@ -1167,10 +1192,10 @@ const ManualMode: React.FC<ManualModeProps> = ({
       <Label htmlFor="manual-client">
         Client <span className="font-normal text-muted-foreground">(facultatif)</span>
       </Label>
-      <Input
+      <ClientPicker
         id="manual-client"
-        value={clientName}
-        onChange={(e) => setClientName(e.target.value)}
+        value={{ name: clientName, ...clientPick }}
+        onChange={pickClient}
         placeholder="Ex : Doctolib"
       />
     </div>

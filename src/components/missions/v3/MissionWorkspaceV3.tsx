@@ -159,6 +159,7 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
       clientName: missionClientName(project),
       logoUrl: project.job_details?.client?.logo_url ?? null,
       logoCheckedAt: project.job_details?.client?.logo_checked_at ?? null,
+      website: project.job_details?.client?.website ?? null,
     }],
     [project],
   );
