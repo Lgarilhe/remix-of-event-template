@@ -776,11 +776,11 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
                   </Button>
                   <Button
                     size="xs"
-                    variant="outline"
+                    variant="ghost"
                     loading={loadingAction === 'reject'}
                     disabled={loadingAction != null}
                     onClick={() => onAction(action, 'reject')}
-                    className="max-md:h-11"
+                    className="text-muted-foreground max-md:h-11"
                   >
                     {loadingAction !== 'reject' && <X aria-hidden="true" />}
                     Rejeter
@@ -790,11 +790,11 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
               {isQueued && (
                 <Button
                   size="xs"
-                  variant="outline"
+                  variant="ghost"
                   loading={loadingAction === 'cancel'}
                   disabled={loadingAction != null}
                   onClick={() => onAction(action, 'cancel')}
-                  className="max-md:h-11"
+                  className="text-muted-foreground max-md:h-11"
                 >
                   {loadingAction !== 'cancel' && <Ban aria-hidden="true" />}
                   Annuler la programmation

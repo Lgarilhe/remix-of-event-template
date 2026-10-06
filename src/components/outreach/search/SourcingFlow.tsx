@@ -122,7 +122,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
 
       <div className={cn(
         'relative w-full max-w-[640px] rounded-xl border bg-[var(--k-surface)] px-4 py-3.5 transition-[border-color,box-shadow] duration-150',
-        focused ? 'border-[var(--k-hairline-focus)] shadow-[0_1px_3px_rgba(0,0,0,0.2)]' : 'border-[var(--k-hairline)]',
+        focused ? 'border-[var(--k-hairline-focus)] shadow-[0_1px_3px_rgba(0,0,0,0.2)]' : 'border-input',
       )}>
         <div className="flex items-start gap-2.5">
           <AiBurst className={cn('w-[17px] h-[17px] mt-1 shrink-0 transition-colors duration-150', (focused || armed) ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-placeholder)]')} />

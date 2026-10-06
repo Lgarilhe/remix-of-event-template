@@ -194,7 +194,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
   if (overlay) {
     return (
-      <div className="w-[256px] cursor-grabbing rounded-lg border border-border bg-muted p-2.5 shadow-lg">
+      <div className="w-[256px] cursor-grabbing rounded-lg border border-border bg-card p-2.5 shadow-lg dark:bg-muted">
         <div className="flex items-center gap-2">
           <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} className="bg-background" />
           <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{candidate.name}</p>
@@ -216,7 +216,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       onPointerDown={drag ? handlePointerDown : undefined}
       onKeyDown={drag ? handleKeyDown : undefined}
       className={cn(
-        'group relative rounded-lg border bg-muted p-2.5 transition-colors duration-150',
+        'group relative rounded-lg border bg-card p-2.5 shadow-sm transition-colors duration-150 dark:bg-muted dark:shadow-none',
         selected ? 'border-brand ring-1 ring-brand' : 'border-border hover:border-border-strong',
         isDragging && 'opacity-30',
       )}
@@ -236,7 +236,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         />
       )}
       <div className="flex items-center gap-2">
-        {/* Fond de la page : la pastille ne se confond pas avec la carte (même ton que bg-muted). */}
+        {/* Fond de la page : la pastille ne se confond pas avec la carte (blanche en clair, bg-muted en sombre). */}
         <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} className="bg-background" />
         <h3 className="min-w-0 flex-1 text-sm font-medium text-foreground">
           <Button

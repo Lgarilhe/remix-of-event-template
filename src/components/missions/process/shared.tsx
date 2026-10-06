@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import type { ProcessStep } from '@/hooks/useMissionProcess';
@@ -695,12 +696,15 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-foreground truncate">{inv.email}</p>
                   </div>
-                  <span className={cn(
-                    "px-2 py-0.5 text-xs font-medium rounded-md border",
-                    inv.status === 'accepted' ? "border-success/30 text-success bg-success/10" :
-                    inv.status === 'pending' ? "border-warning/30 text-warning bg-warning/10" :
-                    "border-border text-muted-foreground"
-                  )}>
+                  {/* Nouvelle page : badge à la Qonto (texte à l'encre, pastille du statut) ; ancien rendu gardé. */}
+                  <span className={embedded
+                    ? badgeVariants({ variant: inv.status === 'accepted' ? 'success' : inv.status === 'pending' ? 'warning' : 'muted' })
+                    : cn(
+                      "px-2 py-0.5 text-xs font-medium rounded-md border",
+                      inv.status === 'accepted' ? "border-success/30 text-success bg-success/10" :
+                      inv.status === 'pending' ? "border-warning/30 text-warning bg-warning/10" :
+                      "border-border text-muted-foreground"
+                    )}>
                     {inv.status === 'pending' ? 'En attente' : inv.status === 'accepted' ? 'Acceptée' : inv.status === 'rejected' ? 'Refusée' : 'Expirée'}
                   </span>
                   {inv.status === 'pending' && (

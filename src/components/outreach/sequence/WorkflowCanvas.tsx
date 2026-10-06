@@ -404,7 +404,7 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         // disparaître que son dessin, pas l'étape.
         deleteKeyCode={null}
       >
-        <Background gap={24} size={1} color="hsl(var(--border-strong-hsl) / var(--border-strong-alpha))" />
+        <Background gap={24} size={1} color="hsl(var(--border-hsl) / var(--border-alpha))" />
         <Controls
           showInteractive={false}
           className="!bg-background !border-border !shadow-sm !rounded-lg [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted [&>button]:!rounded-md"

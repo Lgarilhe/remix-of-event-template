@@ -140,6 +140,8 @@ Deux cas dérivés : `rounded-md` (6 px) pour un élément imbriqué dans une su
 
 Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` 11 < `card` 16 < `popover` 18 < `muted` 20 < `accent` 22) et un filet. Une carte se détache du fond de 5 points, sans dépendre de son filet. En clair, la carte est blanche sur un fond à 96 % et porte une ombre légère (`shadow-sm`, dans `Card`). Les ombres marquées servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
 
+Kanban (page mission et /pipeline, décision du 06/10/2026) : en clair, la colonne est une zone grise (`muted`) et la carte de candidat est blanche (`card`) avec une ombre légère, comme une carte posée dans un bac ; en sombre, rien ne change (colonne `card`, carte `muted` sans ombre, la carte reste la plus claire). La carte qu'on glisse garde son ombre marquée dans les deux thèmes.
+
 Relief (demande du propriétaire du 05/10/2026, « l'application est encore un peu plate », référence Qonto) : on regroupe sur une carte ce qui demande une décision (liste « À faire », tableau des missions), on colore le fond de ce qui bloque le travail (bandeau de la panne LinkedIn : carte texturée chaude, voir § 7), et on laisse nu le reste de la page. Une carte contient des lignes séparées par des filets, jamais une autre carte.
 
 ## 5. Hauteurs de contrôle
@@ -240,13 +242,15 @@ Chaque écran qui charge des données prévoit quatre états :
 - Erreur : ce qui a échoué en mots simples, et un bouton « Réessayer ». Une erreur ne s'affiche jamais comme un état vide.
 - Succès : un toast qui dit ce qui a été fait, avec le nombre exact d'éléments traités.
 
+Une ligne faite (tâche cochée, rappel fait, envoi parti, entretien passé) se lit encore : son titre passe au gris secondaire, barré pour une tâche ou un rappel, et la case cochée ou le mot « envoyé » le disent. Jamais d'opacité sur la ligne : elle voilerait aussi le visage, l'heure et la case.
+
 ### Illustrations
 
 Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent (série du 28/09/2026). Composant `Illustration` (`src/components/ui/illustration.tsx`). Chaque dessin est fait de calques WebP de même cadrage dans `src/assets/illustrations` (15 à 45 Ko par dessin, chargés à la demande). `EmptyState` et `ErrorState` les prennent par l'option `illustration`.
 
 - Une illustration par écran au plus, à la place de l'icône d'un état vide, d'une panne ou d'une issue (invitation, lien, page introuvable). Jamais dans une liste, une carte serrée, un bouton, un toast ni la barre latérale (présente sur chaque écran) ; une panne compacte garde son icône.
 - Décorative : le titre dit ce qui se passe, l'image n'a pas de texte alternatif.
-- Posée sur une tuile de surface carte (option `tile` d'`Illustration`, vraie par défaut, décision du 06/10/2026) : blanche en clair, où le papier crème se lit (1,22:1 au lieu de 1,15 à nu sur le fond), à la surface carte en sombre, sans vignette claire qui éblouirait. Jamais à nu sur le fond, jamais inversée ni filtrée ; `tile={false}` seulement dans une carte serrée.
+- Posée sur une tuile de surface carte (option `tile` d'`Illustration`, vraie par défaut, décision du 06/10/2026) : blanche en clair, où le papier crème se lit (1,22:1 au lieu de 1,15 à nu sur le fond), à la surface carte en sombre, sans vignette claire qui éblouirait. Jamais à nu sur le fond, jamais inversée ni filtrée ; `tile={false}` seulement quand le dessin est déjà posé sur une carte, où la tuile aurait la couleur de la carte (panne d'`ErrorState`, carte d'invitation, issue publique, compte LinkedIn des Paramètres).
 - En mouvement, à la demande du propriétaire (29/09/2026) : une fois les calques chargés, le fond reste fixe et les pièces mobiles rejouent leur geste en boucle. Un tour dure 2,5 à 4,5 s : entrée sur le premier cinquième, pièce à sa place jusqu'aux quatre cinquièmes, puis sortie. Avec le mouvement réduit, le dessin est fixe dans son état final.
 - Écart connu : une animation de plus de cinq secondes sans commande de pause s'écarte du critère 2.2.2 des WCAG. Le réglage « réduire les animations » du système l'arrête ; un arrêt après quelques tours rendrait l'écran conforme sans ce réglage.
 - Une situation, un dessin :
@@ -292,4 +296,4 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 - `npm run audit:design` compte la dette visuelle de `src/` : couleurs brutes et ancienne palette de marque, tailles arbitraires, effets décoratifs, rayons hors système, texte atténué par opacité, variables CSS lues sans être déclarées, emoji, tirets longs, noms de fournisseurs, boutons et champs faits main.
 - Le job CI « Design (ratchet) » refuse une PR qui fait monter un de ces compteurs par rapport à `main`.
 - Le banc visuel (`docs/design/05-banc-visuel.md`) capture chaque écran en clair, en sombre, sur ordinateur et sur téléphone, avant et après un lot.
-- `tests/ux/contraste-jetons.test.mjs` recalcule les 44 paires à seuil de chaque thème depuis `src/index.css` et échoue sous la cible ; `tests/ux/contraste-primitives.test.mjs` garde les classes des boutons, des badges, des puces de filtre, des champs et de la tuile des illustrations.
+- `tests/ux/contraste-jetons.test.mjs` recalcule les 44 paires à seuil de chaque thème depuis `src/index.css` et échoue sous la cible ; `tests/ux/contraste-primitives.test.mjs` garde les classes des boutons, des badges, des puces de filtre, des champs et de la tuile des illustrations ; `tests/ux/contraste-ecrans.test.mjs` garde le kanban, les lignes faites, les champs et bascules faits main, la barre latérale, les rétrogradations, les badges faits main et le bord en sombre des boutons à contour dont l'appel change la couleur du bord.

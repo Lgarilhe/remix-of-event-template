@@ -422,7 +422,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
           </button>
         )}
         {renderCompact && renderCard && onViewChange && (
-          <div role="group" aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5">
+          <div role="group" aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5">
             {VIEW_OPTIONS.map((option) => (
               <button
                 key={option.value}
@@ -432,7 +432,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 className={cn(
                   'relative inline-flex h-8 items-center rounded-md px-3 text-sm transition-colors duration-150 ease-out before:absolute before:inset-x-0 before:-inset-y-1.5 sm:before:hidden',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  view === option.value ? 'bg-background font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  view === option.value ? 'bg-card font-semibold text-foreground dark:bg-background' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 {option.label}

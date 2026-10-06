@@ -70,8 +70,8 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
             aria-label="Affiner la recherche en langage naturel"
             placeholder="Affiner : par exemple, plutôt des profils passés par un fonds"
             className={cn(
-              'h-9 w-full min-w-0 rounded-lg border border-border bg-background pl-9 pr-[4.5rem] text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 max-sm:h-11',
-              busy && 'opacity-60',
+              'h-9 w-full min-w-0 rounded-lg border border-input bg-background pl-9 pr-[4.5rem] text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground max-sm:h-11',
+              busy && 'text-muted-foreground',
             )}
           />
           {busy ? (

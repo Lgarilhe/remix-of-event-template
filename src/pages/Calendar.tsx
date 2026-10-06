@@ -229,7 +229,7 @@ export default function CalendarPage() {
             <div className="flex items-center gap-1" role="group" aria-label="Période">
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 onClick={goPrev}
                 aria-label={view === 'day' ? 'Jour précédent' : 'Semaine précédente'}
@@ -242,7 +242,7 @@ export default function CalendarPage() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 onClick={goNext}
                 aria-label={view === 'day' ? 'Jour suivant' : 'Semaine suivante'}
@@ -255,7 +255,7 @@ export default function CalendarPage() {
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={() => refetch()}
                   disabled={isFetching}

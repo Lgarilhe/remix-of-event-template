@@ -73,7 +73,11 @@ Le 6 octobre 2026, après les avant et après de la spécification du contraste,
 - Quand trois contours d'encre s'empilent dans une zone, les actions tertiaires passent en discret (grammaire du § 6 de `01-direction.md`).
 - Barre latérale : structure et onglets du haut inchangés ; icônes de la rangée basse et des têtes de ligne à la couleur du texte de la barre.
 - Illustrations sur une tuile de surface carte ; pastille d'état vide à l'encre.
-- Gardes : `tests/ux/contraste-jetons.test.mjs` (contrastes recalculés depuis les jetons) et `tests/ux/contraste-primitives.test.mjs`.
+- Kanban en clair : colonnes grises, cartes de candidat blanches à ombre légère ; le sombre ne change pas. Lignes faites au gris secondaire, sans opacité.
+- Badges faits main repris : la primitive `Badge` (ou ses classes, `badgeVariants`, quand la forme diffère), texte à l'encre, couleur dans la pastille ou l'icône, sans capitales. Les tuiles d'icône de statut, les bandeaux et les statuts écrits en ligne qui demandent d'agir (« En retard », un échec) gardent leur couleur.
+- Champs faits main au bord de champ (`border-input`), désactivés sans opacité ; bascules faites main au rendu `quiet` (rail gris plein, option en carte blanche).
+- Un appel qui change la couleur du bord d'un bouton à contour la redonne aussi en sombre (`dark:border-…`) : sinon le filet blanc du contour d'encre ressort en sombre seulement.
+- Gardes : `tests/ux/contraste-jetons.test.mjs` (contrastes recalculés depuis les jetons), `tests/ux/contraste-primitives.test.mjs` et `tests/ux/contraste-ecrans.test.mjs` (kanban, lignes faites, champs et bascules faits main, barre latérale, rétrogradations, badges faits main, bords des boutons à contour en sombre).
 
 ## Points ouverts
 

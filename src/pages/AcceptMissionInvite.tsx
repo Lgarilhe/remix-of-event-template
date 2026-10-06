@@ -69,7 +69,8 @@ const InviteCard: React.FC<{
   // Même anatomie que ErrorState (tuile de 40 px ou dessin, titre de 14 px) : les issues se lisent comme une famille.
   <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center">
     {illustration ? (
-      <Illustration name={illustration} className="mx-auto mb-4" />
+      // Déjà sur la carte de l'invitation : sans tuile (elle aurait la couleur de la carte).
+      <Illustration name={illustration} tile={false} className="mx-auto mb-4" />
     ) : icon ? (
       <IconTile icon={icon} tone={tone} className="mx-auto mb-3 h-10 w-10" iconClassName="h-5 w-5" aria-hidden="true" />
     ) : null}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1253,7 +1254,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                           </span>
                         ) : jobScore.scoringDepth === 'deep' ? (
                           <span
-                            className="rounded-md bg-success-muted px-1.5 py-0.5 text-xs text-success"
+                            className={badgeVariants({ variant: 'success' })}
                             title="Évalué sur le profil complet (parcours détaillé, À propos…)"
                           >
                             Évaluation complète

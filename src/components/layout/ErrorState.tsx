@@ -84,7 +84,8 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
       )}
     >
       {illustration && !compact ? (
-        <Illustration name={illustration} size={variant === 'page' ? 'lg' : 'md'} className="mx-auto mb-4" />
+        // Déjà sur la carte de la panne : sans tuile (elle aurait la couleur de la carte).
+        <Illustration name={illustration} size={variant === 'page' ? 'lg' : 'md'} tile={false} className="mx-auto mb-4" />
       ) : (
         <span
           className={cn(

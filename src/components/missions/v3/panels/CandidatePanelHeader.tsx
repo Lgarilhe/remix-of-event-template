@@ -7,6 +7,7 @@
 // pas la fiche. Flèches : candidat précédent ou suivant dans la liste affichée.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
+import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import {
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useMissionRowSignals } from '@/hooks/useMissionNow';
 import { rowNextAction } from '@/lib/missionNextAction';
+import { cn } from '@/lib/utils';
 import { stageLabel } from '@/lib/stageDisplay';
 import { useMissionV3 } from '../MissionV3Context';
 import {
@@ -219,7 +221,7 @@ export function CandidatePanelHeader({
               {currentLabel}
               {since ? `, ${since}` : ''}
               {action.stale && (
-                <span className="ml-2 inline-flex translate-y-[-1px] items-center rounded-full bg-warning-muted px-2 py-0.5 align-middle text-2xs font-medium text-warning">
+                <span className={cn(badgeVariants({ variant: 'warning' }), 'ml-2 translate-y-[-1px] align-middle text-2xs')}>
                   sans mouvement
                 </span>
               )}
@@ -235,7 +237,7 @@ export function CandidatePanelHeader({
                   className="-mr-2.5 shrink-0 text-foreground-secondary hover:text-foreground"
                 >
                   Déplacer vers
-                  <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">

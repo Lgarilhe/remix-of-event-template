@@ -340,7 +340,7 @@ const MyApplicationsTab: React.FC = () => {
             </div>
             <Badge variant={applicationStatusVariant(a.status)}>{applicationStatusLabel(a.status)}</Badge>
             {a.status === 'pending' && (
-              <Button variant="outline" size="sm" onClick={() => setWithdrawTarget(a)} disabled={isWithdrawing} className="min-h-11 md:min-h-0">
+              <Button variant="ghost" size="sm" onClick={() => setWithdrawTarget(a)} disabled={isWithdrawing} className="min-h-11 text-muted-foreground hover:text-danger md:min-h-0">
                 Retirer la candidature
               </Button>
             )}

@@ -1011,7 +1011,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             size="xs"
             aria-expanded={showUrlInput}
             onClick={() => setShowUrlInput(s => !s)}
-            className={cn(showUrlInput && 'border-border-strong bg-accent')}
+            className={cn(showUrlInput && 'bg-accent')}
           >
             <Link2 />
             Une adresse web

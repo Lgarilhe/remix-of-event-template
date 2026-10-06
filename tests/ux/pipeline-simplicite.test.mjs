@@ -153,7 +153,8 @@ test('Carte : visage, nom, anneau de note, mission et signal en texte, sans past
     onOpen: () => {},
     onJobClick: () => {},
   });
-  assert.match(card, /class="group relative rounded-lg border bg-muted p-2\.5/);
+  // Clair : carte blanche à ombre légère sur colonne grise ; sombre : carte en retrait sans ombre (contraste v2).
+  assert.match(card, /class="group relative rounded-lg border bg-card p-2\.5 shadow-sm[^"]*dark:bg-muted dark:shadow-none/);
   assert.match(card, />ID</, 'initiales du candidat sans photo');
   assert.match(card, /<span class="sr-only">Note <\/span>74/);
   assert.match(card, /<span class="sr-only">Voir la mission <\/span><span class="truncate">Lead Developer Backend · Nova Pay<\/span>/);
@@ -186,7 +187,8 @@ test('Colonne : sans bordure, effectif écrit s\'il n\'est pas nul, vide muette 
       }),
     });
   const empty = column({});
-  assert.match(empty, /<section aria-label="Colonne Contacté, 0 candidat" class="[^"]*rounded-xl[^"]*bg-card"/);
+  // Clair : colonne grise (bg-muted) sous des cartes blanches ; sombre : colonne carte (bg-card).
+  assert.match(empty, /<section aria-label="Colonne Contacté, 0 candidat" class="[^"]*rounded-xl[^"]*bg-muted dark:bg-card"/);
   assert.doesNotMatch(empty, /<section[^>]*class="[^"]*\bborder\b/, 'pas de bordure');
   assert.doesNotMatch(empty, />0<|Déposer ici/, 'au repos, une colonne vide ne dit rien');
   assert.match(column({ dragActive: true }), /Déposer ici/);

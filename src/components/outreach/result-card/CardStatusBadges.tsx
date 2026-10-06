@@ -63,16 +63,10 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       {enrollmentInfo && (
         <Tooltip>
           <TooltipTrigger asChild>
+            {/* Badges à la Qonto : texte à l'encre, la couleur du statut tient dans l'icône. */}
             <Badge
-              className={`text-xs px-1.5 py-0 h-4 sm:h-5 gap-1 shrink-0 cursor-default border ${
-                enrollmentTone === 'success'
-                  ? 'bg-success/10 text-success border-success/30'
-                  : enrollmentTone === 'warning'
-                  ? 'bg-warning/10 text-warning border-warning/30'
-                  : enrollmentTone === 'destructive'
-                  ? 'bg-destructive/10 text-destructive border-destructive/30'
-                  : 'bg-info/10 text-info border-info/30'
-              }`}
+              variant={enrollmentTone ?? 'info'}
+              className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-1 shrink-0 cursor-default"
             >
               <GitBranch className="w-3 h-3" />
               <span className="hidden sm:inline">{enrollmentLabel}</span>
@@ -94,31 +88,31 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       {candidateStatus && (
         <>
           {candidateStatus.status === 'messaged' && (
-            <Badge className="bg-info text-info-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+            <Badge variant="info" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <MessageSquare className="w-3 h-3" />
               <span className="hidden sm:inline">Contacté</span>
             </Badge>
           )}
           {candidateStatus.status === 'replied' && (
-            <Badge className="bg-success text-success-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+            <Badge variant="success" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <CheckCircle2 className="w-3 h-3" />
               <span className="hidden sm:inline">Répondu</span>
             </Badge>
           )}
           {candidateStatus.status === 'shortlisted' && (
-            <Badge className="bg-warning text-warning-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+            <Badge variant="warning" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <Star className="w-3 h-3" />
               <span className="hidden sm:inline">Shortlist</span>
             </Badge>
           )}
           {candidateStatus.status === 'scored' && !jobScore && (
-            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-brand-purple border-brand-purple/30 bg-brand-purple/10">
+            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-foreground [&>svg]:text-brand-purple border-brand-purple/30 bg-brand-purple/10">
               <Target className="w-3 h-3" />
               {candidateStatus.score && <span>{candidateStatus.score}%</span>}
             </Badge>
           )}
           {candidateStatus.status === 'dismissed' && (
-            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-warning border-warning/30 bg-warning/10">
+            <Badge variant="warning" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <Archive className="w-3 h-3" />
               <span className="hidden sm:inline">Archivé</span>
             </Badge>
@@ -132,14 +126,8 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       )}
       {jobScore && jobScore.match_score > 0 && variant !== 'mission-v3' && (
         <Badge
-          variant="outline"
-          className={`text-xs font-bold tabular-nums px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 ${
-            jobScore.match_score >= 70
-              ? 'border-success/40 bg-success/10 text-success'
-              : jobScore.match_score >= 40
-              ? 'border-warning/40 bg-warning/10 text-warning'
-              : 'border-destructive/40 bg-destructive/10 text-destructive'
-          }`}
+          variant={jobScore.match_score >= 70 ? 'success' : jobScore.match_score >= 40 ? 'warning' : 'danger'}
+          className="text-xs font-bold tabular-nums px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1"
           title={scoreTitle}
         >
           <Target className="w-3 h-3" aria-hidden="true" />
@@ -152,13 +140,13 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       )}
 
       {profile.premium && (
-        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-warning border-warning/30 bg-warning/10 shrink-0">
+        <Badge variant="warning" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 shrink-0">
           <Star className="w-3 h-3 mr-0.5 fill-warning" />
           <span className="hidden sm:inline">Premium</span>
         </Badge>
       )}
       {profile.open_to_work && (
-        <Badge className="bg-success text-success-foreground text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+        <Badge variant="success" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
           <Zap className="w-3 h-3" />
           <span className="hidden sm:inline">Open to Work</span>
           <span className="sm:hidden">OTW</span>
@@ -166,7 +154,7 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       )}
       {/* Réactif badge from HEAD (kept) */}
       {isLikelyToRespond && (
-        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-brand-purple border-brand-purple/30 bg-brand-purple/10 shrink-0 hidden sm:flex">
+        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-foreground [&>svg]:text-brand-purple border-brand-purple/30 bg-brand-purple/10 shrink-0 hidden sm:flex">
           <Sparkles className="w-3 h-3 mr-0.5" />
           Réactif
         </Badge>

@@ -23,11 +23,11 @@ export interface CompanyKeywordFilter {
   scope: CompanyScope;
 }
 
-// Options for priority
+// Options for priority (fond teinté, texte à l'encre : la couleur ne porte pas le texte)
 export const COMPANY_PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-success', icon: '✓' },
-  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-info', icon: '○' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-destructive', icon: '✕' },
+  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-foreground', icon: '✓' },
+  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-foreground', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-foreground', icon: '✕' },
 ];
 
 // Options for scope

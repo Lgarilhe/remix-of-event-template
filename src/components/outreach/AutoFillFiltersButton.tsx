@@ -462,7 +462,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {missingFields.critical.map(field => (
-                          <span key={field} className="text-xs px-2 py-0.5 rounded bg-destructive/20 text-destructive">
+                          <span key={field} className="text-xs px-2 py-0.5 rounded bg-destructive/20 text-foreground">
                             {field}
                           </span>
                         ))}

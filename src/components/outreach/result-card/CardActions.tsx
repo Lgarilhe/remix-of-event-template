@@ -152,7 +152,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         <EnrichContactButton
           profile={profile}
           compact
-          className={isV3 ? 'text-foreground-secondary border-transparent hover:border-transparent max-sm:min-h-11' : undefined}
+          className={isV3 ? 'text-foreground-secondary border-transparent hover:border-transparent dark:border-transparent dark:hover:border-transparent max-sm:min-h-11' : undefined}
         />
       )}
 

@@ -846,7 +846,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="icon-sm" aria-label="Plus d'actions" className="max-md:h-11 max-md:w-11">
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Plus d'actions" className="max-md:h-11 max-md:w-11">
                     <MoreHorizontal aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>

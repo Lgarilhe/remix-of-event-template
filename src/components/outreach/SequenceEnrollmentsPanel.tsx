@@ -611,7 +611,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon-sm"
                   className="shrink-0 max-md:h-11 max-md:w-11"
                   onClick={() => { void fetchEnrollments(); }}
@@ -669,12 +669,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   {/* Lot 5b : pause immédiate, « Annuler » dans le toast. */}
                   {canBulkManage && activeCount > 0 && (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => { void runBulk('pause', bulkStopActive); }}
                       loading={bulkBusy === 'pause'}
                       disabled={bulkBusy !== null}
-                      className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
+                      className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-full"
                     >
                       {bulkBusy !== 'pause' && <StopCircle aria-hidden="true" />}
                       {statusCounts
@@ -685,12 +685,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   {/* Lot 5b : arrêt groupé (200 au plus), « Annuler » dans le toast. */}
                   {canBulkManage && stoppableCount > 0 && (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => { void runBulk('stop', bulkManualStop); }}
                       loading={bulkBusy === 'stop'}
                       disabled={bulkBusy !== null}
-                      className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
+                      className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-full"
                     >
                       {bulkBusy !== 'stop' && <XCircle aria-hidden="true" />}
                       {`Arrêter (${stoppableCount})`}
@@ -732,7 +732,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   title={`Aucun candidat ne correspond à « ${searchQuery.trim()} »`}
                   description="Cherchez par nom ou par intitulé de poste."
                   action={
-                    <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                    <Button variant="ghost" size="sm" onClick={() => setSearchQuery('')}>
                       Effacer la recherche
                     </Button>
                   }
@@ -1043,9 +1043,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                         pause ou clos (enrollment_not_active) : bouton masqué. */}
                                                     {enrollment.status === 'active' && ownRow && (
                                                       <Button
-                                                        variant="outline"
+                                                        variant="ghost"
                                                         size="xs"
-                                                        className="max-md:h-11"
+                                                        className="text-muted-foreground max-md:h-11"
                                                         onClick={() => setConfirmAction({ type: 'skipStep', stepId: exec.id })}
                                                         title="Sauter cette étape pour ce candidat"
                                                       >
@@ -1131,7 +1131,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               {hasMore && (
                 <div className="flex justify-center pt-1">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => fetchEnrollments(true)}
                     loading={loadingMore}

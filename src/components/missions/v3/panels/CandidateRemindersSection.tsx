@@ -79,10 +79,10 @@ export function CandidateRemindersSection({ reminders, onAdd, onDelete }: Candid
             return (
               <li
                 key={reminder.id}
-                className={cn('flex items-start gap-2 rounded-lg bg-card py-2.5 pl-3 pr-1.5', done && 'opacity-60')}
+                className="flex items-start gap-2 rounded-lg bg-card py-2.5 pl-3 pr-1.5"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className={cn('break-words text-sm text-foreground', done && 'line-through')}>{reminder.title}</span>
+                  <span className={cn('break-words text-sm', done ? 'text-muted-foreground line-through' : 'text-foreground')}>{reminder.title}</span>
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {due.date}
                     {!done && due.relative ? ` · ${due.relative}` : ''}
@@ -96,7 +96,7 @@ export function CandidateRemindersSection({ reminders, onAdd, onDelete }: Candid
                   title="Supprimer le rappel"
                   disabled={deletingId === reminder.id}
                   onClick={() => setConfirmId(reminder.id)}
-                  className="shrink-0 text-muted-foreground opacity-60 hover:text-danger hover:opacity-100 focus-visible:opacity-100"
+                  className="shrink-0 text-muted-foreground hover:text-danger"
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>

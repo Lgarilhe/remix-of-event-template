@@ -75,16 +75,17 @@ interface Props {
   compact?: boolean;
 }
 
+// Badges à la Qonto : texte à l'encre, la couleur du statut tient dans l'icône.
 const STATUS_STYLE: Record<string, { color: string; icon: React.ReactNode }> = {
-  active: { color: 'bg-success/10 text-success border-success/30', icon: <Play className="w-3 h-3" aria-hidden="true" /> },
-  paused: { color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" aria-hidden="true" /> },
-  replied: { color: 'bg-info/10 text-info border-info/30', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
+  active: { color: 'bg-success/10 text-foreground border-success/30 [&_svg]:text-success', icon: <Play className="w-3 h-3" aria-hidden="true" /> },
+  paused: { color: 'bg-muted text-foreground border-border', icon: <Pause className="w-3 h-3" aria-hidden="true" /> },
+  replied: { color: 'bg-info/10 text-foreground border-info/30 [&_svg]:text-info', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
   completed: { color: 'bg-muted text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> },
-  stopped: { color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <StopCircle className="w-3 h-3" aria-hidden="true" /> },
-  bounced: { color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
-  cancelled: { color: 'bg-muted text-muted-foreground border-border', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
+  stopped: { color: 'bg-destructive/10 text-foreground border-destructive/30 [&_svg]:text-destructive', icon: <StopCircle className="w-3 h-3" aria-hidden="true" /> },
+  bounced: { color: 'bg-destructive/10 text-foreground border-destructive/30 [&_svg]:text-destructive', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
+  cancelled: { color: 'bg-muted text-foreground border-border', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
 };
-const NEUTRAL_STATUS_STYLE = { color: 'bg-muted text-muted-foreground border-border', icon: <AlertCircle className="w-3 h-3" aria-hidden="true" /> };
+const NEUTRAL_STATUS_STYLE = { color: 'bg-muted text-foreground border-border', icon: <AlertCircle className="w-3 h-3" aria-hidden="true" /> };
 
 /** Raisons de pause qu'un « Reprendre » individuel peut lever. */
 const RESUMABLE_PAUSE_REASONS = new Set<string>(['manual', 'send_failed']);
@@ -104,13 +105,14 @@ const ACTION_TYPE_ICONS: Record<string, React.ReactNode> = {
   condition_branch: <GitBranch className="w-3 h-3" aria-hidden="true" />,
 };
 
+// Statut d'une étape : libellé à l'encre, couleur dans l'icône ; un échec garde son rouge (il demande d'agir).
 const EXEC_STATUS_STYLE: Record<string, { color: string; icon: React.ReactNode }> = {
-  sent: { color: 'text-success', icon: <CheckCheck className="w-3 h-3" aria-hidden="true" /> },
-  opened: { color: 'text-success', icon: <MailOpen className="w-3 h-3" aria-hidden="true" /> },
-  clicked: { color: 'text-success', icon: <MousePointerClick className="w-3 h-3" aria-hidden="true" /> },
-  replied: { color: 'text-info', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
-  scheduled: { color: 'text-info', icon: <Clock className="w-3 h-3" aria-hidden="true" /> },
-  sending: { color: 'text-info', icon: <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> },
+  sent: { color: 'text-foreground [&>svg]:text-success', icon: <CheckCheck className="w-3 h-3" aria-hidden="true" /> },
+  opened: { color: 'text-foreground [&>svg]:text-success', icon: <MailOpen className="w-3 h-3" aria-hidden="true" /> },
+  clicked: { color: 'text-foreground [&>svg]:text-success', icon: <MousePointerClick className="w-3 h-3" aria-hidden="true" /> },
+  replied: { color: 'text-foreground [&>svg]:text-info', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
+  scheduled: { color: 'text-foreground [&>svg]:text-info', icon: <Clock className="w-3 h-3" aria-hidden="true" /> },
+  sending: { color: 'text-foreground [&>svg]:text-info', icon: <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> },
   failed: { color: 'text-destructive', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
   bounced: { color: 'text-destructive', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
   skipped: { color: 'text-muted-foreground', icon: <SkipForward className="w-3 h-3" aria-hidden="true" /> },
@@ -410,9 +412,9 @@ function EnrollmentCard({
         <div className="flex items-center gap-1 shrink-0">
           {isActive && ownRow && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-7 px-2 text-2xs"
+              className="h-7 px-2 text-2xs text-muted-foreground"
               onClick={onStop}
               disabled={isBusy}
             >

@@ -332,13 +332,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         {/* Subscription badges */}
                         <div className="flex items-center gap-1">
                           {account.subscriptions?.recruiter && (
-                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-brand-purple/10 text-brand">
+                            <Badge variant="muted" className="text-xs px-1.5 py-0 h-4">
                               <Building2 className="w-2.5 h-2.5 mr-0.5" />
                               Recruiter
                             </Badge>
                           )}
                           {account.subscriptions?.sales_navigator && (
-                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-info/10 text-info">
+                            <Badge variant="muted" className="text-xs px-1.5 py-0 h-4">
                               Sales Nav
                             </Badge>
                           )}
@@ -400,7 +400,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => handleReconnect(account)}
-                        className="text-linkedin hover:text-linkedin-hover hover:bg-info/10 border-linkedin/30"
+                        className="text-linkedin hover:text-linkedin-hover hover:bg-info/10 border-linkedin/30 dark:border-linkedin/30"
                       >
                         <RefreshCw className="w-4 h-4 mr-1" />
                         Reconnecter

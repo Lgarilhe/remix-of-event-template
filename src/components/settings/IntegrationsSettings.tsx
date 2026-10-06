@@ -376,7 +376,7 @@ const LinkedInHostedAuthCard = ({
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="icon-sm"
                     className="max-md:h-11 max-md:w-11"
                     onClick={() => { void loadAccounts(); }}

@@ -238,7 +238,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
                 <Badge
                   key={index}
                   variant="secondary"
-                  className="gap-1 pr-1 bg-brand-purple/10 text-brand-purple hover:bg-brand-purple/20 text-xs"
+                  className="gap-1 pr-1 bg-brand-purple/10 text-foreground hover:bg-brand-purple/20 text-xs"
                 >
                   <span className="max-w-[150px] truncate">{tag}</span>
                   <button

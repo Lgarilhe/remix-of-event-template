@@ -325,7 +325,7 @@ export const LinkedInSafetySettings = () => {
                 Enregistrer
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={handleReset}
                 disabled={isSaving}

@@ -74,7 +74,7 @@ function TagInput({
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           placeholder={placeholder}
-          className="h-8 text-sm border-border focus:border-border"
+          className="h-8 text-sm"
         />
         {showSuggestions && filteredSuggestions.length > 0 && (
           <div className="absolute z-50 mt-1 w-full bg-background border border-border shadow-lg max-h-32 overflow-y-auto">
@@ -177,14 +177,14 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Ex: Startup SaaS B2B Series A"
-                className="h-9 border-border focus:border-border"
+                className="h-9"
                 required
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium uppercase tracking-wider">Type de cible</label>
               <Select value={targetType} onValueChange={(v: any) => setTargetType(v)}>
-                <SelectTrigger className="h-9 border-border">
+                <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -202,7 +202,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Décrivez votre cible idéale en quelques mots..."
-              className="min-h-[60px] text-sm border-border focus:border-border resize-none"
+              className="min-h-[60px] text-sm resize-none"
             />
           </div>
 
@@ -285,7 +285,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
                     min={0}
                     value={criteria.experience_range?.min ?? ''}
                     onChange={e => updateCriteria('experience_range', { ...criteria.experience_range, min: e.target.value ? Number(e.target.value) : undefined })}
-                    className="h-8 text-sm border-border"
+                    className="h-8 text-sm"
                     placeholder="0"
                   />
                 </div>
@@ -298,7 +298,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
                     min={0}
                     value={criteria.experience_range?.max ?? ''}
                     onChange={e => updateCriteria('experience_range', { ...criteria.experience_range, max: e.target.value ? Number(e.target.value) : undefined })}
-                    className="h-8 text-sm border-border"
+                    className="h-8 text-sm"
                     placeholder="15"
                   />
                 </div>
@@ -323,7 +323,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={onClose} className="border-border">
+            <Button type="button" variant="outline" onClick={onClose}>
               Annuler
             </Button>
             <Button

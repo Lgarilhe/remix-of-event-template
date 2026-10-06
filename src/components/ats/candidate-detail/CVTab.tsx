@@ -20,6 +20,7 @@ import {
   Upload, FileText, Download, Trash2, Star, StarOff,
   Loader2, AlertCircle, RefreshCw, Pencil, X,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IconTile } from '@/components/ui/IconTile';
 import {
@@ -277,9 +278,10 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <p className="text-sm font-semibold truncate">{activeCV.fileName}</p>
                   {activeCV.isPrimary && (
-                    <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
-                      <Star className="w-2.5 h-2.5" /> Principal
-                    </span>
+                    <Badge variant="success" className="shrink-0">
+                      <Star className="h-3 w-3" aria-hidden="true" />
+                      Principal
+                    </Badge>
                   )}
                 </div>
                 <p className="text-2xs text-muted-foreground">
@@ -310,9 +312,9 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                   <span className="hidden sm:inline ml-1">Ajouter</span>
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-2xs hover:text-destructive hover:border-destructive/40"
+                  className="h-7 px-2 text-2xs text-muted-foreground hover:text-danger"
                   onClick={() => setConfirmDelete(activeCV)}
                   title="Supprimer ce CV"
                 >
@@ -515,9 +517,9 @@ function CVListItem({
         <div className="flex items-center gap-1.5 flex-wrap">
           <p className="text-xs font-semibold truncate">{cv.fileName}</p>
           {cv.isPrimary && (
-            <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+            <Badge variant="success" className="shrink-0">
               Principal
-            </span>
+            </Badge>
           )}
         </div>
         <p className="text-2xs text-muted-foreground">

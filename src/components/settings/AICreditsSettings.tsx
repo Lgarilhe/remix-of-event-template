@@ -236,10 +236,7 @@ export const AICreditsSettings = () => {
                 variant="outline"
                 onClick={() => handleBuyPack(pack.id)}
                 disabled={!!buyingPack}
-                className={cn(
-                  'relative h-auto flex-col gap-0 whitespace-normal p-4 text-center font-normal',
-                  pack.badge && 'border-border-strong',
-                )}
+                className="relative h-auto flex-col gap-0 whitespace-normal p-4 text-center font-normal"
               >
                 <span className="sr-only">Acheter </span>
                 {/* Design simplifié : la mention du pack en texte neutre, posée sur le filet, sans pastille de couleur. */}

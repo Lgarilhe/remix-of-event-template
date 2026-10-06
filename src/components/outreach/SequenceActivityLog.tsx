@@ -697,7 +697,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           className="shrink-0 max-md:h-11 max-md:w-11"
           onClick={fetchExecutions}
@@ -830,7 +830,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
               title="Aucune étape ne correspond à ces filtres"
               description="Élargissez la période ou le statut, ou effacez la recherche."
               action={
-                <Button variant="outline" size="sm" onClick={resetFilters}>
+                <Button variant="ghost" size="sm" onClick={resetFilters}>
                   Réinitialiser les filtres
                 </Button>
               }
@@ -1012,9 +1012,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     )}
                                     {canSkip && (
                                       <Button
-                                        variant="outline"
+                                        variant="ghost"
                                         size="xs"
-                                        className="text-danger hover:text-danger max-md:h-11"
+                                        className="text-muted-foreground hover:text-danger max-md:h-11"
                                         onClick={() => setSkipConfirm({ id: exec.id, candidateName })}
                                         loading={skippingId === exec.id}
                                       >
@@ -1047,7 +1047,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           {/* Journal d'une séquence : page suivante après la dernière ligne. */}
           {paginated && cursor && (
             <div className="flex justify-center pt-1">
-              <Button variant="outline" size="sm" onClick={() => { void loadMore(); }} loading={loadingMore} className="max-md:h-11">
+              <Button variant="ghost" size="sm" onClick={() => { void loadMore(); }} loading={loadingMore} className="max-md:h-11">
                 Afficher la suite
               </Button>
             </div>

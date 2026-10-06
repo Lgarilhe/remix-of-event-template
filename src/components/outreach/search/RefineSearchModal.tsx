@@ -50,18 +50,20 @@ const FIELD_LABELS: Record<string, string> = {
   location: 'Localisation',
 };
 
-const IMPACT_LABELS: Record<string, { label: string; className: string }> = {
-  beaucoup_plus: { label: '↑↑ Beaucoup plus de résultats', className: 'text-success-foreground bg-success/10 border-success/20' },
-  plus: { label: '↑ Plus de résultats', className: 'text-success-foreground bg-success/5 border-success/10' },
-  similaire: { label: '≈ Résultats similaires', className: 'text-muted-foreground bg-muted/50 border-border' },
-  moins: { label: '↓ Moins de résultats', className: 'text-warning-foreground bg-warning/10 border-warning/20' },
-  beaucoup_moins: { label: '↓↓ Beaucoup moins', className: 'text-destructive bg-destructive/10 border-destructive/20' },
+// Badges à la Qonto : texte à l'encre, pastille de la couleur de l'effet attendu.
+const IMPACT_LABELS: Record<string, { label: string; variant: 'success' | 'muted' | 'warning' | 'danger' }> = {
+  beaucoup_plus: { label: '↑↑ Beaucoup plus de résultats', variant: 'success' },
+  plus: { label: '↑ Plus de résultats', variant: 'success' },
+  similaire: { label: '≈ Résultats similaires', variant: 'muted' },
+  moins: { label: '↓ Moins de résultats', variant: 'warning' },
+  beaucoup_moins: { label: '↓↓ Beaucoup moins', variant: 'danger' },
 };
 
 const DECISION_OPTIONS = [
-  { value: 'accept' as const, label: 'Oui', icon: Check, className: 'border-success/30 bg-success/10 text-success-foreground hover:bg-success/20' },
-  { value: 'cautious' as const, label: 'Avec prudence', icon: AlertTriangle, className: 'border-warning/30 bg-warning/10 text-warning-foreground hover:bg-warning/20' },
-  { value: 'reject' as const, label: 'Non', icon: X, className: 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20' },
+  // Choisi : libellé à l'encre sur la teinte, couleur dans l'icône (le texte blanc sur teinte pâle était illisible).
+  { value: 'accept' as const, label: 'Oui', icon: Check, className: 'border-success/30 bg-success/10 text-foreground hover:bg-success/20 [&>svg]:text-success' },
+  { value: 'cautious' as const, label: 'Avec prudence', icon: AlertTriangle, className: 'border-warning/30 bg-warning/10 text-foreground hover:bg-warning/20 [&>svg]:text-warning' },
+  { value: 'reject' as const, label: 'Non', icon: X, className: 'border-destructive/30 bg-destructive/10 text-foreground hover:bg-destructive/20 [&>svg]:text-destructive' },
 ];
 
 function formatValue(value: unknown): string {
@@ -142,9 +144,9 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {direction === 'expand' ? (
-              <Maximize2 className="w-5 h-5 text-success-foreground" />
+              <Maximize2 className="w-5 h-5" aria-hidden="true" />
             ) : (
-              <Minimize2 className="w-5 h-5 text-warning-foreground" />
+              <Minimize2 className="w-5 h-5" aria-hidden="true" />
             )}
             {direction === 'expand' ? 'Élargir la recherche' : 'Affiner la recherche'}
           </DialogTitle>
@@ -179,7 +181,7 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
                     </div>
                   )}
                   {impact && (
-                    <Badge variant="outline" className={cn('text-xs', impact.className)}>
+                    <Badge variant={impact.variant} className="text-xs">
                       {impact.label}
                     </Badge>
                   )}
@@ -188,7 +190,7 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
 
               {/* Quick actions */}
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" onClick={handleAcceptAll} className="text-xs h-7 text-success-foreground hover:text-success-foreground/80">
+                <Button variant="ghost" size="sm" onClick={handleAcceptAll} className="text-xs h-7">
                   <Check className="w-3 h-3 mr-1" />
                   Tout accepter
                 </Button>

@@ -58,7 +58,8 @@ export function PublicDeadEnd({ kind, title, description, onRetry, retrying = fa
           role={isError ? 'alert' : undefined}
           className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center sm:p-8"
         >
-          <Illustration name={ILLUSTRATIONS[kind]} size="lg" className="mx-auto mb-5" />
+          {/* Déjà sur la carte : sans tuile (elle aurait la couleur de la carte). */}
+          <Illustration name={ILLUSTRATIONS[kind]} size="lg" tile={false} className="mx-auto mb-5" />
           <h1 className="text-lg font-semibold text-foreground">{title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{description}</p>
           {(onRetry || action) && (

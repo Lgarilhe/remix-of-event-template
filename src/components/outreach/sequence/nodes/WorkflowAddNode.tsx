@@ -31,7 +31,7 @@ export const WorkflowAddNode = memo(({ data }: NodeProps) => {
               : variant === 'false'
                 ? 'Ajouter une étape à la branche Non connecté'
                 : 'Ajouter une étape'}
-            className="rounded-full border-dashed border-border-strong bg-background text-muted-foreground hover:text-foreground"
+            className="rounded-full border-dashed border-border-strong bg-background text-muted-foreground hover:text-foreground dark:border-border-strong"
           >
             <Plus aria-hidden="true" />
           </Button>

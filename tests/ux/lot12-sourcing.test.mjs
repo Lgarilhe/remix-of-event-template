@@ -347,19 +347,25 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   assert.doesNotMatch(top, /variant="(primary|outline|default)"/);
   assert.equal((top.match(/variant="ghost"/g) || []).length, 2, '« Filtres » et « Nouvelle recherche » en boutons discrets');
   // Pas de cadre autour des sections ni des listes (le seul cadre gardé : la barre flottante de sélection).
+  // Seule exception : l'option choisie de la bascule d'affichage, en carte blanche sur son rail gris (rendu quiet, contraste v2).
+  const QUIET_OPTION = "'bg-card font-semibold text-foreground dark:bg-background'";
   for (const [name, src] of [['SourcingResultsV3', results], ['SourcingTopBar', top]]) {
-    assert.doesNotMatch(src, /\bbg-card\b/, `${name} : carte`);
+    assert.doesNotMatch(src.replace(QUIET_OPTION, ''), /\bbg-card\b/, `${name} : carte`);
   }
   assert.equal((results.match(/rounded-(lg|xl) border border-border/g) || []).length, 1, 'un seul cadre : la barre flottante de sélection');
   assert.match(results, /rounded-xl border border-border bg-popover/);
-  assert.equal((top.match(/rounded-(lg|xl) border border-border/g) || []).length, 1, 'un seul cadre : le champ « Affiner »');
+  // Le champ « Affiner » porte le bord de champ (border-input, 3:1 au moins), comme Input (contraste v2).
+  assert.equal((top.match(/rounded-(lg|xl) border border-(border|input)\b/g) || []).length, 1, 'un seul cadre : le champ « Affiner »');
+  assert.match(top, /rounded-lg border border-input bg-background pl-9/);
   assert.doesNotMatch(results, /STAGE_PILL/, 'plus de pastille colorée par étape');
   assert.doesNotMatch(results, /border border-border text-/, 'boutons de décision sans cadre');
   // Puces d'état : le chiffre nul ne s'écrit pas, le nom accessible le garde (« Écartés 0 »).
   assert.match(results, /aria-label=\{`\$\{SOURCING_GROUP_LABEL\[group\]\} \$\{count\}`\}/);
   assert.match(results, /\{count > 0 && \(/);
-  // Bascule d'affichage : fond neutre, sans bordure, mêmes noms accessibles qu'avant.
-  assert.match(results, /aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted\/60 p-0\.5"/);
+  // Bascule d'affichage : fond neutre, sans bordure, mêmes noms accessibles qu'avant ; rail gris plein et
+  // option choisie en carte blanche en clair, creusée en sombre (rendu quiet, contraste v2).
+  assert.match(results, /aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted p-0\.5"/);
+  assert.match(results, /'bg-card font-semibold text-foreground dark:bg-background' : 'text-muted-foreground hover:text-foreground'/);
   assert.match(results, /aria-pressed=\{view === option\.value\}/);
   assert.match(results, /aria-label="Groupes de résultats"/);
   // Une seule phrase de pied de liste, qui ne répète pas ce que dit « Noter ».

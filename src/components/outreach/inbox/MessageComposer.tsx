@@ -605,7 +605,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             </div>
             <div>
               <p className="eyebrow mb-1">Traduction</p>
-              <div className="whitespace-pre-wrap rounded-lg border border-border-strong bg-card p-3 text-sm leading-relaxed text-foreground">
+              <div className="whitespace-pre-wrap rounded-lg border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
                 {translateResult}
               </div>
             </div>

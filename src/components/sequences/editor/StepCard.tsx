@@ -83,7 +83,7 @@ export function StepCard({ node, selected, issues, actions }: StepCardProps) {
         onClick={actions.onSelect}
         onKeyDown={onKeyDown}
         className={cn(
-          'cursor-pointer rounded-xl border bg-card p-3 pr-11 text-left transition-colors duration-150 hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'cursor-pointer rounded-xl border bg-card p-3 pr-11 text-left shadow-sm transition-colors duration-150 hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           error ? 'border-danger' : 'border-border',
           selected && 'ring-2 ring-brand',
         )}

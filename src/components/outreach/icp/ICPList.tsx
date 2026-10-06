@@ -192,7 +192,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
           <Button
             onClick={() => setFormOpen(true)}
             variant="outline"
-            className="text-xs border-border gap-1.5"
+            className="text-xs gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" /> Créer un ICP
           </Button>

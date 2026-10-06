@@ -1263,10 +1263,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 {pendingCount > 0 && (
                   <div className="mt-3 flex justify-end">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => setConfirmCancel(true)}
-                      className="text-danger hover:text-danger max-md:h-11"
+                      className="text-muted-foreground hover:text-danger max-md:h-11"
                     >
                       Annuler les envois en attente
                     </Button>

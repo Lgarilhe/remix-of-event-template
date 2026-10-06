@@ -32,6 +32,7 @@ import { Job } from '@/types/jobs';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
@@ -1293,14 +1294,15 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                       if (col.id === 'recommendation') {
                         const r = score?.recommendation;
                         if (!r) return <td key={col.id} className={`${baseTd} text-center`}>{empty}</td>;
+                        // Badge à la Qonto : texte à l'encre, pastille de la couleur du statut.
                         const cfg = r === 'go'
-                          ? { label: 'Recommandé', cls: 'bg-success-muted text-success' }
+                          ? { label: 'Recommandé', variant: 'success' as const }
                           : r === 'maybe'
-                            ? { label: 'À voir', cls: 'bg-warning-muted text-warning' }
-                            : { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground' };
+                            ? { label: 'À voir', variant: 'warning' as const }
+                            : { label: 'Peu adapté', variant: 'muted' as const };
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
-                            <span className={`inline-flex items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs ${cfg.cls}`}>
+                            <span className={cn(badgeVariants({ variant: cfg.variant }), 'whitespace-nowrap')}>
                               {cfg.label}
                             </span>
                           </td>
@@ -1460,12 +1462,12 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         return (
                           <td key={col.id} className={baseTd}>
                             {statusLabel ? (
-                              <span className={`text-2xs px-1.5 py-0.5 uppercase tracking-wider font-bold ${
-                                status?.status === 'replied' ? 'bg-success/10 text-success'
-                                : status?.status === 'messaged' ? 'bg-info/10 text-info'
-                                : status?.status === 'dismissed' ? 'bg-destructive/10 text-destructive'
-                                : 'bg-muted text-muted-foreground'
-                              }`}>
+                              <span className={cn(badgeVariants({
+                                variant: status?.status === 'replied' ? 'success'
+                                  : status?.status === 'messaged' ? 'info'
+                                  : status?.status === 'dismissed' ? 'danger'
+                                  : 'muted',
+                              }), 'whitespace-nowrap')}>
                                 {statusLabel}
                               </span>
                             ) : empty}

@@ -213,7 +213,7 @@ function renderSendTimeVariables(text: string): React.ReactNode {
   return segments.flatMap((segment, i) => (i === 0 ? [segment] : [
     <span
       key={`agenda-${i}`}
-      className="inline-flex items-center gap-1 rounded-full border border-info/25 bg-info-muted px-1.5 py-px align-baseline text-2xs font-medium text-info"
+      className="inline-flex items-center gap-1 rounded-full border border-info/25 bg-info-muted px-1.5 py-px align-baseline text-2xs font-medium text-foreground [&>svg]:text-info"
     >
       <CalendarClock className="h-3 w-3" aria-hidden="true" />
       Lien d'agenda, ajouté à l'envoi
@@ -1911,7 +1911,7 @@ function CandidatePreviewsBar({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs tabular-nums text-muted-foreground">{creditsLabel(missingAi * creditsPerMessage)}</span>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onGenerate}
             loading={isGenerating}
@@ -2128,7 +2128,7 @@ function MessageStepCard({
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-5 text-center">
             <p className="text-sm text-muted-foreground">Aperçu pas encore généré pour ce candidat.</p>
             {/* Lot 5d-1 : seule une étape rédigée par l'IA arrive ici, une étape écrite est rendue d'office. */}
-            <Button variant="outline" size="sm" onClick={onGenerate} className="max-md:h-11">
+            <Button variant="ghost" size="sm" onClick={onGenerate} className="max-md:h-11">
               Générer l'aperçu de ce message
             </Button>
             {/* Coût annoncé seulement pour une étape personnalisée par l'IA. */}

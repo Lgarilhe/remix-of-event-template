@@ -137,8 +137,8 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1 ml-1">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <Badge variant="outline" className="h-4 px-1 text-xs border-amber-300 text-amber-600 bg-warning/10">
+                <Badge variant="warning" className="h-4 px-1 text-xs">
+                  <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                   Non supporté
                 </Badge>
               </span>
@@ -430,7 +430,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
           )}
-          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[200px] p-0 bg-background" align="start">

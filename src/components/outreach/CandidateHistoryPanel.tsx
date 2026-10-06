@@ -214,7 +214,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null }> = ({ data 
   if (data && data.placements.length > 0) {
     const date = getMostRecentDate(data.placements.map(p => p.start_date));
     items.push(
-      <Badge key="placements" className="bg-warning/10 text-warning border-warning/30 text-xs px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="placements" variant="warning" className="text-xs px-1.5 py-0 h-4 gap-0.5">
         <Trophy className="w-2.5 h-2.5" />
         {data.placements.length} placement{data.placements.length > 1 ? 's' : ''}
         {date && <span className="opacity-70">· {date}</span>}
@@ -225,7 +225,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null }> = ({ data 
   if (data && data.shortlists.length > 0) {
     const date = getMostRecentDate(data.shortlists.map(s => s.date_added));
     items.push(
-      <Badge key="shortlists" variant="outline" className="border-info/30 bg-info/10 text-info text-xs px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="shortlists" variant="info" className="text-xs px-1.5 py-0 h-4 gap-0.5">
         <Star className="w-2.5 h-2.5" />
         {data.shortlists.length} shortlist{data.shortlists.length > 1 ? 's' : ''}
         {date && <span className="opacity-70">· {date}</span>}
@@ -236,7 +236,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null }> = ({ data 
   if (data && data.appointments.length > 0) {
     const date = getMostRecentDate(data.appointments.map(a => a.appointment_date));
     items.push(
-      <Badge key="rdv" variant="outline" className="border-brand-purple/30 bg-brand-purple/10 text-brand-purple text-xs px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="rdv" variant="outline" className="border-brand-purple/30 bg-brand-purple/10 text-foreground [&>svg]:text-brand-purple text-xs px-1.5 py-0 h-4 gap-0.5">
         <Calendar className="w-2.5 h-2.5" />
         {data.appointments.length} RDV
         {date && <span className="opacity-70">· {date}</span>}
@@ -247,7 +247,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null }> = ({ data 
   if (data && data.notes.length > 0) {
     const date = getMostRecentDate(data.notes.map(n => n.note_date));
     items.push(
-      <Badge key="notes" variant="outline" className="border-success/40 bg-success/10 text-success text-xs px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="notes" variant="success" className="text-xs px-1.5 py-0 h-4 gap-0.5">
         <FileText className="w-2.5 h-2.5" />
         {data.notes.length} note{data.notes.length > 1 ? 's' : ''}
         {date && <span className="opacity-70">· {date}</span>}

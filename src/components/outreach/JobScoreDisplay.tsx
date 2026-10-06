@@ -564,14 +564,14 @@ const CompatChip: React.FC<{ icon: React.ElementType; label: string; value: stri
     className={cn(
       'flex items-center gap-2.5 px-3 py-2 border rounded-md transition-colors',
       ok
-        ? 'border-emerald-500/30 bg-emerald-500/5'
+        ? 'border-success/30 bg-success-muted'
         : 'border-border bg-muted/30',
     )}
   >
-    <Icon className={cn('w-4 h-4 shrink-0', ok ? 'text-emerald-500' : 'text-muted-foreground')} />
+    <Icon className={cn('w-4 h-4 shrink-0', ok ? 'text-success' : 'text-muted-foreground')} />
     <div className="flex-1 min-w-0">
       <p className="text-2xs font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</p>
-      <p className={cn('text-xs font-semibold mt-0.5 truncate', ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
+      <p className="text-xs font-semibold mt-0.5 truncate text-foreground">
         {value}
       </p>
     </div>
@@ -613,10 +613,11 @@ const PowerScoreChip: React.FC<{ icon: React.ElementType; label: string; score: 
   icon: Icon, label, score, tooltip,
 }) => {
   const tone = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+  // Texte à l'encre, la couleur du niveau tient dans l'icône (badges à la Qonto).
   const cls = tone === 'high'
-    ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
+    ? 'border-success/30 bg-success-muted text-foreground [&>svg]:text-success'
     : tone === 'medium'
-    ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+    ? 'border-warning/30 bg-warning-muted text-foreground [&>svg]:text-warning'
     : 'border-border bg-muted/30 text-muted-foreground';
   const chip = (
     <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md', cls)}>
@@ -638,9 +639,10 @@ const PowerScoreChip: React.FC<{ icon: React.ElementType; label: string; score: 
 const PedigreeAssessmentBlock: React.FC<{ assessment: NonNullable<JobMatchResult['pedigreeAssessment']> }> = ({ assessment }) => {
   if (!assessment) return null;
   const verdictConfig = {
-    match: { icon: CheckCircle2, label: "Conforme à l'ICP", cls: 'text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
-    partial: { icon: AlertCircle, label: 'Partiellement conforme', cls: 'text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/5' },
-    mismatch: { icon: XCircle, label: 'Non conforme', cls: 'text-destructive border-destructive/30 bg-destructive/5' },
+    // Texte à l'encre, la couleur du verdict tient dans l'icône (badges à la Qonto).
+    match: { icon: CheckCircle2, label: "Conforme à l'ICP", cls: 'text-foreground border-success/30 bg-success-muted [&>svg]:text-success' },
+    partial: { icon: AlertCircle, label: 'Partiellement conforme', cls: 'text-foreground border-warning/30 bg-warning-muted [&>svg]:text-warning' },
+    mismatch: { icon: XCircle, label: 'Non conforme', cls: 'text-foreground border-destructive/30 bg-destructive/5 [&>svg]:text-destructive' },
   }[assessment.verdict || 'partial'];
   const Icon = verdictConfig.icon;
   return (
@@ -648,7 +650,7 @@ const PedigreeAssessmentBlock: React.FC<{ assessment: NonNullable<JobMatchResult
       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
         <Shield className="w-3.5 h-3.5" />
         ICP société {assessment.presetName ? `— ${assessment.presetName}` : ''}
-        {assessment.strictMode && <span className="text-3xs font-medium text-amber-600 dark:text-amber-400">(strict)</span>}
+        {assessment.strictMode && <span className="text-3xs font-medium text-foreground">(strict)</span>}
       </p>
       <div className={cn('flex items-start gap-2 px-2.5 py-2 border rounded-md text-xs', verdictConfig.cls)}>
         <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -693,9 +695,9 @@ const CriteriaSection: React.FC<{ criteriaEvaluations: NonNullable<JobMatchResul
       <div className="space-y-1">
         {visible.map((ce, i) => {
           const verdictConfig = {
-            pass: { icon: CheckCircle2, cls: 'text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
-            partial: { icon: AlertCircle, cls: 'text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/5' },
-            fail: { icon: XCircle, cls: 'text-destructive border-destructive/30 bg-destructive/5' },
+            pass: { icon: CheckCircle2, cls: 'text-foreground border-success/30 bg-success-muted [&>svg]:text-success' },
+            partial: { icon: AlertCircle, cls: 'text-foreground border-warning/30 bg-warning-muted [&>svg]:text-warning' },
+            fail: { icon: XCircle, cls: 'text-foreground border-destructive/30 bg-destructive/5 [&>svg]:text-destructive' },
             unknown: { icon: Search, cls: 'text-muted-foreground border-border bg-muted/30' },
           }[ce.verdict] || { icon: AlertCircle, cls: 'text-muted-foreground border-border bg-muted/30' };
           const Icon = verdictConfig.icon;
