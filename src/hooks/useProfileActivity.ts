@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPhoneCallsForCandidate } from '@/lib/phoneCalls';
 
 export interface ActivityEvent {
   id: string;
@@ -191,66 +192,24 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
           eventLocation: s.event_location,
         }));
 
-        // Fetch Aircall call events for this candidate
+        // Appels de l'opérateur relié (table phone_calls), par les numéros
+        // connus du candidat dans l'organisation.
         let aircallEvents: ActivityEvent[] = [];
-
-        // Find airtable candidate phone numbers for this profile
-        let candidatePhones: string[] = [];
-
-        if (profileUrl) {
-          const slug = profileUrl.split('linkedin.com')[1]?.replace(/\/$/, '') || '';
-          if (slug) {
-            const { data: atCandidates } = await supabase
-              .from('airtable_candidates')
-              .select('phone')
-              .ilike('linkedin_url', `%${slug}%`)
-              .not('phone', 'is', null)
-              .limit(5);
-            candidatePhones = (atCandidates || [])
-              .map(c => c.phone?.replace(/[^0-9+]/g, '') || '')
-              .filter(p => p.length >= 8);
-          }
-        }
-
-        if (!candidatePhones.length && profileName?.trim() && profileName.trim().length >= 3) {
-          const { data: atCandidates } = await supabase
-            .from('airtable_candidates')
-            .select('phone')
-            .ilike('full_name', `%${profileName.trim()}%`)
-            .not('phone', 'is', null)
-            .limit(5);
-          candidatePhones = (atCandidates || [])
-            .map(c => c.phone?.replace(/[^0-9+]/g, '') || '')
-            .filter(p => p.length >= 8);
-        }
-
-        console.log('[useProfileActivity] Aircall phone lookup:', { phoneCount: candidatePhones?.length ?? 0, hasProfileUrl: !!profileUrl });
-
-        if (candidatePhones.length && !cancelled) {
-          // Match calls by normalized phone: matched_candidate_phone field
-          const phoneFilters = candidatePhones.map(p => `matched_candidate_phone.ilike.%${p.slice(-9)}%`).join(',');
-          const { data: calls } = await supabase
-            .from('aircall_calls')
-            .select('id, started_at, direction, status, duration, user_name')
-            .or(phoneFilters)
-            .order('started_at', { ascending: true })
-            .limit(50);
-
-          if (calls?.length) {
-            aircallEvents = calls
-              .filter(c => c.started_at)
-              .map(c => ({
-                id: `aircall-${c.id}`,
-                type: 'aircall' as const,
-                timestamp: c.started_at!,
-                actionType: 'aircall_call',
-                stepOrder: 0,
-                status: c.status || 'done',
-                callDirection: c.direction,
-                callDuration: c.duration || 0,
-                callUserName: c.user_name,
-              }));
-          }
+        if (profileId && !cancelled) {
+          const calls = await fetchPhoneCallsForCandidate(profileId);
+          aircallEvents = calls
+            .filter(c => c.startedAt)
+            .map(c => ({
+              id: `aircall-${c.id}`,
+              type: 'aircall' as const,
+              timestamp: c.startedAt!,
+              actionType: 'aircall_call',
+              stepOrder: 0,
+              status: c.outcome === 'missed' ? 'missed' : 'done',
+              callDirection: c.direction,
+              callDuration: c.talkSeconds,
+              callUserName: c.agentName,
+            }));
         }
 
         const allEvents = [...mapped, ...bookingEvents, ...aircallEvents].sort(

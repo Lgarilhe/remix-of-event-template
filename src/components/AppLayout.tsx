@@ -6,9 +6,12 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
 import { GoShortcuts } from '@/components/layout/GoShortcuts';
+import { AssistantLauncher } from '@/components/agent/AssistantLauncher';
 import { Spinner } from '@/components/ui/spinner';
 import { LowCreditBanner } from '@/components/ai/LowCreditBanner';
 import { TrialBanner } from '@/components/billing/TrialBanner';
+import { pageTransitionKey } from '@/lib/missionBeta';
+import { useSequencesBetaParamSync } from '@/hooks/useSequencesBeta';
 
 // État replié de la barre, écrit par SidebarProvider dans le cookie sidebar:state.
 function readSidebarOpen(): boolean {
@@ -32,8 +35,11 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const location = useLocation();
   const reduceMotion = useReducedMotion();
   const [sidebarDefaultOpen] = React.useState(readSidebarOpen);
+  // ?sequences-v2=1|0 : interrupteur des pages Séquences (src/lib/sequencesBeta.ts).
+  useSequencesBetaParamSync();
   // Les rubriques des Paramètres partagent une clé : changer de rubrique ne remonte ni la coquille ni sa navigation.
-  const transitionKey = location.pathname.startsWith('/settings/') ? '/settings' : location.pathname;
+  // Même règle pour une mission (/missions/:id et ses écrans, src/lib/missionBeta.ts).
+  const transitionKey = location.pathname.startsWith('/settings/') ? '/settings' : pageTransitionKey(location.pathname);
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
@@ -73,6 +79,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* G puis une lettre (G D, G M…) : navigation au clavier dans l'application */}
       <GoShortcuts />
+
+      {/* Bulle ronde de l'assistant, en bas à droite (Ctrl K ouvre le même tiroir) */}
+      <AssistantLauncher />
     </SidebarProvider>
   );
 };

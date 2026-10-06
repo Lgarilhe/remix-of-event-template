@@ -83,7 +83,8 @@ test('E-27 : une définition s’ouvre au doigt (Popover), la grille d’indicat
   assert.doesNotMatch(hint, /Tooltip/);
   assert.match(read('src/components/ats/ATSPipelineAnalytics.tsx'), /<InfoHint label=/);
   assert.match(read('src/components/layout/StatTile.tsx'), /xl: 'xl:grid-cols-6'/);
-  assert.match(read('src/components/ats/ATSStats.tsx'), /cols=\{\{ base: 3, xl: 6 \}\}/);
+  // Lot 0c-4 : « Contactés au total » et « Entretiens au total » tiennent en entier sur deux colonnes.
+  assert.match(read('src/components/ats/ATSStats.tsx'), /cols=\{\{ base: 2, sm: 3, xl: 6 \}\}/);
 });
 
 test('E-25, D-07 : une seule façon d’écrire le temps écoulé', async () => {

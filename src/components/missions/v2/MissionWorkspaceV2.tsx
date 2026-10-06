@@ -197,7 +197,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
               onClick={() => handleSubChange(sub.id)}
               disabled={locked}
               className={cn(
-                'px-3 py-1.5 text-[13px] font-medium border-b-2 transition-colors flex-shrink-0',
+                'px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex-shrink-0',
                 isActive
                   ? 'border-foreground text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -205,7 +205,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
               )}
             >
               {sub.label}
-              {locked && <span className="ml-1.5 text-[10px]">🔒</span>}
+              {locked && <span className="ml-1.5 text-2xs">🔒</span>}
             </button>
           );
         })}

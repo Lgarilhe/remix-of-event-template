@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProject } from '@/hooks/useSourcingProjects';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Button } from '@/components/ui/button';
+import { setMissionBeta } from '@/lib/missionBeta';
 import { MissionWorkspaceV2 } from '@/components/missions/v2/MissionWorkspaceV2';
 
 // ── Main component ──
@@ -56,6 +58,16 @@ const MissionWorkspace = () => {
   return (
     <>
       <SEOHead title={`${project.name} | Konekt`} description={`Mission ${project.name}`} />
+      {/* Cette page n'apparaît que sur un choix « ancienne page » : retour en un clic. */}
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted px-4 py-2 text-sm"
+      >
+        <span className="text-foreground">Vous êtes sur l'ancienne page mission.</span>
+        <Button size="sm" variant="primary" onClick={() => setMissionBeta(true)}>
+          Passer à la nouvelle page
+        </Button>
+      </div>
       <MissionWorkspaceV2 project={project} />
     </>
   );

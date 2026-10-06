@@ -333,8 +333,45 @@ Reste :
 - F-23, proposition non faite : l'export RGPD dans Général (« Données de l'organisation ») ; la Base Konekt répartie (interrupteur dans les Règles de l'assistant, recherches incluses dans « Limites du plan ») ; des jauges d'usage dans « Limites du plan » (missions, crédits, contacts). Touche les ancres et les anciens onglets (`sections.tsx`, `settingsRoutes.ts`).
 - Le coût par action liste quatre actions sans appelant (`filter_assistant_msg`, `nurturing_analysis`, `vivier_enrichment`, `scorecard_chat`) : à retirer des deux catalogues au lot 11.
 - Deux textes serveur attendent le prochain changement de `supabase/functions/_shared/`, pour ne pas redéployer les 70 fonctions pour un libellé : le miroir des libellés de crédits (`ai-config.ts`, jamais affiché) et « digest matinal » de l'e-mail quotidien (`transactional-email-templates/daily-digest.tsx`), à écrire « résumé du matin ».
-- Kit : zone de 44 px de l'interrupteur (`ui/switch.tsx`) ; titre de `EmptyState` toujours en `h3` ; `shadow-sm` de `ui/card.tsx`, que la direction réserve aux éléments flottants ; variante explicite pour `AlertDialogAction` au lieu de la classe `bg-destructive` ; `ErrorBox` à sortir de `components/marketplace`.
+- Kit : zone de 44 px de l'interrupteur (`ui/switch.tsx`) ; titre de `EmptyState` toujours en `h3` ; `shadow-sm` de `ui/card.tsx`, que la direction réserve aux éléments flottants ; variante explicite pour `AlertDialogAction` au lieu de la classe `bg-destructive` ; `ErrorBox` à sortir de `components/marketplace`. Fait au lot 13.
 - Pour la refonte mission : `Illustration` pour ses écrans (recherche, brief, dossier) ; la page gagne 48 px sur ordinateur, que `lg:h-[calc(100dvh-5rem)]` de `LinkedInSearch` peut reprendre.
+
+### Lot 13 · Kit, proxys LinkedIn, boutons de l'assistant (fait)
+
+Lot court demandé par le propriétaire le 29 septembre : les cinq retouches du kit notées au lot 12, le panneau des proxys LinkedIn (le plus gros reste de l'ancien design hors refonte mission) et les boutons de l'assistant.
+
+Kit :
+
+- Interrupteur : sur téléphone, une zone invisible porte la cible à 44 px ; la piste garde 24 × 44 px (`ui/switch.tsx`).
+- Carte sans ombre : elle se détache par son filet, l'ombre reste aux éléments qui flottent (§ 4 de la direction). Le `shadow-none` posé sur une carte de la marketplace, devenu inutile, est retiré.
+- `AlertDialogAction` prend `variant="destructive"`. Sans variante, une classe `bg-destructive` compte encore comme destructive : la quarantaine d'appels existants ne change pas. `confirmAlert` et l'exemple de `CLAUDE.md` passent à la variante.
+- `EmptyState` prend `headingLevel` (2, 3 par défaut, 4) : h2 à la place du contenu d'une page (Tâches, Agents, Agenda, pipeline global, portail client), h4 dans une carte titrée en h3 (signatures e-mail, jetons de l'extension, ICP, journal de l'assistant).
+- `ErrorBox` passe dans `src/components/layout` et son index. L'ancien chemin renvoie au nouveau pour les branches en cours ; seul `MissionHuntMode` (refonte mission) le lit encore.
+
+Proxys LinkedIn (`ProxyConfigPanel`, Paramètres, Mon organisation, Général) :
+
+- Plus de drapeaux : pays en toutes lettres, réglage résumé (« Proxy : France ») et état en mot, précédé d'une pastille (« Actif », « En échec »).
+- « Custom », « IP », « User (opt.) » et « Pass (opt.) » deviennent « Personnalisé », « Adresse IP », « Identifiant (facultatif) » et « Mot de passe (facultatif) ». Chaque champ a son libellé, le choix du type porte le nom du compte, et le navigateur ne propose plus le mot de passe Konekt dans le champ du proxy.
+- Le bouton d'enregistrement, une icône sans nom, devient « Enregistrer » avec son état de chargement. Le champ du port n'est plus tronqué.
+- Le message d'un refus du prestataire n'est plus affiché brut : l'écran dit que le dernier réglage a été refusé et quoi faire. Le toast reprend le message du serveur quand il est en français.
+
+Assistant (tiroir, menu des connecteurs, fil) :
+
+- Quatorze boutons écrits à la main passent au `Button` du kit : anneau de focus, infobulle du kit au lieu de l'attribut `title`, 44 px sur téléphone (en-têtes, « + », envoi, arrêt ; retrait d'un fichier joint par une zone invisible). Les noms lus par les tests e2e ne changent pas.
+- « Connecter » nomme le connecteur pour les lecteurs d'écran (« Connecter Gmail ») ; le chargement des connecteurs passe par `Spinner`.
+
+Résidus :
+
+- « Modification refusée : droits insuffisants » (tiret long) ; « Contactez le support » au lieu de « Contacte le support » (`invokeEdgeFunction`).
+- Messagerie, choix de la mission à l'inscription : `Select` du kit au lieu du sélecteur natif.
+- Pastilles de légende des graphiques en `rounded-sm`, jours de la semaine du calendrier en `text-xs` (valeurs hors échelle).
+- `getOrgTypeEmoji`, sans appelant, retiré. Une erreur de type de moins (menu des connecteurs) : 14 au lieu de 15.
+
+Changements de comportement : un compte dont seul le pays du proxy est enregistré affiche « Proxy : France » (il affichait « Aucun proxy ») ; un état de proxy inconnu n'affiche plus d'icône rouge ; après un enregistrement, l'état du proxy et le message de refus suivent la réponse du serveur au lieu de dater du chargement de la page ; les infobulles des en-têtes de l'assistant s'ouvrent aussi au clavier.
+
+Tests : `tests/ux/lot13-kit-proxys-assistant.test.mjs`. Trois tests du lot 1 suivent le nouveau chemin d'`ErrorBox`, le test SEQ-141 le `Select` de la messagerie.
+
+Reste, au lot 11 : l'ancien chemin d'`ErrorBox`, une fois `MissionHuntMode` passé au nouveau ; `LinkedInAccountManager`, plus affiché nulle part (seule sa fonction `applySubscriptionOverrides` sert).
 
 ## Composants partagés
 
@@ -345,11 +382,15 @@ Existants, à employer partout (les deux sessions) :
 | En-tête de page | `PageHeader` (`src/components/layout`) |
 | Indicateur chiffré | `StatTile`, `StatGrid` (`src/components/layout`) |
 | Section de page | `Section` (`src/components/layout`) |
-| État vide | `EmptyState` (`src/components/layout`, ou `ui/EmptyState` pour la forme courte) |
+| État vide | `EmptyState` (`src/components/layout`, ou `ui/EmptyState` pour la forme courte), niveau du titre par `headingLevel` (lot 13) |
 | Erreur avec reprise | `ErrorState` (`src/components/layout`) |
+| Lecture en échec dans une liste ou une rubrique | `ErrorBox` (`src/components/layout`, lot 13) |
+| Confirmation d'une action destructive | `AlertDialog`, `AlertDialogAction variant="destructive"` (lot 13) |
 | Chargement ponctuel | `Spinner` (`src/components/ui/spinner.tsx`) |
 | Bandeau | `Banner` (`src/components/ui/banner.tsx`) |
 | Tuile d'icône | `IconTile` (`src/components/ui/IconTile.tsx`) |
+| Visage d'une personne, photo ou initiales ; pile de visages avec « +N » | `PersonAvatar`, `AvatarStack` (`src/components/ui/person-avatar.tsx`, design simplifié) |
+| Icône qui bouge quand quelque chose attend (bulle, sablier, réveil, point, étoile de l'assistant) | `src/components/ui/animated-icons.tsx` (design simplifié) |
 | Thème courant | `useAppTheme`, `setAppTheme` (`src/lib/theme.ts`) |
 | Choix exclusif visible (« Mes tâches / Équipe », vues) | `SegmentedControl` (`src/components/ui/segmented-control.tsx`, lot 5) |
 | Filtre à choix multiples dans une barre | `FilterPill`, `FilterOption` (`src/components/ui/filter-pill.tsx`, lot 5) |

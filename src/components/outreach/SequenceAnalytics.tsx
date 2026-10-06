@@ -10,6 +10,7 @@ import {
   isHiddenActionType,
   isSentExecutionStatus,
   missionEnrollmentJobIds,
+  RESPONSE_RATE_MIN_CONTACTED,
   type VariantResult,
 } from '@/lib/sequenceErrorMessages';
 import { stepTypeLabel } from './sequence/sequenceGraph';
@@ -59,7 +60,17 @@ interface SequenceAnalyticsProps {
   sequenceName?: string;
   /** Mission d'où les statistiques sont ouvertes : ses inscriptions sont comptées par défaut. */
   projectId?: string | null;
+  /**
+   * Dans une page (onglet « Statistiques » de l'écran Séquences et de la page
+   * d'une séquence, lot 5c-2) : le contenu sans le panneau latéral, chargé dès
+   * l'affichage, à plat (filets, sans cartes), sans aucun « 0 » écrit et avec
+   * des taux seulement à partir de 5. Défaut : le panneau, comme avant.
+   */
+  embedded?: boolean;
 }
+
+/** Page : un taux ne s'écrit qu'à partir de 5 (contactés, invitations, envois d'une étape). */
+const PAGE_RATE_MIN = RESPONSE_RATE_MIN_CONTACTED;
 
 interface AnalyticsRow {
   id: string;
@@ -79,7 +90,10 @@ interface EnrollmentStats {
   completed: number;
   replied: number;
   paused: number;
+  /** En pause sur un échec d'envoi (send_failed, auto_paused) : « En échec » dans la page. */
+  pausedFailure: number;
   cancelled: number;
+  stopped: number;
   avgResponseTimeHours: number | null;
 }
 
@@ -87,8 +101,25 @@ interface StepStat {
   id: string;
   step_order: number;
   action_type: string;
+  /** Version A/B de l'étape (plusieurs lignes au même ordre). */
+  variant_group: string | null;
   sent: number;
   replied: number;
+  /** Candidats qui ont reçu cette étape et répondu ensuite (statut de l'inscription). */
+  repliedAfter: number;
+  /** Rang de l'étape parmi les ordres de la séquence (même numéro que l'onglet « Étapes »). */
+  number: number;
+}
+
+const FAILURE_PAUSES = new Set(['send_failed', 'auto_paused']);
+
+/** Page : ce que compte une étape (« 6 visites », « 4 invitations », « 3 messages »). */
+function stepCountLabel(actionType: string, count: number): string {
+  if (actionType === 'profile_visit') return plural(count, 'visite', 'visites');
+  if (actionType === 'connection_request') return plural(count, 'invitation', 'invitations');
+  if (actionType === 'inmail') return plural(count, 'InMail', 'InMails');
+  if (actionType === 'message' || actionType === 'smart_message' || actionType === 'whatsapp_message') return plural(count, 'message', 'messages');
+  return plural(count, 'envoi', 'envois');
 }
 
 type Scope = 'mission' | 'all';
@@ -130,6 +161,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   sequenceId,
   sequenceName,
   projectId,
+  embedded = false,
 }) => {
   const [analytics, setAnalytics] = useState<AnalyticsRow[]>([]);
   const [enrollmentStats, setEnrollmentStats] = useState<EnrollmentStats | null>(null);
@@ -218,7 +250,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       // étapes : « contacté » = au moins une étape envoyée.
       let enrollQuery = supabase
         .from('sequence_enrollments')
-        .select('status, created_at, replied_at, profile_id, sequence_step_executions(status)')
+        .select('status, pause_reason, created_at, replied_at, profile_id, sequence_step_executions(status)')
         .gte('created_at', sinceTs)
         .lte('created_at', untilTs);
       if (filterSeqId) enrollQuery = enrollQuery.eq('sequence_id', filterSeqId);
@@ -253,7 +285,9 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         completed: uniqueEnrollments.filter(e => e.status === 'completed').length,
         replied: repliedCount,
         paused: uniqueEnrollments.filter(e => e.status === 'paused').length,
+        pausedFailure: uniqueEnrollments.filter(e => e.status === 'paused' && FAILURE_PAUSES.has(e.pause_reason ?? '')).length,
         cancelled: uniqueEnrollments.filter(e => e.status === 'cancelled').length,
+        stopped: uniqueEnrollments.filter(e => e.status === 'stopped' || e.status === 'bounced').length,
         avgResponseTimeHours: responseTimes.length > 0
           ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
           : null,
@@ -287,7 +321,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       if (filterSeqId) {
         const { data: stepRows, error: stepError } = await supabase
           .from('sequence_steps')
-          .select('id, step_order, action_type')
+          .select('id, step_order, action_type, variant_group')
           .eq('sequence_id', filterSeqId)
           .order('step_order', { ascending: true });
         if (stepError) throw stepError;
@@ -297,7 +331,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
           const stepIds = visibleSteps.map(s => s.id);
           let execQuery = supabase
             .from('sequence_step_executions')
-            .select('step_id, status, sequence_enrollments!inner(job_id)')
+            .select('step_id, status, sequence_enrollments!inner(job_id, status)')
             .in('step_id', stepIds)
             .gte('created_at', sinceTs)
             .lte('created_at', untilTs);
@@ -305,21 +339,27 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
           const { data: execRows, error: execError } = await execQuery;
           if (execError) throw execError;
 
-          const perStep = new Map<string, { sent: number; replied: number }>();
+          const perStep = new Map<string, { sent: number; replied: number; repliedAfter: number }>();
           (execRows || []).forEach(e => {
-            const cur = perStep.get(e.step_id) || { sent: 0, replied: 0 };
-            if (isSentExecutionStatus(e.status) || e.status === 'executed') cur.sent++;
+            const cur = perStep.get(e.step_id) || { sent: 0, replied: 0, repliedAfter: 0 };
+            const sent = isSentExecutionStatus(e.status) || e.status === 'executed';
+            if (sent) cur.sent++;
             if (e.status === 'replied') cur.replied++;
+            if (sent && one(e.sequence_enrollments)?.status === 'replied') cur.repliedAfter++;
             perStep.set(e.step_id, cur);
           });
+          const orders = [...new Set((stepRows || []).map(s => s.step_order))].sort((a, b) => a - b);
 
           setStepStats(
             visibleSteps.map(s => ({
               id: s.id,
               step_order: s.step_order,
               action_type: s.action_type,
+              variant_group: s.variant_group ?? null,
               sent: perStep.get(s.id)?.sent || 0,
               replied: perStep.get(s.id)?.replied || 0,
+              repliedAfter: perStep.get(s.id)?.repliedAfter || 0,
+              number: orders.indexOf(s.step_order) + 1,
             })),
           );
         } else {
@@ -333,15 +373,16 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       // Une panne ne se lit pas comme des statistiques vides : état d'erreur avec « Réessayer ».
       setLoadError(true);
       setLoadErrorDetail(err instanceof Error ? err.message : String(err));
-      toast.error('Impossible de charger les statistiques');
+      // Dans une page, l'état d'erreur suffit (spec-cible, section 4).
+      if (!embedded) toast.error('Impossible de charger les statistiques');
     } finally {
       setLoading(false);
     }
-  }, [period, customStart, customEnd, sequenceId, selectedSeqId, projectId, scope]);
+  }, [period, customStart, customEnd, sequenceId, selectedSeqId, projectId, scope, embedded]);
 
   useEffect(() => {
-    if (isOpen) fetchData();
-  }, [isOpen, fetchData]);
+    if (isOpen || embedded) fetchData();
+  }, [isOpen, embedded, fetchData]);
 
   const totals = useMemo(() => {
     return analytics.reduce(
@@ -411,6 +452,319 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
     || stepStats.some(s => s.sent > 0);
   const title = sequenceName ? `Statistiques : ${sequenceName}` : 'Statistiques de toutes les séquences';
 
+  // Graphique d'activité, commun au panneau et à la page.
+  const activityChart = (
+    <>
+      <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Légende">
+        {SERIES.map((s) => (
+          <li key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={cn('h-2.5 w-2.5 rounded-sm', s.swatch)} aria-hidden="true" />
+            {s.label}
+          </li>
+        ))}
+      </ul>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={chartData} barGap={2} barCategoryGap="20%">
+          <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+          <XAxis
+            dataKey="date"
+            tickFormatter={(d) => format(new Date(d), 'dd/MM', { locale: fr })}
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+            tickLine={false}
+          />
+          <YAxis
+            allowDecimals={false}
+            width={28}
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            cursor={{ fill: 'hsl(var(--accent))' }}
+            labelFormatter={(d) => format(new Date(d as string), 'd MMMM yyyy', { locale: fr })}
+            contentStyle={{
+              borderRadius: 8,
+              border: '1px solid hsl(var(--border))',
+              backgroundColor: 'hsl(var(--popover))',
+              fontSize: 12,
+            }}
+            labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
+            itemStyle={{ color: 'hsl(var(--foreground-secondary))' }}
+          />
+          {SERIES.map((s) => (
+            <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.fill} radius={[4, 4, 0, 0]} maxBarSize={24} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </>
+  );
+
+  // Contenu commun au panneau et à la page.
+  const body = (
+    <>
+      {/* Filtres */}
+      <div className="flex flex-wrap items-end gap-2">
+        {projectId && (
+          <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+            <SelectTrigger className={cn('w-full sm:w-44', embedded && 'max-md:h-11')} aria-label="Périmètre">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mission">Cette mission</SelectItem>
+              <SelectItem value="all">Toutes les missions</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {!sequenceId && (
+          <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
+            <SelectTrigger className={cn('w-full sm:w-56', embedded && 'max-md:h-11')} aria-label="Séquence">
+              <SelectValue placeholder="Toutes les séquences" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les séquences</SelectItem>
+              {sequences.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
+          <SelectTrigger className={cn('min-w-0 flex-1 sm:w-48 sm:flex-none', embedded && 'max-md:h-11')} aria-label="Période">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">{PERIOD_LABELS['7']}</SelectItem>
+            <SelectItem value="30">{PERIOD_LABELS['30']}</SelectItem>
+            <SelectItem value="90">{PERIOD_LABELS['90']}</SelectItem>
+            <SelectItem value="custom">{PERIOD_LABELS.custom}</SelectItem>
+          </SelectContent>
+        </Select>
+        <UiTooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={fetchData}
+              disabled={loading}
+              className="shrink-0 max-md:h-11 max-md:w-11"
+              aria-label="Actualiser les statistiques"
+            >
+              <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Actualiser</TooltipContent>
+        </UiTooltip>
+        {period === 'custom' && (
+          <div className="flex w-full flex-wrap gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor={startId} className="text-xs text-muted-foreground">Du</Label>
+              <Input
+                id={startId}
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                max={customEnd}
+                className="w-40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={endId} className="text-xs text-muted-foreground">Au</Label>
+              <Input
+                id={endId}
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                min={customStart}
+                max={format(new Date(), 'yyyy-MM-dd')}
+                className="w-40"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div role="status" aria-label="Chargement des statistiques">
+          <AnalyticsSkeleton />
+        </div>
+      ) : loadError ? (
+        <ErrorState
+          title={embedded ? 'Statistiques indisponibles pour l’instant.' : 'Impossible de charger les statistiques'}
+          description="Vérifiez votre connexion, puis réessayez."
+          detail={loadErrorDetail}
+          onRetry={fetchData}
+        />
+      ) : !hasData ? (
+        <EmptyState
+          icon={BarChart3}
+          title="Pas encore de statistiques"
+          description={sequenceId
+            ? 'Les chiffres apparaissent dès les premiers envois de cette séquence.'
+            : 'Les chiffres apparaissent dès les premiers envois de vos séquences.'}
+        />
+      ) : embedded ? (
+        <PageStatsView
+          totals={totals}
+          acceptRate={acceptRate}
+          responseRate={responseRate}
+          enrollmentStats={enrollmentStats}
+          stepStats={stepStats}
+          avgResponse={enrollmentStats?.avgResponseTimeHours != null ? formatAvgTime(enrollmentStats.avgResponseTimeHours) : null}
+          chart={chartData.length > 0 ? activityChart : null}
+        />
+      ) : (
+        <>
+          {/* Indicateurs */}
+          <StatGrid cols={{ base: 2, sm: 3 }}>
+            <StatTile label="Visites de profil" value={totals.profileVisits} />
+            <StatTile
+              label="Invitations"
+              value={totals.invitesSent}
+              trailing={<span className="text-xs text-muted-foreground">{acceptRate} % acceptées</span>}
+            />
+            <StatTile label="Messages" value={totals.messagesSent} />
+            <StatTile
+              label="Candidats inscrits"
+              value={enrollmentStats?.total || 0}
+              trailing={<span className="text-xs text-muted-foreground">{plural(responseRate.contacted, 'contacté')}</span>}
+            />
+            <StatTile
+              label="Réponses"
+              value={enrollmentStats?.replied || 0}
+              trailing={responseRate.rate === null
+                ? undefined
+                : <span className="text-xs text-muted-foreground">{responseRate.rate} % des contactés</span>}
+            />
+            <StatTile
+              label="Délai de réponse"
+              value={formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null)}
+              trailing={<span className="text-xs text-muted-foreground">en moyenne</span>}
+            />
+          </StatGrid>
+          <p className="text-xs text-muted-foreground">
+            Candidats, réponses et taux : candidats inscrits sur la période.
+            {missionScoped && ' Visites, invitations et messages : toutes missions confondues pour les séquences de cette mission.'}
+          </p>
+
+          {/* Entonnoir */}
+          <Section title="Entonnoir de conversion" padded>
+            <ol className="space-y-3">
+              {funnelData.map((item, index) => {
+                const maxVal = Math.max(...funnelData.map(f => f.value), 1);
+                const width = item.value > 0 ? Math.max((item.value / maxVal) * 100, 2) : 0;
+                const prevValue = index > 0 ? funnelData[index - 1].value : null;
+                const convRate = prevValue && prevValue > 0 ? Math.round((item.value / prevValue) * 100) : null;
+
+                return (
+                  <li key={item.name} className="grid grid-cols-[6rem_1fr_5rem] items-center gap-3">
+                    <span className="truncate text-xs text-muted-foreground">{item.name}</span>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                      <div className="h-full rounded-full bg-foreground-secondary" style={{ width: `${width}%` }} />
+                    </div>
+                    <span className="text-right text-sm font-medium tabular-nums text-foreground">
+                      {item.value}
+                      {convRate !== null && (
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">({convRate} %)</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Entre parenthèses : la part de l'étape précédente.
+            </p>
+          </Section>
+
+          {/* Répartition des candidats */}
+          {statusData.length > 0 && enrollmentStats && (
+            <Section title="Répartition des candidats" padded>
+              <div className="mb-3 flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+                {statusData.map((item) => (
+                  <div
+                    key={item.key}
+                    className={cn('h-full', TONE_FILL[enrollmentStatusMeta(item.key).tone])}
+                    style={{ width: `${(item.value / enrollmentStats.total) * 100}%` }}
+                  />
+                ))}
+              </div>
+              <ul className="flex flex-wrap gap-x-4 gap-y-2">
+                {statusData.map((item) => (
+                  <li key={item.key} className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold tabular-nums text-foreground">{item.value}</span>
+                    <EnrollmentStatusBadge status={item.key} />
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          {/* Activité quotidienne */}
+          {chartData.length > 0 && (
+            <Section title="Activité quotidienne" padded>
+              {activityChart}
+            </Section>
+          )}
+
+          {/* Résultats A/B */}
+          {abResults.length > 0 && (
+            <ABTestResults results={abResults} />
+          )}
+
+          {/* Performance par étape */}
+          {stepStats.length > 0 && (
+            <Section title="Performance par étape" padded>
+              <ul className="space-y-2">
+                {stepStats.map(s => {
+                  // Seules les réponses e-mail sont rattachées à une étape.
+                  const tracksReplies = s.action_type === 'email';
+                  const stepReplyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
+                  return (
+                    <li
+                      key={s.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-background p-2.5 text-xs"
+                    >
+                      <span className="w-14 shrink-0 font-medium text-foreground">Étape {s.step_order + 1}</span>
+                      <span className="min-w-0 flex-1 truncate text-foreground-secondary">{stepTypeLabel(s.action_type)}</span>
+                      <span className="text-muted-foreground">
+                        <span className="font-semibold tabular-nums text-foreground">{s.sent}</span> {s.sent > 1 ? 'envoyées' : 'envoyée'}
+                        {tracksReplies && s.replied > 0 && (
+                          <>
+                            {' · '}
+                            <span className="font-semibold tabular-nums text-foreground">{s.replied}</span> {s.replied > 1 ? 'réponses' : 'réponse'}
+                          </>
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          'w-14 shrink-0 text-right font-semibold tabular-nums',
+                          !tracksReplies
+                            ? 'text-muted-foreground'
+                            : stepReplyRate >= 20 ? 'text-success' : stepReplyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
+                        )}
+                      >
+                        {tracksReplies
+                          ? `${stepReplyRate.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`
+                          : '–'}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Réponses suivies pour l'e-mail uniquement : une réponse sur LinkedIn n'est pas rattachée à une
+                étape. Taux de réponse en vert à partir de 20 %, en orange de 10 à 20 %, en gris en dessous.
+              </p>
+            </Section>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  if (embedded) return <div className="space-y-4">{body}</div>;
+
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
@@ -421,300 +775,167 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-          {/* Filtres */}
-          <div className="flex flex-wrap items-end gap-2">
-            {projectId && (
-              <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
-                <SelectTrigger className="w-full sm:w-44" aria-label="Périmètre">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mission">Cette mission</SelectItem>
-                  <SelectItem value="all">Toutes les missions</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-            {!sequenceId && (
-              <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                <SelectTrigger className="w-full sm:w-56" aria-label="Séquence">
-                  <SelectValue placeholder="Toutes les séquences" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les séquences</SelectItem>
-                  {sequences.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
-              <SelectTrigger className="min-w-0 flex-1 sm:w-48 sm:flex-none" aria-label="Période">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">{PERIOD_LABELS['7']}</SelectItem>
-                <SelectItem value="30">{PERIOD_LABELS['30']}</SelectItem>
-                <SelectItem value="90">{PERIOD_LABELS['90']}</SelectItem>
-                <SelectItem value="custom">{PERIOD_LABELS.custom}</SelectItem>
-              </SelectContent>
-            </Select>
-            <UiTooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={fetchData}
-                  disabled={loading}
-                  className="shrink-0 max-md:h-11 max-md:w-11"
-                  aria-label="Actualiser les statistiques"
-                >
-                  <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Actualiser</TooltipContent>
-            </UiTooltip>
-            {period === 'custom' && (
-              <div className="flex w-full flex-wrap gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor={startId} className="text-xs text-muted-foreground">Du</Label>
-                  <Input
-                    id={startId}
-                    type="date"
-                    value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
-                    max={customEnd}
-                    className="w-40"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor={endId} className="text-xs text-muted-foreground">Au</Label>
-                  <Input
-                    id={endId}
-                    type="date"
-                    value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
-                    min={customStart}
-                    max={format(new Date(), 'yyyy-MM-dd')}
-                    className="w-40"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {loading ? (
-            <div role="status" aria-label="Chargement des statistiques">
-              <AnalyticsSkeleton />
-            </div>
-          ) : loadError ? (
-            <ErrorState
-              title="Impossible de charger les statistiques"
-              description="Vérifiez votre connexion, puis réessayez."
-              detail={loadErrorDetail}
-              onRetry={fetchData}
-            />
-          ) : !hasData ? (
-            <EmptyState
-              icon={BarChart3}
-              title="Pas encore de statistiques"
-              description={sequenceId
-                ? 'Les chiffres apparaissent dès les premiers envois de cette séquence.'
-                : 'Les chiffres apparaissent dès les premiers envois de vos séquences.'}
-            />
-          ) : (
-            <>
-              {/* Indicateurs */}
-              <StatGrid cols={{ base: 2, sm: 3 }}>
-                <StatTile label="Visites de profil" value={totals.profileVisits} />
-                <StatTile
-                  label="Invitations"
-                  value={totals.invitesSent}
-                  trailing={<span className="text-xs text-muted-foreground">{acceptRate} % acceptées</span>}
-                />
-                <StatTile label="Messages" value={totals.messagesSent} />
-                <StatTile
-                  label="Candidats inscrits"
-                  value={enrollmentStats?.total || 0}
-                  trailing={<span className="text-xs text-muted-foreground">{plural(responseRate.contacted, 'contacté')}</span>}
-                />
-                <StatTile
-                  label="Réponses"
-                  value={enrollmentStats?.replied || 0}
-                  trailing={responseRate.rate === null
-                    ? undefined
-                    : <span className="text-xs text-muted-foreground">{responseRate.rate} % des contactés</span>}
-                />
-                <StatTile
-                  label="Délai de réponse"
-                  value={formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null)}
-                  trailing={<span className="text-xs text-muted-foreground">en moyenne</span>}
-                />
-              </StatGrid>
-              <p className="text-xs text-muted-foreground">
-                Candidats, réponses et taux : candidats inscrits sur la période.
-                {missionScoped && ' Visites, invitations et messages : toutes missions confondues pour les séquences de cette mission.'}
-              </p>
-
-              {/* Entonnoir */}
-              <Section title="Entonnoir de conversion" padded>
-                <ol className="space-y-3">
-                  {funnelData.map((item, index) => {
-                    const maxVal = Math.max(...funnelData.map(f => f.value), 1);
-                    const width = item.value > 0 ? Math.max((item.value / maxVal) * 100, 2) : 0;
-                    const prevValue = index > 0 ? funnelData[index - 1].value : null;
-                    const convRate = prevValue && prevValue > 0 ? Math.round((item.value / prevValue) * 100) : null;
-
-                    return (
-                      <li key={item.name} className="grid grid-cols-[6rem_1fr_5rem] items-center gap-3">
-                        <span className="truncate text-xs text-muted-foreground">{item.name}</span>
-                        <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                          <div className="h-full rounded-full bg-foreground-secondary" style={{ width: `${width}%` }} />
-                        </div>
-                        <span className="text-right text-sm font-medium tabular-nums text-foreground">
-                          {item.value}
-                          {convRate !== null && (
-                            <span className="ml-1 text-xs font-normal text-muted-foreground">({convRate} %)</span>
-                          )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Entre parenthèses : la part de l'étape précédente.
-                </p>
-              </Section>
-
-              {/* Répartition des candidats */}
-              {statusData.length > 0 && enrollmentStats && (
-                <Section title="Répartition des candidats" padded>
-                  <div className="mb-3 flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-                    {statusData.map((item) => (
-                      <div
-                        key={item.key}
-                        className={cn('h-full', TONE_FILL[enrollmentStatusMeta(item.key).tone])}
-                        style={{ width: `${(item.value / enrollmentStats.total) * 100}%` }}
-                      />
-                    ))}
-                  </div>
-                  <ul className="flex flex-wrap gap-x-4 gap-y-2">
-                    {statusData.map((item) => (
-                      <li key={item.key} className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold tabular-nums text-foreground">{item.value}</span>
-                        <EnrollmentStatusBadge status={item.key} />
-                      </li>
-                    ))}
-                  </ul>
-                </Section>
-              )}
-
-              {/* Activité quotidienne */}
-              {chartData.length > 0 && (
-                <Section title="Activité quotidienne" padded>
-                  <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Légende">
-                    {SERIES.map((s) => (
-                      <li key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className={cn('h-2.5 w-2.5 rounded-sm', s.swatch)} aria-hidden="true" />
-                        {s.label}
-                      </li>
-                    ))}
-                  </ul>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={chartData} barGap={2} barCategoryGap="20%">
-                      <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={(d) => format(new Date(d), 'dd/MM', { locale: fr })}
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                        axisLine={{ stroke: 'hsl(var(--border))' }}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        width={28}
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        cursor={{ fill: 'hsl(var(--accent))' }}
-                        labelFormatter={(d) => format(new Date(d as string), 'd MMMM yyyy', { locale: fr })}
-                        contentStyle={{
-                          borderRadius: 8,
-                          border: '1px solid hsl(var(--border))',
-                          backgroundColor: 'hsl(var(--popover))',
-                          fontSize: 12,
-                        }}
-                        labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
-                        itemStyle={{ color: 'hsl(var(--foreground-secondary))' }}
-                      />
-                      {SERIES.map((s) => (
-                        <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.fill} radius={[4, 4, 0, 0]} maxBarSize={24} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Section>
-              )}
-
-              {/* Résultats A/B */}
-              {abResults.length > 0 && (
-                <ABTestResults results={abResults} />
-              )}
-
-              {/* Performance par étape */}
-              {stepStats.length > 0 && (
-                <Section title="Performance par étape" padded>
-                  <ul className="space-y-2">
-                    {stepStats.map(s => {
-                      // Seules les réponses e-mail sont rattachées à une étape.
-                      const tracksReplies = s.action_type === 'email';
-                      const stepReplyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
-                      return (
-                        <li
-                          key={s.id}
-                          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-background p-2.5 text-xs"
-                        >
-                          <span className="w-14 shrink-0 font-medium text-foreground">Étape {s.step_order + 1}</span>
-                          <span className="min-w-0 flex-1 truncate text-foreground-secondary">{stepTypeLabel(s.action_type)}</span>
-                          <span className="text-muted-foreground">
-                            <span className="font-semibold tabular-nums text-foreground">{s.sent}</span> {s.sent > 1 ? 'envoyées' : 'envoyée'}
-                            {tracksReplies && s.replied > 0 && (
-                              <>
-                                {' · '}
-                                <span className="font-semibold tabular-nums text-foreground">{s.replied}</span> {s.replied > 1 ? 'réponses' : 'réponse'}
-                              </>
-                            )}
-                          </span>
-                          <span
-                            className={cn(
-                              'w-14 shrink-0 text-right font-semibold tabular-nums',
-                              !tracksReplies
-                                ? 'text-muted-foreground'
-                                : stepReplyRate >= 20 ? 'text-success' : stepReplyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
-                            )}
-                          >
-                            {tracksReplies
-                              ? `${stepReplyRate.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`
-                              : '–'}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Réponses suivies pour l'e-mail uniquement : une réponse sur LinkedIn n'est pas rattachée à une
-                    étape. Taux de réponse en vert à partir de 20 %, en orange de 10 à 20 %, en gris en dessous.
-                  </p>
-                </Section>
-              )}
-            </>
-          )}
-        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">{body}</div>
       </SheetContent>
     </Sheet>
   );
 };
+
+/**
+ * Statistiques dans une page (lot 5c-2) : chiffres à plat sous des filets,
+ * sans cartes ; aucun « 0 » écrit (une valeur nulle est masquée ou dite en
+ * mots) ; un taux seulement à partir de 5 ; versions A/B nommées ; « ont
+ * répondu ensuite » par étape (statut de l'inscription).
+ */
+function PageStatsView({
+  totals,
+  acceptRate,
+  responseRate,
+  enrollmentStats,
+  stepStats,
+  avgResponse,
+  chart,
+}: {
+  totals: { invitesSent: number; invitesAccepted: number; messagesSent: number; repliesReceived: number; profileVisits: number };
+  acceptRate: number;
+  responseRate: { replied: number; contacted: number; rate: number | null };
+  enrollmentStats: EnrollmentStats | null;
+  stepStats: StepStat[];
+  avgResponse: string | null;
+  chart: React.ReactNode;
+}) {
+  const contacted = responseRate.contacted;
+  const replied = enrollmentStats?.replied ?? 0;
+  const pageFigures: Array<{ label: string; value: React.ReactNode; sub?: string | null }> = [
+    {
+      label: 'Candidats inscrits',
+      value: enrollmentStats?.total ? enrollmentStats.total : <span className="text-sm font-normal text-muted-foreground">aucun</span>,
+      sub: contacted > 0 ? plural(contacted, 'contacté', 'contactés') : null,
+    },
+    {
+      label: 'Réponses',
+      value: replied > 0 ? replied : <span className="text-sm font-normal text-muted-foreground">aucune réponse</span>,
+      sub: contacted >= PAGE_RATE_MIN && responseRate.rate !== null ? `${responseRate.rate} % des contactés` : null,
+    },
+    ...(totals.invitesSent > 0 ? [{
+      label: 'Invitations',
+      value: totals.invitesSent,
+      sub: totals.invitesSent >= PAGE_RATE_MIN ? `${acceptRate} % acceptées` : null,
+    }] : []),
+    ...(totals.messagesSent > 0 ? [{ label: 'Messages', value: totals.messagesSent }] : []),
+    ...(totals.profileVisits > 0 ? [{ label: 'Visites de profil', value: totals.profileVisits }] : []),
+    ...(avgResponse ? [{ label: 'Délai de réponse', value: avgResponse, sub: 'en moyenne' }] : []),
+  ];
+  // Entonnoir : seulement les étapes qui ont un nombre ; la part ne s'écrit que
+  // là où l'étape précédente contient la suivante (acceptées parmi les invitations).
+  const pageFunnel = [
+    { name: 'Visites de profil', value: totals.profileVisits, share: null as string | null },
+    { name: 'Invitations', value: totals.invitesSent, share: null },
+    {
+      name: 'Acceptées',
+      value: totals.invitesAccepted,
+      share: totals.invitesSent >= PAGE_RATE_MIN && totals.invitesAccepted <= totals.invitesSent ? `${acceptRate} % des invitations` : null,
+    },
+    { name: 'Réponses', value: replied, share: null },
+  ].filter((row) => row.value > 0);
+  const funnelMax = Math.max(1, ...pageFunnel.map((row) => row.value));
+  // Répartition : mêmes groupes que les puces de l'onglet « Candidats ».
+  const breakdown = enrollmentStats ? [
+    { key: 'active', count: enrollmentStats.active, text: 'en cours', tone: '' },
+    { key: 'replied', count: enrollmentStats.replied, text: enrollmentStats.replied > 1 ? 'ont répondu' : 'a répondu', tone: '' },
+    { key: 'paused', count: enrollmentStats.paused - enrollmentStats.pausedFailure, text: 'en pause', tone: '' },
+    { key: 'failed', count: enrollmentStats.pausedFailure, text: 'en échec', tone: 'text-danger' },
+    {
+      key: 'ended',
+      count: enrollmentStats.completed + enrollmentStats.cancelled + enrollmentStats.stopped,
+      text: enrollmentStats.completed + enrollmentStats.cancelled + enrollmentStats.stopped > 1 ? 'terminées' : 'terminée',
+      tone: '',
+    },
+  ].filter((item) => item.count > 0) : [];
+  const versionsAt = (order: number) => stepStats.filter((st) => st.step_order === order).length;
+  const pageSection = (title: string, children: React.ReactNode) => (
+    <section aria-label={title} className="space-y-3 border-t border-border pt-5">
+      <h3 className="eyebrow">{title}</h3>
+      {children}
+    </section>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-border py-4 sm:grid-cols-3 lg:grid-cols-6">
+          {pageFigures.map((f) => (
+            <div key={f.label} className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{f.label}</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums text-foreground">{f.value}</dd>
+              {f.sub && <dd className="mt-0.5 text-xs text-muted-foreground">{f.sub}</dd>}
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          Candidats et réponses : candidats inscrits sur la période. Un taux s’écrit à partir de {PAGE_RATE_MIN}.
+        </p>
+      </div>
+
+      {pageFunnel.length > 1 && pageSection('Entonnoir de conversion', (
+        <ol className="space-y-3">
+          {pageFunnel.map((row) => (
+            <li key={row.name} className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3">
+              <span className="truncate text-xs text-muted-foreground">{row.name}</span>
+              <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <div className="h-full rounded-full bg-foreground-secondary" style={{ width: `${Math.max((row.value / funnelMax) * 100, 2)}%` }} />
+              </div>
+              <span className="text-right text-sm font-medium tabular-nums text-foreground">
+                {row.value}
+                {row.share && <span className="ml-1 text-xs font-normal text-muted-foreground">({row.share})</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ))}
+
+      {breakdown.length > 0 && pageSection('Répartition des candidats', (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {breakdown.map((item) => (
+            <li key={item.key} className={cn('text-foreground-secondary', item.tone)}>
+              <span className="font-semibold tabular-nums text-foreground">{item.count}</span> {item.text}
+            </li>
+          ))}
+        </ul>
+      ))}
+
+      {chart && pageSection('Activité quotidienne', chart)}
+
+      {stepStats.some((st) => st.sent > 0) && pageSection('Performance par étape', (
+        <>
+          <ul className="divide-y divide-border">
+            {stepStats.map((st) => {
+              const version = st.variant_group && versionsAt(st.step_order) > 1 ? ` · version ${st.variant_group}` : '';
+              const rate = st.sent >= PAGE_RATE_MIN ? Math.round((st.repliedAfter / st.sent) * 100) : null;
+              return (
+                <li key={st.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2.5 text-sm">
+                  <span className="min-w-0 text-foreground">
+                    <span className="tabular-nums text-muted-foreground">Étape {st.number}</span>
+                    {' · '}{stepTypeLabel(st.action_type)}{version}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {st.sent > 0 ? stepCountLabel(st.action_type, st.sent) : 'aucun envoi'}
+                    {st.repliedAfter > 0 && (
+                      <> · {st.repliedAfter > 1 ? `${st.repliedAfter} ont répondu ensuite` : '1 a répondu ensuite'}{rate !== null && ` (${rate} %)`}</>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {stepStats.some((st) => st.repliedAfter > 0) && (
+            <p className="text-xs text-muted-foreground">« Ont répondu ensuite » : candidats qui ont reçu cette étape et répondu depuis.</p>
+          )}
+        </>
+      ))}
+    </div>
+  );
+}
 
 /** Squelette des statistiques : six tuiles, puis deux blocs. */
 const AnalyticsSkeleton: React.FC = () => (

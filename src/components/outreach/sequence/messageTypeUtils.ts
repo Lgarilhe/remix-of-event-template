@@ -1,6 +1,6 @@
 // Imports lisibles par Node tel quel (type seul, extension explicite) : ce
 // fichier est testé directement par tests/ux/seq-audit-f1b.test.mjs.
-import type { SequenceStep } from '../SequenceBuilder';
+import type { SequenceStep } from '../../../types/sequence';
 import { connectionContextOf, previousStepsOf, type ConnectionContext } from './sequenceGraph.ts';
 
 /** Type de message annoncé : badge neutre, sans couleur par type (revue design D-35). */

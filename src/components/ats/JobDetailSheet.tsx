@@ -5,6 +5,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAgent } from '@/contexts/AgentContext';
 import { CandidateDetailModal } from './CandidateDetailModal';
 import { ATSCandidate, useATSData } from '@/hooks/useATSData';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
+import { atsColumnTitle } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import { computeJobSequenceStats, responseRatePercent, type JobSequenceStat } from '@/lib/jobSequenceStats';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -127,12 +129,20 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   // IA tab
   const { openAgent } = useAgent();
   const [ragCount, setRagCount] = useState<number | null>(null);
+  // job_id brut de la mission (sourcing_projects.job_id), quand la fiche s'ouvre sous
+  // « project:<id> » : le poste Airtable, les passages lus par l'assistant et les
+  // inscriptions des anciennes missions sont adressés par lui.
+  const [rawJobId, setRawJobId] = useState<string | null>(null);
 
   /* ─── job candidates ─── */
+  // Une mission s'ouvre sous « project:<id> », alors que la ligne d'un candidat
+  // porte son job_id brut (les deux formes existent en base) : on rapproche par
+  // la mission (project_id), puis par le job_id tel quel.
+  const missionId = missionIdOfJob(jobId);
   const jobCandidates = useMemo(() => {
     if (!jobId) return [];
-    return allCandidates.filter(c => c.jobId === jobId);
-  }, [allCandidates, jobId]);
+    return allCandidates.filter(c => (missionId && c.projectId === missionId) || c.jobId === jobId);
+  }, [allCandidates, jobId, missionId]);
 
   const stageCounts = useMemo(() => {
     const map: Record<string, number> = {};
@@ -146,6 +156,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
     setTab('fiche');
     const load = async () => {
       setLoading(true);
+      setRawJobId(null);
       const info: JobInfo = {
         jobTitle: null, clientName: null, description: null, notes: null,
         calendlyLink: null, filtersSnapshot: null, status: null, createdAt: null,
@@ -164,6 +175,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
         .limit(1)
         .maybeSingle();
 
+      const missionJobId = (proj as { job_id?: string | null } | null)?.job_id || null;
       if (proj) {
         const brief = ((proj as { job_details?: unknown }).job_details ?? {}) as JobDetails;
         info.jobTitle = proj.job_title || brief.title || proj.name || null;
@@ -190,7 +202,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
       const { data: atJob } = await supabase
         .from('airtable_jobs')
         .select('title, city, contract_type, salary, criteria, description')
-        .eq('airtable_id', jobId)
+        .in('airtable_id', missionJobId && missionJobId !== jobId ? [jobId, missionJobId] : [jobId])
         .limit(1)
         .maybeSingle();
 
@@ -203,6 +215,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
         if (!info.description) info.description = atJob.description;
       }
 
+      setRawJobId(missionJobId && missionJobId !== jobId ? missionJobId : null);
       setJobInfo(info);
       setLoading(false);
     };
@@ -221,7 +234,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
       const { data: enrollments, error } = await supabase
         .from('sequence_enrollments')
         .select('id, sequence_id, status, outreach_sequences (id, name), sequence_step_executions (status, sequence_steps (action_type))')
-        .eq('job_id', jobId);
+        .in('job_id', [...(missionId ? [missionId, `project:${missionId}`] : [jobId]), ...(rawJobId ? [rawJobId] : [])]);
       if (cancelled) return;
       if (error) {
         console.error('[JobDetailSheet] séquences du poste indisponibles:', error);
@@ -234,7 +247,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
     };
     void load();
     return () => { cancelled = true; };
-  }, [jobId, open, tab, seqAttempt]);
+  }, [jobId, missionId, rawJobId, open, tab, seqAttempt]);
 
   /* ─── load RAG count ─── */
   useEffect(() => {
@@ -242,10 +255,10 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
     Promise.resolve(supabase
       .from('knowledge_chunks')
       .select('id', { count: 'exact', head: true })
-      .eq('entity_id', jobId))
+      .in('entity_id', rawJobId ? [jobId, rawJobId] : [jobId]))
       .then(({ count }) => setRagCount(count ?? 0))
       .catch(() => {});
-  }, [jobId, open, tab]);
+  }, [jobId, rawJobId, open, tab]);
 
   /* ─── score summary ─── */
   const scoreSummary = useMemo(() => {
@@ -504,7 +517,7 @@ function CandidatsTab({
       <div className="flex flex-wrap gap-1.5">
         {stageEntries.map(([stage, count]) => (
           <Badge key={stage} variant="outline" className="tabular-nums">
-            {count} {stage}
+            {count} {atsColumnTitle(stage)}
           </Badge>
         ))}
       </div>
@@ -527,7 +540,7 @@ function CandidatsTab({
                 <p className="truncate text-xs text-muted-foreground">{candidate.headline}</p>
               )}
             </div>
-            <Badge variant="muted" className="shrink-0">{candidate.stage}</Badge>
+            <Badge variant="muted" className="shrink-0">{atsColumnTitle(candidate.stage)}</Badge>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
           </button>
         ))}

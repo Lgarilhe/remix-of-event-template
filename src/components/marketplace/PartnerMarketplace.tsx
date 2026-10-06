@@ -36,7 +36,7 @@ import {
   CONTRACT_LABELS, REMOTE_LABELS, applicationStatusLabel, applicationStatusVariant, huntStatusLabel,
   huntStatusVariant, formatDate,
 } from './huntLabels';
-import { ErrorBox } from './ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { CardsSkeleton, RowsSkeleton } from './MarketplaceSkeleton';
 
 type TabKey = 'open' | 'applications' | 'missions';
@@ -187,7 +187,7 @@ const OpenMissionsTab: React.FC = () => {
             const max = mission.hunt_max_recruiters ?? 3;
             const full = mission.accepted_count >= max;
             return (
-              <Card key={mission.id} className="flex flex-col shadow-none transition-colors duration-150 hover:border-border-strong">
+              <Card key={mission.id} className="flex flex-col transition-colors duration-150 hover:border-border-strong">
                 <div className="flex-1 space-y-3 p-4">
                   <div>
                     <h3 className="text-md font-semibold text-foreground">{jd.title || mission.name}</h3>

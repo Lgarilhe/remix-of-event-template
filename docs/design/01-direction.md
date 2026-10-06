@@ -18,8 +18,8 @@ Ce que l'on prend des tendances 2026 :
 Ce que l'on écarte :
 
 - Le « liquid glass » et les surfaces en verre dépoli : illisibles sur les listes denses, coûteux à l'affichage, et contraires au calme recherché.
-- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne.
-- Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture.
+- Les dégradés violet-rose, halos pulsés, reflets balayants, particules et fonds animés. Ils signalent une interface générée à la chaîne. Seules exceptions : le fond de l'accueil, de la recherche et du héros du sourcing, et les cartes texturées (§ 7).
+- Le grain et les textures dans l'application. Une texture discrète reste envisageable sur les pages publiques, si elle sert la marque et ne gêne pas la lecture. Même exception pour ces écrans et ces cartes.
 - Les emoji servant d'icône, et l'étincelle ✨ pour dire « IA ».
 
 ## 2. Couleur
@@ -30,17 +30,17 @@ Teinte 40°, saturation 3 %. Le thème sombre est le thème par défaut, le clai
 
 | Jeton | Rôle | Sombre | Clair |
 |---|---|---|---|
-| `--background` | fond de page | `40 3% 11%` | `40 14% 98%` |
-| `--card` | cartes, panneaux | `40 3% 14%` | `0 0% 100%` |
-| `--popover` | menus, dialogues | `40 3% 16%` | `0 0% 100%` |
-| `--muted` / `--secondary` | zones en retrait, contrôles pleins | `40 3% 18%` | `40 8% 95%` |
-| `--accent` | survol d'une ligne ou d'un item | `40 3% 20%` | `40 8% 93%` |
+| `--background` | fond de page | `40 3% 11%` | `40 12% 97%` |
+| `--card` | cartes, panneaux | `40 3% 16%` | `0 0% 100%` |
+| `--popover` | menus, dialogues | `40 3% 18%` | `0 0% 100%` |
+| `--muted` / `--secondary` | zones en retrait, contrôles pleins | `40 3% 20%` | `40 8% 95%` |
+| `--accent` | survol d'une ligne ou d'un item | `40 3% 22%` | `40 8% 93%` |
 | `--sidebar-background` | barre latérale | `40 3% 8%` | `40 8% 96%` |
 | `--border` | filet | blanc 10 % | `40 8% 90%` |
 | `--border-strong` | filet appuyé | blanc 18 % | `40 8% 80%` |
-| `--input` | bord de champ, de case à cocher, piste d'interrupteur éteint | blanc 36 % | `40 3% 53%` |
+| `--input` | bord de champ, de case à cocher, piste d'interrupteur éteint | blanc 40 % | `40 3% 53%` |
 
-`--input` atteint 3:1 sur toutes les surfaces (3,1:1 au pire, sur `muted` en sombre et sur `accent` en clair) : un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`.
+`--input` atteint 3:1 sur toutes les surfaces (3,3:1 au pire sur `accent` en sombre, 2,8:1 sur `accent` en clair, où le champ garde son libellé) : un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`.
 
 Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gris de survol, pas la couleur de marque. La couleur de marque s'appelle `brand`. Pour ne pas laisser d'anciens usages invisibles, `text-accent` et `border-accent` rendent `brand` ; le nouveau code écrit `text-brand`.
 
@@ -50,9 +50,9 @@ Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gr
 |---|---|---|---|
 | `--foreground` | texte principal | `0 0% 98%` | `40 6% 12%` |
 | `--foreground-secondary` | texte secondaire, descriptions | `40 4% 74%` | `40 5% 34%` |
-| `--muted-foreground` | métadonnées, libellés discrets | `40 3% 62%` | `40 4% 42%` |
+| `--muted-foreground` | métadonnées, libellés discrets | `40 3% 64%` | `40 4% 42%` |
 
-Contraste vérifié : `muted-foreground` dépasse 4,5:1 sur le fond, la carte et `muted`, dans les deux thèmes (5,1:1 au pire). L'ancienne valeur sombre (56 %) tombait à 4,2:1 sur `muted`, l'ancienne valeur claire (46 %) à 4,3:1 sur le fond.
+Contraste vérifié : `muted-foreground` dépasse 4,5:1 sur le fond, la carte, le menu et `muted`, dans les deux thèmes (5,0:1 au pire en sombre, 4,7:1 en clair), et reste à 4,7:1 sur le survol en sombre. L'ancienne valeur sombre (56 %) tombait à 4,2:1 sur `muted`, l'ancienne valeur claire (46 %) à 4,3:1 sur le fond.
 
 Pas d'opacité sur un jeton de texte (`text-muted-foreground/60`, `text-foreground/70`) : elle fait tomber le texte sous 4,5:1. Choisir l'un des trois niveaux ci-dessus.
 
@@ -107,20 +107,20 @@ LinkedIn et WhatsApp se reconnaissent à leur logo officiel, l'e-mail et l'appel
 
 Une seule famille dans l'application : Instrument Sans, graisses 500 (corps), 600 (emphase, titres), 700 (grands chiffres d'un tableau de bord, titre de page principal). Space Mono pour les identifiants, raccourcis clavier et chiffres alignés. Bricolage Grotesque, police de marque, est réservée aux titres des pages publiques (accueil, tarifs). Outfit, Space Grotesk et Instrument Serif sont retirés.
 
-Six paliers :
+Paliers du design simplifié (octobre 2026, `06-simplicite.md`) : rien sous 12 px, le corps passe de 13 à 14 px.
 
 | Palier | Classe | Taille / interligne | Emploi |
 |---|---|---|---|
-| caption | `text-3xs` | 10 / 14 | compteurs, badges denses |
-| micro | `text-2xs` | 11 / 15 | métadonnées, intitulés de section en capitales |
-| body-sm | `text-xs` | 12 / 16 | tableaux, cartes denses |
-| body | `text-sm` | 13 / 20 | corps courant, boutons, champs |
-| body-lg | `text-md` | 14 / 20 | titres de carte, texte de lecture |
-| title | `text-base` à `text-3xl` | 16 à 30 | titres de page (20, graisse 600) et de section |
+| caption | `text-3xs`, `text-2xs` | 12 / 16 | compteurs, badges, intitulés de section (deux noms pour un palier, à fondre dans `text-xs` au fil des lots) |
+| body-sm | `text-xs` | 13 / 18 | métadonnées, en-têtes de colonne, tableaux denses |
+| body | `text-sm` | 14 / 20 | corps courant, boutons, champs |
+| body-lg | `text-md` | 15 / 22 | texte principal d'une ligne de liste, texte de lecture |
+| section | `text-lg` | 18 / 28 | titre de section |
+| title | `text-title` | 28 / 36 | titre de page (graisse 600, `PageHeader`) |
 
-`text-sm` vaut désormais 13 px, comme le corps des maquettes. Les tailles arbitraires `text-[11px]` sont proscrites : chaque valeur a son palier nommé.
+Les tailles arbitraires `text-[11px]` sont proscrites : chaque valeur a son palier nommé. Le lot des fondations les a toutes remplacées (480 dans 60 fichiers), avec le même décalage d'un pixel que les paliers. `text-title` est déclarée à `tailwind-merge` dans `cn` (`src/lib/utils.ts`) : sans cela, elle serait prise pour une couleur.
 
-Intitulé de section : la classe `eyebrow` (11 px, graisse 600, capitales, espacement 0,08 em, couleur `muted-foreground`). C'est le seul usage des capitales. Pas de titre ni de bouton en capitales.
+Intitulé de section : la classe `eyebrow` (12 px, graisse 600, capitales, espacement 0,08 em, couleur `muted-foreground`). C'est le seul usage des capitales. Pas de titre ni de bouton en capitales.
 
 ## 4. Espace, rayons, élévation
 
@@ -131,12 +131,14 @@ Trois rayons principaux, dérivés de `--radius` (8 px) :
 | Nom | Classe | Valeur | Emploi |
 |---|---|---|---|
 | control | `rounded-lg` | 8 px | boutons, champs, onglets |
-| surface | `rounded-xl` | 12 px | cartes, menus, dialogues, panneaux |
+| surface | `rounded-xl` | 16 px | cartes, menus, dialogues, panneaux |
 | pill | `rounded-full` | plein | badges, pastilles, avatars |
 
 Deux cas dérivés : `rounded-md` (6 px) pour un élément imbriqué dans une surface ou un contrôle (item de menu, segment d'un contrôle segmenté), et `rounded-sm` (4 px) sous 20 px de haut (case à cocher, barre de squelette). `rounded-none`, `rounded-2xl`, `rounded-3xl` et les valeurs arbitraires sont proscrits.
 
-Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` < `card` < `popover`) et un filet, pas par l'ombre. Les ombres servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
+Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` 11 < `card` 16 < `popover` 18 < `muted` 20 < `accent` 22) et un filet. Une carte se détache du fond de 5 points, sans dépendre de son filet. En clair, la carte est blanche sur un fond à 97 % et porte une ombre légère (`shadow-sm`, dans `Card`). Les ombres marquées servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
+
+Relief (demande du propriétaire du 05/10/2026, « l'application est encore un peu plate », référence Qonto) : on regroupe sur une carte ce qui demande une décision (liste « À faire », tableau des missions), on colore le fond de ce qui bloque le travail (bandeau de la panne LinkedIn : carte texturée chaude, voir § 7), et on laisse nu le reste de la page. Une carte contient des lignes séparées par des filets, jamais une autre carte.
 
 ## 5. Hauteurs de contrôle
 
@@ -155,8 +157,11 @@ Toujours passer par les primitives de `src/components/ui/` : `Button` plutôt qu
 
 Boutons :
 
-- `primary` : action principale, monochrome (texte `background` sur fond `foreground`). Un seul par zone.
-- `default` / `outline` : action secondaire, filet et fond transparent.
+Tous les boutons sont des pilules (`rounded-full`). Les champs, eux, gardent le coin de contrôle à 8 px.
+
+- `primary` : action principale, monochrome (texte `background` sur fond `foreground`). Un seul par zone : l'en-tête de page, un bandeau d'alerte, une carte de décision.
+- `secondary` : action suivante, ou action propre à une ligne (« Lire », « Répondre »). Fond `foreground/10`, qui se lit sur toutes les surfaces.
+- `default` / `outline` : option, filet appuyé (`border-strong`) et fond transparent.
 - `ghost` : action tertiaire, sans contour.
 - `destructive` : action irréversible, toujours derrière une `AlertDialog`.
 - `link` : lien dans un texte.
@@ -166,6 +171,13 @@ Un bouton icône a toujours un `aria-label` et une infobulle.
 Badges : variantes `success`, `warning`, `info`, `danger`, `brand`, `muted`, `outline`, toutes en fond teinté. Un statut se peint de la même façon sur tous les écrans.
 
 Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne API `useToast` passe par lui. L'action d'un toast (« Annuler ») reste cliquable quand un dialogue est ouvert, et ce clic ne ferme pas le dialogue.
+
+Visages et pastilles (design simplifié, `06-simplicite.md`) :
+
+- Une ligne montre de qui ou de quoi elle parle : le visage d'une personne, le logo d'une mission (`MissionCompanyLogo`).
+- `PersonAvatar` (`src/components/ui/person-avatar.tsx`) : la photo LinkedIn du candidat, ou sa copie Konekt ; sinon ses initiales, y compris quand le lien a expiré ou que l'image ne charge pas. Décoratif quand le nom est écrit à côté. `CandidateAvatar` (tableau de bord, et forme par taille nommée) passe par lui.
+- `AvatarStack` (même fichier) : quelques visages qui se chevauchent, puis « +N », avec la liste des noms en nom accessible.
+- `IconTile` (`src/components/ui/IconTile.tsx`) : pastille d'icône sur fond teinté en tête d'une chose à faire. Le ton dit l'urgence : `brand` par défaut, `warning` quand quelque chose attend, `destructive` quand c'est en retard.
 
 ## 7. Mouvement
 
@@ -178,7 +190,34 @@ Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne
 
 Retour d'appui : un bouton descend d'un pixel ou passe à 98 % de sa taille pendant l'appui. Une carte cliquable s'éclaire au survol (fond et filet), sans se soulever de plus d'un pixel.
 
-Aucune animation en boucle hors indicateur de chargement et illustrations (§ Illustrations, décision du propriétaire du 29/09/2026) ; l'onboarding a sa propre exception (§ 11). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026), icônes qui attendent et fond de l'accueil (§ Fond animé). L'onboarding a sa propre exception (§ 11). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+
+Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto AI) : `PageBackdrop` (`src/components/layout/PageBackdrop.tsx`, styles `.konekt-backdrop` de `src/index.css`) pose sur l'accueil (`/dashboard`, par `PageLayout backdrop`), sur la recherche hors mission (`/sourcing`) et sur le héros et le plan du sourcing d'une mission (`LinkedInSearch`, nouvelle page mission : onglet Sourcing et `/sourcing/:id`, un seul fond posé à la racine, jamais sur les résultats, tableau dense aux cellules opaques) trois taches de dégradé bleu-vert et bleu qui dérivent en 23, 29 et 37 s, un grain SVG fixe, le tout fondu vers le fond de page sur 28 rem. Règles à tenir si on le retouche :
+
+- Transform seul, jamais de `filter: blur` ni d'animation de couleur : le fond ne doit pas coûter de repeinture.
+- Décoratif : `aria-hidden`, aucun clic. Avec le mouvement réduit, les taches restent à leur place de départ (règle globale de `src/index.css`).
+- Le texte gris garde 4,5:1 sous les taches, en sombre comme en clair, de 390 à 1440 px de large et à toute phase de l'animation. Pour y arriver, la page qui porte le fond règle `--muted-foreground` un cran plus lisible (classe `.konekt-on-backdrop`, plus clair en sombre, plus foncé en clair). Les jetons globaux ne changent pas. Mesure faite le 05/10/2026 : 4,5 à 5,0 sur l'accueil, 5,6 et plus sur la recherche. Si on pousse les couleurs ou les opacités, refaire cette mesure avant de livrer.
+- La souris (option `follow`, recherche hors mission, héros et plan du sourcing, pas l'accueil) : les taches se penchent vers le curseur par la propriété `translate`, qui se compose avec la dérive sans la gêner et n'éclaircit rien. Souris seulement : rien au toucher, rien avec le mouvement réduit. Mesure faite le 05/10/2026 avec la souris aux quatre coins de la fenêtre et au centre, à trois phases de la dérive, de 390 à 1440 px : 5,5 au pire.
+- Option `contained` : dans un conteneur à marges (le sourcing), les bords se fondent aussi sur les côtés.
+- Pas d'autre écran sans décision du propriétaire.
+
+Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Trois usages, pas d'autre sans décision du propriétaire :
+
+- La carte « Maintenant » du Pipeline d'une mission (`NowCard.tsx`), seulement quand il y a une action : bleue, chaude pour le rang 0 (blocage). Les états « chargement », « rien à faire » et « tout est reporté » gardent la bande grise.
+- Le bandeau « Compte LinkedIn à reconnecter » en tête de « À faire » (`DashboardFocusPanel`), chaud, placé au-dessus de la liste.
+- La carte de bienvenue de l'accueil (`DashboardGreeting`), bleue, en permanence : une zone réservée aux cas particuliers ne se voyait pas sur un compte qui fonctionne (demande du propriétaire, 05/10/2026). Le bandeau LinkedIn s'y ajoute en dessous quand il y en a un, et la zone « Aucune mission active » reste neutre. Sur téléphone, le titre passe sur deux lignes dans la carte au lieu d'être coupé.
+
+La carte porte ses propres couleurs de texte, claires dans les deux thèmes : en thème clair, c'est une île sombre. Le contenu s'écrit avec les classes habituelles, le bouton plein de la carte est blanc. Le survol d'un bouton discret y assombrit au lieu d'éclaircir, car un survol blanc translucide faisait tomber le contraste à 4,3:1. Mesure faite le 05/10/2026 sur les vrais composants, carte repliée, dépliée et bouton survolé : 6,0:1 au pire sur la carte « Maintenant », 6,4 à 7,1:1 sur l'accueil (carte de bienvenue et bandeau LinkedIn). Une teinte plus claire se mesure avant livraison.
+
+Icônes qui attendent (design simplifié, demande du propriétaire du 04/10/2026) : `src/components/ui/animated-icons.tsx`. Une icône ne bouge que si quelque chose attend l'utilisateur, et chaque boucle finit sur la pose fixe de l'icône, celle qui reste quand le mouvement est réduit.
+
+| Icône | Situation | Mouvement |
+|---|---|---|
+| `TypingIcon` | des candidats attendent une réponse | trois points s'écrivent dans la bulle |
+| `HourglassIcon` | des candidats n'avancent plus | le sablier se retourne |
+| `AlarmIcon` | des tâches sont en retard | le réveil sonne |
+| `PingDot` | une ligne attend une réponse | le halo du point s'élargit |
+| `SparkleIcon` | l'assistant | l'étoile scintille |
 
 ## 8. États d'écran
 

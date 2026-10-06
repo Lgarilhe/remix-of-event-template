@@ -143,7 +143,7 @@ test('R13 — l\'onglet Équipe affiche l\'e-mail sous le nom, sans doublon', ()
 
 // ---------------------------------------------------------------- R5f
 test('R5f — onglet Équipe : bloc d\'erreur au lieu de 80, « Modifier » masqué', () => {
-  assert.match(team, /import \{ ErrorBox \} from '@\/components\/marketplace\/ErrorBox'/);
+  assert.match(team, /import \{ ErrorBox \} from '@\/components\/layout\/ErrorBox'/);
   assert.match(team, /isError: quotasError, refetch: refetchQuotas,\s*\} = useMemberQuotas\(\)/);
   assert.match(team, /trailing=\{!isEditingQ && !quotasError &&/);
   const errorAt = team.indexOf('quotasError ?');

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SaveStatus, type SaveState } from '@/components/ui/save-status';
-import { Shield, RotateCcw, Lock, Check } from 'lucide-react';
+import { Shield, RotateCcw, Lock, Check, ChevronDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   useMemberQuotas,
@@ -16,7 +17,8 @@ import {
   isValidMaxActionsPerDay,
 } from '@/hooks/useMemberQuotas';
 import { useOrganization } from '@/hooks/useOrganization';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
+import { cn } from '@/lib/utils';
 
 /**
  * LinkedInSafetySettings — Plages horaires + cap journalier d'actions LinkedIn.
@@ -93,6 +95,7 @@ export const LinkedInSafetySettings = () => {
   const [timezone, setTimezone] = useState<string>(DEFAULT_QUOTAS.timezone);
   const [dirty, setDirty] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [protectionsOpen, setProtectionsOpen] = useState(false);
 
   // Get current user id
   useEffect(() => {
@@ -175,17 +178,25 @@ export const LinkedInSafetySettings = () => {
           réservez des plages séparées et plafonnez le volume cumulé.
         </p>
 
-        <div className="space-y-2 rounded-lg bg-muted p-3">
-          <p className="text-xs font-semibold text-foreground">Comment Konekt protège votre compte LinkedIn</p>
-          <ul className="space-y-1.5">
-            {PROTECTION_MECHANISMS.map((mechanism) => (
-              <li key={mechanism} className="flex items-start gap-2 text-xs leading-relaxed text-foreground-secondary">
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span>{mechanism}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {/* Design simplifié : les sept protections se lisent à la demande, sans encadré. */}
+        <Collapsible open={protectionsOpen} onOpenChange={setProtectionsOpen}>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="-ml-2 max-md:h-11">
+              <ChevronDown className={cn('transition-transform duration-150', protectionsOpen && 'rotate-180')} aria-hidden="true" />
+              Comment Konekt protège votre compte LinkedIn
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="mt-2 space-y-1.5">
+              {PROTECTION_MECHANISMS.map((mechanism) => (
+                <li key={mechanism} className="flex items-start gap-2 text-xs leading-relaxed text-foreground-secondary">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span>{mechanism}</span>
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
 
         {isLoading ? (
           <div role="status" className="space-y-3">
@@ -214,7 +225,7 @@ export const LinkedInSafetySettings = () => {
                   value={String(startHour)}
                   onValueChange={(v) => { setStartHour(parseInt(v, 10)); setDirty(true); }}
                 >
-                  <SelectTrigger id="start-hour"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="start-hour" className="max-md:h-11"><SelectValue /></SelectTrigger>
                   <SelectContent className="max-h-[70vh]">
                     {startOptions.map(h => (
                       <SelectItem key={h} value={String(h)}>{String(h).padStart(2, '0')}:00</SelectItem>
@@ -231,6 +242,7 @@ export const LinkedInSafetySettings = () => {
                 >
                   <SelectTrigger
                     id="end-hour"
+                    className="max-md:h-11"
                     aria-invalid={!hoursValid}
                     aria-describedby={hoursValid ? undefined : 'end-hour-erreur'}
                   >
@@ -255,7 +267,7 @@ export const LinkedInSafetySettings = () => {
                 value={timezone}
                 onValueChange={(v) => { setTimezone(v); setDirty(true); }}
               >
-                <SelectTrigger id="timezone"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="timezone" className="max-md:h-11"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {zoneOptions.map((zone) => (
                     <SelectItem key={zone} value={zone}>{timeZoneLabel(zone)}</SelectItem>
@@ -271,6 +283,7 @@ export const LinkedInSafetySettings = () => {
               </Label>
               <Input
                 id="max-actions"
+                className="max-md:h-11"
                 type="number"
                 min={MAX_ACTIONS_PER_DAY_MIN}
                 max={MAX_ACTIONS_PER_DAY_MAX}

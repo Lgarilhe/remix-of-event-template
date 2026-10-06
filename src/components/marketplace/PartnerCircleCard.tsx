@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { formatDate } from './huntLabels';
-import { ErrorBox } from './ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 
 /**
  * Contact du cercle quand l'accès est suspendu (F-31). Adresse personnelle en

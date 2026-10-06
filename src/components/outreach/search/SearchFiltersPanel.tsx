@@ -88,6 +88,8 @@ interface SearchFiltersPanelProps {
   onScoringInstructionsChange?: (value: string) => void;
   suggestions?: FilterSuggestions | null;
   onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
+  /** Nouvelle page mission : sans la barre en langage naturel (le champ « Affiner » la remplace). */
+  hidePromptBar?: boolean;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -116,6 +118,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   onScoringInstructionsChange,
   suggestions,
   onSuggestionsGenerated,
+  hidePromptBar = false,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -168,7 +171,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               type="button"
               onClick={() => onSearchSourceChange('linkedin')}
               className={cn(
-                'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
+                'text-sm font-medium py-1.5 rounded-[7px] transition-colors',
                 searchSource !== 'database' || !baseKonektUsable
                   ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
                   : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
@@ -180,7 +183,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               type="button"
               onClick={() => baseKonektUsable ? onSearchSourceChange('database') : setBaseKonektDialogOpen(true)}
               className={cn(
-                'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
+                'text-sm font-medium py-1.5 rounded-[7px] transition-colors',
                 baseKonektUsable && searchSource === 'database'
                   ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
                   : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
@@ -223,7 +226,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       {searchSource !== 'database' && (
       <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5 space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">Compte</label>
+          <label className="text-xs text-muted-foreground">Compte</label>
           <QuotaDisplay accountId={selectedAccount} compact={true} />
         </div>
 
@@ -356,7 +359,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-[15px] h-[15px]"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
           </span>
           <div className="flex flex-col gap-0 min-w-0 flex-1">
-            <span className="text-[10px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em] leading-tight">
+            <span className="text-xs text-muted-foreground leading-tight">
               Poste actif
             </span>
             <p className="text-sm font-medium text-foreground truncate leading-tight">
@@ -372,7 +375,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       {/* Barre de recherche en langage naturel — entrée principale (mission).
           La phrase augmente le brief ; l'IA Konekt en dérive les filtres
           éditables affichés ci-dessous. */}
-      {activeProject && selectedJob && (
+      {activeProject && selectedJob && !hidePromptBar && (
         <SearchPromptBar
           selectedJob={selectedJob}
           accountId={selectedAccount}
@@ -469,7 +472,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5 text-[var(--k-text-muted)]" aria-hidden="true"><path d="M14.08 13.2 17.2 15M12 14.4V18M9.92 13.2 6.8 15M9.92 10.8 6.8 9M12 9.6V6M14.08 10.8 17.2 9"/></svg>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--k-text-muted)]">Suggestions IA</span>
+                <span className="text-xs text-muted-foreground">Suggestions IA</span>
               </div>
               <div className="flex flex-wrap gap-1">
                 {chips.slice(0, 8).map(chip => (
@@ -505,7 +508,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
           <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
-            <label className="text-[10px] font-semibold text-[var(--k-text-muted)] mb-1 block uppercase tracking-[0.06em]">
+            <label className="text-xs text-muted-foreground mb-1 block">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60 normal-case tracking-normal">(optionnel)</span>
             </label>
             <textarea
@@ -535,7 +538,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           type="button"
           onClick={() => setAdvancedOpen(o => !o)}
           aria-expanded={advancedOpen}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
         >
           <svg
             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round"
@@ -544,7 +547,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             <path d="M9.5 7 15 12l-5.5 5" />
           </svg>
           Options avancées
-          <span className="ml-auto font-mono text-[11px] text-[var(--k-text-muted)]">booléen · séniorité · école · spotlights</span>
+          <span className="ml-auto font-mono text-2xs text-[var(--k-text-muted)]">booléen · séniorité · école · spotlights</span>
         </button>
       </div>
 
@@ -552,7 +555,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       {/* Keywords preview + edit dialog — compact (label inline + bouton) */}
       <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-[10px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">
+          <label className="text-xs text-muted-foreground">
             Mots-clés
           </label>
           {filters.keywords && (

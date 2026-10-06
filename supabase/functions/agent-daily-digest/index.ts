@@ -173,7 +173,8 @@ Deno.serve(async (req) => {
           const found = Number(m.stats_total_found) || 0;
           const messaged = Number(m.stats_messaged) || 0;
           const shortlisted = Number(m.stats_shortlisted) || 0;
-          lines.push(`- **${label}**${client} : ${found} sourcés, ${messaged} contactés, ${shortlisted} shortlistés`);
+          // stats_* = cumuls depuis le début de la mission (lot 0c-1), d'où « au total ».
+          lines.push(`- **${label}**${client} : ${found} sourcés, ${shortlisted} retenus au total, ${messaged} contactés au total`);
           emailMissions.push({ label, client: (m.client_name as string) || undefined, found, messaged, shortlisted });
         }
         if (missions.length > 5) lines.push(`- … et ${missions.length - 5} autre(s)`);

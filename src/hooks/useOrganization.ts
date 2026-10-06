@@ -479,7 +479,7 @@ export const useOrganizationMembers = (orgId: string | null) => {
         .select('id');
 
       if (error) throw error;
-      if (!data?.length) throw new Error('Modification refusée — droits insuffisants');
+      if (!data?.length) throw new Error('Modification refusée : droits insuffisants');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });

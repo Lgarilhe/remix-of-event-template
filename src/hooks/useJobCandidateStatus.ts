@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -9,6 +10,8 @@ import {
   stageErrorMessage,
   type GeneralStage,
 } from '@/lib/candidateStage';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
+import { PICTURE_REFRESH_BATCH, pictureRefreshItems } from '@/lib/pictureUrl';
 
 export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
@@ -85,12 +88,88 @@ function statusAfterScore(
   return (isScoringStatus(status) ? 'scored' : status) as CandidateStatus;
 }
 
+/** Geste venu du Sourcing, pour la mesure d'usage (format de SURFACE_PATTERN). */
+const SOURCING_GESTURE = { surface: 'sourcing' } as const;
+
+// Photo du candidat dans le profil enregistré (linkedin_profile_data).
+const PICTURE_KEYS = ['profile_picture_url', 'profile_picture_url_large'] as const;
+type StoredPicture = Partial<Record<typeof PICTURE_KEYS[number], string>>;
+
+// Une note ne remplace jamais une photo enregistrée par du vide : un profil
+// noté sans photo reprend celle de la ligne que l'upsert va réécrire (même
+// job_id, même candidat, même auteur). Une lecture, pour ces profils seulement.
+async function keepStoredPictures<T extends { id: string; linkedinProfileData?: Record<string, unknown> | null }>(
+  jobId: string,
+  userId: string,
+  candidates: T[],
+): Promise<T[]> {
+  const missing = candidates
+    .filter(c => c.linkedinProfileData && !PICTURE_KEYS.some(key => c.linkedinProfileData[key]))
+    .map(c => c.id);
+  if (missing.length === 0) return candidates;
+
+  // La photo seule, pas tout le profil. Chaîne typée string : sinon l'analyse
+  // du select par le client typé dépasse la profondeur permise (TS2589).
+  const columns: string = 'candidate_id, profile_picture_url:linkedin_profile_data->>profile_picture_url, profile_picture_url_large:linkedin_profile_data->>profile_picture_url_large';
+  const stored = new Map<string, StoredPicture>();
+  for (let i = 0; i < missing.length; i += STATUS_UPDATE_CHUNK) {
+    const { data, error } = await supabase
+      .from('job_candidate_status')
+      .select(columns)
+      .eq('job_id', jobId)
+      .eq('created_by', userId)
+      .in('candidate_id', missing.slice(i, i + STATUS_UPDATE_CHUNK))
+      .overrideTypes<Array<{ candidate_id: string } & Record<typeof PICTURE_KEYS[number], string | null>>, { merge: false }>();
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const picture: StoredPicture = {};
+      for (const key of PICTURE_KEYS) {
+        const url = row[key];
+        if (url) picture[key] = url;
+      }
+      if (Object.keys(picture).length > 0) stored.set(row.candidate_id, picture);
+    }
+  }
+
+  return candidates.map(c => {
+    const picture = stored.get(c.id);
+    return picture ? { ...c, linkedinProfileData: { ...c.linkedinProfileData, ...picture } } : c;
+  });
+}
+
+// Lot P, P-0b : une recherche retrouve des personnes déjà connues et a sous la
+// main leur adresse de photo fraîche (les anciennes expirent). La base ne
+// remplace que l'adresse manquante ou bientôt échue, sans toucher au reste du
+// profil (refresh_candidate_pictures) ; l'insertion de batchDiscover ignore les
+// lignes existantes. Au mieux : un échec est journalisé et ne gêne pas la recherche.
+async function refreshStoredPictures(
+  jobId: string,
+  profiles: Array<{ id: string; linkedinProfileData?: Record<string, unknown> | null }>,
+): Promise<void> {
+  const items = pictureRefreshItems(profiles);
+  if (items.length === 0) return;
+  // Les deux formes du job_id d'une mission (voir fetchStatuses).
+  const jobIdForms = jobId.startsWith('project:') ? [jobId, jobId.slice('project:'.length)] : [jobId];
+  try {
+    for (let i = 0; i < items.length; i += PICTURE_REFRESH_BATCH) {
+      const { error } = await supabase.rpc('refresh_candidate_pictures', {
+        p_job_ids: jobIdForms,
+        p_items: items.slice(i, i + PICTURE_REFRESH_BATCH),
+      });
+      if (error) throw error;
+    }
+  } catch (error) {
+    console.warn('[batchDiscover] picture refresh failed:', error);
+  }
+}
+
 export function useJobCandidateStatus(jobId: string | null) {
   const [statusState, setStatusState] = useState<StatusState>(EMPTY_STATUS_STATE);
   const { statuses, dismissedIds, treatedIds } = statusState;
   const [loading, setLoading] = useState(false);
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
+  const queryClient = useQueryClient();
 
   // Helper setters that update individual parts of the batched state
   const setStatuses = useCallback((updater: Map<string, JobCandidateStatus> | ((prev: Map<string, JobCandidateStatus>) => Map<string, JobCandidateStatus>)) => {
@@ -310,12 +389,13 @@ export function useJobCandidateStatus(jobId: string | null) {
       const rowId = saved?.[0]?.id;
       if (!rowId) throw new Error('Ligne candidat introuvable après enregistrement');
 
-      const outcome = await setCandidateStage(rowId, { stage: 'rejected' });
+      const outcome = await setCandidateStage(rowId, { stage: 'rejected' }, SOURCING_GESTURE);
       if (!outcome.ok) {
         console.error('Error dismissing candidate:', outcome);
         toast.error(stageErrorMessage('hint' in outcome ? outcome.hint : null));
         return false;
       }
+      void invalidateStageReaders(queryClient);
 
       // Update local state (note et identité déjà connues gardées)
       const now = new Date().toISOString();
@@ -350,7 +430,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       toast.error('Erreur lors de l\'archivage');
       return false;
     }
-  }, [jobId, organizationId]);
+  }, [jobId, organizationId, queryClient]);
 
   // Archivage en lot (Sourcing). Lot 0b-4 (N7) : upsert de l'identité seule,
   // sans statut ni note (une note déjà en base est gardée), puis écart par
@@ -403,7 +483,8 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (error) throw error;
 
       const candidateByRow = new Map((saved ?? []).map(row => [row.id, row.candidate_id]));
-      const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'rejected' });
+      const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'rejected' }, undefined, SOURCING_GESTURE);
+      if (outcome.updated + outcome.unchanged > 0) void invalidateStageReaders(queryClient);
 
       const dismissedNow = outcome.rows
         .filter(row => row.result === 'updated' || row.result === 'unchanged')
@@ -458,7 +539,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       toast.error('Erreur lors de l\'archivage en lot');
       return { dismissed: 0, failed: uniqueCandidates.length };
     }
-  }, [jobId, organizationId, statuses]);
+  }, [jobId, organizationId, statuses, queryClient]);
 
   // Restore a dismissed candidate → back to « À trier » (preserves linkedin_profile_data).
   // Lot 0b-4 (N9) : la note est effacée en écriture directe (l'étape ne change
@@ -482,12 +563,13 @@ export function useJobCandidateStatus(jobId: string | null) {
       const rowId = rows?.[0]?.id;
       if (!rowId) throw new Error('Ligne candidat introuvable');
 
-      const outcome = await setCandidateStage(rowId, { stage: 'to_sort' });
+      const outcome = await setCandidateStage(rowId, { stage: 'to_sort' }, SOURCING_GESTURE);
       if (!outcome.ok) {
         console.error('Error restoring candidate:', outcome);
         toast.error(stageErrorMessage('hint' in outcome ? outcome.hint : null));
         return;
       }
+      void invalidateStageReaders(queryClient);
 
       // Update local state
       setDismissedIds(prev => {
@@ -509,7 +591,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       console.error('Error restoring candidate:', error);
       toast.error('Erreur lors de la restauration');
     }
-  }, [jobId]);
+  }, [jobId, queryClient]);
 
   // Save score for a candidate (le statut n'est changé que pour un profil pas
   // encore traité, voir markScored)
@@ -533,6 +615,9 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (!user) return;
 
       const existing = statuses.get(candidateId);
+      const [{ linkedinProfileData }] = await keepStoredPictures(jobId, user.id, [
+        { id: candidateId, linkedinProfileData: candidateData.linkedinProfileData },
+      ]);
 
       // Note seule, sans statut. skip_reason seulement si présent : une raison
       // posée ailleurs n'est pas effacée par une nouvelle note.
@@ -548,7 +633,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           recommendation: candidateData.recommendation,
           ...(candidateData.skipReason ? { skip_reason: candidateData.skipReason } : {}),
           scoring_details: candidateData.scoringDetails || null,
-          linkedin_profile_data: candidateData.linkedinProfileData || null,
+          linkedin_profile_data: linkedinProfileData || null,
            created_by: user.id,
            organization_id: organizationId,
         }, {
@@ -608,9 +693,9 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (!user) return;
 
       // Un upsert groupé ne peut pas toucher deux fois la même ligne.
-      const uniqueCandidates = Array.from(
+      const uniqueCandidates = await keepStoredPictures(jobId, user.id, Array.from(
         new Map(candidates.map(c => [c.id, c])).values()
-      );
+      ));
 
       const toRecord = (c: typeof uniqueCandidates[number]) => {
         const existing = statuses.get(c.id);
@@ -705,6 +790,9 @@ export function useJobCandidateStatus(jobId: string | null) {
     }>
   ) => {
     if (!jobId || profiles.length === 0) return;
+
+    // Indépendant de l'insertion ci-dessous, qui laisse telles quelles les lignes déjà connues.
+    void refreshStoredPictures(jobId, profiles);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -854,7 +942,8 @@ export function useJobCandidateStatus(jobId: string | null) {
     }
 
     const candidateByRow = new Map((saved ?? []).map(row => [row.id, row.candidate_id]));
-    const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'retained' }, RETAIN_FROM_STAGES);
+    const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'retained' }, RETAIN_FROM_STAGES, SOURCING_GESTURE);
+    if (outcome.updated + outcome.unchanged > 0) void invalidateStageReaders(queryClient);
 
     const retained = new Set<string>();
     let added = 0;
@@ -913,7 +1002,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       failed: Math.max(0, failed),
       ...(failure ? { error: stageErrorMessage(failure.hint) } : {}),
     };
-  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds, setDismissedIds]);
+  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds, setDismissedIds, queryClient]);
 
   return {
     statuses,

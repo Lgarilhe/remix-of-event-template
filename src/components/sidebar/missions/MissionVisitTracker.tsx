@@ -9,6 +9,11 @@
  *
  * La fiche est lue sans jamais être lancée : vraies options et enabled: false
  * (la page la charge et la tient à jour).
+ *
+ * Nouvelle page mission (interrupteur allumé, src/lib/missionBeta.ts) : la
+ * mission et l'écran viennent du chemin (/missions/:id/sourcing…), relevés dans
+ * le vocabulaire de l'ancienne page (Pipeline 'pipeline', Sourcing 'sourcing',
+ * Cadrage 'brief') : l'interrupteur s'allume et s'éteint sans conversion.
  */
 import { useEffect } from 'react';
 import { matchPath, useLocation } from 'react-router-dom';
@@ -16,6 +21,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { sourcingProjectQueryOptions } from '@/hooks/useSourcingProjects';
 import { useMissionVisits } from '@/hooks/sidebar/useMissionVisits';
+import { useMissionBeta } from '@/hooks/useMissionBeta';
+import { missionIdFromPath, readMissionV3Location, screenToVisitView } from '@/lib/missionBeta';
 import { parseMissionView } from '@/lib/missionViews';
 
 export function MissionVisitTracker() {
@@ -23,8 +30,14 @@ export function MissionVisitTracker() {
   const { user } = useAuthReady();
   const { recordVisit } = useMissionVisits();
 
-  const projectId = matchPath('/missions/:id', pathname)?.params.id ?? null;
-  const view = parseMissionView(new URLSearchParams(search).get('tab'));
+  const beta = useMissionBeta();
+
+  const projectId = beta
+    ? missionIdFromPath(pathname)
+    : matchPath('/missions/:id', pathname)?.params.id ?? null;
+  const view = beta
+    ? screenToVisitView(readMissionV3Location(pathname, search)?.screen ?? 'pipeline')
+    : parseMissionView(new URLSearchParams(search).get('tab'));
 
   const { data: project } = useQuery({
     ...sourcingProjectQueryOptions(projectId ?? '', user?.id ?? null),

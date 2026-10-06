@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   GitBranch,
@@ -59,6 +60,12 @@ interface SequenceEnrollButtonProps {
   selectedJob?: SequenceEnrollJob | null;
   onSuccess?: () => void;
   onCreateSequence?: () => void;
+  /** Libellé du bouton ; « Séquence » par défaut. */
+  triggerLabel?: string;
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
+  /** Classes ajoutées au bouton (contour plus marqué dans la fiche du Pipeline). */
+  className?: string;
 }
 
 /** Identifiant de mission (sourcing_projects.id) d'un poste synthétique « project:{uuid} ». */
@@ -72,6 +79,9 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   selectedJob,
   onSuccess,
   onCreateSequence,
+  triggerLabel = 'Séquence',
+  quiet = false,
+  className,
 }) => {
   const [sequences, setSequences] = useState<SequenceOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -214,14 +224,14 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
       >
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
+            variant={quiet ? 'ghost' : 'outline'}
             size="sm"
             title="Inscrire dans une séquence"
-            className="border-2 border-success/70 text-success bg-success/10 shadow-sm hover:bg-success/20 hover:border-success hover:shadow-md transition-all px-2.5 h-7 gap-1.5 text-xs font-semibold rounded-lg shrink-0"
+            className={cn('shrink-0', quiet && 'text-foreground-secondary hover:text-foreground max-sm:min-h-11', className)}
           >
-            <GitBranch className="w-3.5 h-3.5 shrink-0" />
-            Séquence
-            <ChevronDown className="w-3 h-3 shrink-0 opacity-70" />
+            <GitBranch aria-hidden="true" />
+            {triggerLabel}
+            <ChevronDown className="!size-3.5 text-muted-foreground" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="bg-card w-72 z-[9999]">
@@ -302,7 +312,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                 )}
                 {visibleSequences.mission.length > 0 && (
                   <>
-                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <DropdownMenuLabel className="text-2xs uppercase tracking-wider text-muted-foreground">
                       Séquences de la mission
                     </DropdownMenuLabel>
                     {visibleSequences.mission.map(renderItem)}
@@ -311,7 +321,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                 {visibleSequences.others.length > 0 && (
                   <>
                     {visibleSequences.mission.length > 0 && (
-                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <DropdownMenuLabel className="text-2xs uppercase tracking-wider text-muted-foreground">
                         Autres séquences
                       </DropdownMenuLabel>
                     )}

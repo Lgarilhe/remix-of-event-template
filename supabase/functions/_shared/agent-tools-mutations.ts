@@ -17,6 +17,14 @@ import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
 import { getOrFetchContact, isCandidateErasedForOrg, GdprRegistryUnavailableError } from './get-or-fetch-contact.ts';
 import { firstExecutionTime, pickFirstRootStep, validTimeZone } from './sequence-first-step.ts';
+import {
+  buildFirstStepPreview,
+  drawRankVariant,
+  hasAiPersonalizedStep,
+  missionCandidateFields,
+  type MissionCandidateRowLike,
+  type PreviewStep,
+} from './enroll-preview.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -922,6 +930,77 @@ async function isAlreadyInSequence(params: Record<string, unknown>, ctx: ToolCon
 
 const GDPR_ENROLL_MESSAGE = "Ce candidat a demandé l'effacement de ses données : inscription impossible.";
 const GDPR_UNVERIFIED_MESSAGE = "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié. Réessayez dans un instant.";
+// Lot 5a (décision 5 du lot 5) : un message rédigé par l'IA pour chaque
+// candidat se relit candidat par candidat, ce que la conversation ne permet pas.
+const AI_SEQUENCE_ENROLL_MESSAGE =
+  "Cette séquence contient un message rédigé par l'IA pour chaque candidat : inscrivez ce candidat depuis l'écran, où vous relirez son message.";
+const CANDIDATE_UNREADABLE_MESSAGE =
+  "Les informations du candidat dans la mission n'ont pas pu être relues. Réessayez dans un instant.";
+
+/** Colonnes des étapes lues pour la première étape et pour l'aperçu du premier message. */
+const ENROLL_STEP_COLUMNS =
+  'id, step_order, action_type, message_template, subject_template, use_ai_personalization, step_channel, sender_id, ' +
+  'variant_group, variant_weight, ends_sequence, delay_days, delay_hours, delay_minutes, preferred_hour_start, preferred_hour_end, ' +
+  'parent_step_id, branch, if_true_goto_step, if_false_goto_step, timeout_branch_step_id, next_step_id';
+
+type EnrollStepRow = PreviewStep & {
+  delay_days: number | null;
+  delay_hours: number | null;
+  delay_minutes: number | null;
+  preferred_hour_start: number | null;
+  preferred_hour_end: number | null;
+};
+
+/** Titre de la mission posé sur l'inscription (job_title), comme le poste synthétique de l'interface. */
+function enrollMissionTitle(project: { name?: unknown; job_title?: unknown; job_details?: unknown } | null): string | null {
+  const jd = project?.job_details && typeof project.job_details === 'object'
+    ? project.job_details as Record<string, unknown>
+    : {};
+  const title = [jd.title, project?.job_title, project?.name].find((v) => typeof v === 'string' && v.trim());
+  return typeof title === 'string' ? title.trim() : null;
+}
+
+/**
+ * Ligne du candidat dans la mission (lot 5a) : organisation de l'appelant et
+ * project_id, rapprochée par candidate_id, puis par le slug de
+ * linkedin_profile_url. Plusieurs lignes (doublons) : la plus récente. null si
+ * le candidat n'est pas dans la mission ; lève une erreur si la lecture échoue.
+ */
+async function enrollCandidateRow(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<MissionCandidateRowLike | null> {
+  const projectId = missionIdParam(params);
+  if (!projectId) return null;
+  const columns = 'candidate_name, candidate_headline, linkedin_profile_data, linkedin_profile_url';
+  const candidateId = String(params.candidate_id || '').trim();
+  if (candidateId) {
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select(columns)
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', projectId)
+      .eq('candidate_id', candidateId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    if ((data ?? []).length > 0) return (data as MissionCandidateRowLike[])[0];
+  }
+  const slug = linkedInSlugOf(params.profile_url);
+  if (!slug || !/^[a-z0-9\-_.%~]+$/i.test(slug)) return null;
+  const { data, error } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select(columns)
+    .eq('organization_id', ctx.organizationId)
+    .eq('project_id', projectId)
+    .ilike('linkedin_profile_url', `%/in/${slug}%`)
+    .order('updated_at', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  // Slug exact (« marie-martin » ne désigne pas « marie-martin-4b2a1 »).
+  return ((data ?? []) as Array<MissionCandidateRowLike & { linkedin_profile_url?: string | null }>)
+    .find((row) => linkedInSlugOf(row.linkedin_profile_url) === slug) ?? null;
+}
 
 const enrollInSequence: AgentTool = {
   name: 'enroll_in_sequence',
@@ -932,7 +1011,9 @@ const enrollInSequence: AgentTool = {
     "Messages are always sent from the requesting user's OWN connected LinkedIn account (never a teammate's): " +
     "omit account_id to use it; an account_id that is not linked to the user is refused. " +
     "Refused when the organization is already in a sequence with the candidate, or contacted them in the last 90 days (any sequence, any account, or a bulk InMail); " +
-    "only an owner or admin can override with force: true after explicit confirmation.",
+    "only an owner or admin can override with force: true after explicit confirmation. " +
+    "Refused for a sequence with a message written by AI for each candidate: the user enrolls from the screen, where each message is reviewed. " +
+    "Always proposed for approval, with the full first message the candidate will receive.",
   category: 'mutation_safe',
   requiresApproval: true,
   inputSchema: {
@@ -998,6 +1079,20 @@ const enrollInSequence: AgentTool = {
           };
         }
       }
+    }
+
+    // Lot 5a : séquence avec un message rédigé par l'IA pour chaque candidat,
+    // refusée (relecture par inscrit impossible depuis la conversation).
+    // Échec fermé si les étapes ne peuvent pas être lues.
+    const { data: aiSteps, error: aiStepsError } = await ctx.adminClient
+      .from('sequence_steps')
+      .select('action_type, use_ai_personalization')
+      .eq('sequence_id', sequenceId);
+    if (aiStepsError) {
+      return { allowed: false, reason: "Les étapes de la séquence n'ont pas pu être vérifiées. Réessayez dans un instant." };
+    }
+    if (hasAiPersonalizedStep((aiSteps ?? []) as Array<{ action_type: string; use_ai_personalization: boolean | null }>)) {
+      return { allowed: false, reason: AI_SEQUENCE_ENROLL_MESSAGE };
     }
 
     // Job must also belong to org
@@ -1081,7 +1176,7 @@ const enrollInSequence: AgentTool = {
   },
 
   async dryRun(params, ctx) {
-    const [{ data: seq }, { data: project }, recent, sending] = await Promise.all([
+    const [{ data: seq }, { data: project }, recent, sending, { data: steps, error: stepsError }, candidateRow] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name')
@@ -1089,18 +1184,49 @@ const enrollInSequence: AgentTool = {
         .maybeSingle(),
       ctx.adminClient
         .from('sourcing_projects')
-        .select('name, job_title')
+        .select('name, job_title, job_details')
         .eq('id', String(params.job_id))
         .maybeSingle(),
       findRecentOrgContact(params, ctx),
       resolveSendingAccount(params, ctx),
+      ctx.adminClient
+        .from('sequence_steps')
+        .select(ENROLL_STEP_COLUMNS)
+        .eq('sequence_id', String(params.sequence_id)),
+      enrollCandidateRow(params, ctx),
     ]);
+    if (stepsError) throw new Error(`Lecture des étapes impossible : ${stepsError.message}`);
 
     // Déjà dans cette séquence, sous quelque identifiant que ce soit.
     const existing = await isAlreadyInSequence(params, ctx).catch(() => false);
 
     const candidate = String(params.profile_name ?? params.candidate_id);
     const account = 'error' in sending ? null : sending;
+
+    // Lot 5a : premier message construit comme le moteur, sur une inscription
+    // qui porte exactement les champs qu'execute écrira (ligne de la mission).
+    const candidateFields = missionCandidateFields(candidateRow, {
+      profileName: typeof params.profile_name === 'string' ? params.profile_name : null,
+      missionTitle: enrollMissionTitle(project),
+    });
+    const firstStepPreview = await buildFirstStepPreview(
+      ctx.adminClient as unknown as Parameters<typeof buildFirstStepPreview>[0],
+      {
+        steps: (steps ?? []) as unknown as EnrollStepRow[],
+        enrollment: {
+          sequence_id: String(params.sequence_id),
+          profile_id: String(params.candidate_id),
+          provider_id: String(params.candidate_id),
+          profile_url: params.profile_url ? String(params.profile_url) : null,
+          account_id: account?.account_id ?? null,
+          job_id: String(params.job_id),
+          organization_id: ctx.organizationId,
+          created_by: ctx.userId,
+          ...candidateFields,
+        },
+        candidateInMission: !!candidateRow,
+      },
+    );
     const accountLabel = account ? `« ${account.account_name ?? 'votre compte LinkedIn'} »` : null;
     const warning = existing
       ? 'Ce candidat est déjà dans cette séquence : pas de double inscription.'
@@ -1132,6 +1258,7 @@ const enrollInSequence: AgentTool = {
               forced: true,
             }
           : null,
+        first_step_preview: firstStepPreview,
       },
       warning,
     };
@@ -1171,30 +1298,41 @@ const enrollInSequence: AgentTool = {
       return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
     }
 
-    // Première étape (SEQ-044) : étape racine de plus petit step_order.
+    // Première étape (SEQ-044) : étape racine de plus petit step_order. En
+    // test A/B, version tirée comme l'interface et le moteur (lot 5a :
+    // l'aperçu annonce chaque version « selon le tirage »).
     const { data: steps, error: stepsError } = await ctx.adminClient
       .from('sequence_steps')
-      .select('id, step_order, delay_days, delay_hours, delay_minutes, preferred_hour_start, preferred_hour_end, parent_step_id, branch, if_true_goto_step, if_false_goto_step, timeout_branch_step_id, next_step_id')
+      .select(ENROLL_STEP_COLUMNS)
       .eq('sequence_id', String(params.sequence_id));
     if (stepsError) return { success: false, error: `Lecture des étapes impossible : ${stepsError.message}` };
-    const firstStep = pickFirstRootStep((steps ?? []) as Array<{
-      id: string;
-      step_order: number | null;
-      delay_days: number | null;
-      delay_hours: number | null;
-      delay_minutes: number | null;
-      preferred_hour_start: number | null;
-      preferred_hour_end: number | null;
-      parent_step_id: string | null;
-      branch: string | null;
-      if_true_goto_step: string | null;
-      if_false_goto_step: string | null;
-      timeout_branch_step_id: string | null;
-      next_step_id: string | null;
-    }>);
-    if (!firstStep) {
+    const stepRows = (steps ?? []) as unknown as EnrollStepRow[];
+    const rootStep = pickFirstRootStep(stepRows);
+    if (!rootStep) {
       return { success: false, error: "Cette séquence n'a aucune étape : ajoutez-en une avant d'inscrire des candidats." };
     }
+    const { step: firstStep, variantAssigned } = drawRankVariant(stepRows, rootStep);
+
+    // Lot 5a : mêmes champs du candidat que l'aperçu de la carte d'approbation
+    // (ligne de la mission relue ici), donc le message montré est celui qui
+    // part. Lecture impossible : inscription refusée plutôt qu'un autre texte.
+    let candidateRow: MissionCandidateRowLike | null;
+    try {
+      candidateRow = await enrollCandidateRow(params, ctx);
+    } catch (err) {
+      console.error('[enroll_in_sequence] mission candidate read failed:', err);
+      return { success: false, error: CANDIDATE_UNREADABLE_MESSAGE };
+    }
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, job_details')
+      .eq('id', String(params.job_id))
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    const candidateFields = missionCandidateFields(candidateRow, {
+      profileName: typeof params.profile_name === 'string' ? params.profile_name : null,
+      missionTitle: enrollMissionTitle(project),
+    });
 
     // Coordonnées connues du candidat (SEQ-066), sources gratuites seulement
     // (enrichissements de l'organisation, fiche du pipeline) : sans elles, le
@@ -1236,7 +1374,6 @@ const enrollInSequence: AgentTool = {
         profile_id: String(params.candidate_id),
         provider_id: String(params.candidate_id),
         profile_url: params.profile_url ? String(params.profile_url) : null,
-        profile_name: params.profile_name ? String(params.profile_name) : null,
         account_id: sending.account_id,
         job_id: String(params.job_id),
         organization_id: ctx.organizationId,
@@ -1246,6 +1383,8 @@ const enrollInSequence: AgentTool = {
         user_timezone: userTimezone,
         email_used: emailUsed,
         phone_used: phoneUsed,
+        // profile_name, profile_headline, job_title (titre de la mission), company_name.
+        ...candidateFields,
       })
       .select('id, current_step_order')
       .single();
@@ -1274,6 +1413,7 @@ const enrollInSequence: AgentTool = {
         step_order: firstStep.step_order ?? 0,
         scheduled_at: scheduledAt.toISOString(),
         status: 'scheduled',
+        variant_assigned: variantAssigned,
         organization_id: ctx.organizationId,
       });
     if (execError) {
@@ -1324,6 +1464,42 @@ const enrollInSequence: AgentTool = {
 // l'instant — l'envoi via Unipile/Resend nécessite une UX dédiée et un canal
 // résolu, on l'ajoute en v3).
 
+/**
+ * Contexte du brouillon : la ligne du candidat dans la mission, dans
+ * l'organisation, quel qu'en soit l'auteur (lot 0c-2 : project_id et
+ * organization_id, plus job_id brut ni created_by), et la mission de
+ * l'organisation. Plusieurs lignes (doublons) : la plus récente.
+ */
+async function draftContext(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<{
+  row: { candidate_name: string | null; candidate_headline: string | null; linkedin_profile_data: unknown } | null;
+  project: { name: string | null; job_title: string | null; client_name: string | null; description: string | null; job_details: unknown } | null;
+}> {
+  const projectId = missionIdParam(params);
+  const candidateId = String(params.candidate_id || '').trim();
+  if (!projectId || !candidateId) return { row: null, project: null };
+  const [{ data: row }, { data: project }] = await Promise.all([
+    ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_name, candidate_headline, linkedin_profile_data')
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', projectId)
+      .eq('candidate_id', candidateId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, description, job_details')
+      .eq('id', projectId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle(),
+  ]);
+  return { row, project };
+}
+
 const draftOutreachMessage: AgentTool = {
   name: 'draft_outreach_message',
   description:
@@ -1355,28 +1531,13 @@ const draftOutreachMessage: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  async verifyAccess(params, ctx) {
-    return updateCandidateStage.verifyAccess(params, ctx);
-  },
+  // Pas de new_stage ici : contrôle d'un candidat et d'une mission de
+  // l'organisation, comme add_to_shortlist.
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-
-    const [{ data: row }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_name, candidate_headline, linkedin_profile_data')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name, description, job_details')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
+    const { row, project } = await draftContext(ctx, params);
 
     const tone = String(params.tone ?? 'casual');
     const channel = String(params.channel ?? 'linkedin_dm');
@@ -1399,27 +1560,12 @@ const draftOutreachMessage: AgentTool = {
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
     const tone = String(params.tone ?? 'casual');
     const channel = String(params.channel ?? 'linkedin_dm');
     const angle = params.angle ? String(params.angle) : null;
 
     // Fetch context
-    const [{ data: row }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_name, candidate_headline, linkedin_profile_data')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name, description, job_details')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
+    const { row, project } = await draftContext(ctx, params);
 
     if (!row || !project) {
       return { success: false, error: 'Candidat ou mission introuvable' };
@@ -1909,11 +2055,12 @@ const assignCandidateToMember: AgentTool = {
   },
 
   async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
+    // Mission : uuid de sourcing_projects, préfixe « project: » accepté (lot 0c-2).
+    const jobId = missionIdParam(params) ?? '';
     const candidateId = String(params.candidate_id || '');
     const assigneeId = String(params.assigned_to_user_id || '');
     if (!jobId || !candidateId || !assigneeId) {
-      return { allowed: false, reason: 'job_id, candidate_id and assigned_to_user_id are required' };
+      return { allowed: false, reason: 'job_id (mission UUID), candidate_id and assigned_to_user_id are required' };
     }
 
     // 1. Mission in user's org
@@ -1927,12 +2074,16 @@ const assignCandidateToMember: AgentTool = {
       return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
     }
 
-    // 2. Candidate exists in this mission
+    // 2. Candidate exists in this mission. Par project_id et organisation
+    //    (lot 0c-2) : job_id vaut souvent « project:<uuid> », et un doublon
+    //    (deux auteurs) ne doit pas faire échouer maybeSingle.
     const { data: row } = await ctx.adminClient
       .from('job_candidate_status')
       .select('id')
-      .eq('job_id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', jobId)
       .eq('candidate_id', candidateId)
+      .limit(1)
       .maybeSingle();
     if (!row) {
       return {
@@ -1960,15 +2111,17 @@ const assignCandidateToMember: AgentTool = {
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const jobId = missionIdParam(params) ?? String(params.job_id);
     const assigneeId = String(params.assigned_to_user_id);
 
     const [{ data: current }, { data: project }, { data: assignee }, { data: existing }] = await Promise.all([
       ctx.adminClient
         .from('job_candidate_status')
         .select('candidate_name, candidate_headline')
+        .eq('organization_id', ctx.organizationId)
+        .eq('project_id', jobId)
         .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
+        .limit(1)
         .maybeSingle(),
       ctx.adminClient
         .from('sourcing_projects')
@@ -2026,15 +2179,17 @@ const assignCandidateToMember: AgentTool = {
 
   async execute(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const jobId = missionIdParam(params) ?? String(params.job_id);
     const assigneeId = String(params.assigned_to_user_id);
 
     // Fetch candidate_name for the assignment row (denormalized for UI lookups)
     const { data: current } = await ctx.adminClient
       .from('job_candidate_status')
       .select('candidate_name')
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', jobId)
       .eq('candidate_id', candidateId)
-      .eq('job_id', jobId)
+      .limit(1)
       .maybeSingle();
 
     // Check if assignment already exists
@@ -5001,11 +5156,29 @@ function normalizeMissionId(raw: unknown): string {
   return String(raw || '').trim().replace(/^project:/, '');
 }
 
+/**
+ * Profils à noter : même périmètre que le worker process-agent-tasks
+ * (organisation de l'appelant, mission, et le job_id de la plus ancienne ligne
+ * de la mission, forme sous laquelle score-profile-job écrit la note). Le
+ * nombre annoncé égale ainsi progress_total (lot 0c-2).
+ */
 async function countUnscoredProfiles(ctx: ToolContext, projectId: string): Promise<number> {
+  const { data: sampleRow } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select('job_id')
+    .eq('project_id', projectId)
+    .eq('organization_id', ctx.organizationId)
+    .not('job_id', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const jobId = (sampleRow as { job_id?: string | null } | null)?.job_id || `project:${projectId}`;
   const { count } = await ctx.adminClient
     .from('job_candidate_status')
     .select('id', { count: 'exact', head: true })
     .eq('project_id', projectId)
+    .eq('organization_id', ctx.organizationId)
+    .eq('job_id', jobId)
     .is('score', null)
     .not('linkedin_profile_data', 'is', null);
   return count ?? 0;

@@ -219,15 +219,14 @@ test.describe('Séquences — actions (lot actions-2)', () => {
       await route.fulfill({ response });
     });
 
+    // Lot 5b (décision 3) : la mise en pause de la séquence part sans fenêtre.
     await page.getByRole('switch', { name: `Mettre en pause la séquence ${seq.name}` }).click();
-    const confirm = page.getByRole('alertdialog', { name: 'Désactiver cette séquence ?' });
-    await confirm.getByRole('button', { name: 'Désactiver' }).click();
 
     const stillActive = toast(page, 'La séquence reste active');
     await expect(stillActive).toBeVisible({ timeout: 20_000 });
     await expect(stillActive).toContainText('1 candidat est bien en pause.');
     await expect(stillActive).toContainText('1 candidat reste en cours');
-    await expect(toast(page, /^Séquence désactivée/), 'pas de faux succès').toHaveCount(0);
+    await expect(toast(page, /^Séquence mise en pause/), 'pas de faux succès').toHaveCount(0);
 
     expect(latecomer, 'inscription concurrente créée').not.toBeNull();
     expect(await sequenceActive(seq.sequenceId), 'séquence non marquée désactivée').toBe(true);

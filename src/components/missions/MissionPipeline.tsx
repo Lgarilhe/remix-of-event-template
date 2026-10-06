@@ -6,17 +6,36 @@ import {
   rectIntersection,
 } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjects';
-import { useProjectStats } from '@/hooks/useProjectStats';
+import {
+  PROJECT_CANDIDATES_MAX_ROWS,
+  SourcingProject,
+  patchProjectCandidateStages,
+  useProjectCandidates,
+  type ProjectCandidateRow,
+} from '@/hooks/useSourcingProjects';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
+import { useMissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { ProjectCandidatesTableEnhanced } from '@/components/outreach/projects/ProjectCandidatesTableEnhanced';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { TutorialVideoDialog } from '@/components/help/TutorialVideoDialog';
 import { PIPELINE_TUTORIAL } from '@/components/help/tutorials';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { missionColumnToStage, setCandidateStage, stageErrorMessage, type StageTarget } from '@/lib/candidateStage';
-import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send, ListChecks, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { isGeneralStage, missionColumnToStage, setCandidateStages, stageErrorMessage, type StageTarget } from '@/lib/candidateStage';
+import {
+  GENERAL_STAGE_LABEL,
+  MISSION_COLUMN_KEY,
+  MISSION_STEP_MISSING_LABEL,
+  STALE_AFTER_DAYS,
+  invalidateStageReaders,
+  isStale,
+  missionColumnOf,
+  stageAgeDays,
+} from '@/lib/stageDisplay';
+import { plural } from '@/lib/plural';
+import { recommendationLabel } from '@/types/projects';
+import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send, ListChecks, ArrowRight, UserSearch, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -24,64 +43,71 @@ interface MissionPipelineProps {
   project: SourcingProject;
 }
 
-interface ProjectCandidate {
-  id: string;
-  job_id?: string;
-  candidate_id: string;
-  candidate_name: string | null;
-  candidate_headline: string | null;
-  linkedin_profile_url: string | null;
-  status: string;
-  pipeline_stage: string | null;
-  general_stage?: string | null;
-  process_step_id?: string | null;
-  score: number | null;
-  recommendation: string | null;
-  skip_reason: string | null;
-  created_at: string;
-  updated_at: string;
-}
+// Ligne de la vue mission_candidate_rows (lot 0c) : une par candidat, doublons
+// réunis ; group_ids porte toutes les lignes du candidat dans la mission, qu'un
+// geste écrit ensemble (sinon un recul serait masqué par l'autre ligne).
+type ProjectCandidate = ProjectCandidateRow;
+
+/** Lignes du candidat dans la mission (la ligne affichée seule si la vue ne les rend pas). */
+const groupIdsOf = (c: ProjectCandidate): string[] => (c.group_ids && c.group_ids.length > 0 ? c.group_ids : [c.id]);
 
 // ── Thème sémantique des colonnes ──
 // Sémantique, pas positionnel : « Embauché » est TOUJOURS vert, « Contacté »
 // toujours info, quel que soit le nombre d'étapes de process intercalées.
+// Jetons du thème seulement ; les couleurs de la pastille de l'étape suivent
+// celles de la liste de la nouvelle page (retenu : warning, a répondu : brand).
 
 type ColTheme = { dot: string; ring: string };
 
 const NEUTRAL: ColTheme = { dot: 'bg-muted-foreground/50', ring: 'ring-foreground/25' };
 const INFO: ColTheme = { dot: 'bg-info', ring: 'ring-info/40' };
 const SUCCESS: ColTheme = { dot: 'bg-success', ring: 'ring-success/40' };
-const REPLIED_T: ColTheme = { dot: 'bg-brand-blue', ring: 'ring-brand-blue/40' };
+const REPLIED_T: ColTheme = { dot: 'bg-brand', ring: 'ring-brand/50' };
+const RETAINED_T: ColTheme = { dot: 'bg-warning', ring: 'ring-warning/40' };
+const INTERVIEW_T: ColTheme = { dot: 'bg-foreground/60', ring: 'ring-foreground/30' };
+const STEP_MISSING_T: ColTheme = { dot: 'bg-warning', ring: 'ring-warning/40' };
 const DISMISSED_T: ColTheme = { dot: 'bg-destructive/60', ring: 'ring-destructive/40' };
 const STEP_THEMES: ColTheme[] = [
-  { dot: 'bg-brand-cyan', ring: 'ring-brand-cyan/40' },
-  { dot: 'bg-teal-400', ring: 'ring-teal-400/40' },
-  { dot: 'bg-indigo-400', ring: 'ring-indigo-400/40' },
-  { dot: 'bg-brand-purple', ring: 'ring-brand-purple/40' },
+  { dot: 'bg-foreground/70', ring: 'ring-foreground/30' },
+  { dot: 'bg-foreground/55', ring: 'ring-foreground/30' },
+  { dot: 'bg-foreground/40', ring: 'ring-foreground/25' },
+  { dot: 'bg-muted-foreground', ring: 'ring-foreground/25' },
 ];
 
 interface PipelineColumn {
   key: string;
   label: string;
   theme: ColTheme;
-  isProcessStep?: boolean;
 }
 
-// Colonne « Répondu » (décision 29) : sa clé est l'étape que le moteur et le
-// webhook écrivent à la réponse d'un candidat.
-const REPLIED_KEY = 'Répondu';
-const REPLIED_COLUMN: PipelineColumn = { key: REPLIED_KEY, label: 'Répondu', theme: REPLIED_T };
-
-// ── Static fallback columns (used when no process steps defined) ──
-
-const STATIC_COLUMNS: PipelineColumn[] = [
-  { key: 'untreated', label: 'Sourcé', theme: NEUTRAL },
-  { key: 'messaged', label: 'Contacté', theme: INFO },
-  REPLIED_COLUMN,
-  { key: 'shortlisted', label: 'Shortlisté', theme: SUCCESS },
+// Colonnes (lot 0c) : À trier, Retenu, Contacté, A répondu, une colonne par
+// étape d'entretien de la mission (ou « En entretien » sans étapes), Embauché,
+// puis Écarté à part. Clés de MISSION_COLUMN_KEY, relues par
+// missionColumnToStage ; « A répondu » garde la clé « Répondu » (décision 29).
+const STAGE_COLUMN = (stage: keyof typeof MISSION_COLUMN_KEY, theme: ColTheme): PipelineColumn => ({
+  key: MISSION_COLUMN_KEY[stage],
+  label: GENERAL_STAGE_LABEL[stage],
+  theme,
+});
+const HEAD_COLUMNS: PipelineColumn[] = [
+  STAGE_COLUMN('to_sort', NEUTRAL),
+  STAGE_COLUMN('retained', RETAINED_T),
+  STAGE_COLUMN('contacted', INFO),
+  STAGE_COLUMN('replied', REPLIED_T),
 ];
-
-const DISMISSED_COLUMN: PipelineColumn = { key: 'dismissed', label: 'Écarté', theme: DISMISSED_T };
+const INTERVIEWING_COLUMN = STAGE_COLUMN('interviewing', INTERVIEW_T);
+const HIRED_COLUMN = STAGE_COLUMN('hired', SUCCESS);
+const DISMISSED_COLUMN = STAGE_COLUMN('rejected', DISMISSED_T);
+/**
+ * En entretien sans étape de la mission, sur une mission qui en a : colonne
+ * affichée seulement si besoin, hors de la barre, sans dépôt (la base
+ * exigerait une étape).
+ */
+const STEP_MISSING_COLUMN: PipelineColumn = {
+  key: MISSION_COLUMN_KEY.interviewing,
+  label: MISSION_STEP_MISSING_LABEL,
+  theme: STEP_MISSING_T,
+};
 
 // ── Helpers ──
 
@@ -91,12 +117,11 @@ function nameHash(s: string) {
   return h;
 }
 const AVATAR_THEMES = [
-  'bg-brand-purple/20 text-brand-purple',
-  'bg-brand-blue/20 text-brand-blue',
-  'bg-brand-cyan/20 text-brand-cyan',
-  'bg-brand-pink/20 text-brand-pink',
-  'bg-emerald-400/15 text-emerald-400',
-  'bg-amber-400/15 text-amber-300',
+  'bg-muted text-foreground',
+  'bg-brand/15 text-brand',
+  'bg-info-muted text-info',
+  'bg-success-muted text-success',
+  'bg-warning-muted text-warning',
 ];
 const avatarTheme = (name?: string | null) => AVATAR_THEMES[nameHash(name || '?') % AVATAR_THEMES.length];
 const initials = (name?: string | null) => {
@@ -104,64 +129,28 @@ const initials = (name?: string | null) => {
   return p.length ? ((p[0][0] || '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() : '?';
 };
 
-// Statuts d'une réponse du candidat (réponse brute ou analysée), et étapes de
-// départ qu'une réponse fait passer dans « Répondu ». Une étape plus avancée
-// (entretien, embauche) garde le candidat là où le recruteur l'a placé.
-const REPLY_STATUSES = new Set(['replied', 'interested', 'not_interested']);
-const REPLY_PROMOTABLE_STAGES = new Set(['sourced', 'untreated', 'messaged', 'Nouveau', 'Contacté']);
-
-/** Colonne d'un candidat (clé de colonne, ou valeur inconnue rangée dans la première). */
-const columnKeyOf = (c: ProjectCandidate): string => {
-  if (c.pipeline_stage === REPLIED_KEY) return REPLIED_KEY;
-  if (REPLY_STATUSES.has(c.status) && (!c.pipeline_stage || REPLY_PROMOTABLE_STAGES.has(c.pipeline_stage))) return REPLIED_KEY;
-  return c.pipeline_stage || c.status;
-};
-
-// Lot 0b-4 : colonne d'après l'étape générale (lue par select('*')) quand elle
-// est connue. set_candidate_stage garde un ancien libellé équivalent (« Gagné »,
-// « Contacté »...) : ranger par ce libellé laisserait la carte hors de sa colonne.
-// Une clé absente des colonnes affichées se range dans la première.
-const GENERAL_STAGE_COLUMN: Record<string, string> = {
-  retained: 'shortlisted',
-  contacted: 'messaged',
-  replied: REPLIED_KEY,
-  hired: 'hired',
-  rejected: 'dismissed',
-};
-const stageColumnOf = (c: ProjectCandidate): string => {
-  const g = c.general_stage;
-  if (!g) return columnKeyOf(c);
-  if (g === 'to_sort') return '';
-  if (g === 'interviewing') return c.process_step_id || columnKeyOf(c);
-  return GENERAL_STAGE_COLUMN[g] ?? columnKeyOf(c);
-};
-
-const stageAgeDays = (iso: string | null) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : 0);
-const formatStageAge = (d: number) => (d < 1 ? 'auj.' : d < 7 ? `${d}j` : d < 30 ? `${Math.floor(d / 7)}sem` : `${Math.floor(d / 30)}mois`);
-
-// Le staleness ne s'applique qu'aux candidats ENGAGÉS dans le process
-// (contactés, en entretien…) — pas au vivier non traité ni aux états finaux.
-const STALE_EXEMPT = new Set(['sourced', 'untreated', 'discovered', 'hired', 'shortlisted', 'dismissed']);
-const isStaleCandidate = (c: ProjectCandidate) => {
-  const stage = c.pipeline_stage || c.status;
-  return !STALE_EXEMPT.has(stage) && c.status !== 'dismissed' && stageAgeDays(c.updated_at) >= 7;
-};
+// Ancienneté dans l'étape : stage_entered_at (lot 0c), à défaut updated_at puis
+// created_at. « Sans mouvement » : Contacté, A répondu ou En entretien depuis
+// STALE_AFTER_DAYS jours ou plus (isStale, src/lib/stageDisplay.ts).
+const daysInStage = (c: ProjectCandidate) => stageAgeDays(c) ?? 0;
+const stageAgeText = (d: number) => (d < 1 ? "Dans cette étape depuis aujourd'hui" : `Dans cette étape depuis ${d}\u00a0j`);
 
 const EMPTY_COPY: Record<string, string> = {
-  sourced: 'Aucun candidat sourcé',
-  untreated: 'Aucun candidat sourcé',
-  messaged: "Personne n'a encore été contacté",
-  [REPLIED_KEY]: 'Aucune réponse pour le moment',
-  hired: 'Ça se joue à gauche',
-  dismissed: 'Rien à écarter, bon signe',
+  [MISSION_COLUMN_KEY.to_sort]: 'Aucun candidat à trier',
+  [MISSION_COLUMN_KEY.retained]: 'Aucun candidat retenu',
+  [MISSION_COLUMN_KEY.contacted]: "Personne n'a encore été contacté",
+  [MISSION_COLUMN_KEY.replied]: 'Aucune réponse pour le moment',
+  [MISSION_COLUMN_KEY.interviewing]: 'Personne en entretien',
+  [MISSION_COLUMN_KEY.hired]: 'Ça se joue à gauche',
+  [MISSION_COLUMN_KEY.rejected]: 'Rien à écarter, bon signe',
 };
 
 // ── Kanban Card ──
 
 const KanbanCard = React.memo(({ candidate, isOverlay, dimmed }: { candidate: ProjectCandidate; isOverlay?: boolean; dimmed?: boolean }) => {
   const name = candidate.candidate_name || 'Candidat inconnu';
-  const days = stageAgeDays(candidate.updated_at);
-  const stale = isStaleCandidate(candidate);
+  const days = daysInStage(candidate);
+  const stale = isStale(candidate);
 
   return (
     <div className={cn(
@@ -178,11 +167,11 @@ const KanbanCard = React.memo(({ candidate, isOverlay, dimmed }: { candidate: Pr
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold leading-tight text-foreground truncate">{name}</p>
-          <p className="text-2xs text-muted-foreground leading-snug truncate mt-0.5">{candidate.candidate_headline || '—'}</p>
+          <p className="text-2xs text-muted-foreground leading-snug truncate mt-0.5">{candidate.candidate_headline || 'Sans titre'}</p>
         </div>
         {candidate.score != null && (
           <span
-            title={candidate.recommendation ?? undefined}
+            title={recommendationLabel(candidate.recommendation, candidate.skip_reason)}
             className={cn(
               "inline-flex items-center h-[18px] px-1.5 rounded-full text-2xs font-bold tabular-nums shrink-0 ring-1 ring-inset",
               candidate.score >= 70 ? "bg-success/10 text-success ring-success/20" :
@@ -195,14 +184,13 @@ const KanbanCard = React.memo(({ candidate, isOverlay, dimmed }: { candidate: Pr
         )}
       </div>
       <div className="flex items-center gap-1.5 mt-1.5 pl-[38px] min-h-[20px]">
-        {candidate.status === 'replied' && (
+        {candidate.replied_at && candidate.general_stage !== 'replied' && (
           <span title="A répondu"><MessageSquare className="w-3 h-3 text-success" /></span>
         )}
         <span
           className={cn("inline-flex items-center gap-1 text-3xs tabular-nums", stale ? "text-warning font-semibold" : "text-muted-foreground/70")}
-          title={stale ? `Sans mouvement depuis ${days}j` : undefined}
         >
-          <Clock className="w-3 h-3" /> {formatStageAge(days)}
+          <Clock className="w-3 h-3" aria-hidden="true" /> {stageAgeText(days)}
         </span>
         {candidate.linkedin_profile_url && (
           <a
@@ -247,10 +235,12 @@ DraggableKanbanCard.displayName = 'DraggableKanbanCard';
 
 // ── Kanban Column ──
 
-const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoOutreach }: {
+const KanbanColumn = ({ column, candidates, isDismissed, noDrop, innerRef, onOpen, onGoOutreach }: {
   column: PipelineColumn;
   candidates: ProjectCandidate[];
   isDismissed?: boolean;
+  /** Colonne sans dépôt (« Étape à choisir »). */
+  noDrop?: boolean;
   innerRef?: (el: HTMLDivElement | null) => void;
   onOpen?: (c: ProjectCandidate) => void;
   onGoOutreach?: () => void;
@@ -258,8 +248,9 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoO
   const { setNodeRef, isOver } = useDroppable({
     id: column.key,
     data: { type: 'column' },
+    disabled: noDrop,
   });
-  const staleInCol = useMemo(() => candidates.filter(isStaleCandidate).length, [candidates]);
+  const staleInCol = useMemo(() => candidates.filter((c) => isStale(c)).length, [candidates]);
 
   return (
     <div
@@ -269,7 +260,7 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoO
       className={cn(
         "flex flex-col rounded-xl bg-muted/20 transition-colors",
         // Colonnes fluides : remplissent la largeur dispo, bornées pour rester
-        // lisibles — fini la moitié d'écran vide à 3-4 colonnes
+        // lisibles (plus de moitié d'écran vide à 3 ou 4 colonnes)
         isDismissed ? "flex-none w-[216px]" : "flex-1 min-w-[248px] max-w-[340px]",
         isOver && cn("bg-muted/40 ring-1 ring-inset", column.theme.ring)
       )}
@@ -286,7 +277,7 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoO
         {staleInCol > 0 && !isDismissed && (
           <span
             className="ml-auto inline-flex items-center gap-0.5 text-3xs tabular-nums font-semibold text-warning"
-            title={`${staleInCol} candidat(s) sans mouvement depuis +7j`}
+            title={`${plural(staleInCol, 'candidat')} dans cette étape depuis ${STALE_AFTER_DAYS}\u00a0j ou plus`}
           >
             <Clock className="w-2.5 h-2.5" />{staleInCol}
           </span>
@@ -301,9 +292,9 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoO
             "mx-0.5 mt-0.5 rounded-lg border border-dashed py-8 text-center transition-colors",
             isOver ? "border-foreground/30 bg-muted/30" : "border-border"
           )}>
-            {!isOver && column.key === 'messaged' && onGoOutreach ? (
+            {!isOver && column.key === MISSION_COLUMN_KEY.contacted && onGoOutreach ? (
               <div className="space-y-2">
-                <p className="text-2xs text-muted-foreground/50">{EMPTY_COPY.messaged}</p>
+                <p className="text-2xs text-muted-foreground/50">{EMPTY_COPY[MISSION_COLUMN_KEY.contacted]}</p>
                 <button
                   type="button"
                   onClick={onGoOutreach}
@@ -322,6 +313,18 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoO
   );
 };
 
+// ── Lecture en échec ──
+
+const PipelineLoadError = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
+  <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-3">
+    <p className="text-sm text-foreground">{message}</p>
+    <Button variant="outline" size="sm" onClick={onRetry}>
+      <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+      Réessayer
+    </Button>
+  </div>
+);
+
 // ── Main Component ──
 
 export const MissionPipeline = ({ project }: MissionPipelineProps) => {
@@ -330,93 +333,76 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const [detailCandidate, setDetailCandidate] = useState<ProjectCandidate | null>(null);
   const queryClient = useQueryClient();
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  // Après un drag, le navigateur émet un click sur la carte déposée — ne pas
+  // Après un drag, le navigateur émet un click sur la carte déposée : ne pas
   // ouvrir la fiche détail dans ce cas
   const dragHappenedRef = useRef(false);
   const [, setSearchParams] = useSearchParams();
 
-  const goToOutreach = () => {
+  const goToTab = (tab: string) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      next.set('tab', 'outreach');
+      next.set('tab', tab);
       return next;
     }, { replace: true });
   };
-
-  const goToProcess = () => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.set('tab', 'process');
-      return next;
-    }, { replace: true });
-  };
+  const goToOutreach = () => goToTab('outreach');
+  const goToProcess = () => goToTab('process');
+  const goToSourcing = () => goToTab('sourcing');
 
   const openCandidateDetail = (c: ProjectCandidate) => {
     if (dragHappenedRef.current) return;
     setDetailCandidate(c);
   };
 
-  const { data: candidates = [], isLoading } = useProjectCandidates(project.id);
-  const { data: stats } = useProjectStats(project.id);
-  const { steps, loadingSteps } = useMissionProcess(project.id);
+  // Vue mission_candidate_rows, profils jamais ouverts exclus (useProjectCandidates).
+  const candidatesQuery = useProjectCandidates(project.id);
+  const { data: candidateRows, isLoading } = candidatesQuery;
+  const candidates = useMemo(() => candidateRows ?? [], [candidateRows]);
+  const stageCountsQuery = useMissionStageCounts([project.id]);
+  // Profils trouvés par une recherche, jamais ouverts : au Sourcing. 0 tant que
+  // le compteur charge ou a échoué : l'écran ne conclut « rien » qu'à la lecture
+  // réussie (countsKnown). Une mission que la base ne rend pas (autre
+  // organisation) n'a pas de ligne : lecture réussie, zéro profil.
+  const countsKnown = stageCountsQuery.isSuccess;
+  const unopened = stageCountsQuery.data?.[project.id]?.unopened ?? 0;
+  const { steps, loadingSteps, stepsError, refetchSteps } = useMissionProcess(project.id);
 
-  // Build dynamic columns from process steps.
-  // « Contacté » est présent aussi en mode dynamique : les candidats touchés
-  // par l'outreach (messaged/replied) restaient sinon noyés dans « Sourcé ».
-  const columns = useMemo<PipelineColumn[]>(() => {
-    if (steps.length === 0) return STATIC_COLUMNS;
-    return [
-      { key: 'sourced', label: 'Sourcé', theme: NEUTRAL },
-      { key: 'messaged', label: 'Contacté', theme: INFO },
-      REPLIED_COLUMN,
-      ...steps.map((s, i) => ({ key: s.id, label: s.name, theme: STEP_THEMES[i % STEP_THEMES.length], isProcessStep: true })),
-      { key: 'hired', label: 'Embauché', theme: SUCCESS },
-    ];
-  }, [steps]);
+  const stepIds = useMemo(() => new Set(steps.map(s => s.id)), [steps]);
+
+  // Colonnes de l'entonnoir (barre du haut et kanban), Écarté à part.
+  const columns = useMemo<PipelineColumn[]>(() => [
+    ...HEAD_COLUMNS,
+    ...(steps.length === 0
+      ? [INTERVIEWING_COLUMN]
+      : steps.map((s, i) => ({ key: s.id, label: s.name, theme: STEP_THEMES[i % STEP_THEMES.length] }))),
+    HIRED_COLUMN,
+  ], [steps]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const stepIds = useMemo(() => new Set(steps.map(s => s.id)), [steps]);
+  // Colonne d'une carte : étape générale et étape d'entretien seulement
+  // (missionColumnOf). La même pour le rangement, le glisser et la fiche.
+  const baseColumnOf = useCallback((c: ProjectCandidate): string => missionColumnOf(c, stepIds), [stepIds]);
 
-  // Lot 0b-4 : l'étape s'écrit par set_candidate_stage (origine user), jamais
-  // par une écriture directe de status ou pipeline_stage. Renvoie true si
-  // l'étape est enregistrée ; un refus est annoncé par son indice.
-  const updateStage = async (candidateId: string, columnKey: string): Promise<boolean> => {
-    let target: StageTarget;
-    try {
-      target = missionColumnToStage(columnKey, stepIds);
-    } catch {
-      toast.error(stageErrorMessage());
-      return false;
-    }
-    const outcome = await setCandidateStage(candidateId, target);
-    if (outcome.ok === false) {
-      toast.error(stageErrorMessage(outcome.hint));
-      return false;
-    }
-    queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
-    queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
-    queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-    return true;
-  };
-
-  // Colonne où la carte est affichée (repli sur la première colonne compris) :
-  // la même pour le rangement, le glisser et la fiche.
-  const displayColumnOf = useCallback((c: ProjectCandidate): string => {
-    const key = stageColumnOf(c);
-    if (key === 'dismissed' || columns.some(col => col.key === key)) return key;
-    return columns[0]?.key || 'untreated';
-  }, [columns]);
+  // Déplacements en attente de la réponse de la base (id de carte vers colonne
+  // visée) : la carte reste dans la colonne visée pendant l'écriture, et une
+  // carte en cours de déplacement ne se reprend pas.
+  const [pendingMoves, setPendingMoves] = useState<Record<string, string>>({});
+  const displayColumnOf = useCallback(
+    (c: ProjectCandidate): string => pendingMoves[c.id] ?? baseColumnOf(c),
+    [pendingMoves, baseColumnOf],
+  );
 
   // Group candidates by column
   const candidatesByColumn = useMemo(() => {
     const grouped: Record<string, ProjectCandidate[]> = {};
     columns.forEach(col => { grouped[col.key] = []; });
-    grouped['dismissed'] = [];
+    grouped[DISMISSED_COLUMN.key] = [];
+    grouped[STEP_MISSING_COLUMN.key] = grouped[STEP_MISSING_COLUMN.key] ?? [];
 
-    (candidates as ProjectCandidate[]).forEach(c => {
+    candidates.forEach(c => {
       const key = displayColumnOf(c);
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(c);
@@ -424,17 +410,51 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     return grouped;
   }, [candidates, columns, displayColumnOf]);
 
-  // Funnel « au moins arrivé à cette étape » : cumul depuis la droite.
-  // La colonne Écarté est hors funnel (transversale).
-  const reached = useMemo(() => {
-    const arr = columns.map(c => candidatesByColumn[c.key]?.length || 0);
-    for (let i = arr.length - 2; i >= 0; i--) arr[i] += arr[i + 1];
-    return arr;
-  }, [columns, candidatesByColumn]);
-  const convRate = (i: number) => (reached[i - 1] > 0 ? reached[i] / reached[i - 1] : null);
+  // « Étape à choisir » : seulement sur une mission à étapes, et s'il y a
+  // un candidat en entretien sans étape de la mission.
+  const showStepMissing = steps.length > 0 && (candidatesByColumn[STEP_MISSING_COLUMN.key]?.length ?? 0) > 0;
+  const boardColumns = useMemo<PipelineColumn[]>(
+    () => (showStepMissing ? [...HEAD_COLUMNS, STEP_MISSING_COLUMN, ...columns.slice(HEAD_COLUMNS.length)] : columns),
+    [showStepMissing, columns],
+  );
+
+  // Lot 0b-4 : l'étape s'écrit par set_candidate_stages (origine user), jamais
+  // par une écriture directe de status ou pipeline_stage. Lot 0c : sur toutes
+  // les lignes du candidat dans la mission (group_ids). Renvoie true si
+  // l'étape est enregistrée ; un refus est annoncé par son indice. surface :
+  // écran d'où vient le geste, pour la mesure d'usage.
+  const updateStage = async (ids: string[], columnKey: string, surface: 'mission-kanban' | 'fiche'): Promise<boolean> => {
+    let target: StageTarget;
+    try {
+      target = missionColumnToStage(columnKey, stepIds);
+    } catch {
+      toast.error(stageErrorMessage());
+      return false;
+    }
+    const outcome = await setCandidateStages(ids, target, undefined, { surface });
+    const failure = outcome.error ?? outcome.rows.find(r => r.result === 'error') ?? null;
+    if (outcome.updated + outcome.unchanged > 0) {
+      // La carte reste dans la colonne visée pendant la relecture de la vue.
+      patchProjectCandidateStages(queryClient, project.id, outcome.rows);
+      void invalidateStageReaders(queryClient);
+    }
+    if (failure) {
+      toast.error(stageErrorMessage(failure.hint));
+      return false;
+    }
+    // Aucune ligne changée ni déjà à l'étape (réponse vide de la base) : pas de « déplacé ».
+    if (outcome.updated + outcome.unchanged === 0) {
+      toast.error(stageErrorMessage());
+      return false;
+    }
+    return true;
+  };
+
+  const dismissedCount = candidatesByColumn[DISMISSED_COLUMN.key]?.length || 0;
+  const inPipeline = candidates.length - dismissedCount;
 
   const staleCount = useMemo(
-    () => (candidates as ProjectCandidate[]).filter(isStaleCandidate).length,
+    () => candidates.filter((c) => isStale(c)).length,
     [candidates]
   );
 
@@ -450,7 +470,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
 
   const handleDragStart = (event: DragStartEvent) => {
     dragHappenedRef.current = true;
-    const c = (candidates as ProjectCandidate[]).find(c => c.id === event.active.id);
+    const c = candidates.find(c => c.id === event.active.id);
     setDraggedCandidate(c || null);
   };
 
@@ -468,47 +488,63 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
 
     if (!targetColumn) return;
 
-    const candidate = (candidates as ProjectCandidate[]).find(c => c.id === candidateId);
-    if (candidate && displayColumnOf(candidate) === targetColumn) return;
+    const candidate = candidates.find(c => c.id === candidateId);
+    if (!candidate || pendingMoves[candidateId] || displayColumnOf(candidate) === targetColumn) return;
 
+    // Carte rangée dans la colonne visée dès le dépôt ; elle revient à sa place
+    // si la base refuse (le cache est alors resté tel quel).
+    setPendingMoves(prev => ({ ...prev, [candidateId]: targetColumn }));
+    let saved = false;
+    try {
+      saved = await updateStage(groupIdsOf(candidate), targetColumn, 'mission-kanban');
+    } finally {
+      setPendingMoves(prev => {
+        const { [candidateId]: _done, ...rest } = prev;
+        return rest;
+      });
+    }
     // Toast après l'enregistrement : jamais « déplacé » sur un déplacement refusé.
-    if (!(await updateStage(candidateId, targetColumn))) return;
-    const colLabel = [...columns, DISMISSED_COLUMN].find(c => c.key === targetColumn)?.label || targetColumn;
-    const who = candidate?.candidate_name ?? 'Candidat';
-    toast.success(targetColumn === 'hired' ? `${who} embauché !` : `${who} déplacé vers « ${colLabel} »`);
+    if (!saved) return;
+    const colLabel = [...boardColumns, DISMISSED_COLUMN].find(c => c.key === targetColumn)?.label || targetColumn;
+    const who = candidate.candidate_name ?? 'Candidat';
+    toast.success(targetColumn === HIRED_COLUMN.key ? `${who} embauché !` : `${who} déplacé vers « ${colLabel} »`);
   };
 
   if (isLoading || loadingSteps) {
     return <BrutalLoader variant="default" rows={3} messages={['Chargement du pipeline…']} />;
   }
 
-  const totalCandidates = stats?.total || candidates.length;
-  const dismissedCount = candidatesByColumn['dismissed']?.length || 0;
+  // Une lecture en échec ne passe jamais pour un pipeline vide ni pour une
+  // mission sans étapes : message et « Réessayer ».
+  if (candidatesQuery.isError && candidates.length === 0) {
+    return <PipelineLoadError message="Impossible de charger les candidats de cette mission." onRetry={() => void candidatesQuery.refetch()} />;
+  }
+  // Une relecture en échec garde les étapes déjà lues : l'erreur ne remplace
+  // l'écran que sans aucune étape lue.
+  if (stepsError && steps.length === 0) {
+    return <PipelineLoadError message="Impossible de charger les étapes d'entretien de cette mission." onRetry={() => void refetchSteps()} />;
+  }
+
+  const hasCandidates = candidates.length > 0;
+  const unopenedLabel = plural(unopened, 'profil trouvé', 'profils trouvés');
+  // Plafond de lecture atteint : les plus récents seulement (useProjectCandidates).
+  const limited = candidates.length >= PROJECT_CANDIDATES_MAX_ROWS;
 
   return (
     <div className="space-y-3">
-      {/* ── Command bar : funnel actionnable + méta + toggle ── */}
-      {totalCandidates > 0 && (
+      {/* ── Command bar : effectifs par colonne + méta + toggle ── */}
+      {(hasCandidates || unopened > 0) && (
         <div className="bg-card border border-border rounded-xl overflow-hidden konekt-fade-up">
-          {/* Rangée 1 — funnel avec taux de passage */}
+          {/* Rangée 1 : effectifs en ce moment, colonne par colonne (taux
+              retirés au lot 0c : le lot 2 refait la barre) */}
           <div className="flex items-stretch overflow-x-auto no-scrollbar px-2 pt-2 pb-1.5">
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
-              const conv = i > 0 ? convRate(i) : null;
               return (
                 <React.Fragment key={col.key}>
                   {i > 0 && (
-                    <div
-                      className="flex flex-col items-center justify-center shrink-0 w-9 self-center"
-                      title={`Taux de passage vers « ${col.label} »`}
-                    >
+                    <div className="flex items-center justify-center shrink-0 w-6 self-center" aria-hidden="true">
                       <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-                      <span className={cn(
-                        "text-3xs tabular-nums font-semibold",
-                        conv !== null && conv < 0.1 ? "text-warning" : "text-muted-foreground"
-                      )}>
-                        {conv !== null ? `${Math.round(conv * 100)}%` : '—'}
-                      </span>
                     </div>
                   )}
                   <button
@@ -518,7 +554,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                     className="flex flex-col gap-1 shrink-0 rounded-lg px-3 py-1.5 min-w-[84px] text-left transition-colors hover:bg-muted/40"
                   >
                     <span className={cn(
-                      "font-display text-[20px] leading-none font-bold tabular-nums",
+                      "font-display text-xl leading-none font-bold tabular-nums",
                       count === 0 ? "text-muted-foreground/40" : "text-foreground"
                     )}>
                       {count}
@@ -534,68 +570,82 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             <div className="ml-2 pl-2 border-l border-border flex">
               <button
                 type="button"
-                onClick={() => focusColumn('dismissed')}
+                onClick={() => focusColumn(DISMISSED_COLUMN.key)}
                 className="flex flex-col gap-1 shrink-0 rounded-lg px-3 py-1.5 min-w-[72px] text-left transition-colors hover:bg-muted/40"
               >
-                <span className="font-display text-[20px] leading-none font-bold tabular-nums text-muted-foreground">{dismissedCount}</span>
+                <span className="font-display text-xl leading-none font-bold tabular-nums text-muted-foreground">{dismissedCount}</span>
                 <span className="inline-flex items-center gap-1.5 text-3xs uppercase tracking-wider font-semibold text-muted-foreground">
-                  <span className="w-1.5 h-1.5 rounded-full bg-destructive/60" />Écarté
+                  <span className="w-1.5 h-1.5 rounded-full bg-destructive/60" />{DISMISSED_COLUMN.label}
                 </span>
               </button>
             </div>
           </div>
-          {/* Rangée 2 — méta + staleness + toggle de vue */}
-          <div className="flex items-center gap-3 px-4 h-10 border-t border-border">
+          {/* Rangée 2 : méta + profils trouvés + ancienneté + toggle de vue */}
+          <div className="flex items-center gap-3 px-4 min-h-10 py-1.5 flex-wrap border-t border-border">
             <span className="text-2xs text-muted-foreground">
-              <span className="font-display text-[13px] font-bold tabular-nums text-foreground">{totalCandidates}</span> candidat{totalCandidates > 1 ? 's' : ''}
-              {steps.length > 0 && <span className="text-muted-foreground/60"> · {steps.length} étapes</span>}
+              <span className="font-display text-sm font-bold tabular-nums text-foreground">{inPipeline}</span> dans le Pipeline
+              <span className="text-muted-foreground/60"> · {plural(dismissedCount, 'écarté')}</span>
             </span>
+            {unopened > 0 && (
+              <button
+                type="button"
+                onClick={goToSourcing}
+                className="inline-flex items-center gap-1 h-6 px-2 rounded-full border border-border text-2xs text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <UserSearch className="w-3 h-3" aria-hidden="true" />{unopenedLabel}
+              </button>
+            )}
             {staleCount > 0 && (
-              <span className="inline-flex items-center gap-1 h-6 px-2 rounded-full bg-warning/10 text-warning text-2xs font-medium">
-                <Clock className="w-3 h-3" /><span className="tabular-nums font-semibold">{staleCount}</span> sans mouvement +7j
+              <span
+                className="inline-flex items-center gap-1 h-6 px-2 rounded-full bg-warning/10 text-warning text-2xs font-medium"
+                title={`Contactés, ayant répondu ou en entretien, dans la même étape depuis ${STALE_AFTER_DAYS}\u00a0j ou plus`}
+              >
+                <Clock className="w-3 h-3" /><span className="tabular-nums font-semibold">{staleCount}</span> dans la même étape depuis {STALE_AFTER_DAYS}{'\u00a0'}j ou plus
               </span>
             )}
             <div className="flex-1" />
-            <div className="flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-full border border-border" role="group">
-              <button
-                onClick={() => setViewMode('table')}
-                aria-pressed={viewMode === 'table'}
-                className={cn(
-                  "inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors",
-                  viewMode === 'table'
-                    ? "bg-foreground text-background font-semibold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                )}
-              >
-                <List className="w-3 h-3" /> Table
-              </button>
-              <button
-                onClick={() => setViewMode('kanban')}
-                aria-pressed={viewMode === 'kanban'}
-                className={cn(
-                  "inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors",
-                  viewMode === 'kanban'
-                    ? "bg-foreground text-background font-semibold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                )}
-              >
-                <LayoutGrid className="w-3 h-3" /> Kanban
-              </button>
-            </div>
+            {hasCandidates && (
+              <div className="flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-full border border-border" role="group">
+                <button
+                  onClick={() => setViewMode('table')}
+                  aria-pressed={viewMode === 'table'}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors",
+                    viewMode === 'table'
+                      ? "bg-foreground text-background font-semibold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  )}
+                >
+                  <List className="w-3 h-3" /> Tableau
+                </button>
+                <button
+                  onClick={() => setViewMode('kanban')}
+                  aria-pressed={viewMode === 'kanban'}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors",
+                    viewMode === 'kanban'
+                      ? "bg-foreground text-background font-semibold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  )}
+                >
+                  <LayoutGrid className="w-3 h-3" /> Kanban
+                </button>
+              </div>
+            )}
             <TutorialVideoDialog {...PIPELINE_TUTORIAL} autoOpenKey="pipeline" />
           </div>
         </div>
       )}
 
-      {/* Nudge : sans étapes de process, le board reste générique
-          (Sourcé/Contacté/Shortlisté) — pointer vers la configuration */}
-      {steps.length === 0 && totalCandidates > 0 && (
+      {/* Nudge : sans étapes de process, le board garde une seule colonne
+          « En entretien » : pointer vers la configuration */}
+      {steps.length === 0 && hasCandidates && (
         <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-2.5 konekt-fade-up">
-          <span className="h-7 w-7 rounded-lg bg-brand-purple/15 text-brand-purple grid place-items-center shrink-0">
+          <span className="h-7 w-7 rounded-lg bg-brand/15 text-brand grid place-items-center shrink-0">
             <ListChecks className="w-3.5 h-3.5" />
           </span>
           <p className="text-2xs text-muted-foreground min-w-0 truncate">
-            <span className="text-foreground font-medium">Board générique.</span>{' '}
+            <span className="text-foreground font-medium">Kanban générique.</span>{' '}
             Définissez vos étapes d'entretien pour piloter les candidats colonne par colonne.
           </p>
           <div className="flex-1" />
@@ -609,16 +659,46 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
         </div>
       )}
 
+      {limited && (
+        <p role="status" className="text-2xs text-muted-foreground px-1">
+          Affichage limité aux {PROJECT_CANDIDATES_MAX_ROWS.toLocaleString('fr-FR')} candidats les plus récents.
+        </p>
+      )}
+
       {/* Content */}
-      {totalCandidates === 0 ? (
+      {!hasCandidates && !countsKnown ? (
+        stageCountsQuery.isError ? (
+          <PipelineLoadError message="Impossible de compter les profils de cette mission." onRetry={() => void stageCountsQuery.refetch()} />
+        ) : (
+          <BrutalLoader variant="default" rows={2} messages={['Chargement du pipeline…']} />
+        )
+      ) : !hasCandidates ? (
         <div className="bg-card border border-border rounded-xl flex flex-col items-center justify-center py-16 text-center konekt-fade-up">
           <span className="h-10 w-10 rounded-full bg-info/10 text-info grid place-items-center mb-3">
             <Users className="w-5 h-5" />
           </span>
-          <h3 className="font-display text-[14px] font-bold mb-1">Votre pipeline attend ses premiers candidats</h3>
-          <p className="text-2xs text-muted-foreground max-w-sm">
-            Lancez une recherche dans l'onglet Sourcing pour ajouter des candidats à cette mission.
-          </p>
+          {unopened > 0 ? (
+            <>
+              <h3 className="font-display text-md font-bold mb-1">{unopenedLabel} à trier dans le Sourcing</h3>
+              <p className="text-2xs text-muted-foreground max-w-sm mb-3">
+                Retenez ou contactez les profils qui vous intéressent : ils rejoindront ce pipeline.
+              </p>
+              <button
+                type="button"
+                onClick={goToSourcing}
+                className="inline-flex items-center gap-1.5 h-8 px-4 rounded-full bg-foreground text-background text-2xs font-semibold hover:bg-foreground/90 transition-colors"
+              >
+                Ouvrir le Sourcing <ArrowRight className="w-3 h-3" />
+              </button>
+            </>
+          ) : (
+            <>
+              <h3 className="font-display text-md font-bold mb-1">Votre pipeline attend ses premiers candidats</h3>
+              <p className="text-2xs text-muted-foreground max-w-sm">
+                Lancez une recherche dans l'onglet Sourcing pour ajouter des candidats à cette mission.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -638,22 +718,23 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               onDragEnd={handleDragEnd}
             >
               <div className="flex gap-2 overflow-x-auto thin-scrollbar pb-2 h-[calc(100dvh-340px)] min-h-[480px] items-stretch konekt-fade-up">
-                {columns.map(column => (
+                {boardColumns.map(column => (
                   <KanbanColumn
                     key={column.key}
                     column={column}
                     candidates={candidatesByColumn[column.key] || []}
+                    noDrop={column === STEP_MISSING_COLUMN}
                     innerRef={(el) => { columnRefs.current[column.key] = el; }}
                     onOpen={openCandidateDetail}
-                    onGoOutreach={column.key === 'messaged' ? goToOutreach : undefined}
+                    onGoOutreach={column.key === MISSION_COLUMN_KEY.contacted ? goToOutreach : undefined}
                   />
                 ))}
-                {/* Dismissed column — always last, transversal */}
+                {/* Colonne Écarté : toujours la dernière, transversale */}
                 <KanbanColumn
                   column={DISMISSED_COLUMN}
-                  candidates={candidatesByColumn['dismissed'] || []}
+                  candidates={candidatesByColumn[DISMISSED_COLUMN.key] || []}
                   isDismissed
-                  innerRef={(el) => { columnRefs.current['dismissed'] = el; }}
+                  innerRef={(el) => { columnRefs.current[DISMISSED_COLUMN.key] = el; }}
                   onOpen={openCandidateDetail}
                 />
               </div>
@@ -665,7 +746,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
         </>
       )}
 
-      {/* Fiche candidat complète (profil, messages, notes, rappels) —
+      {/* Fiche candidat détaillée (profil, messages, notes, rappels) :
           réutilise le modal ATS en lui passant les étapes de CE pipeline */}
       {detailCandidate && (
         <CandidateDetailModal
@@ -684,23 +765,30 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             sourceId: detailCandidate.id,
             jobId: detailCandidate.job_id ?? null,
             jobTitle: project.job_title || project.name,
-            lastActivity: detailCandidate.updated_at,
+            lastActivity: detailCandidate.stage_entered_at ?? detailCandidate.updated_at,
             createdAt: detailCandidate.created_at,
             score: detailCandidate.score,
             recommendation: detailCandidate.recommendation,
-            tags: (detailCandidate as ProjectCandidate & { tags?: string[] }).tags || [],
-            linkedinProfileData: (detailCandidate as ProjectCandidate & { linkedin_profile_data?: unknown }).linkedin_profile_data,
-          } as ATSCandidate}
+            tags: detailCandidate.tags ?? [],
+            // Mission de la ligne et étape : la fiche en tire le poste, les notes
+            // de mission et l'ancienneté dans l'étape (stage_entered_at).
+            projectId: project.id,
+            missionName: project.name,
+            generalStage: isGeneralStage(detailCandidate.general_stage) ? detailCandidate.general_stage : 'to_sort',
+            processStepId: detailCandidate.process_step_id,
+            stageEnteredAt: detailCandidate.stage_entered_at,
+            groupIds: groupIdsOf(detailCandidate),
+          }}
           onClose={() => setDetailCandidate(null)}
           onStageChange={(rowId, newStage) => {
-            void updateStage(rowId, newStage);
+            const row = candidates.find(c => c.id === rowId);
+            void updateStage(row ? groupIdsOf(row) : [rowId], newStage, 'fiche');
             setDetailCandidate(null);
           }}
           onRefresh={() => {
-            queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
-            queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
+            void invalidateStageReaders(queryClient);
           }}
-          stageOptions={[...columns.map(c => ({ key: c.key, label: c.label })), { key: 'dismissed', label: 'Écarté' }]}
+          stageOptions={[...columns.map(c => ({ key: c.key, label: c.label })), { key: DISMISSED_COLUMN.key, label: DISMISSED_COLUMN.label }]}
         />
       )}
     </div>

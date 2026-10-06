@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { EmptyState } from '@/components/layout/EmptyState';
 import { useEmailSignatures, EmailSignature } from '@/hooks/useEmailSignatures';
 import { Mail, Plus, Pencil, Trash2 } from 'lucide-react';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { sanitizeSignatureHtml } from '@/lib/signatureHtml';
 
 /**
@@ -98,13 +98,15 @@ export const EmailSignatures: React.FC = () => {
           <EmptyState
             variant="compact"
             icon={Mail}
+            className="border-0"
             title="Aucune signature"
+            headingLevel={4}
             description="Créez-en une pour l’utiliser dans vos séquences e-mail."
           />
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border">
             {signatures.map((sig) => (
-              <li key={sig.id} className="flex items-start justify-between gap-2 rounded-lg border border-border p-3">
+              <li key={sig.id} className="flex items-start justify-between gap-2 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-foreground">{sig.name}</p>
                   <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">

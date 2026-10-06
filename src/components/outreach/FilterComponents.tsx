@@ -44,7 +44,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2 [&_svg]:text-[var(--k-text-muted)]">
             {icon}
-            <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
+            <span className="text-2xs font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
             {badge !== undefined && badge > 0 && (
               <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[var(--k-surface-2)] text-[var(--k-text-muted)] border border-[var(--k-hairline)]">
                 {badge}
@@ -58,14 +58,14 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
             {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
               <span
                 key={index}
-                className="inline-flex items-center text-[12.5px] h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-2)] border border-[var(--k-hairline)]"
+                className="inline-flex items-center text-xs h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-2)] border border-[var(--k-hairline)]"
               >
                 {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
               </span>
             ))}
             {activeFiltersPreview.length > 5 && (
               <span
-                className="inline-flex items-center text-[12.5px] h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)]"
+                className="inline-flex items-center text-xs h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)]"
               >
                 +{activeFiltersPreview.length - 5}
               </span>
@@ -81,7 +81,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
           <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--k-hairline)]">
             <div className="flex items-center gap-2">
               {icon}
-              <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
+              <span className="text-2xs font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
               {badge !== undefined && badge > 0 && (
                 <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
                   {badge}
@@ -128,7 +128,7 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   <div className={`rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface-2)] p-2.5 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
-      <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.05em]">{title}</span>
+      <span className="text-2xs font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.05em]">{title}</span>
       {badge !== undefined && badge > 0 && (
         <Badge variant="outline" className="h-4 px-1 text-xs bg-foreground/10 text-foreground border-border">{badge}</Badge>
       )}

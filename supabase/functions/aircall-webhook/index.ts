@@ -1,212 +1,81 @@
+/**
+ * Réception des événements d'appel Aircall, par organisation.
+ *
+ * Aircall joint à chaque événement le jeton propre au webhook créé par
+ * aircall-connect pour cette organisation (champ `token` du corps). Seule son
+ * empreinte SHA-256 est gardée (telephony_connections) : elle retrouve
+ * l'organisation, sans jeton partagé ni identifiant dans l'URL. Un jeton
+ * inconnu est refusé (401), un événement qui n'est pas un appel est ignoré.
+ *
+ * Aucun appel n'est rattaché à un candidat ici : le rapprochement se fait à
+ * la lecture, par le numéro (phone_calls.contact_number_e164).
+ */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { mapAircallCall } from '../_shared/aircall-call.ts';
+import { sha256Hex } from '../_shared/telephony.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, 400);
   }
 
-  // Aircall sends webhook events as POST
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
+  const token = typeof body?.token === 'string' ? body.token : '';
+  if (!token) return json({ error: 'Unauthorized' }, 401);
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
+  const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
-    // Verify Aircall webhook token (configured in Aircall webhook settings)
-    const AIRCALL_WEBHOOK_TOKEN = Deno.env.get('AIRCALL_WEBHOOK_TOKEN');
-    if (!AIRCALL_WEBHOOK_TOKEN) {
-      console.error('[aircall-webhook] ⚠️ AIRCALL_WEBHOOK_TOKEN not set — rejecting request. Configure this secret!');
-      return new Response(JSON.stringify({ error: 'Webhook token not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const tokenHash = await sha256Hex(token);
+    const { data: connection, error: connectionError } = await supabase
+      .from('telephony_connections')
+      .select('organization_id')
+      .eq('provider', 'aircall')
+      .eq('webhook_token_hash', tokenHash)
+      .maybeSingle();
+    if (connectionError) throw connectionError;
+    if (!connection) {
+      console.warn('[aircall-webhook] jeton inconnu');
+      return json({ error: 'Unauthorized' }, 401);
     }
-    {
-      const url = new URL(req.url);
-      const tokenParam = url.searchParams.get('token');
-      const authHeader = req.headers.get('authorization');
-      const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      const providedToken = tokenParam || headerToken;
+    const organizationId = connection.organization_id as string;
 
-      if (providedToken !== AIRCALL_WEBHOOK_TOKEN) {
-        console.warn('[aircall-webhook] Invalid or missing webhook token');
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    }
+    const event = typeof body.event === 'string' ? body.event : '';
+    if (!event.startsWith('call.') || !body.data) return json({ ok: true, skipped: true });
 
-    const body = await req.json();
-    const event = body.event;
-    const callData = body.data;
+    const mapped = mapAircallCall(body.data, body.timestamp);
+    if (!mapped) return json({ ok: true, skipped: true });
 
-    // Only process call events
-    if (!event?.startsWith('call.') || !callData) {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const contactNumber = callData.raw_digits || callData.number?.digits;
-    const normalizedContact = contactNumber ? normalizePhone(contactNumber) : null;
-
-    // Try phone match
-    let matchedAirtableId: string | null = null;
-    if (normalizedContact) {
-      const { data: candidates } = await supabase
-        .from('airtable_candidates')
-        .select('airtable_id, phone')
-        .not('phone', 'is', null);
-
-      if (candidates) {
-        for (const c of candidates) {
-          if (c.phone && normalizePhone(c.phone) === normalizedContact) {
-            matchedAirtableId = c.airtable_id;
-            break;
-          }
-        }
-      }
-    }
-
-    // If no phone match, try name match
-    if (!matchedAirtableId && callData.contact) {
-      const contactName = [callData.contact.first_name, callData.contact.last_name].filter(Boolean).join(' ').trim();
-      if (contactName && contactName.length >= 3) {
-        const { data: candidates } = await supabase
-          .from('airtable_candidates')
-          .select('airtable_id, full_name')
-          .not('full_name', 'is', null);
-
-        if (candidates) {
-          const normalized = contactName.toLowerCase().trim();
-          for (const c of candidates) {
-            if (!c.full_name) continue;
-            const candidateName = c.full_name.toLowerCase().trim();
-            if (candidateName === normalized) {
-              matchedAirtableId = c.airtable_id;
-              break;
-            }
-            const parts = normalized.split(/\s+/);
-            if (parts.length >= 2 && parts.every((p: string) => candidateName.includes(p))) {
-              matchedAirtableId = c.airtable_id;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    const notes = (callData.comments || []).map((c: any) => c.body).filter(Boolean).join('\n');
-
-    const row = {
-      aircall_id: callData.id,
-      direction: callData.direction,
-      status: callData.status || callData.missed_call_reason || 'unknown',
-      started_at: callData.started_at ? new Date(callData.started_at * 1000).toISOString() : null,
-      answered_at: callData.answered_at ? new Date(callData.answered_at * 1000).toISOString() : null,
-      ended_at: callData.ended_at ? new Date(callData.ended_at * 1000).toISOString() : null,
-      duration: callData.duration || 0,
-      raw_number: contactNumber,
-      caller_name: callData.direction === 'inbound'
-        ? [callData.contact?.first_name, callData.contact?.last_name].filter(Boolean).join(' ')
-        : callData.user?.name,
-      caller_number: callData.direction === 'inbound' ? contactNumber : null,
-      callee_name: callData.direction === 'outbound'
-        ? [callData.contact?.first_name, callData.contact?.last_name].filter(Boolean).join(' ')
-        : callData.user?.name,
-      callee_number: callData.direction === 'outbound' ? contactNumber : null,
-      recording_url: callData.recording || null,
-      voicemail_url: callData.voicemail || null,
-      tags: (callData.tags || []).map((t: any) => t.name),
-      notes: notes || null,
-      user_name: callData.user?.name || null,
-      user_email: callData.user?.email || null,
-      matched_candidate_phone: normalizedContact || null,
-      matched_airtable_candidate_id: matchedAirtableId,
-      raw_data: callData,
-      synced_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase
-      .from('aircall_calls')
-      .upsert(row, { onConflict: 'aircall_id' });
-
+    const { data: result, error } = await supabase.rpc('record_phone_call', {
+      p_organization_id: organizationId,
+      p_provider: 'aircall',
+      p_external_id: mapped.externalId,
+      p_event_at: mapped.eventAt,
+      p_call: mapped.call,
+    });
     if (error) throw error;
 
-    // ── Fire-and-forget RAG ingestion (call notes) ──
-    if (notes && matchedAirtableId) {
-      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-      if (supabaseUrl && serviceKey) {
-        // Find org for this candidate
-        const { data: orgData } = await supabase
-          .from('airtable_candidates')
-          .select('organization_id')
-          .eq('airtable_id', matchedAirtableId)
-          .maybeSingle();
+    // Au mieux : l'écran des réglages montre le dernier événement reçu.
+    const { error: touchError } = await supabase
+      .from('telephony_connections')
+      .update({ last_event_at: new Date().toISOString() })
+      .eq('organization_id', organizationId)
+      .eq('provider', 'aircall');
+    if (touchError) console.warn('[aircall-webhook] last_event_at non mis à jour:', touchError.message);
 
-        if (orgData?.organization_id) {
-          await fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              organization_id: orgData.organization_id,
-              entity_type: 'candidate',
-              entity_id: matchedAirtableId,
-              chunks: [{
-                chunk_type: 'call_transcript',
-                content: `Notes d'appel Aircall:\n${notes}`,
-                source_table: 'aircall_calls',
-                source_id: String(callData.id),
-                metadata: {
-                  date: row.started_at || new Date().toISOString(),
-                  duration: callData.duration || 0,
-                  direction: callData.direction || '',
-                },
-              }],
-            }),
-          }).catch(err => console.warn('[aircall-webhook] RAG ingest failed (non-blocking):', err));
-        }
-      }
-    }
-
-    return new Response(JSON.stringify({ ok: true, aircall_id: callData.id, matched: !!matchedAirtableId }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({ ok: true, result });
   } catch (err) {
-    console.error('aircall-webhook error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    // 500 : Aircall rejoue l'événement, record_phone_call est rejouable.
+    console.error('[aircall-webhook] erreur:', (err as { message?: string })?.message ?? err);
+    return json({ error: 'Internal error' }, 500);
   }
 });
-
-function normalizePhone(phone: string): string | null {
-  if (!phone) return null;
-  let cleaned = phone.replace(/[^\d+]/g, '');
-  if (cleaned.startsWith('0') && cleaned.length === 10) {
-    cleaned = '+33' + cleaned.slice(1);
-  }
-  if (cleaned.startsWith('33') && !cleaned.startsWith('+')) {
-    cleaned = '+' + cleaned;
-  }
-  return cleaned || null;
-}

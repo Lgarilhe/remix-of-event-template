@@ -30,7 +30,7 @@ interface FilteredResultsOptions {
 }
 
 // Rehydrate a LinkedInProfile from stored DB data
-function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _fromPool?: boolean } {
+export function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _fromPool?: boolean } {
   const data = status.linkedin_profile_data as Record<string, any> | null;
   return {
     id: status.candidate_id,

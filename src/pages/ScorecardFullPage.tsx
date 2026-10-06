@@ -29,8 +29,11 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ATSCandidate } from '@/hooks/useATSData';
+import { isGeneralStage } from '@/lib/candidateStage';
+import { atsColumnOf } from '@/lib/stageDisplay';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { CONTRACT_TYPE_LABELS, type JobDetails } from '@/types/jobDetails';
+import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, type JobDetails } from '@/types/jobDetails';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { aiRecommendationMeta, hiringVerdictMeta } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
 
@@ -85,7 +88,8 @@ interface JobSidebarDetails {
   location: string | null;
   seniority: string | null;
   contractType: string | null;
-  remote: boolean;
+  /** Mode de travail en mot (« Hybride »), jamais un booléen. */
+  remote: string | null;
   mustHave: string[];
   description: string | null;
 }
@@ -94,6 +98,9 @@ export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
   const [searchParams] = useSearchParams();
   const autoCoaching = searchParams.get('coaching') === '1';
+  // Mission de la fiche d'où l'on vient (?mission=) : un candidat présent dans
+  // deux missions garde le poste, les étapes et la grille de celle-ci.
+  const missionParam = missionIdOfJob(searchParams.get('mission')) ?? null;
   const navigate = useNavigate();
   const location = useLocation();
   const sidebarId = useId();
@@ -119,13 +126,18 @@ export default function ScorecardFullPage() {
     let cancelled = false;
     const load = async () => {
       setLoadState('loading');
-      const { data, error } = await supabase
-        .from('job_candidate_status')
-        .select('*')
-        .eq('candidate_id', candidateId)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const readRow = (mission: string | null) => {
+        let rowQuery = supabase
+          .from('job_candidate_status')
+          .select('*')
+          .eq('candidate_id', candidateId);
+        if (mission) rowQuery = rowQuery.eq('project_id', mission);
+        return rowQuery.order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      };
+      let { data, error } = await readRow(missionParam);
+      // Une ancienne mission porte un job_id, pas un project_id : sans ligne pour
+      // la mission demandée, repli sur la ligne la plus récente du candidat.
+      if (!error && !data && missionParam) ({ data, error } = await readRow(null));
 
       if (cancelled) return;
       if (error) {
@@ -138,8 +150,36 @@ export default function ScorecardFullPage() {
         return;
       }
 
+      // Ligne canonique du groupe de doublons (vue mission_candidate_rows), comme la
+      // fiche d'origine : étape, étape d'entretien, note et détail de la note. Sans
+      // mission, ou si la vue ne rend rien, la ligne lue plus haut reste la source.
+      let canon: {
+        id: string | null;
+        general_stage: string | null;
+        pipeline_stage: string | null;
+        process_step_id: string | null;
+        stage_entered_at: string | null;
+        score: number | null;
+        recommendation: string | null;
+        scoring_details: unknown;
+      } | null = null;
+      if (data.project_id && data.organization_id) {
+        const { data: viewRow, error: viewError } = await supabase
+          .from('mission_candidate_rows')
+          .select('id, general_stage, pipeline_stage, process_step_id, stage_entered_at, score, recommendation, scoring_details')
+          .eq('organization_id', data.organization_id)
+          .eq('project_id', data.project_id)
+          .eq('candidate_id', data.candidate_id)
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (viewError) console.warn('[ScorecardFullPage] ligne canonique illisible, ligne la plus récente utilisée :', viewError);
+        else canon = viewRow;
+      }
+      const src = canon ?? data;
+
       const c: ATSCandidate = {
-        id: data.id,
+        id: src.id ?? data.id,
         candidateId: data.candidate_id,
         name: data.candidate_name || 'Candidat',
         email: null,
@@ -147,36 +187,43 @@ export default function ScorecardFullPage() {
         linkedin: data.linkedin_profile_url || null,
         headline: data.candidate_headline || null,
         expertise: [],
-        stage: data.pipeline_stage || 'Nouveau',
+        // Colonne du /pipeline tirée de l'étape générale (lot 0c-4), jamais
+        // pipeline_stage brut (identifiant d'étape d'entretien, clé de mission).
+        stage: atsColumnOf(src),
+        generalStage: isGeneralStage(src.general_stage) ? src.general_stage : null,
+        processStepId: src.process_step_id,
+        stageEnteredAt: src.stage_entered_at,
+        projectId: data.project_id,
         entity: null,
         source: 'local',
-        sourceId: data.id,
+        sourceId: src.id ?? data.id,
         jobId: data.job_id,
         jobTitle: null,
         lastActivity: data.updated_at,
         createdAt: data.created_at,
-        score: data.score,
-        recommendation: data.recommendation,
-        scoringDetails: data.scoring_details as unknown as ATSCandidate['scoringDetails'],
+        score: src.score,
+        recommendation: src.recommendation,
+        scoringDetails: src.scoring_details as unknown as ATSCandidate['scoringDetails'],
         linkedinProfileData: data.linkedin_profile_data,
         tags: data.tags || [],
       };
 
       let job: JobSidebarDetails | null = null;
       if (data.project_id || data.job_id) {
-        // Mission par project_id (rempli depuis les deux formes de job_id),
-        // job_id en repli pour les anciennes missions.
+        // Mission par son id, job_id en repli pour les anciennes missions.
         const projQuery = supabase
           .from('sourcing_projects')
-          .select('job_title, client_name, description, job_details');
-        const { data: proj } = await (data.project_id
-          ? projQuery.eq('id', data.project_id)
-          : projQuery.eq('job_id', data.job_id))
+          .select('name, job_title, client_name, description, job_details');
+        const { data: proj, error: projError } = await (data.project_id
+          ? projQuery.or(`id.eq.${data.project_id},job_id.eq.${data.project_id}`)
+          : projQuery.eq('job_id', data.job_id as string))
           .limit(1)
           .maybeSingle();
-        if (proj?.job_title) c.jobTitle = proj.job_title;
+        if (projError) console.error('[ScorecardFullPage] mission illisible :', projError);
         if (proj) {
           const jd: JobDetails = (proj.job_details as JobDetails | null) ?? {};
+          // Intitulé : titre du brief, puis poste, puis nom de la mission.
+          c.jobTitle = jd.title || proj.job_title || proj.name || null;
           const clientName = jd.client?.name || proj.client_name;
           job = {
             title: jd.title || proj.job_title || null,
@@ -184,7 +231,7 @@ export default function ScorecardFullPage() {
             location: jd.location || null,
             seniority: jd.seniority || null,
             contractType: jd.contract_type ? (CONTRACT_TYPE_LABELS[jd.contract_type] || jd.contract_type) : null,
-            remote: jd.remote_policy === 'full_remote',
+            remote: jd.remote_policy ? (REMOTE_LABELS[jd.remote_policy] ?? null) : null,
             mustHave: jd.skills_must_have || [],
             description: jd.mission_description || jd.context || proj.description || null,
           };
@@ -204,7 +251,7 @@ export default function ScorecardFullPage() {
     return () => {
       cancelled = true;
     };
-  }, [candidateId, reloadTick]);
+  }, [candidateId, missionParam, reloadTick]);
 
   const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
     if (!candidate?.linkedinProfileData) return null;
@@ -348,7 +395,7 @@ export default function ScorecardFullPage() {
           {backButton}
 
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} size={32} />
+            <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} candidateId={candidateId} size={32} />
             <div className="min-w-0 flex-1">
               <p className="eyebrow hidden leading-none sm:block">Grille d'entretien</p>
               <h1 className="truncate text-sm font-semibold sm:text-md">
@@ -451,7 +498,7 @@ export default function ScorecardFullPage() {
           {sidebarTab === 'candidate' ? (
             <div className="min-w-0 space-y-4 p-4">
               <div className="flex items-start gap-3">
-                <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} size={48} />
+                <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} candidateId={candidateId} size={48} />
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-md font-semibold text-foreground">{candidate.name}</h2>
                   {enrichedProfile?.headline && (
@@ -618,7 +665,7 @@ export default function ScorecardFullPage() {
                   {jobDetails.seniority && <Badge variant="outline" className="font-normal">{jobDetails.seniority}</Badge>}
                   {jobDetails.contractType && <Badge variant="outline" className="font-normal">{jobDetails.contractType}</Badge>}
                   {jobDetails.remote && (
-                    <Badge variant="outline" className="font-normal">{`Télétravail\u00a0: ${jobDetails.remote}`}</Badge>
+                    <Badge variant="outline" className="font-normal">{jobDetails.remote}</Badge>
                   )}
                 </div>
               )}

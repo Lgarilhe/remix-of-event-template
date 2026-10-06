@@ -497,6 +497,7 @@ const OverviewTab: React.FC<{
       <EmptyState
         icon={Users}
         title="Aucun candidat pour le moment"
+        headingLevel={2}
         description="Les candidats apparaîtront ici dès que votre recruteur les partagera."
       />
     );
@@ -611,6 +612,7 @@ const PipelineTab: React.FC<{
       <EmptyState
         icon={Briefcase}
         title="Aucune mission partagée"
+        headingLevel={2}
         description="Les missions que votre recruteur partage avec vous apparaîtront ici."
       />
     );
@@ -801,6 +803,7 @@ const CandidatesTab: React.FC<{
       <EmptyState
         icon={Search}
         title="Aucun candidat trouvé"
+        headingLevel={2}
         description="Essayez d'autres mots-clés ou retirez des filtres."
         action={
           <Button variant="outline" onClick={onReset} className="max-md:h-11">

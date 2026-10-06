@@ -16,6 +16,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import type { ProcessStep } from '@/hooks/useMissionProcess';
 import { useMissionInvitations } from '@/hooks/useMissionInvitations';
 import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
@@ -184,11 +186,11 @@ export const StepCard: React.FC<StepCardProps> = ({
               const val = e.target.value.trim();
               if (val && val !== step.name) onUpdate({ id: step.id, name: val });
             }}
-            className="text-[14px] font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 min-w-0 max-w-[60%] sm:max-w-none"
+            className="text-md font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 min-w-0 max-w-[60%] sm:max-w-none"
           />
           {/* Format pill — toujours visible en collapsed */}
           <span
-            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+            className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
             title="Format"
           >
             <span>{getFormatLabel(step.meeting_format)}</span>
@@ -197,14 +199,14 @@ export const StepCard: React.FC<StepCardProps> = ({
 
         <div className="flex items-center gap-2 shrink-0">
           {step.is_eliminatory && (
-            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }}>
+            <span className="hidden sm:inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }}>
               <Zap className="w-2.5 h-2.5" /> Éliminatoire
             </span>
           )}
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
             <Clock className="w-3 h-3" /> {step.duration_minutes}min
           </span>
-          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="hidden sm:inline-flex items-center gap-1 text-2xs text-muted-foreground">
             <User className="w-3 h-3" /> {step.interviewer_name || INTERVIEWER_TYPE_LABELS[step.interviewer_type]}
           </span>
           <button onClick={() => setExpanded(!expanded)} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" aria-label={expanded ? 'Réduire' : 'Développer'}>
@@ -221,7 +223,7 @@ export const StepCard: React.FC<StepCardProps> = ({
         <div className="px-4 pb-4 pt-3 border-t border-border/50 space-y-4 bg-muted/20">
           {/* Description */}
           <div className="space-y-1">
-            <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Description</label>
+            <label className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">Description</label>
             <input
               defaultValue={step.description || ''}
               onBlur={(e) => onUpdate({ id: step.id, description: e.target.value || null })}
@@ -233,7 +235,7 @@ export const StepCard: React.FC<StepCardProps> = ({
           {/* Row: duration, type, interviewer, eliminatory */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Durée (min)</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Durée (min)</label>
               <input
                 type="number"
                 defaultValue={step.duration_minutes}
@@ -242,7 +244,7 @@ export const StepCard: React.FC<StepCardProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Réalisé par</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Réalisé par</label>
               <select
                 value={step.interviewer_type}
                 onChange={(e) => onUpdate({ id: step.id, interviewer_type: e.target.value as any })}
@@ -254,7 +256,7 @@ export const StepCard: React.FC<StepCardProps> = ({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Interviewer</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Interviewer</label>
               <input
                 defaultValue={step.interviewer_name || ''}
                 onBlur={(e) => onUpdate({ id: step.id, interviewer_name: e.target.value || null })}
@@ -263,7 +265,7 @@ export const StepCard: React.FC<StepCardProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Éliminatoire</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Éliminatoire</label>
               <button
                 onClick={() => onUpdate({ id: step.id, is_eliminatory: !step.is_eliminatory })}
                 className={cn(
@@ -281,7 +283,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
           {/* Format de l'entretien — visio / téléphone / présentiel */}
           <div className="space-y-2 pt-1">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Format de l'entretien
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -301,11 +303,11 @@ export const StepCard: React.FC<StepCardProps> = ({
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="text-base">{opt.emoji}</span>
-                      <span className={cn('text-[12px] font-semibold', !isActive && 'text-muted-foreground')}>
+                      <span className={cn('text-xs font-semibold', !isActive && 'text-muted-foreground')}>
                         {opt.label}
                       </span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground/70">{opt.desc}</span>
+                    <span className="text-2xs text-muted-foreground/70">{opt.desc}</span>
                   </button>
                 );
               })}
@@ -314,7 +316,7 @@ export const StepCard: React.FC<StepCardProps> = ({
             {/* Sub-options selon le format */}
             {(step.meeting_format || 'video') === 'video' && (
               <div className="mt-2 pl-1 space-y-2 konekt-fade-up">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                   Outil de visio
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -326,7 +328,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                         type="button"
                         onClick={() => onUpdate({ id: step.id, meeting_provider: prov.value })}
                         className={cn(
-                          'flex items-center gap-1.5 px-2.5 py-2 rounded-md border text-[11.5px] font-medium transition-colors',
+                          'flex items-center gap-1.5 px-2.5 py-2 rounded-md border text-2xs font-medium transition-colors',
                           isActive
                             ? 'border-foreground/40 bg-background text-foreground'
                             : 'border-border bg-background/40 text-muted-foreground hover:bg-background hover:text-foreground',
@@ -349,7 +351,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                   />
                 )}
                 {step.meeting_provider && step.meeting_provider !== 'other' && (
-                  <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+                  <p className="text-2xs text-muted-foreground inline-flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3" />
                     Le lien {PROVIDER_OPTIONS.find(p => p.value === step.meeting_provider)?.label} sera généré automatiquement à chaque entretien planifié.
                   </p>
@@ -359,7 +361,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
             {step.meeting_format === 'onsite' && (
               <div className="mt-2 pl-1 space-y-1.5 konekt-fade-up">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                   Adresse (optionnel)
                 </label>
                 <input
@@ -368,14 +370,14 @@ export const StepCard: React.FC<StepCardProps> = ({
                   placeholder="Ex: 12 rue de Paris, 75002 — bureaux client"
                   className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
                 />
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   L'adresse sera incluse dans l'invitation calendar du candidat.
                 </p>
               </div>
             )}
 
             {step.meeting_format === 'phone' && (
-              <p className="text-[11px] text-muted-foreground pl-1 konekt-fade-up">
+              <p className="text-2xs text-muted-foreground pl-1 konekt-fade-up">
                 Le numéro de téléphone du candidat sera utilisé. L'interviewer recevra le numéro dans son invitation calendar.
               </p>
             )}
@@ -383,7 +385,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
           {/* Objectives */}
           <div className="space-y-1.5">
-            <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Objectifs</label>
+            <label className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">Objectifs</label>
             <div className="flex flex-wrap gap-1.5">
               {step.objectives.map((obj, i) => (
                 <span key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/50 border border-border text-xs font-medium text-foreground">
@@ -435,11 +437,20 @@ interface MissionTeamSectionProps {
   projectName: string;
   onAdd: (input: { user_id: string; role: string }) => Promise<any>;
   onRemove: (id: string) => Promise<any>;
+  /**
+   * Nouvelle page mission : sans filet ni en-tête « Équipe mission (n) », la
+   * section qui l'accueille porte son titre. Défaut : rendu d'aujourd'hui.
+   */
+  embedded?: boolean;
+  /** Libellés des rôles (liste et menu d'assignation). Défaut : ceux d'aujourd'hui. */
+  roleLabels?: Record<string, string>;
 }
 
 export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   team, loadingTeam, readOnly, getMemberName, getTeamMemberName, isExternalMember, orgMembers, projectId, projectName, onAdd, onRemove,
+  embedded = false, roleLabels,
 }) => {
+  const roleLabel = (role: string) => roleLabels?.[role] || ROLE_LABELS[role] || role;
   const { invitations, sendInvitation, isSending, cancelInvitation } = useMissionInvitations(projectId);
   const [showAssign, setShowAssign] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -450,6 +461,21 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
 
   const assignedIds = new Set(team.map((m: any) => m.user_id));
   const availableMembers = orgMembers.filter(m => !assignedIds.has(m.user_id));
+  const canAssign = !readOnly && availableMembers.length > 0 && !showAssign;
+  const memberName = (userId: string) => getTeamMemberName(userId, getMemberName(userId));
+
+  // Rendu `embedded` (nouvelle page mission, design simplifié du 04/10/2026) : « Assigner » est un bouton discret.
+  const assignButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => setShowAssign(true)}
+      className="-ml-3 text-muted-foreground hover:text-foreground max-sm:min-h-11"
+    >
+      <Plus aria-hidden="true" /> Assigner
+    </Button>
+  );
 
   const handleAssign = async () => {
     if (!selectedUserId) return;
@@ -463,31 +489,37 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   };
 
   return (
-    <div className="mt-6 pt-6 border-t border-border">
+    <div className={embedded ? undefined : 'mt-6 pt-6 border-t border-border'}>
+      {!embedded && (
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+          <h3 className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
             Équipe mission ({team.length})
           </h3>
         </div>
-        {!readOnly && availableMembers.length > 0 && !showAssign && (
+        {canAssign && (
           <button
             onClick={() => setShowAssign(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
           >
             <Plus className="w-3 h-3" /> Assigner
           </button>
         )}
       </div>
+      )}
 
       {/* Assign form */}
       {showAssign && (
-        <div className="flex items-center gap-2 mb-4">
+        <div className={cn('flex items-center gap-2 mb-4', embedded && 'flex-wrap')}>
           <select
+            aria-label={embedded ? 'Membre à assigner' : undefined}
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
-            className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
+            className={cn(
+              'flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors',
+              embedded && 'max-sm:h-11',
+            )}
           >
             <option value="">Sélectionner un membre...</option>
             {availableMembers.map((m: any) => (
@@ -497,25 +529,35 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
-            className="h-9 px-3 rounded-lg text-[12px] font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
+            aria-label={embedded ? 'Rôle dans la mission' : undefined}
+            className={cn(
+              'h-9 px-3 rounded-lg text-xs font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10',
+              embedded && 'text-sm font-normal max-sm:h-11',
+            )}
           >
-            <option value="lead">Lead</option>
-            <option value="sourcer">Sourcer</option>
-            <option value="account_manager">Account Manager</option>
-            <option value="reviewer">Reviewer</option>
+            <option value="lead">{roleLabels?.lead || 'Lead'}</option>
+            <option value="sourcer">{roleLabels?.sourcer || 'Sourcer'}</option>
+            <option value="account_manager">{roleLabels?.account_manager || 'Account Manager'}</option>
+            <option value="reviewer">{roleLabels?.reviewer || 'Reviewer'}</option>
           </select>
           <button
             onClick={handleAssign}
             disabled={!selectedUserId}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
+            className={cn(
+              'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm',
+              embedded && 'rounded-lg bg-transparent text-sm font-semibold text-foreground shadow-none hover:bg-accent max-sm:min-h-11',
+            )}
           >
-            OK
+            {embedded ? 'Assigner' : 'OK'}
           </button>
           <button
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label={embedded ? 'Annuler' : undefined}
+            className={embedded
+              ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11'
+              : 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-2xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'}
           >
-            ×
+            {embedded ? <X className="h-4 w-4" aria-hidden="true" /> : '×'}
           </button>
         </div>
       )}
@@ -525,35 +567,57 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <div className="w-4 h-4 rounded-full border-2 border-border border-t-foreground animate-spin" />
         </div>
       ) : team.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
+        embedded ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-sm text-muted-foreground">Aucun membre assigné à cette mission.</p>
+            {canAssign && assignButton}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
+        )
       ) : (
-        <div className="space-y-2">
+        <div className={embedded ? 'flex flex-col' : 'space-y-2'}>
           {team.map((member: any) => (
-            <div key={member.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-card">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                <User className="w-4 h-4 text-muted-foreground" />
-              </div>
+            <div
+              key={member.id}
+              className={embedded
+                ? 'group flex items-center gap-3 border-t border-border py-2 first:border-t-0 max-sm:min-h-11'
+                : 'flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-card'}
+            >
+              {embedded ? (
+                <PersonAvatar name={memberName(member.user_id)} size={32} />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
-                  {getTeamMemberName(member.user_id, getMemberName(member.user_id))}
+                  {memberName(member.user_id)}
                 </p>
               </div>
-              <span className="px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50">
-                {ROLE_LABELS[member.role] || member.role}
+              <span className={embedded
+                ? 'text-sm text-muted-foreground'
+                : 'px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50'}>
+                {roleLabel(member.role)}
               </span>
               {!readOnly && !isExternalMember(member.user_id) && (
                 <button
                   onClick={() => setRemoveTarget({
                     id: member.id,
-                    name: getTeamMemberName(member.user_id, getMemberName(member.user_id)),
+                    name: memberName(member.user_id),
                   })}
-                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  aria-label={embedded ? `Retirer ${memberName(member.user_id)} de l'équipe` : undefined}
+                  className={embedded
+                    ? 'grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-opacity duration-150 hover:bg-accent hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none'
+                    : 'text-muted-foreground hover:text-destructive transition-colors shrink-0'}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className={embedded ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
                 </button>
               )}
             </div>
           ))}
+          {embedded && canAssign && <div className="border-t border-border pt-1">{assignButton}</div>}
         </div>
       )}
 
@@ -563,13 +627,13 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
       {!readOnly && (!MARKETPLACE_FROZEN || invitations.length > 0) && (
         <div className="mt-4 pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+            <p className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
               Invitations externes ({invitations.filter(i => i.status === 'pending').length} en attente)
             </p>
             {!showInvite && !MARKETPLACE_FROZEN && (
               <button
                 onClick={() => setShowInvite(true)}
-                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
               >
                 <Mail className="w-3 h-3" /> Inviter par email
               </button>
@@ -577,7 +641,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           </div>
 
           {MARKETPLACE_FROZEN && (
-            <p className="text-[11px] text-muted-foreground mb-3">
+            <p className="text-2xs text-muted-foreground mb-3">
               L'invitation de recruteurs partenaires n'est pas encore disponible.
             </p>
           )}
@@ -610,7 +674,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                   }
                 }}
                 disabled={!inviteEmail.trim() || isSending}
-                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
+                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
               >
                 {isSending ? 'Envoi...' : 'Inviter'}
               </button>

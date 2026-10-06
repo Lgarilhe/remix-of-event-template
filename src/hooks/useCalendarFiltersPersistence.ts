@@ -1,6 +1,6 @@
 /**
  * useCalendarFiltersPersistence — persiste les filtres du calendrier dans
- * localStorage par user (comme `useDashboardLayout`).
+ * localStorage par user.
  *
  * Expose aussi la gestion de **presets** nommés : "Mes entretiens semaine",
  * "Tous les Calendly", etc. L'user sauvegarde son set de filtres + lui

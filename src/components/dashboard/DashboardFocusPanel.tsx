@@ -1,168 +1,215 @@
 /**
- * DashboardFocusPanel — « Pour aujourd'hui » : ce qui demande une action.
+ * DashboardFocusPanel — le haut de « À faire » : ce qui attend une action.
  *
- * Quatre tuiles neutres qui mènent chacune à l'écran où l'on agit. Un chiffre
- * nul reste discret, un chiffre non nul passe en texte principal avec un point
- * d'accent : l'accent signale ce qui attend, pas la catégorie
- * (docs/design/01-direction.md, § 2). Un compteur inconnu s'écrit « – ».
+ * Une ligne par signal, seulement s'il demande quelque chose (design simplifié,
+ * docs/design/06-simplicite.md) : compte LinkedIn à reconnecter, réponses à
+ * lire, candidats qui attendent votre réponse, candidats qui n'avancent plus.
+ * Chaque ligne : une pastille d'icône (qui bouge quand quelque chose attend),
+ * une phrase, les visages des personnes concernées, et un bouton discret où l'on agit.
+ * Les lignes sont posées sur une carte ; la panne LinkedIn, qui arrête les envois,
+ * a son propre bandeau texturé (texturedCard) et son bouton plein.
+ *
+ * Un compteur inconnu (number | null) ne disparaît pas : sa ligne dit
+ * « Chargement » ou « Indisponible », jamais un zéro inventé.
  */
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, MessageCircle, Bell, UserCheck, CheckCircle2, type LucideIcon } from 'lucide-react';
+import { MessageCircle, Unplug } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { IconTile } from '@/components/ui/IconTile';
+import { AvatarStack } from '@/components/ui/person-avatar';
+import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { texturedCard } from '@/components/layout/texturedCard';
+import { plural } from '@/lib/plural';
 
-export interface FocusItem {
-  key: string;
-  label: string;
-  /** null : inconnu (chargement ou lecture en échec), affiché « – ». */
-  count: number | null;
-  description: string;
-  icon: LucideIcon;
-  href: string;
+export interface FocusPerson {
+  name: string;
+  src?: string | null;
+  /** Identifiant du candidat : sa copie privée de photo passe avant `src`. */
+  candidateId?: string | null;
 }
 
 interface DashboardFocusPanelProps {
+  /** Compte LinkedIn de l'utilisateur en erreur : les envois sont en pause. */
+  linkedinIssue?: boolean;
   /** Réponses de candidats comptées par la barre latérale ; null tant qu'inconnu. */
   unreadMessages: number | null;
   /** Lecture des réponses en échec ou hors ligne, sans donnée : « Indisponible » au lieu de « Chargement ». */
   unreadMessagesUnavailable?: boolean;
-  /** null : lecture des candidats en échec. */
-  stagnantCandidates: number | null;
-  /** null : lecture des tâches en échec. */
-  remindersToday: number | null;
+  unreadPeople?: FocusPerson[];
   /** null : lecture des candidats en échec. */
   pendingResponses: number | null;
+  pendingPeople?: FocusPerson[];
+  /** null : lecture des candidats en échec. */
+  stagnantCandidates: number | null;
+  stagnantPeople?: FocusPerson[];
   isLoading?: boolean;
 }
 
-const FocusTile: React.FC<{ item: FocusItem }> = ({ item }) => {
-  const pending = (item.count ?? 0) > 0;
-  const Icon = item.icon;
+interface SignalRowProps {
+  tile: React.ReactNode;
+  title: string;
+  description: string;
+  people?: FocusPerson[];
+  total?: number;
+  action?: { label: string; href: string };
+  /** Bandeau texturé chaud (blocage) à la place d'une ligne de liste : l'accueil en porte un seul à la fois. */
+  texture?: 'warm';
+}
+
+// Sur téléphone, les visages et le lien passent sous la phrase, alignés sur elle.
+const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people, total, action, texture }) => {
+  const Root = texture ? 'div' : 'li';
   return (
-    <Link
-      to={item.href}
-      className="interactive-card flex flex-col rounded-xl border border-border bg-card p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-    >
-      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className="truncate">{item.label}</span>
-        {pending && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />}
-      </span>
-      <span
-        className={cn(
-          'mt-3 text-2xl font-semibold tabular-nums leading-none',
-          pending ? 'text-foreground' : 'text-muted-foreground',
+    <Root className={texture ? texturedCard(texture, 'flex items-start gap-3.5 rounded-xl px-4 py-4 sm:items-center sm:px-5') : 'flex items-start gap-3.5 py-4 sm:items-center'}>
+      {tile}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-md font-medium text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+        {(people?.length || action) && (
+          <div className="flex items-center gap-4">
+            {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} ringClassName="ring-card" />}
+            {action && (
+              <Button
+                asChild
+                variant={texture ? 'primary' : 'secondary'}
+                size="sm"
+                className={texture ? 'min-h-11 md:min-h-0' : 'min-h-11 min-w-11 md:min-h-0 md:min-w-0'}
+              >
+                <Link to={action.href}>{action.label}</Link>
+              </Button>
+            )}
+          </div>
         )}
-      >
-        {item.count === null ? '–' : item.count}
-      </span>
-      <span className="mt-1.5 truncate text-xs text-muted-foreground">{item.description}</span>
-    </Link>
+      </div>
+    </Root>
   );
 };
 
+/** Ligne d'un compteur inconnu : jamais de chiffre, l'état de la lecture. */
+const UnknownRow: React.FC<{ title: string; unavailable: boolean }> = ({ title, unavailable }) => (
+  <li className="flex items-center justify-between gap-6 py-4">
+    <p className="text-md text-muted-foreground">{title}</p>
+    <p className="text-sm text-muted-foreground">{unavailable ? 'Indisponible' : 'Chargement'}</p>
+  </li>
+);
+
 export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
+  linkedinIssue = false,
   unreadMessages,
   unreadMessagesUnavailable = false,
-  stagnantCandidates,
-  remindersToday,
+  unreadPeople,
   pendingResponses,
+  pendingPeople,
+  stagnantCandidates,
+  stagnantPeople,
   isLoading,
 }) => {
-  const items: FocusItem[] = [
-    {
-      key: 'unread',
-      label: 'Réponses non lues',
-      count: unreadMessages,
-      description:
-        unreadMessages === null
-          ? unreadMessagesUnavailable ? 'Indisponible' : 'Chargement'
-          : unreadMessages > 0 ? 'À lire dans la messagerie' : 'Messagerie à jour',
-      icon: MessageCircle,
-      href: '/inbox',
-    },
-    {
-      key: 'pending',
-      label: 'Candidats à relancer',
-      count: pendingResponses,
-      description:
-        pendingResponses === null ? 'Indisponible'
-          : pendingResponses > 0 ? 'Ont répondu, en attente de votre retour' : 'Aucune relance en attente',
-      icon: UserCheck,
-      href: '/pipeline',
-    },
-    {
-      key: 'stagnant',
-      label: 'Candidats stagnants',
-      count: stagnantCandidates,
-      description:
-        stagnantCandidates === null ? 'Indisponible'
-          : stagnantCandidates > 0 ? 'Au-delà du délai prévu pour leur étape' : 'Aucun candidat en retard',
-      icon: AlertTriangle,
-      href: '/pipeline?view=analytics',
-    },
-    {
-      key: 'reminders',
-      label: 'Tâches du jour',
-      count: remindersToday,
-      description:
-        remindersToday === null ? 'Indisponible'
-          : remindersToday > 0 ? "À faire aujourd'hui ou en retard" : "Aucune tâche pour aujourd'hui",
-      icon: Bell,
-      href: '/tasks',
-    },
-  ];
-
-  const heading = (
-    <h2 id="dashboard-focus" className="eyebrow mb-3">
-      Pour aujourd'hui
-    </h2>
-  );
-
   if (isLoading) {
     return (
-      <section aria-labelledby="dashboard-focus">
-        {heading}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="status" aria-label="Chargement">
-          {items.map((item) => (
-            <Skeleton key={item.key} className="h-28 rounded-xl" />
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  const total = items.reduce((s, i) => s + (i.count ?? 0), 0);
-
-  // Un compteur inconnu ne permet pas d'annoncer « Tout est à jour ».
-  if (total === 0 && items.every((i) => i.count !== null)) {
-    return (
-      <section aria-labelledby="dashboard-focus">
-        {heading}
-        <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
-          <IconTile icon={CheckCircle2} tone="success" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">Tout est à jour</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Aucune réponse, relance ni tâche en attente : un bon moment pour sourcer ou affiner un brief.
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section aria-labelledby="dashboard-focus">
-      {heading}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {items.map((item) => (
-          <FocusTile key={item.key} item={item} />
+      <div className="space-y-3 py-4" role="status" aria-label="Chargement">
+        {[0, 1].map((i) => (
+          <Skeleton key={i} className="h-14 rounded-xl" />
         ))}
       </div>
-    </section>
+    );
+  }
+
+  const rows: React.ReactNode[] = [];
+
+  // Un blocage des envois est la chose à faire avant toutes les autres : bandeau texturé, au-dessus de la liste.
+  const linkedinBanner = linkedinIssue ? (
+    <SignalRow
+      tile={<IconTile icon={Unplug} tone="default" size="lg" />}
+      title="Compte LinkedIn à reconnecter"
+      description="Les envois sont en pause jusqu'à la reconnexion."
+      action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
+      texture="warm"
+    />
+  ) : null;
+
+  // La bulle qui écrit va à la première ligne de conversation, pas aux deux.
+  let typingUsed = false;
+  const conversationTile = () => {
+    const tile = typingUsed ? (
+      <IconTile icon={MessageCircle} tone="brand" size="lg" />
+    ) : (
+      <IconTile tone="brand" size="lg">
+        <TypingIcon />
+      </IconTile>
+    );
+    typingUsed = true;
+    return tile;
+  };
+
+  if (unreadMessages === null) {
+    rows.push(<UnknownRow key="unread" title="Réponses de candidats" unavailable={unreadMessagesUnavailable} />);
+  } else if (unreadMessages > 0) {
+    rows.push(
+      <SignalRow
+        key="unread"
+        tile={conversationTile()}
+        title={`${plural(unreadMessages, 'réponse')} à lire`}
+        description={unreadMessages > 1 ? 'Des candidats vous ont écrit.' : 'Un candidat vous a écrit.'}
+        people={unreadPeople}
+        total={unreadMessages}
+        action={{ label: 'Lire', href: '/inbox' }}
+      />,
+    );
+  }
+
+  if (pendingResponses === null) {
+    rows.push(<UnknownRow key="pending" title="Candidats qui attendent votre réponse" unavailable />);
+  } else if (pendingResponses > 0) {
+    const many = pendingResponses > 1;
+    rows.push(
+      <SignalRow
+        key="pending"
+        tile={conversationTile()}
+        title={`${plural(pendingResponses, 'candidat')} ${many ? 'attendent' : 'attend'} votre réponse`}
+        description={many ? 'Ils vous ont répondu, sans suite depuis un jour ou plus.' : 'Il vous a répondu, sans suite depuis un jour ou plus.'}
+        people={pendingPeople}
+        total={pendingResponses}
+        action={{ label: 'Répondre', href: '/inbox' }}
+      />,
+    );
+  }
+
+  if (stagnantCandidates === null) {
+    rows.push(<UnknownRow key="stagnant" title="Candidats qui n'avancent plus" unavailable />);
+  } else if (stagnantCandidates > 0) {
+    const many = stagnantCandidates > 1;
+    rows.push(
+      <SignalRow
+        key="stagnant"
+        tile={
+          <IconTile tone="warning" size="lg">
+            <HourglassIcon />
+          </IconTile>
+        }
+        title={`${plural(stagnantCandidates, 'candidat')} ${many ? "n'avancent" : "n'avance"} plus`}
+        description="Au-delà du délai prévu pour leur étape."
+        people={stagnantPeople}
+        total={stagnantCandidates}
+        action={{ label: 'Voir', href: '/pipeline?view=analytics' }}
+      />,
+    );
+  }
+
+  if (rows.length === 0 && !linkedinBanner) return null;
+  return (
+    <div className="space-y-3 pt-3">
+      {linkedinBanner}
+      {rows.length > 0 && (
+        <Card>
+          <ul className="divide-y divide-border px-5">{rows}</ul>
+        </Card>
+      )}
+    </div>
   );
 };

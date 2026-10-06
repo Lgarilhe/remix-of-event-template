@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MessageSquare, CheckCircle2, Star, Zap, Target, Archive, Sparkles, GitBranch } from 'lucide-react';
 import { ProjectEnrollmentInfo } from '@/hooks/useProjectEnrollments';
+import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
 
 interface CardStatusBadgesProps {
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null } | null;
@@ -13,6 +14,8 @@ interface CardStatusBadgesProps {
   isLikelyToRespond?: boolean;
   /** Si le candidat est déjà dans une séquence pour cette mission. */
   enrollmentInfo?: ProjectEnrollmentInfo | null;
+  /** Nouvelle page mission : la note s'affiche en anneau, comme dans le Pipeline. */
+  variant?: 'default' | 'mission-v3';
 }
 
 export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
@@ -21,6 +24,7 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
   jobScore,
   isLikelyToRespond,
   enrollmentInfo,
+  variant = 'default',
 }) => {
   // Mapping statut enrollment → label/couleur. Réutilisé pour le tooltip.
   const enrollmentLabel = enrollmentInfo
@@ -44,6 +48,12 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       ? 'destructive'
       : 'info'
     : null;
+
+  const scoreTitle = jobScore
+    ? jobScore.scoringDepth === 'deep'
+      ? `Score IA complet (profil visité) : ${jobScore.match_score}/100 — ${jobScore.recommendation || ''}`
+      : `Score IA rapide (données de la liste) : ${jobScore.match_score}/100 — l'analyse complète se lance à l'ouverture de la fiche`
+    : undefined;
 
   return (
     <>
@@ -117,7 +127,10 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       )}
       {/* Job Score promu inline (avant : row 4 séparée) — le plus important
           quand un candidat est scoré, doit être visible IMMÉDIATEMENT près du nom */}
-      {jobScore && jobScore.match_score > 0 && (
+      {jobScore && jobScore.match_score > 0 && variant === 'mission-v3' && (
+        <ScorePill score={jobScore.match_score} title={scoreTitle} />
+      )}
+      {jobScore && jobScore.match_score > 0 && variant !== 'mission-v3' && (
         <Badge
           variant="outline"
           className={`text-xs font-bold tabular-nums px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 ${
@@ -127,9 +140,7 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
               ? 'border-warning/40 bg-warning/10 text-warning'
               : 'border-destructive/40 bg-destructive/10 text-destructive'
           }`}
-          title={jobScore.scoringDepth === 'deep'
-            ? `Score IA complet (profil visité) : ${jobScore.match_score}/100 — ${jobScore.recommendation || ''}`
-            : `Score IA rapide (données de la liste) : ${jobScore.match_score}/100 — l'analyse complète se lance à l'ouverture de la fiche`}
+          title={scoreTitle}
         >
           <Target className="w-3 h-3" aria-hidden="true" />
           {jobScore.match_score}

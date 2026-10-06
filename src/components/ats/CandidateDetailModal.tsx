@@ -36,6 +36,7 @@ import { ManualContactsEditor } from './candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMyLinkedInAccountId } from '@/hooks/useMyLinkedInAccountId';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { getCandidateContacts, type CandidateContacts } from '@/lib/candidateContacts';
 import { toast } from 'sonner';
@@ -85,11 +86,15 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const { openAgent } = useAgent();
   const { organizationId } = useOrganization();
+  const myLinkedInAccountId = useMyLinkedInAccountId();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
+  // Compte d'envoi du candidat (séquences, InMails), sinon le compte relié de la
+  // personne : l'onglet Messages et le bouton Séquence existent aussi pour un
+  // candidat contacté à la main.
+  const accountId = fullProfile.accountId || myLinkedInAccountId || undefined;
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [projectNotes, setProjectNotes] = useState<string | null>(null);
 
   // Mobile profile overlay : utile quand la modale rend le ProfileTab dans
   // un onglet (sur mobile l'écran est petit donc on l'ouvre full-screen).
@@ -194,8 +199,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   const enrichLoading = snapshotLoading && !candidateWithProfileData.linkedinProfileData;
 
-  // Load notes + reminders + project notes
+  // Load notes + reminders
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -203,25 +209,23 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false }),
           supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true }),
         ]);
+        if (cancelled) return;
         setNotes(notesData || []);
         setReminders(remindersData || []);
-        if (candidate.jobId) {
-          const { data: projectData } = await supabase
-            .from('sourcing_projects')
-            .select('notes')
-            .eq('job_id', candidate.jobId)
-            .maybeSingle();
-          if (projectData) setProjectNotes(projectData.notes || null);
-        }
-      } finally { setLoading(false); }
+      } catch (err) {
+        console.warn('[CandidateDetailModal] chargement des notes impossible :', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
-    fetchData();
-  }, [candidate.candidateId, candidate.jobId]);
+    void fetchData();
+    return () => { cancelled = true; };
+  }, [candidate.candidateId]);
 
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
+    if (!organizationId) { toast.error('Organisation introuvable. Rechargez la page.'); return; }
     const { error: insertErr } = await supabase.from('candidate_notes').insert({
       candidate_id: candidate.candidateId,
       content, created_by: user.id, organization_id: organizationId,
@@ -244,7 +248,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddReminder = async (title: string, date: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
+    if (!organizationId) { toast.error('Organisation introuvable. Rechargez la page.'); return; }
     const { error: insertErr } = await supabase.from('candidate_reminders').insert({
       candidate_id: candidate.candidateId, candidate_name: candidate.name,
       job_id: candidate.jobId,
@@ -271,7 +275,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
-      if (!organizationId) throw new Error('organisation introuvable, recharge la page');
+      if (!organizationId) throw new Error('Organisation introuvable. Rechargez la page.');
       const { data: tokenData, error: insertError } = await supabase
         .from('candidate_portal_tokens')
         .insert({
@@ -391,7 +395,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       icon: MessageSquare,
       content: (
         <CardMessageThread
-          accountId={fullProfile.accountId || undefined}
+          accountId={accountId}
           profileId={candidate.candidateId}
           profileName={candidate.name}
           projectId={missionIdOfJob(candidate.jobId)}
@@ -442,7 +446,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
-    reminders, loading, activeRemindersCount, openAgent, organizationId,
+    reminders, loading, activeRemindersCount, openAgent, organizationId, accountId,
   ]);
 
   return (
@@ -451,19 +455,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
       selectedJob={null}
-      accountId={fullProfile.accountId || undefined}
+      accountId={accountId}
       airtableMatch={fullProfile.airtableMatch}
       pipelineMeta={{
         stage: candidate.stage,
         stageOptions: stageOptions ?? ATS_STAGES.map(s => ({ key: s.key, label: s.label })),
         onStageChange: (newStage) => onStageChange(candidate.id, newStage),
         score: candidate.score,
-        onScoreClick: () => {
-          // Switch sur l'onglet Évaluation (handled par CardExpandedContent
-          // via defaultValue, pas de programmatic switch ici — on pourrait
-          // exposer un setActiveTab plus tard si besoin).
-          toast.info("Voir l'onglet Évaluation");
-        },
+        // Pas de onScoreClick : la note de l'en-tête ouvre elle-même l'onglet Évaluation.
         tags: candidate.tags || [],
         onTagsChange: (tags) => onTagsChange?.(candidate.id, tags),
         onCreatePortalLink: handleCreatePortalLink,

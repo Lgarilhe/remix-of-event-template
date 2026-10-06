@@ -326,13 +326,22 @@ test('0b-2a : RGPD (effacement, purge, export) et lecture du /pipeline', () => {
   const erase = topLevelBody(contact, 'export async function recordGdprErasure(');
   assert.match(erase, /\.from\('mission_conversations'\)\.delete\(\)\.in\('candidate_id', batch\)/);
   assert.match(erase, /\.update\(\{ reply_summary: null \}\)/);
-  assert.doesNotMatch(erase.slice(erase.indexOf('// 9.')), /\bstatus:|pipeline_stage:/);
+  const step9 = erase.indexOf('// 9.');
+  const step10 = erase.indexOf('// 10.');
+  assert.ok(step9 > 0 && step10 > step9, 'étapes 9 puis 10');
+  assert.doesNotMatch(erase.slice(step9, step10), /\bstatus:|pipeline_stage:/);
+  // Étape 10 (copies privées des photos, lot P du design simplifié) : seul l'état
+  // de candidate_photos est écrit, jamais l'étape ni le couple du pipeline.
+  assert.match(erase.slice(step10), /\.from\('candidate_photos'\)\.upsert\(/);
+  assert.doesNotMatch(erase.slice(step10), /pipeline_stage:|\.from\('job_candidate_status'\)\s*\.(update|upsert|insert|delete)\(/);
   assert.match(read('supabase/functions/rgpd-purge/index.ts'), /\.from\("mission_conversations"\)\s*\.delete\(\)/);
   assert.match(read('supabase/functions/export-org-data/index.ts'), /\.from\("mission_conversations"\)/);
-  const ats = read('src/pages/ATS.tsx');
-  const display = topLevelBody(ats, 'function displayStage(');
-  assert.match(display, /if \(PROCESS_STEP_ID\.test\(stage\)\) return 'ITW en cours';/);
-  assert.match(display, /if \(stage === 'hired'\) return 'Gagné';/);
+  // Lot 0c-4 : plus de displayStage dans ATS.tsx ; la colonne vient de l'étape
+  // générale par atsColumnOf (src/lib/stageDisplay.ts).
+  assert.doesNotMatch(read('src/pages/ATS.tsx'), /function displayStage\(/);
+  const stageDisplay = read('src/lib/stageDisplay.ts');
+  assert.match(stageDisplay, /interviewing: 'ITW en cours',/);
+  assert.match(stageDisplay, /hired: 'Gagné',/);
 });
 
 test('0b-2a : marqueur de build dans X-Client-Info (même clé que supabase-js)', () => {
@@ -622,7 +631,7 @@ const CANDIDATE_STAGE = 'src/lib/candidateStage.ts';
 const STAGE_WRITE_WHITELIST = [
   {
     id: 'N12',
-    why: 'batchDiscover : insertion « discovered » (étape À trier), ignoreDuplicates, jamais de mise à jour d\'une ligne existante',
+    why: 'batchDiscover : insertion « discovered » (étape À trier), ignoreDuplicates, jamais de mise à jour d\'une ligne existante (les adresses de photo passent par refresh_candidate_pictures, qui n\'écrit que linkedin_profile_data)',
     file: JCS_HOOK,
     match: (s) => s.op === 'upsert' && /ignoreDuplicates:\s*true/.test(s.chain) && s.keys.includes('status'),
     check: (s) => {

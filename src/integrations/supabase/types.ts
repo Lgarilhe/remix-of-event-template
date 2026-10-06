@@ -1751,6 +1751,53 @@ export type Database = {
           },
         ]
       }
+      candidate_photos: {
+        Row: {
+          attempts: number
+          candidate_id: string
+          captured_at: string | null
+          checked_at: string
+          created_at: string
+          last_error: string | null
+          organization_id: string
+          source_url_hash: string | null
+          status: string
+          storage_path: string | null
+        }
+        Insert: {
+          attempts?: number
+          candidate_id: string
+          captured_at?: string | null
+          checked_at?: string
+          created_at?: string
+          last_error?: string | null
+          organization_id: string
+          source_url_hash?: string | null
+          status: string
+          storage_path?: string | null
+        }
+        Update: {
+          attempts?: number
+          candidate_id?: string
+          captured_at?: string | null
+          checked_at?: string
+          created_at?: string
+          last_error?: string | null
+          organization_id?: string
+          source_url_hash?: string | null
+          status?: string
+          storage_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_photos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_portal_tokens: {
         Row: {
           candidate_id: string
@@ -3756,6 +3803,44 @@ export type Database = {
           },
         ]
       }
+      mission_action_snoozes: {
+        Row: {
+          action_key: string
+          created_at: string
+          expires_at: string
+          id: string
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action_key: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action_key?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_action_snoozes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mission_conversations: {
         Row: {
           account_id: string
@@ -4878,6 +4963,95 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      phone_calls: {
+        Row: {
+          agent_email: string | null
+          agent_external_id: string | null
+          agent_name: string | null
+          answered_at: string | null
+          contact_name: string | null
+          contact_number: string | null
+          contact_number_e164: string | null
+          created_at: string
+          direction: string | null
+          ended_at: string | null
+          external_id: string
+          id: string
+          last_event_at: string
+          missed_reason: string | null
+          notes: string | null
+          organization_id: string
+          provider: string
+          recording_url: string | null
+          started_at: string | null
+          status: string | null
+          tags: string[]
+          talk_seconds: number
+          updated_at: string
+          voicemail_url: string | null
+        }
+        Insert: {
+          agent_email?: string | null
+          agent_external_id?: string | null
+          agent_name?: string | null
+          answered_at?: string | null
+          contact_name?: string | null
+          contact_number?: string | null
+          contact_number_e164?: string | null
+          created_at?: string
+          direction?: string | null
+          ended_at?: string | null
+          external_id: string
+          id?: string
+          last_event_at: string
+          missed_reason?: string | null
+          notes?: string | null
+          organization_id: string
+          provider: string
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          tags?: string[]
+          talk_seconds?: number
+          updated_at?: string
+          voicemail_url?: string | null
+        }
+        Update: {
+          agent_email?: string | null
+          agent_external_id?: string | null
+          agent_name?: string | null
+          answered_at?: string | null
+          contact_name?: string | null
+          contact_number?: string | null
+          contact_number_e164?: string | null
+          created_at?: string
+          direction?: string | null
+          ended_at?: string | null
+          external_id?: string
+          id?: string
+          last_event_at?: string
+          missed_reason?: string | null
+          notes?: string | null
+          organization_id?: string
+          provider?: string
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          tags?: string[]
+          talk_seconds?: number
+          updated_at?: string
+          voicemail_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_calls_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -6348,6 +6522,47 @@ export type Database = {
       }
     }
     Views: {
+      mission_candidate_rows: {
+        Row: {
+          candidate_headline: string | null
+          candidate_id: string | null
+          candidate_name: string | null
+          contacted_at: string | null
+          created_at: string | null
+          created_by: string | null
+          decision_source: string | null
+          first_interview_at: string | null
+          general_stage: string | null
+          group_ids: string[] | null
+          group_size: number | null
+          hired_at: string | null
+          id: string | null
+          is_unopened: boolean | null
+          job_id: string | null
+          linkedin_profile_data: Json | null
+          linkedin_profile_url: string | null
+          mission_kind: string | null
+          mission_name: string | null
+          organization_id: string | null
+          pipeline_stage: string | null
+          presented_at: string | null
+          process_step_id: string | null
+          project_id: string | null
+          recommendation: string | null
+          rejected_at: string | null
+          rejected_from_stage: string | null
+          replied_at: string | null
+          reply_summary: string | null
+          score: number | null
+          scoring_details: Json | null
+          skip_reason: string | null
+          stage_entered_at: string | null
+          status: string | null
+          tags: string[] | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
       organization_integrations_public: {
         Row: {
           aircall_api_id: string | null
@@ -6505,6 +6720,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_candidate_photos: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          candidate_id: string
+          linkedin_profile_url: string
+          organization_id: string
+          picture_url: string
+        }[]
+      }
       cleanup_linkedin_action_log: { Args: never; Returns: undefined }
       cleanup_old_webhook_events: { Args: never; Returns: number }
       cleanup_rate_limit_log: { Args: never; Returns: undefined }
@@ -6574,6 +6799,53 @@ export type Database = {
         }[]
       }
       get_marketplace_partner_state: { Args: never; Returns: Json }
+      get_mission_attention: {
+        Args: {
+          p_interview_days?: number
+          p_item_limit?: number
+          p_project_ids: string[]
+          p_reply_days?: number
+        }
+        Returns: {
+          has_own_account: boolean
+          interview_items: Json
+          interview_waiting: number
+          interview_waiting_oldest_at: string | null
+          job_described: boolean
+          project_id: string
+          replies_mine: number
+          replies_mine_oldest_at: string | null
+          replies_others: number
+          replies_others_oldest_at: string | null
+          reply_items: Json
+          to_sort_recommended: number
+          to_sort_scored: number
+        }[]
+      }
+      get_mission_stage_counts: {
+        Args: { p_project_ids: string[] }
+        Returns: {
+          contacted: number
+          ever_contacted: number
+          ever_hired: number
+          ever_interviewed: number
+          ever_presented: number
+          ever_replied: number
+          ever_retained: number
+          hired: number
+          interviewing: number
+          interviewing_by_step: Json
+          last_stage_move_at: string
+          project_id: string
+          rejected: number
+          replied: number
+          retained: number
+          scored: number
+          to_sort: number
+          triaged_by_user: number
+          unopened: number
+        }[]
+      }
       get_mission_team_profiles: {
         Args: { p_project_id: string }
         Returns: Json[]
@@ -6695,6 +6967,7 @@ export type Database = {
           status: string
         }[]
       }
+      get_telephony_status: { Args: { p_organization_id: string }; Returns: Json }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_vivier_candidates: {
         Args: {
@@ -6840,6 +7113,7 @@ export type Database = {
         Args: { p_field: string; p_increment?: number; p_sequence_id: string }
         Returns: undefined
       }
+      invoke_capture_candidate_photos: { Args: never; Returns: undefined }
       invoke_process_email_queue: { Args: never; Returns: undefined }
       invoke_process_enrichment_queue: { Args: never; Returns: undefined }
       invoke_process_inmail_queue: { Args: never; Returns: undefined }
@@ -6857,6 +7131,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      is_go_recommendation: { Args: { r: string }; Returns: boolean }
       is_marketplace_partner: {
         Args: { _user_id: string }
         Returns: boolean
@@ -6885,7 +7160,16 @@ export type Database = {
         }[]
       }
       jcs_stage_write_mode: { Args: never; Returns: string }
+      job_details_is_described: { Args: { jd: Json }; Returns: boolean }
       linkedin_url_slug: { Args: { p_url: string }; Returns: string }
+      list_candidate_photo_orphans: {
+        Args: { p_limit?: number }
+        Returns: {
+          candidate_id: string
+          organization_id: string
+          storage_path: string
+        }[]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -7016,6 +7300,10 @@ export type Database = {
           via: string
         }[]
       }
+      refresh_candidate_pictures: {
+        Args: { p_items: Json; p_job_ids: string[] }
+        Returns: number
+      }
       resolve_meeting_mission: {
         Args: { p_candidate: Json; p_organization_id: string }
         Returns: {
@@ -7042,6 +7330,20 @@ export type Database = {
           id: string
           metadata: Json
           similarity: number
+        }[]
+      }
+      rgpd_purge_candidate_rows: {
+        Args: {
+          p_dry_run?: boolean
+          p_inactive_before: string
+          p_limit?: number
+          p_rejected_before: string
+        }
+        Returns: {
+          candidate_id: string
+          organization_id: string
+          reason: string
+          row_id: string
         }[]
       }
       retrieve_context_multi: {
@@ -7177,6 +7479,7 @@ export type Database = {
         Returns: string
       }
       unaccent: { Args: { "": string }; Returns: string }
+      undo_candidate_stages: { Args: { p_moves: Json }; Returns: Json }
       validate_marketplace_partner: {
         Args: { p_organization_id: string }
         Returns: Json

@@ -52,6 +52,8 @@ import {
 import { StatGrid, StatTile } from '@/components/layout/StatTile';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
+import { EnrollFirstMessagePreview } from '@/components/agent/EnrollFirstMessagePreview';
+import { readFirstStepPreview } from '@/components/agent/firstStepPreview';
 import {
   CheckCircle2,
   Clock,
@@ -568,6 +570,7 @@ export const AgentActionsSettings = () => {
               variant="compact"
               icon={History}
               title="Aucune action ne correspond à ces filtres."
+              headingLevel={4}
               description="Changez de statut pour voir les autres actions."
               action={(
                 <Button size="sm" variant="outline" onClick={() => setStatusFilter('all')} className="max-md:h-11">
@@ -580,6 +583,7 @@ export const AgentActionsSettings = () => {
               variant="compact"
               icon={History}
               title="Aucune action pour le moment"
+              headingLevel={4}
               description="Les actions que l’assistant propose dans vos conversations apparaîtront ici, avec leur statut."
             />
           )
@@ -672,6 +676,9 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
   const label = toolLabel(action.tool_name);
   const summary = action.dry_run_result?.summary || '';
   const warning = action.dry_run_result?.warning;
+  const firstStepPreview = action.tool_name === 'enroll_in_sequence' && action.status === 'proposed'
+    ? readFirstStepPreview(action.dry_run_result?.details)
+    : null;
   const errorMessage =
     action.status === 'failed'
       ? action.real_result?.error || action.real_result?.message || null
@@ -723,6 +730,14 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
               <span>{warning}</span>
             </p>
+          )}
+
+          {/* Lot 5a : une inscription s'approuve ici aussi, jamais sans son premier message en entier. */}
+          {firstStepPreview && (
+            <EnrollFirstMessagePreview
+              preview={firstStepPreview}
+              fallbackName={String(action.dry_run_result?.details?.candidate ?? 'ce candidat')}
+            />
           )}
 
           {isQueued && scheduledLabel && (

@@ -31,6 +31,12 @@ import orientationPoteau from '@/assets/illustrations/orientation-poteau.webp';
 import orientationFleche from '@/assets/illustrations/orientation-fleche.webp';
 import rechercheFiches from '@/assets/illustrations/recherche-fiches.webp';
 import rechercheLoupe from '@/assets/illustrations/recherche-loupe.webp';
+import triDecor from '@/assets/illustrations/tri-decor.webp';
+import triLoupe from '@/assets/illustrations/tri-loupe.webp';
+import triFiche1 from '@/assets/illustrations/tri-fiche-1.webp';
+import triFiche2 from '@/assets/illustrations/tri-fiche-2.webp';
+import triFiche3 from '@/assets/illustrations/tri-fiche-3.webp';
+import triCoche from '@/assets/illustrations/tri-coche.webp';
 import brief from '@/assets/illustrations/brief.webp';
 import dossier from '@/assets/illustrations/dossier.webp';
 
@@ -44,6 +50,7 @@ import dossier from '@/assets/illustrations/dossier.webp';
  * - connexion : panne de connexion, compte déconnecté ;
  * - orientation : page introuvable, lien expiré ;
  * - recherche : aucun candidat, recherche sans résultat ;
+ * - tri : plus aucun profil à trier (Sourcing) ;
  * - brief : poste à décrire ;
  * - dossier : aucune mission, aucun document.
  */
@@ -56,6 +63,7 @@ export type IllustrationName =
   | 'connexion'
   | 'orientation'
   | 'recherche'
+  | 'tri'
   | 'brief'
   | 'dossier';
 
@@ -189,6 +197,19 @@ const DRAWINGS: Record<IllustrationName, Drawing> = {
         src: rechercheLoupe,
         motion: { anim: 'loop', x: '-8%', y: '6%', r: '-10deg', x2: '8%', y2: '-6%', r2: '10deg', origin: '60% 30%', delay: 100, duration: 4000 },
       },
+    ],
+  },
+  // Le bureau reste fixe : la loupe balaie le bac vide, les fiches flottent, la coche se pose.
+  tri: {
+    width: 480,
+    height: 366,
+    layers: [
+      { src: triDecor, motion: FADE },
+      { src: triLoupe, motion: { anim: 'loop', x: '-5%', y: '2%', r: '-8deg', o: 1, origin: '70% 48%', delay: 100, duration: 4000, ease: 'inOut' } },
+      { src: triFiche1, motion: { anim: 'loop', y: '-2.5%', o: 1, delay: 0, duration: 3600, ease: 'inOut' } },
+      { src: triFiche2, motion: { anim: 'loop', y: '-2.5%', o: 1, delay: 400, duration: 3600, ease: 'inOut' } },
+      { src: triFiche3, motion: { anim: 'loop', y: '-2.5%', o: 1, delay: 800, duration: 3600, ease: 'inOut' } },
+      { src: triCoche, motion: { anim: 'loop', s: 0.4, origin: '61.5% 23.7%', delay: 600, duration: 3600, ease: 'spring' } },
     ],
   },
   // Sans calques qui recomposent le dessin : il apparaît d'un seul tenant, puis flotte.

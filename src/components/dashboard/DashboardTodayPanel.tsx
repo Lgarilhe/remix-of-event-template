@@ -1,39 +1,54 @@
 /**
- * DashboardTodayPanel — la journée en une liste chronologique.
+ * DashboardTodayPanel — le bas de « À faire » : les tâches en retard, puis la
+ * journée en une liste chronologique.
  *
+ * - Tâches d'avant aujourd'hui, sous le réveil qui sonne (design simplifié,
+ *   docs/design/06-simplicite.md) ;
  * - Entretiens que j'anime aujourd'hui (qualification_sessions), avec « En
  *   cours » ou « Dans 12 min » et le lien de visio quand il existe ;
  * - Envois prévus (séquences et InMails) ;
- * - Tâches du jour et tâches en retard, cochables sur place.
+ * - Tâches du jour, cochables sur place.
  *
- * Le sous-titre compte ce qui est en retard, à venir et fait. Une lecture en
- * échec s'affiche comme une erreur avec « Réessayer », jamais comme une
- * journée vide.
+ * Chaque ligne montre de qui ou de quoi elle parle : le visage du candidat,
+ * sinon les initiales de la mission. Une lecture en échec s'affiche comme une
+ * erreur avec « Réessayer », jamais comme une journée vide.
  */
 
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format, parseISO, isToday, differenceInMinutes, startOfDay } from 'date-fns';
-import { ArrowRight, Plus } from 'lucide-react';
-import { Section, EmptyState, ErrorState } from '@/components/layout';
+import { fr } from 'date-fns/locale';
+import { ArrowRight, ListChecks, Plus } from 'lucide-react';
+import { EmptyState, ErrorState } from '@/components/layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { IconTile } from '@/components/ui/IconTile';
+import { AlarmIcon } from '@/components/ui/animated-icons';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 import type { ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import type { Reminder } from '@/hooks/useAllReminders';
 import { useCalendarEvents, type CalendarEvent } from '@/hooks/useCalendarEvents';
 import { useTodoInterviews } from '@/hooks/sidebar/useTodoInterviews';
+import { useCandidateAvatarsByCandidateId } from '@/hooks/useCandidateAvatars';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
+import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
 import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
 import { LivePulse } from './LivePulse';
 
 interface DashboardTodayPanelProps {
   scheduledMessages: ScheduledMessage[];
+  /** Tâches du jour et en retard, non terminées. */
   remindersToday: Reminder[];
+  /** Client d'une mission, par id (« project:… » ou nu), pour les initiales d'une tâche de mission. */
+  missionClientOf?: (jobId: string) => string | null;
+  /** Logo du client enregistré dans le brief, par id de mission ; sans logo, les initiales. */
+  missionLogoOf?: (jobId: string) => string | null;
   isLoading?: boolean;
   /** Message technique si une lecture (tâches, envois) a échoué. */
   error?: string | null;
@@ -70,9 +85,19 @@ const roundLabel = (round: { kind: string; n?: number } | null | undefined): str
   return round.n ? `${round.n}e entretien` : null;
 };
 
+const dueBeforeToday = (r: Reminder, today: Date): boolean => {
+  try {
+    return parseISO(r.due_at) < today;
+  } catch {
+    return false;
+  }
+};
+
 export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
   scheduledMessages,
   remindersToday,
+  missionClientOf,
+  missionLogoOf,
   isLoading,
   error,
   onRetry,
@@ -108,6 +133,12 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
     [todayEvents, mineTodayIds],
   );
 
+  // Tâches d'avant aujourd'hui : un groupe à part, sous le réveil.
+  const lateTasks = useMemo(
+    () => remindersToday.filter((r) => !r.completed_at && dueBeforeToday(r, today)),
+    [remindersToday, today],
+  );
+
   const now = new Date();
 
   const combined: CombinedItem[] = useMemo(() => {
@@ -122,9 +153,18 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
     };
     for (const ev of qualifEvents) push(ev.id, 'event', ev.startAt, ev.endAt ?? null, ev);
     for (const msg of scheduledMessages) push(`msg-${msg.id}`, 'message', msg.scheduledAt, null, msg);
-    for (const r of remindersToday) push(`rem-${r.id}`, 'reminder', r.due_at, null, r);
+    for (const r of remindersToday) {
+      if (!dueBeforeToday(r, today)) push(`rem-${r.id}`, 'reminder', r.due_at, null, r);
+    }
     return items.sort((a, b) => a.startAt.getTime() - b.startAt.getTime()).slice(0, 12);
-  }, [qualifEvents, scheduledMessages, remindersToday]);
+  }, [qualifEvents, scheduledMessages, remindersToday, today]);
+
+  // Visages des candidats des tâches (photo LinkedIn enregistrée, sinon initiales).
+  const taskCandidateIds = useMemo(
+    () => Array.from(new Set(remindersToday.map((r) => r.candidate_id).filter((id): id is string => !!id))),
+    [remindersToday],
+  );
+  const taskPhotos = useCandidateAvatarsByCandidateId(taskCandidateIds);
 
   // Recalculé à chaque rendu (12 éléments au plus) : le décompte suit l'heure.
   const counts = { late: 0, upcoming: 0, done: 0 };
@@ -149,54 +189,105 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
 
   const loading = isLoading || interviewsLoading;
 
+  const taskVisual = (r: Reminder) => {
+    if (r.candidate_id || r.candidate_name) {
+      return <CandidateAvatar name={r.candidate_name || 'Candidat'} avatarUrl={r.candidate_id ? taskPhotos.get(r.candidate_id) ?? null : null} candidateId={r.candidate_id} size={36} />;
+    }
+    if (r.job_id || r.job_title) {
+      const client = r.job_id ? missionClientOf?.(r.job_id) ?? null : null;
+      const logo = r.job_id ? missionLogoOf?.(r.job_id) ?? null : null;
+      return <MissionCompanyLogo company={client || r.job_title} logoUrl={logo} size={36} />;
+    }
+    return <IconTile icon={ListChecks} size="md" />;
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-2 py-4" role="status" aria-label="Chargement de la journée">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-12 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        variant="compact"
+        className="border-0 bg-transparent"
+        title="Impossible de charger votre journée"
+        description="Vérifiez votre connexion, puis réessayez."
+        detail={error}
+        onRetry={onRetry}
+      />
+    );
+  }
+
   return (
-    <Section
-      headingLevel={2}
-      title="Aujourd'hui"
-      subtitle={!loading && !error ? subtitle || undefined : undefined}
-      className="flex h-full flex-col"
-      action={
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon-xs" onClick={() => setCreateTaskOpen(true)} aria-label="Ajouter une tâche">
-                <Plus aria-hidden="true" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Ajouter une tâche</TooltipContent>
-          </Tooltip>
-          <Button asChild variant="ghost" size="xs">
-            <Link to="/calendar">
-              Agenda
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </Button>
+    <div>
+      {lateTasks.length > 0 && (
+        <section aria-labelledby="dashboard-late-tasks">
+          <h3 id="dashboard-late-tasks" className="flex items-center gap-2.5 pb-2 pt-6 text-sm font-semibold text-danger">
+            <IconTile tone="destructive" size="sm">
+              <AlarmIcon />
+            </IconTile>
+            {plural(lateTasks.length, 'tâche')} en retard
+          </h3>
+          <Card>
+            <ul className="divide-y divide-border px-5">
+              {lateTasks.map((r) => (
+                <TaskRow
+                  key={r.id}
+                  reminder={r}
+                  visual={taskVisual(r)}
+                  when={format(parseISO(r.due_at), 'd MMM', { locale: fr })}
+                  onToggle={onToggleReminder}
+                />
+              ))}
+            </ul>
+          </Card>
+        </section>
+      )}
+
+      <section aria-labelledby="dashboard-today" className="pt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 pb-2">
+          <h3 id="dashboard-today" className="text-sm font-semibold text-foreground">
+            Aujourd'hui
+            {subtitle && <span className="ml-2 font-normal text-muted-foreground">{subtitle}</span>}
+          </h3>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setCreateTaskOpen(true)}
+                  aria-label="Ajouter une tâche"
+                  className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
+                >
+                  <Plus aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Ajouter une tâche</TooltipContent>
+            </Tooltip>
+            <Button asChild variant="ghost" size="xs" className="min-h-11 md:min-h-0">
+              <Link to="/calendar">
+                Agenda
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
         </div>
-      }
-    >
-      <div className="p-2">
+
         {/* Entretiens non lus : pas de « journée vide » trompeuse */}
-        {todayEventsError && !loading && !error && (
-          <p role="alert" className="px-2 py-1.5 text-xs text-danger">
+        {todayEventsError && (
+          <p role="alert" className="py-1.5 text-xs text-danger">
             Les entretiens du jour n'ont pas pu être chargés.
           </p>
         )}
-        {loading ? (
-          <div className="space-y-2 p-1" role="status" aria-label="Chargement de la journée">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-12 rounded-lg" />
-            ))}
-          </div>
-        ) : error ? (
-          <ErrorState
-            variant="compact"
-            className="border-0 bg-transparent"
-            title="Impossible de charger votre journée"
-            description="Vérifiez votre connexion, puis réessayez."
-            detail={error}
-            onRetry={onRetry}
-          />
-        ) : combined.length === 0 ? (
+        {combined.length === 0 ? (
           todayEventsError ? null : <EmptyState
             variant="compact"
             className="border-0"
@@ -204,30 +295,33 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
             title="Rien de prévu aujourd'hui"
             description="Aucun entretien, envoi ni tâche pour aujourd'hui."
             action={
-              <Button type="button" variant="outline" size="sm" onClick={() => setCreateTaskOpen(true)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setCreateTaskOpen(true)} className="min-h-11 md:min-h-0">
                 <Plus aria-hidden="true" />
                 Ajouter une tâche
               </Button>
             }
           />
         ) : (
-          <ul className="space-y-0.5">
-            {combined.map((item) => (
-              <TodayItem
-                key={item.id}
-                item={item}
-                now={now}
-                onClickEvent={openEvent}
-                onToggleReminder={onToggleReminder}
-              />
-            ))}
-          </ul>
+          <Card>
+            <ul className="divide-y divide-border px-5">
+              {combined.map((item) => (
+                <TodayItem
+                  key={item.id}
+                  item={item}
+                  now={now}
+                  taskVisual={taskVisual}
+                  onClickEvent={openEvent}
+                  onToggleReminder={onToggleReminder}
+                />
+              ))}
+            </ul>
+          </Card>
         )}
-      </div>
+      </section>
 
       <EventDetailSheet event={sheetEvent} open={sheetOpen} onOpenChange={setSheetOpen} />
       <CreateTaskModal open={createTaskOpen} onOpenChange={setCreateTaskOpen} />
-    </Section>
+    </div>
   );
 };
 
@@ -235,17 +329,52 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
 
 const TimeCell: React.FC<{ time: string; note?: React.ReactNode; muted?: boolean }> = ({ time, note, muted }) => (
   <span className="flex w-16 shrink-0 flex-col whitespace-nowrap">
-    <span className={cn('text-xs font-medium tabular-nums', muted ? 'text-muted-foreground' : 'text-foreground')}>{time}</span>
+    <span className={cn('text-sm font-medium tabular-nums', muted ? 'text-muted-foreground' : 'text-foreground')}>{time}</span>
     {note}
   </span>
 );
 
+const TaskRow: React.FC<{
+  reminder: Reminder;
+  visual: React.ReactNode;
+  /** Échéance affichée à droite (« 22 sept. ») ou à gauche (heure du jour). */
+  when?: string;
+  time?: React.ReactNode;
+  onToggle: (r: Reminder) => void;
+}> = ({ reminder: r, visual, when, time, onToggle }) => {
+  const isDone = !!r.completed_at;
+  const context = [r.candidate_name, r.job_title].filter(Boolean).join(' · ');
+  return (
+    <li className={cn('flex items-center gap-3.5 py-3', isDone && 'opacity-60')}>
+      {time}
+      {/* Sur téléphone, la case se touche sur 44 px sans déplacer la ligne. */}
+      <label className="-m-3.5 flex shrink-0 items-center justify-center p-3.5 md:m-0 md:p-0">
+        <Checkbox
+          checked={isDone}
+          onCheckedChange={() => onToggle(r)}
+          aria-label={isDone ? `Rouvrir la tâche « ${r.title} »` : `Marquer la tâche « ${r.title} » comme faite`}
+        />
+      </label>
+      {visual}
+      <Link
+        to={r.candidate_id ? `/pipeline?candidate=${r.candidate_id}` : '/tasks'}
+        className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
+      >
+        <span className={cn('block truncate text-md text-foreground', isDone && 'line-through')}>{r.title}</span>
+        {context && <span className="block truncate text-sm text-muted-foreground">{context}</span>}
+      </Link>
+      {when && <span className="shrink-0 text-sm text-muted-foreground">{when}</span>}
+    </li>
+  );
+};
+
 const TodayItem: React.FC<{
   item: CombinedItem;
   now: Date;
+  taskVisual: (r: Reminder) => React.ReactNode;
   onClickEvent: (e: CalendarEvent) => void;
   onToggleReminder: (r: Reminder) => void;
-}> = ({ item, now, onClickEvent, onToggleReminder }) => {
+}> = ({ item, now, taskVisual, onClickEvent, onToggleReminder }) => {
   const isDone = isItemDone(item);
   const isLate = !isDone && item.startAt < now;
 
@@ -271,24 +400,24 @@ const TodayItem: React.FC<{
     ) : null;
 
     return (
-      <li className={cn('flex items-center gap-2 rounded-lg pr-2 transition-colors hover:bg-accent/60', isDone && 'opacity-60')}>
+      <li className={cn('flex items-center gap-2 py-1', isDone && 'opacity-60')}>
         <button
           type="button"
           onClick={() => onClickEvent(ev)}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-3.5 rounded-lg py-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TimeCell time={item.time} note={note} muted={isDone || (isLate && !isLive)} />
-          <CandidateAvatar name={candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} size={28} />
+          <CandidateAvatar name={candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} candidateId={meta.candidateId} size={36} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-foreground">
+            <span className="block truncate text-md font-medium text-foreground">
               {candidateName}
               {round && <span className="font-normal text-muted-foreground"> · {round}</span>}
             </span>
-            {context && <span className="block truncate text-xs text-muted-foreground">{context}</span>}
+            {context && <span className="block truncate text-sm text-muted-foreground">{context}</span>}
           </span>
         </button>
         {(isLive || isImminent) && visioHref && (
-          <Button asChild variant="primary" size="xs">
+          <Button asChild variant="primary" size="sm">
             <a href={visioHref} target="_blank" rel="noopener noreferrer">
               Rejoindre
             </a>
@@ -301,27 +430,19 @@ const TodayItem: React.FC<{
   // ─── Tâche ──────────────────────────────────────────────────────────
   if (item.type === 'reminder') {
     const r = item.payload as Reminder;
-    const context = r.candidate_name || r.job_title;
     return (
-      <li className={cn('flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-accent/60', isDone && 'opacity-60')}>
-        <TimeCell
-          time={item.time}
-          muted={isDone || isLate}
-          note={isLate ? <span className="text-2xs text-muted-foreground">en retard</span> : null}
-        />
-        <Checkbox
-          checked={isDone}
-          onCheckedChange={() => onToggleReminder(r)}
-          aria-label={isDone ? `Rouvrir la tâche « ${r.title} »` : `Marquer la tâche « ${r.title} » comme faite`}
-        />
-        <Link
-          to={r.candidate_id ? `/pipeline?candidate=${r.candidate_id}` : '/tasks'}
-          className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span className={cn('block truncate text-sm text-foreground', isDone && 'line-through')}>{r.title}</span>
-          {context && <span className="block truncate text-xs text-muted-foreground">{context}</span>}
-        </Link>
-      </li>
+      <TaskRow
+        reminder={r}
+        visual={taskVisual(r)}
+        onToggle={onToggleReminder}
+        time={
+          <TimeCell
+            time={item.time}
+            muted={isDone || isLate}
+            note={isLate ? <span className="text-2xs text-muted-foreground">en retard</span> : null}
+          />
+        }
+      />
     );
   }
 
@@ -344,16 +465,16 @@ const TodayItem: React.FC<{
   const subtitle = pendingStatusLabel ? `${pendingStatusLabel} · ${baseSubtitle}` : baseSubtitle;
 
   return (
-    <li className={cn('flex items-center gap-3 rounded-lg p-2.5', isDone && 'opacity-60')}>
+    <li className={cn('flex items-center gap-3.5 py-3', isDone && 'opacity-60')}>
       <TimeCell
         time={item.time}
         muted={isDone || isLate}
         note={isDone ? <span className="text-2xs text-muted-foreground">envoyé</span> : null}
       />
-      <CandidateAvatar name={recipientName} avatarUrl={null} size={28} />
+      <CandidateAvatar name={recipientName} avatarUrl={null} size={36} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-sm text-foreground">{recipientName}</span>
+          <span className="truncate text-md text-foreground">{recipientName}</span>
           <Badge variant="muted" className="shrink-0">
             {isInmail ? 'InMail' : 'Séquence'}
           </Badge>

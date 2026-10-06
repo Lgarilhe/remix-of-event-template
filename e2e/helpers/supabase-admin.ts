@@ -5,8 +5,9 @@
  * Toute org créée ici est jetable et doit être supprimée en téardown
  * (deleteOrg fait le ménage en cascade des données rattachées).
  */
+import { execFileSync } from 'node:child_process';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { E2E, authStorageKey } from './env';
+import { E2E, authStorageKey, missionPageEntries, type MissionPageChoice } from './env';
 
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
 export type OrgRole = 'owner' | 'admin' | 'member' | 'collaborator';
@@ -356,6 +357,69 @@ export async function seedLinkedInAccount(
   return accountId;
 }
 
+/**
+ * Lien conversation et mission (mission_conversations, lot 0b) : la source du
+ * rang « réponse non traitée » de la carte Maintenant (lot 3). Une réponse non
+ * traitée : last_inbound_at postérieur à last_outbound_at (ou sans envoi).
+ * Écrit en clé de service, comme le serveur (fonctions record_*).
+ */
+export async function seedMissionConversation(opts: {
+  orgId: string;
+  projectId: string;
+  accountId: string;
+  candidateId: string;
+  createdBy?: string | null;
+  chatId?: string | null;
+  lastInboundAt?: Date | null;
+  lastOutboundAt?: Date | null;
+}): Promise<string> {
+  const { data, error } = await admin()
+    .from('mission_conversations')
+    .insert({
+      organization_id: opts.orgId,
+      project_id: opts.projectId,
+      account_id: opts.accountId,
+      candidate_id: opts.candidateId,
+      candidate_ids: [opts.candidateId],
+      chat_id: opts.chatId === undefined ? `chat_${rand()}` : opts.chatId,
+      source: 'manual',
+      created_by: opts.createdBy ?? null,
+      first_outbound_at: opts.lastOutboundAt ? opts.lastOutboundAt.toISOString() : null,
+      last_outbound_at: opts.lastOutboundAt ? opts.lastOutboundAt.toISOString() : null,
+      last_inbound_at: opts.lastInboundAt ? opts.lastInboundAt.toISOString() : null,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`seedMissionConversation: ${error?.message}`);
+  return data.id as string;
+}
+
+/** SQL direct sur la base locale (psql) : pour les dates que le déclencheur d'étape ne laisse pas écrire en direct. */
+function psql(sql: string): string {
+  return execFileSync(
+    'psql',
+    ['-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atc', sql],
+    { env: { ...process.env, PGPASSWORD: 'postgres' }, encoding: 'utf8' },
+  );
+}
+
+/**
+ * Antidate l'entrée d'une ligne candidat dans son étape (stage_entered_at) de
+ * `days` jours. Le déclencheur d'étape remet cette colonne à sa valeur quand
+ * elle est écrite en direct : la date est posée sous le drapeau de reprise
+ * (konekt.stage_write), comme le fait e2e/api/stage-0c-lectures.spec.ts.
+ */
+export function backdateStageEntered(rowId: string, days: number): void {
+  psql(`BEGIN;
+    SELECT set_config('konekt.stage_write', '*', true);
+    UPDATE public.job_candidate_status
+       -- Midi, heure de Paris, N jours civils plus tôt : le décompte en jours civils de la carte
+       -- ne bascule ni autour de minuit ni au changement d'heure.
+       SET stage_entered_at = ((date_trunc('day', now() AT TIME ZONE 'Europe/Paris') - interval '${Math.floor(days)} days' + interval '12 hours') AT TIME ZONE 'Europe/Paris')
+     WHERE id = '${rowId}';
+    COMMIT;`);
+}
+
 /** Supprime une org et ses données rattachées. Best-effort, ordre enfant→parent. */
 export async function deleteOrg(org: TestOrg, extraUsers: TestUser[] = []): Promise<void> {
   const a = admin();
@@ -394,14 +458,14 @@ export async function signIn(email: string, password: string) {
  * même forme que writeStorageState de global.setup.ts, sans fichier.
  * À passer à `browser.newContext({ storageState })`.
  */
-export async function storageStateForUser(user: TestUser) {
+export async function storageStateForUser(user: TestUser, missionPage: MissionPageChoice = 'legacy') {
   const session = await signIn(user.email, user.password);
   return {
     cookies: [],
     origins: [
       {
         origin: new URL(E2E.baseUrl).origin,
-        localStorage: [{ name: authStorageKey(), value: JSON.stringify(session) }],
+        localStorage: [{ name: authStorageKey(), value: JSON.stringify(session) }, ...missionPageEntries(missionPage)],
       },
     ],
   };

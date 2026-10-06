@@ -2,7 +2,8 @@
  * AgentConnectorsSettings — Connecteurs MCP du Copilot (P3.1).
  *
  * Rendu dans Paramètres › Règles de l’assistant (ancre #connecteurs), sous les ICP.
- * La carte Notion n'est plus ici : elle est dans Paramètres › Connexions.
+ * Les applications que chaque membre connecte lui-même (Notion…) sont dans
+ * Paramètres › Connexions, liste « Applications connectées » (#applications).
  * Un connecteur = un serveur MCP distant (Model Context Protocol, standard
  * ouvert) : Notion, Slack, calendrier, outil interne… Ses outils deviennent
  * disponibles dans le chat du Copilot.
@@ -41,11 +42,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { Plug, Plus, Trash2, AlertTriangle, Pencil, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
+import { RESERVED_BUILTIN_CONNECTORS } from '@/lib/assistantConnectors';
 
 interface McpServerRow {
   id: string;
@@ -116,6 +118,11 @@ export function AgentConnectorsSettings() {
     const allowedTools = parseAllowedTools(allowedToolsText);
     if (!NAME_RE.test(slug)) {
       toast.error('Nom invalide : 2 à 40 caractères, en minuscules, chiffres et tirets (ex : wiki-interne).');
+      return;
+    }
+    // Nom tenu par une connexion personnelle : le chat et le serveur l'ignoreraient sans le dire.
+    if (RESERVED_BUILTIN_CONNECTORS.has(slug)) {
+      toast.error('Ce nom est réservé : Notion et l’e-mail se connectent dans Paramètres › Connexions, liste « Applications connectées ».');
       return;
     }
     if (!url.trim().startsWith('https://')) {

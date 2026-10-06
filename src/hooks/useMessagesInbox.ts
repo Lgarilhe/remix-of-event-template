@@ -23,6 +23,9 @@ import {
   buildChatSearchText,
 } from './useMessagesInboxHelpers';
 
+/** Identifiant de mission (sourcing_projects.id). */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Types
 export interface ChatAttendee {
   id?: string; // Unipile attendee ID (needed for fetching profile picture)
@@ -127,6 +130,9 @@ export interface SequenceEnrollmentInfo {
   current_step_order: number;
   /** Raison d'une pause (compte déconnecté, limite atteinte…), dite par le badge de statut. */
   pause_reason?: string | null;
+  /** tracking_data.completion_reason et tracking_data.manual_stop : statut d'un arrêt manuel (lot 5b). */
+  completion_reason?: string | null;
+  manual_stop?: unknown;
   /** Config outreach de la mission (incarnation IA + anonymisation).
    *  Lue depuis sourcing_projects.job_details.outreach_config. */
   outreach_config?: {
@@ -632,7 +638,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     try {
       let query = supabase
         .from('sequence_enrollments')
-        .select('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason')
+        // Lot 5b : raison de fin et trace d'un arrêt manuel (« Arrêtée par … le … »).
+        // Ligne typée à la main : l'inférence des chemins JSON dépasse la profondeur de TypeScript.
+        .select<string, Omit<SequenceEnrollmentInfo, 'outreach_config' | 'client_name'>>('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop')
         .order('created_at', { ascending: false })
         .limit(500);
 
@@ -1357,10 +1365,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
           if (cancelled) return;
           if (enrollment?.job_id) {
-            const { data: project } = await supabase
+            // Mission par son id ou par son job_id, préfixe « project: » retiré
+            // (lot 0c-4) : un poste de mission V2 n'a pas de job_id.
+            const jobKey = enrollment.job_id.replace(/^project:/, '');
+            const projectQuery = supabase
               .from('sourcing_projects')
-              .select('calendly_link')
-              .eq('job_id', enrollment.job_id)
+              .select('calendly_link');
+            const { data: project } = await (UUID_PATTERN.test(jobKey)
+              ? projectQuery.or(`id.eq.${jobKey},job_id.eq.${jobKey}`)
+              : projectQuery.eq('job_id', jobKey))
               .not('calendly_link', 'is', null)
               .limit(1)
               .maybeSingle();

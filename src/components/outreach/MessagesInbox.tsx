@@ -31,6 +31,7 @@ import { getCurrentCandidateProfile, getChatAvatar, getChatJobInfo } from '@/hoo
 import { normalizeNetworkDistance } from '@/lib/sequenceCompatibility';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { EmptyState, ErrorState } from '@/components/layout';
@@ -45,6 +46,9 @@ import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts
 import { sequenceChannels } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
+
+/** Valeur de « Sans mission » dans le choix de mission (une option ne peut pas valoir ''). */
+const NO_MISSION = '__none__';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -223,7 +227,6 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           categoryFilter={inbox.chatCategories.categoryFilter}
           responseFilter={inbox.responseFilter}
           statusFilter={inbox.chatStatus.statusFilter}
-          statusCounts={inbox.chatStatus.getStatusCounts(inbox.chats.map((c) => c.id))}
           onStatusFilterChange={inbox.chatStatus.setStatusFilter}
           enrollmentsMap={inbox.enrollmentsMap}
           categoriesMap={inbox.chatCategories.categoriesMap}
@@ -324,17 +327,20 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
               pipeline de la mission. « Sans mission » ne bloque rien. */}
           <div className="space-y-1.5">
             <Label htmlFor="inbox-enroll-mission">Mission</Label>
-            <select
-              id="inbox-enroll-mission"
-              value={selectedMissionId}
-              onChange={(e) => setSelectedMissionId(e.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 max-md:h-11"
+            <Select
+              value={selectedMissionId || NO_MISSION}
+              onValueChange={(value) => setSelectedMissionId(value === NO_MISSION ? '' : value)}
             >
-              <option value="">Sans mission</option>
-              {inbox.activeMissions.map((mission) => (
-                <option key={mission.id} value={mission.id}>{mission.name}</option>
-              ))}
-            </select>
+              <SelectTrigger id="inbox-enroll-mission" className="max-md:h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_MISSION}>Sans mission</SelectItem>
+                {inbox.activeMissions.map((mission) => (
+                  <SelectItem key={mission.id} value={mission.id}>{mission.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {inbox.sequencesStatus === 'error' ? (
             <ErrorState

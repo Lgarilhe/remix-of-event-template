@@ -6,6 +6,7 @@
  * - Sourcing projects
  * - AI credit transactions
  * - Conversation–mission links (mission_conversations, lot 0b)
+ * - Private candidate photo copies (candidate_photos, lot P): state and storage path, not the files
  * - Messages sent (from Unipile logs if available)
  *
  * Only admins can trigger this export.
@@ -78,6 +79,8 @@ Deno.serve(async (req) => {
       { data: transactions, error: transactionsError },
       { data: members, error: membersError },
       { data: conversationLinks, error: conversationLinksError },
+      { data: candidatePhotos, error: candidatePhotosError },
+      { data: phoneCalls, error: phoneCallsError },
     ] = await Promise.all([
       adminClient
         .from("job_candidate_status")
@@ -106,12 +109,24 @@ Deno.serve(async (req) => {
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(10000),
+      adminClient
+        .from("candidate_photos")
+        .select("candidate_id, status, storage_path, captured_at, checked_at, created_at")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(10000),
+      adminClient
+        .from("phone_calls")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(10000),
     ]);
 
     // RGPD art. 20 : un export incomplet doit échouer explicitement, jamais
     // renvoyer un jeu de données tronqué en silence.
     const queryError = candidatesError || projectsError || transactionsError || membersError
-      || conversationLinksError;
+      || conversationLinksError || candidatePhotosError || phoneCallsError;
     if (queryError) {
       console.error("[export-org-data] query failed:", queryError);
       return new Response(
@@ -129,11 +144,14 @@ Deno.serve(async (req) => {
       ai_credit_transactions: transactions || [],
       members: members || [],
       mission_conversations: conversationLinks || [],
+      candidate_photos: candidatePhotos || [],
+      phone_calls: phoneCalls || [],
       _meta: {
         candidates_count: (candidates || []).length,
         projects_count: (projects || []).length,
         transactions_count: (transactions || []).length,
         mission_conversations_count: (conversationLinks || []).length,
+        candidate_photos_count: (candidatePhotos || []).length,
         format: "JSON",
         rgpd_article: "Article 20 — Droit à la portabilité",
       },

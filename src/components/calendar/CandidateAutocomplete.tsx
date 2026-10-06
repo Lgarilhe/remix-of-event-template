@@ -43,6 +43,8 @@ interface CandidateAutocompleteProps {
   describedBy?: string;
   /** Ce que devient un nouveau candidat, sous l'option « Créer » (dépend de l'écran). */
   createHint?: string;
+  /** Faux : seuls les candidats existants sont proposés, pas d'option « Créer » (ex. rattacher un appel). */
+  allowCreate?: boolean;
 }
 
 type Option =
@@ -56,6 +58,7 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
   id,
   describedBy,
   createHint = 'Nouveau candidat, enregistré avec cette tâche',
+  allowCreate = true,
 }) => {
   const [query, setQuery] = useState(value?.name ?? defaultName);
   const [open, setOpen] = useState(false);
@@ -69,7 +72,7 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
 
   const trimmed = query.trim();
   const showCreateOption =
-    trimmed.length >= 2 && !results.some((r) => r.name.toLowerCase() === trimmed.toLowerCase());
+    allowCreate && trimmed.length >= 2 && !results.some((r) => r.name.toLowerCase() === trimmed.toLowerCase());
   const options: Option[] = [
     ...results.map((result) => ({ kind: 'existing' as const, result })),
     ...(showCreateOption ? [{ kind: 'new' as const, name: trimmed }] : []),

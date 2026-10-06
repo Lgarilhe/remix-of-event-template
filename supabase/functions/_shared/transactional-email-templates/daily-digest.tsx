@@ -76,7 +76,7 @@ const DailyDigestEmail = ({
             missions.map((m, i) => (
               <Text key={i} style={item}>
                 <strong>{m.label}</strong>
-                {m.client ? ` (${m.client})` : ''} : {m.found} sourcés, {m.messaged} contactés, {m.shortlisted} shortlistés
+                {m.client ? ` (${m.client})` : ''} : {m.found} sourcés, {m.shortlisted} retenus au total, {m.messaged} contactés au total
               </Text>
             ))
           )}
@@ -143,8 +143,8 @@ export const template = {
     dateLabel: 'lundi 7 septembre',
     organizationName: 'Konekt Recrutement',
     missions: [
-      { label: 'DevOps Senior', client: 'Numspot', found: 42, messaged: 18, shortlisted: 3 },
-      { label: 'Product Manager', found: 12, messaged: 4, shortlisted: 0 },
+      { label: 'DevOps Senior', client: 'Numspot', found: 42, messaged: 18, shortlisted: 20 },
+      { label: 'Product Manager', found: 12, messaged: 4, shortlisted: 4 },
     ],
     missionsTotal: 2,
     interviews: [

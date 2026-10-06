@@ -31,4 +31,12 @@ export default defineConfig(({ mode }) => ({
   build: {
     sourcemap: mode === "production" ? "hidden" : true,
   },
+  // Serveur de développement : recharts n'est importé que par des écrans
+  // chargés à la demande (statistiques des séquences). Découvert en cours de
+  // session, il déclenchait une seconde optimisation des dépendances et une
+  // autre copie de React (« Invalid hook call » sur le graphique). Pré-optimisé
+  // avec le reste, il partage la même copie. Sans effet sur le build.
+  optimizeDeps: {
+    include: ["recharts"],
+  },
 }));

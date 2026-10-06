@@ -10,6 +10,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.7
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
 import { interpolatePlaceholders, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import {
   decodeHrefUrl,
   enrollmentSendDecision,
@@ -247,7 +248,8 @@ async function generateAiSnippet(
     const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
     const result = await callWithRetry(ANTHROPIC_API_KEY!, {
       model: anthropicModel,
-      max_tokens: 150,
+      max_tokens: withThinkingHeadroom(anthropicModel, 150),
+      ...gen5Params(anthropicModel),
       system: emailAiContext
         ? [
             { type: 'text', text: systemPrompt },
@@ -257,7 +259,7 @@ async function generateAiSnippet(
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const text = (result as any)?.content?.[0]?.text;
+    const text = textFromContent(result?.content);
 
     // Settle credits (fire-and-forget)
     if (orgId && result?.usage) {

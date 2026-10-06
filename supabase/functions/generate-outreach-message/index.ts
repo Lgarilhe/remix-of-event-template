@@ -2,7 +2,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
+import { detectSequenceViolations } from "../_shared/sequence-send-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +56,9 @@ interface JobData {
   seniority?: string;
   xpMin?: number;
   xpMax?: number;
+  // Rémunération : reçue de navigateurs anciens, jamais mise dans le prompt.
+  // Un aperçu validé part tel quel, et le moteur interdit toute mention de
+  // salaire ou de TJM (correctif 2 du plan du lot 5).
   salaryMin?: number;
   salaryMax?: number;
   tjmMin?: number;
@@ -236,6 +241,23 @@ function detectViolations(args: {
   }
 
   return v;
+}
+
+/** Code d'erreur d'un aperçu refusé par les garde-fous bloquants du moteur. */
+const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';
+
+/**
+ * Phrase française d'un aperçu refusé, à partir des libellés de
+ * detectSequenceViolations (sequence-send-rules.ts). Aucun code ni jeton
+ * technique : le navigateur l'affiche telle quelle sous l'aperçu.
+ */
+function previewRefusalMessage(labels: string[]): string {
+  const reasons: string[] = [];
+  if (labels.some((l) => l.startsWith('mention de salaire'))) reasons.push('mentionne une rémunération');
+  if (labels.some((l) => l.startsWith('signature'))) reasons.push('est signé « Recruteur »');
+  if (labels.some((l) => l.startsWith('RPO'))) reasons.push('emploie une formulation de cabinet');
+  const why = reasons.length > 0 ? reasons.join(' et ') : 'ne respecte pas les règles d\'envoi';
+  return `Aperçu refusé : le message proposé ${why}, il ne peut pas partir. Régénérez l'aperçu.`;
 }
 
 function sanitizeMessage(message: string): string {
@@ -662,15 +684,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build salary info for the prompt
-    const salaryInfo: string[] = [];
-    if (job.salaryMin || job.salaryMax) {
-      salaryInfo.push(`Salaire: ${job.salaryMin || '?'}k€ - ${job.salaryMax || '?'}k€`);
-    }
-    if (job.tjmMin || job.tjmMax) {
-      salaryInfo.push(`TJM: ${job.tjmMin || '?'}€ - ${job.tjmMax || '?'}€/jour`);
-    }
-
     // Build criteria context
     const criteriaContext: string[] = [];
     if (job.mustHave) criteriaContext.push(`Must-have: ${job.mustHave}`);
@@ -713,11 +726,6 @@ Accroche + présentation + CTA.`
     
     // Client-specific rules
     const clientNameRaw = job.client?.name || '';
-    const clientNameLower = clientNameRaw.toLowerCase().trim();
-    
-    // Clients where salary/TJM must NEVER be mentioned in messages
-    const NO_SALARY_CLIENTS = ['numspot'];
-    const hideSalary = NO_SALARY_CLIENTS.some(c => clientNameLower.includes(c));
     
     // Different positioning based on engagement type
     const clientName = clientNameRaw || 'nous';
@@ -988,8 +996,7 @@ POSTE À POURVOIR:
 - Localisation: ${job.location || 'Non spécifié'}
 - Télétravail: ${job.remote || 'Non spécifié'}
 - Type contrat: ${job.contractType || 'Non spécifié'}
-${salaryInfo.length > 0 && !hideSalary ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
-${hideSalary ? `⛔ RÈGLE CLIENT: Ne JAMAIS mentionner de salaire, TJM, rémunération ou fourchette salariale dans le message pour ${clientName}. C'est un sujet à aborder uniquement en call.` : ''}
+⛔ RÈGLE : ne JAMAIS mentionner de salaire, TJM, rémunération, package ou fourchette dans le message. C'est un sujet à aborder uniquement en call.
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
 ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : ''}
 
@@ -1180,7 +1187,8 @@ Réponds UNIQUEMENT en JSON valide:
           },
           body: JSON.stringify({
             model: _resolvedAnthropicModel,
-            max_tokens: 2048,
+            max_tokens: withThinkingHeadroom(_resolvedAnthropicModel, 2048),
+            ...gen5Params(_resolvedAnthropicModel),
             system: [
               { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
               ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
@@ -1194,7 +1202,7 @@ Réponds UNIQUEMENT en JSON valide:
           const data = await response.json();
           _totalTokensIn += data.usage?.input_tokens || 0;
           _totalTokensOut += data.usage?.output_tokens || 0;
-          let content = data.content?.[0]?.text || "";
+          let content = textFromContent(data.content);
           content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           return { ok: true, content };
         }
@@ -1269,9 +1277,18 @@ Réponds UNIQUEMENT en JSON valide:
       message: parsed.message,
       subject: parsed.subject,
     });
+    // Garde-fous bloquants du moteur (detectSequenceViolations : salaire ou
+    // montant, signature « Recruteur », formulations cabinet en RPO). Un aperçu
+    // validé part tel quel : corrigés ici une fois, puis revérifiés sur le
+    // texte final (correctif 2 du plan du lot 5).
+    for (const v of detectSequenceViolations(isRPO, parsed.message, parsed.subject)) {
+      if (v.blocking && !violations.includes(v.label)) violations.push(v.label);
+    }
     if (violations.length > 0) {
       console.warn(`[generate-outreach-message] ${violations.length} violations detected:`, violations);
       const correctionRules: string[] = [
+        '- JAMAIS de salaire, de TJM, de rémunération, de package ni de montant.',
+        '- Signature : ton prénom, jamais "Recruteur".',
         '- Aucun tiret (—, –, -) nulle part dans le texte.',
         '- Aucune flatterie ("parfait", "exactement le profil", "rare", "précieux").',
         '- JAMAIS mentionner le statut LinkedIn ("on est connectés", "on est en contact", "vu qu\'on est en lien"). Le candidat le voit déjà sur LinkedIn, c\'est une accroche faible. Va DIRECT à l\'observation personnalisée du profil.',
@@ -1326,6 +1343,15 @@ Réponds UNIQUEMENT en JSON valide:
       }
     }
 
+    // Revérification sur le texte FINAL (après correction, nettoyage et
+    // anonymisation), avec la règle du moteur : une violation bloquante
+    // restante refuse l'aperçu, à régénérer. Les crédits consommés sont
+    // débités plus bas comme pour tout appel au modèle.
+    const remainingBlocking = detectSequenceViolations(isRPO, parsed.message, parsed.subject).filter((v) => v.blocking);
+    if (remainingBlocking.length > 0) {
+      console.warn('[generate-outreach-message] Aperçu non conforme, refusé :', remainingBlocking.map((v) => v.label));
+    }
+
     // Settle credits based on actual token usage (fire-and-forget)
     if (_totalTokensIn + _totalTokensOut > 0) {
       try {
@@ -1348,6 +1374,17 @@ Réponds UNIQUEMENT en JSON valide:
           }
         }
       } catch (e) { console.warn("[generate-outreach-message] settle skipped:", e); }
+    }
+
+    if (remainingBlocking.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: previewRefusalMessage(remainingBlocking.map((v) => v.label)),
+          error_code: PREVIEW_NOT_COMPLIANT_CODE,
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     return new Response(

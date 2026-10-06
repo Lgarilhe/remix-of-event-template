@@ -80,15 +80,17 @@ test('D-03, D-12 : actions au doigt, au survol et au focus clavier', () => {
 });
 
 // ---------------------------------------------------------------- D-04
-test('D-04 : intentions et étiquettes en variantes de Badge', () => {
+test('D-04 : intentions et étiquettes du catalogue, écrites en texte dans la liste', () => {
   for (const [name, file] of [['useChatIntents', src.intents], ['useChatCategories', src.categories]]) {
     assert.doesNotMatch(file, /\b(?:bg|text|border)-(?:emerald|red|blue|purple|amber|gray|green|violet)-\d+/, `${name} : couleur brute`);
     assert.doesNotMatch(file, /dark:/, `${name} : variante dark: superflue`);
     assert.doesNotMatch(file, /emoji:/, `${name} : emoji servant d’icône`);
     assert.match(file, /tone: '(success|danger|info|warning|muted)'/, `${name} : ton de badge`);
   }
-  assert.match(src.item, /<Badge variant=\{categoryInfo\.tone\}/);
-  assert.match(src.item, /<Badge variant=\{intentMeta\.tone\}/);
+  // Design simplifié (lot Suite) : le libellé du catalogue en texte discret, sans pastille ni couleur.
+  assert.match(src.item, /const tagLabel = categoryInfo\?\.label \?\? intentMeta\?\.label \?\? null;/);
+  assert.match(src.item, /className="min-w-0 shrink-\[3\] truncate text-xs text-muted-foreground"/);
+  assert.doesNotMatch(src.item, /<Badge\b/, 'plus de pastille dans la ligne');
 });
 
 // ---------------------------------------------------------------- D-05, D-06
@@ -149,8 +151,12 @@ test('D-11 : hauteur calée sur l’espace visible, sans calcul figé', () => {
 // ---------------------------------------------------------------- D-13
 test('D-13 : noms accessibles et un seul bouton principal dans le composeur', () => {
   assert.match(src.composer, /aria-label="Message"/);
-  for (const label of ['Gras', 'Italique', 'Insérer un lien', 'Liste à puces', 'Liste numérotée', 'Insérer un emoji']) {
-    assert.ok(src.composer.includes(`label="${label}"`) || src.composer.includes(`aria-label="${label}"`), `${label} sans nom`);
+  assert.match(src.composer, /aria-label="Insérer un emoji"/);
+  // Design simplifié (lot Suite) : la mise en forme tient dans un menu nommé, à toutes les tailles.
+  assert.match(src.composer, /aria-label="Mise en forme" className=\{TOOL_ICON\}/);
+  assert.equal((src.composer.match(/<DropdownMenuItem className=\{FORMAT_ITEM\}/g) || []).length, 5, 'cinq outils de mise en forme');
+  for (const label of ['Gras', 'Italique', 'Insérer un lien', 'Liste à puces', 'Liste numérotée']) {
+    assert.ok(src.composer.includes(`aria-hidden="true" />${label}`), `${label} absent du menu`);
   }
   assert.equal((src.composer.match(/variant="primary"/g) || []).length, 2, 'Envoyer, et l’action d’un dialogue');
   assert.doesNotMatch(src.composer, /bg-foreground text-background/, 'l’IA n’est plus un second bouton principal');
@@ -198,7 +204,8 @@ test('D-18 : statut d’inscription du catalogue, une seule conversation montée
   assert.match(src.view, /<EnrollmentStatusBadge/);
   assert.doesNotMatch(src.view, /SequenceStatusBadge|config\.active|En séquence/, 'plus de repli « En séquence »');
   assert.equal((src.inbox.match(/<MessageView\b/g) || []).length, 1, 'MessageView monté une fois');
-  assert.match(src.hook, /current_step_order, pause_reason'\)/, 'la raison d’une pause est lue');
+  // Lot 5b : la raison de fin et la trace d'un arrêt manuel sont lues avec elle.
+  assert.match(src.hook, /current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'\)/, 'la raison d’une pause est lue');
 });
 
 // ---------------------------------------------------------------- D-19

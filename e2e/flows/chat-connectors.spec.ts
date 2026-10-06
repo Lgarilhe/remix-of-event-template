@@ -22,6 +22,28 @@ async function mockConnectedNotion(page: import('@playwright/test').Page) {
   });
 }
 
+// Notion non connecté se présente comme les autres applications : « Connecter »
+// ouvre la liste « Applications connectées » des Paramètres.
+test('a disconnected Notion offers Connect, which opens the connected apps list', async ({ asRole }) => {
+  const page = await asRole('agencyOwner');
+  await page.route('**/functions/v1/notion-mcp-oauth', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, can_manage: true, connection: null }),
+    });
+  });
+  await page.goto('/dashboard');
+
+  await page.getByRole('tab', { name: 'Assistant' }).click();
+  await page.getByRole('button', { name: 'Nouvelle conversation' }).first().click();
+  await page.getByRole('button', { name: /Ajouter un fichier ou gérer les connecteurs/ }).click();
+
+  await page.getByRole('button', { name: 'Connecter Notion', exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/account\/connections#applications$/);
+  await expect(page.locator('#applications').getByRole('heading', { name: 'Notion', exact: true })).toBeVisible();
+});
+
 test('Notion can be paused and re-enabled from the chat composer', async ({ asRole }) => {
   const page = await asRole('agencyOwner');
   const connectorSelections: string[][] = [];
@@ -37,8 +59,8 @@ test('Notion can be paused and re-enabled from the chat composer', async ({ asRo
   });
   await page.goto('/dashboard');
 
-  // La bulle flottante n'existe plus : l'onglet Assistant de la barre latérale
-  // ouvre le tiroir par « Nouvelle conversation ».
+  // Ce test passe par l'onglet Assistant de la barre latérale, qui ouvre le
+  // tiroir par « Nouvelle conversation ».
   await page.getByRole('tab', { name: 'Assistant' }).click();
   await page.getByRole('button', { name: 'Nouvelle conversation' }).first().click();
   const menuButton = page.getByRole('button', {

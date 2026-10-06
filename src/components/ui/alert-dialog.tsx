@@ -72,12 +72,16 @@ AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayNam
 
 const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className, ...props }, ref) => {
-  // Action principale du dialogue : pleine. Les suppressions posent bg-destructive
-  // (CLAUDE.md) ; le texte blanc de la variante destructive suit alors, sinon le
-  // texte du bouton à filet restait sombre sur le rouge en thème clair.
-  const destructive = typeof className === "string" && /(^|\s)bg-destructive(\s|$)/.test(className);
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> & {
+    /** primary (défaut) : action principale, pleine ; destructive : suppression, retrait, révocation. */
+    variant?: "primary" | "destructive";
+  }
+>(({ className, variant, ...props }, ref) => {
+  // Sans variante, une classe bg-destructive (ancienne consigne) vaut encore
+  // destructive, pour que le texte blanc suive le rouge.
+  const destructive =
+    variant === "destructive" ||
+    (variant === undefined && typeof className === "string" && /(^|\s)bg-destructive(\s|$)/.test(className));
   return (
     <AlertDialogPrimitive.Action
       ref={ref}

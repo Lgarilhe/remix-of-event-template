@@ -1,6 +1,10 @@
 import React from 'react';
-import { Users, Target, MessageSquare, UserCheck, UserX, TrendingUp } from 'lucide-react';
+import { Users, Target, MessageSquare, UserCheck, UserX } from 'lucide-react';
 
+// Lot 0c : messaged et shortlisted sont des cumuls depuis le début (contactés
+// et retenus au total, get_mission_stage_counts), dismissed l'effectif écarté.
+// Retenu vient avant Contacté (modèle des étapes du lot 0a). Toutes les parts
+// se lisent sur les sourcés, comme les cartes de MissionInsights. Refonte au lot 1.
 interface ProjectFunnelProps {
   totalFound: number;
   scored: number;
@@ -18,13 +22,12 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
 }) => {
   // Calculate percentages safely
   const scoredPct = totalFound > 0 ? (scored / totalFound) * 100 : 0;
-  const contactedPct = scored > 0 ? (messaged / scored) * 100 : 0;
-  const shortlistedPct = messaged > 0 ? (shortlisted / messaged) * 100 : 0;
-  const overallConversion = totalFound > 0 ? (shortlisted / totalFound) * 100 : 0;
+  const shortlistedPct = totalFound > 0 ? (shortlisted / totalFound) * 100 : 0;
+  const contactedPct = totalFound > 0 ? (messaged / totalFound) * 100 : 0;
 
   const stages = [
     {
-      label: 'Profils trouvés',
+      label: 'Sourcés',
       value: totalFound,
       icon: Users,
       color: 'hsl(var(--status-info))',
@@ -34,25 +37,28 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       label: 'Évalués',
       value: scored,
       pct: scoredPct,
+      pctOf: 'des sourcés',
       icon: Target,
       color: 'hsl(var(--status-warning))',
       bgLight: 'bg-warning/10',
     },
     {
-      label: 'Contactés',
+      label: 'Retenus au total',
+      value: shortlisted,
+      pct: shortlistedPct,
+      pctOf: 'des sourcés',
+      icon: UserCheck,
+      color: 'hsl(var(--brand))',
+      bgLight: 'bg-brand/10',
+    },
+    {
+      label: 'Contactés au total',
       value: messaged,
       pct: contactedPct,
+      pctOf: 'des sourcés',
       icon: MessageSquare,
       color: 'hsl(var(--status-success))',
       bgLight: 'bg-success/10',
-    },
-    {
-      label: 'Shortlistés',
-      value: shortlisted,
-      pct: shortlistedPct,
-      icon: UserCheck,
-      color: 'hsl(var(--brand))',
-      bgLight: 'bg-brand-purple/10',
     },
   ];
 
@@ -97,7 +103,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
                       <p className="font-medium text-foreground">{stage.label}</p>
                       {stage.pct !== undefined && (
                         <p className="text-xs text-muted-foreground">
-                          {stage.pct.toFixed(0)}% de l'étape précédente
+                          {stage.pct.toFixed(0)}% {stage.pctOf}
                         </p>
                       )}
                     </div>
@@ -125,35 +131,10 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
           </div>
           <div>
             <p className="font-medium text-foreground">Profils écartés</p>
-            <p className="text-xs text-muted-foreground">Score {'<'} 40 ou rejetés manuellement</p>
+            <p className="text-xs text-muted-foreground">En ce moment</p>
           </div>
         </div>
         <p className="text-2xl font-bold text-destructive">{dismissed}</p>
-      </div>
-
-      {/* Key metrics */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-gradient-to-br from-info/10 to-info/20 rounded-xl p-4 text-center border border-info/20">
-          <TrendingUp className="w-5 h-5 text-info-foreground mx-auto mb-2" />
-          <p className="text-2xl font-bold text-info-foreground">
-            {contactedPct.toFixed(0)}%
-          </p>
-          <p className="text-xs text-info-foreground/80 font-medium">Taux de contact</p>
-        </div>
-        <div className="bg-brand/10 rounded-xl p-4 text-center border border-brand/20">
-          <UserCheck className="w-5 h-5 text-brand mx-auto mb-2" />
-          <p className="text-2xl font-bold text-brand">
-            {shortlistedPct.toFixed(0)}%
-          </p>
-          <p className="text-xs text-brand font-medium">Taux shortlist</p>
-        </div>
-        <div className="bg-gradient-to-br from-success/10 to-success/20 rounded-xl p-4 text-center border border-success/20">
-          <Target className="w-5 h-5 text-success-foreground mx-auto mb-2" />
-          <p className="text-2xl font-bold text-success-foreground">
-            {overallConversion.toFixed(1)}%
-          </p>
-          <p className="text-xs text-success-foreground/80 font-medium">Conversion globale</p>
-        </div>
       </div>
 
       {/* Empty state hint */}

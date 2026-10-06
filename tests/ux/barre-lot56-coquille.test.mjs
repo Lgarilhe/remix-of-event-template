@@ -155,15 +155,24 @@ test('B-C5 — cloche et entrées Notifications et Paramètres retirées', () =>
 });
 
 // ---------------------------------------------------------------- B-C6
-test('B-C6 — rangée basse : quatre liens, Aide en bouton, Marketplace selon les droits', () => {
-  for (const route of ["'/tasks'", "'/calendar'", "'/marketplace'", "'/settings'"]) {
+test('B-C6 — rangée basse : quatre liens (six avec Séquences et Appels), Aide en bouton, Marketplace selon les droits', () => {
+  for (const route of ["'/tasks'", "'/calendar'", "'/sequences'", "'/calls'", "'/marketplace'", "'/settings'"]) {
     assert.ok(bottomRow.includes(route), `SidebarBottomRow.tsx : ${route} absent`);
   }
-  // Les quatre cibles sont rendues par un même <Link> (liste), l'Aide seule est un bouton (HelpMenu).
+  // Les cibles sont rendues par un même <Link> (liste), l'Aide seule est un bouton (HelpMenu).
+  // Lot 5c-2 (décision 8 du 05/10) : Séquences quand l'interrupteur konekt.sequences-v2 est allumé.
+  // Téléphonie : Appels, que seul un premier appel reçu de l'opérateur relié fait apparaître.
   assert.ok(countOf(bottomRow, '<Link') >= 1, '<Link absent');
-  assert.equal(countOf(bottomRow, '{ to: \''), 4, 'quatre liens dans la liste');
+  assert.equal(countOf(bottomRow, '{ to: \''), 6, 'six entrées dans la liste, Séquences et Appels conditionnels compris');
+  assert.match(bottomRow, /\.\.\.\(showSequences \? \[\{ to: '\/sequences', label: 'Séquences', icon: Send \}\] : \[\]\)/, 'Séquences seulement drapeau allumé');
+  assert.match(bottomRow, /const showSequences = useSequencesBeta\(\);/);
+  assert.ok(bottomRow.includes("...(showCalls ? [{ to: '/calls', label: 'Appels', icon: Phone }] : [])"), 'Appels derrière showCalls');
+  // Séquences, puis Appels, entre Agenda et Marketplace.
+  assert.ok(bottomRow.indexOf("'/calendar'") < bottomRow.indexOf("'/sequences'")
+    && bottomRow.indexOf("'/sequences'") < bottomRow.indexOf("'/calls'")
+    && bottomRow.indexOf("'/calls'") < bottomRow.indexOf("'/marketplace'"));
   assert.ok(!bottomRow.includes('<button'), 'seule l\'Aide est un bouton');
-  for (const label of ["'Tâches'", "'Agenda'", "'Marketplace'", "'Paramètres'"]) {
+  for (const label of ["'Tâches'", "'Agenda'", "'Séquences'", "'Marketplace'", "'Paramètres'"]) {
     assert.ok(bottomRow.includes(label), `SidebarBottomRow.tsx : libellé ${label} absent`);
   }
   assert.ok(bottomRow.includes('aria-label={name}'));
@@ -238,7 +247,7 @@ test('B-C10 — aucun tiret long dans les textes visibles', () => {
 });
 
 // ---------------------------------------------------------------- B-C11
-test('B-C11 — cloche, useNotifications, compteur de messages et bulle supprimés', () => {
+test('B-C11 — cloche, useNotifications et compteur de messages supprimés', () => {
   for (const rel of [
     'src/hooks/useNotifications.ts',
     'src/components/notifications/NotificationDropdown.tsx',
@@ -250,7 +259,6 @@ test('B-C11 — cloche, useNotifications, compteur de messages et bulle supprim�
     /NotificationDropdown/,
     /['"]@\/hooks\/useNotifications['"]/,
     /['"]@\/hooks\/useUnreadMessageNotifications['"]/,
-    /AgentFAB/,
   ];
   for (const rel of walk('src')) {
     const src = read(rel);

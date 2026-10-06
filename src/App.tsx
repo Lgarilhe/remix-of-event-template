@@ -10,11 +10,13 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
+import { CandidatePhotosProvider } from "@/components/CandidatePhotosProvider";
 import { AgentDrawer } from "@/components/agent";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { LegacySettingsRedirect } from "@/components/settings/shell/LegacySettingsRedirect";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
+import { SequencesGate } from "@/components/sequences/SequencesGate";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { clearOnboardingProgress } from "@/components/onboarding/onboardingStorage";
@@ -35,7 +37,8 @@ const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
-const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
+// Mission (/missions/:id et ses écrans) : ancienne ou nouvelle page selon l'interrupteur (src/pages/MissionEntry.tsx).
+const MissionEntry = lazy(() => import("./pages/MissionEntry"));
 const Inbox = lazy(() => import("./pages/Inbox"));
 const SourcingSearches = lazy(() => import("./pages/SourcingSearches"));
 const SourcingSearchPage = lazy(() => import("./pages/SourcingSearch"));
@@ -51,6 +54,10 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 const AgentsPage = lazy(() => import("./pages/Agents"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
+// Séquences de l'organisation (lot 5c-2) : derrière l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts).
+const SequencesPage = lazy(() => import("./pages/SequencesPage"));
+const SequenceDetailPage = lazy(() => import("./pages/SequenceDetailPage"));
+const CallsPage = lazy(() => import("./pages/Calls"));
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client', '/pricing'];
 
 const AppContent = () => {
@@ -165,7 +172,7 @@ const AppContent = () => {
           {/* Authenticated routes — with sidebar layout */}
           <Route path="/candidates" element={<Navigate to="/pipeline" replace />} />
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/missions/:id/*" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionEntry /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           {/* Recherche autonome (sourcing sans mission) */}
           <Route path="/sourcing" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearches /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/sourcing/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearchPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
@@ -174,6 +181,12 @@ const AppContent = () => {
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><OrganizationGuard><AppLayout><CalendarPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><OrganizationGuard><AppLayout><TasksPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+            {/* Séquences (lot 5c-2) : interrupteur éteint, SequencesGate renvoie vers /missions */}
+            <Route path="/sequences" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequencesPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            {/* Nouvelle séquence (lot 5d-2) : avant /sequences/:id, même garde ; rien n'est écrit avant « Enregistrer » */}
+            <Route path="/sequences/nouvelle" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage creating /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/sequences/:id" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/calls" element={<ProtectedRoute><OrganizationGuard><AppLayout><CallsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Legacy redirects */}
             <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
             <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
@@ -211,7 +224,9 @@ const App = () => {
     <TooltipProvider>
       <LinkedInAccountsProvider>
         <AgentProvider>
-          <AppContent />
+          <CandidatePhotosProvider>
+            <AppContent />
+          </CandidatePhotosProvider>
         </AgentProvider>
       </LinkedInAccountsProvider>
     </TooltipProvider>

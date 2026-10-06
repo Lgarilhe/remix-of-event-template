@@ -119,7 +119,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 <Sparkles className="w-5 h-5 text-white" strokeWidth={2.5} />
               </motion.div>
               <div className="min-w-0">
-                <h2 className="font-display text-[17px] font-bold leading-tight">
+                <h2 className="font-display text-lg font-bold leading-tight">
                   Scoring terminé
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -175,7 +175,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                   été ré-évalués par une IA plus puissante (qualité +) */}
               {(stats.escalated ?? 0) > 0 && (
                 <div
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground pl-1"
+                  className="flex items-center gap-1.5 text-2xs text-muted-foreground pl-1"
                   title="Profils borderline ré-évalués par une IA plus puissante pour plus de précision"
                 >
                   <Zap className="w-3 h-3 text-amber-400 shrink-0" />
@@ -304,7 +304,7 @@ const StatCard: React.FC<{
   >
     <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
       {icon}
-      <span className="text-[10px] font-semibold">{label}</span>
+      <span className="text-2xs font-semibold">{label}</span>
     </div>
     <span
       className={cn(
@@ -353,7 +353,7 @@ const FilterPill: React.FC<{
       <span>{label}</span>
       <span
         className={cn(
-          'tabular-nums font-mono text-[11px]',
+          'tabular-nums font-mono text-2xs',
           active ? 'opacity-70' : 'text-muted-foreground',
         )}
       >
@@ -394,7 +394,7 @@ const ScoreBadge: React.FC<{ score: number; recommendation: string }> = ({ score
         color: config.color,
       }}
     >
-      <span className="text-[13px] font-bold tabular-nums leading-none font-display">{score}</span>
+      <span className="text-sm font-bold tabular-nums leading-none font-display">{score}</span>
       {config.icon && <div className="mt-0.5">{config.icon}</div>}
     </div>
   );
@@ -438,7 +438,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           )}
           {entry.hardFilterPassed === false && (
             <span
-              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
+              className="inline-flex items-center gap-0.5 text-2xs px-1.5 py-0.5 rounded-full font-medium shrink-0"
               style={{
                 background: 'hsl(var(--destructive) / 0.12)',
                 color: 'hsl(var(--destructive))',
@@ -476,7 +476,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           <div className="px-4 pb-3 ml-[3.25rem] text-xs text-muted-foreground space-y-1.5 border-l-2 border-border pl-3">
             {entry.hardFilterKO && (
               <p>
-                <span className="text-[10px] font-semibold text-foreground/70 mr-1">Filtre :</span>
+                <span className="text-2xs font-semibold text-foreground/70 mr-1">Filtre :</span>
                 {entry.hardFilterKO}
               </p>
             )}

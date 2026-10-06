@@ -17,6 +17,8 @@ export interface JobDetails {
     culture_notes?: string;
     website?: string;
     logo_url?: string;
+    /** Dernière recherche infructueuse du logo (resolve-client-logo) : pas de nouvelle avant 30 jours. */
+    logo_checked_at?: string;
     hiring_manager?: {
       name?: string;
       title?: string;
@@ -93,6 +95,8 @@ export interface JobDetails {
   // ── Brief brut ──
   raw_brief?: string;
   brief_source?: 'typed' | 'voice' | 'imported' | 'ai_structured';
+  /** Adresse de l'offre en ligne d'où vient le brief (Brief IA, lecture d'une adresse web). */
+  source_url?: string;
   voice_transcript?: string;
   voice_audio_url?: string;
   brief_video_url?: string;

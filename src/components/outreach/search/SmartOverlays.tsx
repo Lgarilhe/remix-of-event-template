@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState } from '@/components/outreach/types';
+import { quickChipV3 } from '@/components/missions/v3/sourcing/quickChip';
 import {
   TOP_ENGINEERING_SCHOOLS, TOP_BUSINESS_SCHOOLS, ESN_BOOLEAN_GROUPS,
 } from './smartOverlayData';
@@ -73,6 +74,10 @@ interface SmartOverlaysProps {
   /** alt_companies suggérées par l'IA (jamais affichées ailleurs) */
   suggestedCompanies: string[];
   searchSource: 'linkedin' | 'database';
+  /** Nouvelle page mission : puces sans cadre (fond neutre quand actives), texte de 14 px, cibles de 44 px sur téléphone. */
+  variant?: 'default' | 'mission-v3';
+  /** Nouvelle page mission : puces ajoutées à la suite des filtres rapides (« À l'écoute »). */
+  trailing?: React.ReactNode;
 }
 
 interface OverlayDef {
@@ -102,7 +107,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'prets-a-bouger',
     label: 'Prêts à bouger',
-    title: "À l'écoute (open to work) OU actifs récemment sur LinkedIn — les plus susceptibles de répondre",
+    title: "À l'écoute (open to work) OU actifs récemment sur LinkedIn : les plus susceptibles de répondre",
     active: f => f.open_to_work === true && f.spotlight === 'ACTIVE_TALENT',
     toggle: (f, active) => active
       ? { ...f, open_to_work: null, spotlight: '' as LinkedInFiltersState['spotlight'] }
@@ -112,7 +117,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'murs-bouger',
     label: 'Mûrs pour bouger',
-    title: '3 ans ou plus dans le poste actuel sans évolution — la fenêtre de départ classique',
+    title: '3 ans ou plus dans le poste actuel sans évolution : la fenêtre de départ classique',
     active: f => f.tenure_at_role_min != null && f.tenure_at_role_min >= 3,
     toggle: (f, active) => active
       ? { ...f, tenure_at_role_min: null, tenure_at_role_max: null }
@@ -132,7 +137,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'deja-croises',
     label: 'Déjà croisés',
-    title: "Candidats déjà apparus dans d'anciennes recherches de l'équipe — le stock dormant à requalifier",
+    title: "Candidats déjà apparus dans d'anciennes recherches de l'équipe : le stock dormant à requalifier",
     active: f => f.spotlight === 'REDISCOVERED_CANDIDATES',
     toggle: (f, active) => ({ ...f, spotlight: (active ? '' : 'REDISCOVERED_CANDIDATES') as LinkedInFiltersState['spotlight'] }),
     show: (_src, f) => f.api === 'recruiter',
@@ -140,7 +145,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'warm-intro',
     label: 'Warm intro',
-    title: 'Réseau 1er et 2e degré du compte connecté — une connexion commune peut faire l\'intro',
+    title: 'Réseau de 1er et 2e degré du compte connecté : une connexion commune peut faire l\'intro',
     active: f => f.network_distance.length > 0 && f.network_distance.every(d => d === 1 || d === 2),
     toggle: (f, active) => active
       ? { ...f, network_distance: [] }
@@ -151,7 +156,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'top-ecoles',
     label: 'Top écoles',
-    title: `${TOP_SCHOOLS.length} grandes écoles FR (HEC, Polytechnique, Centrale…) ajoutées au filtre École — « au moins une »`,
+    title: `${TOP_SCHOOLS.length} grandes écoles FR (HEC, Polytechnique, Centrale…) ajoutées au filtre École, « au moins une »`,
     active: f => TOP_SCHOOLS.filter(s => f.school.some(sc => sc.id === s.id)).length >= 10,
     toggle: (f, active) => active
       ? { ...f, school: f.school.filter(sc => !TOP_SCHOOL_IDS.has(sc.id)) }
@@ -177,7 +182,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'ex-esn',
     label: 'Ex-ESN',
-    title: 'Est passé par une grande ESN (Capgemini, Alten, Sopra…) mais n\'y est plus — profils rompus au delivery, sortis du conseil',
+    title: 'Est passé par une grande ESN (Capgemini, Alten, Sopra…) mais n\'y est plus : profils rompus au delivery, sortis du conseil',
     active: f => f.company_keywords.some(c => ESN_BOOLEAN_GROUPS.includes(c.keywords)),
     toggle: (f, active) => active
       ? { ...f, company_keywords: f.company_keywords.filter(c => !ESN_BOOLEAN_GROUPS.includes(c.keywords)) }
@@ -203,8 +208,9 @@ const OVERLAYS: OverlayDef[] = [
 ];
 
 export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
-  filters, onFiltersEdit, suggestedCompanies, searchSource,
+  filters, onFiltersEdit, suggestedCompanies, searchSource, variant = 'default', trailing,
 }) => {
+  const isV3 = variant === 'mission-v3';
   const vivier = suggestedCompanies.filter(c => c?.trim()).slice(0, 6);
 
   /* ── Picker « A levé des fonds » ── */
@@ -244,7 +250,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
     try {
       const { list } = await fetchFundedCompanies(stage, fundedScope);
       bumpCache(x => x + 1);
-      if (!list.length) { toast.info('Annuaire en cours de résolution pour ce stade — réessaie dans quelques minutes'); return; }
+      if (!list.length) { toast.info('Annuaire en cours de résolution pour ce stade. Réessayez dans quelques minutes.'); return; }
       const active = list.filter(c => filters.company.some(fc => fc.id === c.id)).length >= Math.min(10, list.length);
       onFiltersEdit(f => active
         ? { ...f, company: f.company.filter(c => !list.some(l => l.id === c.id)) }
@@ -282,12 +288,12 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
       } as OverlayDef;
     });
 
-  if (!defs.length) return null;
+  if (!defs.length && !trailing) return null;
 
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mr-1">
-        Surcouches
+    <div className={isV3 ? 'flex flex-wrap items-center gap-x-1 gap-y-3 sm:gap-y-1.5' : 'mb-2 flex flex-wrap items-center gap-1.5'}>
+      <span className={isV3 ? 'mr-1 text-sm text-muted-foreground' : 'mr-1 text-xs text-muted-foreground'}>
+        Filtres rapides
       </span>
       {defs.map(d => {
         const isActive = d.active(filters);
@@ -299,7 +305,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             aria-checked={isActive}
             title={d.title}
             onClick={() => onFiltersEdit(f => d.toggle(f, d.active(f)))}
-            className={cn(
+            className={isV3 ? quickChipV3(isActive) : cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150',
               isActive
                 ? 'bg-[var(--k-accent-tint)] border-[color-mix(in_srgb,var(--k-accent)_40%,var(--k-hairline))] text-[var(--k-text)]'
@@ -307,7 +313,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             )}
           >
             {isActive && (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className={cn('w-2.5 h-2.5', !isV3 && 'text-[var(--k-accent)]')}><path d="M20 7 10 17l-5-5" /></svg>
             )}
             {d.label}
           </button>
@@ -319,9 +325,9 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
         <span ref={pickerRef} className="relative">
           <button
             type="button"
-            title="Boîte actuelle parmi les sociétés financées connues (annuaire Konekt, EU, rafraîchi chaque mois) — choisis le stade de levée"
+            title="Boîte actuelle parmi les sociétés financées connues (annuaire Konekt, EU, rafraîchi chaque mois). Choisissez le stade de levée."
             onClick={() => setStageOpen(o => !o)}
-            className={cn(
+            className={isV3 ? quickChipV3(anyStageActive) : cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150',
               anyStageActive
                 ? 'bg-[var(--k-accent-tint)] border-[color-mix(in_srgb,var(--k-accent)_40%,var(--k-hairline))] text-[var(--k-text)]'
@@ -329,7 +335,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             )}
           >
             {anyStageActive && (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className={cn('w-2.5 h-2.5', !isV3 && 'text-[var(--k-accent)]')}><path d="M20 7 10 17l-5-5" /></svg>
             )}
             A levé
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-2.5 h-2.5"><path d="m7 10 5 5 5-5" /></svg>
@@ -337,7 +343,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
           {stageOpen && (
             <div className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
               <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-1.5">
-                <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)]">Stade de levée</span>
+                <span className="text-xs text-muted-foreground">Stade de levée</span>
                 <span className="inline-flex rounded-md border border-[var(--k-hairline)] overflow-hidden">
                   {(['FR', 'EU'] as const).map(sc => (
                     <button
@@ -346,7 +352,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                       onClick={() => setFundedScope(sc)}
                       title={sc === 'FR' ? 'Sociétés collectées via la recherche France' : 'Toute la collecte européenne (FR, DE, UK, ES, NL, BE, CH, IT)'}
                       className={cn(
-                        'px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                        'px-1.5 py-0.5 text-2xs font-medium transition-colors',
                         fundedScope === sc
                           ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
                           : 'text-[var(--k-text-muted)] hover:text-[var(--k-text-2)]',
@@ -368,11 +374,11 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                     aria-checked={active}
                     disabled={stageLoading !== null}
                     onClick={() => toggleStage(s.value)}
-                    className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] disabled:opacity-60"
+                    className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] disabled:opacity-60"
                   >
                     <span className="flex-1 min-w-0 truncate">{s.label}</span>
                     {entry && (
-                      <span className="font-mono text-[10px] text-[var(--k-text-muted)]">
+                      <span className="font-mono text-2xs text-[var(--k-text-muted)]">
                         {entry.list.length === 0 ? 'en résolution…'
                           : entry.total > entry.list.length ? `top ${entry.list.length} / ${entry.total}`
                           : `${entry.list.length} boîtes`}
@@ -384,15 +390,16 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                   </button>
                 );
               })}
-              <p className="px-2 pt-1 pb-0.5 text-[11px] leading-snug text-[var(--k-text-muted)]">
+              <p className="px-2 pt-1 pb-0.5 text-2xs leading-snug text-[var(--k-text-muted)]">
                 Top = les {FUNDED_CAP} boîtes du stade dont l'effectif croît le plus vite
-                (6 derniers mois) — celles qui recrutent maintenant. Injectées comme boîte
+                (6 derniers mois), celles qui recrutent maintenant. Injectées comme boîte
                 actuelle, élagables une à une dans la pilule Boîte.
               </p>
             </div>
           )}
         </span>
       )}
+      {trailing}
     </div>
   );
 };
