@@ -38,14 +38,16 @@ test('Kit : l’interrupteur garde son dessin et offre 44 px au doigt', () => {
   assert.match(sw, /max-md:after:absolute max-md:after:-inset-x-0\.5 max-md:after:-inset-y-3/);
 });
 
-test('Kit : une carte se détache par son filet, sans ombre', () => {
+test('Kit : une carte se détache par sa luminosité, son filet et une ombre légère', () => {
   const card = code('src/components/ui/card.tsx');
-  const base = card.match(/const Card = [\s\S]*?cn\("([^"]+)"/)[1];
-  assert.doesNotMatch(base, /shadow/);
-  // Plus aucun retrait d'ombre à recopier sur une carte.
-  for (const rel of sourceFiles) {
-    assert.doesNotMatch(code(rel), /<Card\b[^>]*\bshadow-none\b/, `${rel} : shadow-none devenu inutile`);
-  }
+  // La carte choisit ses classes de base selon le contexte « à plat » : branche encadrée, puis branche à plat.
+  const [, flat, base] = card.match(/plain \? "([^"]*)" : "([^"]+)"/);
+  assert.doesNotMatch(flat, /shadow/, 'à plat, aucune ombre : il n\'y a plus de fond ni de cadre à relever');
+  assert.match(base, /\bbg-card\b/);
+  assert.match(base, /\bborder border-border\b/);
+  assert.match(base, /\bshadow-sm\b/, 'ombre légère : elle donne le relief en thème clair');
+  // L'ombre marquée reste aux éléments qui flottent (menus, dialogues, toasts).
+  assert.doesNotMatch(base, /shadow-(?:md|lg|xl|2xl)/);
 });
 
 test('Kit : la confirmation prend une variante explicite', () => {

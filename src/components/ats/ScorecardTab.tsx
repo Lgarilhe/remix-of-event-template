@@ -1114,7 +1114,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
                   <span className="text-sm font-medium text-muted-foreground">/5</span>
                 </p>
               ) : (
-                <p className="mt-1 text-sm text-muted-foreground">Pas encore de note</p>
+                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-muted-foreground">
+                  <span className="sr-only">Pas encore de note</span>
+                  <span aria-hidden="true">–</span>
+                  <span aria-hidden="true" className="text-sm font-medium">/5</span>
+                </p>
               )}
             </div>
             <div className="min-w-0 space-y-1.5">
@@ -1146,22 +1150,15 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
                 Ouvrir l'assistant d'entretien
               </Button>
             )}
+            {/* Actions secondaires en icônes : une seule rangée dans le tiroir, la confirmation protège la régénération. */}
             {!autoOpenFirst && (
-              <Button variant="outline" size="sm" onClick={() => void openFullPage(false)} className={touch}>
+              <IconAction label="Ouvrir en plein écran" onClick={() => void openFullPage(false)}>
                 <Maximize2 aria-hidden="true" />
-                Ouvrir en plein écran
-              </Button>
+              </IconAction>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmRegenerate(true)}
-              loading={generating}
-              className={touch}
-            >
-              {!generating && <RotateCcw aria-hidden="true" />}
-              Régénérer la grille
-            </Button>
+            <IconAction label="Régénérer la grille" onClick={() => setConfirmRegenerate(true)} disabled={generating}>
+              {generating ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+            </IconAction>
           </div>
         </section>
 

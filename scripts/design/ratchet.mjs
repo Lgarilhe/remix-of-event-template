@@ -119,7 +119,7 @@ const METRICS = [
   {
     id: 'rayons_hors_systeme',
     label: 'Rayons hors système (rounded-none, -2xl, -3xl, arbitraires)',
-    // Système : 8 px contrôles (rounded-lg), 6 px imbriqués (rounded-md), 12 px surfaces (rounded-xl),
+    // Système : 8 px contrôles (rounded-lg), 6 px imbriqués (rounded-md), 16 px surfaces (rounded-xl),
     // plein (rounded-full), 4 px sous 20 px (rounded-sm).
     scope: 'code',
     re: /\brounded(?:-[tblrsexy]{1,2})?-(?:none|2xl|3xl|\[[^\]]+\])/g,

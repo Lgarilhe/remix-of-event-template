@@ -13,6 +13,12 @@ export interface StopConditions {
 interface StopConditionsSettingsProps {
   value: StopConditions;
   onChange: (value: StopConditions) => void;
+  /**
+   * Page d'une séquence (onglet « Réglages », lot 5c-2) : lignes à plat sous
+   * des filets, comme les Expéditeurs (06-simplicite, règle 3), et apostrophe
+   * typographique. Défaut : les cadres de l'éditeur actuel, jusqu'au lot 5j.
+   */
+  plain?: boolean;
 }
 
 // La réponse et la désinscription arrêtent toujours la séquence : le moteur
@@ -28,22 +34,22 @@ const STOP_ITEMS = [
   { key: 'on_meeting_booked' as const, label: 'Arrêter si un rendez-vous est pris', hint: null, icon: CalendarCheck },
 ];
 
-export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ value, onChange }) => {
+export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ value, onChange, plain = false }) => {
   const baseId = useId();
   return (
     <fieldset>
-      <legend className="eyebrow mb-3">Conditions d'arrêt</legend>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2.5">
+      <legend className="eyebrow mb-3">{plain ? 'Conditions d’arrêt' : "Conditions d'arrêt"}</legend>
+      <div className={plain ? 'divide-y divide-border border-y border-border' : 'space-y-2'}>
+        <div className={plain ? 'flex items-center gap-2.5 py-3' : 'flex items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2.5'}>
           <MessageCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <p className="text-sm leading-snug">La séquence s'arrête toujours quand le candidat répond ou se désinscrit.</p>
+          <p className="text-sm leading-snug">{plain ? 'La séquence s’arrête toujours quand le candidat répond ou se désinscrit.' : "La séquence s'arrête toujours quand le candidat répond ou se désinscrit."}</p>
         </div>
         {STOP_ITEMS.map(item => {
           const Icon = item.icon;
           const id = `${baseId}-${item.key}`;
           const hintId = `${id}-hint`;
           return (
-            <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+            <div key={item.key} className={plain ? 'flex items-center justify-between gap-3 py-3' : 'flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5'}>
               <div className="flex min-w-0 flex-1 items-start gap-2.5">
                 <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <div className="min-w-0">

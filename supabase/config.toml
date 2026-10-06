@@ -37,6 +37,9 @@ verify_jwt = false
 [functions.aircall-webhook]
 verify_jwt = false
 
+[functions.aircall-connect]
+verify_jwt = false
+
 [functions.analyze-response]
 verify_jwt = false
 
@@ -78,6 +81,9 @@ verify_jwt = false
 [functions.detect-profile-fraud]
 verify_jwt = false
 
+[functions.draft-sequence]
+verify_jwt = false
+
 [functions.enrich-company]
 verify_jwt = false
 
@@ -100,6 +106,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.generate-scorecard]
+verify_jwt = false
+
+[functions.fetch-job-source]
 verify_jwt = false
 
 [functions.generate-search-filters]

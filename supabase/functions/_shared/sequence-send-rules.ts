@@ -188,6 +188,40 @@ export function isUsableAiMessage(message: unknown, senderName: string): message
   return typeof message === 'string' && aiMessageBody(message, senderName).length >= MIN_AI_MESSAGE_CHARS;
 }
 
+// ─── Lot 5a-2 : aucun message rédigé par l'IA sans relecture ────────────────
+
+/** Étapes qui portent un message (needsMessage de process-sequences). */
+export const AI_REVIEW_MESSAGE_ACTIONS: readonly string[] = ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message'];
+
+/** Raison posée sur l'exécution reportée (error_message), affichée telle quelle au suivi et au Journal. */
+export const AI_REVIEW_REQUIRED_MESSAGE = "Message rédigé par l'IA à relire avant l'envoi.";
+
+/** Report d'une étape IA non relue : une heure, à chaque passage, sans coût ni effet sur le compte LinkedIn. */
+export const AI_REVIEW_DEFER_MS = 60 * 60 * 1000;
+
+/**
+ * Une étape à message rédigée par l'IA pour chaque candidat attend-elle une
+ * relecture ? Texte relu : la retouche validée à l'inscription
+ * (tracking_data.message_overrides[step_id], `usedOverride`) ou le message
+ * corrigé dans le Journal (final_message d'une exécution programmée,
+ * `editedMessage`). Une copie périmée du modèle posée au verrou d'un ancien
+ * essai (`staleTemplateSnapshot`, SEQ-090) n'est pas un texte relu.
+ * Vrai exactement quand le moteur aurait rédigé à l'envoi (aiWillGenerate) :
+ * il reporte alors l'étape au lieu d'appeler le modèle.
+ */
+export function aiReviewRequired(input: {
+  useAi: boolean | null | undefined;
+  actionType: string | null | undefined;
+  editedMessage: boolean;
+  usedOverride: boolean;
+  staleTemplateSnapshot?: boolean;
+}): boolean {
+  if (!input.useAi) return false;
+  if (!AI_REVIEW_MESSAGE_ACTIONS.includes(input.actionType ?? '')) return false;
+  const journalEdit = input.editedMessage && !input.staleTemplateSnapshot;
+  return !journalEdit && !input.usedOverride;
+}
+
 // ─── SEQ-074 : budget du cycle et second appel IA ───────────────────────────
 
 /** Temps minimal à garder avant l'échéance du cycle pour lancer l'appel de correction. */

@@ -7,7 +7,7 @@
 // (process-sequences, scheduleNextStep) : quand l'éditeur montre un chemin,
 // c'est celui que suivront les candidats.
 
-import type { Sequence, SequenceStep, StopConditions, SenderAccountConfig } from '../SequenceBuilder';
+import type { Sequence, SequenceStep, StopConditions, SenderAccountConfig } from '../../../types/sequence';
 // Extension explicite : ce fichier est aussi importé tel quel par les tests Node.
 import { retiredConditionNotice } from './conditionTypes.ts';
 import { plural } from '../../../lib/plural.ts';
@@ -256,6 +256,18 @@ export function templateStepOrders(configs: ReadonlyArray<Record<string, unknown
   }
   return orders;
 }
+
+/**
+ * Catégories d'un modèle (sequence_templates.category) : libellés affichés, la
+ * valeur enregistrée ne change pas. Communes au choix de modèle et à
+ * « Enregistrer comme modèle » (lot 5c-1).
+ */
+export const TEMPLATE_CATEGORIES = [
+  { value: 'sourcing', label: 'Sourcing' },
+  { value: 'nurturing', label: 'Entretien du vivier' },
+  { value: 'reactivation', label: 'Réactivation' },
+  { value: 'custom', label: 'Personnalisé' },
+];
 
 /**
  * Étapes affichées dans la liste : une par ordre (la variante A, ou l'étape

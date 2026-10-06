@@ -52,12 +52,15 @@ export function clearSenderCache(): void {
 /**
  * user_id du titulaire du compte d'envoi dans l'organisation de l'inscription
  * (member_linkedin_accounts), ou null si la liaison est introuvable ou
- * illisible. Une erreur de lecture est journalisée et n'est pas mise en cache.
+ * illisible. Une erreur de lecture est journalisée et n'est pas mise en cache ;
+ * `diag.failed` la signale à l'appelant qui doit distinguer les deux cas
+ * (aperçu du lot 5d-1 : jamais un texte faux après une lecture en échec).
  */
 export async function resolveSendingAccountOwner(
   client: SupabaseLikeClient,
   enrollment: SenderEnrollment,
   step?: { sender_id?: unknown } | null,
+  diag?: { failed?: boolean },
 ): Promise<string | null> {
   const accountId = sendingAccountId(enrollment, step);
   const orgId = enrollmentOrgId(enrollment);
@@ -74,6 +77,7 @@ export async function resolveSendingAccountOwner(
       .maybeSingle();
     if (error) {
       console.warn('[sequence-sender] titulaire du compte d\'envoi illisible:', error.message);
+      if (diag) diag.failed = true;
       return null;
     }
     const userId = (data as { user_id?: string | null } | null)?.user_id ?? null;
@@ -81,6 +85,7 @@ export async function resolveSendingAccountOwner(
     return userId;
   } catch (e) {
     console.warn('[sequence-sender] titulaire du compte d\'envoi illisible:', e);
+    if (diag) diag.failed = true;
     return null;
   }
 }

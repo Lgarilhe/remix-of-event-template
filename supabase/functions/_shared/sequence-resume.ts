@@ -8,7 +8,8 @@
 //
 //   1. une exécution encore en attente est gardée (sa date prévue aussi) ;
 //   2. sinon on réarme la plus récente exécution annulée PAR UNE PAUSE, si son
-//      étape n'est jamais partie et que rien n'a avancé depuis ;
+//      étape n'est jamais partie et que rien n'a avancé depuis (une attente
+//      garde sa date d'origine, son délai ne repart pas de zéro) ;
 //   3. sinon on planifie l'étape qui suit la dernière exécution terminée.
 //
 //   deno test --no-check supabase/functions/_shared/sequence-resume.test.ts
@@ -16,6 +17,7 @@
 import { ACCOUNT_DISCONNECTED_SKIP_REASON } from './linkedin-quotas.ts';
 import { isDeliveredCancelled } from './sequence-engine-rules.ts';
 import { GDPR_ERASED_AT_KEY, GDPR_ERASURE_SKIP_REASON } from './get-or-fetch-contact.ts';
+import { implicitWaitEvent } from './sequence-wait-rules.ts';
 
 // Raison posée sur l'exécution quand l'organisation n'a ni abonnement ni essai
 // (même texte que process-sequences).
@@ -116,6 +118,8 @@ export interface ResumeExecutionRow {
   error_message?: string | null;
   scheduled_at?: string | null;
   created_at?: string | null;
+  /** Étape jointe : une attente réarmée garde sa date d'origine (waitsForEvent). */
+  step?: { action_type?: string | null; wait_for_event?: string | null; condition_type?: string | null } | null;
 }
 
 export type ResumePlan =
@@ -147,6 +151,16 @@ const ts = (value: string | null | undefined): number => {
   return Number.isNaN(n) ? 0 : n;
 };
 
+/**
+ * Étape qui attend un événement (acceptation, réponse, ouverture...) : le
+ * moteur la met en 'waiting_event' quand elle est due, et son délai
+ * d'attente se compte depuis scheduled_at (waitStartedAt).
+ */
+export function waitsForEvent(step: ResumeExecutionRow['step']): boolean {
+  if (!step) return false;
+  return !!implicitWaitEvent(step) || step.condition_type === 'wait_until_connected';
+}
+
 /** max(date prévue, maintenant + 1 min), en ISO. */
 export function resumeDate(originalIso: string | null | undefined, nowMs: number): string {
   return new Date(Math.max(ts(originalIso), nowMs + 60_000)).toISOString();
@@ -177,8 +191,8 @@ export function planResume(
   const pending = byRecent.find((e) => KEEP_DATE_PENDING.has(e.status) || KEEP_AS_IS_PENDING.has(e.status));
   if (pending) {
     if (KEEP_AS_IS_PENDING.has(pending.status)) {
-      // Une attente d'acceptation ou de réponse ne devient jamais 'scheduled' :
-      // le moteur la prendrait pour un événement survenu.
+      // Une attente d'acceptation ou de réponse en cours reste telle quelle :
+      // ni date ni statut touchés, son délai garde son point de départ.
       return { kind: 'keep_pending', executionId: pending.id, newScheduledAt: null };
     }
     const target = resumeDate(pending.scheduled_at, nowMs);
@@ -199,7 +213,13 @@ export function planResume(
         kind: 'rearm',
         executionId: candidate.id,
         fromStatus: candidate.status,
-        scheduledAt: resumeDate(candidate.scheduled_at, nowMs),
+        // Une attente annulée (arrêt manuel, ancienne pause) garde sa date
+        // d'origine : due, le moteur réévalue aussitôt son événement et la
+        // remet en 'waiting_event' sans toucher scheduled_at, son délai garde
+        // son point de départ. Repoussée d'une minute, il repartait de zéro.
+        scheduledAt: waitsForEvent(candidate.step) && ts(candidate.scheduled_at) > 0
+          ? candidate.scheduled_at as string
+          : resumeDate(candidate.scheduled_at, nowMs),
       };
     }
   }

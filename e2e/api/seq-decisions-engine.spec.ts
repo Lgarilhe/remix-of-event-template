@@ -335,7 +335,7 @@ test.describe('Décisions 1 et 2 : pannes passagères hors auto-pause', () => {
 // ═══ Décision 3 : place du plafond rendue ═══════════════════════════════════
 
 test.describe('Décision 3 : une étape arrêtée sans rien envoyer ne consomme pas le plafond LinkedIn', () => {
-  test('invitation à une relation directe, message vide, rédaction IA indisponible, étape déjà envoyée : aucune ligne au journal ; le témoin envoyé en laisse une', async () => {
+  test('invitation à une relation directe, message vide, message IA non relu, étape déjà envoyée : aucune ligne au journal ; le témoin envoyé en laisse une', async () => {
     // Invitation à un candidat déjà en relation (lecture du profil : premier degré).
     const { org: oC, accountId: accC } = await sendingOrgTracked('E2E D3 Relation');
     const sC = await insertSequence(oC, oC.owner.userId, [
@@ -352,14 +352,9 @@ test.describe('Décision 3 : une étape arrêtée sans rien envoyer ne consomme 
     ]);
     const eE = await enroll(oE, sE.sequenceId, oE.owner.userId, accE);
 
-    // Rédaction IA refusée (crédits IA épuisés).
+    // Message rédigé par l'IA sans texte relu : lot 5a-2, reporté par la garde
+    // du moteur avant le contrôle du plafond (la rédaction à l'envoi n'existe plus).
     const { org: oA, accountId: accA } = await sendingOrgTracked('E2E D3 IA');
-    const { error: balErr } = await admin().from('ai_credit_balances').upsert({
-      organization_id: oA.orgId, plan_credits: 0, topup_credits: 0, credits_remaining: 0, credits_total: 0,
-      period_start: new Date(Date.now() - DAY).toISOString(), period_end: new Date(Date.now() + 30 * DAY).toISOString(),
-    }, { onConflict: 'organization_id' });
-    expect(balErr).toBeNull();
-    cleanups.push(() => admin().from('ai_credit_balances').delete().eq('organization_id', oA.orgId));
     const sA = await insertSequence(oA, oA.owner.userId, [
       { action_type: 'message', message_template: 'Modèle {{prenom}}', use_ai_personalization: true },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -395,8 +390,9 @@ test.describe('Décision 3 : une étape arrêtée sans rien envoyer ne consomme 
     expect(rE.status).toBe('failed');
     expect(rE.error_message).toBe(EMPTY_TEXT_ERROR);
     const rA = await execRow(xA);
-    expect(rA.status, 'rédaction IA refusée : nouvel essai').toBe('scheduled');
-    expect(rA.retry_count).toBe(1);
+    expect(rA.status, 'message IA non relu : étape reportée').toBe('scheduled');
+    expect(rA.retry_count ?? 0, 'ni essai ni échec').toBe(0);
+    expect(rA.error_message).toBe("Message rédigé par l'IA à relire avant l'envoi.");
     const rD = await execRow(xD);
     expect(rD.status).toBe('skipped');
     expect(rD.skip_reason).toBe('Étape déjà envoyée');
@@ -405,7 +401,7 @@ test.describe('Décision 3 : une étape arrêtée sans rien envoyer ne consomme 
 
     expect(await ledgerCount(accC, 'connection_request'), 'invitation inutile : place rendue').toBe(0);
     expect(await ledgerCount(accE, 'message'), 'message vide : place rendue').toBe(0);
-    expect(await ledgerCount(accA, 'message'), 'IA indisponible : place rendue').toBe(0);
+    expect(await ledgerCount(accA, 'message'), 'message IA non relu : aucune place prise').toBe(0);
     expect(await ledgerCount(accD, 'message'), 'étape déjà envoyée : aucune place prise').toBe(0);
     expect(await ledgerCount(accS, 'message'), 'témoin envoyé : exactement une ligne').toBe(1);
   });

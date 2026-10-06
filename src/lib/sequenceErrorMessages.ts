@@ -114,8 +114,49 @@ function rateLimitLabel(actionType: string | undefined, retryIso: string | undef
   return when ? `${channel}, nouvel essai le ${when}` : `${channel}, nouvel essai automatique`;
 }
 
+// ─── Lot 5a-2 : message rédigé par l'IA à relire ───────────────────────────
+
+/**
+ * Raison posée par le moteur sur une étape à message rédigée par l'IA sans
+ * texte relu (AI_REVIEW_REQUIRED_MESSAGE de
+ * supabase/functions/_shared/sequence-send-rules.ts) : l'étape reste
+ * programmée et se reporte d'heure en heure jusqu'à la relecture.
+ */
+export const AI_REVIEW_REQUIRED_REASON = "Message rédigé par l'IA à relire avant l'envoi.";
+export const AI_REVIEW_REQUIRED_LABEL = "Message rédigé par l'IA à relire avant l'envoi : il partira après votre relecture.";
+
+interface ReviewableExecution {
+  status: string | null | undefined;
+  error_message: string | null | undefined;
+  final_message: string | null | undefined;
+}
+
+const isAiReviewReason = (error: string | null | undefined): boolean => (error ?? '').trim() === AI_REVIEW_REQUIRED_REASON;
+
+/**
+ * Étape reportée par le moteur faute de texte relu, et pas encore relue :
+ * « Relire le message » (suivi, Journal). Relue = final_message écrit.
+ */
+export function isAiReviewPending(exec: ReviewableExecution): boolean {
+  return exec.status === 'scheduled' && isAiReviewReason(exec.error_message) && !exec.final_message?.trim();
+}
+
+/**
+ * Raison d'une étape programmée à afficher. Une étape IA relue depuis le
+ * report n'en a plus : le moteur efface la raison à l'envoi, au plus une
+ * heure plus tard.
+ */
+export function scheduledExecutionError(exec: ReviewableExecution): string | null {
+  if (exec.status !== 'scheduled' || !exec.error_message) return null;
+  if (isAiReviewReason(exec.error_message) && exec.final_message?.trim()) return null;
+  return exec.error_message;
+}
+
 export function formatSequenceError(error: string | null | undefined): string {
   if (!error) return '';
+
+  // Lot 5a-2 : étape IA reportée tant qu'elle n'est pas relue.
+  if (isAiReviewReason(error)) return AI_REVIEW_REQUIRED_LABEL;
 
   // Code d'erreur générique connu → label FR
   if (ERROR_CODE_LABELS[error]) return ERROR_CODE_LABELS[error];
@@ -285,8 +326,9 @@ const SKIP_REASON_RULES: SkipReasonRule[] = [
   [/^Email bounced/i, 'Adresse e-mail invalide (message revenu en erreur)'],
   [/^Manuellement sautée/, 'Étape sautée manuellement'],
   [/^Annulé manuellement/, 'Étape annulée manuellement'],
+  // « Arrêt manuel » : voir formatSkipReason (arrêt du lot 5b, ou ancienne pause).
   [/^(Arrêt manuel|Arrêt groupé|Stoppé depuis Inbox|Inscription en pause)/, 'Candidat mis en pause'],
-  [/^Séquence désactivée/, 'Séquence désactivée'],
+  [/^Séquence désactivée/, 'Séquence mise en pause'],
   [/^Limite hebdo invitations/, "Reporté : limite hebdomadaire d'invitations atteinte"],
   [/^Cap journalier/, 'Reporté : limite LinkedIn du jour atteinte'],
   [/^Compte en pause quota/, 'Reporté : LinkedIn limite temporairement ce compte'],
@@ -322,9 +364,18 @@ const FRENCH_SKIP_REASON_PREFIXES = [
   "Boîte e-mail d'envoi déconnectée",
 ];
 
-export function formatSkipReason(reason: string | null | undefined): string {
+export function formatSkipReason(
+  reason: string | null | undefined,
+  context: { manualStop?: boolean } = {},
+): string {
   if (!reason) return '';
   const text = reason.trim();
+  // Lot 5b : « Arrêt manuel » est le motif des étapes annulées par « Arrêter
+  // pour ce candidat » (stop_enrollments), mais aussi celui qu'écrivait une
+  // simple pause avant le 28/09 (inscriptions reclassées en pause manuelle).
+  // « Arrêtée » seulement si l'inscription porte la trace d'un arrêt
+  // (hasManualStopTrace), sinon le libellé d'une pause.
+  if (context.manualStop && /^Arrêt manuel/.test(text)) return 'Séquence arrêtée pour ce candidat';
   for (const [pattern, label] of SKIP_REASON_RULES) {
     const match = text.match(pattern);
     if (match) return typeof label === 'string' ? label : label(match);
@@ -413,7 +464,7 @@ export function heldExecutionNotice(
     return { label: 'Ne partira pas', hint: 'La séquence est terminée pour ce candidat.' };
   }
   if (sequenceActive === false) {
-    return { label: 'En pause', hint: "Séquence désactivée : ne partira pas tant qu'elle n'est pas réactivée." };
+    return { label: 'En pause', hint: "Séquence en pause : ne partira pas tant qu'elle n'est pas réactivée." };
   }
   return null;
 }
@@ -707,4 +758,279 @@ export function summarizeResumeResponse(response: ResumeResponse | null | undefi
   if (counts.account_unlinked) parts.push(`${counts.account_unlinked} bloquée${counts.account_unlinked > 1 ? 's' : ''} : compte LinkedIn non relié`);
   if (counts.error) parts.push(`${counts.error} en erreur`);
   return { tone: counts.resumed > 0 ? 'info' : 'error', message: parts.join(', '), resumed: counts.resumed };
+}
+
+// ─── Arrêt manuel, pause et « Annuler » (lot 5b, décision 3) ───────────────
+//
+// Bilans des actions membres stop_enrollments et undo_stop_enrollments de
+// process-sequences, et de l'annulation d'une pause (resume_enrollments sur
+// les seules inscriptions que la pause a touchées). Aucun bilan ne promet que
+// rien n'est parti : une étape en cours d'envoi au moment du geste part.
+
+export type StopOutcome = 'stopped' | 'not_eligible' | 'gdpr_erased' | 'forbidden' | 'changed' | 'not_found' | 'error';
+export type UndoStopOutcome =
+  | 'resumed' | 'paused' | 'resume_refused' | 'finished'
+  | 'expired' | 'not_author' | 'moved_since' | 'gdpr_erased' | 'replied'
+  | 'forbidden' | 'not_found' | 'error';
+export type UndoResumeRefusalReason = 'account_unlinked' | 'sequence_inactive' | 'gdpr_registry_unavailable' | 'gdpr_erased' | 'other';
+
+/** Réponse de stop_enrollments (ou payload d'erreur d'invokeEdgeFunction). */
+export interface StopResponse {
+  success?: boolean;
+  token?: string;
+  stopped_at?: string;
+  expires_at?: string;
+  /** Temps restant du jeton d'annulation au moment de la réponse. */
+  expires_in_ms?: number;
+  results?: Array<{ enrollment_id?: string; outcome?: string; message?: string }> | null;
+  counts?: Partial<Record<StopOutcome, number>> | null;
+  message?: string;
+  error?: string;
+  error_code?: string;
+}
+
+/** Réponse de undo_stop_enrollments. */
+export interface UndoStopResponse {
+  success?: boolean;
+  results?: Array<{ enrollment_id?: string; outcome?: string; message?: string; reason?: string; detail?: string }> | null;
+  counts?: Partial<Record<UndoStopOutcome, number>> | null;
+  message?: string;
+  error?: string;
+  error_code?: string;
+}
+
+export const STOP_FAILED_MESSAGE = "Arrêt impossible pour l'instant : rien n'a changé.";
+/** Arrêt sans réponse lisible (réseau, délai) : il a pu être enregistré, on ne dit pas « rien n'a changé ». */
+export const STOP_UNCONFIRMED_MESSAGE = "L'arrêt n'a pas pu être confirmé : actualisez la liste avant de réessayer.";
+export const UNDO_FAILED_MESSAGE = "L'annulation n'a pas pu être enregistrée. Réessayez dans un instant.";
+export const UNDO_EXPIRED_MESSAGE = 'Annulation impossible : le délai est passé.';
+export const PAUSE_UNDONE_MESSAGE = 'Pause annulée.';
+export const PAUSE_UNDO_FAILED_MESSAGE = "La pause n'a pas pu être annulée.";
+
+const UNDO_NOT_AUTHOR_MESSAGE = "Annulation impossible : seule la personne qui a arrêté la séquence peut l'annuler.";
+const ENROLLMENT_NOT_FOUND_MESSAGE = 'Inscription introuvable dans votre organisation.';
+const OWN_ENROLLMENTS_ONLY_MESSAGE = 'Vous ne pouvez agir que sur les candidats que vous avez inscrits.';
+
+const UNDO_RESUME_REFUSAL_TEXT: Record<UndoResumeRefusalReason, string> = {
+  account_unlinked: 'compte LinkedIn non relié',
+  sequence_inactive: 'séquence en pause',
+  gdpr_registry_unavailable: 'vérification des effacements indisponible',
+  gdpr_erased: 'effacement des données demandé',
+  other: 'reprise impossible pour le moment',
+};
+
+const countOf = (n: number) => `${n} candidat${n > 1 ? 's' : ''}`;
+const sentence = (parts: string[]): string | null => {
+  const text = parts.filter(Boolean).join(' ; ');
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}.` : null;
+};
+const refusalText = (reason: string | undefined): string =>
+  UNDO_RESUME_REFUSAL_TEXT[(reason ?? 'other') as UndoResumeRefusalReason] ?? UNDO_RESUME_REFUSAL_TEXT.other;
+
+/** « Séquence mise en pause pour Claire Dubois. » */
+export function pauseToastTitle(name?: string | null): string {
+  return `Séquence mise en pause pour ${name?.trim() || 'ce candidat'}.`;
+}
+
+/** « Séquence arrêtée pour Claire Dubois. » ou « Séquence arrêtée pour 12 candidats. » */
+export function stopToastTitle(count: number, name?: string | null): string {
+  return count === 1 ? `Séquence arrêtée pour ${name?.trim() || 'ce candidat'}.` : `Séquence arrêtée pour ${countOf(count)}.`;
+}
+
+/** « Séquence mise en pause : 6 candidats en pause. » (interrupteur d'une séquence). */
+export function sequencePauseToastTitle(pausedCount: number): string {
+  return pausedCount > 0
+    ? `Séquence mise en pause : ${countOf(pausedCount)} en pause.`
+    : "Séquence mise en pause : aucun candidat n'était en cours.";
+}
+
+export interface StopSummary {
+  /** Inscriptions arrêtées : celles que « Annuler » remet. */
+  stoppedIds: string[];
+  /** Inscriptions à retenter (écriture concurrente, erreur) : bouton « Réessayer ». */
+  retryIds: string[];
+  /** Titre du toast « Annuler » ; null si rien n'est arrêté. */
+  title: string | null;
+  /** Autres résultats en une phrase, null s'il n'y en a pas. */
+  description: string | null;
+  /** Rien n'est arrêté ni à retenter : le message à afficher. */
+  refusal: { tone: 'info' | 'error'; message: string } | null;
+  /** Message du toast « Réessayer » quand retryIds n'est pas vide. */
+  retryMessage: string | null;
+}
+
+/** Bilan d'un arrêt : inscriptions arrêtées, à retenter, et refus. */
+export function summarizeStopResponse(
+  response: StopResponse | null | undefined,
+  requestedIds: readonly string[],
+  name?: string | null,
+): StopSummary {
+  const empty = { stoppedIds: [], retryIds: [], title: null, description: null };
+  if (!response || response.success !== true || !Array.isArray(response.results)) {
+    const code = response?.error_code;
+    // Erreur de lecture du serveur : rien n'a changé, on peut réessayer.
+    if (code === 'server_error') {
+      return { ...empty, retryIds: [...requestedIds], refusal: null, retryMessage: response?.message || STOP_FAILED_MESSAGE };
+    }
+    // Refus de la demande (organisation, droits, liste) : la phrase du serveur.
+    if (code && response?.message) return { ...empty, refusal: { tone: 'error', message: response.message }, retryMessage: null };
+    // Réseau ou délai : l'arrêt a pu être enregistré.
+    return { ...empty, retryIds: [...requestedIds], refusal: null, retryMessage: STOP_UNCONFIRMED_MESSAGE };
+  }
+  const stoppedIds: string[] = [];
+  const retryIds: string[] = [];
+  const others: Record<string, number> = {};
+  let firstMessage: string | null = null;
+  for (const r of response.results) {
+    const id = r.enrollment_id;
+    if (!id) continue;
+    if (r.outcome === 'stopped') stoppedIds.push(id);
+    else if (r.outcome === 'changed' || r.outcome === 'error' || !r.outcome) retryIds.push(id);
+    else {
+      others[r.outcome] = (others[r.outcome] ?? 0) + 1;
+      firstMessage ??= r.message ?? null;
+    }
+  }
+  const n = (key: string) => others[key] ?? 0;
+  const parts = [
+    n('not_eligible') ? `${n('not_eligible')} ${n('not_eligible') > 1 ? "n'étaient" : "n'était"} plus en cours dans la séquence` : '',
+    n('gdpr_erased') ? (n('gdpr_erased') > 1 ? `${n('gdpr_erased')} ont demandé l'effacement de leurs données` : "1 a demandé l'effacement de ses données") : '',
+    n('forbidden') ? `${n('forbidden')} ${n('forbidden') > 1 ? 'inscrits' : 'inscrit'} par un autre membre` : '',
+    n('not_found') ? `${n('not_found')} ${n('not_found') > 1 ? 'introuvables' : 'introuvable'}` : '',
+  ];
+  const description = sentence(parts);
+  const retryMessage = retryIds.length > 0 ? STOP_FAILED_MESSAGE : null;
+  if (stoppedIds.length > 0) {
+    return { stoppedIds, retryIds, title: stopToastTitle(stoppedIds.length, name), description, refusal: null, retryMessage };
+  }
+  if (retryIds.length > 0) return { stoppedIds, retryIds, title: null, description, refusal: null, retryMessage };
+  const otherTotal = Object.values(others).reduce((a, b) => a + b, 0);
+  const onlyInfo = n('not_eligible') + n('gdpr_erased') === otherTotal;
+  const message = otherTotal === 1 && firstMessage
+    ? firstMessage
+    : otherTotal === 0
+      ? STOP_FAILED_MESSAGE
+      : `Aucun candidat n'a été arrêté. ${description ?? ''}`.trim();
+  return { stoppedIds, retryIds, title: null, description: null, refusal: { tone: onlyInfo && otherTotal > 0 ? 'info' : 'error', message }, retryMessage: null };
+}
+
+export interface UndoSummary {
+  tone: 'success' | 'info' | 'warning' | 'error';
+  message: string;
+  description?: string;
+}
+
+/** Bilan d'une annulation d'arrêt pour un candidat : la phrase du plan, avec son nom. */
+function undoStopOne(
+  r: { outcome?: string; message?: string; reason?: string },
+  name?: string | null,
+): UndoSummary {
+  const who = name?.trim() || 'le candidat';
+  const of = name?.trim() ? `de ${name.trim()}` : 'du candidat';
+  const forWhom = name?.trim() ? `pour ${name.trim()}` : 'pour ce candidat';
+  switch (r.outcome) {
+    case 'resumed': return { tone: 'success', message: `Arrêt annulé : ${who} reprend la séquence là où elle en était.` };
+    case 'paused': return { tone: 'success', message: `Arrêt annulé : ${who} est de nouveau en pause.` };
+    case 'resume_refused': return { tone: 'warning', message: `Arrêt annulé : ${who} reste en pause (${refusalText(r.reason)}).` };
+    case 'finished': return { tone: 'info', message: `Arrêt annulé : la séquence est terminée ${forWhom}.` };
+    case 'expired': return { tone: 'error', message: UNDO_EXPIRED_MESSAGE };
+    case 'not_author': return { tone: 'error', message: UNDO_NOT_AUTHOR_MESSAGE };
+    case 'moved_since': return { tone: 'error', message: `Annulation impossible : la séquence ${of} a changé entre-temps.` };
+    case 'gdpr_erased': return { tone: 'error', message: `Annulation impossible : ${who} a demandé l'effacement de ses données.` };
+    case 'replied': return { tone: 'error', message: `Annulation impossible : ${who} a répondu entre-temps.` };
+    case 'forbidden': return { tone: 'error', message: r.message || OWN_ENROLLMENTS_ONLY_MESSAGE };
+    case 'not_found': return { tone: 'error', message: r.message || ENROLLMENT_NOT_FOUND_MESSAGE };
+    default: return { tone: 'error', message: UNDO_FAILED_MESSAGE };
+  }
+}
+
+const UNDO_REFUSAL_LABELS: Record<string, string> = {
+  expired: 'délai passé',
+  not_author: 'arrêt posé par une autre personne',
+  moved_since: 'séquence changée entre-temps',
+  gdpr_erased: 'effacement des données demandé',
+  replied: 'réponse reçue entre-temps',
+  forbidden: 'inscrits par un autre membre',
+  not_found: 'introuvables',
+  error: 'erreur, réessayez dans un instant',
+};
+
+/** Bilan d'une annulation d'arrêt (un candidat ou un groupe), d'après le résultat réel de chaque inscription. */
+export function summarizeUndoStopResponse(response: UndoStopResponse | null | undefined, name?: string | null): UndoSummary {
+  if (!response || response.success !== true || !Array.isArray(response.results)) {
+    return { tone: 'error', message: response?.message || UNDO_FAILED_MESSAGE };
+  }
+  const results = response.results;
+  if (results.length === 1) return undoStopOne(results[0], name);
+  if (results.length === 0) return { tone: 'error', message: UNDO_FAILED_MESSAGE };
+  const total = results.length;
+  let resumed = 0;
+  let paused = 0;
+  let finished = 0;
+  const refusedByReason: Record<string, number> = {};
+  const refusals: Record<string, number> = {};
+  for (const r of results) {
+    if (r.outcome === 'resumed') resumed++;
+    else if (r.outcome === 'paused') paused++;
+    else if (r.outcome === 'finished') finished++;
+    else if (r.outcome === 'resume_refused') {
+      const text = refusalText(r.reason);
+      refusedByReason[text] = (refusedByReason[text] ?? 0) + 1;
+    } else {
+      const key = r.outcome && r.outcome in UNDO_REFUSAL_LABELS ? r.outcome : 'error';
+      refusals[key] = (refusals[key] ?? 0) + 1;
+    }
+  }
+  const stillPaused = Object.values(refusedByReason).reduce((a, b) => a + b, 0);
+  const undone = resumed + paused + finished + stillPaused;
+  const parts = [
+    paused ? `de nouveau en pause : ${countOf(paused)}` : '',
+    finished ? `séquence terminée : ${countOf(finished)}` : '',
+    ...Object.entries(refusedByReason).map(([text, n]) => `${n > 1 ? 'restent' : 'reste'} en pause (${text}) : ${countOf(n)}`),
+    ...Object.entries(refusals).map(([key, n]) => `${UNDO_REFUSAL_LABELS[key]} : ${countOf(n)}`),
+  ];
+  const description = sentence(parts) ?? undefined;
+  if (undone === total) {
+    return { tone: stillPaused > 0 ? 'warning' : 'success', message: `Arrêt annulé pour ${countOf(total)}.`, ...(description ? { description } : {}) };
+  }
+  if (undone > 0) {
+    return { tone: 'warning', message: `Arrêt annulé pour ${countOf(undone)} sur ${total}.`, ...(description ? { description } : {}) };
+  }
+  const keys = Object.keys(refusals);
+  if (keys.length === 1 && keys[0] === 'expired') return { tone: 'error', message: UNDO_EXPIRED_MESSAGE };
+  return { tone: 'error', message: `Annulation impossible pour ${countOf(total)}.`, ...(description ? { description } : {}) };
+}
+
+/**
+ * Bilan d'une annulation de pause : reprise serveur (resume_enrollments) des
+ * seules inscriptions que la pause a touchées. `unprocessed` : inscriptions
+ * d'un lot dont l'appel a échoué (`callError`).
+ */
+export function summarizeUndoPause(input: {
+  counts: Partial<ResumeCounts>;
+  total: number;
+  unprocessed?: number;
+  callError?: string | null;
+  name?: string | null;
+}): UndoSummary {
+  const c = (key: keyof ResumeCounts) => Number(input.counts[key] ?? 0) || 0;
+  const resumed = c('resumed');
+  const unprocessed = input.unprocessed ?? 0;
+  if (input.total > 0 && resumed === input.total) return { tone: 'success', message: PAUSE_UNDONE_MESSAGE };
+  const parts = [
+    c('account_unlinked') ? `${c('account_unlinked') > 1 ? 'restent' : 'reste'} en pause (compte LinkedIn non relié) : ${countOf(c('account_unlinked'))}` : '',
+    c('nothing_to_resume') ? `séquence terminée : ${countOf(c('nothing_to_resume'))}` : '',
+    c('not_paused') ? `plus en pause : ${countOf(c('not_paused'))}` : '',
+    c('error') ? `en erreur : ${countOf(c('error'))}` : '',
+    unprocessed ? `non traités (${(input.callError || 'réessayez dans un instant').replace(/\.$/, '')}) : ${countOf(unprocessed)}` : '',
+  ];
+  const description = sentence(parts) ?? undefined;
+  if (resumed > 0) {
+    return { tone: 'warning', message: `Pause annulée pour ${countOf(resumed)} sur ${input.total}.`, ...(description ? { description } : {}) };
+  }
+  if (input.total === 1 && !unprocessed) {
+    const one = summarizeResumeResponse({ success: true, counts: input.counts }, input.name);
+    return { tone: 'error', message: PAUSE_UNDO_FAILED_MESSAGE, description: one.message };
+  }
+  return { tone: 'error', message: PAUSE_UNDO_FAILED_MESSAGE, ...(description ? { description } : {}) };
 }

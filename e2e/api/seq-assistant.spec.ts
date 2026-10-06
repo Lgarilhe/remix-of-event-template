@@ -19,9 +19,16 @@
  * (Pacific/Kiritimati le dimanche après-midi UTC) ; sans fuseau possible ils
  * s'ignorent. Le moteur, lui, tourne avec force: true.
  *
+ * Lot 5a (garde-fous d'envoi) : la politique d'autonomie et l'aperçu de la
+ * carte d'approbation se jouent dans handleProposedToolCall, que seul le chat
+ * appelle. La sonde Deno e2e/helpers/agent-tool-probe.ts l'appelle comme le
+ * chat le fait pour un appel d'outil du modèle (proposeLikeChat).
+ *
  * Ignoré sans la stack locale (e2e/local-stack/up.sh).
  */
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { test, expect, request } from '@playwright/test';
 import { E2E } from '../helpers/env';
 import {
@@ -39,6 +46,7 @@ import {
 import {
   CRON_SECRET,
   ENGINE_SKIP_REASON,
+  MOCK_URL,
   callFunction,
   engineAvailable,
   enrollmentRow,
@@ -77,6 +85,7 @@ test.afterEach(async () => {
     // Tables sans cascade utile (l'organisation elle-même survit, voir deleteOrg).
     for (const table of [
       'agent_tool_executions',
+      'agent_tool_policies',
       'job_candidate_status',
       'inmail_queue',
       'message_analysis_cache',
@@ -1075,6 +1084,231 @@ test.describe('Assistant : create_sequence', () => {
       expect(silentTexts).toHaveLength(2);
       expect(silentTexts[1].startsWith('Relance')).toBe(true);
       expect(await newChatsTo(accountId, answering.candidate), 'aucune relance après la réponse').toHaveLength(1);
+    });
+  });
+});
+
+// ═══ Lot 5a : garde-fous d'envoi ═════════════════════════════════════════════
+
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+/** Binaire Deno : DENO_BIN, sinon deno du PATH, sinon npx deno (comme e2e/local-stack/up.sh). */
+function denoCommand(): { cmd: string; pre: string[] } {
+  if (process.env.DENO_BIN) return { cmd: process.env.DENO_BIN, pre: [] };
+  try {
+    execFileSync('deno', ['--version'], { stdio: 'ignore' });
+    return { cmd: 'deno', pre: [] };
+  } catch {
+    return { cmd: 'npx', pre: ['-y', 'deno'] };
+  }
+}
+
+interface ProposedCall {
+  outcome: 'executed_inline' | 'awaiting_approval' | 'denied';
+  executionId?: string;
+  payload: { error?: unknown; details?: Record<string, unknown> } & Record<string, unknown>;
+}
+
+/** details.first_step_preview rendu par le dryRun d'enroll_in_sequence. */
+interface FirstStepPreviewPayload {
+  candidate_name: string;
+  candidate_in_mission: boolean;
+  texts: Array<{ step_label: string; text: string; condition: string | null; ai: boolean; missing: string[] }>;
+}
+
+/**
+ * Appel d'outil du modèle traité comme search-agent-chat le traite
+ * (handleProposedToolCall : politique de l'organisation, verifyAccess, dryRun,
+ * puis exécution directe ou ligne « proposed »), par la sonde Deno.
+ */
+function proposeLikeChat(orgId: string, user: TestUser, tool: string, params: Record<string, unknown>, userBearer?: string): ProposedCall {
+  const { cmd, pre } = denoCommand();
+  const out = execFileSync(cmd, [
+    ...pre, 'run', '-A', '--no-check',
+    `--import-map=${REPO_ROOT}e2e/local-stack/import_map.json`,
+    `${REPO_ROOT}e2e/helpers/agent-tool-probe.ts`,
+  ], {
+    input: JSON.stringify({ tool, params, userId: user.userId, organizationId: orgId, userBearer: userBearer ?? null }),
+    env: {
+      ...process.env,
+      SUPABASE_URL: E2E.supabaseUrl,
+      SUPABASE_SERVICE_ROLE_KEY: E2E.serviceRoleKey,
+      VENDOR_MOCK_URL: MOCK_URL,
+      APP_URL: 'http://localhost:8080',
+      NO_PROXY: '127.0.0.1,localhost',
+      no_proxy: '127.0.0.1,localhost',
+    },
+    encoding: 'utf8',
+    timeout: 180_000,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  const line = out.split('\n').find((l) => l.startsWith('__PROBE__'));
+  if (!line) throw new Error(`sonde sans résultat : ${out.slice(-2000)}`);
+  return JSON.parse(line.slice('__PROBE__'.length)) as ProposedCall;
+}
+
+/** Politique d'autonomie enregistrée par l'organisation (Paramètres › Assistant). */
+async function setToolPolicy(orgId: string, toolName: string, policy: 'auto' | 'approve' | 'off') {
+  const { error } = await admin().from('agent_tool_policies').upsert(
+    { organization_id: orgId, tool_name: toolName, policy },
+    { onConflict: 'organization_id,tool_name' },
+  );
+  if (error) throw new Error(`agent_tool_policies: ${error.message}`);
+}
+
+async function enrollmentsOfSequence(sequenceId: string) {
+  const { data } = await admin()
+    .from('sequence_enrollments')
+    .select('id, status, profile_id, profile_name, profile_headline, job_title, company_name')
+    .eq('sequence_id', sequenceId);
+  return (data ?? []) as Array<{ id: string; status: string; profile_id: string; profile_name: string | null; profile_headline: string | null; job_title: string | null; company_name: string | null }>;
+}
+
+test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
+  test.describe('5a-politique-auto-inscription', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical politique « auto » enregistrée pour enroll_in_sequence : l’inscription est proposée, rien n’est inscrit ni envoyé avant l’approbation', async () => {
+      const { org, accountId } = await sendingOrg('E2E 5a auto inscription');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour {{first_name}}, une question rapide.']);
+      await setToolPolicy(org.orgId, 'enroll_in_sequence', 'auto');
+
+      const candidate = newProfileId();
+      const proposed = proposeLikeChat(org.orgId, org.owner, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: candidate, profile_name: 'Marie Martin', job_id: mission,
+      });
+      expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
+      expect(proposed.executionId).toBeTruthy();
+      expect((await execRow(proposed.executionId!)).status).toBe('proposed');
+      expect(await enrollmentsOfSequence(sequenceId), 'aucune inscription sans clic').toEqual([]);
+      expect(await postsFrom(accountId), 'aucun envoi').toEqual([]);
+
+      // Le clic « Approuver » inscrit.
+      const approved = await approve(token, proposed.executionId!);
+      expect(approved.body.success, JSON.stringify(approved.body)).toBe(true);
+      expect(await enrollmentsOfSequence(sequenceId)).toHaveLength(1);
+    });
+  });
+
+  test.describe('5a-politique-auto-reprise', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical politique « auto » enregistrée pour resume_sequence : la reprise est proposée, la séquence et ses candidats restent en pause avant l’approbation', async () => {
+      const { org } = await sendingOrg('E2E 5a auto reprise');
+      track(org);
+      const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour {{first_name}}']);
+      await admin().from('outreach_sequences').update({ is_active: false }).eq('id', sequenceId);
+      const profileId = newProfileId();
+      const { data: paused, error } = await admin().from('sequence_enrollments').insert({
+        sequence_id: sequenceId, organization_id: org.orgId, created_by: org.owner.userId,
+        profile_id: profileId, provider_id: profileId, profile_name: 'Camille Martin',
+        account_id: `acc_${rand()}`, status: 'paused', pause_reason: 'sequence_inactive', current_step_order: 0,
+      }).select('id').single();
+      if (error || !paused) throw new Error(`inscription en pause : ${error?.message}`);
+      await setToolPolicy(org.orgId, 'resume_sequence', 'auto');
+
+      const proposed = proposeLikeChat(org.orgId, org.owner, 'resume_sequence', { sequence_id: sequenceId });
+      expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
+      expect((await execRow(proposed.executionId!)).status).toBe('proposed');
+      const { data: seq } = await admin().from('outreach_sequences').select('is_active').eq('id', sequenceId).single();
+      expect(seq?.is_active, 'séquence toujours désactivée').toBe(false);
+      const row = await enrollmentRow(paused.id as string);
+      expect([row.status, row.pause_reason], 'candidat toujours en pause').toEqual(['paused', 'sequence_inactive']);
+    });
+  });
+
+  test.describe('5a-apercu-premier-message', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical la carte porte le premier message entier, construit avec la ligne de la mission ; le faux LinkedIn reçoit exactement ce texte', async () => {
+      const { org, accountId } = await sendingOrg('E2E 5a aperçu');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const template = 'Bonjour {{prenom}}, votre rôle de {{poste_actuel}} chez {{entreprise_actuelle}} m’intéresse pour un poste de {{poste_recherche}}.';
+      const { sequenceId } = await messageSequence(org, org.owner.userId, [template]);
+      const url = `https://www.linkedin.com/in/claire-dubois-${rand()}`;
+      const candidate = await seedCandidate(org.orgId, org.owner.userId, { name: 'Claire Dubois', url, projectId: mission });
+      await admin().from('job_candidate_status').update({
+        candidate_headline: 'Lead Developer chez Qonto',
+        linkedin_profile_data: { work_experience: [{ company: 'Qonto', role: 'Lead Developer', current: true }] },
+      }).eq('organization_id', org.orgId).eq('candidate_id', candidate);
+
+      // Nom donné par le modèle volontairement différent : la ligne de la mission fait foi.
+      const proposed = proposeLikeChat(org.orgId, org.owner, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: candidate, profile_name: 'C. Dubois', job_id: mission, profile_url: url,
+      });
+      expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
+      const preview = proposed.payload.details?.first_step_preview as FirstStepPreviewPayload;
+      const expected = 'Bonjour Claire, votre rôle de Lead Developer chez Qonto m’intéresse pour un poste de Senior Backend Engineer.';
+      expect(preview.candidate_in_mission).toBe(true);
+      expect(preview.candidate_name).toBe('Claire Dubois');
+      expect(preview.texts).toHaveLength(1);
+      expect(preview.texts[0]).toMatchObject({ step_label: 'Message', text: expected, condition: null, ai: false, missing: [] });
+      // La même carte, lue en base (bandeau d'approbation).
+      const { data: stored } = await admin().from('agent_tool_executions').select('dry_run_result').eq('id', proposed.executionId!).single();
+      const storedDetails = (stored?.dry_run_result as { details?: { first_step_preview?: FirstStepPreviewPayload } } | null)?.details;
+      expect(storedDetails?.first_step_preview?.texts?.[0]?.text).toBe(expected);
+
+      // Approbation, puis un passage du moteur : ce texte, et lui seul, part.
+      const approved = await approve(token, proposed.executionId!);
+      expect(approved.body.success, JSON.stringify(approved.body)).toBe(true);
+      const [enrollment] = await enrollmentsOfSequence(sequenceId);
+      expect(enrollment).toMatchObject({
+        profile_name: 'Claire Dubois',
+        profile_headline: 'Lead Developer chez Qonto',
+        job_title: 'Senior Backend Engineer',
+        company_name: 'Qonto',
+      });
+      await pullDue([enrollment.id]);
+      await runCycle();
+      const sent = await newChatsTo(accountId, candidate);
+      expect(sent).toHaveLength(1);
+      expect(String((sent[0].body as Record<string, unknown>).text)).toBe(expected);
+    });
+
+    test('candidat absent de la mission : aperçu construit avec son seul nom, sans refus nouveau', async () => {
+      const { org } = await sendingOrg('E2E 5a aperçu hors mission');
+      track(org);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour {{prenom}}, votre poste de {{poste_actuel}} m’intéresse.']);
+      const proposed = proposeLikeChat(org.orgId, org.owner, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: newProfileId(), profile_name: 'Marie Martin', job_id: mission,
+      });
+      expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
+      const preview = proposed.payload.details?.first_step_preview as FirstStepPreviewPayload;
+      expect(preview.candidate_in_mission).toBe(false);
+      expect(preview.texts[0].text).toBe('Bonjour Marie, votre poste de m’intéresse.');
+      expect(preview.texts[0].missing).toEqual(['Poste actuel inconnu : retiré du message.']);
+    });
+  });
+
+  test.describe('5a-sequence-ia-refusee', () => {
+    test.describe.configure({ mode: 'serial' });
+    test('@critical séquence avec un message rédigé par l’IA : refus rendu au modèle, et à l’approbation, aucune inscription', async () => {
+      const { org, accountId } = await sendingOrg('E2E 5a séquence IA');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour {{first_name}}', 'Relance {{first_name}}']);
+      await admin().from('sequence_steps').update({ use_ai_personalization: true }).eq('id', steps[1].id);
+      const refusal = /message rédigé par l'IA pour chaque candidat : inscrivez ce candidat depuis l'écran/;
+
+      // Chemin du chat : refus, raison rendue au modèle, aucune ligne proposée.
+      const proposed = proposeLikeChat(org.orgId, org.owner, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: newProfileId(), profile_name: 'Marie Martin', job_id: mission,
+      });
+      expect(proposed.outcome).toBe('denied');
+      expect(String(proposed.payload.error)).toMatch(refusal);
+
+      // Ligne déjà proposée (avant le lot 5a) puis approuvée : verifyAccess rejoué refuse.
+      const res = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: newProfileId(), profile_name: 'Paul Durand', job_id: mission,
+      }));
+      expect(res.body.success, JSON.stringify(res.body)).toBe(false);
+      expect(String(res.body.error ?? '')).toMatch(refusal);
+      expect(await enrollmentsOfSequence(sequenceId), 'aucune inscription').toEqual([]);
+      expect(await postsFrom(accountId), 'aucun envoi').toEqual([]);
     });
   });
 });

@@ -21,6 +21,8 @@ const canvas = read('src/components/outreach/sequence/WorkflowCanvas.tsx');
 const checklist = read('src/components/outreach/sequence/SequenceValidationChecklist.tsx');
 const inserter = read('src/components/outreach/sequence/VariableInserter.tsx');
 const selector = read('src/components/outreach/SequenceTemplateSelector.tsx');
+// Lot 5c-1 : « Enregistrer comme modèle » sorti de SequenceTemplateSelector.tsx.
+const saveAsTemplate = read('src/components/outreach/SaveAsTemplateModal.tsx');
 // Lot F1b (SEQ-146) : la liste de vérification et l'enregistrement lisent une
 // seule fonction, validateSequence (sequenceGraph.ts). Les règles vérifiées
 // ci-dessous y ont été déplacées.
@@ -82,8 +84,8 @@ test('SEQ-015 — « Branchement » : plus proposé, plus de « Si faux », sign
 });
 
 test('SEQ-015 — les modèles n’écrivent ni ne relisent plus timeout_action', () => {
-  assert.doesNotMatch(selector, /timeout_action\s*:/, 'écrit dans steps_config alors qu’aucune colonne ne le porte');
-  assert.doesNotMatch(selector, /\.timeout_action\b/, 'relu à l’instanciation d’un modèle');
+  assert.doesNotMatch(`${selector}\n${saveAsTemplate}`, /timeout_action\s*:/, 'écrit dans steps_config alors qu’aucune colonne ne le porte');
+  assert.doesNotMatch(`${selector}\n${saveAsTemplate}`, /\.timeout_action\b/, 'relu à l’instanciation d’un modèle');
 });
 
 // ---------------------------------------------------------------- SEQ-016
@@ -259,7 +261,7 @@ test('SEQ-059 — une étape déjà exécutée n’est pas supprimée sans expli
 
 // ---------------------------------------------------------------- SEQ-060
 test('SEQ-060 — les modèles gardent l’ordre des variantes et la fin de séquence', () => {
-  const save = body(selector, 'const handleSave');
+  const save = body(saveAsTemplate, 'const handleSave');
   assert.match(save, /step_order: s\.step_order/);
   assert.match(save, /ends_sequence: s\.ends_sequence \?\? false/);
   const select = body(selector, 'const handleSelectTemplate');

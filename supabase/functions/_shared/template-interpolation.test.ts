@@ -96,3 +96,52 @@ Deno.test("SEQ-099 : prénom non fiable = salutation neutre, sans espace avant l
   for (const ok of ["Driss", "Drew", "Devon", "Łukasz", "Ştefan", "N’Golo", "Jean-Pierre", "Marie"]) assert(isLikelyRealFirstName(ok), ok);
   for (const ko of ["Dr.", "Dr", "Hiring", "OPEN", "Mme", "🚀", "J4ne", "Lead"]) assert(!isLikelyRealFirstName(ko), ko);
 });
+
+// ─── Relevé de la construction (aperçu, lot 5d-1) ─────────────────────────
+
+Deno.test("5d-1 : le relevé note l'expéditeur, ses variables personnelles (alias compris) et ne change pas le contexte", async () => {
+  const handlers = {
+    profiles,
+    member_linkedin_accounts: (q: Query) => ({ data: q.filters.linkedin_account_id === "ACC_CLAIRE" ? { user_id: "u-claire" } : null, error: null }),
+    organizations: () => ({ data: { name: "Talentis" }, error: null }),
+    user_template_variables: (q: Query) => ({
+      data: q.filters.user_id === "u-claire" ? [{ key: "ville", value: "Nantes" }, { key: "tarif", value: "18 %" }, { key: "prenom", value: "Ignorée" }] : [],
+      error: null,
+    }),
+  };
+  const enrollment = { profile_name: "Marie Curie", organization_id: "org1", created_by: "u-laurent", account_id: "ACC_CLAIRE" };
+  clearSenderCache();
+  const plain = await buildSequenceContext(fakeClient(handlers) as never, { enrollment, senderUserId: "u-laurent" });
+  clearSenderCache();
+  const trace = { senderUserId: null as string | null, personalKeys: [] as string[], failedReads: [] as string[] };
+  const traced = await buildSequenceContext(fakeClient(handlers) as never, { enrollment, senderUserId: "u-laurent", trace });
+  assertEquals(traced, plain, "contexte identique avec ou sans relevé");
+  assertEquals(trace.senderUserId, "u-claire");
+  assertEquals([...trace.personalKeys].sort(), ["city", "tarif", "ville"], "prenom déjà rempli par le candidat : pas personnelle");
+  assertEquals(trace.failedReads, []);
+});
+
+Deno.test("5d-1 : le relevé note chaque lecture en échec (erreur rendue ou exception), le contexte reste construit", async () => {
+  const boom = () => ({ data: null, error: { message: "boom" } });
+  const thrown = () => { throw new Error("réseau"); };
+  for (const [table, handler, expected] of [
+    ["sourcing_projects", boom, "sourcing_projects"],
+    ["profiles", boom, "profiles"],
+    ["organizations", boom, "organizations"],
+    ["organizations", thrown, "organizations"],
+    ["user_template_variables", boom, "user_template_variables"],
+    ["user_template_variables", thrown, "user_template_variables"],
+    ["member_linkedin_accounts", boom, "member_linkedin_accounts"],
+  ] as const) {
+    clearSenderCache();
+    const trace = { senderUserId: null as string | null, personalKeys: [] as string[], failedReads: [] as string[] };
+    const client = fakeClient({ profiles, [table]: handler });
+    const ctx = await buildSequenceContext(client as never, {
+      enrollment: { profile_name: "Marie Curie", job_id: "p1", organization_id: "org1", created_by: "u-laurent", account_id: "ACC_A" },
+      senderUserId: "u-laurent",
+      trace,
+    }).catch((e) => { throw new Error(`${table} : le moteur ne doit jamais lever (${e})`); });
+    assertEquals(trace.failedReads, [expected], `${table}`);
+    assertEquals(ctx.prenom, "Marie");
+  }
+});

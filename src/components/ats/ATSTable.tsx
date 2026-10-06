@@ -39,7 +39,7 @@ import {
 } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/relativeTime';
-import { enrollmentStatusLabel, pausedLabel } from '@/lib/sequenceLabels';
+import { enrollmentStatusLabel, manualStopLabel, pausedLabel } from '@/lib/sequenceLabels';
 
 interface ATSTableProps {
   candidates: ATSCandidate[];
@@ -55,7 +55,12 @@ type SortDirection = 'asc' | 'desc';
 /** Sous la mission : la séquence et son état, sinon la source quand ce n'est pas une mission. */
 function originText(candidate: ATSCandidate): string | null {
   if (candidate.sequenceName) {
-    const status = candidate.sequenceStatus
+    // Arrêt manuel (lot 5b) : « arrêtée par Guillaume Martin le 29/09 », le nom gardé tel quel.
+    const manualStop = candidate.sequenceStatus === 'completed' ? candidate.sequenceManualStop ?? null : null;
+    const stopLabel = manualStop ? manualStopLabel(manualStop, candidate.sequenceStoppedByName) : null;
+    const status = stopLabel
+      ? stopLabel.charAt(0).toLowerCase() + stopLabel.slice(1)
+      : candidate.sequenceStatus
       ? (candidate.sequenceStatus === 'paused' ? pausedLabel(null) : enrollmentStatusLabel(candidate.sequenceStatus)).toLowerCase()
       : null;
     return status ? `Séquence ${candidate.sequenceName}, ${status}` : `Séquence ${candidate.sequenceName}`;

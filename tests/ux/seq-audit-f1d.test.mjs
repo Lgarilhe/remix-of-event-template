@@ -22,6 +22,8 @@ const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'ut
 
 const builder = read('src/components/outreach/SequenceBuilder.tsx');
 const selector = read('src/components/outreach/SequenceTemplateSelector.tsx');
+// Lot 5c-1 : « Enregistrer comme modèle » sorti de SequenceTemplateSelector.tsx.
+const saveAsTemplate = read('src/components/outreach/SaveAsTemplateModal.tsx');
 const multiSender = read('src/components/outreach/sequence/MultiSenderSettings.tsx');
 const teamHook = read('src/components/outreach/sequence/useMultiSenderTeam.ts');
 const checklist = read('src/components/outreach/sequence/SequenceValidationChecklist.tsx');
@@ -180,7 +182,7 @@ test('front-editor-list-3 — « Dupliquer une existante » ne reprend pas les e
 
 // --------------------------------------------------------- front-editor-list-11
 test('front-editor-list-11 — « Enregistrer comme modèle » relit les étapes en base et refuse un modèle vide', () => {
-  const save = body(selector, 'const handleSave');
+  const save = body(saveAsTemplate, 'const handleSave');
   const read = save.indexOf(".from('sequence_steps')");
   const insert = save.indexOf(".from('sequence_templates')");
   assert.ok(read !== -1 && insert !== -1 && read < insert, 'étapes relues avant l’insertion du modèle');
@@ -190,7 +192,7 @@ test('front-editor-list-11 — « Enregistrer comme modèle » relit les étapes
   assert.ok(refuse !== -1 && refuse < insert);
   assert.match(save.slice(refuse, insert), /toast\.error\('Le modèle n’a pas été enregistré'[\s\S]*return;/);
   // Les étapes de la liste (vides si leur lecture a échoué, ou périmées) ne servent plus.
-  const props = selector.slice(selector.indexOf('export const SaveAsTemplateModal'), selector.indexOf('const { organizationId } = useOrganization();', selector.indexOf('export const SaveAsTemplateModal')));
+  const props = saveAsTemplate.slice(saveAsTemplate.indexOf('export const SaveAsTemplateModal'), saveAsTemplate.indexOf('const { organizationId } = useOrganization();', saveAsTemplate.indexOf('export const SaveAsTemplateModal')));
   assert.doesNotMatch(props, /\bsteps,/);
 });
 
