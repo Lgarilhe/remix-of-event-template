@@ -1,15 +1,18 @@
 // En-tête de la page d'une séquence (lot 5c-2) : fil d'Ariane (par la mission
 // d'origine avec &depuis=mission:<id>), nom avec « Renommer la séquence »,
 // pastille de statut, ligne de rythme et un seul bouton plein : « Enregistrer »
-// tant que des réglages ne sont pas enregistrés, « Inscrire des candidats »
-// sinon (qui passe alors en bouton discret).
+// tant que des modifications (étapes ou réglages) ne sont pas enregistrées,
+// « Inscrire des candidats » sinon (qui passe alors en bouton discret). État
+// d'enregistrement (lot 5d-2) : « Modifications non enregistrées »,
+// « Enregistrement… », « Enregistré à 14 h 32 », « Échec de l'enregistrement ».
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, Pencil, Send } from 'lucide-react';
+import { AlertCircle, Check, ChevronRight, Pencil, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SEQUENCES_PATH } from '@/lib/sequencesBeta';
+import type { EditorSaveState } from '@/hooks/useEditorSaveFlow';
 
 export const SEQUENCE_NAME_MAX = 200;
 
@@ -20,17 +23,44 @@ interface SequenceHeaderProps {
   canRename: boolean;
   /** Rend true si le nom est enregistré. */
   onRename: (name: string) => Promise<boolean>;
-  status: ReactNode;
-  /** Réglages modifiés et pas encore enregistrés. */
+  status?: ReactNode;
+  /** Étapes ou réglages modifiés et pas encore enregistrés (une séquence pas encore créée l'est toujours). */
   dirty: boolean;
   saving: boolean;
   onSave: () => void;
-  enrollHref: string;
-  menu: ReactNode;
-  rhythm: ReactNode;
+  /** État d'enregistrement affiché ; null : rien à dire. */
+  saveState?: EditorSaveState;
+  savedAt?: Date | null;
+  /** Absent pour une séquence pas encore créée. */
+  enrollHref: string | null;
+  menu?: ReactNode;
+  rhythm?: ReactNode;
 }
 
-export function SequenceHeader({ name, mission, canRename, onRename, status, dirty, saving, onSave, enrollHref, menu, rhythm }: SequenceHeaderProps) {
+const timeLabel = (date: Date) => date.toLocaleTimeString('fr-FR', { hour: 'numeric', minute: '2-digit' }).replace(':', ' h ');
+
+function SaveStateText({ state, savedAt, onRetry }: { state: EditorSaveState; savedAt: Date | null; onRetry: () => void }) {
+  if (!state) return null;
+  return (
+    <span role="status" aria-live="polite" className={state === 'error' ? 'inline-flex items-center gap-1.5 text-xs text-danger' : 'inline-flex items-center gap-1.5 text-xs text-muted-foreground'}>
+      {state === 'saved' && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+      {state === 'unsaved' && <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />}
+      {state === 'error' && <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />}
+      {/* Sous 1 280 px, le point seul (le texte reste lu) : l'en-tête garde sa hauteur à la première modification. */}
+      {state === 'unsaved' && <span className="max-xl:sr-only">{'Modifications non enregistrées'}</span>}
+      {state === 'saving' && 'Enregistrement…'}
+      {state === 'saved' && (savedAt ? `Enregistré à ${timeLabel(savedAt)}` : 'Enregistré')}
+      {state === 'error' && (
+        <>
+          Échec de l’enregistrement
+          <Button type="button" variant="link" size="xs" onClick={onRetry} className="h-auto p-0 text-xs text-danger max-md:min-h-11">Réessayer</Button>
+        </>
+      )}
+    </span>
+  );
+}
+
+export function SequenceHeader({ name, mission, canRename, onRename, status, dirty, saving, onSave, saveState, savedAt = null, enrollHref, menu, rhythm }: SequenceHeaderProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const [renaming, setRenaming] = useState(false);
@@ -60,7 +90,7 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
     if (ok) close();
   };
 
-  const enroll = (
+  const enroll = enrollHref && (
     <Button asChild variant={dirty ? 'outline' : 'primary'} size="sm" className="max-md:h-11">
       <Link to={enrollHref}>
         <Send aria-hidden="true" />
@@ -68,6 +98,7 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
       </Link>
     </Button>
   );
+  const state: EditorSaveState = saveState === undefined ? (saving ? 'saving' : dirty ? 'unsaved' : null) : saveState;
 
   return (
     <header className="mb-4 space-y-3">
@@ -87,8 +118,9 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
       </nav>
 
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        {/* Le titre garde au moins 16 rem : les boutons passent dessous plutôt que de l'écraser. */}
-        <div className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-x-2 gap-y-1">
+        {/* Le titre garde au moins 16 rem : les boutons passent dessous plutôt que de l'écraser. À partir de
+            768 px, crayon et pastille restent sur la ligne du titre, tronqué au besoin (rien ne descend à la première modification). */}
+        <div className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap">
           {editing ? (
             <form
               className="flex min-w-0 flex-1 items-center gap-2"
@@ -117,7 +149,7 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
             </form>
           ) : (
             <>
-              <h1 className="min-w-0 break-words text-title font-semibold text-foreground">{name}</h1>
+              <h1 title={name} className="min-w-0 break-words text-title font-semibold text-foreground md:truncate">{name}</h1>
               {canRename && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -142,10 +174,10 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {dirty && <span className="text-xs text-muted-foreground" role="status">Modifications non enregistrées</span>}
+          <SaveStateText state={state} savedAt={savedAt} onRetry={onSave} />
           {dirty && (
             <Button type="button" variant="primary" size="sm" onClick={onSave} loading={saving} className="max-md:h-11">
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
+              Enregistrer
             </Button>
           )}
           {enroll}

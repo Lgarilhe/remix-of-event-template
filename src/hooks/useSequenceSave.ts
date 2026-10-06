@@ -31,6 +31,14 @@ export interface SequenceSaveOptions {
   fetchSequences: () => Promise<void>;
   setShowBuilder: (open: boolean) => void;
   setEditingSequence: (sequence: Sequence | null) => void;
+  /** Séquence créée par cet enregistrement (éditeur unique : la page passe sur son adresse). */
+  onCreated?: (sequenceId: string) => void;
+  /**
+   * Annonce de la création à la place des messages ci-dessous (éditeur unique,
+   * lot 5d-2). `inactiveForPlan` : créée inactive faute de droit d'envoi ou
+   * d'abonnement lu. Sans elle, les messages de l'ancien éditeur.
+   */
+  announceCreated?: (outcome: { inactiveForPlan: boolean }) => void;
 }
 
 export function useSequenceSave({
@@ -43,6 +51,8 @@ export function useSequenceSave({
   fetchSequences,
   setShowBuilder,
   setEditingSequence,
+  onCreated,
+  announceCreated,
 }: SequenceSaveOptions) {
   const handleSaveSequence = async (sequence: Sequence) => {
     try {
@@ -189,6 +199,8 @@ export function useSequenceSave({
 
       if (sequence.id) {
         toast.success('Séquence mise à jour');
+      } else if (announceCreated) {
+        announceCreated({ inactiveForPlan: createInactiveForPlan });
       } else {
         // Étape suivante du parcours : inscrire des candidats depuis le Sourcing.
         const enrollAction = projectId
@@ -213,6 +225,7 @@ export function useSequenceSave({
       fetchSequences();
       setShowBuilder(false);
       setEditingSequence(null);
+      if (createdSequenceId) onCreated?.(createdSequenceId);
     } catch (err) {
       // Relancé pour que SequenceBuilder.handleSave n'affiche pas
       // « Séquence enregistrée » et ne ferme pas le builder sur un échec

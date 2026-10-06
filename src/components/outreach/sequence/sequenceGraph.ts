@@ -727,6 +727,120 @@ export function branchBadgesByStep(steps: Step[]): Map<string, string[]> {
   return byStep;
 }
 
+// ── Ajout d'une étape à un endroit du fil (éditeur unique, lot 5d-2) ──────
+
+/**
+ * Types de la palette « Ajouter une étape », par onglet. Les types fermés
+ * (isStepTypeOffered faux) n'y figurent jamais : ils restent lisibles et
+ * signalés sur les séquences qui les ont.
+ */
+export const ADD_STEP_PALETTE: Readonly<Record<'linkedin' | 'conditions', readonly Step['actionType'][]>> = {
+  linkedin: ['profile_visit', 'connection_request', 'message', 'inmail', 'smart_message'],
+  conditions: ['check_connection', 'wait_connection', 'wait_reply'],
+};
+
+/** Branche d'une fourche : Connecté ou Non connecté (vérification), Pas acceptée (attente de connexion avec repli). */
+export type StepBranch = 'true' | 'false' | 'timeout';
+
+export interface StepPosition {
+  /** Étape après laquelle la nouvelle étape prend place ; `null` : début d'une séquence vide. */
+  afterStepId: string | null;
+  /**
+   * Branche de la fourche portée par `afterStepId` : 'true' ou 'false' après
+   * « Vérifier la connexion », 'timeout' après une attente de connexion
+   * (« Pas acceptée après N jours »). Sans branche après une attente avec
+   * repli : la branche « Acceptée ».
+   */
+  branch?: StepBranch;
+}
+
+export interface StepAllowance {
+  actionType: Step['actionType'];
+  allowed: boolean;
+  /** Raison courte, quand le type n'est pas permis à cet endroit. */
+  reason: string | null;
+}
+
+// Étapes après lesquelles une attente de réponse a un sens (même liste que l'ancien éditeur).
+const REPLY_EXPECTED_TYPES = new Set(['inmail', 'email', 'message', 'smart_message', 'whatsapp_message']);
+
+/** Étapes jouées jusqu'à l'emplacement (lui compris) et relation garantie à cet endroit. */
+function positionContext(steps: Step[], position: StepPosition): { path: Step[]; connection: ConnectionContext } | null {
+  if (position.afterStepId === null) return { path: [], connection: 'unknown' };
+  const after = steps.find((s) => s.id === position.afterStepId);
+  if (!after) return null;
+  const anchor = pathAnchor(after, steps);
+  const path = [anchor, ...previousStepsOf(anchor, steps)];
+  let connection: ConnectionContext;
+  if (anchor.actionType === 'check_connection' && position.branch === 'true') connection = 'connected';
+  else if (anchor.actionType === 'check_connection' && position.branch === 'false') connection = 'not_connected';
+  else if (anchor.actionType === 'wait_connection' && position.branch === 'timeout') connection = 'not_connected';
+  else if (anchor.actionType === 'wait_connection' && anchor.timeoutBranchStepId) connection = 'connected';
+  else connection = connectionContextOf(anchor, steps);
+  return { path, connection };
+}
+
+/**
+ * Le type `actionType` peut-il être ajouté à cet endroit ? Jugé sur le chemin
+ * qui y mène (previousStepsOf, branches comprises) et sur la relation que ce
+ * chemin garantit (connectionContextOf). Règles de l'ancien éditeur (liste et
+ * branches de l'onglet Visuel), lues sur le chemin au lieu de toute la séquence :
+ * - invitation : pas à un candidat déjà en relation, pas deux fois sur un chemin ;
+ * - message LinkedIn et Message IA : le moteur envoie un message direct à un
+ *   candidat en relation ; seulement en première étape, ou quand une attente de
+ *   connexion ou une vérification précède, jamais dans une branche « Non
+ *   connecté » ou « Pas acceptée » ;
+ * - vérification de la connexion : pas là où la relation est déjà connue ;
+ * - attente de connexion : après une invitation, une seule fois ;
+ * - attente de réponse : après un message ;
+ * - visite de profil et InMail : partout ;
+ * - types fermés : jamais.
+ */
+export function isStepAllowedAt(steps: Step[], position: StepPosition, actionType: Step['actionType']): StepAllowance {
+  const yes: StepAllowance = { actionType, allowed: true, reason: null };
+  const no = (reason: string): StepAllowance => ({ actionType, allowed: false, reason });
+  if (!(actionType in STEP_TYPE_LABELS)) return no('Type d’étape inconnu.');
+  if (!isStepTypeOffered(actionType)) return no(unsupportedStepNotice(actionType) ?? 'Pas encore disponible.');
+  const context = positionContext(steps, position);
+  if (!context) return no('Cet emplacement n’existe plus : rouvrez la palette.');
+  const types = new Set<string>(context.path.map((s) => s.actionType));
+  const { connection } = context;
+
+  switch (actionType) {
+    case 'connection_request':
+      if (connection === 'connected') return no('Le candidat est déjà en relation à cet endroit.');
+      if (types.has('connection_request')) return no('Une invitation part déjà plus haut sur ce chemin.');
+      return yes;
+    case 'message':
+    case 'smart_message':
+      if (connection === 'not_connected') {
+        return no(actionType === 'message'
+          ? 'Pas en relation dans cette branche : choisissez une invitation ou un InMail.'
+          : 'Pas en relation dans cette branche : choisissez un InMail.');
+      }
+      if (connection === 'connected' || context.path.length === 0 || types.has('wait_connection') || types.has('check_connection')) return yes;
+      return no('Seulement pour un candidat en relation : ajoutez d’abord une attente de connexion ou une vérification de la connexion.');
+    case 'check_connection':
+      if (connection !== 'unknown') return no('La relation est déjà connue dans cette branche.');
+      return yes;
+    case 'wait_connection':
+      if (connection === 'connected') return no('Le candidat est déjà en relation à cet endroit.');
+      if (!types.has('connection_request')) return no('Ajoutez d’abord une invitation.');
+      if (types.has('wait_connection')) return no('Une attente de connexion suit déjà l’invitation sur ce chemin.');
+      return yes;
+    case 'wait_reply':
+      if (![...types].some((t) => REPLY_EXPECTED_TYPES.has(t))) return no('Ajoutez d’abord un message ou un InMail.');
+      return yes;
+    default:
+      return yes;
+  }
+}
+
+/** Chaque type de la palette à cet endroit, dans l'ordre des onglets. */
+export function stepAllowancesAt(steps: Step[], position: StepPosition): StepAllowance[] {
+  return [...ADD_STEP_PALETTE.linkedin, ...ADD_STEP_PALETTE.conditions].map((type) => isStepAllowedAt(steps, position, type));
+}
+
 // ── Vérification complète (liste, mode Guidé, enregistrement) ─────────────
 
 export type SequenceArea = 'info' | 'senders' | 'steps' | 'guardrails';
@@ -748,6 +862,20 @@ export interface SequenceValidation {
 
 type ValidatedSequence = Pick<Sequence, 'name' | 'steps' | 'multiSenderEnabled' | 'senderAccounts'>;
 
+export interface SequenceValidationOptions {
+  /**
+   * Variables inconnues du moteur dans un texte rédigé à la main (message,
+   * note d'invitation, objet). 'block' (éditeur unique, lot 5d-2) : sans texte
+   * de secours, point bloquant (elle serait retirée du message) ; avec un
+   * texte de secours, recommandation (c'est toujours lui qui part). Par
+   * défaut 'ignore' : aucun contrôle, comme l'ancien éditeur, qui ne les
+   * signalait qu'avant l'enregistrement.
+   */
+  unknownVariables?: 'ignore' | 'block';
+  /** Variables personnelles de l'expéditeur : le moteur les remplit aussi. */
+  customKeys?: Iterable<string>;
+}
+
 /** Au-delà, un expéditeur reçoit beaucoup de nouveaux candidats par jour. */
 export const HIGH_SENDER_DAILY_LIMIT = 80;
 
@@ -760,16 +888,22 @@ export const HIGH_SENDER_DAILY_LIMIT = 80;
  * seuls que le moteur garde dans la rotation), ou null tant qu'ils ne sont pas
  * connus (lecture en cours ou en échec) : les expéditeurs ne sont alors pas
  * contrôlés.
+ *
+ * `options.unknownVariables` : contrôle des variables inconnues, éteint par
+ * défaut (voir SequenceValidationOptions).
  */
 export function validateSequence(
   sequence: ValidatedSequence,
   linkedSenderIds: ReadonlySet<string> | null = null,
+  options?: SequenceValidationOptions,
 ): SequenceValidation {
   const errors: SequenceIssue[] = [];
   const warnings: SequenceIssue[] = [];
   const err = (check: string, message: string, area: SequenceArea = 'steps') => errors.push({ check, area, message });
   const warn = (check: string, message: string, area: SequenceArea = 'steps') => warnings.push({ check, area, message });
   const steps = sequence.steps;
+  const checkVariables = options?.unknownVariables === 'block';
+  const knownKeys = new Set<string>([...SEQUENCE_TEMPLATE_KEYS, ...[...(options?.customKeys ?? [])].map((k) => k.trim().toLowerCase())]);
 
   if (!sequence.name.trim()) err('name', 'Donnez un nom à la séquence.', 'info');
   if (steps.length === 0) err('steps', 'Ajoutez au moins une étape.');
@@ -808,6 +942,30 @@ export function validateSequence(
     }
     const retired = retiredConditionNotice(s.conditionType);
     if (retired) warn('retired_condition', `${label} : ${retired}`);
+    // Mêmes textes que l'ancienne alerte d'enregistrement : message et objet rédigés à la main.
+    if (checkVariables && stepHasMessageField(s.actionType) && manual) {
+      const texts = [s.messageTemplate, stepNeedsSubject(s.actionType) ? s.subjectTemplate : undefined];
+      const removed = new Set<string>();
+      const replaced = new Set<string>();
+      for (const text of texts) {
+        for (const p of parsePlaceholders(text ?? '')) {
+          if (knownKeys.has(p.key)) continue;
+          (p.fallback === null ? removed : replaced).add(`{{${p.key}}}`);
+        }
+      }
+      if (removed.size > 0) {
+        const list = [...removed];
+        err('unknown_variables', list.length > 1
+          ? `${label} : ${list.join(', ')} ne sont pas des variables connues : elles seraient retirées du message à l’envoi.`
+          : `${label} : ${list[0]} n’est pas une variable connue : elle serait retirée du message à l’envoi.`);
+      }
+      const fallbackOnly = [...replaced].filter((v) => !removed.has(v));
+      if (fallbackOnly.length > 0) {
+        warn('unknown_variables', fallbackOnly.length > 1
+          ? `${label} : ${fallbackOnly.join(', ')} ne sont pas des variables connues : leur texte de secours partira toujours.`
+          : `${label} : ${fallbackOnly[0]} n’est pas une variable connue : son texte de secours partira toujours.`);
+      }
+    }
   }
 
   // Enchaînement : branche vide, renvoi mort, repli sans cible, variante seule.

@@ -569,7 +569,7 @@ test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
     await expect(toast(page, 'Les actions du jour n’ont pas pu être avancées')).toHaveCount(0);
   });
 
-  test('Étapes en lecture, Journal et « État de l’envoi », Réglages, menu « ... » (Dupliquer, modèle, Supprimer)', async ({ browser, org }) => {
+  test('Étapes (éditeur unique), Journal et « État de l’envoi », Réglages, menu « ... » (Dupliquer, modèle, Supprimer)', async ({ browser, org }) => {
     const owner = org.owner;
     await setOrgPlan(org.orgId);
     const account = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
@@ -591,7 +591,9 @@ test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
     await expect(flow.getByText('Attendre 5 jours').first()).toBeVisible();
     await expect(flow.getByText('Fin de la séquence').first()).toBeVisible();
     await expect(flow.getByText(/Bonjour \[Prénom\], votre parcours chez \[Entreprise actuelle\]/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Modifier les étapes' })).toBeVisible();
+    // Lot 5d-2 : l'onglet est l'éditeur unique (plus de « Modifier les étapes » ni de fenêtre à part).
+    await expect(page.getByRole('button', { name: 'Modifier les étapes' })).toHaveCount(0);
+    await expect(flow.getByRole('button', { name: 'Ajouter une étape dans la branche Connecté (1er degré)' })).toBeVisible();
 
     // « Diagnostic des envois » : carte « État de l'envoi » du Journal, échec nommé.
     await page.getByRole('button', { name: 'Plus d’actions sur la séquence' }).click();

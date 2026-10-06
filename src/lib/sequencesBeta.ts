@@ -144,3 +144,35 @@ export function sequencePath(id: string, fromMissionId?: string | null): string 
   if (!fromMissionId) return base;
   return `${base}?depuis=mission:${encodeURIComponent(fromMissionId)}`;
 }
+
+/** Segment de l'adresse d'une séquence pas encore créée (/sequences/nouvelle, lot 5d-2). */
+export const NEW_SEQUENCE_SLUG = 'nouvelle';
+
+/** Départ d'une nouvelle séquence : vide, modèle Konekt ou de l'organisation, copie d'une séquence. */
+export type NewSequenceStart =
+  | { kind: 'zero' }
+  | { kind: 'modele'; key: string }
+  | { kind: 'copie'; id: string };
+
+/** Valeur de &depart= : zero, modele:<clé>, copie:<id>. Toute autre valeur : null. */
+export function parseNewSequenceStart(raw: string | null | undefined): NewSequenceStart | null {
+  if (!raw || raw === 'zero') return raw === 'zero' ? { kind: 'zero' } : null;
+  const sep = raw.indexOf(':');
+  if (sep <= 0) return null;
+  const kind = raw.slice(0, sep);
+  const value = raw.slice(sep + 1).trim();
+  if (!value) return null;
+  if (kind === 'modele') return { kind: 'modele', key: value };
+  if (kind === 'copie') return { kind: 'copie', id: value };
+  return null;
+}
+
+/**
+ * Nouvelle séquence : /sequences/nouvelle?mission=<id>&depart=zero|modele:<clé>|copie:<id>.
+ * Rien n'est écrit avant « Enregistrer ».
+ */
+export function newSequencePath(start: NewSequenceStart, missionId?: string | null): string {
+  const depart = start.kind === 'zero' ? 'zero' : start.kind === 'modele' ? `modele:${start.key}` : `copie:${start.id}`;
+  const params = [missionId ? `mission=${encodeURIComponent(missionId)}` : null, `depart=${encodeURIComponent(depart).replace('%3A', ':')}`].filter(Boolean);
+  return `${SEQUENCES_PATH}/${NEW_SEQUENCE_SLUG}?${params.join('&')}`;
+}
