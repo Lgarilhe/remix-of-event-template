@@ -17,6 +17,7 @@
  * ses propres identifiants de compte et de profil ; les exécutions échues
  * sont insérées en dernier.
  */
+import { createHash } from 'node:crypto';
 import type { Browser, BrowserContext, Locator, Page, Route } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import {
@@ -1112,6 +1113,129 @@ test.describe('Préparation d\'inscription', () => {
     await expect(enrollButton).toBeDisabled();
     await dialog.getByRole('checkbox', { name: 'Je confirme les destinataires' }).check();
     await expect(enrollButton).toBeEnabled();
+  });
+
+  // lot5d1-apercu-reel : étapes écrites rendues avec les valeurs du serveur (preview_values)
+  test('@critical lot 5d-1 : l\'aperçu d\'une étape écrite est le texte que le moteur envoie (prénom non fiable, titre « X chez Y », ville), sans copie dans message_overrides', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    // Variable personnelle « ville » de l'expéditeur : le moteur en fait {{city}}.
+    const { error: varErr } = await admin().from('user_template_variables')
+      .insert({ user_id: org.owner.userId, organization_id: org.orgId, key: 'ville', value: 'Lyon' });
+    if (varErr) throw new Error(`user_template_variables: ${varErr.message}`);
+    const template = 'Bonjour {{prenom | fallback:"à vous"}}, vous êtes {{poste_actuel}} chez {{entreprise_actuelle | fallback:"votre entreprise"}}. '
+      + 'Nous recrutons un {{poste_recherche}} à {{city}}.';
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Aperçu réel ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'message', message_template: template, delay_days: 0 }],
+    });
+    const tag = rand();
+    // « Dr » en tête du nom : prénom non fiable, salutation neutre (règle du moteur).
+    const julie = makeProfile('Dr', 'Julie Martin', { headline: 'Directrice financière chez Acme | Ex-Big4', public_identifier: `julie-martin-${tag}` });
+    const marc = makeProfile('Marc', 'Lefèvre', { headline: 'Développeur Go · Freelance', public_identifier: `marc-lefevre-${tag}` });
+    const sophie = makeProfile('Sophie', 'Bernard', { headline: 'Responsable RH at Initech', public_identifier: `sophie-bernard-${tag}` });
+    const people = [julie, marc, sophie];
+    // Règle du moteur : prénom seulement s'il est fiable, poste et entreprise tirés du titre LinkedIn, mission, ville.
+    const expected = new Map([
+      [julie.id, 'Bonjour à vous, vous êtes Directrice financière chez Acme. Nous recrutons un Senior Backend Engineer à Lyon.'],
+      [marc.id, 'Bonjour Marc, vous êtes Développeur Go chez votre entreprise. Nous recrutons un Senior Backend Engineer à Lyon.'],
+      [sophie.id, 'Bonjour Sophie, vous êtes Responsable RH chez Initech. Nous recrutons un Senior Backend Engineer à Lyon.'],
+    ]);
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+
+    // Chaque candidat : le texte du moteur, rendu d'office (aucun bouton à cliquer, aucun crédit).
+    const card = dialog.getByRole('article', { name: /^Étape 1 :/ });
+    for (const p of people) {
+      await dialog.locator(`[data-candidate-id="${p.id}"]`).click();
+      await expect(card).toContainText(expected.get(p.id)!, { timeout: 30_000 });
+    }
+    await expect(dialog.getByRole('button', { name: /Voir l'aperçu/ })).toHaveCount(0);
+
+    await dialog.getByRole('button', { name: 'Inscrire 3 candidats', exact: true }).click();
+    await expect(toast(page, '3 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
+
+    // Étape écrite non retouchée : aucune copie dans message_overrides, le moteur la rend à l'envoi.
+    const { data: rows } = await admin().from('sequence_enrollments').select('profile_id, tracking_data').eq('sequence_id', seq.id);
+    expect(rows ?? []).toHaveLength(3);
+    for (const row of rows ?? []) {
+      const overrides = (row.tracking_data as { message_overrides?: Record<string, unknown> } | null)?.message_overrides ?? {};
+      expect(overrides[seq.stepIds[0]], `aucune copie de l'aperçu pour ${row.profile_id}`).toBeUndefined();
+    }
+
+    // Le faux LinkedIn reçoit exactement les textes affichés.
+    for (let i = 0; i < 6 && (await sentTexts(accountId)).length < 3; i++) await runCycle({ force: true });
+    expect([...(await sentTexts(accountId))].sort()).toEqual([...expected.values()].sort());
+  });
+
+  // lot5d1-relecture : prêt seulement avec ses valeurs, objet d'un InMail écrit gardé, « Revenir au modèle »
+  test('@critical lot 5d-1 (relecture) : un candidat effacé ne compte jamais prêt, la retouche d\'un InMail écrit garde son objet, « Revenir au modèle » rend le message de la séquence', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Aperçu relecture ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'inmail', subject_template: 'Poste de {{poste_recherche}}', message_template: 'Bonjour {{prenom}}, un mot sur le poste.', delay_days: 0 }],
+    });
+    const tag = rand();
+    // Hors de son réseau : une séquence en InMail seul les atteint.
+    const julie = makeProfile('Julie', 'Martin', { public_identifier: `julie-relecture-${tag}`, network_distance: 'SECOND_DEGREE' });
+    const marc = makeProfile('Marc', 'Lefèvre', { public_identifier: `marc-relecture-${tag}`, network_distance: 'SECOND_DEGREE' });
+    const eve = makeProfile('Eve', 'Efface', { public_identifier: `eve-efface-${tag}`, network_distance: 'SECOND_DEGREE' });
+    // Eve a demandé l'effacement de ses données (registre global, empreinte de l'URL normalisée).
+    const { data: erasure, error: erasureErr } = await admin().from('gdpr_erasures')
+      .insert({ linkedin_url_hash: createHash('sha256').update(eve.profile_url.toLowerCase()).digest('hex'), reason: 'user_request', source: 'e2e-seq-ui-1-5d1' })
+      .select('id').single();
+    if (erasureErr || !erasure) throw new Error(`gdpr_erasures: ${erasureErr?.message}`);
+    cleanups.push(() => admin().from('gdpr_erasures').delete().eq('id', erasure.id));
+    const people = [julie, marc, eve];
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+    const card = dialog.getByRole('article', { name: /^Étape 1 :/ });
+
+    // Effacée : la raison à la place du texte, et jamais comptée prête.
+    await dialog.locator(`[data-candidate-id="${eve.id}"]`).click();
+    await expect(card).toContainText("Ce candidat a demandé l'effacement de ses données : aucun aperçu.", { timeout: 30_000 });
+    await expect(dialog.getByText('Aperçus prêts : 2 sur 3')).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText('Aperçus prêts : 3 sur 3')).toHaveCount(0);
+
+    // Julie : retouche, puis « Revenir au modèle » (une étape écrite ne se régénère pas).
+    await dialog.locator(`[data-candidate-id="${julie.id}"]`).click();
+    await expect(card).toContainText('Bonjour Julie, un mot sur le poste.', { timeout: 30_000 });
+    await card.getByRole('button', { name: 'Modifier le message' }).click();
+    await card.getByRole('textbox').fill('Bonjour Julie, je reviens vers vous.');
+    await card.getByRole('button', { name: 'Voir le message' }).click();
+    await expect(card).toContainText('Bonjour Julie, je reviens vers vous.');
+    await expect(card.getByRole('button', { name: /^Régénérer ce message/ })).toHaveCount(0);
+    await card.getByRole('button', { name: 'Revenir au modèle' }).click();
+    const confirm = page.getByRole('alertdialog', { name: 'Remplacer votre modification ?' });
+    await expect(confirm).toContainText('Votre modification sera remplacée par le message de la séquence, rendu pour ce candidat.');
+    await expect(confirm).not.toContainText('nouvelle version générée');
+    await confirm.getByRole('button', { name: 'Revenir au modèle' }).click();
+    await expect(card).toContainText('Bonjour Julie, un mot sur le poste.');
+    await expect(card.getByText('Modifié', { exact: true })).toHaveCount(0);
+
+    // Nouvelle retouche, gardée à l'inscription : l'objet rendu part avec elle.
+    await card.getByRole('button', { name: 'Modifier le message' }).click();
+    await card.getByRole('textbox').fill('Bonjour Julie, je reviens vers vous.');
+    await card.getByRole('button', { name: 'Voir le message' }).click();
+
+    // Eve retirée : 2 candidats inscrits.
+    await dialog.getByRole('button', { name: 'Actions pour Eve Efface' }).click();
+    await page.getByRole('menuitem', { name: 'Retirer de la sélection' }).click();
+    await dialog.getByRole('button', { name: 'Inscrire 2 candidats', exact: true }).click();
+    await expect(toast(page, '2 candidats inscrits dans la séquence')).toBeVisible({ timeout: 30_000 });
+    const { data: rows } = await admin().from('sequence_enrollments').select('profile_id, tracking_data').eq('sequence_id', seq.id);
+    expect(rows ?? []).toHaveLength(2);
+    const overridesOf = (profileId: string) => ((rows ?? []).find((r) => r.profile_id === profileId)?.tracking_data as
+      { message_overrides?: Record<string, { subject?: string; message?: string; isEdited?: boolean }> } | null)?.message_overrides ?? {};
+    expect(overridesOf(julie.id)[seq.stepIds[0]]).toEqual({
+      subject: 'Poste de Senior Backend Engineer',
+      message: 'Bonjour Julie, je reviens vers vous.',
+      isEdited: true,
+    });
+    expect(overridesOf(marc.id)[seq.stepIds[0]], 'étape écrite non retouchée : aucune copie').toBeUndefined();
   });
 
   // inmail-groupe-texte-corrige-planifie
