@@ -55,7 +55,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
               variant="ghost"
               size="icon-sm"
               aria-label={triggerLabel}
-              className="relative shrink-0 rounded-full text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+              className="relative shrink-0 rounded-full max-md:h-11 max-md:w-11"
             >
               <Plus aria-hidden="true" />
               {activeCount > 0 && (
@@ -84,7 +84,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
             onClick={() => setOpen(false)}
             className="h-auto w-full justify-start gap-2.5 px-2.5 py-2 text-left"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground" aria-hidden="true">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground" aria-hidden="true">
               <Paperclip />
             </span>
             Joindre un fichier
@@ -129,7 +129,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
                   ) : connector.kind !== 'mcp' ? (
                     <EmailProviderLogo provider={connector.kind} className="h-5 w-5" aria-hidden="true" />
                   ) : (
-                    <Plug className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <Plug className="h-4 w-4" aria-hidden="true" />
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -179,7 +179,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
           type="button"
           variant="ghost"
           onClick={() => manageConnectors()}
-          className="mt-1.5 h-auto w-full justify-start px-2.5 py-2 text-xs font-normal text-muted-foreground hover:text-foreground max-md:min-h-11 [&_svg]:size-3.5"
+          className="mt-1.5 h-auto w-full justify-start px-2.5 py-2 text-xs font-normal max-md:min-h-11 [&_svg]:size-3.5"
         >
           <Settings2 aria-hidden="true" />
           Gérer les connecteurs

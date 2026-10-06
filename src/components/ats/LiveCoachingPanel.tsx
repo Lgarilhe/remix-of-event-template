@@ -1078,7 +1078,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               {meetingActive && isRecording && !meetingAudioLost && (
                 <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>Voix du candidat&nbsp;: audio partagé</span>
-                  <Button variant="ghost" size="sm" onClick={() => void restartMeetingAudio()} loading={restartingMeeting}>
+                  <Button variant="ghost" size="sm" onClick={() => void restartMeetingAudio()} loading={restartingMeeting} className="text-foreground">
                     Changer le partage
                   </Button>
                 </div>

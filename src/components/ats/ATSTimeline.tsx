@@ -128,7 +128,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
               return (
                 <li key={candidate.id} className="relative pl-7">
                   <span
-                    className="absolute left-0 top-3 grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground"
+                    className="absolute left-0 top-3 grid h-5 w-5 place-items-center rounded-full bg-muted text-foreground"
                     aria-hidden="true"
                   >
                     <SourceIcon className="h-3 w-3" />
@@ -150,11 +150,11 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                             </Button>
                           </h3>
                           {candidate.hasReminder && (
-                            <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
+                            <Bell className="h-3.5 w-3.5 shrink-0" role="img" aria-label="Rappel en attente" />
                           )}
                           {(candidate.notesCount || 0) > 0 && (
                             <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
-                              <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+                              <StickyNote className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                               {candidate.notesCount}
                               <span className="sr-only"> note{(candidate.notesCount || 0) > 1 ? 's' : ''}</span>
                             </span>
@@ -178,7 +178,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                                   type="button"
                                   variant="link"
                                   onClick={() => onJobClick?.(candidate.jobId as string)}
-                                  className="relative z-10 h-auto max-w-[260px] justify-start p-0 text-sm font-normal text-foreground-secondary after:absolute after:inset-x-0 after:-inset-y-1 hover:text-foreground [@media(pointer:coarse)]:after:-inset-y-3"
+                                  className="relative z-10 h-auto max-w-[260px] justify-start p-0 text-sm font-normal after:absolute after:inset-x-0 after:-inset-y-1 [@media(pointer:coarse)]:after:-inset-y-3"
                                 >
                                   <span className="sr-only">Voir la mission </span>
                                   <span className="truncate">{candidate.jobTitle}</span>
@@ -192,7 +192,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                             <>
                               <span aria-hidden="true" className="text-muted-foreground">·</span>
                               <span className="inline-flex max-w-[220px] items-center gap-1 text-muted-foreground">
-                                <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                <GitBranch className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                                 <span className="sr-only">Séquence </span>
                                 <span className="truncate">{candidate.sequenceName}</span>
                               </span>

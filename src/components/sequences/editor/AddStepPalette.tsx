@@ -59,12 +59,12 @@ export function AddStepPalette({ steps, position, onPick, className }: AddStepPa
                 !allowance.allowed && 'cursor-not-allowed hover:bg-transparent',
               )}
             >
-              {/* Entrée impossible : icône et titre estompés, la raison reste lisible (seule information utile). */}
-              <span className={cn('mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary', !allowance.allowed && 'opacity-50')}>
+              {/* Entrée impossible : icône et titre au gris secondaire (sans opacité), la raison reste lisible (seule information utile). */}
+              <span className={cn('mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted', allowance.allowed ? 'text-foreground' : 'text-muted-foreground')}>
                 <SequenceActionIcon type={type} className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className={cn('block text-sm font-medium text-foreground', !allowance.allowed && 'opacity-60')}>{label}</span>
+                <span className={cn('block text-sm font-medium', allowance.allowed ? 'text-foreground' : 'text-muted-foreground')}>{label}</span>
                 <span className="block text-xs font-normal text-muted-foreground">
                   {allowance.allowed ? DESCRIPTIONS[type] : allowance.reason}
                 </span>

@@ -30,7 +30,7 @@ export function BranchColumns({ stepNumber, branches, renderBranch, compact = fa
           <p className={cn('mb-2 flex items-center justify-center gap-1.5 text-xs font-medium', branch.tone === 'yes' ? 'text-foreground' : 'text-foreground-secondary')}>
             {branch.tone === 'yes'
               ? <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />
-              : <X className="h-3.5 w-3.5" aria-hidden="true" />}
+              : <X className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />}
             {branch.label}
           </p>
           {renderBranch(branch)}

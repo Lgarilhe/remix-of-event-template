@@ -994,7 +994,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         ) : displayResults.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
-              <Search className="w-10 h-10" />
+              <Search className="w-10 h-10 text-foreground" />
             </div>
             {/*
               Empty state contextualisé : on évite "Aucun profil trouvé →
@@ -1100,7 +1100,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       size="sm"
                       onClick={() => onRefineSearch('expand')}
                       disabled={refineLoading}
-                      className="h-6 px-2 gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                      className="h-6 px-2 gap-1 text-2xs font-medium hover:bg-muted/60 transition-colors"
                     >
                       {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
                       Élargir
@@ -1110,7 +1110,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       size="sm"
                       onClick={() => onRefineSearch('narrow')}
                       disabled={refineLoading}
-                      className="h-6 px-2 gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                      className="h-6 px-2 gap-1 text-2xs font-medium hover:bg-muted/60 transition-colors"
                     >
                       {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
                       Affiner
@@ -1381,7 +1381,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 <div className="text-center py-3">
                   <div className="flex flex-col items-center gap-2 p-4 border border-dashed border-muted-foreground/30 rounded-md bg-muted/30">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
-                      <Search className="w-4 h-4" />
+                      <Search className="w-4 h-4 text-foreground" />
                       Fin des résultats LinkedIn
                     </div>
                     <p className="text-xs text-muted-foreground/70 max-w-sm text-center">
@@ -1495,7 +1495,7 @@ const SearchWelcomeMessage: React.FC<{ standalone?: boolean }> = ({ standalone =
         {
           num: standalone ? '2' : '3',
           title: 'Sélectionnez et scorez',
-          content: <p className="text-sm text-muted-foreground ml-8">Sélectionnez les profils, puis cliquez sur <strong><Target className="w-3 h-3 inline" /> Scorer</strong>.</p>,
+          content: <p className="text-sm text-muted-foreground ml-8">Sélectionnez les profils, puis cliquez sur <strong><Target className="w-3 h-3 inline text-foreground" /> Scorer</strong>.</p>,
           bg: 'bg-muted border-border',
         },
         {
@@ -1506,8 +1506,8 @@ const SearchWelcomeMessage: React.FC<{ standalone?: boolean }> = ({ standalone =
               {standalone
                 ? <li>• Shortlist, statuts et scores sont conservés — transforme en mission quand c'est mûr</li>
                 : <>
-                    <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong></li>
-                    <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
+                    <li>• <strong><FolderPlus className="w-3 h-3 inline text-foreground" /> Ajouter au projet</strong></li>
+                    <li>• <strong><Archive className="w-3 h-3 inline text-foreground" /> Archiver</strong></li>
                   </>}
             </ul>
           ),

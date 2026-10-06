@@ -137,7 +137,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={`Actions pour ${profile.name || 'ce candidat'}`}
-                className="absolute right-1.5 top-1.5 text-muted-foreground max-md:h-11 max-md:w-11"
+                className="absolute right-1.5 top-1.5 max-md:h-11 max-md:w-11"
               >
                 <MoreHorizontal aria-hidden="true" />
               </Button>

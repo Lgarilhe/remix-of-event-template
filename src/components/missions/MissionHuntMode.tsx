@@ -30,8 +30,8 @@ interface MissionHuntModeProps {
 }
 
 // Rendu intégré : mêmes gestes, sans cadre ni bouton plein ni majuscules.
-const EMB_BTN = 'h-9 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50 transition-colors max-sm:min-h-11';
-const EMB_BTN_DANGER = 'h-9 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors max-sm:min-h-11';
+const EMB_BTN = 'h-9 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:text-muted-foreground transition-colors max-sm:min-h-11';
+const EMB_BTN_DANGER = 'h-9 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:text-muted-foreground transition-colors max-sm:min-h-11';
 const EMB_INPUT = 'w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60 max-sm:h-11';
 const EMB_LABEL = 'flex items-center gap-1.5 text-sm text-muted-foreground mb-1.5';
 const EMB_HEADING = 'text-md font-semibold text-foreground mb-3';
@@ -236,7 +236,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project, embed
             </div>
             {huntStatus !== 'draft' && (
               <span className={embedded ? 'inline-flex items-center gap-1 text-sm text-muted-foreground' : 'inline-flex items-center gap-1 text-2xs text-muted-foreground'}>
-                <Users className="w-3 h-3" /> {acceptedCount}/{maxCount} recruteurs
+                <Users className={cn('w-3 h-3', embedded && 'text-foreground')} /> {acceptedCount}/{maxCount} recruteurs
               </span>
             )}
           </div>
@@ -275,7 +275,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project, embed
           <div className={embedded ? 'grid grid-cols-1 sm:grid-cols-3 gap-3' : 'grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border'}>
             <div>
               <label className={embedded ? EMB_LABEL : 'flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5'}>
-                <Percent className="w-3 h-3" /> Rémunération (% du salaire annuel)
+                <Percent className={cn('w-3 h-3', embedded && 'text-foreground')} /> Rémunération (% du salaire annuel)
               </label>
               <input
                 type="number"
@@ -289,7 +289,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project, embed
             </div>
             <div>
               <label className={embedded ? EMB_LABEL : 'flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5'}>
-                <Users className="w-3 h-3" /> Recruteurs maximum
+                <Users className={cn('w-3 h-3', embedded && 'text-foreground')} /> Recruteurs maximum
               </label>
               <input
                 type="number"
@@ -303,7 +303,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project, embed
             </div>
             <div>
               <label className={embedded ? EMB_LABEL : 'flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5'}>
-                <Calendar className="w-3 h-3" /> Date limite
+                <Calendar className={cn('w-3 h-3', embedded && 'text-foreground')} /> Date limite
               </label>
               <input
                 type="date"
@@ -467,7 +467,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project, embed
                 {accepted.map((a) => (
                   <div key={a.id} className={embedded ? 'flex items-center gap-3 border-t border-border py-2 first:border-t-0' : 'flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-background'}>
                     <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4 text-muted-foreground" />
+                      <User className={cn('w-4 h-4', !embedded && 'text-muted-foreground')} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{a.display_name || 'Recruteur partenaire'}</p>
@@ -566,7 +566,7 @@ const ApplicantCard: React.FC<{ applicant: HuntApplicant; embedded?: boolean; ch
   <div className={embedded ? 'border-t border-border py-3 space-y-2 first:border-t-0' : 'rounded-lg border border-border bg-background px-4 py-3 space-y-2'}>
     <div className="flex items-start gap-3">
       <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-        <User className="w-4 h-4 text-muted-foreground" />
+        <User className={cn('w-4 h-4', !embedded && 'text-muted-foreground')} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">

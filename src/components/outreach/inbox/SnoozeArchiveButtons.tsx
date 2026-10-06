@@ -34,7 +34,7 @@ interface SnoozeArchiveButtonsProps {
 }
 
 // 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
-const ICON_BUTTON = 'h-11 w-11 text-muted-foreground hover:text-foreground md:h-8 md:w-8';
+const ICON_BUTTON = 'h-11 w-11 md:h-8 md:w-8';
 
 const formatWhen = (date: Date) =>
   date.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });

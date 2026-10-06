@@ -349,12 +349,12 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                 <button
                   type="button"
                   onClick={() => setEditingNotes({ cvId: activeCV.id, value: activeCV.notes || '' })}
-                  className="w-full flex items-start gap-2 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-full flex items-start gap-2 text-left text-xs text-foreground transition-colors"
                 >
                   <Pencil className="w-3 h-3 shrink-0 mt-0.5" />
                   {activeCV.notes
                     ? <span className="italic">{activeCV.notes}</span>
-                    : <span className="opacity-70">Ajouter une note sur ce CV…</span>}
+                    : <span className="text-muted-foreground">Ajouter une note sur ce CV…</span>}
                 </button>
               )}
             </div>
@@ -532,7 +532,7 @@ function CVListItem({
         {!cv.isPrimary && (
           <button
             onClick={onSetPrimary}
-            className="h-6 w-6 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="h-6 w-6 grid place-items-center rounded-md text-foreground hover:bg-muted transition-colors"
             title="Définir comme CV principal"
           >
             <StarOff className="w-3 h-3" />
@@ -540,7 +540,7 @@ function CVListItem({
         )}
         <button
           onClick={onDownload}
-          className="h-6 w-6 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="h-6 w-6 grid place-items-center rounded-md text-foreground hover:bg-muted transition-colors"
           title="Télécharger"
         >
           <Download className="w-3 h-3" />

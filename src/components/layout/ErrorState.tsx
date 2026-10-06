@@ -68,7 +68,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 
   const technical = detail ? (
     <details className={cn('text-left', compact ? 'mt-2' : 'mt-4')}>
-      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Détails techniques</summary>
+      <summary className="cursor-pointer text-xs text-foreground underline-offset-4 hover:underline">Détails techniques</summary>
       <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{detail}</p>
     </details>
   ) : null;

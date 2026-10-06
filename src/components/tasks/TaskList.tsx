@@ -314,7 +314,7 @@ export function TaskSuggestions({ suggestions, photos, creatingKey, onAccept, on
           type="button"
           variant="link"
           size="sm"
-          className="mt-2 min-h-11 px-0 text-muted-foreground md:min-h-0"
+          className="mt-2 min-h-11 px-0 md:min-h-0"
           aria-expanded={showAll}
           onClick={() => setShowAll((v) => !v)}
         >

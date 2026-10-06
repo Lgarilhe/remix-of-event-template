@@ -407,7 +407,7 @@ export default function Qualification() {
                 >
                   <Linkedin className="h-3.5 w-3.5 text-linkedin" aria-hidden="true" />
                   Profil LinkedIn
-                  <ExternalLink className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
                   <span className="sr-only">(nouvel onglet)</span>
                 </a>
               )}
@@ -424,7 +424,7 @@ export default function Qualification() {
               )}
               {session.event_location && (
                 <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
                   {session.event_location.startsWith('http') ? (
                     <a
                       href={session.event_location}

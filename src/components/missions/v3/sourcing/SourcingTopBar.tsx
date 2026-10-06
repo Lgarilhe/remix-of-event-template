@@ -102,7 +102,7 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
             aria-controls={zoneId}
-            className={cn('tabular-nums text-foreground-secondary hover:text-foreground max-sm:min-h-11', open && 'bg-muted text-foreground')}
+            className={cn('tabular-nums max-sm:min-h-11', open && 'bg-muted')}
           >
             <SlidersHorizontal aria-hidden="true" />
             {filterCount > 0 ? `Filtres (${filterCount})` : 'Filtres'}
@@ -113,7 +113,7 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
             size="sm"
             onClick={onNewSearch}
             disabled={disabled}
-            className="text-foreground-secondary hover:text-foreground max-sm:min-h-11"
+            className="max-sm:min-h-11"
           >
             Nouvelle recherche
           </Button>

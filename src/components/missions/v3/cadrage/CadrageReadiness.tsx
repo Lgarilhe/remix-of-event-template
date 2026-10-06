@@ -48,7 +48,7 @@ function SaveState({ status, onRetry }: { status: JobDetailsSaveStatus; onRetry:
         <>
           <AlertCircle className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />
           <span className="text-foreground">Échec de l'enregistrement</span>
-          <Button type="button" variant="ghost" size="xs" onClick={onRetry} className={TOUCH}>
+          <Button type="button" variant="ghost" size="xs" onClick={onRetry} className={cn('text-foreground', TOUCH)}>
             Réessayer
           </Button>
         </>
@@ -136,7 +136,7 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
               }
               setDictating((v) => !v);
             }}
-            className={cn('shrink-0 text-foreground-secondary hover:text-foreground', TOUCH, dictating && 'bg-muted text-foreground')}
+            className={cn('shrink-0', TOUCH, dictating && 'bg-muted')}
           >
             {dictating ? <X aria-hidden="true" /> : <Mic aria-hidden="true" />}
             {dictating ? 'Fermer la dictée' : 'Dicter'}

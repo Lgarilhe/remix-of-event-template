@@ -228,7 +228,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary ${exp.logo ? 'hidden' : ''}`}>
+                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground ${exp.logo ? 'hidden' : ''}`}>
                       <Briefcase className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -276,7 +276,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary ${schoolLogo ? 'hidden' : ''}`}>
+                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground ${schoolLogo ? 'hidden' : ''}`}>
                       <GraduationCap className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -418,7 +418,7 @@ const SkillsWithEndorse: React.FC<{
                     className={`ml-0.5 p-0.5 rounded transition-colors ${
                       isEndorsed
                         ? 'text-primary cursor-default'
-                        : 'text-muted-foreground hover:text-primary cursor-pointer'
+                        : 'text-foreground hover:text-primary cursor-pointer'
                     }`}
                   >
                     {isLoading ? (

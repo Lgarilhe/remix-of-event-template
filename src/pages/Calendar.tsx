@@ -397,7 +397,7 @@ export default function CalendarPage() {
                         type="button"
                         variant="ghost"
                         size="xs"
-                        className="text-muted-foreground focus-visible:opacity-100 lg:opacity-0 lg:group-hover/day:opacity-100"
+                        className="focus-visible:opacity-100 lg:opacity-0 lg:group-hover/day:opacity-100"
                         onClick={() => {
                           const slotDate = new Date(day);
                           slotDate.setHours(10, 0, 0, 0);
@@ -434,14 +434,14 @@ export default function CalendarPage() {
             const Icon = EVENT_TYPES[type].icon;
             return (
               <span key={type} className="inline-flex items-center gap-1.5">
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                <Icon className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                 {EVENT_TYPES[type].label}
               </span>
             );
           })}
           {viaCalendly > 0 && (
             <span className="inline-flex items-center gap-1.5">
-              <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <CalendarCheck2 className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
               Pris via Calendly
             </span>
           )}
@@ -523,10 +523,10 @@ const EventCard = React.memo(function EventCard({
       aria-label={`${type.label} à ${time} : ${primary}${secondary ? `, ${secondary}` : ''}.${isPast ? ' Passé.' : ''}${status}`}
     >
       <span className="flex min-w-0 items-center gap-1.5 text-xs">
-        <TypeIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <TypeIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span className={cn('font-medium tabular-nums', isPast ? 'text-muted-foreground' : 'text-foreground')}>{time}</span>
         {durationMin && !compact && <span className="text-muted-foreground">· {durationLabel(durationMin)}</span>}
-        {meta.calendlyEventId && <CalendarCheck2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        {meta.calendlyEventId && <CalendarCheck2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
       </span>
       {compact ? (
         <span className={cn('min-w-0 truncate text-xs font-medium', isPast ? 'text-muted-foreground' : 'text-foreground')}>

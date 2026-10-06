@@ -207,8 +207,8 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         {HERO_EXAMPLES.map(ex => (
           <button key={ex} type="button" onClick={() => { setValue(ex); taRef.current?.focus(); }}
             className={isV3
-              ? 'rounded-sm px-1 py-1.5 text-sm text-[var(--k-text-2)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
-              : 'rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors'}>
+              ? 'rounded-sm px-1 py-1.5 text-sm text-foreground underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
+              : 'rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-foreground hover:border-[var(--k-hairline-hover)] transition-colors'}>
             {ex}
           </button>
         ))}
@@ -809,7 +809,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 isV3 && 'rounded-l-lg py-1.5 max-sm:min-h-11',
                 !isV3 && chip.op && 'border-r border-[var(--k-hairline)]',
                 isV3
-                  ? chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-foreground-secondary'
+                  ? chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-foreground'
                   : chip.weight === 'must' ? 'text-[var(--k-text)]' : chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-[var(--k-text-muted)]',
                 chip.canCycle ? 'cursor-pointer hover:bg-[var(--k-surface-2)]' : 'cursor-default',
               )}
@@ -847,7 +847,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 onClick={() => setOpenKey(openKey === `${chip.key}@scope` ? null : `${chip.key}@scope`)}
                 title="Portée : poste ou entreprise actuel(le), passé(e)…"
                 className={cn(
-                  'inline-flex items-center gap-0.5 px-1.5 py-1 font-normal text-[var(--k-text-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text-2)]',
+                  'inline-flex items-center gap-0.5 px-1.5 py-1 font-normal text-foreground hover:bg-[var(--k-surface-2)]',
                   isV3 ? 'text-sm py-1.5 max-sm:min-h-11' : 'border-l border-[var(--k-hairline)] text-2xs',
                 )}
               >
@@ -1057,8 +1057,8 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             data-chip-seg
             onClick={() => { setOpenKey(openKey === '__add' ? null : '__add'); setAddField(null); }}
             className={isV3
-              ? 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-foreground-secondary transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
-              : 'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors'}
+              ? 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
+              : 'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors'}
           >
             <svg viewBox="0 0 24 24" {...svgProps} className={isV3 ? 'w-3.5 h-3.5' : 'w-3 h-3'}><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
             Filtre
@@ -1174,7 +1174,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
           type="button"
           onClick={() => setFuOpen(o => !o)}
           title="Affiner en une phrase : l'IA la traduit en filtres visibles"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
         >
           <AiBurst className="w-3 h-3" />
           Affiner
@@ -1184,7 +1184,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         <button
           type="button"
           onClick={onOpenAdvanced}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
         >
           <svg viewBox="0 0 24 24" {...svgProps} className="w-3 h-3"><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
           Avancé{advCount > 0 ? ` · ${advCount}` : ''}

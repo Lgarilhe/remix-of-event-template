@@ -130,7 +130,7 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-muted-foreground cursor-help rounded-lg bg-background">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-foreground cursor-help rounded-lg bg-background">
           <Icon className="w-3 h-3" /> {config.label}
         </span>
       </TooltipTrigger>
@@ -262,7 +262,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   if (result.hardFilterPassed === false && result.hardFilterKO) {
     return (
       <div className="flex items-start gap-2.5 p-3 border border-border bg-muted rounded-lg">
-        <Ban className="w-4 h-4 text-foreground/60 mt-0.5 shrink-0" />
+        <Ban className="w-4 h-4 mt-0.5 shrink-0" />
         <div>
           <p className="text-xs font-bold text-foreground">Éliminé par filtre</p>
           <p className="text-xs text-muted-foreground mt-0.5">{result.hardFilterKO}</p>
@@ -301,7 +301,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   const confidenceBadge = result.confidenceScore != null && result.confidenceScore < 70 ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-muted-foreground cursor-help rounded-lg bg-muted">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-foreground cursor-help rounded-lg bg-muted">
           {result.confidenceScore < 40 ? <AlertTriangle className="w-3 h-3" /> : <Search className="w-3 h-3" />}
           {result.confidenceScore < 40 ? 'Données insuffisantes' : 'Score partiel'}
         </span>
@@ -417,7 +417,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
           </div>
           {jobTitle && (
             <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <Target className="w-3 h-3 mt-0.5 shrink-0" />
+              <Target className="w-3 h-3 mt-0.5 shrink-0 text-foreground" />
               <span>Match pour <span className="text-foreground font-semibold">{jobTitle}</span></span>
             </div>
           )}
@@ -481,7 +481,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
             </span>
             {result.missing_skills.length > 0 && (
               <span className="flex items-center gap-1">
-                <XCircle className="w-3.5 h-3.5" /> {result.missing_skills.length} manquants
+                <XCircle className="w-3.5 h-3.5 text-foreground" /> {result.missing_skills.length} manquants
               </span>
             )}
           </div>
@@ -537,7 +537,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       {/* ─── DÉTAIL TECHNIQUE (collapsible) — dimensions algo brut ──────── */}
       {(result.dimensions && Object.values(result.dimensions).some(v => v != null)) || result.scoring_details ? (
         <Collapsible>
-          <CollapsibleTrigger className="group w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors hover:bg-muted/30">
+          <CollapsibleTrigger className="group w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-foreground border border-border rounded-md transition-colors hover:bg-muted/30">
             <span className="flex items-center gap-1.5">
               <Lightbulb className="w-3.5 h-3.5" />
               Détail du scoring
@@ -648,7 +648,7 @@ const PedigreeAssessmentBlock: React.FC<{ assessment: NonNullable<JobMatchResult
   return (
     <div className="space-y-2">
       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-        <Shield className="w-3.5 h-3.5" />
+        <Shield className="w-3.5 h-3.5 text-foreground" />
         ICP société {assessment.presetName ? `— ${assessment.presetName}` : ''}
         {assessment.strictMode && <span className="text-3xs font-medium text-foreground">(strict)</span>}
       </p>
@@ -680,13 +680,13 @@ const CriteriaSection: React.FC<{ criteriaEvaluations: NonNullable<JobMatchResul
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <Target className="w-3.5 h-3.5" />
+          <Target className="w-3.5 h-3.5 text-foreground" />
           Critères du brief ({criteriaEvaluations.length})
         </p>
         {criteriaEvaluations.length > 3 && (
           <button
             onClick={() => setShowAll(!showAll)}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs text-foreground transition-colors"
           >
             {showAll ? 'Réduire' : `+ ${criteriaEvaluations.length - 3} autres`}
           </button>

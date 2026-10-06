@@ -58,13 +58,13 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {data.candidate.email && (
               <span className="flex items-center gap-1">
-                <Mail className="w-3 h-3" />
+                <Mail className="w-3 h-3 text-foreground" />
                 {data.candidate.email}
               </span>
             )}
             {data.candidate.phone && (
               <span className="flex items-center gap-1">
-                <Phone className="w-3 h-3" />
+                <Phone className="w-3 h-3 text-foreground" />
                 {data.candidate.phone}
               </span>
             )}
@@ -81,7 +81,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
           >
             {data.placements.map((p, i) => (
               <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/30 last:border-0">
-                <Building2 className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                <Building2 className="w-3 h-3 text-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">{p.name || 'Placement'}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
@@ -91,7 +91,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                     {p.salary && <span className="text-success font-medium">{p.salary}</span>}
                     {p.consultant && (
                       <span className="flex items-center gap-0.5">
-                        <User className="w-2.5 h-2.5" />
+                        <User className="w-2.5 h-2.5 text-foreground" />
                         {p.consultant}
                       </span>
                     )}
@@ -112,7 +112,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
           >
             {data.shortlists.map((s, i) => (
               <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/30 last:border-0">
-                <Briefcase className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                <Briefcase className="w-3 h-3 text-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">
                     {s.job_title || 'Poste non spécifié'}
@@ -124,7 +124,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                     {s.salary_proposed && <span className="text-success font-medium">{s.salary_proposed}</span>}
                     {s.consultant && (
                       <span className="flex items-center gap-0.5">
-                        <User className="w-2.5 h-2.5" />
+                        <User className="w-2.5 h-2.5 text-foreground" />
                         {s.consultant}
                       </span>
                     )}
@@ -145,7 +145,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
           >
             {data.appointments.map((a, i) => (
               <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/30 last:border-0">
-                <Clock className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                <Clock className="w-3 h-3 text-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">{a.title || a.appointment_type || 'RDV'}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
@@ -171,7 +171,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
                   {(n.author || n.consultant) && (
                     <span className="flex items-center gap-0.5">
-                      <User className="w-2.5 h-2.5" />
+                      <User className="w-2.5 h-2.5 text-foreground" />
                       {n.consultant || n.author}
                     </span>
                   )}
@@ -276,7 +276,7 @@ const HistorySection: React.FC<{
         {icon}
         <span className="text-xs font-medium text-foreground flex-1">{title}</span>
         <span className="text-xs text-muted-foreground">{count}</span>
-        <ChevronDown className={cn("w-3 h-3 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <ChevronDown className={cn("w-3 h-3 text-foreground transition-transform", open && "rotate-180")} />
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-5">
         {children}

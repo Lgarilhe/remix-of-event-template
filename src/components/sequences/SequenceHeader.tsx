@@ -102,17 +102,17 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
 
   return (
     <header className="mb-4 space-y-3">
-      <nav aria-label="Fil d’Ariane" className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+      <nav aria-label="Fil d’Ariane" className="flex flex-wrap items-center gap-1 text-sm text-foreground">
         {mission ? (
           <>
-            <Link to="/missions" className="hover:text-foreground max-md:inline-flex max-md:min-h-11 max-md:items-center">Missions</Link>
+            <Link to="/missions" className="underline-offset-4 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center">Missions</Link>
             <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            <Link to={`/missions/${encodeURIComponent(mission.id)}?panneau=contact`} className="max-w-[16rem] truncate hover:text-foreground max-md:inline-flex max-md:min-h-11 max-md:items-center">
+            <Link to={`/missions/${encodeURIComponent(mission.id)}?panneau=contact`} className="max-w-[16rem] truncate underline-offset-4 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center">
               {mission.name}
             </Link>
           </>
         ) : (
-          <Link to={SEQUENCES_PATH} className="hover:text-foreground max-md:inline-flex max-md:min-h-11 max-md:items-center">Séquences</Link>
+          <Link to={SEQUENCES_PATH} className="underline-offset-4 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center">Séquences</Link>
         )}
         <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
       </nav>
@@ -160,7 +160,7 @@ export function SequenceHeader({ name, mission, canRename, onRename, status, dir
                       size="icon-sm"
                       aria-label="Renommer la séquence"
                       onClick={() => setEditing(true)}
-                      className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                      className="max-md:h-11 max-md:w-11"
                     >
                       <Pencil aria-hidden="true" />
                     </Button>

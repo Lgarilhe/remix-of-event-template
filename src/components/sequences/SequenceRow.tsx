@@ -194,7 +194,7 @@ export function SequenceRow(props: SequenceRowProps) {
               variant="ghost"
               size="icon-sm"
               aria-label={`Actions de la séquence ${seq.name}`}
-              className={cn(REVEAL_ON_ROW, 'text-muted-foreground hover:text-foreground data-[state=open]:opacity-100 max-md:h-11 max-md:w-11')}
+              className={cn(REVEAL_ON_ROW, 'data-[state=open]:opacity-100 max-md:h-11 max-md:w-11')}
             >
               <MoreHorizontal aria-hidden="true" />
             </Button>

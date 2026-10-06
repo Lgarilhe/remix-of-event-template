@@ -188,7 +188,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                     className="text-xs font-medium text-foreground flex-1 min-w-0 pr-2 text-left hover:text-linkedin transition-colors group flex items-start gap-1"
                   >
                     <span className="min-w-0 whitespace-normal break-words leading-snug">{company.keywords}</span>
-                    <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Pencil className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
                   <button 
                     type="button" 
@@ -283,7 +283,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             size="sm"
             onClick={handleAddKeyword}
             disabled={!newKeywords.trim()}
-            className="h-6 px-2 bg-linkedin hover:bg-linkedin-hover"
+            className="h-6 px-2 border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
           >
             <Plus className="w-3 h-3" />
           </Button>

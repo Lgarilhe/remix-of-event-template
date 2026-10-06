@@ -40,7 +40,7 @@ const stepCount = (n: number) => `${n} étape${n > 1 ? 's' : ''}`;
 function Choice({ icon: Icon, title, description, onClick }: { icon: ElementType; title: string; description: string; onClick: () => void }) {
   return (
     <Button type="button" variant="outline" onClick={onClick} className="h-auto w-full justify-start gap-4 whitespace-normal p-4 text-left font-normal">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
@@ -113,7 +113,7 @@ export function NewSequenceDialog({ open, onOpenChange, missionId, missionLabel,
                         <span className="text-sm font-semibold text-foreground">{seq.name}</span>
                         <span className="flex items-center gap-1" aria-label={`${stepCount(types.length)} : ${types.slice(0, 6).map(stepName).join(', ')}`}>
                           {types.slice(0, 6).map((type, i) => (
-                            <span key={i} className="grid h-5 w-5 place-items-center rounded-sm bg-muted text-foreground-secondary" aria-hidden="true">
+                            <span key={i} className="grid h-5 w-5 place-items-center rounded-sm bg-muted text-foreground" aria-hidden="true">
                               <SequenceActionIcon type={type} className="h-3 w-3" />
                             </span>
                           ))}

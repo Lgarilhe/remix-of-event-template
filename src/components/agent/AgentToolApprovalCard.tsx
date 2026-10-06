@@ -656,6 +656,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                       variant="ghost"
                       onClick={() => handleAction(row.id, 'reject')}
                       disabled={loading != null}
+                      className="text-muted-foreground"
                     >
                       {loading === 'reject' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <X aria-hidden="true" />}
                       Rejeter

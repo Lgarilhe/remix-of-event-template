@@ -256,7 +256,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
         ) : stepsFailed ? (
           <div className="flex flex-wrap items-center gap-3 py-2 text-sm text-muted-foreground" role="alert">
             <span>Impossible de charger les étapes pour l'instant.</span>
-            <Button type="button" variant="ghost" size="sm" onClick={() => void refetchSteps()} className={TOUCH}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void refetchSteps()} className={cn('text-foreground', TOUCH)}>
               Réessayer
             </Button>
           </div>
@@ -372,7 +372,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                                 hors Konekt
                               </span>
                             )}
-                            {!readOnly && <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                            {!readOnly && <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />}
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="w-[min(330px,calc(100vw-32px))]">
@@ -562,7 +562,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                     setAdding(false);
                     setNewName('');
                   }}
-                  className={cn('text-muted-foreground hover:text-foreground', TOUCH)}
+                  className={TOUCH}
                 >
                   Annuler
                 </Button>
@@ -574,7 +574,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                 variant="ghost"
                 size="sm"
                 onClick={() => setAdding(true)}
-                className={cn('-ml-3 text-muted-foreground hover:text-foreground', TOUCH)}
+                className={cn('-ml-3', TOUCH)}
               >
                 <Plus aria-hidden="true" />
                 Ajouter une étape

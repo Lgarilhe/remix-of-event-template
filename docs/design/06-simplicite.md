@@ -77,7 +77,8 @@ Le 6 octobre 2026, après les avant et après de la spécification du contraste,
 - Badges faits main repris : la primitive `Badge` (ou ses classes, `badgeVariants`, quand la forme diffère), texte à l'encre, couleur dans la pastille ou l'icône, sans capitales. Les tuiles d'icône de statut, les bandeaux et les statuts écrits en ligne qui demandent d'agir (« En retard », un échec) gardent leur couleur.
 - Champs faits main au bord de champ (`border-input`), désactivés sans opacité ; bascules faites main au rendu `quiet` (rail gris plein, option en carte blanche).
 - Un appel qui change la couleur du bord d'un bouton à contour la redonne aussi en sombre (`dark:border-…`) : sinon le filet blanc du contour d'encre ressort en sombre seulement.
-- Gardes : `tests/ux/contraste-jetons.test.mjs` (contrastes recalculés depuis les jetons), `tests/ux/contraste-primitives.test.mjs` et `tests/ux/contraste-ecrans.test.mjs` (kanban, lignes faites, champs et bascules faits main, barre latérale, rétrogradations, badges faits main, bords des boutons à contour en sombre).
+- Un bouton à contour repeint d'un aplat de couleur (bleu LinkedIn) prend un bord transparent et un texte blanc : l'encre sur le bleu ne tient que 3,25:1. Un aplat d'action passe par `primary`, jamais par une couleur d'état.
+- Gardes : `tests/ux/contraste-jetons.test.mjs` (contrastes recalculés depuis les jetons), `tests/ux/contraste-primitives.test.mjs`, `tests/ux/contraste-ecrans.test.mjs` (kanban, lignes faites, champs et bascules faits main, barre latérale, rétrogradations, badges faits main, bords des boutons à contour en sombre) et `tests/ux/contraste-icones.test.mjs` (icônes et boutons discrets à l'encre, liste blanche décroissante).
 
 ## Points ouverts
 

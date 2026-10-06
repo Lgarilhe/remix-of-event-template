@@ -170,7 +170,7 @@ export function StepsEditor({ editor, validation, enrolledCount, state, onRetry,
     <div className="space-y-5">
       {enrolledCount > 0 && (
         <p role="note" className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-foreground">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {plural(enrolledCount, 'candidat est inscrit', 'candidats sont inscrits')}. Vos changements de texte et de délai valent pour les étapes pas encore envoyées. Une étape déjà envoyée ne peut pas être supprimée.
         </p>
       )}

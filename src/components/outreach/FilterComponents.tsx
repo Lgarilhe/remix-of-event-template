@@ -42,7 +42,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
         className={`flex flex-col items-start w-full px-3 py-3 border-b border-[var(--k-hairline)] hover:bg-[var(--k-surface-2)] transition-colors text-left ${bgColorClass}`}
       >
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2 [&_svg]:text-[var(--k-text-muted)]">
+          <div className="flex items-center gap-2 [&_svg]:text-foreground">
             {icon}
             <span className="text-2xs font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
             {badge !== undefined && badge > 0 && (
@@ -51,7 +51,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
               </Badge>
             )}
           </div>
-          <ChevronRight className="w-4 h-4 text-[var(--k-text-muted)]" />
+          <ChevronRight className="w-4 h-4 text-foreground" />
         </div>
         {activeFiltersPreview && activeFiltersPreview.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2 w-full">
@@ -93,7 +93,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
               onClick={onToggle}
               className="p-1.5 rounded-lg hover:bg-muted transition-colors"
             >
-              <X className="w-4 h-4 text-foreground/60" />
+              <X className="w-4 h-4 text-foreground" />
             </button>
           </div>
           {/* Content */}

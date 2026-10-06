@@ -91,7 +91,7 @@ export function CandidateNotesSection({ notes, loading, onAdd, onDelete }: Candi
                 title="Supprimer la note"
                 disabled={deletingId === note.id}
                 onClick={() => setConfirmId(note.id)}
-                className="shrink-0 text-muted-foreground opacity-60 hover:text-danger hover:opacity-100 focus-visible:opacity-100"
+                className="shrink-0 text-muted-foreground hover:text-danger"
               >
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               </Button>

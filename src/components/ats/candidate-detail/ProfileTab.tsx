@@ -56,28 +56,28 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {enrichedProfile?.location && (
           <div className="p-3 border border-border">
-            <MapPin className="w-4 h-4 text-muted-foreground mb-1" />
+            <MapPin className="w-4 h-4 mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Localisation</p>
             <p className="text-sm font-medium text-foreground mt-0.5">{enrichedProfile.location}</p>
           </div>
         )}
         {enrichedProfile?.yearsOfExperience && (
           <div className="p-3 border border-border">
-            <Briefcase className="w-4 h-4 text-muted-foreground mb-1" />
+            <Briefcase className="w-4 h-4 mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Expérience</p>
             <p className="text-sm font-medium text-foreground mt-0.5">~{enrichedProfile.yearsOfExperience} ans</p>
           </div>
         )}
         {enrichedProfile?.currentCompany && (
           <div className="p-3 border border-border">
-            <Target className="w-4 h-4 text-muted-foreground mb-1" />
+            <Target className="w-4 h-4 mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Entreprise</p>
             <p className="text-sm font-medium text-foreground mt-0.5 truncate">{enrichedProfile.currentCompany}</p>
           </div>
         )}
         {enrichedProfile?.currentRole && (
           <div className="p-3 border border-border">
-            <Activity className="w-4 h-4 text-muted-foreground mb-1" />
+            <Activity className="w-4 h-4 mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Poste</p>
             <p className="text-sm font-medium text-foreground mt-0.5 truncate">{enrichedProfile.currentRole}</p>
           </div>
@@ -125,7 +125,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
           <div className="flex flex-wrap gap-2">
             {enrichedProfile.languages.map(l => (
               <span key={l} className="flex items-center gap-1 text-sm text-foreground">
-                <Languages className="w-4 h-4 text-muted-foreground" /> {l}
+                <Languages className="w-4 h-4" /> {l}
               </span>
             ))}
           </div>

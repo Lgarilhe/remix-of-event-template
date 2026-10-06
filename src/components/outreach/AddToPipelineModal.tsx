@@ -165,7 +165,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           {/* Mission */}
           <div className="space-y-2">
             <p id={jobsLabelId} className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Briefcase className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <Briefcase className="h-4 w-4" aria-hidden="true" />
               Mission
             </p>
 
@@ -232,7 +232,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                               <span className="block truncate text-sm font-medium text-foreground">{job.name}</span>
                               {job.client_name && (
                                 <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Building2 className="h-3 w-3" aria-hidden="true" />
+                                  <Building2 className="h-3 w-3 text-foreground" aria-hidden="true" />
                                   {job.client_name}
                                 </span>
                               )}

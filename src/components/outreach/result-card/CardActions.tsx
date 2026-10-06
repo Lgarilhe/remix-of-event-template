@@ -90,7 +90,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           loading={isScoring}
           title={isScoring ? 'Notation en cours' : `Noter pour ${selectedJob?.title}`}
           aria-busy={isScoring}
-          className={isV3 ? 'shrink-0 text-foreground-secondary hover:text-foreground max-sm:min-h-11' : 'shrink-0'}
+          className={isV3 ? 'shrink-0 max-sm:min-h-11' : 'shrink-0'}
         >
           {!isScoring && <Sparkles aria-hidden="true" />}
           {isScoring ? 'Notation…' : 'Noter'}
@@ -118,7 +118,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           variant={isV3 ? 'ghost' : 'outline'}
           size="sm"
           onClick={onOpenMessage}
-          className={isV3 ? 'shrink-0 text-foreground-secondary hover:text-foreground max-sm:min-h-11' : 'shrink-0'}
+          className={isV3 ? 'shrink-0 max-sm:min-h-11' : 'shrink-0'}
           title="Composer un message d'approche"
         >
           <PenLine className={iconSize} aria-hidden="true" />
@@ -152,7 +152,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         <EnrichContactButton
           profile={profile}
           compact
-          className={isV3 ? 'text-foreground-secondary border-transparent hover:border-transparent dark:border-transparent dark:hover:border-transparent max-sm:min-h-11' : undefined}
+          className={isV3 ? 'border-transparent hover:border-transparent dark:border-transparent dark:hover:border-transparent max-sm:min-h-11' : undefined}
         />
       )}
 
@@ -178,7 +178,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
             >
               <Linkedin className="w-4 h-4 mr-2 text-info" aria-hidden="true" />
               <span>Ouvrir le profil LinkedIn</span>
-              <ExternalLink className="w-3 h-3 ml-auto text-muted-foreground" aria-hidden="true" />
+              <ExternalLink className="w-3 h-3 ml-auto" aria-hidden="true" />
             </DropdownMenuItem>
           )}
 

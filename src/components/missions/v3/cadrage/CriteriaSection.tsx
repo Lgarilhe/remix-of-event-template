@@ -201,7 +201,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
               variant="ghost"
               size="sm"
               onClick={add}
-              className={cn('-ml-3 mt-1 text-muted-foreground hover:text-foreground', TOUCH)}
+              className={cn('-ml-3 mt-1', TOUCH)}
             >
               <Plus aria-hidden="true" />
               Ajouter un critère

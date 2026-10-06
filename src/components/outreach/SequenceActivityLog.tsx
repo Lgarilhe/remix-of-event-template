@@ -884,7 +884,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                             className={paginated ? undefined : 'rounded-xl border border-border bg-card'}
                           >
                             <CollapsibleTrigger className={cn('flex w-full items-start gap-3 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', paginated ? 'rounded-lg px-2 py-2.5' : 'rounded-xl p-3')}>
-                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                                 <SequenceActionIcon type={exec.step?.action_type} className="h-4 w-4" />
                               </span>
                               <div className="min-w-0 flex-1">
@@ -926,7 +926,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 )}
                               </div>
                               <ChevronRight
-                                className={cn('mt-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                className={cn('mt-2 h-4 w-4 shrink-0 transition-transform duration-150', isExpanded && 'rotate-90')}
                                 aria-hidden="true"
                               />
                             </CollapsibleTrigger>

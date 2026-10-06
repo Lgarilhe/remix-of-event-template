@@ -214,7 +214,7 @@ export default function SourcingSearches() {
               type="button"
               disabled={launching}
               onClick={() => { setValue(ex); taRef.current?.focus(); }}
-              className="rounded-sm px-1 py-1.5 text-sm text-[var(--k-text-2)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
+              className="rounded-sm px-1 py-1.5 text-sm text-[var(--k-text)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors hover:decoration-[var(--k-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
             >
               {ex}
             </button>
@@ -227,7 +227,7 @@ export default function SourcingSearches() {
             type="button"
             disabled={launching}
             onClick={() => void launchWithFilters()}
-            className="font-medium text-[var(--k-text-2)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 hover:text-[var(--k-text)] disabled:opacity-60 max-sm:inline-block max-sm:py-3"
+            className="font-medium text-[var(--k-text)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 hover:decoration-[var(--k-text)] disabled:text-[var(--k-text-muted)] max-sm:inline-block max-sm:py-3"
           >
             configurer les filtres manuellement
           </button>
@@ -257,10 +257,10 @@ export default function SourcingSearches() {
                     className="flex min-w-0 flex-1 items-center gap-2.5 px-1 py-2.5 text-left transition-colors hover:bg-[var(--k-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
                     aria-label={`Reprendre la recherche ${search.name}`}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-3.5 w-3.5 shrink-0 text-[var(--k-text-muted)]" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-3.5 w-3.5 shrink-0 text-[var(--k-text)]" aria-hidden="true">
                       <circle cx="12" cy="12" r="8" /><path d="M12 8v4l2.5 1.5" />
                     </svg>
-                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--k-text-2)]">{search.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--k-text)]">{search.name}</span>
                     <span className="hidden shrink-0 text-sm text-[var(--k-text-muted)] sm:inline">
                       {timeAgo(search.updated_at) ?? ''}
                     </span>
@@ -285,7 +285,7 @@ export default function SourcingSearches() {
                 <button
                   type="button"
                   onClick={() => setShowAll((s) => !s)}
-                  className="mt-1 text-sm text-[var(--k-text-muted)] underline underline-offset-4 hover:text-[var(--k-text-2)]"
+                  className="mt-1 text-sm text-[var(--k-text)] underline underline-offset-4 hover:decoration-[var(--k-text)]"
                 >
                   {showAll ? 'Voir moins' : `Voir les ${sorted.length - VISIBLE_SEARCHES} autres`}
                 </button>

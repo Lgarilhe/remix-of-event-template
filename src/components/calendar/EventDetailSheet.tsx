@@ -138,13 +138,13 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
         <SheetHeader className="space-y-2 border-b border-border px-6 pb-4 pt-6 text-left">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <TypeIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              <TypeIcon className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
               {type.label}
             </span>
             {round && <span>· {round}</span>}
             {meta.calendlyEventId && (
               <span className="inline-flex items-center gap-1">
-                · <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" /> Pris via Calendly
+                · <CalendarCheck2 className="h-3.5 w-3.5 text-foreground" aria-hidden="true" /> Pris via Calendly
               </span>
             )}
           </p>
@@ -226,7 +226,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
           {meta.location && (
             <Block title="Lieu">
               <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                   <LocationIcon className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1">

@@ -146,7 +146,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           variant={isAdded || quiet ? "ghost" : "outline"}
           size="sm"
           title={isAdded ? `Déjà retenu pour « ${activeProject.name} »` : `Retenir pour « ${activeProject.name} »`}
-          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : quiet ? 'text-foreground-secondary hover:text-foreground' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
+          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >

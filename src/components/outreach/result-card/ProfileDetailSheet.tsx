@@ -115,9 +115,9 @@ const ContactChip: React.FC<{ icon: React.ElementType; value: string; title: str
     type="button"
     onClick={onCopy}
     title={title}
-    className="inline-flex h-6 max-w-full items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground-secondary transition-colors duration-150 hover:border-border-strong hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    className="inline-flex h-6 max-w-full items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground transition-colors duration-150 hover:border-border-strong hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   >
-    <Icon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
     <span className="max-w-[200px] truncate">{value}</span>
   </button>
 );
@@ -790,7 +790,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                       href={profileUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-sm underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="inline-flex items-center gap-1 rounded-sm text-foreground underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Profil LinkedIn
                       <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -841,7 +841,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   size="sm"
                   onClick={handleScore}
                   loading={isScoring}
-                  className="shrink-0 text-foreground-secondary hover:text-foreground"
+                  className="shrink-0"
                 >
                   {!isScoring && <Target aria-hidden="true" />}
                   {jobScore ? 'Relancer la note' : 'Noter'}
@@ -861,7 +861,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="shrink-0 text-foreground-secondary hover:text-foreground"
+                  className="shrink-0"
                 >
                   <PenLine aria-hidden="true" />
                   Message
@@ -1051,13 +1051,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   )}
                   {displayProfile.location && (
                     <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <MapPin className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                       <span className="max-w-[140px] truncate sm:max-w-none">{displayProfile.location}</span>
                     </span>
                   )}
                   {totalExperience && (
                     <span className="flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <TrendingUp className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                       {totalExperience}
                     </span>
                   )}
@@ -1179,9 +1179,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 />
               )}
 
+              {/* Troisième contour de la rangée : discret à l'encre (rétrogradation, comme dans le panneau). */}
               {selectedJob && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
                   className="shrink-0"
@@ -1214,6 +1215,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   profile={profile}
                   compact
                   mode="button-only"
+                  quiet
                   className={pipelineMeta ? HEADER_ACTION_CLASS : ''}
                 />
               )}
@@ -1286,7 +1288,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                           </>
                         )}
                       </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                      <ChevronRight className="w-3.5 h-3.5 text-foreground transition-transform group-open:rotate-90" />
                     </summary>
                     <div className="px-3 sm:px-4 pb-4">
                       <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
@@ -1335,7 +1337,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                       <details className="group">
                         <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
                           <h3 className="text-md font-semibold text-foreground">À propos</h3>
-                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                          <ChevronRight className="w-3.5 h-3.5 text-foreground transition-transform group-open:rotate-90" />
                         </summary>
                         <div className="px-3 sm:px-4 pb-3 sm:pb-4">
                           <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>

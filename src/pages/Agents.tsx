@@ -163,7 +163,7 @@ function ConversationRowItem({
             </span>
           )}
         </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
+        <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>
     </li>
   );

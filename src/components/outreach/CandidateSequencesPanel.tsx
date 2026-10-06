@@ -373,7 +373,7 @@ function EnrollmentCard({
 
           {enrollment.job_title && (
             <p className="text-2xs text-muted-foreground truncate mt-0.5 inline-flex items-center gap-1">
-              <Briefcase className="w-3 h-3 shrink-0" aria-hidden="true" />
+              <Briefcase className="w-3 h-3 shrink-0 text-foreground" aria-hidden="true" />
               {enrollment.job_title}
             </p>
           )}
@@ -521,7 +521,7 @@ function EnrollmentCard({
         <button
           type="button"
           onClick={onToggleExpand}
-          className="w-full px-4 py-1.5 border-t border-border bg-muted/5 text-2xs text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors flex items-center justify-center gap-1"
+          className="w-full px-4 py-1.5 border-t border-border bg-muted/5 text-2xs text-foreground hover:bg-muted/20 transition-colors flex items-center justify-center gap-1"
         >
           <ChevronDown className="w-3 h-3" aria-hidden="true" />
           Voir l'historique ({enrollment.executions.length} étape{enrollment.executions.length > 1 ? 's' : ''})
@@ -568,7 +568,7 @@ function ExecutionRow({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="inline-flex items-center gap-1 text-foreground/80 font-medium">
+          <span className="inline-flex items-center gap-1 text-foreground font-medium">
             {actionIcon}
             {stepTypeLabel(actionType)}
           </span>

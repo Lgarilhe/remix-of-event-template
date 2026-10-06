@@ -795,7 +795,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             <div className="flex items-start gap-1">
                               <CollapsibleTrigger className="flex min-w-0 flex-1 items-start gap-2 rounded-lg p-1.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <ChevronRight
-                                  className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                  className={cn('mt-0.5 h-4 w-4 shrink-0 transition-transform duration-150', isExpanded && 'rotate-90')}
                                   aria-hidden="true"
                                 />
                                 <div className="min-w-0 flex-1">
@@ -1016,14 +1016,14 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       return (
                                         <li
                                           key={step.id}
-                                          className={cn('flex items-start gap-3 rounded-lg border border-border p-2.5', isChannelSkip && 'opacity-60')}
+                                          className="flex items-start gap-3 rounded-lg border border-border p-2.5"
                                         >
-                                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-foreground">
                                             <SequenceActionIcon type={step.action_type} />
                                           </span>
                                           <div className="min-w-0 flex-1">
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                              <span className={cn('text-sm font-medium', isPending ? 'text-foreground-secondary' : 'text-foreground')}>
+                                              <span className={cn('text-sm font-medium', isPending || isChannelSkip ? 'text-foreground-secondary' : 'text-foreground')}>
                                                 {actionTypeLabel(step.action_type)}
                                               </span>
                                               <Badge variant={executionStatusMeta(status).tone}>{executionLabel(status)}</Badge>

@@ -97,7 +97,7 @@ const AddChip: React.FC<{ placeholder: string; onAdd: (v: string) => void; busy?
       <button
         type="button"
         onClick={() => { setEditing(true); requestAnimationFrame(() => ref.current?.focus()); }}
-        className="inline-flex items-center gap-1 min-h-6 rounded-full border border-dashed border-[var(--k-hairline)] px-2.5 py-0.5 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+        className="inline-flex items-center gap-1 min-h-6 rounded-full border border-dashed border-[var(--k-hairline)] px-2.5 py-0.5 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3 h-3"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg>
         Ajouter

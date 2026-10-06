@@ -202,7 +202,7 @@ export function CandidatePanelHeader({
                   href={row.linkedinUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-sm underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex items-center gap-1 rounded-sm text-foreground underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Profil LinkedIn
                   <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -234,7 +234,7 @@ export function CandidatePanelHeader({
                   variant="ghost"
                   size="sm"
                   disabled={disabled}
-                  className="-mr-2.5 shrink-0 text-foreground-secondary hover:text-foreground"
+                  className="-mr-2.5 shrink-0"
                 >
                   Déplacer vers
                   <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
@@ -283,7 +283,6 @@ export function CandidatePanelHeader({
                 variant="ghost"
                 size="sm"
                 disabled={disabled}
-                className="text-foreground-secondary hover:text-foreground"
                 onClick={() => onMove(contacted, 'déplacé')}
               >
                 Déjà contacté (téléphone, e-mail, LinkedIn)

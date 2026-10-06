@@ -34,8 +34,8 @@ import { ThenLine } from './ThenLine';
 const CARD = 'rounded-xl bg-muted/50 px-4 py-3.5 sm:px-5';
 /** Carte de l'action à faire : texturée (bleue, chaude quand quelque chose bloque), même gabarit que la bande. */
 const ACTION_CARD = 'rounded-xl px-4 py-3.5 sm:px-5';
-/** Bouton grisé sans quitter l'ordre de tabulation : le focus reste dessus pendant l'écriture. */
-const SOFT_DISABLED = 'aria-disabled:pointer-events-none aria-disabled:opacity-50';
+/** Bouton grisé sans quitter l'ordre de tabulation : le focus reste dessus pendant l'écriture (libellé gris, sans opacité). */
+const SOFT_DISABLED = 'aria-disabled:pointer-events-none aria-disabled:text-muted-foreground';
 /** Cible de 44 px sur téléphone. */
 const TOUCH = 'max-sm:min-h-11';
 
@@ -174,7 +174,7 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
                 )}
                 <div className="-ml-2.5 mt-0.5 flex flex-wrap items-center gap-x-1">
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="sm" className={cn('text-muted-foreground hover:text-foreground', TOUCH)}>
+                    <Button variant="ghost" size="sm" className={TOUCH}>
                       {WHY_LABEL}
                       <ChevronDown
                         className={cn('h-3.5 w-3.5 transition-transform duration-150', whyOpen && 'rotate-180')}
@@ -190,7 +190,7 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
                       aria-disabled={busy || !online}
                       title={online ? 'Retire cette action de votre vue jusqu\'à demain matin' : undefined}
                       onClick={() => void later()}
-                      className={cn('text-muted-foreground hover:text-foreground', TOUCH, SOFT_DISABLED)}
+                      className={cn(TOUCH, SOFT_DISABLED)}
                     >
                       {LATER_LABEL}
                     </Button>

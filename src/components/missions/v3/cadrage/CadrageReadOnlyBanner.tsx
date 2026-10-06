@@ -49,7 +49,7 @@ export function CadrageReadOnlyBanner() {
       data-testid="cadrage-read-only"
       className="flex items-start gap-3 rounded-xl bg-muted/50 px-4 py-3 text-sm text-foreground"
     >
-      <Eye className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <p className="min-w-0">{reason}</p>
     </div>
   );

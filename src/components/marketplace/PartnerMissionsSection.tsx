@@ -42,7 +42,7 @@ export const PartnerMissionsSection: React.FC = () => {
   return (
     <section aria-labelledby={titleId} className="mb-6">
       <div className="mb-3 flex items-center gap-2">
-        <Handshake className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <Handshake className="h-4 w-4" aria-hidden="true" />
         <div>
           <h2 id={titleId} className="eyebrow">Missions partenaires</h2>
           <p className="text-xs text-muted-foreground">
@@ -63,7 +63,7 @@ export const PartnerMissionsSection: React.FC = () => {
               </div>
               <p className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
-                  <Building2 className="h-3 w-3" aria-hidden="true" /> {m.client_name || m.organization_name || 'Entreprise'}
+                  <Building2 className="h-3 w-3 text-foreground" aria-hidden="true" /> {m.client_name || m.organization_name || 'Entreprise'}
                 </span>
                 {m.hunt_bounty_percent ? (
                   <>

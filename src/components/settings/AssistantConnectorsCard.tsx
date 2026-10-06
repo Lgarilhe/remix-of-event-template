@@ -51,7 +51,7 @@ export function AssistantConnectorsCard() {
           {orgConnectors.map((server) => (
             <div key={server.name} className="flex items-center gap-3 px-3 py-3">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-border bg-muted" aria-hidden="true">
-                <Plug className="h-4 w-4 text-muted-foreground" />
+                <Plug className="h-4 w-4" />
               </span>
               <div className="min-w-0">
                 <h4 className="truncate text-sm font-medium text-foreground">{connectorLabel(server.name)}</h4>

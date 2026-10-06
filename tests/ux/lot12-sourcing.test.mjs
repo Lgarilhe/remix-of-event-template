@@ -397,7 +397,8 @@ test('S-11c : écran de départ et carte « Relier LinkedIn » sans cadre ; exem
   assert.doesNotMatch(screen, /bg-card|rounded-xl border/);
   const flow = code('src/components/outreach/search/SourcingFlow.tsx');
   // Les exemples de la nouvelle page ne sont plus des pastilles encadrées ; l'ancien rendu garde les siennes.
-  assert.match(flow, /isV3\s*\?\s*'rounded-sm px-1 py-1\.5 text-sm text-\[var\(--k-text-2\)\] underline/);
+  // Liens discrets à l'encre depuis le contraste façon Qonto (libellés d'action).
+  assert.match(flow, /isV3\s*\?\s*'rounded-sm px-1 py-1\.5 text-sm text-foreground underline/);
   assert.match(flow, /: 'rounded-full border border-\[var\(--k-hairline\)\] px-3 py-1\.5 text-xs/);
   assert.match(flow, /\? 'flex items-center gap-2\.5 w-full text-left border-t border-\[var\(--k-hairline\)\]/);
   assert.match(flow, /: 'flex items-center gap-2\.5 w-full text-left rounded-\[10px\] border/);

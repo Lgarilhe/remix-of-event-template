@@ -199,7 +199,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
       {/* En-tête : titre, onglets, modèle, relance, fermeture */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted px-3 py-2">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-          <Bot className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
           Assistant IA
         </span>
 

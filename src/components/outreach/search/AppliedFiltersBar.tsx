@@ -122,7 +122,7 @@ export const AppliedFiltersBar: React.FC<AppliedFiltersBarProps> = ({
         {onOpenSearchAgent && (
           <button
             onClick={onOpenSearchAgent}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-muted transition-colors"
             title="Demander conseil à l'assistant pour affiner la recherche"
           >
             <MessageSquare className="w-3.5 h-3.5" />

@@ -15,5 +15,5 @@ interface ModelLogoProps {
  * Branding).
  */
 export const ModelLogo = ({ className, size = 16 }: ModelLogoProps) => (
-  <Gauge width={size} height={size} className={cn('shrink-0 text-muted-foreground', className)} aria-hidden="true" />
+  <Gauge width={size} height={size} className={cn('shrink-0', className)} aria-hidden="true" />
 );

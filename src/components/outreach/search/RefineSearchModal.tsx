@@ -228,7 +228,7 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
 
                       {/* New value preview */}
                       <div className="flex items-center gap-2 mb-3 px-2 py-1.5 rounded-lg bg-muted/50">
-                        <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <ArrowRight className="w-3 h-3 text-foreground shrink-0" />
                         <code className="text-xs text-foreground break-all">
                           {formatValue(adj.value)}
                         </code>

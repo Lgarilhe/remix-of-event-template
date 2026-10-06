@@ -41,7 +41,7 @@ export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ 
       <legend className="eyebrow mb-3">{plain ? 'Conditions d’arrêt' : "Conditions d'arrêt"}</legend>
       <div className={plain ? 'divide-y divide-border border-y border-border' : 'space-y-2'}>
         <div className={plain ? 'flex items-center gap-2.5 py-3' : 'flex items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2.5'}>
-          <MessageCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <MessageCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
           <p className="text-sm leading-snug">{plain ? 'La séquence s’arrête toujours quand le candidat répond ou se désinscrit.' : "La séquence s'arrête toujours quand le candidat répond ou se désinscrit."}</p>
         </div>
         {STOP_ITEMS.map(item => {
@@ -51,7 +51,7 @@ export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ 
           return (
             <div key={item.key} className={plain ? 'flex items-center justify-between gap-3 py-3' : 'flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5'}>
               <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
                   <Label htmlFor={id} className="cursor-pointer font-normal leading-snug">{item.label}</Label>
                   {item.hint && <p id={hintId} className="mt-0.5 text-xs text-muted-foreground">{item.hint}</p>}

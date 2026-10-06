@@ -328,7 +328,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                         />
                       ) : (
                         <div className="w-4 h-4 border border-border bg-muted flex items-center justify-center shrink-0">
-                          <Building2 className="w-2.5 h-2.5 text-muted-foreground" />
+                          <Building2 className="w-2.5 h-2.5 text-foreground" />
                         </div>
                       )}
 

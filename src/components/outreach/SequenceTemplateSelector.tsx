@@ -77,7 +77,7 @@ function StepsPreview({ types, total }: { types: (string | null | undefined)[]; 
   return (
     <span className="mt-2 flex items-center gap-1">
       {types.map((type, i) => (
-        <span key={i} className="grid h-5 w-5 place-items-center rounded-sm bg-muted text-foreground-secondary" title={stepName(type)}>
+        <span key={i} className="grid h-5 w-5 place-items-center rounded-sm bg-muted text-foreground" title={stepName(type)}>
           <SequenceActionIcon type={type} className="h-3 w-3" />
           <span className="sr-only">{stepName(type)}</span>
         </span>
@@ -95,7 +95,7 @@ function ChoiceButton({ icon: Icon, title, description, onClick }: { icon: React
       onClick={onClick}
       className="h-auto w-full justify-start gap-4 whitespace-normal p-4 text-left font-normal"
     >
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">

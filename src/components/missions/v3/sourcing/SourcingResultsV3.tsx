@@ -85,10 +85,10 @@ const CHIP_IDLE = 'text-foreground-secondary hover:bg-accent hover:text-foregrou
 /** Zone de toucher de 44 px autour d'une case de 16 px, sur téléphone. */
 const TAP_CHECKBOX = 'relative before:absolute before:-inset-3.5 sm:before:hidden';
 
-/** Boutons de décision d'une ligne : sans cadre, 44 px sur téléphone. */
+/** Boutons de décision d'une ligne : sans cadre, 44 px sur téléphone. Retenir à l'encre, Écarter (retrait) au gris secondaire. */
 const DECISION_BUTTON =
-  'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 max-sm:h-11 max-sm:w-11';
+  'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-muted ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground max-sm:h-11 max-sm:w-11';
 
 const REASON_TONE: Record<ReasonTone, string> = {
   muted: 'text-muted-foreground',
@@ -534,7 +534,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
               />
             )}
             {activeProject && (
-              <Button asChild variant="ghost" size="sm" className="text-foreground-secondary hover:text-foreground max-sm:min-h-11">
+              <Button asChild variant="ghost" size="sm" className="max-sm:min-h-11">
                 <Link to={missionV3Path(activeProject.id)}>Ouvrir le Pipeline</Link>
               </Button>
             )}
@@ -665,7 +665,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             onClick={() => void run([row], onRetainProfiles, index)}
                             aria-label={`Retenir ${row.name}`}
                             title="Retenir"
-                            className={cn(DECISION_BUTTON, 'hover:bg-success-muted hover:text-success')}
+                            className={cn(DECISION_BUTTON, 'text-foreground hover:bg-success-muted hover:text-success')}
                           >
                             <Check className="h-4 w-4" aria-hidden="true" />
                           </button>
@@ -675,7 +675,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             onClick={() => void run([row], onDismissProfiles, index)}
                             aria-label={`Écarter ${row.name}`}
                             title="Écarter"
-                            className={DECISION_BUTTON}
+                            className={cn(DECISION_BUTTON, 'text-muted-foreground hover:text-foreground')}
                           >
                             <X className="h-4 w-4" aria-hidden="true" />
                           </button>
@@ -693,7 +693,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             onClick={() => void run([row], async (list) => { await onRestoreCandidate(list[0].id); }, index)}
                             aria-label={`Remettre ${row.name} à trier`}
                             title="Remettre à trier"
-                            className="text-foreground-secondary hover:text-foreground max-sm:h-11 max-sm:w-11 max-sm:px-0"
+                            className="max-sm:h-11 max-sm:w-11 max-sm:px-0"
                           >
                             <Undo2 aria-hidden="true" className="sm:hidden" />
                             <span className="max-sm:hidden">Remettre à trier</span>
@@ -747,7 +747,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 onClick={loadingMore ? undefined : onLoadMore}
                 disabled={loading && !loadingMore}
                 aria-disabled={loadingMore || undefined}
-                className={cn('text-foreground-secondary hover:text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
+                className={cn('text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
               >
                 {loadingMore ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
                 {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}

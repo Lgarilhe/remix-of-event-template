@@ -169,7 +169,7 @@ export function CadrageScreen(): JSX.Element | null {
                 Réglages
                 <ChevronDown
                   aria-hidden="true"
-                  className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
+                  className="h-4 w-4 shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
                 />
               </CollapsibleTrigger>
             </h2>

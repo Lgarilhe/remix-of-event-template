@@ -1057,7 +1057,7 @@ function LinkedInQuotaCard({ accountId }: { accountId: string }) {
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Gauge className="h-4 w-4" aria-hidden="true" />
           Plafonds du jour
         </CardTitle>
         {/* Design simplifié : le palier en texte, absent une fois le compte mature (rien à savoir). */}

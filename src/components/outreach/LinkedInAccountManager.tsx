@@ -483,7 +483,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 <Button
                   onClick={handleSolveCheckpoint}
                   disabled={connecting || (checkpoint.type !== 'IN_APP_VALIDATION' && !checkpointCode.trim())}
-                  className="bg-linkedin hover:bg-linkedin-hover"
+                  className="border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
                 >
                   {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   {checkpoint.type === 'IN_APP_VALIDATION' ? 'J\'ai validé' : 'Vérifier'}
@@ -561,7 +561,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 <Button
                   onClick={handleConnectWithCookie}
                   disabled={connecting || !liAtCookie.trim()}
-                  className="w-full bg-linkedin hover:bg-linkedin-hover"
+                  className="w-full border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
                 >
                   {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain mr-2" />}
                   Connecter
@@ -599,7 +599,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 <Button
                   onClick={handleConnectWithCredentials}
                   disabled={connecting || !email.trim() || !password}
-                  className="w-full bg-linkedin hover:bg-linkedin-hover"
+                  className="w-full border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
                 >
                   {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain mr-2" />}
                   Connecter

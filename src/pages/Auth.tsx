@@ -422,7 +422,7 @@ const Auth = () => {
                           type="button"
                           variant="link"
                           size="xs"
-                          className="h-auto px-0 text-muted-foreground hover:text-foreground max-md:min-h-11"
+                          className="h-auto px-0 max-md:min-h-11"
                           onClick={() => setIsForgotPassword(true)}
                         >
                           Mot de passe oublié ?

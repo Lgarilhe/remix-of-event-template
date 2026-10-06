@@ -285,7 +285,7 @@ export function StepPanel({
             )}
             {type === 'smart_message' && (
               <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <Info className="mt-px h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
                 {SMART_MESSAGE_INMAIL_HELP}
               </p>
             )}

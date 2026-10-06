@@ -98,7 +98,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
     <FilterSection
       id="position"
       title="Poste & Compétences"
-      icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}
+      icon={<Briefcase className="w-4 h-4" />}
       badge={countPositionFilters}
       isOpen={isOpen}
       onToggle={onToggle}
@@ -151,7 +151,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                 className="text-sm flex-1 min-w-0 text-left hover:text-linkedin transition-colors group flex items-start gap-1"
               >
                 <span className="min-w-0 whitespace-normal break-words leading-snug">{role.keywords}</span>
-                <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Pencil className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
               <button type="button" onClick={() => onRemoveRole(index)} className="text-muted-foreground hover:text-foreground shrink-0">
                 <X className="w-4 h-4" />

@@ -36,7 +36,7 @@ const MissionRow: React.FC<{ mission: MyHuntMission }> = ({ mission: m }) => {
           {m.hunt_bounty_percent != null ? <span>{m.hunt_bounty_percent} % du salaire annuel</span> : null}
           {m.hunt_deadline && (
             <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" aria-hidden="true" />
+              <Calendar className="h-3 w-3 text-foreground" aria-hidden="true" />
               <span className="sr-only">Date limite : </span>
               {formatDate(m.hunt_deadline)}
             </span>
@@ -51,11 +51,11 @@ const MissionRow: React.FC<{ mission: MyHuntMission }> = ({ mission: m }) => {
       </div>
       <Badge variant={huntStatusVariant(m.hunt_status)}>{huntStatusLabel(m.hunt_status)}</Badge>
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Clock className="h-3 w-3" aria-hidden="true" />
+        <Clock className="h-3 w-3 text-foreground" aria-hidden="true" />
         {m.pending_count} en attente
       </span>
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Users className="h-3 w-3" aria-hidden="true" />
+        <Users className="h-3 w-3 text-foreground" aria-hidden="true" />
         {m.accepted_count}/{max} recruteurs
       </span>
       <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">

@@ -1994,7 +1994,7 @@ function MessageStepCard({
                     size="icon-xs"
                     aria-label={isWrittenStep ? 'Revenir au modèle' : `Régénérer ce message (${cost})`}
                     onClick={handleRegenerateClick}
-                    className="text-muted-foreground max-md:h-11 max-md:w-11"
+                    className="max-md:h-11 max-md:w-11"
                   >
                     {isWrittenStep ? <Undo2 aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
                   </Button>
@@ -2007,7 +2007,7 @@ function MessageStepCard({
               size="xs"
               aria-label={isEditing ? 'Voir le message' : 'Modifier le message'}
               onClick={onToggleEdit}
-              className={cn('max-md:h-11', isEditing ? 'bg-accent text-foreground' : 'text-muted-foreground')}
+              className={cn('max-md:h-11', isEditing && 'bg-accent')}
             >
               <Pencil aria-hidden="true" />
               {isEditing ? 'Voir' : 'Modifier'}
@@ -2207,7 +2207,7 @@ function SummaryMode({
 
       {firstAction && (
         <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground">
-          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{firstAction}</span>
         </p>
       )}
@@ -2301,7 +2301,7 @@ function SummaryMode({
 
       {hasAiSteps && (
         <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground-secondary">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           <span>
             Coût estimé de la personnalisation par l'IA :{' '}
             <strong className="font-semibold tabular-nums text-foreground">{creditsLabel(estimatedCredits)}</strong>.
@@ -2355,7 +2355,7 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
           outcome === 'success' ? 'bg-success-muted text-success'
             : outcome === 'partial' ? 'bg-warning-muted text-warning'
             : outcome === 'failure' ? 'bg-danger-muted text-danger'
-            : 'bg-muted text-muted-foreground',
+            : 'bg-muted text-foreground',
         )}
         aria-hidden="true"
       >
@@ -2390,19 +2390,19 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
         <ul className="space-y-2 text-left text-sm">
           {results.skipped > 0 && (
             <li className="flex items-start gap-2 text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
               <span>{alreadyInSequenceLabel(results.skipped)}</span>
             </li>
           )}
           {results.alreadyPassed > 0 && (
             <li className="flex items-start gap-2 text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
               <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
             </li>
           )}
           {results.samePerson.length > 0 && (
             <li className="flex items-start gap-2 text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
               <span className="min-w-0">
                 <span className="block">{samePersonRefusedLabel(results.samePerson.length)}</span>
                 <span className="block text-xs">{refusedCandidatesLabel(results.samePerson)}</span>

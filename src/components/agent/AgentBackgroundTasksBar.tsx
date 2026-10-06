@@ -24,9 +24,9 @@ export const AgentBackgroundTasksBar: React.FC = () => {
           <div key={t.id} className="space-y-1">
             <div className="flex items-center gap-2 text-2xs text-muted-foreground">
               {waiting ? (
-                <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden="true" />
+                <Loader2 className="h-3 w-3 animate-spin shrink-0 text-foreground" aria-hidden="true" />
               ) : (
-                <BarChart3 className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <BarChart3 className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
               )}
               <span className="truncate font-medium text-foreground">Scoring : {t.title}</span>
               <span className="ml-auto shrink-0 tabular-nums">

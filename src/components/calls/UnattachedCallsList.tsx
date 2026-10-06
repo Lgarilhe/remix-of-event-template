@@ -53,7 +53,7 @@ export const UnattachedCallsList = ({
       const title = group.contactName ?? group.displayNumber;
       return (
         <li key={group.numberE164} className="flex items-center gap-3 py-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-foreground">
             <CallIcon call={group.calls[0]} />
           </span>
           <div className="min-w-0 flex-1 space-y-1">

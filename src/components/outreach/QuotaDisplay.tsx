@@ -154,7 +154,7 @@ const QuotaFooter: React.FC<{ status: LinkedInQuotaStatus }> = ({ status }) => (
       </p>
     )}
     <p className="flex items-start gap-1">
-      <Info className="w-3 h-3 mt-0.5 shrink-0" />
+      <Info className="w-3 h-3 mt-0.5 shrink-0 text-foreground" />
       {rampStageLabel(status.ramp_stage)}. Compteurs du jour remis à zéro à {formatHourMinute(status.day_resets_at, status.timezone)}.
     </p>
   </div>
@@ -210,7 +210,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({ accountId, compact =
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
-              <Info className="w-4 h-4 text-muted-foreground" />
+              <Info className="w-4 h-4" />
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs">
               <p className="text-xs">

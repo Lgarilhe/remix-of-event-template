@@ -742,7 +742,7 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
 
           {isQueued && scheduledLabel && (
             <p className="mt-1 flex items-start gap-1 text-xs text-foreground-secondary">
-              <Clock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              <Clock className="mt-0.5 h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
               <span>Envoi prévu : <strong className="font-medium text-foreground">{scheduledLabel}</strong></span>
             </p>
           )}

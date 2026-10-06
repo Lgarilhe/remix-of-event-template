@@ -35,7 +35,7 @@ export const SessionExpiredDialog: React.FC<SessionExpiredDialogProps> = ({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-lg bg-muted text-foreground-secondary">
+          <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-lg bg-muted text-foreground">
             <LogIn className="h-5 w-5" aria-hidden="true" />
           </div>
           <AlertDialogTitle className="text-center">

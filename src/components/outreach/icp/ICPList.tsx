@@ -38,7 +38,7 @@ function CriteriaPreview({ criteria }: { criteria: ICPCriteria }) {
     <div className="flex flex-wrap gap-x-4 gap-y-1.5">
       {items.slice(0, 4).map((item, i) => (
         <div key={i} className="flex items-center gap-1 text-xs text-muted-foreground">
-          <item.icon className="w-3 h-3 shrink-0" />
+          <item.icon className="w-3 h-3 shrink-0 text-foreground" />
           <span className="truncate max-w-[200px]">{item.values.slice(0, 3).join(', ')}{item.values.length > 3 ? ` +${item.values.length - 3}` : ''}</span>
         </div>
       ))}
@@ -105,7 +105,7 @@ function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => 
         {allCriteria.length > 0 && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground mt-2 transition-colors"
+            className="flex items-center gap-1 text-xs uppercase tracking-wider text-foreground mt-2 transition-colors"
           >
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             {expanded ? 'Masquer' : 'Voir tous les critères'} ({allCriteria.length})
@@ -184,7 +184,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
         </div>
       ) : icps.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-border">
-          <Target className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50" />
+          <Target className="w-10 h-10 mx-auto mb-3 text-foreground" />
           <h3 className="text-sm font-semibold text-foreground mb-1">Aucun ICP défini</h3>
           <p className="text-xs text-muted-foreground mb-4 max-w-sm mx-auto">
             Créez votre premier Profil Client/Candidat Idéal pour structurer votre prospection.

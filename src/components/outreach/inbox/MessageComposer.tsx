@@ -45,8 +45,8 @@ import { MESSAGE_EMOJIS } from '@/lib/messageEmojis';
 
 // Emoji à insérer dans le message (contenu du message, pas icônes d'interface)
 // Outils de la barre : 44 px au doigt, 28 px à la souris (01-direction.md, § 5)
-const TOOL_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground sm:h-7 sm:w-7';
-const TOOL_TEXT = 'h-11 w-11 px-0 text-muted-foreground hover:text-foreground sm:h-7 sm:w-auto sm:px-2';
+const TOOL_ICON = 'h-11 w-11 sm:h-7 sm:w-7';
+const TOOL_TEXT = 'h-11 w-11 px-0 sm:h-7 sm:w-auto sm:px-2';
 // Ligne du menu « Mise en forme » : 44 px au doigt.
 const FORMAT_ITEM = 'min-h-11 md:min-h-0';
 
@@ -643,7 +643,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 <span className="flex items-center gap-2">
                   <span className="rounded-sm bg-muted px-2 py-0.5 text-2xs font-semibold text-foreground">{v.label}</span>
                   <span className="text-2xs text-muted-foreground">{v.text.length} caractères</span>
-                  <Check className="ml-auto text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+                  <Check className="ml-auto" aria-hidden="true" />
                 </span>
                 <span className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{v.text}</span>
               </Button>
