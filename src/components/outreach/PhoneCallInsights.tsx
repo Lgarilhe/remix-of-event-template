@@ -109,7 +109,7 @@ export const PhoneCallInsights: React.FC<PhoneCallInsightsProps> = ({
             <Sparkles className="w-2.5 h-2.5" aria-hidden="true" />
             Résumé
           </p>
-          <p className="mt-0.5 whitespace-pre-line text-xs text-foreground/80">{insight.summary}</p>
+          <p className="mt-0.5 whitespace-pre-line text-xs text-foreground-secondary">{insight.summary}</p>
         </div>
       )}
 
@@ -184,7 +184,7 @@ export const PhoneCallInsights: React.FC<PhoneCallInsightsProps> = ({
           <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Transcription</summary>
           <div className="mt-1.5 max-h-64 space-y-1 overflow-y-auto pr-1">
             {insight.transcript.map((line, i) => (
-              <p key={i} className="text-xs text-foreground/80">
+              <p key={i} className="text-xs text-foreground-secondary">
                 <span className="font-medium text-foreground">{SPEAKER_LABEL[line.speaker]}</span>
                 {' : '}
                 {line.text}
