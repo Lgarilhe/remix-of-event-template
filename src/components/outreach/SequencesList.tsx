@@ -72,6 +72,7 @@ import { SequenceDiagnostic } from './SequenceDiagnostic';
 // Q5 — SequenceAnalytics contient recharts (~100KB), lazy-load pour split chunk
 const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector } from './SequenceTemplateSelector';
+import { NewSequenceDialog } from '@/components/sequences/NewSequenceDialog';
 import { SaveAsTemplateModal } from './SaveAsTemplateModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -185,6 +186,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [nudging, setNudging] = useState(false);
   const [nudgeConfirmOpen, setNudgeConfirmOpen] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  // « Nouvelle séquence » de l'éditeur unique (drapeau konekt.sequences-v2 allumé, lot 5d-2).
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [saveTemplateSeq, setSaveTemplateSeq] = useState<SequenceWithStats | null>(null);
   // Échec du chargement de la liste : état d'erreur avec « Réessayer », jamais
   // l'accueil « Créer ma première séquence » (on croyait tout supprimé).
@@ -211,9 +214,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   useEffect(() => {
     if (createRequestId && createRequestId !== handledCreateRequestRef.current) {
       handledCreateRequestRef.current = createRequestId;
-      setShowTemplateSelector(true);
+      if (sequencesBeta) setNewDialogOpen(true);
+      else setShowTemplateSelector(true);
     }
-  }, [createRequestId]);
+  }, [createRequestId, sequencesBeta]);
 
   // Seules les séquences de mon organisation sont modifiables (RLS) : celles
   // d'une autre organisation, visibles par l'équipe de mission, sont en lecture
@@ -373,7 +377,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     requestToggle,
     handleDelete,
     handleDuplicate,
-    handleEdit,
+    handleEdit: openLegacyEditor,
   } = createSequenceListActions({
     supabase, invokeEdgeFunction, toast, navigate,
     organizationId, projectId, userId, isCollaborator,
@@ -386,8 +390,21 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
   });
 
+  // Drapeau konekt.sequences-v2 allumé (lot 5d-2) : la modification et la
+  // création passent par l'éditeur unique (onglet Étapes de la page de la
+  // séquence, « Nouvelle séquence » puis /sequences/nouvelle). Éteint : l'ancien éditeur.
+  const handleEdit = (seq: SequenceWithStats) => {
+    if (!sequencesBeta) {
+      void openLegacyEditor(seq);
+      return;
+    }
+    const path = sequencePath(seq.id, projectId);
+    navigate(`${path}${path.includes('?') ? '&' : '?'}onglet=etapes`);
+  };
+
   const handleCreateNew = () => {
-    setShowTemplateSelector(true);
+    if (sequencesBeta) setNewDialogOpen(true);
+    else setShowTemplateSelector(true);
   };
 
   const handleSelectBlank = () => {
@@ -896,6 +913,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           Toutes les séquences de l'organisation
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
+      )}
+
+      {sequencesBeta && (
+        <NewSequenceDialog
+          open={newDialogOpen}
+          onOpenChange={setNewDialogOpen}
+          missionId={projectId ?? null}
+          existingSequences={sequences.filter(canManage)}
+        />
       )}
 
       {/* Template Selector */}

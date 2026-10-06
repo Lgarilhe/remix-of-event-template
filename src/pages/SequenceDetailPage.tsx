@@ -7,6 +7,14 @@
  * bouton plein, menu « ... ». Onglets (?onglet=) : Étapes, Candidats
  * (?statut=, ?parcours=), Statistiques, Journal, Réglages.
  *
+ * Onglet Étapes (lot 5d-2) : l'éditeur unique pour qui peut modifier la
+ * séquence (étapes relues par handleEdit, état tenu par useSequenceEditor),
+ * le fil en lecture pour les autres. Un seul « Enregistrer » pour les étapes
+ * et les Réglages (bouton de l'en-tête ou Ctrl/Cmd+S), brouillon local,
+ * « Quitter sans enregistrer ? » (useSequenceEditorSession). Les étapes
+ * s'écrivent par useSequenceSave (save_sequence_steps), comme l'ancien
+ * éditeur. /sequences/nouvelle : SequenceCreatePage, même éditeur.
+ *
  * Les gestes sont ceux de la liste des séquences (src/lib/sequenceActions.ts,
  * appliqués à une liste d'une seule séquence), du suivi des inscrits et du
  * lot 5b : aucune écriture d'exécution, aucune reprise ni statut 'active'
@@ -23,7 +31,11 @@ import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
 import { useSequenceSave } from '@/hooks/useSequenceSave';
+import { useSequenceEditor } from '@/hooks/useSequenceEditor';
+import { useSequenceEditorSession } from '@/hooks/useSequenceEditorSession';
+import { sequenceEditorDraftKey } from '@/hooks/useSequenceEditorDraft';
 import { useSequenceDetail } from '@/hooks/useSequenceDetail';
+import { useInertWhile } from '@/hooks/useInertWhile';
 import { DEFAULT_QUOTAS, useMemberQuotas } from '@/hooks/useMemberQuotas';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { SEQUENCES_PATH, sequencePath } from '@/lib/sequencesBeta';
@@ -41,8 +53,9 @@ import {
 import { isDraftSequence } from '@/lib/sequenceTableStats';
 import { parseEnrollmentChip, type EnrollmentChip } from '@/lib/enrollmentStatusLine';
 import { isAiReviewPending } from '@/lib/sequenceErrorMessages';
-import { validateSequence, withAlwaysOnStops } from '@/components/outreach/sequence/sequenceGraph';
-import type { Sequence } from '@/types/sequence';
+import { withAlwaysOnStops, type SequenceIssue } from '@/components/outreach/sequence/sequenceGraph';
+import { issueStepOrder, openEditorSteps, removedStepCount } from '@/lib/sequenceEditor';
+import type { Sequence, SequenceStep } from '@/types/sequence';
 import { SEOHead } from '@/components/SEOHead';
 import { ErrorState, PageLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -58,7 +71,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { SequenceBuilder } from '@/components/outreach/SequenceBuilder';
 import { SequenceHeader } from '@/components/sequences/SequenceHeader';
 import { SequenceMenu } from '@/components/sequences/SequenceMenu';
 import { SequenceStatusPill } from '@/components/sequences/SequenceStatusPill';
@@ -66,6 +78,9 @@ import { SequenceTabs } from '@/components/sequences/SequenceTabs';
 import { parseSequenceTab } from '@/components/sequences/sequenceTabsModel';
 import { RhythmLine, type SendingHours } from '@/components/sequences/RhythmLine';
 import { StepsReadOnly } from '@/components/sequences/StepsReadOnly';
+import { StepsEditor } from '@/components/sequences/editor/StepsEditor';
+import { SaveDialogs } from '@/components/sequences/editor/SaveDialogs';
+import { SequenceCreatePage } from '@/components/sequences/SequenceCreatePage';
 import { CandidatesTab } from '@/components/sequences/CandidatesTab';
 import { JournalTab } from '@/components/sequences/JournalTab';
 import { SettingsTab, type SequenceSettingsDraft } from '@/components/sequences/SettingsTab';
@@ -94,8 +109,20 @@ function settingsOf(seq: SequenceWithStats): SequenceSettingsDraft {
   };
 }
 
-export default function SequenceDetailPage() {
+interface EditorDraftValue {
+  steps: SequenceStep[];
+  settings: SequenceSettingsDraft | null;
+}
+
+const draftTime = (date: Date) => `${date.toLocaleDateString('fr-FR')} à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+
+/** `creating` : route /sequences/nouvelle (placée avant /sequences/:id dans App.tsx). */
+export default function SequenceDetailPage({ creating = false }: { creating?: boolean }) {
   const { id } = useParams<{ id: string }>();
+  return creating ? <SequenceCreatePage /> : <SequenceView id={id} />;
+}
+
+function SequenceView({ id }: { id: string | undefined }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { organizationId, isCollaborator } = useOrganization();
@@ -121,10 +148,19 @@ export default function SequenceDetailPage() {
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const duplicatingRef = useRef(false);
   const [nudging, setNudging] = useState(false);
-  const [showBuilder, setShowBuilder] = useState(false);
+  // L'ancienne fenêtre d'édition n'est plus ouverte ici : handleEdit relit les
+  // étapes en base et les confie à l'éditeur unique de l'onglet Étapes.
+  const [, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [editingActiveCount, setEditingActiveCount] = useState<number | undefined>(0);
+  // Étapes telles que lues à l'ouverture : point de départ du brouillon et des étapes retirées.
+  const [editorBase, setEditorBase] = useState<string | null>(null);
   const editorBaseStepIdsRef = useRef<EditorBaseStepIds>(null);
+  const editor = useSequenceEditor();
+  const { reset: resetEditor } = editor;
+  const [editorLoad, setEditorLoad] = useState<{ id: string; state: 'loading' | 'ready' | 'error' } | null>(null);
+  const editorLoadRef = useRef(editorLoad);
+  editorLoadRef.current = editorLoad;
   const [settingsDraft, setSettingsDraft] = useState<SequenceSettingsDraft | null>(null);
   const [settingsErrors, setSettingsErrors] = useState<string[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -242,9 +278,21 @@ export default function SequenceDetailPage() {
   // D3 : la mise en pause de toute la séquence n'est pas proposée à un collaborateur.
   const deactivationLocked = (seq: SequenceWithStats) => seq.is_active && isCollaborator;
   const enrollmentsPanelAction = () => ({
-    action: { label: 'Voir les inscrits', onClick: () => setTab('candidats') },
+    // Même garde qu'un changement d'onglet : « Quitter sans enregistrer ? » s'il reste des modifications.
+    action: { label: 'Voir les inscrits', onClick: () => changeTab('candidats') },
   });
 
+  // Étapes relues par handleEdit : l'éditeur repart de cet état enregistré,
+  // avec la même transformation que l'ancien éditeur à l'ouverture.
+  const openInEditor = useCallback((next: Sequence | null) => {
+    setEditingSequence(next);
+    if (!next?.id) return;
+    resetEditor(openEditorSteps(next.steps));
+    setEditorBase(JSON.stringify(openEditorSteps(next.steps)));
+    setEditorLoad({ id: next.id, state: 'ready' });
+  }, [resetEditor]);
+
+  // Enregistrement des étapes : même chemin que l'ancien éditeur (en-tête, puis save_sequence_steps).
   const { handleSaveSequence } = useSequenceSave({
     organizationId,
     projectId: sequence?.project_id ?? null,
@@ -267,11 +315,26 @@ export default function SequenceDetailPage() {
     missionSequenceIds: sequence && canManage(sequence) && sequence.is_active ? [sequence.id] : [],
     setNudging, setNudgeConfirmOpen: () => undefined,
     setActivateConfirm, setDeleteConfirmId: () => undefined, duplicatingRef, setDuplicatingId,
-    editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
+    editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence: openInEditor, setShowBuilder,
     copyName: (name) => `Copie de ${name}`,
     onDuplicated: (copy) => navigate(sequencePath(copy.id, missionId)),
   });
 
+  // Onglet Étapes (ou Réglages, pour que des réglages modifiés aient leur
+  // brouillon) ouvert par qui peut modifier : étapes relues en base une fois
+  // par séquence (handleEdit), puis gardées par l'éditeur d'un onglet à l'autre.
+  const editable = !!sequence && canEdit(sequence);
+  const loadEditor = useCallback(async (seq: SequenceWithStats) => {
+    setEditorLoad({ id: seq.id, state: 'loading' });
+    await handleEdit(seq);
+    // Étapes illisibles : handleEdit l'a dit par un message et n'a rien ouvert.
+    setEditorLoad((prev) => (prev?.id === seq.id && prev.state === 'loading' ? { id: seq.id, state: 'error' } : prev));
+  }, [handleEdit]);
+  useEffect(() => {
+    if (state !== 'ready' || !sequence || !editable || (tab !== 'etapes' && tab !== 'reglages')) return;
+    if (editorLoadRef.current?.id === sequence.id) return;
+    void loadEditor(sequence);
+  }, [state, sequence, editable, tab, loadEditor]);
   const hours: SendingHours | null = useMemo(() => {
     if (!quotasReady || !userId) return null;
     const own = getQuotaForUser(userId);
@@ -285,21 +348,11 @@ export default function SequenceDetailPage() {
   // ── Réglages : brouillon, puis « Enregistrer » de l'en-tête ─────────────
   const baseSettings = useMemo(() => (sequence ? settingsOf(sequence) : null), [sequence]);
   const settings = settingsDraft ?? baseSettings;
-  const dirty = !!settingsDraft && !!baseSettings && JSON.stringify(settingsDraft) !== JSON.stringify(baseSettings);
+  const settingsDirty = !!settingsDraft && !!baseSettings && JSON.stringify(settingsDraft) !== JSON.stringify(baseSettings);
 
+  /** Réglages seuls (étapes inchangées) : écriture de l'en-tête, comme avant le lot 5d-2. Lève en cas d'échec. */
   const saveSettings = async () => {
     if (!sequence || !settingsDraft) return;
-    const errors = validateSequence({
-      name: sequence.name,
-      steps: [],
-      multiSenderEnabled: settingsDraft.multiSenderEnabled,
-      senderAccounts: settingsDraft.senderAccounts,
-    }).errors.filter((e) => e.area === 'senders').map((e) => e.message);
-    setSettingsErrors(errors);
-    if (errors.length > 0) {
-      setTab('reglages');
-      return;
-    }
     setSavingSettings(true);
     try {
       const { data, error } = await supabase
@@ -317,11 +370,109 @@ export default function SequenceDetailPage() {
       toast.success('Réglages enregistrés');
       setSettingsDraft(null);
       await fetchSequence();
-    } catch (err) {
-      toast.error('Les réglages n’ont pas été enregistrés', { description: err instanceof Error ? err.message : undefined });
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  // ── Éditeur : enregistrement, brouillon, sortie ─────────────────────────
+  const editorReady = !!sequence && editable && editorLoad?.id === sequence.id && editorLoad.state === 'ready';
+  const baseSteps = editingSequence?.id === sequence?.id ? editingSequence?.steps ?? [] : [];
+  const draftBase = editorReady && editorBase !== null ? JSON.stringify({ steps: editorBase, settings: baseSettings }) : null;
+  const draftValue = useMemo<EditorDraftValue>(() => ({ steps: editor.steps, settings: settingsDraft }), [editor.steps, settingsDraft]);
+
+  const performSave = async () => {
+    if (!sequence || !settings) return;
+    if (!session.stepsDirty) {
+      await saveSettings();
+      return;
+    }
+    // Étapes modifiées : un seul enregistrement, réglages compris (en-tête puis save_sequence_steps).
+    await handleSaveSequence({
+      ...(editingSequence ?? { isActive: sequence.is_active }),
+      id: sequence.id,
+      name: sequence.name,
+      description: sequence.description || undefined,
+      isActive: sequence.is_active,
+      steps: editor.steps,
+      stopConditions: withAlwaysOnStops(settings.stopConditions),
+      senderAccounts: settings.senderAccounts,
+      rotationMode: settings.rotationMode,
+      multiSenderEnabled: settings.multiSenderEnabled,
+    });
+    setSettingsDraft(null);
+    session.draft.clear();
+    // Étapes relues en base : nouveaux identifiants des étapes ajoutées, contrôle de modification concurrente à jour.
+    await handleEdit(sequence);
+  };
+
+  const showBlocked = (errors: readonly SequenceIssue[]) => {
+    const first = errors[0];
+    if (!first) return;
+    if (first.area === 'senders') {
+      setSettingsErrors(errors.filter((e) => e.area === 'senders').map((e) => e.message));
+      setTab('reglages');
+      return;
+    }
+    setTab('etapes');
+    const order = issueStepOrder(first.message);
+    const target = order === null ? undefined : editor.steps.find((st) => st.order === order && (!st.variantGroup || st.variantGroup === 'A'));
+    if (target) editor.select(target.id);
+  };
+
+  const session = useSequenceEditorSession<EditorDraftValue>({
+    editor,
+    loaded: editorReady,
+    name: sequence?.name ?? '',
+    settings,
+    settingsDirty: editable && settingsDirty,
+    creating: false,
+    organizationId,
+    sequenceId: sequence?.id ?? null,
+    missionId: sequence?.project_id ?? null,
+    stepsTabActive: tab === 'etapes',
+    draftKey: sequence ? sequenceEditorDraftKey(userId, organizationId, sequence.id) : null,
+    draftBase,
+    draftValue,
+    draftDirty: editor.dirty || settingsDirty,
+    onDraftRestore: (value, savedAt) => {
+      editor.restore(value.steps);
+      if (value.settings) setSettingsDraft(value.settings);
+      toast.info('Modifications non enregistrées reprises', {
+        description: savedAt ? `Retrouvées dans ce navigateur (${draftTime(savedAt)}).` : 'Retrouvées dans ce navigateur.',
+        duration: 12000,
+        action: { label: 'Revenir à la version enregistrée', onClick: () => discardChanges() },
+      });
+    },
+    removedStepCount: editorReady ? removedStepCount(baseSteps, editor.steps) : 0,
+    activeEnrollmentCount: editingActiveCount,
+    perform: performSave,
+    onBlocked: showBlocked,
+    onDiscard: () => {
+      editor.discard();
+      setSettingsDraft(null);
+      setSettingsErrors([]);
+    },
+  });
+  const editorValidation = session.validation;
+  const dirty = editable && (session.dirty || settingsDirty);
+  // Enregistrement en cours : étapes et réglages figés, rien de tapé ne peut être remplacé par la version relue.
+  const saving = session.flow.saving || savingSettings;
+  const settingsAreaRef = useRef<HTMLDivElement>(null);
+  useInertWhile(settingsAreaRef, saving);
+
+  function discardChanges() {
+    editor.discard();
+    setSettingsDraft(null);
+    setSettingsErrors([]);
+    session.draft.clear();
+  }
+
+  // Quitter l'édition (Étapes, Réglages) pour un autre onglet : demandé s'il reste des modifications.
+  const isEditingTab = (value: string) => value === 'etapes' || value === 'reglages';
+  const changeTab = (next: string) => {
+    if (dirty && isEditingTab(tab) && !isEditingTab(next)) session.leave.request(() => setTab(next));
+    else setTab(next);
   };
 
   const rename = async (name: string): Promise<boolean> => {
@@ -339,11 +490,13 @@ export default function SequenceDetailPage() {
   const deleteSequence = async () => {
     if (!sequence) return;
     const deleted = await handleDelete(sequence.id);
+    // Séquence supprimée : son brouillon n'a plus d'objet.
+    if (deleted) session.draft.clear();
     if (deleted) navigate(missionId ? `/missions/${encodeURIComponent(missionId)}?panneau=contact` : SEQUENCES_PATH, { replace: true });
   };
 
   const showDiagnostic = () => {
-    setTab('journal');
+    changeTab('journal');
     setFocusHealth(true);
   };
 
@@ -371,8 +524,10 @@ export default function SequenceDetailPage() {
           />
         }
         dirty={dirty}
-        saving={savingSettings}
-        onSave={() => { void saveSettings(); }}
+        saving={saving}
+        onSave={session.flow.save}
+        saveState={editable ? session.flow.state : null}
+        savedAt={session.flow.savedAt}
         enrollHref={sequence.project_id ? `/missions/${encodeURIComponent(sequence.project_id)}?tab=pipeline` : '/sourcing'}
         menu={
           <SequenceMenu
@@ -382,7 +537,7 @@ export default function SequenceDetailPage() {
             countsUnavailable={countsError}
             duplicating={duplicatingId === sequence.id}
             nudging={nudging}
-            onDuplicate={() => { void handleDuplicate(sequence); }}
+            onDuplicate={() => session.leave.request(() => { void handleDuplicate(sequence); })}
             onNudge={() => { void handleNudgeToday(); }}
             onShowDiagnostic={showDiagnostic}
             onDelete={() => { void deleteSequence(); }}
@@ -431,20 +586,37 @@ export default function SequenceDetailPage() {
       {state === 'ready' && sequence && settings && (
         <>
           {header}
-          <Tabs value={tab} onValueChange={setTab}>
+          <Tabs value={tab} onValueChange={changeTab}>
             <SequenceTabs
               active={tab}
               hasEnrollments={hasEnrollments}
               candidateCount={countsError ? null : sequence.enrollments.total}
               journalAlert={!countsError && FAILURE_PAUSE_REASONS.some((r) => (sequence.enrollments.pausedByReason[r] ?? 0) > 0)}
+              // Comme à la création : une séquence sans étape n'est pas signalée (l'état vide le dit déjà).
+              stepsAlert={editorReady && editorValidation.errors.some((e) => e.area !== 'senders' && e.check !== 'steps')}
+              settingsAlert={editorReady && editorValidation.errors.some((e) => e.area === 'senders')}
             />
             <TabsContent value="etapes" className="mt-6">
-              <StepsReadOnly
-                steps={sequence.steps}
-                canEdit={canEdit(sequence)}
-                enrolledCount={countsError ? 0 : sequence.enrollments.total}
-                onEdit={() => { void handleEdit(sequence); }}
-              />
+              {canEdit(sequence) ? (
+                <StepsEditor
+                  editor={editor}
+                  validation={editorValidation}
+                  enrolledCount={countsError ? 0 : sequence.enrollments.total}
+                  state={editorLoad?.id === sequence.id ? editorLoad.state : 'loading'}
+                  onRetry={() => { void loadEditor(sequence); }}
+                  preview={session.preview}
+                  extraKeys={session.customKeys}
+                  onShowSettings={() => setTab('reglages')}
+                  frozen={saving}
+                />
+              ) : (
+                <StepsReadOnly
+                  steps={sequence.steps}
+                  canEdit={false}
+                  enrolledCount={countsError ? 0 : sequence.enrollments.total}
+                  onEdit={() => undefined}
+                />
+              )}
             </TabsContent>
             <TabsContent value="candidats" className="mt-6">
               <CandidatesTab
@@ -473,35 +645,23 @@ export default function SequenceDetailPage() {
               </TabsContent>
             )}
             <TabsContent value="reglages" className="mt-6">
-              <SettingsTab
-                value={settings}
-                onChange={(next) => { setSettingsDraft(next); setSettingsErrors([]); }}
-                canEdit={canEdit(sequence)}
-                readOnlyHint={readOnlyHint(sequence)}
-                missionLabel={linkedMission ? [linkedMission.name, linkedMission.client].filter(Boolean).join(' · ') : null}
-                hours={hours}
-                errors={settingsErrors}
-              />
+              <div ref={settingsAreaRef} aria-busy={saving || undefined}>
+                <SettingsTab
+                  value={settings}
+                  onChange={(next) => { setSettingsDraft(next); setSettingsErrors([]); }}
+                  canEdit={canEdit(sequence)}
+                  readOnlyHint={readOnlyHint(sequence)}
+                  missionLabel={linkedMission ? [linkedMission.name, linkedMission.client].filter(Boolean).join(' · ') : null}
+                  hours={hours}
+                  errors={settingsErrors}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </>
       )}
 
-      {/* Éditeur actuel (jusqu'au lot 5d-2), ouvert par « Modifier les étapes ». */}
-      {showBuilder && (
-        <SequenceBuilder
-          isOpen={showBuilder}
-          onClose={() => {
-            setShowBuilder(false);
-            setEditingSequence(null);
-            editorBaseStepIdsRef.current = null;
-          }}
-          onSave={handleSaveSequence}
-          initialSequence={editingSequence || undefined}
-          activeEnrollmentCount={editingSequence?.id ? editingActiveCount : 0}
-          canSendSequences={canSendSequences}
-        />
-      )}
+      <SaveDialogs flow={session.flow} leave={session.leave} />
 
       {/* Réactivation avec des candidats à reprendre : confirmation actuelle. */}
       <AlertDialog open={!!activateConfirm} onOpenChange={(open) => !open && setActivateConfirm(null)}>

@@ -183,6 +183,8 @@ const AppContent = () => {
             <Route path="/tasks" element={<ProtectedRoute><OrganizationGuard><AppLayout><TasksPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Séquences (lot 5c-2) : interrupteur éteint, SequencesGate renvoie vers /missions */}
             <Route path="/sequences" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequencesPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
+            {/* Nouvelle séquence (lot 5d-2) : avant /sequences/:id, même garde ; rien n'est écrit avant « Enregistrer » */}
+            <Route path="/sequences/nouvelle" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage creating /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
             <Route path="/sequences/:id" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calls" element={<ProtectedRoute><OrganizationGuard><AppLayout><CallsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Legacy redirects */}

@@ -53,12 +53,12 @@ test('5c-1 — hors fichiers voués au retrait, aucun type ne vient plus de Sequ
     .map((rel) => ({ rel, imports: [...read(rel).matchAll(/^import\b[^;]*?from ['"][^'"]*\/SequenceBuilder['"];?$/gm)].map((m) => m[0]) }))
     .filter(({ imports }) => imports.length > 0);
   assert.ok(importers.length > 0, 'aucun importeur trouvé : la recherche est cassée');
-  // La liste, l'écran Séquences et la page d'une séquence (lot 5c-2) montent
-  // encore l'éditeur actuel (jusqu'aux lots 5d-2 et 5h) : le composant seul.
+  // La liste et l'écran Séquences montent encore l'éditeur actuel (jusqu'aux
+  // lots 5d-2 et 5h) : le composant seul. La page d'une séquence a l'éditeur
+  // unique depuis le lot 5d-2.
   const editorMounts = {
     'src/components/outreach/SequencesList.tsx': "import { SequenceBuilder } from './SequenceBuilder';",
     'src/pages/SequencesPage.tsx': "import { SequenceBuilder } from '@/components/outreach/SequenceBuilder';",
-    'src/pages/SequenceDetailPage.tsx': "import { SequenceBuilder } from '@/components/outreach/SequenceBuilder';",
   };
   for (const { rel, imports } of importers) {
     if (RETIRED_TYPE_READERS.has(rel)) continue;
@@ -669,8 +669,9 @@ test('5c-2 — page d’une séquence : en-tête, menu « ... », onglets, un se
   assert.match(actions, /copyName = \(name: string\) => `\$\{name\} \(copie\)`, onDuplicated,/);
   assert.match(actions, /name: copyName\(seq\.name\),/);
   assert.match(actions, /const handleDelete = async \(sequenceId: string\): Promise<boolean> => \{/);
-  // « Modifier les étapes » ouvre l'éditeur actuel ; Statistiques de cette séquence.
-  assert.match(page, /onEdit=\{\(\) => \{ void handleEdit\(sequence\); \}\}/);
+  // Étapes : éditeur unique ouvert sur les étapes relues par handleEdit (lot 5d-2) ; Statistiques de cette séquence.
+  assert.match(page, /await handleEdit\(seq\);/);
+  assert.match(page, /<StepsEditor/);
   assert.match(page, /<SequenceAnalytics isOpen=\{false\} onClose=\{\(\) => undefined\} embedded sequenceId=\{sequence\.id\} sequenceName=\{sequence\.name\} \/>/);
   // Journal : carte « État de l'envoi » (corps du diagnostic hors du panneau), puis la file paginée.
   const journal = read('src/components/sequences/JournalTab.tsx');

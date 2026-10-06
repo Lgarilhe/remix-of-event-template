@@ -156,10 +156,14 @@ export interface PreviewValuesBase {
  * Un appel preview_values pour une page de candidats ; sans mission si le
  * serveur ne la connaît pas. Un candidat absent de la réponse n'y figure pas :
  * l'appelant le dit sans aperçu, jamais avec un texte inventé.
+ * `enrollmentIds` : inscriptions déjà faites (éditeur de séquence, lot 5d-2),
+ * lues par le serveur sous la RLS de l'appelant ; leurs entrées sont rangées
+ * sous l'identifiant de l'inscription.
  */
 export async function fetchPreviewValuesPage(
   base: PreviewValuesBase,
   profiles: PreviewProfilePayload[],
+  enrollmentIds: readonly string[] = [],
 ): Promise<PreviewValuesPage> {
   const call = (missionId: string | null) => invokeEdgeFunction<PreviewValuesResponse>('draft-sequence', {
     action: 'preview_values',
@@ -169,6 +173,7 @@ export async function fetchPreviewValuesPage(
     account_id: base.accountId,
     keys: [...base.keys],
     profiles,
+    ...(enrollmentIds.length > 0 ? { enrollment_ids: [...enrollmentIds] } : {}),
   });
   let { data, error } = await call(base.missionId);
   // Code d'erreur du serveur : error.code (invokeEdgeFunction recopie error_code).

@@ -119,11 +119,14 @@ jobs:
       # vers /sequences hors des accès gardés, statut d'une inscription,
       # Parcours sur le graphe, curseurs), puis la pause groupée. Le socle lit
       # les modules TypeScript avec Node 22 (lecture native du TypeScript) ;
-      # le second test les transpile avec esbuild.
+      # le second test les transpile avec esbuild. Lot 5d-2 : gardes de l'éditeur
+      # unique (seq-v2-editeur) et parité de la charge envoyée à
+      # save_sequence_steps avec l'ancien éditeur (seq-v2-charge-utile, hook
+      # d'édition réel empaqueté avec esbuild).
       - name: Lot 5c tests (socle des pages Séquences)
         env:
           TZ: Europe/Paris
-        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs
+        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié
