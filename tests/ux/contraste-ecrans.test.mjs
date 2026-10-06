@@ -189,3 +189,139 @@ test('bouton à contour dont l\'appel change la couleur du bord : le sombre suit
   assert.deepEqual(leaks, [], 'bord changé à l\'appel sans équivalent en sombre');
   assert.match(read('src/components/outreach/result-card/CardActions.tsx'), /border-transparent hover:border-transparent dark:border-transparent dark:hover:border-transparent/, '« Coordonnées » discret aussi en sombre');
 });
+
+test('tuiles et lignes de liste faites en Button : le rayon d\'une tuile, jamais l\'ovale cerclé du bouton', () => {
+  // Un Button sur plusieurs lignes (h-auto, puis whitespace-normal ou flex-col) qui porte un bord (variante à contour, ou classe border)
+  // prend le rayon d'une tuile ou d'une ligne (rounded-lg, rounded-xl…) : avec le rounded-full de la
+  // base, c'était un ovale cerclé d'encre (packs de crédits, choix de « Nouvelle séquence », réponses
+  // proposées de la messagerie, candidat choisi de l'inscription). Une tuile prend le filet décoratif
+  // (ghost, border-border, hover:border-foreground), pas le contour d'encre réservé aux boutons.
+  const shapeless = [];
+  const inkTiles = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { if (rel !== 'src/components/ui') walk(rel); continue; }
+      if (!rel.endsWith('.tsx')) continue;
+      const src = read(rel);
+      for (const m of src.matchAll(/<Button\b/g)) {
+        let depth = 0;
+        let quote = null;
+        let end = -1;
+        for (let i = m.index + 1; i < Math.min(src.length, m.index + 3000); i++) {
+          const c = src[i];
+          if (quote) { if (c === quote) quote = null; continue; }
+          if (c === '"' || c === "'" || c === '`') quote = c;
+          else if (c === '{') depth++;
+          else if (c === '}') depth--;
+          else if (c === '>' && depth === 0) { end = i; break; }
+        }
+        if (end < 0) continue;
+        const tag = src.slice(m.index, end);
+        if (!/(?<![\w:-])h-auto\b/.test(tag)) continue;
+        const variant = /variant=(?:"(\w+)"|\{([^}]*)\})/.exec(tag);
+        const name = variant ? (variant[1] ?? variant[2]) : 'default';
+        const contoured = /\b(?:outline|default|secondary)\b/.test(name);
+        const bordered = contoured || /(?<![\w:-])border(?![\w-])/.test(tag);
+        // Sur plusieurs lignes : le texte revient à la ligne ou s'empile (une puce d'une ligne reste une pilule).
+        const multiline = /(?<![\w:-])(?:flex-col|whitespace-normal)\b/.test(tag);
+        const where = `${rel}:${src.slice(0, m.index).split('\n').length}`;
+        if (bordered && multiline && !/(?<![\w:-])rounded-(?!full\b)[\w[\]-]+/.test(tag)) shapeless.push(where);
+        if (contoured && multiline) inkTiles.push(where);
+      }
+    }
+  };
+  walk('src');
+  assert.deepEqual(shapeless, [], 'Button sur plusieurs lignes avec un bord, sans rayon de tuile');
+  assert.deepEqual(inkTiles, [], 'tuile de texte au contour d\'encre (passer en ghost, rounded-xl border border-border hover:border-foreground)');
+  assert.match(read('src/components/outreach/enrollment-preview/CandidateSidebarCard.tsx'), /'h-auto w-full min-w-0 items-start justify-start gap-2\.5 whitespace-normal rounded-lg border /, 'candidat de l\'inscription : une ligne, pas un ovale');
+  assert.match(read('src/components/outreach/enrollment-preview/CandidateSidebarCard.tsx'), /isSelected \? 'border-border-strong bg-accent' : 'border-transparent'/, 'ligne choisie : bord de contrôle (bg-accent seul : 1,16:1)');
+});
+
+test('bouton repeint d\'un aplat : désactivé et chargement lisibles (jamais un libellé gris sur l\'aplat)', () => {
+  // Les variantes à contour et ghost grisent le libellé désactivé (disabled:text-muted-foreground) sans
+  // toucher au fond : un aplat posé à l'appel garde sa couleur et le libellé gris s'y perd (2,71:1 sur
+  // l'encre, 1,20:1 sur le bleu LinkedIn, 1,13:1 sur brand-solid). Un aplat d'encre passe par primary ;
+  // un aplat de couleur ajoute disabled:bg-muted, et aria-busy:… s'il a un état de chargement.
+  const FILL = /(?<![\w:/!-])bg-(?:foreground|primary|brand|brand-solid|linkedin|success|warning|danger|destructive|info)(?![\w/-])/;
+  const inkFills = [];
+  const unreadable = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { if (rel !== 'src/components/ui') walk(rel); continue; }
+      if (!rel.endsWith('.tsx')) continue;
+      const src = read(rel);
+      for (const m of src.matchAll(/<Button\b/g)) {
+        let depth = 0;
+        let quote = null;
+        let end = -1;
+        for (let i = m.index + 1; i < Math.min(src.length, m.index + 3000); i++) {
+          const c = src[i];
+          if (quote) { if (c === quote) quote = null; continue; }
+          if (c === '"' || c === "'" || c === '`') quote = c;
+          else if (c === '{') depth++;
+          else if (c === '}') depth--;
+          else if (c === '>' && depth === 0) { end = i; break; }
+        }
+        if (end < 0) continue;
+        const tag = src.slice(m.index, end);
+        const variant = /variant=(?:"(\w+)"|\{([^}]*)\})/.exec(tag);
+        const name = variant ? (variant[1] ?? variant[2]) : 'default';
+        if (/^(?:primary|destructive)$/.test(name)) continue;
+        const where = `${rel}:${src.slice(0, m.index).split('\n').length}`;
+        if (/(?<![\w:/!-])bg-foreground(?![\w/-])[\s\S]*?(?<![\w:/!-])text-background\b/.test(tag)) inkFills.push(where);
+        if (FILL.test(tag) && /\s(?:disabled|loading)[=\s]/.test(tag) && !/(?<![\w-])disabled:bg-/.test(tag)) unreadable.push(where);
+        if (/\sloading[=\s]/.test(tag) && FILL.test(tag) && !/aria-busy:text-/.test(tag)) unreadable.push(`${where} (chargement)`);
+      }
+    }
+  };
+  walk('src');
+  assert.deepEqual(inkFills, [], 'aplat d\'encre fait main sur une variante à contour (passer en variant="primary")');
+  assert.deepEqual(unreadable, [], 'aplat sans désactivé lisible');
+  assert.match(read('src/components/missions/v3/pipeline/ContactSelectionButton.tsx'), /<Button variant="primary" size="sm" disabled>/, '« Contacter » sans compte relié');
+  assert.match(read('src/components/outreach/AutoFillFiltersButton.tsx'), /disabled:bg-muted dark:border-transparent aria-busy:bg-brand-solid aria-busy:text-brand-solid-foreground/);
+});
+
+test('champs faits main : focus en anneau plein comme Input, jamais le halo transparent ; désactivés sans opacité', () => {
+  // Halo ring-[3px] ring-ring/20 : 1,29:1, à côté de l'anneau plein des primitives (4,55:1 au pire).
+  const halos = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { if (!/^src\/components\/(ui|landing|public|portal)$/.test(rel)) walk(rel); continue; }
+      if (!rel.endsWith('.tsx')) continue;
+      const src = read(rel);
+      for (const m of src.matchAll(/ring-ring\/20|ring-\[3px\]/g)) halos.push(`${rel}:${src.slice(0, m.index).split('\n').length}`);
+    }
+  };
+  walk('src');
+  assert.deepEqual(halos, [], 'halo de focus transparent hors des primitives');
+  const job = read('src/components/missions/v3/cadrage/JobSection.tsx');
+  assert.match(job, /'disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground'/, 'liste native du Cadrage');
+  const steps = read('src/components/missions/v3/cadrage/InterviewStepsSection.tsx');
+  assert.doesNotMatch(steps, /disabled:opacity-/, 'Cadrage : modèles d\'étapes et intervieweur');
+  assert.match(steps, /group-disabled:text-muted-foreground/, 'modèle d\'étapes désactivé : libellé gris');
+  assert.match(read('src/components/missions/MissionHuntMode.tsx'), /const EMB_INPUT = '[^']*border-input[^']*disabled:border-border disabled:bg-muted disabled:text-muted-foreground/, 'champs du mode chasse, rendu intégré');
+  const composer = read('src/components/outreach/inbox/MessageComposer.tsx');
+  assert.match(composer, /aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/, '« Rendez-vous » sans lien : libellé gris, sans opacité');
+  assert.doesNotMatch(composer, /aria-disabled:opacity-/);
+  assert.doesNotMatch(read('src/components/missions/v3/sourcing/SourcingResultsV3.tsx'), /disabled:opacity-/, '« Relancer avec les nouveaux filtres »');
+  assert.doesNotMatch(read('src/components/sequences/SettingsTab.tsx'), /disabled:opacity-/, 'Réglages en lecture seule : les champs portent leur désactivé');
+});
+
+test('invite du Sourcing et puces de filtres : le focus se voit, les champs ont un bord de champ', () => {
+  const flow = read('src/components/outreach/search/SourcingFlow.tsx');
+  // Au repos border-input et l'ancien bord de focus (--k-hairline-focus) ont la même valeur.
+  assert.match(flow, /focused \? 'border-ring ring-1 ring-ring' : 'border-input',/, 'héros : focus en anneau plein');
+  assert.match(flow, /const chipField = isV3 \? 'border-input focus:border-ring' : 'border-\[var\(--k-hairline\)\] focus:border-\[var\(--k-hairline-focus\)\]';/);
+  assert.match(flow, /const chipPop = isV3 \? 'border-border' : 'border-\[var\(--k-hairline-focus\)\]';/);
+  assert.equal((flow.match(/border \$\{chipField\}/g) || []).length, 13, 'tous les champs des puces');
+  assert.equal((flow.match(/border \$\{chipPop\}/g) || []).length, 3, 'menus des puces');
+  assert.doesNotMatch(flow, /border border-\[var\(--k-hairline\)\][^"`]*focus:border-\[var\(--k-hairline-focus\)\]/, 'plus de champ au filet en dur');
+});
+
+test('illustration dans une fenêtre : sans tuile (la tuile de surface carte y ferait un creux en sombre)', () => {
+  assert.match(read('src/components/missions/v2/BriefAnalysisPanel.tsx'), /<Illustration name="brief" size="sm" tile=\{false\} className="mx-auto mb-4" \/>/);
+  assert.match(read('docs/design/01-direction.md'), /ou dans une fenêtre \(surface `popover`\)/);
+});

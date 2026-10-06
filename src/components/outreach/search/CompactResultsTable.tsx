@@ -1090,7 +1090,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                   if (isV3) commitV3Choice(null);
                   else setHiddenColumns(new Set(allColumns.filter(c => !c.defaultVisible).map(c => c.id)));
                 }}
-                className={isV3 ? 'text-sm cursor-pointer' : 'text-xs cursor-pointer'}
+                className={isV3 ? 'text-sm cursor-pointer' : 'text-xs cursor-pointer text-muted-foreground'}
               >
                 <Eye className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Réinitialiser
@@ -1101,7 +1101,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                   if (isV3) commitV3Choice(new Set());
                   else setHiddenColumns(new Set());
                 }}
-                className={isV3 ? 'text-sm cursor-pointer' : 'text-xs cursor-pointer'}
+                className={isV3 ? 'text-sm cursor-pointer' : 'text-xs cursor-pointer text-muted-foreground'}
               >
                 <EyeOff className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Tout afficher
@@ -1160,7 +1160,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                               ? <ArrowDown className="w-3 h-3 text-foreground" aria-hidden="true" />
                               : <ArrowUp className="w-3 h-3 text-foreground" aria-hidden="true" />
                           ) : (
-                            <ArrowUpDown className={isV3 ? 'w-3 h-3 opacity-0 transition-opacity group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100' : 'w-3 h-3'} aria-hidden="true" />
+                            <ArrowUpDown className={isV3 ? 'w-3 h-3 opacity-0 transition-opacity group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100' : 'w-3 h-3 opacity-30'} aria-hidden="true" />
                           )}
                         </button>
                       ) : col.isCriterion ? (
@@ -1543,7 +1543,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
         {/* Footer info */}
         {!isV3 && selectedJob && criteriaList.length === 0 && (
           <div className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            <HelpCircle className="h-3 w-3 text-foreground" aria-hidden="true" />
+            <HelpCircle className="h-3 w-3" aria-hidden="true" />
             <span>Aucun critère défini sur ce poste — ajoutez compétences ou must/should/nice-to-have dans le brief pour voir les colonnes critères.</span>
           </div>
         )}

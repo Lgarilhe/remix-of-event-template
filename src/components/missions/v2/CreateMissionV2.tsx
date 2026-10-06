@@ -893,9 +893,9 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
       <Button
         key={opt.value}
         type="button"
-        variant="outline"
+        variant="ghost"
         onClick={() => onPick(opt.value)}
-        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal p-5 text-left"
+        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl border border-border p-5 text-left hover:border-foreground"
       >
         <IconTile icon={opt.icon} tone={opt.recommended ? 'brand' : 'default'} size="md" />
         <span className="block space-y-1">

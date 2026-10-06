@@ -158,3 +158,15 @@ test('Pastilles neutres et croix de fermeture à l\'encre', () => {
   assert.doesNotMatch(read('src/components/ui/command.tsx'), /opacity-50" \/>/, 'loupe sans opacité');
   assert.doesNotMatch(read('src/components/ui/dropdown-menu.tsx'), /opacity-60/, 'raccourci en gris secondaire, sans opacité');
 });
+
+test('Onglets : l\'onglet actif garde l\'anneau de focus (activation automatique)', () => {
+  // Un onglet qui reçoit le focus s'active aussitôt. Les règles d'état (ring-1 ring-border-strong, ou
+  // ring-0 des onglets soulignés) sont générées après focus-visible:ring-2 à spécificité égale : sans
+  // une règle propre à l'onglet actif (0,3,0), le focus au clavier ne se voyait jamais.
+  const tabs = read('src/components/ui/tabs.tsx');
+  assert.match(tabs, /data-\[state=active\]:focus-visible:ring-2 data-\[state=active\]:focus-visible:ring-ring/);
+  // Rangées d'onglets qui défilent (overflow-x-auto) : l'anneau est tracé à l'intérieur, sinon rogné.
+  for (const rel of ['src/components/sequences/SequenceTabs.tsx', 'src/pages/SequencesPage.tsx']) {
+    assert.match(read(rel), /'focus-visible:ring-inset focus-visible:ring-offset-0'/, rel);
+  }
+});

@@ -328,7 +328,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   return (
     <TooltipProvider delayDuration={400}>
       <div className="border-t border-border bg-background px-3 py-3 md:px-4" data-component="message-composer">
-        <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+        <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
           {/* Barre d'outils */}
           <div className="flex items-center gap-0.5 border-b border-border px-1.5 py-1">
             {/* Mise en forme : un menu à toutes les tailles ; ses raccourcis restent actifs */}
@@ -549,7 +549,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                       aria-label="Insérer un lien de rendez-vous"
                       aria-disabled={!hasCalendlyLink || undefined}
                       onClick={hasCalendlyLink ? onScheduleCall : undefined}
-                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 md:h-8 md:w-auto md:px-3"
+                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground md:h-8 md:w-auto md:px-3"
                     >
                       <CalendarPlus aria-hidden="true" />
                       <span className="hidden md:inline">Rendez-vous</span>
@@ -636,9 +636,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               <Button
                 key={i}
                 type="button"
-                variant="outline"
+                variant="ghost"
                 onClick={() => applyRewriteVariant(v)}
-                className="group h-auto w-full flex-col items-stretch gap-2 whitespace-normal p-4 text-left font-normal"
+                className="group h-auto w-full flex-col items-stretch gap-2 whitespace-normal rounded-xl border border-border p-4 text-left font-normal hover:border-foreground"
               >
                 <span className="flex items-center gap-2">
                   <span className="rounded-sm bg-muted px-2 py-0.5 text-2xs font-semibold text-foreground">{v.label}</span>

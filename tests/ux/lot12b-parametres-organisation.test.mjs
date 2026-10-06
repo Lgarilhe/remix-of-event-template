@@ -260,7 +260,9 @@ test('F-18 — sous-surfaces arrondies, avatars ronds, boutons en casse de phras
   // filet (design simplifié, règle 7), plus de pastille carrée inversée ni de couleur.
   const packs = between(src.credits, 'CREDIT_PACKS.map', '))}');
   assert.match(packs, /<Button/);
-  assert.match(packs, /bg-background px-1\.5 text-xs font-medium text-foreground-secondary/);
+  // Posée sur le filet de la tuile, la mention masque ce filet avec la surface de la carte qui la porte
+  // (bg-card : blanche en clair, alors que le fond de page est à 96 %).
+  assert.match(packs, /bg-card px-1\.5 text-xs font-medium text-foreground-secondary/);
   assert.doesNotMatch(packs, /badgeVariants|bg-brand/);
   assert.doesNotMatch(packs, /border-2|rounded-md|bg-foreground text-background/);
   // Aucune sous-surface sans rayon.

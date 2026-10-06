@@ -168,7 +168,7 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
           <Button
             onClick={handleConnect}
             loading={connecting}
-            className="h-11 w-full border-transparent bg-linkedin font-semibold text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white dark:border-transparent dark:hover:border-transparent md:h-10"
+            className="h-11 w-full border-transparent bg-linkedin font-semibold text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent aria-busy:bg-linkedin aria-busy:text-white md:h-10"
           >
             {!connecting && <ExternalLink aria-hidden="true" />}
             Connecter LinkedIn

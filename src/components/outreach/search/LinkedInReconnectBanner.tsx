@@ -68,7 +68,7 @@ export const LinkedInReconnectBanner = () => {
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs border-amber-500/50 dark:border-amber-500/50"
+              className="h-7 text-xs border-warning/50 dark:border-warning/50"
               onClick={() => navigate('/settings/account/connections')}
             >
               Reconnecter

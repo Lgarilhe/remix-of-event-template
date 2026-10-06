@@ -416,7 +416,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             type="button"
             onClick={onRerun}
             disabled={loading}
-            className="inline-flex h-8 items-center rounded-md px-1 text-sm text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 max-sm:min-h-11"
+            className="inline-flex h-8 items-center rounded-md px-1 text-sm text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground disabled:no-underline max-sm:min-h-11"
           >
             {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
           </button>
@@ -675,7 +675,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             onClick={() => void run([row], onDismissProfiles, index)}
                             aria-label={`Écarter ${row.name}`}
                             title="Écarter"
-                            className={cn(DECISION_BUTTON, 'text-muted-foreground hover:text-foreground')}
+                            className={cn(DECISION_BUTTON, 'text-muted-foreground hover:text-danger')}
                           >
                             <X className="h-4 w-4" aria-hidden="true" />
                           </button>

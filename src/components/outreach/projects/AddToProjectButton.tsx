@@ -146,7 +146,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           variant={isAdded || quiet ? "ghost" : "outline"}
           size="sm"
           title={isAdded ? `Déjà retenu pour « ${activeProject.name} »` : `Retenir pour « ${activeProject.name} »`}
-          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
+          className={`shrink-0 ${isAdded ? 'text-success hover:text-success disabled:text-success' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >
@@ -166,7 +166,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
       <Button
         variant={isAdded ? "ghost" : "outline"}
         size="sm"
-        className={`gap-1.5 ${isAdded ? 'text-success' : ''}`}
+        className={`gap-1.5 ${isAdded ? 'text-success disabled:text-success' : ''}`}
         onClick={() => !isAdded && addToProject(activeProject)}
         disabled={isAdding || isAdded}
       >

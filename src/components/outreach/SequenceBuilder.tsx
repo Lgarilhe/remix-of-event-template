@@ -277,9 +277,9 @@ function StepTypeOption({ value, label, description, onPick }: { value: string; 
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="ghost"
       onClick={() => onPick(value)}
-      className="h-auto justify-start gap-3 whitespace-normal p-3 text-left font-normal"
+      className="h-auto justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
     >
       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
         <SequenceActionIcon type={value} className="h-4 w-4" />

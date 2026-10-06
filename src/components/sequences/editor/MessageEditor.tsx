@@ -199,7 +199,7 @@ export function MessageEditor({
             ref={boxRef}
             className={cn(
               'relative rounded-lg border border-input bg-background transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground',
-              'focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20',
+              'focus-within:border-ring focus-within:ring-1 focus-within:ring-ring',
               invalid && 'border-danger hover:border-danger',
             )}
           >

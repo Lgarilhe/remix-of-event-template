@@ -32,7 +32,7 @@ interface MissionHuntModeProps {
 // Rendu intégré : mêmes gestes, sans cadre ni bouton plein ni majuscules.
 const EMB_BTN = 'h-9 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:text-muted-foreground transition-colors max-sm:min-h-11';
 const EMB_BTN_DANGER = 'h-9 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:text-muted-foreground transition-colors max-sm:min-h-11';
-const EMB_INPUT = 'w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60 max-sm:h-11';
+const EMB_INPUT = 'w-full h-9 px-3 text-sm rounded-md border border-input bg-background hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground max-sm:h-11';
 const EMB_LABEL = 'flex items-center gap-1.5 text-sm text-muted-foreground mb-1.5';
 const EMB_HEADING = 'text-md font-semibold text-foreground mb-3';
 

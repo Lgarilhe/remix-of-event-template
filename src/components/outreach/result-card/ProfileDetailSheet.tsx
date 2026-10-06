@@ -813,7 +813,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     size="sm"
                     disabled={deciding}
                     onClick={() => void decide(decisions.onDismiss)}
-                    className="-mr-2.5 shrink-0 text-danger hover:bg-danger-muted hover:text-danger"
+                    className="-mr-2.5 shrink-0 text-muted-foreground hover:bg-danger-muted hover:text-danger"
                   >
                     Écarter
                   </Button>

@@ -103,7 +103,13 @@ const AgentsPage = () => {
           title="Aucune conversation"
           headingLevel={2}
           description="Posez une question à l'assistant ou confiez-lui une recherche."
-          action={newConversation}
+          action={
+            // L'en-tête porte déjà le bouton plein : un seul aplat d'encre par zone (01-direction, § 6).
+            <Button type="button" variant="outline" onClick={startNewConversation}>
+              <Plus aria-hidden="true" />
+              Nouvelle conversation
+            </Button>
+          }
         />
       ) : (
         <div className="space-y-4">

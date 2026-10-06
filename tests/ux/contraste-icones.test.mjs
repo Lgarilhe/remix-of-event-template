@@ -32,7 +32,7 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 /** Hors périmètre : primitives, pages publiques et portails. */
 const OUT_OF_SCOPE = [
   /^src\/components\/(ui|landing|public|portal)\//,
-  /^src\/pages\/(Pricing|SkalrLanding|CandidatePortal|ClientPortalV2|RecruiterPublicProfile|Privacy|PrivacyExtension|Unsubscribe)\.tsx$/,
+  /^src\/pages\/(Auth|Pricing|SkalrLanding|CandidatePortal|ClientPortalV2|RecruiterPublicProfile|Privacy|PrivacyExtension|Unsubscribe)\.tsx$/,
 ];
 /** Exception h : l'ancienne page mission, inchangée (dossier missions/v2 et fichiers qu'elle seule rend). */
 const OLD_MISSION_PAGE = [
@@ -74,8 +74,10 @@ const ICON_EXCEPTIONS = [
 
 /** Boutons discrets gris qui ne sont pas des retraits : [fichier, élément, nombre, raison]. Décroissante. */
 const BUTTON_EXCEPTIONS = [
-  // e. désactivé en permanence.
-  ['src/components/outreach/search/SearchResultsPanel.tsx', 'button', 1, 'e : « Séquence » désactivé'],
+  // h. SearchResultsPanel : tout ce qui suit le rendu mission-v3 (« ) : (<> ») n'est rendu que par
+  // l'ancienne page (MissionWorkspaceV2) ; la nouvelle page et /sourcing/:id passent layout="mission-v3".
+  ['src/components/outreach/search/SearchResultsPanel.tsx', 'button', 1, 'h : « Séquence » désactivé, branche non v3'],
+  ['src/components/outreach/search/SearchResultsPanel.tsx', 'Button', 2, 'h : « Élargir » et « Affiner », branche non v3'],
   // h. StepCard de process/shared n'est rendue que par l'ancienne page (MissionProcessV2).
   ['src/components/missions/process/shared.tsx', 'button', 2, 'h : « Développer » et « + » d\'un objectif, StepCard'],
   ['src/components/missions/MissionClientPortal.tsx', 'button', 1, 'h : « Annuler » du formulaire, hors embedded'],
@@ -283,7 +285,7 @@ test('chaque exception a sa raison, et son fichier est dans le périmètre', () 
   }
 });
 
-test('cohérence entre écrans : un même geste a la même couleur, un aplat garde un texte lisible', () => {
+test('cohérence entre écrans : un même geste a la même couleur, un statut garde la sienne, un aplat garde un texte lisible', () => {
   const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
   // « Rejeter » une action de l'assistant : retrait gris, dans la carte d'approbation comme dans le Journal.
   const card = read('src/components/agent/AgentToolApprovalCard.tsx');
@@ -292,13 +294,35 @@ test('cohérence entre écrans : un même geste a la même couleur, un aplat gar
   const journal = read('src/components/settings/AgentActionsSettings.tsx');
   const rejectJournal = journal.slice(journal.lastIndexOf('<Button', journal.indexOf('Rejeter\n')), journal.indexOf('Rejeter\n'));
   assert.match(rejectJournal, /className="text-muted-foreground/, 'Journal');
+  // « Écarter » un candidat : gris au repos, rouge au survol, sur tous les écrans (01-direction, § 6).
+  const ecarter = [
+    ['src/components/missions/v3/pipeline/BulkActionBar.tsx', 'Écarter\n      </Button>'],
+    ['src/components/missions/v3/panels/CandidatePanelHeader.tsx', 'Écarter\n              </Button>'],
+    ['src/components/outreach/result-card/ProfileDetailSheet.tsx', 'Écarter\n                  </Button>'],
+  ];
+  for (const [rel, label] of ecarter) {
+    const src = read(rel);
+    const at = src.indexOf(label);
+    assert.ok(at > 0, `${rel} : « Écarter » introuvable`);
+    const tag = src.slice(src.lastIndexOf('<Button', at), at);
+    assert.match(tag, /text-muted-foreground hover:bg-danger-muted hover:text-danger/, `${rel} : Écarter`);
+    assert.doesNotMatch(tag, /(?<![:\w-])text-danger\b/, `${rel} : pas de rouge au repos`);
+  }
+  assert.match(read('src/components/missions/v3/sourcing/SourcingResultsV3.tsx'), /title="Écarter"\s+className=\{cn\(DECISION_BUTTON, 'text-muted-foreground hover:text-danger'\)\}/, 'lignes du Sourcing');
+  // Un statut permanent porté par un bouton désactivé garde sa couleur (« Retenu ») : le gris du
+  // désactivé de ghost (0,2,0) l'emporterait sur text-success (0,1,0).
+  const project = read('src/components/outreach/projects/AddToProjectButton.tsx');
+  assert.match(project, /isAdded \? 'text-success hover:text-success disabled:text-success'/, '« Retenu » (forme compacte)');
+  assert.match(project, /isAdded \? 'text-success disabled:text-success'/, '« Shortlisté »');
   // Bouton à contour repeint d'un aplat de couleur : bord transparent et texte blanc, jamais l'encre sur le
-  // bleu LinkedIn (3,25:1 en clair) ni le vert d'état en sombre (2,21:1).
+  // bleu LinkedIn (3,25:1 en clair) ni le vert d'état en sombre (2,21:1) ; désactivé sur fond gris.
   for (const rel of ['src/components/outreach/LinkedInAccountManager.tsx', 'src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/SceneLinkedIn.tsx']) {
     for (const m of read(rel).matchAll(/className="([^"]*\bbg-linkedin\b[^"]*)"/g)) {
       if (!/<Button\b[^<]*$/.test(read(rel).slice(0, m.index))) continue;
       assert.match(m[1], /\bborder-transparent\b/, `${rel} : bord`);
       assert.match(m[1], /\btext-white\b/, `${rel} : texte`);
+      // Désactivé : fond gris, jamais le libellé gris de la variante sur le bleu (1,20:1).
+      assert.match(m[1], /\bdisabled:bg-muted\b/, `${rel} : désactivé`);
     }
   }
   assert.doesNotMatch(read('src/components/outreach/filter-wizard/WizardQuestionStep.tsx'), /bg-success hover:bg-success\/90 text-white/);

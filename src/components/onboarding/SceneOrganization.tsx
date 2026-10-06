@@ -399,9 +399,9 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
             {disambiguationCandidates.map((c) => (
               <Button
                 key={c.id}
-                variant="outline"
+                variant="ghost"
                 onClick={() => selectCandidate(c.id)}
-                className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal"
+                className="h-auto w-full justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
               >
                 <CompanyLogo key={`${c.id}-${c.domain}`} name={c.name} logoUrl={c.logoUrl} domain={c.domain} size="sm" />
                 <span className="min-w-0 flex-1">

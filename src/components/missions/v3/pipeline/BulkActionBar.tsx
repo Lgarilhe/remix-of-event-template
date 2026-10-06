@@ -103,8 +103,8 @@ export function BulkActionBar({
         <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Étape suivante
       </Button>
-      {/* Écarter : discret rouge, comme dans la fiche ; le contour d'encre reste aux actions qui font avancer. */}
-      <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)} className="text-danger hover:bg-danger-muted hover:text-danger">
+      {/* Écarter : retrait gris, rouge au survol, comme dans la fiche ; le contour d'encre reste aux actions qui font avancer. */}
+      <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)} className="text-muted-foreground hover:bg-danger-muted hover:text-danger">
         <UserX className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Écarter
       </Button>

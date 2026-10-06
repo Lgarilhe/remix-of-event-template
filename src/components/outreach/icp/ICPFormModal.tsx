@@ -328,8 +328,9 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
             </Button>
             <Button
               type="submit"
+              variant="primary"
               disabled={!name.trim() || saving}
-              className="bg-foreground text-background hover:bg-foreground/90"
+              aria-busy={saving || undefined}
             >
               {saving ? 'Enregistrement...' : (initialData ? 'Mettre à jour' : 'Créer l\'ICP')}
             </Button>

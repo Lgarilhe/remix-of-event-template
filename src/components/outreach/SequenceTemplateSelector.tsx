@@ -91,9 +91,9 @@ function ChoiceButton({ icon: Icon, title, description, onClick }: { icon: React
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="ghost"
       onClick={onClick}
-      className="h-auto w-full justify-start gap-4 whitespace-normal p-4 text-left font-normal"
+      className="h-auto w-full justify-start gap-4 whitespace-normal rounded-xl border border-border p-4 text-left font-normal hover:border-foreground"
     >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
         <Icon className="h-5 w-5" aria-hidden="true" />
@@ -316,9 +316,9 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                     <Button
                       key={template.id}
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => handleSelectTemplate(template)}
-                      className="h-auto w-full flex-col items-start gap-0 whitespace-normal p-4 text-left font-normal"
+                      className="h-auto w-full flex-col items-start gap-0 whitespace-normal rounded-xl border border-border p-4 text-left font-normal hover:border-foreground"
                     >
                       <span className="flex w-full flex-wrap items-center gap-2">
                         <span className="min-w-0 truncate text-sm font-semibold text-foreground">{template.name}</span>
@@ -353,9 +353,9 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                   <Button
                     key={seq.id}
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => handleDuplicate(seq)}
-                    className="h-auto w-full flex-col items-start gap-0 whitespace-normal p-4 text-left font-normal"
+                    className="h-auto w-full flex-col items-start gap-0 whitespace-normal rounded-xl border border-border p-4 text-left font-normal hover:border-foreground"
                   >
                     <span className="text-sm font-semibold text-foreground">{seq.name}</span>
                     <StepsPreview types={(seq.steps || []).slice(0, 6).map(s => s.action_type)} total={(seq.steps || []).length} />

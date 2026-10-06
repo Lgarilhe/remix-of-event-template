@@ -233,15 +233,15 @@ export const AICreditsSettings = () => {
               <Button
                 key={pack.id}
                 type="button"
-                variant="outline"
+                variant="ghost"
                 onClick={() => handleBuyPack(pack.id)}
                 disabled={!!buyingPack}
-                className="relative h-auto flex-col gap-0 whitespace-normal p-4 text-center font-normal"
+                className="relative h-auto flex-col gap-0 whitespace-normal rounded-xl border border-border p-4 text-center font-normal hover:border-foreground"
               >
                 <span className="sr-only">Acheter </span>
                 {/* Design simplifié : la mention du pack en texte neutre, posée sur le filet, sans pastille de couleur. */}
                 {pack.badge && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-background px-1.5 text-xs font-medium text-foreground-secondary">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-card px-1.5 text-xs font-medium text-foreground-secondary">
                     {pack.badge}
                   </span>
                 )}

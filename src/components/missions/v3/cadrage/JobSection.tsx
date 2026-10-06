@@ -80,8 +80,8 @@ export function NativeSelect({
           'peer h-9 w-full min-w-0 appearance-none rounded-lg border border-input bg-background py-1.5 pl-3 pr-8 text-base text-foreground md:text-sm',
           TOUCH_FIELD,
           'transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground',
-          'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
-          'disabled:cursor-not-allowed disabled:opacity-50',
+          'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground',
         )}
       >
         {children}

@@ -295,7 +295,7 @@ export function CandidatePanelHeader({
                 variant="ghost"
                 size="sm"
                 disabled={disabled}
-                className="shrink-0 text-danger hover:bg-danger-muted hover:text-danger"
+                className="shrink-0 text-muted-foreground hover:bg-danger-muted hover:text-danger"
                 onClick={() => onMove(reject, 'écarté')}
               >
                 Écarter

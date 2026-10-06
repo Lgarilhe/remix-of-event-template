@@ -274,12 +274,12 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                       disabled={isAdding}
                       onClick={() => void initializeFromTemplate(tpl.steps, tpl.label)}
                       className={cn(
-                        'flex flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2.5 text-left transition-colors duration-150',
+                        'group flex flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2.5 text-left transition-colors duration-150',
                         'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        'disabled:cursor-not-allowed disabled:opacity-50',
+                        'disabled:cursor-not-allowed',
                       )}
                     >
-                      <span className="text-sm font-medium text-foreground">{tpl.label}</span>
+                      <span className="text-sm font-medium text-foreground group-disabled:text-muted-foreground">{tpl.label}</span>
                       <span className="text-sm text-muted-foreground">{tpl.steps.map((s) => s.name).join(', ')}</span>
                     </button>
                   ))}
@@ -352,8 +352,8 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                             aria-label={`Intervieweur de l'étape ${name} : ${whoLabel}${isExt ? ', hors Konekt' : ''}`}
                             className={cn(
                               'flex h-[34px] w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm transition-colors max-sm:h-11',
-                              'hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
-                              'disabled:cursor-not-allowed disabled:opacity-60',
+                              'hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                              'disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground',
                             )}
                           >
                             {userId && (

@@ -169,8 +169,9 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
           <Badge variant="outline" className="text-xs border-border">{icps.length}</Badge>
         </div>
         <Button
+          variant="primary"
           onClick={() => { setEditingICP(null); setFormOpen(true); }}
-          className="h-8 px-3 bg-foreground text-background hover:bg-foreground/90 text-xs font-medium uppercase tracking-wider gap-1.5"
+          className="h-8 px-3 text-xs font-medium uppercase tracking-wider gap-1.5"
         >
           <Plus className="w-3.5 h-3.5" /> Nouvel ICP
         </Button>

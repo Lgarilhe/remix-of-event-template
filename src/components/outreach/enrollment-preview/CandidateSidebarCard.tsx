@@ -75,8 +75,9 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         aria-describedby={[detailsId, shortcutsHelpId].filter(Boolean).join(' ')}
         onClick={onSelect}
         className={cn(
-          // Ligne de liste : pleine largeur, sur plusieurs lignes, sans effet d'appui.
-          'h-auto w-full min-w-0 items-start justify-start gap-2.5 whitespace-normal border px-3 py-2.5 pr-11 text-left font-normal active:scale-100 max-md:pr-14 [&_svg]:size-3',
+          // Ligne de liste : pleine largeur, sur plusieurs lignes, sans effet d'appui, au rayon d'une
+          // ligne (jamais l'ovale du bouton). Le bord de contrôle marque la ligne choisie (3:1 au moins).
+          'h-auto w-full min-w-0 items-start justify-start gap-2.5 whitespace-normal rounded-lg border px-3 py-2.5 pr-11 text-left font-normal active:scale-100 max-md:pr-14 [&_svg]:size-3',
           isSelected ? 'border-border-strong bg-accent' : 'border-transparent',
         )}
       >

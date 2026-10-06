@@ -395,9 +395,10 @@ export const BatchScoreButton: React.FC<BatchScoreButtonProps> = ({
 
   return (
     <Button
+      variant="primary"
       onClick={onScore}
       disabled={disabled || loading}
-      className="bg-foreground text-background hover:bg-foreground/90"
+      aria-busy={loading || undefined}
     >
       {loading ? (
         <Loader2 className="w-4 h-4 animate-spin mr-2" />

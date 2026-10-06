@@ -422,6 +422,8 @@ export default function SequencesPage() {
                   'relative h-full shrink-0 bg-transparent px-3 text-muted-foreground',
                   'after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground after:opacity-0',
                   'data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:after:opacity-100',
+                  // La rangée défile : l'anneau de focus est tracé à l'intérieur, sinon elle le rogne.
+                  'focus-visible:ring-inset focus-visible:ring-offset-0',
                 )}
               >
                 {label}
