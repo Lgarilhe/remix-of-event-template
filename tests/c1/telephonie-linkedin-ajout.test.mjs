@@ -196,6 +196,75 @@ test('ajout : retrouve l\'existant avant de visiter le profil, écrit une ligne 
   assert.match(lib, /partial: fullProfile === null/);
 });
 
+// ---------------------------------------------------------------------
+// Mission facultative et quota du jour
+// ---------------------------------------------------------------------
+test('openMissionOptions : les missions en cours seulement, nom et client lisibles', async () => {
+  const { openMissionOptions, missionLabel } = await load();
+  const options = openMissionOptions([
+    { id: 'm1', name: 'Directeur financier', status: 'active', jd_client: 'Eurazeo', client_name: 'ancien nom' },
+    { id: 'm2', name: 'Responsable paie', status: 'active', jd_client: null, client_name: 'Numspot' },
+    { id: 'm3', name: 'DRH', status: 'paused' },
+    { id: 'm4', name: 'Ancienne mission', status: 'completed' },
+    { id: 'm5', name: 'Archivée', status: 'archived' },
+    { id: 'm6', name: '   ', status: 'active' },
+    { id: 'm7', name: 'Sans client', status: 'active' },
+  ]);
+  assert.deepEqual(options.map((o) => o.id), ['m1', 'm2', 'm7'], 'ni en pause, ni terminée, ni archivée, ni sans nom');
+  assert.equal(options[0].client, 'Eurazeo', 'le client du brief passe avant le nom de client hérité');
+  assert.equal(missionLabel(options[0]), 'Directeur financier · Eurazeo');
+  assert.equal(missionLabel(options[2]), 'Sans client');
+  assert.deepEqual(openMissionOptions(null), []);
+  assert.deepEqual(openMissionOptions(undefined), []);
+});
+
+test('quotaLeft : ce qu\'il reste pour une recherche suivie d\'un ajout', async () => {
+  const { quotaLeft } = await load();
+  assert.deepEqual(
+    quotaLeft({ today: { searches: 36, profile_views: 5 }, caps: { searches: 100, profile_views: 100 } }),
+    { searches: 64, profileViews: 95, canSearch: true },
+  );
+  assert.equal(quotaLeft({ today: { searches: 100, profile_views: 5 }, caps: { searches: 100, profile_views: 100 } }).canSearch, false, 'plafond atteint');
+  assert.equal(quotaLeft({ today: { searches: 130, profile_views: 0 }, caps: { searches: 100, profile_views: 100 } }).searches, 0, 'jamais négatif');
+  // Compte récent : plafonds réduits par la montée en charge (25 % la première semaine).
+  assert.equal(quotaLeft({ today: { searches: 20, profile_views: 0 }, caps: { searches: 25, profile_views: 25 } }).searches, 5);
+  assert.equal(quotaLeft(null), null);
+  assert.equal(quotaLeft(undefined), null);
+});
+
+test('mission choisie : la ligne va dans la mission, sinon dans la recherche dédiée, jamais de doublon', () => {
+  const lib = read('src/lib/linkedinQuickFind.ts');
+  const add = lib.slice(lib.indexOf('export async function addCandidateFromLinkedIn'));
+  assert.match(add, /const projectId = missionId \?\? \(await ensureCallsSearchProject\(organizationId, userId\)\);/);
+  // Un candidat déjà dans l'app : jamais de lecture de profil, mission ajoutée à partir des données gardées.
+  const existingBranch = add.slice(add.indexOf('if (existing) {'), add.indexOf('// Une visite de profil'));
+  assert.match(existingBranch, /hasRowInProject\(organizationId, missionId, candidate\.candidateId\)/, 'déjà dans la mission : rien d\'écrit');
+  assert.match(existingBranch, /placement: \{ kind: 'already_in_mission' \}/);
+  assert.match(existingBranch, /linkedin_profile_data: profileData/, 'copie des données déjà gardées');
+  assert.doesNotMatch(existingBranch, /invokeUnipile|get_profile/);
+  assert.match(lib, /placement: missionId \? \{ kind: 'mission' \} : \{ kind: 'search' \}/);
+  // Un seul point d'écriture dans le fichier, lu par le garde-fou des écrivains de l'étape.
+  assert.equal((lib.match(/\.from\('job_candidate_status'\)\s*\n?\s*\.upsert\(/g) ?? []).length, 1);
+  assert.equal((lib.match(/writeCandidateRow\(/g) ?? []).length, 3, 'définition et deux appels');
+});
+
+test('écran : mission facultative (aucune par défaut) et quota du jour montré', () => {
+  const finder = read('src/components/calls/LinkedInCandidateFinder.tsx');
+  assert.match(finder, /const NO_MISSION = '__none__';/);
+  assert.match(finder, /useState<string>\(NO_MISSION\)/, 'aucune mission par défaut');
+  assert.match(finder, /missionId: chosenMission\?\.id \?\? null/);
+  assert.match(finder, /openMissionOptions\(projects\)/);
+  assert.match(finder, /Sans mission, il est rangé dans la recherche « Candidats ajoutés depuis un appel »/);
+  assert.match(finder, /useLinkedInQuotaStatus\(accountId\)/);
+  assert.match(finder, /const quotaReached = left !== null && !left\.canSearch;/);
+  assert.match(finder, /!quotaReached;/, 'plafond atteint : « Chercher » désactivé');
+  assert.match(finder, /Il vous reste aujourd'hui \$\{plural\(left\.searches, 'recherche'\)\} et \$\{plural\(left\.profileViews, 'profil lu', 'profils lus'\)\}/, 'accord en français : « 0 recherche », « 1 profil lu »');
+  // Le quota du jour est relu après chaque recherche et chaque ajout.
+  assert.equal((finder.match(/void refreshQuota\(\)/g) ?? []).length, 2);
+  const dialog = read('src/components/calls/AttachCallDialog.tsx');
+  assert.match(dialog, /handleAdded = \(result: AddFromLinkedInResult, mission: MissionOption \| null\)/);
+});
+
 test('fenêtre Rattacher : un intitulé LinkedIn très long ne fait jamais déborder la fenêtre', () => {
   // Constaté sur l'aperçu du 06/10 : DialogContent est une grille (colonne « auto »), un intitulé de
   // 150 caractères en une ligne élargissait la colonne et poussait le contenu hors du cadre.

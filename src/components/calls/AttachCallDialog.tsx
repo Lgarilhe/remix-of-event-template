@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { CandidateAutocomplete, type SelectedCandidate } from '@/components/calendar/CandidateAutocomplete';
 import { LinkedInCandidateFinder } from '@/components/calls/LinkedInCandidateFinder';
 import type { AddFromLinkedInResult } from '@/lib/linkedinQuickFind';
+import type { MissionOption } from '@/lib/linkedinQuickFindModel';
 import { UNATTACHED_CALLS_KEY } from '@/hooks/useUnattachedCalls';
 import { useOrganization } from '@/hooks/useOrganization';
 import { attachPhoneToCandidate } from '@/lib/candidateContacts';
@@ -55,14 +56,25 @@ export const AttachCallDialog = ({
 
   // Un candidat ajouté depuis LinkedIn (ou retrouvé déjà dans l'app) est choisi d'office :
   // il ne reste qu'à confirmer le rattachement.
-  const handleAdded = (result: AddFromLinkedInResult) => {
+  const handleAdded = (result: AddFromLinkedInResult, mission: MissionOption | null) => {
     setCandidate(result.candidate);
     setConflictPhone(null);
     setFinderOpen(false);
     const name = result.candidate.name;
-    if (result.existing) toast.info(`${name} est déjà dans l'app.`);
-    else if (result.partial) toast.warning(`${name} est ajouté, mais son profil complet n'a pas pu être lu. Les données de la recherche sont gardées.`);
-    else toast.success(`${name} est ajouté depuis LinkedIn.`);
+    const missionName = mission?.name ?? '';
+    const kind = result.placement.kind;
+    if (kind === 'already_in_mission') toast.info(`${name} est déjà dans la mission « ${missionName} ».`);
+    else if (result.existing) {
+      toast.info(kind === 'mission'
+        ? `${name} était déjà dans l'app. Il est ajouté à la mission « ${missionName} », étape « À trier ».`
+        : `${name} est déjà dans l'app.`);
+    } else if (result.partial) {
+      toast.warning(`${name} est ajouté${mission ? ` à la mission « ${missionName} »` : ''}, mais son profil complet n'a pas pu être lu. Les données de la recherche sont gardées.`);
+    } else {
+      toast.success(mission
+        ? `${name} est ajouté à la mission « ${missionName} », étape « À trier ».`
+        : `${name} est ajouté depuis LinkedIn.`);
+    }
   };
 
   const submit = async (replace: boolean) => {

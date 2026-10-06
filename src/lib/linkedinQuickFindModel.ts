@@ -123,8 +123,58 @@ export function mergeProfile(base: Record<string, unknown>, full: Record<string,
   return merged;
 }
 
-/** Nom de la recherche qui reçoit les candidats ajoutés depuis un appel. */
+/** Nom de la recherche qui reçoit les candidats ajoutés depuis un appel, sans mission choisie. */
 export const CALLS_SEARCH_NAME = 'Candidats ajoutés depuis un appel';
+
+export interface MissionOption {
+  id: string;
+  name: string;
+  client: string | null;
+}
+
+interface MissionLike {
+  id: string;
+  name?: string | null;
+  status?: string | null;
+  jd_client?: string | null;
+  client_name?: string | null;
+}
+
+/**
+ * Les missions proposées pour y ranger le candidat : celles en cours (comme le
+ * sélecteur de mission de la création de tâche), dans l'ordre reçu (la plus
+ * récemment modifiée d'abord). Une mission sans nom n'est pas proposée.
+ */
+export function openMissionOptions(projects: ReadonlyArray<MissionLike> | null | undefined): MissionOption[] {
+  const options: MissionOption[] = [];
+  for (const p of projects ?? []) {
+    const name = str(p.name);
+    if (p.status !== 'active' || !name) continue;
+    options.push({ id: p.id, name, client: str(p.jd_client) ?? str(p.client_name) });
+  }
+  return options;
+}
+
+export function missionLabel(mission: MissionOption): string {
+  return mission.client ? `${mission.name} · ${mission.client}` : mission.name;
+}
+
+export interface QuotaSnapshot {
+  today: { searches: number; profile_views: number };
+  caps: { searches: number; profile_views: number };
+}
+
+/**
+ * Ce qu'il reste du quota LinkedIn du jour pour une recherche suivie d'un
+ * ajout : une recherche et une lecture de profil. `canSearch` faux dès que le
+ * plafond de recherches est atteint (le serveur refuserait de toute façon).
+ */
+export function quotaLeft(quota: QuotaSnapshot | null | undefined): { searches: number; profileViews: number; canSearch: boolean } | null {
+  if (!quota) return null;
+  const searches = Math.max(0, quota.caps.searches - quota.today.searches);
+  const profileViews = Math.max(0, quota.caps.profile_views - quota.today.profile_views);
+  return { searches, profileViews, canSearch: searches > 0 };
+}
 
 export interface CandidateRowInput {
   projectId: string;
