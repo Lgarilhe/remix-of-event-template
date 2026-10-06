@@ -7,6 +7,8 @@
  * - AI credit transactions
  * - Conversation–mission links (mission_conversations, lot 0b)
  * - Private candidate photo copies (candidate_photos, lot P): state and storage path, not the files
+ * - Qualification sessions (qualification_sessions: interviews read from a connected calendar or booked through Calendly)
+ * - Connected calendars (member_calendar_accounts): member, provider, address and state, no provider identifier
  * - Phone calls (phone_calls, lot A1), their analyses (phone_call_insights) and transcriptions
  *   (phone_call_transcripts, lot A5, the most recent ones: the cap is reported in _meta)
  * - Messages sent (from Unipile logs if available)
@@ -85,6 +87,8 @@ Deno.serve(async (req) => {
       { data: members, error: membersError },
       { data: conversationLinks, error: conversationLinksError },
       { data: candidatePhotos, error: candidatePhotosError },
+      { data: qualificationSessions, error: qualificationSessionsError },
+      { data: calendarAccounts, error: calendarAccountsError },
       { data: phoneCalls, error: phoneCallsError },
       { data: phoneCallInsights, error: phoneCallInsightsError },
       { data: phoneCallTranscripts, error: phoneCallTranscriptsError },
@@ -123,6 +127,17 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(10000),
       adminClient
+        .from("qualification_sessions")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(10000),
+      adminClient
+        .from("member_calendar_accounts")
+        .select("user_id, provider, email_address, status, last_synced_at, created_at")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false }),
+      adminClient
         .from("phone_calls")
         .select("*")
         .eq("organization_id", organizationId)
@@ -148,8 +163,8 @@ Deno.serve(async (req) => {
     // RGPD art. 20 : un export incomplet doit échouer explicitement, jamais
     // renvoyer un jeu de données tronqué en silence.
     const queryError = candidatesError || projectsError || transactionsError || membersError
-      || conversationLinksError || candidatePhotosError || phoneCallsError
-      || phoneCallInsightsError || phoneCallTranscriptsError;
+      || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError
+      || phoneCallsError || phoneCallInsightsError || phoneCallTranscriptsError;
     if (queryError) {
       console.error("[export-org-data] query failed:", queryError);
       return new Response(
@@ -168,6 +183,8 @@ Deno.serve(async (req) => {
       members: members || [],
       mission_conversations: conversationLinks || [],
       candidate_photos: candidatePhotos || [],
+      qualification_sessions: qualificationSessions || [],
+      calendar_accounts: calendarAccounts || [],
       phone_calls: phoneCalls || [],
       phone_call_insights: phoneCallInsights || [],
       phone_call_transcripts: phoneCallTranscripts || [],
@@ -179,6 +196,8 @@ Deno.serve(async (req) => {
         transactions_count: (transactions || []).length,
         mission_conversations_count: (conversationLinks || []).length,
         candidate_photos_count: (candidatePhotos || []).length,
+        qualification_sessions_count: (qualificationSessions || []).length,
+        calendar_accounts_count: (calendarAccounts || []).length,
         format: "JSON",
         rgpd_article: "Article 20 — Droit à la portabilité",
       },

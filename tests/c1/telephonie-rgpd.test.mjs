@@ -113,7 +113,7 @@ test('durées de conservation : 6 mois la transcription, 24 mois l\'appel et son
 test("rgpd-purge : le mode « compte seulement » reste le défaut, rien ne se supprime sans {\"dry_run\": false}", () => {
   const src = read('supabase/functions/rgpd-purge/index.ts');
   assert.match(src, /const dryRun = body\?\.dry_run !== false;/);
-  const steps = src.slice(indexOf(src, '// ── 6. Transcriptions'), indexOf(src, '// ── Summary'));
+  const steps = src.slice(indexOf(src, '// ── 6. Transcriptions'), indexOf(src, '// ── 8. Séances de qualification'));
   // Chaque suppression est gardée par le mode réel.
   const deletes = [...steps.matchAll(/\.delete\(\)/g)].length;
   assert.equal(deletes, 2);
@@ -129,7 +129,7 @@ test("rgpd-purge : la transcription part 6 mois après l'APPEL, l'appel et son a
   // Date de l'appel (jointure), pas la date de copie de la transcription.
   assert.match(transcripts, /\.select\("call_id, phone_calls!inner\(started_at\)"\)\s*\n\s*\.lt\("phone_calls\.started_at", transcriptCutoffIso\)/);
   assert.match(transcripts, /\.from\("phone_call_transcripts"\)\s*\n\s*\.delete\(\)/);
-  const calls = src.slice(indexOf(src, '// ── 7. Appels'), indexOf(src, '// ── Summary'));
+  const calls = src.slice(indexOf(src, '// ── 7. Appels'), indexOf(src, '// ── 8. Séances de qualification'));
   assert.match(calls, /started_at\.lt\."\$\{callCutoffIso\}",and\(started_at\.is\.null,created_at\.lt\."\$\{callCutoffIso\}"\)/);
   // Le filtre est rejoué à la suppression, et l'analyse n'est pas supprimée à part : elle suit l'appel.
   assert.match(calls, /\.delete\(\)\s*\n\s*\.in\("id", ids\.slice\(i, i \+ 100\)\)\s*\n\s*\.or\(OLD_CALL_FILTER\)/);

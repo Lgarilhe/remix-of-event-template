@@ -328,6 +328,8 @@ export interface GdprErasureResult {
   /** Inscriptions (tous statuts) dont les données du candidat ont été effacées. */
   anonymizedEnrollments: number;
   cancelledInmails: number;
+  /** Séances de qualification (agenda, Calendly) supprimées. */
+  deletedSessions: number;
   /** Adresse ajoutée à la liste de suppression des envois e-mail. */
   emailSuppressed: boolean;
   /** Appels téléphoniques supprimés (avec leur transcription et leur analyse). */
@@ -356,7 +358,9 @@ export interface GdprErasureResult {
  * sont supprimés et ses résumés de réponse effacés (lot 0b). Ses copies privées
  * de photo sont supprimées et marquées pour ne plus être reprises (lot P). Ses appels
  * téléphoniques sont supprimés, avec leur transcription et leur analyse (lot A6), sauf
- * ceux d'un numéro qu'un autre candidat de l'organisation porte aussi. Le succès n'est
+ * ceux d'un numéro qu'un autre candidat de l'organisation porte aussi. Ses séances de
+ * qualification (rendez-vous lus dans un agenda ou pris par Calendly) sont supprimées,
+ * avec les extraits de connaissance qui en sont tirés (agenda Outlook). Le succès n'est
  * renvoyé qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
  */
 export async function recordGdprErasure(
@@ -375,6 +379,7 @@ export async function recordGdprErasure(
     stoppedEnrollments: 0,
     anonymizedEnrollments: 0,
     cancelledInmails: 0,
+    deletedSessions: 0,
     emailSuppressed: false,
     deletedCalls: 0,
     keptSharedNumbers: 0,
@@ -749,6 +754,68 @@ export async function recordGdprErasure(
     if (plan.sharedKept.length > 0) {
       console.warn(`[recordGdprErasure] ${plan.sharedKept.length} numéro(s) partagé(s) avec un autre candidat : appels gardés`);
     }
+  }
+
+  // 12. Séances de qualification (agenda Outlook, Calendly), dans le périmètre :
+  //     elles portent le nom, le titre, l'adresse e-mail du candidat et les notes
+  //     de l'entretien. Supprimées, après les extraits de connaissance qui en sont
+  //     tirés (knowledge_chunks) : une reprise après échec retrouve ainsi ses
+  //     séances. Trouvées par l'identifiant du candidat, l'adresse de son profil
+  //     LinkedIn et l'adresse e-mail de l'invité.
+  const sessionIds = new Set<string>();
+  const addSessions = (rows: unknown) => {
+    for (const row of (rows ?? []) as Array<{ id: string }>) sessionIds.add(row.id);
+  };
+  for (let i = 0; i < knownIds.length; i += 100) {
+    let query = supabase
+      .from('qualification_sessions')
+      .select('id')
+      .in('candidate_profile_id', knownIds.slice(i, i + 100))
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des séances', error);
+    addSessions(data);
+  }
+  for (const lookup of lookups.filter((l) => !l.byEmail)) {
+    let query = supabase
+      .from('qualification_sessions')
+      .select('id')
+      .ilike('candidate_linkedin_url', lookup.pattern)
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des séances', error);
+    addSessions(data);
+  }
+  if (emailNorm) {
+    let query = supabase
+      .from('qualification_sessions')
+      .select('id')
+      .ilike('invitee_email', escapeLikePattern(emailNorm))
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des séances', error);
+    addSessions(data);
+  }
+  const sessionList = [...sessionIds];
+  for (let i = 0; i < sessionList.length; i += 100) {
+    const batch = sessionList.slice(i, i + 100);
+    let chunksQuery = supabase
+      .from('knowledge_chunks')
+      .delete()
+      .eq('source_table', 'qualification_sessions')
+      .in('source_id', batch);
+    if (orgId) chunksQuery = chunksQuery.eq('organization_id', orgId);
+    const { error: chunksError } = await chunksQuery;
+    if (chunksError) return fail('suppression des extraits de séances', chunksError);
+
+    let deleteQuery = supabase.from('qualification_sessions').delete().in('id', batch);
+    if (orgId) deleteQuery = deleteQuery.eq('organization_id', orgId);
+    const { data: deleted, error: deleteError } = await deleteQuery.select('id');
+    if (deleteError) return fail('suppression des séances', deleteError);
+    result.deletedSessions += (deleted ?? []).length;
   }
 
   return { ...result, success: true };
