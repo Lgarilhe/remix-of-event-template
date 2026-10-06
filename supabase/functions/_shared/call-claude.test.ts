@@ -8,6 +8,17 @@ import { callClaudeCompat, type OpenAITool } from './call-claude.ts';
 
 Deno.env.set('ANTHROPIC_API_KEY', 'test-key');
 
+// Les champs du corps que les tests lisent.
+type SentBody = {
+  model: string;
+  system: string;
+  max_tokens: number;
+  temperature?: number;
+  output_config?: unknown;
+  tool_choice?: unknown;
+  tools: Array<{ name: string; strict?: boolean }>;
+};
+
 const closedTool = (name: string): OpenAITool => ({
   type: 'function',
   function: {
@@ -38,7 +49,7 @@ const looseTool = (name: string): OpenAITool => ({
 
 async function sentBody(model: string, extra: Record<string, unknown>, response: unknown = { content: [], usage: {}, model, stop_reason: 'end_turn' }) {
   const realFetch = globalThis.fetch;
-  let body: Record<string, any> = {};
+  let body = {} as SentBody;
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
     body = JSON.parse(String(init?.body));
     return Promise.resolve(new Response(JSON.stringify(response), { status: 200 }));
@@ -81,7 +92,7 @@ for (const model of ['claude-sonnet-5-5', 'claude-opus-5-5']) {
 
 Deno.test('génération 5 : sans system d\'origine, la consigne devient le system', async () => {
   const realFetch = globalThis.fetch;
-  let body: Record<string, any> = {};
+  let body = {} as SentBody;
   globalThis.fetch = ((_u: string | URL | Request, init?: RequestInit) => {
     body = JSON.parse(String(init?.body));
     return Promise.resolve(new Response(JSON.stringify({ content: [], usage: {} }), { status: 200 }));
