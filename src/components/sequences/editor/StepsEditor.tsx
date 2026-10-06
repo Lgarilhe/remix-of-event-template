@@ -12,6 +12,8 @@ import type { SequenceIssue, SequenceValidation } from '@/components/outreach/se
 import type { SequenceEditor } from '@/hooks/useSequenceEditor';
 import type { SequencePreview } from '@/hooks/useSequencePreview';
 import { useInertWhile } from '@/hooks/useInertWhile';
+import type { AiDraftNotes } from '@/lib/sequenceDraft';
+import type { AskAIContext } from '../ai/AskAIMenu';
 import { useMediaQuery } from '@/components/missions/v3/shell/useMediaQuery';
 import { issueStepOrder, issuesByOrder, primaryOf } from '@/lib/sequenceEditor';
 import { plural } from '@/lib/plural';
@@ -80,9 +82,13 @@ interface StepsEditorProps {
    * sans bruit par les étapes relues après l'enregistrement.
    */
   frozen?: boolean;
+  /** « Demander à l'IA » dans le panneau d'étape (lot 5e). */
+  askAI?: AskAIContext;
+  /** Notes « À rédiger » et « À relire » d'une séquence rédigée par l'IA (lot 5e). */
+  aiNotes?: AiDraftNotes;
 }
 
-export function StepsEditor({ editor, validation, enrolledCount, state, onRetry, preview, extraKeys, onShowSettings, frozen = false }: StepsEditorProps) {
+export function StepsEditor({ editor, validation, enrolledCount, state, onRetry, preview, extraKeys, onShowSettings, frozen = false, askAI, aiNotes }: StepsEditorProps) {
   const isPhone = useMediaQuery(PHONE_QUERY);
   const issues = useMemo(() => issuesByOrder(validation), [validation]);
   const { steps, flow, selectedId } = editor;
@@ -163,6 +169,8 @@ export function StepsEditor({ editor, validation, enrolledCount, state, onRetry,
       previewIndex={previewIndex}
       onPreviewIndexChange={setPreviewIndex}
       extraKeys={extraKeys}
+      askAI={askAI}
+      aiNotes={aiNotes}
     />
   );
 
@@ -202,6 +210,7 @@ export function StepsEditor({ editor, validation, enrolledCount, state, onRetry,
                 onRemove={(id) => { void editor.requestRemove(id); }}
                 removing={editor.checkingRemoval}
                 compact={panelBeside}
+                aiNotes={aiNotes}
               />
             )}
           </div>

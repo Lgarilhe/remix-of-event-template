@@ -37,15 +37,19 @@ interface StepCardProps {
   selected: boolean;
   issues?: StepIssues;
   actions: StepCardActions;
+  /** Raisons d'une étape « À rédiger » (rédaction par l'IA, texte retiré par les contrôles, encore vide). */
+  toWrite?: readonly string[];
 }
 
-export function StepCard({ node, selected, issues, actions }: StepCardProps) {
+export function StepCard({ node, selected, issues, actions, toWrite }: StepCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   // Carte ouverte (ou tout juste ajoutée) : ramenée dans la zone visible du fil.
   useEffect(() => {
     if (selected) cardRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [selected]);
-  const error = issues?.errors[0] ?? null;
+  // Texte retiré par la rédaction : « À rédiger » et sa raison, à la place de la description (« Invitation sans note… ») et de la ligne générique.
+  const aiToWrite = toWrite && toWrite.length > 0 ? `À rédiger · ${toWrite.join(' ')}` : null;
+  const error = aiToWrite ?? issues?.errors[0] ?? null;
   const warning = !error ? issues?.warnings[0] ?? null : null;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -96,7 +100,7 @@ export function StepCard({ node, selected, issues, actions }: StepCardProps) {
           <h3 className="min-w-0 text-sm font-semibold text-foreground">{node.title}</h3>
         </div>
         {node.excerpt && <p className="mt-1.5 line-clamp-2 text-sm text-foreground-secondary">{node.excerpt}</p>}
-        {node.description && <p className="mt-1.5 text-sm text-muted-foreground">{node.description}</p>}
+        {node.description && !aiToWrite && <p className="mt-1.5 text-sm text-muted-foreground">{node.description}</p>}
         {node.badges.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {node.badges.map((badge) => (

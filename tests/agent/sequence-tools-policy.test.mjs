@@ -41,8 +41,8 @@ test('5a — inscription et reprise de séquence jamais automatiques (serveur)',
   const set = registry.match(/const NEVER_AUTO_TOOLS = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? '';
   assert.ok(set, 'NEVER_AUTO_TOOLS introuvable');
   for (const t of SEQUENCE_TOOLS) assert.match(set, new RegExp(`'${t}'`), `${t} absent de NEVER_AUTO_TOOLS`);
-  // Création de séquence : pas encore concernée (lot 5e).
-  assert.doesNotMatch(set, /'create_sequence'/);
+  // Lot 5e : une séquence rédigée par l'IA est toujours relue avant d'exister.
+  assert.match(set, /'create_sequence'/);
 });
 
 test('5a — une politique « auto » enregistrée est ramenée à « approve », l’outil n’est pas éligible', () => {
@@ -74,8 +74,11 @@ test('5a — l’écran des politiques ne propose pas « Automatique » pour ces
   assert.match(settings, /\{!tool\.autoEligible && <Lock /);
   assert.match(settings, /\{tool\.autoEligible && \(\s*<SelectItem value="auto">/);
   assert.match(settings, /const current: ToolPolicy = !tool\.autoEligible && stored === 'auto' \? 'approve' : stored;/);
-  // create_sequence reste éligible jusqu'au lot 5e.
-  assert.match(settings, /\{ name: 'create_sequence', label: 'Créer une séquence', autoEligible: true \}/);
+  // Lot 5e : create_sequence n'est plus proposé en automatique.
+  const create = settings.split('\n').find((l) => l.includes("name: 'create_sequence'"));
+  assert.ok(create, 'create_sequence absent de POLICY_TOOLS');
+  assert.match(create, /autoEligible: false, description: "Messages rédigés par l'IA : approbation obligatoire"/);
+  assert.doesNotMatch(create, /—/);
 });
 
 test('5a — enroll_in_sequence refuse une séquence avec un message rédigé par l’IA, raison rendue au modèle', () => {

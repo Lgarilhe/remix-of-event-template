@@ -119,6 +119,9 @@ export interface AIActionCost {
 export const ACTION_COSTS: Record<string, AIActionCost> = {
   scoring: { action: "scoring", label: "Évaluation d'un candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-sonnet-5-5" },
   outreach_message: { action: "outreach_message", label: "Message d'approche", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "outreach" },
+  // Séquence entière rédigée depuis le poste (draft-sequence, lot 5e) : environ
+  // 7 000 jetons, 7 crédits avec le modèle par défaut (miroir de ai-config.ts).
+  sequence_draft: { action: "sequence_draft", label: "Rédaction d'une séquence", floor: 3, typicalTokens: 7_000, routingTier: "default", category: "outreach" },
   analyze_response: { action: "analyze_response", label: "Analyse d'une réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   screen_candidate: { action: "screen_candidate", label: "Présélection rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   generate_scorecard: { action: "generate_scorecard", label: "Création d'une scorecard", floor: 2, typicalTokens: 4_000, routingTier: "fast", category: "qualification" },

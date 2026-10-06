@@ -10,9 +10,19 @@
 // sur son adresse (remplacement : pas d'entrée d'historique en double).
 // Onglets Étapes et Réglages ; brouillon local, repris à la réouverture de la
 // même adresse.
+//
+// Lot 5e, rédaction par l'IA à partir du poste (&depart=ia) : AIDraftWizard
+// s'ouvre sur la page (« Le poste », puis « L'angle ») ; la séquence rédigée
+// remplit l'onglet Étapes, non enregistrée (gardée dans le brouillon local
+// comme toute saisie), avec le bandeau de la spécification et « Rédiger à
+// nouveau ». &proposition=<id> : séquence proposée par l'assistant
+// (create_sequence), relue dans la ligne agent_tool_executions de l'appelant ;
+// sa mission entre dans l'adresse. Une étape dont l'IA n'a pas laissé de texte
+// bloque l'enregistrement (validateSequence, option aiDraft) ; une formulation
+// signalée est une recommandation, tant que le texte n'a pas changé.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Lock } from 'lucide-react';
+import { Lock, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -51,6 +61,22 @@ import { SettingsTab, type SequenceSettingsDraft } from './SettingsTab';
 import type { SendingHours } from './RhythmLine';
 import { StepsEditor } from './editor/StepsEditor';
 import { SaveDialogs } from './editor/SaveDialogs';
+import { NewSequenceDialog } from './NewSequenceDialog';
+import { AIDraftWizard } from './ai/AIDraftWizard';
+import { useMissionDraftReadiness } from '@/hooks/useSequenceAI';
+import {
+  AI_DRAFT_BANNER,
+  AI_DRAFT_FREE_PLAN,
+  EMPTY_NOTES,
+  creditsLabel,
+  readProposal,
+  readStoredNotes,
+  readStoredSettings,
+  validationOptionOf,
+  type AiDraftNotes,
+  type AiDraftResult,
+  type DraftSettings,
+} from '@/lib/sequenceDraft';
 
 const CREATE_TABS = ['etapes', 'reglages'] as const;
 /** Préfixe du brouillon d'une création : une entrée par mission et par départ. */
@@ -60,7 +86,9 @@ const START_ERRORS: Record<NewSequenceStart['kind'], string> = {
   zero: 'Nouvelle séquence indisponible pour l’instant.',
   modele: 'Modèle indisponible pour l’instant.',
   copie: 'Séquence à copier indisponible pour l’instant.',
+  ia: 'Rédaction indisponible pour l’instant.',
 };
+const PROPOSAL_ERROR = 'Séquence proposée par l’assistant indisponible.';
 
 /** Formule sans envoi (spécification, section 4). */
 export const FREE_PLAN_NOTICE = 'Votre formule permet de préparer des séquences et d’écrire aux candidats un par un. L’envoi automatique, avec les relances, fait partie des formules payantes.';
@@ -76,10 +104,20 @@ function isFreeNoticeDismissed(userId: string | null): boolean {
   }
 }
 
+/** Séquence rédigée par l'IA : étapes, notes de la rédaction, nom et description. */
+interface AiSeed {
+  name: string;
+  description: string;
+  steps: SequenceStep[];
+  notes: AiDraftNotes;
+}
+
 interface CreateDraftValue {
   name: string;
   steps: SequenceStep[];
   settings: SequenceSettingsDraft | null;
+  /** Rédaction par l'IA : notes et réglages de l'assistant de rédaction (lot 5e). */
+  ai?: { notes: AiDraftNotes; settings: DraftSettings | null; description: string | null } | null;
 }
 
 function settingsOfSequence(seq: Sequence): SequenceSettingsDraft {
@@ -104,6 +142,11 @@ export function SequenceCreatePage() {
   const missionParam = searchParams.get('mission') || null;
   const departParam = searchParams.get('depart') || 'zero';
   const start = useMemo<NewSequenceStart>(() => parseNewSequenceStart(departParam) ?? { kind: 'zero' }, [departParam]);
+  const aiMode = start.kind === 'ia';
+  // Séquence proposée par l'assistant (outil create_sequence), reprise dans l'éditeur.
+  const propositionParam = aiMode ? searchParams.get('proposition') || null : null;
+  const setSearchParamsRef = useRef(setSearchParams);
+  setSearchParamsRef.current = setSearchParams;
   const tab: CreateTab = searchParams.get('onglet') === 'reglages' ? 'reglages' : 'etapes';
   const setTab = (next: string) => {
     setSearchParams((prev) => {
@@ -150,7 +193,30 @@ export function SequenceCreatePage() {
   }, [missionParam]);
   const missionId = mission.state === 'ready' ? missionParam : null;
 
-  // Départ : séquence vide, modèle ou copie.
+  // Rédaction par l'IA (lot 5e) : rien d'enregistré, état remis à zéro à chaque autre départ.
+  const [aiFilled, setAiFilled] = useState(false);
+  const aiFilledRef = useRef(false);
+  const [aiNotes, setAiNotes] = useState<AiDraftNotes>(EMPTY_NOTES);
+  const [aiSettings, setAiSettings] = useState<DraftSettings | null>(null);
+  const [aiDescription, setAiDescription] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const aiSeedRef = useRef<AiSeed | null>(null);
+  const lastAiRef = useRef<AiSeed | null>(null);
+  const autoOpenRef = useRef(false);
+  useEffect(() => {
+    aiSeedRef.current = null;
+    lastAiRef.current = null;
+    aiFilledRef.current = false;
+    autoOpenRef.current = false;
+    setAiFilled(false);
+    setAiNotes(EMPTY_NOTES);
+    setAiSettings(null);
+    setAiDescription(null);
+    setWizardOpen(false);
+  }, [departParam, propositionParam, missionParam]);
+
+  // Départ : séquence vide, modèle, copie ou rédaction par l'IA.
   const [initial, setInitial] = useState<{ state: 'loading' } | { state: 'error' } | { state: 'ready'; sequence: Sequence }>({ state: 'loading' });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -165,6 +231,43 @@ export function SequenceCreatePage() {
         if (start.kind === 'zero') {
           const job = mission.value?.title || mission.value?.name;
           done({ name: job ? `Approche ${job}` : 'Nouvelle séquence', steps: [], isActive: true, stopConditions: DEFAULT_STOP_CONDITIONS });
+          return;
+        }
+        if (start.kind === 'ia') {
+          if (!propositionParam) {
+            // Rédaction à partir du poste : la mission lisible est indispensable.
+            if (mission.state !== 'ready') {
+              done(null);
+              return;
+            }
+            const job = mission.value?.title || mission.value?.name;
+            done({ name: job ? `Approche ${job}` : 'Nouvelle séquence', steps: [], isActive: true, stopConditions: DEFAULT_STOP_CONDITIONS });
+            return;
+          }
+          // Proposition de l'assistant : sa ligne (lisible par son auteur), étapes au format de l'éditeur.
+          const { data, error } = await supabase
+            .from('agent_tool_executions')
+            .select('tool_name, status, dry_run_result')
+            .eq('id', propositionParam)
+            .maybeSingle();
+          const proposal = error ? null : readProposal(data, () => crypto.randomUUID());
+          if (cancelled) return;
+          if (!proposal) {
+            done(null);
+            return;
+          }
+          if (proposal.missionId && proposal.missionId !== missionParam) {
+            // Mission de la proposition dans l'adresse : fil d'Ariane, retour et rattachement à l'enregistrement.
+            const missionOfProposal = proposal.missionId;
+            setSearchParamsRef.current((prev) => {
+              const params = new URLSearchParams(prev);
+              params.set('mission', missionOfProposal);
+              return params;
+            }, { replace: true });
+            return;
+          }
+          aiSeedRef.current = { name: proposal.name, description: proposal.description, steps: proposal.steps, notes: proposal.notes };
+          done({ name: proposal.name, description: proposal.description, steps: [], isActive: true, stopConditions: DEFAULT_STOP_CONDITIONS });
           return;
         }
         if (start.kind === 'modele') {
@@ -218,17 +321,27 @@ export function SequenceCreatePage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [start, mission.state, mission.value, organizationId, attempt]);
+  }, [start, propositionParam, missionParam, mission.state, mission.value, organizationId, attempt]);
 
   // État de l'éditeur : étapes, nom, réglages ; rien d'enregistré.
   const editor = useSequenceEditor();
-  const { reset: resetEditor } = editor;
+  const { reset: resetEditor, restore: restoreEditor } = editor;
   const [name, setName] = useState('');
   const [initialName, setInitialName] = useState('');
   const [baseSettings, setBaseSettings] = useState<SequenceSettingsDraft | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<SequenceSettingsDraft | null>(null);
   const [settingsErrors, setSettingsErrors] = useState<string[]>([]);
   const readySequence = initial.state === 'ready' ? initial.sequence : null;
+  // Séquence rédigée par l'IA : par-dessus un départ vide, donc à enregistrer (et gardée en brouillon local).
+  const applyAi = useCallback((seed: AiSeed, keepName = false) => {
+    restoreEditor(seed.steps);
+    if (!keepName) setName(seed.name);
+    setAiNotes(seed.notes);
+    setAiDescription(seed.description || null);
+    aiFilledRef.current = true;
+    setAiFilled(true);
+    lastAiRef.current = seed;
+  }, [restoreEditor]);
   useEffect(() => {
     if (!readySequence) return;
     // Aucune étape n'est encore en base : une suppression ne demande pas l'historique.
@@ -237,7 +350,8 @@ export function SequenceCreatePage() {
     setInitialName(readySequence.name);
     setBaseSettings(settingsOfSequence(readySequence));
     setSettingsDraft(null);
-  }, [readySequence, resetEditor]);
+    if (aiSeedRef.current) applyAi(aiSeedRef.current);
+  }, [readySequence, resetEditor, applyAi]);
   const loaded = !!readySequence && baseSettings !== null;
   const settings = settingsDraft ?? baseSettings;
   const settingsDirty = !!settingsDraft && !!baseSettings && JSON.stringify(settingsDraft) !== JSON.stringify(baseSettings);
@@ -252,6 +366,8 @@ export function SequenceCreatePage() {
       timezone: own?.timezone ?? DEFAULT_QUOTAS.timezone,
     };
   }, [quotasReady, userId, getQuotaForUser]);
+
+  const back = missionParam ? `/missions/${encodeURIComponent(missionParam)}?panneau=contact` : SEQUENCES_PATH;
 
   // Enregistrement : création par useSequenceSave, puis la page de la séquence.
   const editorBaseStepIdsRef = useRef<EditorBaseStepIds>(null);
@@ -274,6 +390,7 @@ export function SequenceCreatePage() {
       } else if (freePlan) {
         // L'avis a déjà donné la raison : le toast dit seulement ce qui a été fait.
         toast.info('Séquence enregistrée sans envoi automatique', {
+          ...(aiFilled ? { description: AI_DRAFT_FREE_PLAN } : {}),
           action: { label: 'Voir les offres', onClick: () => navigate('/pricing') },
         });
       } else {
@@ -288,7 +405,7 @@ export function SequenceCreatePage() {
     if (!readySequence || !settings) return;
     const sequence: Sequence = {
       name: name.trim(),
-      description: readySequence.description,
+      description: (aiFilled && aiDescription) || readySequence.description,
       steps: editor.steps,
       isActive: true,
       stopConditions: withAlwaysOnStops(settings.stopConditions),
@@ -326,9 +443,25 @@ export function SequenceCreatePage() {
     setName(initialName);
     setSettingsDraft(null);
     setSettingsErrors([]);
+    aiFilledRef.current = false;
+    setAiFilled(false);
+    setAiNotes(EMPTY_NOTES);
   }, [editor, initialName]);
+  // « Repartir de zéro » d'un brouillon repris : la rédaction de départ (proposition ou rédaction de cette visite), sinon l'assistant de rédaction.
+  const restartFromStart = useCallback(() => {
+    resetToStart();
+    if (!aiMode) return;
+    if (lastAiRef.current) applyAi(lastAiRef.current);
+    else if (!propositionParam) setWizardOpen(true);
+  }, [resetToStart, aiMode, applyAi, propositionParam]);
 
-  const draftValue = useMemo<CreateDraftValue>(() => ({ name, steps: editor.steps, settings: settingsDraft }), [name, editor.steps, settingsDraft]);
+  const draftValue = useMemo<CreateDraftValue>(() => ({
+    name,
+    steps: editor.steps,
+    settings: settingsDraft,
+    ai: aiFilled ? { notes: aiNotes, settings: aiSettings, description: aiDescription } : null,
+  }), [name, editor.steps, settingsDraft, aiFilled, aiNotes, aiSettings, aiDescription]);
+  const aiValidation = useMemo(() => (aiFilled ? validationOptionOf(aiNotes) : undefined), [aiFilled, aiNotes]);
   const session = useSequenceEditorSession<CreateDraftValue>({
     editor,
     loaded,
@@ -340,7 +473,7 @@ export function SequenceCreatePage() {
     sequenceId: null,
     missionId,
     stepsTabActive: tab === 'etapes',
-    draftKey: sequenceEditorDraftKey(userId, organizationId, `${NEW_DRAFT_PREFIX}${missionParam ?? ''}:${departParam}`),
+    draftKey: sequenceEditorDraftKey(userId, organizationId, `${NEW_DRAFT_PREFIX}${missionParam ?? ''}:${departParam}${propositionParam ? `:${propositionParam}` : ''}`),
     draftBase: loaded ? 'creation' : null,
     draftValue,
     draftDirty: editor.dirty || name !== initialName || settingsDirty,
@@ -348,12 +481,19 @@ export function SequenceCreatePage() {
       editor.restore(value.steps);
       if (value.name) setName(value.name);
       if (value.settings) setSettingsDraft(value.settings);
+      if (aiMode && value.ai) {
+        setAiNotes(readStoredNotes(value.ai.notes));
+        setAiSettings(readStoredSettings(value.ai.settings));
+        setAiDescription(typeof value.ai.description === 'string' ? value.ai.description : null);
+        aiFilledRef.current = true;
+        setAiFilled(true);
+      }
       toast.info('Brouillon de séquence repris', {
         description: savedAt
           ? `Votre travail du ${savedAt.toLocaleDateString('fr-FR')} à ${savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} a été conservé.`
           : 'Votre travail précédent a été conservé.',
         duration: 12000,
-        action: { label: 'Repartir de zéro', onClick: () => { resetToStart(); session.draft.clear(); } },
+        action: { label: 'Repartir de zéro', onClick: () => { restartFromStart(); session.draft.clear(); } },
       });
     },
     removedStepCount: 0,
@@ -361,13 +501,38 @@ export function SequenceCreatePage() {
     perform: performSave,
     onBlocked: showBlocked,
     onDiscard: resetToStart,
+    aiDraft: aiValidation,
   });
+
+  // Rédaction par l'IA : l'assistant de rédaction s'ouvre une fois, sauf si un brouillon de cette rédaction vient d'être repris.
+  useEffect(() => {
+    if (!aiMode || propositionParam || !loaded || autoOpenRef.current) return;
+    autoOpenRef.current = true;
+    if (!aiFilledRef.current) setWizardOpen(true);
+  }, [aiMode, propositionParam, loaded]);
+  const readiness = useMissionDraftReadiness(missionId);
+  const askAI = useMemo(() => ({ organizationId, missionId, jobDescribed: readiness.described }), [organizationId, missionId, readiness.described]);
+
+  const onDrafted = (result: AiDraftResult, settings: DraftSettings) => {
+    const replacing = aiFilledRef.current;
+    setWizardOpen(false);
+    setAiSettings(settings);
+    applyAi({ name: result.name, description: result.description, steps: result.steps, notes: result.notes }, replacing);
+    setTab('etapes');
+    const used = result.creditsUsed ?? 0;
+    if (used > 0) toast.success('Séquence rédigée', { description: `${creditsLabel(used)} utilisé${used > 1 ? 's' : ''}.` });
+  };
+  // Annuler la première rédaction : retour d'où l'on vient ; « Rédiger à nouveau » annulé : la séquence affichée reste.
+  const cancelWizard = () => {
+    setWizardOpen(false);
+    if (!aiFilledRef.current) navigate(back);
+  };
 
   // Enregistrement en cours : étapes et réglages figés jusqu'au passage sur la page de la séquence.
   const settingsAreaRef = useRef<HTMLDivElement>(null);
   useInertWhile(settingsAreaRef, session.flow.saving);
-
-  const back = missionParam ? `/missions/${encodeURIComponent(missionParam)}?panneau=contact` : SEQUENCES_PATH;
+  // Bandeau de la rédaction : reçoit le focus quand l'assistant de rédaction se ferme sur un résultat.
+  const aiBannerRef = useRef<HTMLDivElement>(null);
 
   return (
     <PageLayout maxWidth="xl">
@@ -384,7 +549,7 @@ export function SequenceCreatePage() {
 
       {initial.state === 'error' && (
         <ErrorState
-          title={START_ERRORS[start.kind]}
+          title={propositionParam ? PROPOSAL_ERROR : START_ERRORS[start.kind]}
           description="Vérifiez votre connexion puis réessayez, ou partez d’une séquence vide."
           onRetry={() => setAttempt((n) => n + 1)}
           action={
@@ -411,7 +576,8 @@ export function SequenceCreatePage() {
             saveState={session.flow.state === 'saving' || session.flow.state === 'error' ? session.flow.state : 'unsaved'}
             enrollHref={null}
           />
-          {showFreeNotice && (
+          {/* Rédaction par l'IA : la formule gratuite est dite dans le bandeau de la rédaction (un seul cadre), et au toast d'enregistrement. */}
+          {!aiMode && showFreeNotice && (
             <Banner
               tone="info"
               icon={Lock}
@@ -428,6 +594,32 @@ export function SequenceCreatePage() {
               {FREE_PLAN_NOTICE}
             </Banner>
           )}
+          {aiMode && aiFilled && (
+            <div ref={aiBannerRef} tabIndex={-1} className="mb-4 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Banner
+                tone="info"
+                icon={Sparkles}
+                className="rounded-lg border"
+                action={missionId ? (
+                  <Button type="button" variant="link" onClick={() => setWizardOpen(true)} className={`h-auto shrink-0 p-0 ${bannerActionClass} max-sm:hidden`}>
+                    Rédiger à nouveau
+                  </Button>
+                ) : undefined}
+              >
+                {AI_DRAFT_BANNER}
+                {/* Formule gratuite (décision 6) : préparée, enregistrée sans envoi automatique. */}
+                {freePlan && <span className="mt-1 block text-foreground-secondary">{AI_DRAFT_FREE_PLAN}</span>}
+                {/* Sous 640 px, l'action passe sous le texte (à côté, le texte n'aurait plus la place). */}
+                {missionId && (
+                  <span className="block sm:hidden">
+                    <Button type="button" variant="link" onClick={() => setWizardOpen(true)} className={`h-auto min-h-11 p-0 ${bannerActionClass}`}>
+                      Rédiger à nouveau
+                    </Button>
+                  </span>
+                )}
+              </Banner>
+            </div>
+          )}
           <Tabs value={tab} onValueChange={setTab}>
             <SequenceTabs
               active={tab}
@@ -439,6 +631,18 @@ export function SequenceCreatePage() {
               settingsAlert={session.validation.errors.some((e) => e.area === 'senders')}
             />
             <TabsContent value="etapes" className="mt-6">
+              {aiMode && !aiFilled ? (
+                // Avant la rédaction : l'assistant de rédaction est ouvert par-dessus.
+                <div className="mx-auto w-full max-w-md space-y-3 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">Les étapes apparaîtront ici une fois la séquence rédigée.</p>
+                  {missionId && (
+                    <Button type="button" variant="outline" onClick={() => setWizardOpen(true)} className="max-md:h-11">
+                      <Sparkles aria-hidden="true" />
+                      Rédiger avec l’IA
+                    </Button>
+                  )}
+                </div>
+              ) : (
               <StepsEditor
                 editor={editor}
                 validation={session.validation}
@@ -449,7 +653,10 @@ export function SequenceCreatePage() {
                 extraKeys={session.customKeys}
                 onShowSettings={() => setTab('reglages')}
                 frozen={session.flow.saving}
+                askAI={askAI}
+                aiNotes={aiFilled ? aiNotes : undefined}
               />
+              )}
             </TabsContent>
             <TabsContent value="reglages" className="mt-6">
               <div ref={settingsAreaRef} aria-busy={session.flow.saving || undefined}>
@@ -467,6 +674,33 @@ export function SequenceCreatePage() {
           </Tabs>
           <SaveDialogs flow={session.flow} leave={session.leave} />
         </>
+      )}
+
+      {aiMode && missionId && (
+        <AIDraftWizard
+          open={wizardOpen}
+          onCancel={cancelWizard}
+          organizationId={organizationId}
+          missionId={missionId}
+          previousSettings={aiSettings}
+          replacing={aiFilled}
+          onDrafted={onDrafted}
+          focusAfterDraft={() => aiBannerRef.current}
+          onFromTemplate={() => {
+            setWizardOpen(false);
+            setTemplatesOpen(true);
+          }}
+        />
+      )}
+      {aiMode && (
+        <NewSequenceDialog
+          open={templatesOpen}
+          onOpenChange={setTemplatesOpen}
+          missionId={missionId}
+          missionLabel={mission.value ? [mission.value.name, mission.value.client].filter(Boolean).join(' · ') : null}
+          existingSequences={[]}
+          initialStep="templates"
+        />
       )}
     </PageLayout>
   );

@@ -124,8 +124,12 @@ test('assistant : inscription refusée sans offre qui permet l’envoi de séque
 
 // ------------------------------------------------------------ point 6 (D2)
 test('D2 — create_sequence : plus d’étape e-mail ni WhatsApp proposée', () => {
-  const types = sliceBetween(mutations, 'const SEQ_STEP_TYPES', '};');
-  assert.doesNotMatch(types, /email:|whatsapp/);
+  // Lot 5e : la forme est celle de la rédaction commune (sequence-draft.ts),
+  // dont les types d'étape ne comptent ni e-mail ni WhatsApp.
+  const draft = read('supabase/functions/_shared/sequence-draft.ts');
+  const types = sliceBetween(draft, "actionType: 'profile_visit'", ';');
+  assert.doesNotMatch(types, /email|whatsapp/);
+  assert.doesNotMatch(mutations, /const SEQ_STEP_TYPES/);
   const tool = toolBlock('create_sequence');
   const description = sliceBetween(tool, 'description:', 'category:');
   assert.doesNotMatch(description, /\|email\||emails \//);

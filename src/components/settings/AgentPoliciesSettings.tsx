@@ -58,7 +58,7 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'regenerate_search_filters', label: 'Régénérer les filtres LinkedIn', autoEligible: true },
   { name: 'apply_search_filters_to_mission', label: 'Appliquer les filtres de recherche', autoEligible: true },
   { name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: false, description: 'Peut déclencher des envois : approbation obligatoire' },
-  { name: 'create_sequence', label: 'Créer une séquence', autoEligible: true },
+  { name: 'create_sequence', label: 'Créer une séquence', autoEligible: false, description: "Messages rédigés par l'IA : approbation obligatoire" },
   { name: 'pause_sequence', label: 'Mettre en pause une séquence', autoEligible: true },
   { name: 'resume_sequence', label: 'Reprendre une séquence', autoEligible: false, description: 'Peut déclencher des envois : approbation obligatoire' },
   { name: 'draft_outreach_message', label: "Rédiger un message d'approche", autoEligible: true },

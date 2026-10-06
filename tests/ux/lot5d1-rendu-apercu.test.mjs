@@ -8,10 +8,12 @@
  *     interpolateAndStrip, le rendu du moteur, par
  *     supabase/functions/_shared/sequence-preview-values.test.ts (Deno) ;
  *   - module pur, sans import ;
- *   - la fonction draft-sequence est gratuite et n'écrit rien : aucune écriture
- *     en base, aucun débit de crédits, aucun appel sortant ; inscriptions lues
- *     avec le jeton de l'appelant ; textes visibles sans nom de fournisseur ni
- *     tiret long ;
+ *   - l'action preview_values de draft-sequence est gratuite et n'écrit rien :
+ *     aucune écriture en base, aucun débit de crédits, aucun appel sortant ;
+ *     inscriptions lues avec le jeton de l'appelant ; textes visibles sans nom
+ *     de fournisseur ni tiret long. Depuis le lot 5e, la même fonction porte
+ *     aussi prepare (gratuite) et draft (payante), dans compose.ts : index.ts
+ *     ne fait que les aiguiller ;
  *   - relecture adverse (5d-1) : seules les variables demandées (`keys`) sont
  *     rendues, jamais les variables personnelles d'un autre membre ; codes
  *     d'erreur dans `error_code` (invokeEdgeFunction) ; note d'invitation
@@ -32,6 +34,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 const RENDER = 'src/lib/templatePreview.ts';
 const FUNCTION = 'supabase/functions/draft-sequence/index.ts';
+const COMPOSE = 'supabase/functions/draft-sequence/compose.ts';
 const SHARED = 'supabase/functions/_shared/sequence-preview-values.ts';
 
 /** Module TypeScript pur chargé en mémoire (patron de barre-lot56-coquille). */
@@ -73,9 +76,19 @@ test('5D1-R4 module de rendu pur : aucun import', () => {
   assert.doesNotMatch(read(RENDER), /^\s*import\s/m);
 });
 
-test('5D1-R5 draft-sequence : gratuite, sans écriture ni appel sortant, inscriptions lues sous la RLS de l’appelant', () => {
+test('5D1-R5 draft-sequence, preview_values : gratuite, sans écriture ni appel sortant, inscriptions lues sous la RLS de l’appelant', () => {
   const fn = read(FUNCTION);
   const shared = read(SHARED);
+  // Lot 5e : prepare et draft vivent dans compose.ts, index.ts ne fait que les aiguiller.
+  assert.match(fn, /^import \{ handleDraft, handlePrepare \} from "\.\/compose\.ts";$/m);
+  assert.match(fn, /if \(action === "prepare"\) return await handlePrepare\(body,/);
+  assert.match(fn, /if \(action === "draft"\) return await handleDraft\(body,/);
+  // Dans compose.ts, seule l'action draft débite ; prepare n'appelle ni le modèle ni les crédits.
+  const compose = read(COMPOSE);
+  const prepare = compose.slice(compose.indexOf('async function prepare('), compose.indexOf('async function draft('));
+  assert.ok(prepare.length > 0, 'prepare avant draft');
+  assert.match(compose, /export const handlePrepare = guarded\("prepare", prepare\);/);
+  assert.doesNotMatch(prepare, /assertCredits\(|settleCredits\(|callModel\(|callClaudeCompat\(|\.(insert|update|upsert|delete)\(|\.rpc\(/, 'prepare : gratuite et sans écriture');
   for (const [name, src] of [[FUNCTION, fn], [SHARED, shared]]) {
     assert.doesNotMatch(src, /\.(insert|update|upsert|delete)\(|\.rpc\(/, `${name} n'écrit rien`);
     assert.doesNotMatch(src, /settleCredits|settle-credits|credit-guard|ai_credit/, `${name} ne débite rien`);

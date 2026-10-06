@@ -66,6 +66,13 @@ jobs:
       # de l'écran de la carte « Maintenant ».
       - name: Lot 3 regression tests (carte Maintenant)
         run: node --test tests/c1/lot3-*.test.mjs
+      # Refonte des séquences, lot 5e : rédaction par l'IA (draft-sequence :
+      # crédits avant l'appel, aucune écriture hors débit, aucun module
+      # LinkedIn ; create_sequence jamais automatique, écrit par
+      # save_sequence_steps ; text-action contrôlé en contexte séquence ;
+      # seule la RPC écrit sequence_steps).
+      - name: Lot 5e regression tests (rédaction par l'IA)
+        run: node --test tests/c1/lot5e-redaction.test.mjs
       # Photos des candidats : la notation garde la photo LinkedIn enregistrée,
       # le rafraîchissement des adresses est branché (tests sans dépendance).
       - name: Photos des candidats (notation)
@@ -123,11 +130,12 @@ jobs:
       # le second test les transpile avec esbuild. Lot 5d-2 : gardes de l'éditeur
       # unique (seq-v2-editeur) et parité de la charge envoyée à
       # save_sequence_steps avec l'ancien éditeur (seq-v2-charge-utile, hook
-      # d'édition réel empaqueté avec esbuild).
+      # d'édition réel empaqueté avec esbuild). Lot 5e : écrans de la rédaction
+      # par l'IA (lot5e-redaction-ecrans).
       - name: Lot 5c tests (socle des pages Séquences)
         env:
           TZ: Europe/Paris
-        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs
+        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs tests/ux/lot5e-redaction-ecrans.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié

@@ -73,6 +73,7 @@ import { SequenceDiagnostic } from './SequenceDiagnostic';
 const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector } from './SequenceTemplateSelector';
 import { NewSequenceDialog } from '@/components/sequences/NewSequenceDialog';
+import { MissionSequencesEmpty } from '@/components/sequences/ai/AIDraftDoor';
 import { SaveAsTemplateModal } from './SaveAsTemplateModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -98,6 +99,12 @@ interface SequencesListProps {
    * n'y tiennent pas : le nom s'y écrivait une lettre par ligne.
    */
   layout?: 'auto' | 'compact';
+  /**
+   * Panneau ouvert à côté d'une page qui a déjà son bouton plein : la porte de
+   * rédaction (lot 5e) passe en bouton discret, un seul bouton plein à l'écran
+   * (docs/design/06-simplicite.md, règle 2).
+   */
+  besidePage?: boolean;
 }
 
 // L'API renvoie au plus 1 000 lignes par requête : au-delà, les compteurs
@@ -134,6 +141,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   createRequestId = 0,
   onDataChanged,
   layout = 'auto',
+  besidePage = false,
 }) => {
   // Colonnes à partir de 1 024 px, sauf dans un conteneur étroit.
   const wide = layout === 'auto';
@@ -188,6 +196,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   // « Nouvelle séquence » de l'éditeur unique (drapeau konekt.sequences-v2 allumé, lot 5d-2).
   const [newDialogOpen, setNewDialogOpen] = useState(false);
+  // Lot 5e : « Depuis un modèle » de l'état vide ouvre la fenêtre sur les modèles.
+  const [newDialogStep, setNewDialogStep] = useState<'choice' | 'templates'>('choice');
   const [saveTemplateSeq, setSaveTemplateSeq] = useState<SequenceWithStats | null>(null);
   // Échec du chargement de la liste : état d'erreur avec « Réessayer », jamais
   // l'accueil « Créer ma première séquence » (on croyait tout supprimé).
@@ -406,6 +416,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     if (sequencesBeta) setNewDialogOpen(true);
     else setShowTemplateSelector(true);
   };
+  // Lot 5e, porte 1 (drapeau allumé) : la mission n'a aucune séquence, l'état vide porte le seul bouton plein.
+  const showMissionDoor = sequencesBeta && !!projectId && !loading && !loadError && sequences.length === 0;
 
   const handleSelectBlank = () => {
     setShowTemplateSelector(false);
@@ -672,6 +684,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             onRetry={handleRetry}
             retrying={retrying}
           />
+        ) : showMissionDoor && projectId ? (
+          // Lot 5e, porte 1 : rédiger la séquence de la mission à partir du poste.
+          <MissionSequencesEmpty
+            missionId={projectId}
+            quiet={besidePage}
+            onFromTemplate={() => {
+              setNewDialogStep('templates');
+              setNewDialogOpen(true);
+            }}
+          />
         ) : sequences.length === 0 ? (
           <EmptyState
             illustration="envoi"
@@ -809,7 +831,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="sequences-title" className="text-base font-semibold text-foreground">Séquences</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {!isMobile && (
+          {/* Porte de rédaction affichée : l'état vide porte seul les départs, sans commandes qui ne demandent rien. */}
+          {!isMobile && !showMissionDoor && (
             <>
               {/* Enveloppe : un bouton grisé ne reçoit pas le survol, l'aide reste lisible. */}
               <Tooltip>
@@ -854,7 +877,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               <TooltipContent>Plus d'actions</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end" className="w-72">
-              {isMobile && (
+              {isMobile && !showMissionDoor && (
                 <>
                   <DropdownMenuItem
                     onClick={() => setNudgeConfirmOpen(true)}
@@ -884,10 +907,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button type="button" variant="primary" size="sm" onClick={handleCreateNew} className="max-md:h-11">
-            <Plus aria-hidden="true" />
-            Créer une séquence
-          </Button>
+          {!showMissionDoor && (
+            <Button type="button" variant="primary" size="sm" onClick={handleCreateNew} className="max-md:h-11">
+              <Plus aria-hidden="true" />
+              Créer une séquence
+            </Button>
+          )}
         </div>
       </div>
 
@@ -918,9 +943,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       {sequencesBeta && (
         <NewSequenceDialog
           open={newDialogOpen}
-          onOpenChange={setNewDialogOpen}
+          onOpenChange={(open) => {
+            setNewDialogOpen(open);
+            if (!open) setNewDialogStep('choice');
+          }}
           missionId={projectId ?? null}
           existingSequences={sequences.filter(canManage)}
+          initialStep={newDialogStep}
         />
       )}
 

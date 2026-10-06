@@ -148,14 +148,20 @@ export function sequencePath(id: string, fromMissionId?: string | null): string 
 /** Segment de l'adresse d'une séquence pas encore créée (/sequences/nouvelle, lot 5d-2). */
 export const NEW_SEQUENCE_SLUG = 'nouvelle';
 
-/** Départ d'une nouvelle séquence : vide, modèle Konekt ou de l'organisation, copie d'une séquence. */
+/**
+ * Départ d'une nouvelle séquence : vide, modèle Konekt ou de l'organisation,
+ * copie d'une séquence, rédaction par l'IA à partir du poste de la mission
+ * (lot 5e ; &proposition=<id> pour une proposition de l'assistant).
+ */
 export type NewSequenceStart =
   | { kind: 'zero' }
   | { kind: 'modele'; key: string }
-  | { kind: 'copie'; id: string };
+  | { kind: 'copie'; id: string }
+  | { kind: 'ia' };
 
-/** Valeur de &depart= : zero, modele:<clé>, copie:<id>. Toute autre valeur : null. */
+/** Valeur de &depart= : zero, ia, modele:<clé>, copie:<id>. Toute autre valeur : null. */
 export function parseNewSequenceStart(raw: string | null | undefined): NewSequenceStart | null {
+  if (raw === 'ia') return { kind: 'ia' };
   if (!raw || raw === 'zero') return raw === 'zero' ? { kind: 'zero' } : null;
   const sep = raw.indexOf(':');
   if (sep <= 0) return null;
@@ -168,11 +174,21 @@ export function parseNewSequenceStart(raw: string | null | undefined): NewSequen
 }
 
 /**
- * Nouvelle séquence : /sequences/nouvelle?mission=<id>&depart=zero|modele:<clé>|copie:<id>.
+ * Nouvelle séquence : /sequences/nouvelle?mission=<id>&depart=zero|ia|modele:<clé>|copie:<id>.
  * Rien n'est écrit avant « Enregistrer ».
  */
 export function newSequencePath(start: NewSequenceStart, missionId?: string | null): string {
-  const depart = start.kind === 'zero' ? 'zero' : start.kind === 'modele' ? `modele:${start.key}` : `copie:${start.id}`;
+  const depart = start.kind === 'zero' || start.kind === 'ia' ? start.kind : start.kind === 'modele' ? `modele:${start.key}` : `copie:${start.id}`;
   const params = [missionId ? `mission=${encodeURIComponent(missionId)}` : null, `depart=${encodeURIComponent(depart).replace('%3A', ':')}`].filter(Boolean);
   return `${SEQUENCES_PATH}/${NEW_SEQUENCE_SLUG}?${params.join('&')}`;
+}
+
+/**
+ * Séquence proposée par l'assistant (outil create_sequence, lot 5e) reprise
+ * dans l'éditeur : /sequences/nouvelle?depart=ia&proposition=<id de
+ * l'exécution>. L'éditeur relit la ligne agent_tool_executions de l'appelant
+ * (étapes au format de l'éditeur dans dry_run_result.details.steps).
+ */
+export function aiProposalSequencePath(executionId: string): string {
+  return `${SEQUENCES_PATH}/${NEW_SEQUENCE_SLUG}?depart=ia&proposition=${encodeURIComponent(executionId)}`;
 }
