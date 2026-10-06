@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CalendarPlus, Check, CheckCircle2, Circle, CircleDot, Copy, FileText, Loader2, Mic,
-  Search, Square, User, X,
+  ScreenShare, Search, Square, User, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,7 +24,14 @@ import { ModelPicker } from '@/components/ai/ModelPicker';
 import { CreateEventModal } from '@/components/calendar/CreateEventModal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { mergeDigDeeper, shouldAnalyze, shouldShowTopic } from '@/lib/liveCoachCadence';
+import {
+  DisplayAudioError, captureDisplayAudio, displayAudioSupported, readCaptureMode, recorderOptions, storeCaptureMode,
+  transcriptionUrl, turnPiece,
+  type CaptureMode, type DisplayAudioCapture, type SpeakerSource,
+} from '@/lib/liveAudioCapture';
 import { AudioSetupGuide } from './AudioSetupGuide';
 
 interface Criterion {
@@ -118,6 +125,63 @@ const SIGNALS = {
 /** Démarrage refusé pour une raison à dire telle quelle. */
 class StartError extends Error {}
 
+/** Locuteur 0 : la personne au micro. Les autres voix : le candidat. */
+const speakerLabel = (speaker: number) => (speaker === 0 ? 'Recruteur' : 'Candidat');
+
+/** Une source transcrite : son flux audio, son enregistreur et sa connexion de transcription. */
+interface TranscriptionSource {
+  kind: SpeakerSource;
+  socket: WebSocket;
+  recorder: MediaRecorder;
+  stream: MediaStream;
+}
+
+/** Ferme les sources : transcription terminée proprement, enregistreurs et pistes arrêtés. */
+function stopSources(sources: TranscriptionSource[]) {
+  for (const source of sources) {
+    if (source.socket.readyState === WebSocket.OPEN) {
+      source.socket.send(JSON.stringify({ type: 'CloseStream' }));
+      source.socket.close();
+    }
+    if (source.recorder.state !== 'inactive') source.recorder.stop();
+    source.stream.getTracks().forEach((t) => t.stop());
+  }
+}
+
+/** Dit pourquoi le démarrage (ou la reprise du partage) a échoué, dans les mots de la personne. */
+function toastStartError(err: unknown) {
+  if (err instanceof DisplayAudioError) {
+    if (err.reason === 'cancelled') {
+      toast.error('Partage annulé', {
+        description: "Pour entendre le candidat, partagez l'onglet ou l'écran de la visio, ou choisissez « Sur place ».",
+      });
+    } else if (err.reason === 'no-audio') {
+      toast.error('Aucun son partagé', {
+        description: "Dans la fenêtre de partage, cochez « Partager aussi l'audio ». Une application installée se partage par l'écran entier (Windows).",
+      });
+    } else {
+      toast.error("Le partage de l'audio n'a pas pu démarrer", {
+        description: "Réessayez, ou choisissez « Sur place » pour utiliser le micro seul.",
+      });
+    }
+    return;
+  }
+  const e = err as { name?: string; message?: string };
+  if (e?.name === 'NotAllowedError') {
+    toast.error('Accès au microphone refusé', {
+      description: 'Autorisez le microphone pour ce site dans votre navigateur, puis réessayez.',
+    });
+  } else if (e?.name === 'NotFoundError' || e?.message?.toLowerCase?.().includes('device not found')) {
+    toast.error('Aucun microphone détecté', {
+      description: 'Branchez ou choisissez un microphone, puis réessayez.',
+    });
+  } else if (err instanceof StartError) {
+    toast.error(err.message);
+  } else {
+    toast.error("Impossible de démarrer l'enregistrement", { description: 'Réessayez dans un instant.' });
+  }
+}
+
 /** Bouton icône : nom accessible et infobulle, cible de 44 px sur téléphone. */
 function IconAction({
   label, onClick, children, className,
@@ -189,6 +253,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [digDeeper, setDigDeeper] = useState<DigDeeperItem[]>([]);
   const digDeeperRef = useRef<DigDeeperItem[]>([]);
   const [nextTopic, setNextTopic] = useState<NextTopicItem | null>(null);
+  // Sujet affiché et instant d'affichage : un sujet reste lisible avant d'être remplacé.
+  const nextTopicRef = useRef<NextTopicItem | null>(null);
+  const topicShownAtRef = useRef(0);
   const [criteriaStatus, setCriteriaStatus] = useState<Record<string, CriterionUpdate>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -200,11 +267,20 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [elapsedDisplay, setElapsedDisplay] = useState('00:00');
   const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // Source de l'audio : choix de la personne (gardé d'une séance à l'autre) et séance en cours.
+  const [meetingSupported] = useState(() => displayAudioSupported());
+  const [captureMode, setCaptureMode] = useState<CaptureMode>(() => readCaptureMode());
+  const [meetingActive, setMeetingActive] = useState(false);
+  const [meetingAudioLost, setMeetingAudioLost] = useState(false);
+  const [restartingMeeting, setRestartingMeeting] = useState(false);
   const introLockedRef = useRef(true); // Le sujet suivant reste sur l'introduction tant que l'échange n'a pas commencé.
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const socketRef = useRef<WebSocket | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // Une source par flux audio : le micro, et l'audio partagé de la visio quand il y en a un.
+  const sourcesRef = useRef<TranscriptionSource[]>([]);
+  const meetingCaptureRef = useRef<DisplayAudioCapture | null>(null);
+  const openSourceRef = useRef<((stream: MediaStream, kind: SpeakerSource, key: string) => void) | null>(null);
+  const interimSourceRef = useRef<SpeakerSource | null>(null);
   const fullTranscriptRef = useRef('');
   const callStartRef = useRef(0);
   const pendingFinalTextRef = useRef('');
@@ -222,21 +298,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const onRecordingChangeRef = useRef(onRecordingChange);
   onRecordingChangeRef.current = onRecordingChange;
 
-  const speakerLabel = (speaker: number) => (speaker === 0 ? 'Recruteur' : 'Candidat');
-  const COACH_INTERVAL_MS = 12000;
-
   // Démontage : minuteur, micro et transcription s'arrêtent.
   useEffect(() => {
     return () => {
       stoppingRef.current = true;
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      if (mediaRecorderRef.current) {
-        if (mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-      }
-      if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.close();
-      }
+      stopSources(sourcesRef.current);
+      meetingCaptureRef.current?.release();
       onRecordingChangeRef.current?.(false);
     };
   }, []);
@@ -260,6 +328,13 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     }
     if (Object.keys(autoScores).length > 0) onAutoScoresRef.current(autoScores);
   }, [criteriaStatus]);
+
+  // Affiche un sujet et note l'instant : il reste lisible avant d'être remplacé (liveCoachCadence).
+  const showTopic = useCallback((topic: NextTopicItem) => {
+    nextTopicRef.current = topic;
+    topicShownAtRef.current = Date.now();
+    setNextTopic(topic);
+  }, []);
 
   const analyzeWithCoach = useCallback(async (params: {
     sessionId: string;
@@ -299,12 +374,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         });
       }
 
-      // Nouveaux points à creuser, sans doublon ; les anciens restent jusqu'à leur retrait.
+      // Nouveaux points à creuser, sans doublon ; les plus récents seuls restent à l'écran.
       if (d.dig_deeper?.length) {
         setDigDeeper((prev) => {
-          const existingSignals = new Set(prev.map((item) => item.signal));
-          const newItems = d.dig_deeper.filter((item) => !existingSignals.has(item.signal));
-          const next = [...prev, ...newItems];
+          const next = mergeDigDeeper(prev, d.dig_deeper);
           digDeeperRef.current = next;
           return next;
         });
@@ -324,13 +397,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         if (introLockedRef.current && params.fullTranscript.length > 200) {
           introLockedRef.current = false;
         }
-        if (!introLockedRef.current) {
-          setNextTopic((prev) => {
-            if (!prev) return d.next_topic;
-            const normalize = (s: string) => s.replace(/[^\w\s]/g, '').toLowerCase().trim().slice(0, 20);
-            if (normalize(prev.topic) === normalize(d.next_topic.topic)) return prev;
-            return d.next_topic;
-          });
+        // Un sujet déjà affiché garde sa place tant que son délai de lecture n'est pas écoulé.
+        if (!introLockedRef.current && shouldShowTopic(nextTopicRef.current, d.next_topic, topicShownAtRef.current, Date.now())) {
+          showTopic(d.next_topic);
         }
       }
     } catch (err) {
@@ -338,16 +407,29 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedModel]);
+  }, [selectedModel, showTopic]);
+
+  // Fin du partage de l'audio (onglet fermé, bouton « Arrêter le partage » du navigateur).
+  const onMeetingEnded = useCallback(() => {
+    if (!stoppingRef.current) setMeetingAudioLost(true);
+  }, []);
 
   const startRecording = useCallback(async () => {
     if (starting) return;
     setStarting(true);
+    // Flux ouverts avant la séance : relâchés si une étape échoue.
+    let micStream: MediaStream | null = null;
+    let meeting: DisplayAudioCapture | null = null;
     try {
-      // getUserMedia en premier, dans le geste de la personne : le navigateur l'exige.
-      let stream: MediaStream;
+      const withMeeting = meetingSupported && captureMode === 'meeting';
+
+      // Le partage d'écran exige un geste récent de la personne : il passe avant le micro,
+      // dont l'autorisation peut attendre longtemps une réponse.
+      if (withMeeting) meeting = await captureDisplayAudio();
+
+      // Le micro, dans le geste de la personne quand il passe en premier : le navigateur l'exige.
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
@@ -356,16 +438,21 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         });
       } catch (primaryError) {
         console.warn('Primary microphone constraints failed, retrying with basic audio:', primaryError);
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new StartError('Votre session a expiré. Reconnectez-vous, puis réessayez.');
+
+      // Clé de la transcription demandée avant la séance : si elle échoue, aucune séance vide
+      // n'est créée et aucune introduction n'est facturée.
+      const { data: keyData, error: keyError } = await invokeEdgeFunction<{ key?: string }>('deepgram-temp-key');
+      if (keyError || !keyData?.key) {
+        throw new StartError('La transcription est indisponible. Réessayez dans un instant.');
+      }
+      const transcriptionKey = keyData.key;
 
       // Session enregistrée en base.
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        stream.getTracks().forEach((t) => t.stop());
-        throw new StartError('Votre session a expiré. Reconnectez-vous, puis réessayez.');
-      }
-
       const orgId = await getActiveOrganizationId();
       const { data: session, error: sessionError } = await supabase
         .from('call_coaching_sessions')
@@ -379,10 +466,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         .select('id')
         .single();
 
-      if (sessionError || !session) {
-        stream.getTracks().forEach((t) => t.stop());
-        throw sessionError || new Error('Failed to create session');
-      }
+      if (sessionError || !session) throw sessionError || new Error('Failed to create session');
       setSessionId(session.id);
 
       // Accroche personnalisée, premier sujet proposé (sans bloquer le démarrage).
@@ -397,7 +481,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         criteria: criteria.map((c) => c.label),
       }).then(({ data }) => {
         if (data?.intro) {
-          setNextTopic({
+          showTopic({
             topic: 'Introduction',
             transition: data.intro,
             why: `Accroche personnalisée pour ${candidateName}`,
@@ -405,91 +489,101 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         }
       }).catch(() => {}).finally(() => setLoadingIntro(false));
 
-      // Clé temporaire du service de transcription.
-      const { data: keyData, error: keyError } = await invokeEdgeFunction<{ key?: string }>('deepgram-temp-key');
-      if (keyError || !keyData?.key) {
-        stream.getTracks().forEach((t) => t.stop());
-        throw new StartError('La transcription est indisponible. Réessayez dans un instant.');
-      }
-
       callStartRef.current = Date.now();
       fullTranscriptRef.current = '';
       pendingFinalTextRef.current = '';
       lastCoachCallRef.current = 0;
+      lastSpeakerRef.current = null;
+      interimSourceRef.current = null;
       stoppingRef.current = false;
       setTranscriptionLost(false);
+      setMeetingAudioLost(false);
 
-      // Connexion au service de transcription.
-      const dgSocket = new WebSocket(
-        'wss://api.deepgram.com/v1/listen?' +
-        new URLSearchParams({
-          model: 'nova-3',
-          language: 'fr',
-          punctuate: 'true',
-          smart_format: 'true',
-          interim_results: 'true',
-          utterance_end_ms: '1500',
-          endpointing: '300',
-          vad_events: 'true',
-          diarize: 'true',
-        }).toString(),
-        ['token', keyData.key],
-      );
-
-      socketRef.current = dgSocket;
-
-      // Enregistreur sur le flux déjà obtenu.
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && dgSocket.readyState === WebSocket.OPEN) {
-          dgSocket.send(event.data);
-        }
+      const flagLost = (kind: SpeakerSource) => {
+        if (kind === 'meeting') setMeetingAudioLost(true);
+        else setTranscriptionLost(true);
       };
 
-      dgSocket.onopen = () => {
-        mediaRecorder.start(250);
-      };
+      // Une source = un flux audio, sa connexion de transcription et son enregistreur.
+      // Avec l'audio partagé, chaque voix a sa source : le micro est le recruteur, l'audio
+      // partagé le candidat, sans distinction des voix à demander au service.
+      const openSource = (stream: MediaStream, kind: SpeakerSource, key: string) => {
+        const socket = new WebSocket(transcriptionUrl(!withMeeting), ['token', key]);
+        const recorder = new MediaRecorder(stream, recorderOptions());
+        sourcesRef.current.push({ kind, socket, recorder, stream });
 
-      dgSocket.onmessage = async (msg) => {
-        const data = JSON.parse(msg.data);
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
+          }
+        };
 
-        if (data.type === 'Results') {
-          const alt = data.channel?.alternatives?.[0];
-          if (!alt) return;
+        socket.onopen = () => {
+          recorder.start(250);
+        };
 
-          if (data.is_final) {
-            const finalText = alt.transcript?.trim();
-            const words = alt.words || [];
-            const speaker = words.length > 0 ? (words[0].speaker ?? 0) : (lastSpeakerRef.current ?? 0);
+        socket.onmessage = async (msg) => {
+          const data = JSON.parse(msg.data);
 
-            if (finalText) {
-              pendingFinalTextRef.current += ' ' + finalText;
-              fullTranscriptRef.current += ' ' + finalText;
+          if (data.type === 'Results') {
+            const alt = data.channel?.alternatives?.[0];
+            if (!alt) return;
 
-              setSegments((prev) => {
-                if (prev.length > 0 && prev[prev.length - 1].speaker === speaker) {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
-                    ...updated[updated.length - 1],
-                    text: updated[updated.length - 1].text + ' ' + finalText,
-                  };
-                  return updated;
-                }
-                return [...prev, { speaker, text: finalText }];
-              });
-              lastSpeakerRef.current = speaker;
+            if (data.is_final) {
+              const finalText = alt.transcript?.trim();
+              const words = alt.words || [];
+              const speaker = withMeeting
+                ? (kind === 'mic' ? 0 : 1)
+                : (words.length > 0 ? (words[0].speaker ?? 0) : (lastSpeakerRef.current ?? 0));
+
+              if (finalText) {
+                const piece = turnPiece(lastSpeakerRef.current, speaker, finalText, withMeeting, speakerLabel);
+                pendingFinalTextRef.current += piece;
+                fullTranscriptRef.current += piece;
+
+                setSegments((prev) => {
+                  if (prev.length > 0 && prev[prev.length - 1].speaker === speaker) {
+                    const updated = [...prev];
+                    updated[updated.length - 1] = {
+                      ...updated[updated.length - 1],
+                      text: updated[updated.length - 1].text + ' ' + finalText,
+                    };
+                    return updated;
+                  }
+                  return [...prev, { speaker, text: finalText }];
+                });
+                lastSpeakerRef.current = speaker;
+              }
+              // Le texte en cours d'une autre source n'est pas effacé par cette phrase finale.
+              if (interimSourceRef.current === kind) setInterimText('');
+
+              // Analyse quand assez de texte neuf s'est accumulé et que le délai minimal est écoulé.
+              const now = Date.now();
+              if (shouldAnalyze({ now, lastCallAt: lastCoachCallRef.current, pendingChars: pendingFinalTextRef.current.trim().length })) {
+                lastCoachCallRef.current = now;
+                const chunkForCoach = pendingFinalTextRef.current.trim();
+                pendingFinalTextRef.current = '';
+
+                analyzeWithCoach({
+                  sessionId: session.id,
+                  fullTranscript: fullTranscriptRef.current,
+                  latestChunk: chunkForCoach,
+                  criteria,
+                  jobContext,
+                  elapsedSeconds: Math.round((now - callStartRef.current) / 1000),
+                  pendingSignals: digDeeperRef.current,
+                });
+              }
+            } else if (alt.transcript?.trim()) {
+              interimSourceRef.current = kind;
+              setInterimText(alt.transcript);
             }
-            setInterimText('');
+          }
 
-            // Analyse toutes les 12 s, ou dès qu'assez de texte s'est accumulé (plus de 80 caractères).
+          if (data.type === 'UtteranceEnd') {
+            // Une pause de la voix tombe au bon moment, mais obéit aux mêmes règles que le reste.
             const now = Date.now();
-            const pendingLen = pendingFinalTextRef.current.trim().length;
-            if (
-              pendingLen > 0 &&
-              (now - lastCoachCallRef.current > COACH_INTERVAL_MS || pendingLen > 80)
-            ) {
+            if (shouldAnalyze({ now, lastCallAt: lastCoachCallRef.current, pendingChars: pendingFinalTextRef.current.trim().length })) {
               lastCoachCallRef.current = now;
               const chunkForCoach = pendingFinalTextRef.current.trim();
               pendingFinalTextRef.current = '';
@@ -504,41 +598,34 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                 pendingSignals: digDeeperRef.current,
               });
             }
-          } else if (alt.transcript?.trim()) {
-            setInterimText(alt.transcript);
           }
-        }
+        };
 
-        if (data.type === 'UtteranceEnd') {
-          if (pendingFinalTextRef.current.trim()) {
-            const now = Date.now();
-            lastCoachCallRef.current = now;
-            const chunkForCoach = pendingFinalTextRef.current.trim();
-            pendingFinalTextRef.current = '';
+        socket.onerror = (err) => {
+          console.error('Transcription socket error:', err);
+          if (stoppingRef.current) return;
+          flagLost(kind);
+          toast.error(
+            kind === 'meeting'
+              ? "La voix du candidat n'est plus transcrite."
+              : 'La transcription est indisponible. Réessayez dans un instant.',
+          );
+        };
 
-            analyzeWithCoach({
-              sessionId: session.id,
-              fullTranscript: fullTranscriptRef.current,
-              latestChunk: chunkForCoach,
-              criteria,
-              jobContext,
-              elapsedSeconds: Math.round((now - callStartRef.current) / 1000),
-              pendingSignals: digDeeperRef.current,
-            });
-          }
-        }
+        socket.onclose = () => {
+          if (!stoppingRef.current) flagLost(kind);
+        };
       };
 
-      dgSocket.onerror = (err) => {
-        console.error('Transcription socket error:', err);
-        if (stoppingRef.current) return;
-        setTranscriptionLost(true);
-        toast.error('La transcription est indisponible. Réessayez dans un instant.');
-      };
-
-      dgSocket.onclose = () => {
-        if (!stoppingRef.current) setTranscriptionLost(true);
-      };
+      sourcesRef.current = [];
+      openSourceRef.current = openSource;
+      openSource(micStream, 'mic', transcriptionKey);
+      if (meeting) {
+        meetingCaptureRef.current = meeting;
+        openSource(meeting.stream, 'meeting', transcriptionKey);
+        meeting.watched.forEach((track) => track.addEventListener('ended', onMeetingEnded));
+      }
+      setMeetingActive(Boolean(meeting));
 
       setIsRecording(true);
       timerIntervalRef.current = setInterval(() => {
@@ -548,42 +635,70 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         setElapsedDisplay(`${m}:${s}`);
       }, 1000);
       toast.success('Enregistrement démarré', {
-        description: "Parlez normalement\u00a0: l'assistant d'entretien suit la conversation.",
+        description: meeting
+          ? "Votre micro et l'audio partagé sont transcrits séparément : le candidat est entendu, même avec un casque."
+          : "Parlez normalement : l'assistant d'entretien suit la conversation.",
       });
     } catch (err) {
       console.error('Start recording error:', err);
-      const e = err as { name?: string; message?: string };
-      if (e?.name === 'NotAllowedError') {
-        toast.error('Accès au microphone refusé', {
-          description: 'Autorisez le microphone pour ce site dans votre navigateur, puis réessayez.',
-        });
-      } else if (e?.name === 'NotFoundError' || e?.message?.toLowerCase?.().includes('device not found')) {
-        toast.error('Aucun microphone détecté', {
-          description: 'Branchez ou choisissez un microphone, puis réessayez.',
-        });
-      } else if (err instanceof StartError) {
-        toast.error(err.message);
-      } else {
-        toast.error("Impossible de démarrer l'enregistrement", { description: 'Réessayez dans un instant.' });
-      }
+      // Les connexions ouvertes avant l'échec se ferment sans alerte de transcription.
+      stoppingRef.current = true;
+      stopSources(sourcesRef.current);
+      sourcesRef.current = [];
+      micStream?.getTracks().forEach((t) => t.stop());
+      meeting?.release();
+      meetingCaptureRef.current = null;
+      toastStartError(err);
     } finally {
       setStarting(false);
     }
   }, [
     starting, candidateId, candidateName, candidateHeadline, candidateProfileSummary, jobId, jobTitle, scorecardId,
-    criteria, jobContext, analyzeWithCoach,
+    criteria, jobContext, analyzeWithCoach, meetingSupported, captureMode, onMeetingEnded, showTopic,
   ]);
+
+  // Relance le partage de l'audio (onglet fermé, partage arrêté, mauvais onglet choisi) sans
+  // arrêter l'enregistrement : le micro continue, seule la source du candidat est remplacée.
+  const restartMeetingAudio = useCallback(async () => {
+    const openSource = openSourceRef.current;
+    if (restartingMeeting || !openSource) return;
+    setRestartingMeeting(true);
+    let next: DisplayAudioCapture | null = null;
+    try {
+      next = await captureDisplayAudio();
+      const { data: keyData, error: keyError } = await invokeEdgeFunction<{ key?: string }>('deepgram-temp-key');
+      if (keyError || !keyData?.key) {
+        throw new StartError('La transcription est indisponible. Réessayez dans un instant.');
+      }
+      // L'ancienne source est remplacée sans alerte.
+      const previous = sourcesRef.current.filter((s) => s.kind === 'meeting');
+      for (const s of previous) {
+        s.socket.onerror = null;
+        s.socket.onclose = null;
+      }
+      stopSources(previous);
+      meetingCaptureRef.current?.release();
+      sourcesRef.current = sourcesRef.current.filter((s) => s.kind !== 'meeting');
+      meetingCaptureRef.current = next;
+      openSource(next.stream, 'meeting', keyData.key);
+      next.watched.forEach((track) => track.addEventListener('ended', onMeetingEnded));
+      next = null;
+      setMeetingAudioLost(false);
+      toast.success("Partage de l'audio relancé");
+    } catch (err) {
+      console.error('Meeting audio restart error:', err);
+      next?.release();
+      toastStartError(err);
+    } finally {
+      setRestartingMeeting(false);
+    }
+  }, [restartingMeeting, onMeetingEnded]);
 
   const stopRecording = useCallback(() => {
     stoppingRef.current = true;
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'CloseStream' }));
-      socketRef.current.close();
-    }
-    if (mediaRecorderRef.current) {
-      if (mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-    }
+    stopSources(sourcesRef.current);
+    meetingCaptureRef.current?.release();
+    meetingCaptureRef.current = null;
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     setIsRecording(false);
     setCallStopped(true);
@@ -659,6 +774,19 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const title = isRecording ? 'Enregistrement en cours' : callStopped ? 'Enregistrement terminé' : "Assistant d'entretien";
   const idle = !isRecording && !callStopped;
 
+  // Source de l'audio : sans navigateur compatible, le micro seul est la seule source.
+  const effectiveMode: CaptureMode = meetingSupported ? captureMode : 'mic';
+  const captureLabelId = `${baseId}-source`;
+  const changeCaptureMode = (mode: CaptureMode) => {
+    setCaptureMode(mode);
+    storeCaptureMode(mode);
+  };
+  const captureHint = !meetingSupported
+    ? "Le partage de l'audio demande Chrome ou Edge sur ordinateur. Votre micro seul sera utilisé : la voix du candidat n'est captée que s'il parle par vos haut-parleurs."
+    : effectiveMode === 'meeting'
+      ? "Au démarrage, choisissez l'onglet de la visio (ou l'écran entier pour une application installée), puis cochez « Partager aussi l'audio »."
+      : "Votre micro capte les deux voix. Avec un casque, la voix du candidat n'est pas captée.";
+
   return (
     <section
       aria-labelledby={titleId}
@@ -714,7 +842,44 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               </p>
             )}
           </div>
-          <div className="border-t border-border p-3">
+          <div className="space-y-3 border-t border-border p-3">
+            <div className="space-y-1.5">
+              <p id={captureLabelId} className="eyebrow">Source de l'audio</p>
+              <ToggleGroup
+                type="single"
+                role="radiogroup"
+                aria-labelledby={captureLabelId}
+                variant="outline"
+                value={effectiveMode}
+                onValueChange={(value) => {
+                  if (value) changeCaptureMode(value as CaptureMode);
+                }}
+                className="grid grid-cols-2 gap-2"
+              >
+                <ToggleGroupItem
+                  value="meeting"
+                  disabled={!meetingSupported}
+                  className="h-auto items-start justify-start gap-2 p-2 text-left font-normal data-[state=on]:border-foreground data-[state=on]:bg-accent"
+                >
+                  <ScreenShare className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">Visio ou appel</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Micro et audio partagé</span>
+                  </span>
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="mic"
+                  className="h-auto items-start justify-start gap-2 p-2 text-left font-normal data-[state=on]:border-foreground data-[state=on]:bg-accent"
+                >
+                  <Mic className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">Sur place</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Micro seul</span>
+                  </span>
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-xs text-foreground-secondary">{captureHint}</p>
+            </div>
             <Button variant="primary" onClick={() => void startRecording()} loading={starting} className="w-full max-md:min-h-11">
               {!starting && <Mic aria-hidden="true" />}
               Démarrer l'enregistrement
@@ -744,6 +909,20 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                 <p className="text-xs text-foreground">
                   La transcription s'est interrompue. Arrêtez l'enregistrement, puis relancez-le.
                 </p>
+              </div>
+            )}
+
+            {meetingAudioLost && isRecording && (
+              <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-muted px-3 py-2">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" aria-hidden="true" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-xs text-foreground">
+                    Le partage de l'audio s'est arrêté&nbsp;: la voix du candidat n'est plus transcrite.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => void restartMeetingAudio()} loading={restartingMeeting}>
+                    Relancer le partage
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -887,6 +1066,14 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   </div>
                 )}
               </div>
+              {meetingActive && isRecording && !meetingAudioLost && (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>Voix du candidat&nbsp;: audio partagé</span>
+                  <Button variant="ghost" size="sm" onClick={() => void restartMeetingAudio()} loading={restartingMeeting}>
+                    Changer le partage
+                  </Button>
+                </div>
+              )}
             </section>
           </div>
 

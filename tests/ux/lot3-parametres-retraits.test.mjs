@@ -132,11 +132,14 @@ test('L3-9 — tableau de bord sans WhatsApp', () => {
 });
 
 // ---------------------------------------------------------------- 10. Intégrations
-test('L3-10 — Calendly et Aircall retirés du menu, plus de carte Notion par clé, proxy seulement s’il existe', () => {
+test('L3-10 — Calendly retiré du menu, Aircall relié depuis les réglages, plus de carte Notion par clé, proxy seulement s’il existe', () => {
   const integrations = read('src/components/settings/IntegrationsSettings.tsx');
-  for (const id of ['calendly', 'aircall']) {
-    assert.match(between(integrations, `id: '${id}'`, '\n  },'), /retired: true/, `${id} doit être retiré du menu d’ajout`);
-  }
+  assert.match(between(integrations, "id: 'calendly'", '\n  },'), /retired: true/, 'calendly doit être retiré du menu d’ajout');
+  // Aircall (téléphonie, 05/10/2026) : de retour dans le menu, état « connecté » posé par la liaison serveur.
+  const aircall = between(integrations, "id: 'aircall'", '\n  },');
+  assert.doesNotMatch(aircall, /retired: true/, 'aircall est proposé dans le menu d’ajout');
+  assert.match(aircall, /serverManagedConnection: true/, 'l’enregistrement des champs ne pose pas « connecté »');
+  assert.ok(integrations.includes('if (!config.serverManagedConnection) updates[config.connectedKey] = allFilled;'));
   // Retrait de Notion, étape 2 : la carte par clé API a disparu avec ses
   // colonnes (plus de clé à retirer), la connexion Notion de l'assistant reste
   // montée dans Connexions.
@@ -144,10 +147,12 @@ test('L3-10 — Calendly et Aircall retirés du menu, plus de carte Notion par c
   assert.doesNotMatch(integrations, /notion_api_key|notion_connected|_db_id|notionLogo/, 'plus de champ Notion par clé');
   assert.doesNotMatch(read('src/hooks/useOrganizationIntegrations.ts'), /notion_api_key/, 'plus de secret Notion à écrire');
   const connections = between(read('src/components/settings/shell/sections.tsx'), 'function ConnectionsSection()', '\n}\n');
-  assert.ok(connections.includes('<SettingsAnchor id="notion"><NotionConnectionCard /></SettingsAnchor>'), 'la carte Notion de l’assistant doit rester dans Connexions');
+  assert.ok(connections.includes('<SettingsAnchor id="applications"><AssistantConnectorsCard /></SettingsAnchor>'), 'la connexion Notion de l’assistant doit rester dans Connexions, dans la liste des applications');
   assert.ok(integrations.includes('!config.retired'));
-  // Une clé encore enregistrée garde la carte retirée visible, pour pouvoir la retirer.
-  assert.match(between(integrations, 'const visibleIntegrations', '});'), /config\.retired && config\.fields\.some\(f => f\.secret && !!values\[`\$\{f\.key\}_hint`\]\)/);
+  // Une clé encore enregistrée garde la carte visible (retirée du menu : pour la retirer ; Aircall : pour finir la liaison).
+  assert.match(between(integrations, 'const visibleIntegrations', '});'), /return config\.fields\.some\(f => f\.secret && !!values\[`\$\{f\.key\}_hint`\]\)/);
+  // Une carte déjà visible n'est pas aussi proposée dans le menu d'ajout.
+  assert.match(between(integrations, 'const hiddenIntegrations', ');'), /!visibleIntegrations\.some\(v => v\.id === config\.id\)/);
   const iGuard = integrations.indexOf('if (!hasProxy) return null;');
   assert.ok(iGuard >= 0, 'garde du proxy absente');
   assert.ok(iGuard < integrations.indexOf('<ProxyConfigPanel'), 'la garde précède le panneau du proxy');

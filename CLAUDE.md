@@ -123,6 +123,9 @@ This applies to (non-exhaustive) :
 
 **Before merging any UI change** : grep for `Unipile`, `Apollo`, `PDL`, `People Data Labs` in user-visible strings (JSX text, toast/sonner messages, tooltips, labels, placeholders).
 
+### Notion : un connecteur parmi d'autres (décision du 2026-10-04)
+Notion n'apparaît dans l'application que comme connecteur de l'assistant : une ligne de la liste « Applications connectées » (Paramètres › Connexions, `#applications`, `AssistantConnectorsCard` et `NotionConnectorRow`), son interrupteur dans le menu des connecteurs du chat et ses cartes d'outils (« Recherche dans Notion »). Rien d'autre : pas de carte à part, pas d'exemple « Notion » dans les textes ni dans les prompts, et jamais de mention de l'organisation interne de Konekt dans Notion, qui sert de modèle aux agents sans être une référence visible. Un connecteur d'organisation ne peut pas prendre un nom réservé (`RESERVED_BUILTIN_CONNECTORS`, `src/lib/assistantConnectors.ts`). Garde statique : `tests/ux/notion-connecteur-liste.test.mjs`.
+
 ---
 
 ## Code Map
@@ -266,6 +269,17 @@ subscription_plans         — plans (price_monthly/yearly per seat, limits.ai_c
 organization_subscriptions — plan_id, status (trialing/active/...), seats, trial_ends_at, stripe_* ids
 subscription_trial_grants  — un essai par utilisateur créateur (user_id PRIMARY KEY)
 candidate_enrichments      — .included = demande couverte par le forfait du plan
+phone_calls                — appels de l'opérateur relié (téléphonie, lot A1 : Aircall d'abord, Ringover ensuite), une ligne par
+                             (organisation, fournisseur, identifiant du fournisseur). Lue par les membres de l'organisation active,
+                             écrite seulement par record_phone_call (service_role, rejouable, un événement plus ancien est sans effet).
+                             contact_number_e164 = clé du rapprochement avec candidate_contacts.phone, fait À LA LECTURE
+                             (src/lib/phoneCalls.ts), jamais figé à l'écriture. talk_seconds = décroche → fin (la durée brute du
+                             fournisseur compte la sonnerie). Normalisation : supabase/functions/_shared/phone.ts, copie exacte dans
+                             src/lib/phone.ts (un test garde les deux identiques) ; un numéro ambigu rend null, jamais un faux rapprochement.
+                             Remplace aircall_calls (morte, 0 appel : retrait au lot I0).
+telephony_connections      — liaison d'une organisation à son opérateur : empreinte SHA-256 du jeton de webhook (c'est elle qui
+                             retrouve l'organisation, sans jeton partagé) et id du webhook chez le fournisseur. Illisible et
+                             inécrivable par tout rôle client ; l'état passe par get_telephony_status(org) (owner/admin).
 candidate_photos           : copie privée de la photo LinkedIn d'un candidat (design simplifié, lot P). Une ligne par
                              (organisation, candidat) : status (pending, stored, expired, failed, skipped, erased),
                              storage_path (seulement en stored). Fichier dans le bucket privé candidate-photos
@@ -403,13 +417,13 @@ LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
 Missions / pipeline: add-to-shortlist, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
                     accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin, resolve-client-logo (logo du client enregistré dans le brief, copie dans org-logos/{org}/clients/, appelée à l'affichage de la liste et de la mission)
 Notion:             notion-mcp-oauth (connexion Notion de l'assistant)
-Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook, calendly-webhook,
+Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook (reçoit les appels, organisation retrouvée par le jeton de la liaison), aircall-connect (relier ou délier le compte Aircall d'une organisation, owner/admin), calendly-webhook,
                     setup-calendly-webhook, backfill-calendly
 Extension Chrome:   extension-token, extension-quick-add, extension-pipeline-status
 RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge (compte seulement par défaut, lot 0c-2)
 Photos:             capture-candidate-photos (copie privée des photos LinkedIn des candidats, cron toutes les 2 min, lot P)
 ```
-72 fonctions (2026-10-05, resolve-client-logo puis capture-candidate-photos ajoutées ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
+73 fonctions (2026-10-05, aircall-connect ajoutée par la téléphonie lot A1 ; 72 après resolve-client-logo puis capture-candidate-photos ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
 
 ---
 
@@ -444,7 +458,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `BETTERCONTACT_CREDIT_COST_USD` | get-enrichment-status — prix d'un crédit fournisseur en dollars, pour renseigner `cost_usd` sur les débits d'enrichissement (sans jeton, le calcul par jetons donnerait zéro). Défaut 0.045, à remplacer par le tarif contracté |
 | `UNIPILE_V2_API_KEY` + `UNIPILE_V2_WEBHOOK_TOKEN` | `_shared/unipile-v2.ts` (importé par unipile-webhook, unipile-manage-webhooks) — API v2 activée seulement si la clé est posée |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
-| `AIRCALL_WEBHOOK_TOKEN` | aircall-webhook |
+| `AIRCALL_WEBHOOK_TOKEN` | **Retiré (téléphonie, lot A1)** : plus lu par aucune fonction, chaque liaison a son jeton propre (empreinte dans `telephony_connections`). À supprimer des secrets existants |
 | `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook (vérifie la signature), setup-calendly-webhook (la pose sur l'abonnement, refus s'il manque) |
 | `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, unipile-accounts, sequence-webhooks-handler, `_shared/unipile-v2.ts` |
 | `SEQUENCE_WEBHOOK_SECRET` | sequence-webhooks-handler |
@@ -636,6 +650,15 @@ Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par 
 - **Aucun message IA sans relecture (lot 5a-2)** : le moteur ne rédige plus jamais à l'envoi. Une exécution d'une étape à message (`needsMessage`) avec `use_ai_personalization`, sans texte relu (retouche validée à l'inscription `tracking_data.message_overrides[step_id]`, ou correction du Journal `final_message` d'une étape programmée ; une copie périmée du modèle n'en est pas un), ne part pas : règle pure `aiReviewRequired` (`_shared/sequence-send-rules.ts`), garde placée juste après `aiWillGenerate`, avant `hasTimeToLock`, le verrou et `checkQuotaForAction`. Effet : exécution laissée `scheduled`, `scheduled_at` + 1 h, `error_message` = « Message rédigé par l'IA à relire avant l'envoi. » (`AI_REVIEW_REQUIRED_MESSAGE`), comptée `skipped` ; ni appel au modèle, ni débit, ni place du plafond LinkedIn, ni pause, ni échec, ni `retry_count`, ni auto-pause. `generatePersonalizedMessage` reste dans le code, injoignable à l'envoi. Préparation (`EnrollmentPreviewModal`) : « Inscrire N candidats » désactivé tant qu'un candidat à inscrire n'a pas le texte de chaque étape IA (`aiReviewMissingCount`, `useEnrollmentPreview.ts`), avec « Générer tous les aperçus » ; puis case « J'ai relu les messages rédigés par l'IA » obligatoire quel que soit N, décochée par toute génération ou régénération (`aiGenerationVersion`) ; dès 5 candidats une seule case « Je confirme les destinataires et j'ai relu les messages rédigés par l'IA » (`sendConfirmation`, `contactRecipientsGuard.ts`) ; Récapitulatif : « Messages rédigés par l'IA » candidat par candidat (‹ ›). Après l'inscription : « Relire le message » sur l'étape reportée, dans le suivi (`SequenceEnrollmentsPanel`) et le Journal (collaborateur : ses inscriptions), ouvre `EditScheduledMessageModal` en relecture (modèle prérempli, « Proposer avec l'IA » : même génération d'aperçu, coût annoncé, `activity-log/proposeAiMessage.ts`, lectures seulement) ; « Enregistrer » n'écrit que `final_message` et `final_subject` d'une étape encore programmée, jamais `tracking_data` ; le moteur l'envoie au premier passage, au plus une heure plus tard, et la raison n'est plus affichée (`isAiReviewPending`, `scheduledExecutionError`, libellé `AI_REVIEW_REQUIRED_LABEL` de `sequenceErrorMessages.ts`). Aperçus (`generate-outreach-message`, correctif 2) : aucune rémunération dans le prompt, `detectSequenceViolations` passé sur l'aperçu (violations bloquantes corrigées une fois, puis revérifiées sur le texte final) ; une violation restante refuse l'aperçu (422, `error_code` `PREVIEW_NOT_COMPLIANT`, phrase française affichée sous l'aperçu, à régénérer). Gardes : `tests/ux/lot5a2-relecture-ia.test.mjs`, `sequence-send-rules.test.ts`, `e2e/api/seq-ai-review-guard.spec.ts`, `e2e/flows/seq-ai-review.spec.ts`.
 - **Tests du moteur** : `e2e/local-stack` (stack locale, faux prestataires scriptables par compte), `e2e/helpers/sequence-engine.ts`, fichiers `e2e/api/seq-*.spec.ts`, `e2e/flows/seq-*.spec.ts`, `supabase/tests/seq_*_audit.sql`.
 - Libellés communs : `src/lib/sequenceLabels.ts` (statuts, raisons de pause), `src/lib/sequenceErrorMessages.ts` (erreurs, `formatSkipReason`), `stepTypeLabel` de `src/components/outreach/sequence/sequenceGraph.ts` (types d'étape).
+
+### Assistant d'entretien en direct : capture audio (05/10/2026)
+Le micro seul n'entend pas le candidat quand on porte un casque : sa voix ne passe que dans les écouteurs. `LiveCoachingPanel` propose « Visio ou appel » (micro et audio partagé par `getDisplayMedia`, onglet ou écran entier ; choix gardé sous `konekt.live-capture-mode`) ou « Sur place » (micro seul). Règles pures dans `src/lib/liveAudioCapture.ts`.
+- Une connexion de transcription par flux : le micro est le Recruteur, l'audio partagé le Candidat, sans distinction des voix à demander au service (`diarize=false`). Le texte envoyé à `live-coach` et `generate-call-report` porte alors une ligne « [Recruteur] » ou « [Candidat] » à chaque changement de locuteur. Avec une seule piste (« Sur place », navigateur sans partage audio), le texte reste continu et la distinction des voix du service s'applique, comme avant.
+- Partage audio : Chrome et Edge sur ordinateur seulement (Firefox, Safari et mobiles l'ignorent). L'audio du système (application installée) n'existe que sous Windows ; sous macOS, seul l'audio d'un onglet se partage. `getDisplayMedia` passe avant `getUserMedia` (il exige un geste récent de la personne). La vidéo du partage est demandée au minimum (160 x 90, 1 image par seconde) et gardée : elle sert de témoin d'arrêt.
+- La clé temporaire (`deepgram-temp-key`) est demandée avant la création de la séance et de l'introduction : un démarrage qui échoue ne laisse plus de séance vide ni d'introduction facturée.
+- « Relancer le partage » et « Changer le partage » remplacent la source du candidat sans arrêter le micro.
+- Garde statique et comportement : `tests/ux/live-capture-audio.test.mjs`.
+- Cadence des suggestions (`src/lib/liveCoachCadence.ts`, garde `tests/ux/live-coach-cadence.test.mjs`) : une analyse seulement avec au moins 120 caractères de texte neuf ET 25 s depuis la précédente (la pause de la voix ne déclenche plus rien seule) ; un sujet suivant reste affiché au moins 45 s, une nouvelle suggestion attend l'analyse suivante ; 3 points à creuser au plus à l'écran, les plus récents. L'analyse finale à l'arrêt reste libre.
 
 ### Destructive actions — ALWAYS use AlertDialog
 ```typescript

@@ -149,14 +149,16 @@ test('carte texturée : fixe, texte clair dans les deux thèmes, survol qui asso
 
 test('accueil : le blocage LinkedIn est un bandeau texturé chaud au-dessus de la liste', () => {
   const html = focus({ linkedinIssue: true });
-  assert.match(html, /^<div class="konekt-card-tex konekt-card-tex--warm /);
+  // Le bandeau est le premier élément de l'espace de la section, avant la carte des lignes.
+  assert.match(html, /^<div class="[^"]*"><div class="konekt-card-tex konekt-card-tex--warm /);
   assert.match(html, />Compte LinkedIn à reconnecter</);
   assert.match(html, /href="\/settings\/account\/connections">Reconnecter</);
   assert.doesNotMatch(html, /<ul|<li/, 'seul, le bandeau n\'ouvre pas de liste vide');
 
   const both = focus({ linkedinIssue: true, unreadMessages: 2 });
   assert.ok(both.indexOf('konekt-card-tex--warm') < both.indexOf('<ul '), 'le bandeau précède la liste');
-  assert.match(both, /<ul class="[^"]*\bmt-3\b[^"]*"><li class="flex items-start gap-3\.5 py-4 sm:items-center">/);
+  // Les lignes sont posées sur une carte (relief, 01-direction.md § 4), sous le bandeau.
+  assert.match(both, /<div class="rounded-xl border border-border bg-card [^"]*"><ul class="divide-y divide-border px-5"><li class="flex items-start gap-3\.5 py-4 sm:items-center">/);
   assert.equal((both.match(/konekt-card-tex/g) || []).length, 2, 'un seul bandeau (classe de base et teinte), aucune ligne texturée');
 
   // Sans blocage, aucune texture : le rendu des lignes est celui d'avant.

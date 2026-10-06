@@ -25,9 +25,13 @@ interface BannerProps {
   className?: string;
 }
 
-/** Style d'une action de bandeau (lien ou bouton texte). */
+/**
+ * Style d'une action de bandeau (lien ou bouton texte). Sur téléphone, la cible
+ * atteint 44 px de haut (texte centré) : le bandeau, plus haut que son texte
+ * replié, ne grandit pas.
+ */
 export const bannerActionClass =
-  "inline-flex shrink-0 items-center gap-1 rounded-md font-medium text-foreground underline underline-offset-2 transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex shrink-0 items-center gap-1 rounded-md font-medium text-foreground underline underline-offset-2 transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11";
 
 /**
  * Bandeau d'information pleine largeur, posé sous l'en-tête de l'application
@@ -50,12 +54,13 @@ export function Banner({
       {Icon && <Icon className={cn("h-4 w-4 shrink-0", t.icon)} aria-hidden="true" />}
       <p className="min-w-0 flex-1 text-foreground">{children}</p>
       {action}
+      {/* Croix de 36 px sur téléphone, zone de 44 px au doigt (::after) : le texte garde sa largeur. */}
       {onDismiss && (
         <button
           type="button"
           onClick={onDismiss}
           aria-label={dismissLabel}
-          className="-mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:w-9"
+          className="relative -mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:w-9 max-md:after:absolute max-md:after:-inset-1"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

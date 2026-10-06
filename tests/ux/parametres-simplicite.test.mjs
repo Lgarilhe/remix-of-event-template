@@ -83,10 +83,11 @@ const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(
 
 test('Carte : à plat sous le fournisseur des Paramètres, inchangée ailleurs', () => {
   const framed = render(card());
-  assert.match(framed, /^<div class="rounded-xl border border-border bg-card text-card-foreground p-6">/);
+  // Hors fournisseur : la carte garde son cadre et reçoit l'ombre légère du relief (01-direction.md, § 4).
+  assert.match(framed, /^<div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6">/);
   const plain = render(h(kit.CardPlainProvider, null, card()));
   assert.match(plain, /^<div class="text-card-foreground p-6 border-0 bg-transparent px-0 \[&amp;:not\(:first-child\)\]:border-t \[&amp;:not\(:first-child\)\]:pt-6">/);
-  assert.doesNotMatch(plain, /rounded-|bg-card/, 'ni rayon ni fond à plat');
+  assert.doesNotMatch(plain, /rounded-|bg-card|shadow/, 'ni rayon, ni fond, ni ombre à plat');
   assert.match(plain, /<div class="flex flex-col space-y-1\.5 p-6 px-0 pt-0">Titre<\/div>/);
   assert.match(plain, /<div class="p-6 pt-0 px-0 pb-0">Corps<\/div>/);
 });
