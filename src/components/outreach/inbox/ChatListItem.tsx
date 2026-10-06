@@ -5,9 +5,9 @@
  * - Nom, étiquette (posée à la main, sinon l'intention lue par l'IA) et heure.
  * - Aperçu et non-lus : « Vous : » devant vos messages, « Brouillon : » quand
  *   un texte attend d'être envoyé (revue design D-10, D-17).
- * - Repères dans un ordre fixe (D-07) : sommeil ou archive, « À répondre » ou
- *   « En attente », puis la mission de l'inscription (à défaut, la boîte
- *   d'origine, en texte neutre).
+ * - Repères dans un ordre fixe (D-07) : sommeil ou archive, « À répondre »,
+ *   « À relancer » ou « En attente » (les états des onglets), puis la mission
+ *   de l'inscription (à défaut, la boîte d'origine, en texte neutre).
  * - Actions (étiquette, suppression) dans un menu : toujours visible au doigt,
  *   au survol ou au focus clavier à la souris (D-03, D-12).
  *
@@ -19,7 +19,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { AlarmClock, Archive, Briefcase, Hourglass, MoreHorizontal, Reply, Trash2 } from 'lucide-react';
+import { AlarmClock, Archive, BellRing, Briefcase, Hourglass, MoreHorizontal, Reply, Trash2 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -232,9 +232,17 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       </span>
     );
   } else if (statusInfo?.kind === 'reply') {
+    // Orange seulement s'il n'est pas lu : un candidat attend et ne l'a pas vu.
     state = (
-      <span className="inline-flex shrink-0 items-center gap-1 font-medium text-warning">
+      <span className={cn('inline-flex shrink-0 items-center gap-1', unread ? 'font-medium text-warning' : 'text-muted-foreground')}>
         <Reply className="h-3 w-3" aria-hidden="true" />À répondre
+      </span>
+    );
+  } else if (statusInfo?.kind === 'follow_up') {
+    state = (
+      <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+        <BellRing className="h-3 w-3" aria-hidden="true" />
+        À relancer
       </span>
     );
   } else if (statusInfo?.kind === 'waiting') {

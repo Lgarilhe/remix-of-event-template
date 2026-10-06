@@ -18,6 +18,7 @@ import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccoun
 import { AttendeePicturesProvider } from '@/contexts/AttendeePicturesContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
+import { responseFilterFromParam, responseFilterToParam, type ResponseFilter } from '@/lib/inboxThreadState';
 
 /**
  * Hauteur disponible sous le bord haut d'un élément : `100dvh` moins sa
@@ -60,8 +61,20 @@ export default function Inbox() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const { ref: frameRef, height } = useAvailableHeight<HTMLDivElement>();
   // Deep link depuis une notification de nouveau message : /inbox?chatId=<id>
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialChatId = searchParams.get('chatId');
+  // Onglet de la liste : /inbox?onglet=a-repondre | a-relancer | en-attente
+  // (absent : toutes). Lu au montage, réécrit à chaque changement d'onglet.
+  const initialTab = responseFilterFromParam(searchParams.get('onglet'));
+  const handleTabChange = useCallback((tab: ResponseFilter) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const param = responseFilterToParam(tab);
+      if (param) next.set('onglet', param);
+      else next.delete('onglet');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   // SECURITY (cf commit b440d7c5) : tous les rôles ne voient QUE leur propre
   // compte LinkedIn personnel. Pas de fallback vers accounts[0] qui leakait
@@ -119,6 +132,8 @@ export default function Inbox() {
             onAccountChange={setSelectedAccount}
             initialChatId={initialChatId}
             onChatChange={handleChatChange}
+            initialTab={initialTab}
+            onTabChange={handleTabChange}
             loading={accountsLoading}
             fullHeight
           />

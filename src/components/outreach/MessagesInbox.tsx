@@ -46,6 +46,7 @@ import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts
 import { sequenceChannels } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
+import type { ResponseFilter } from '@/lib/inboxThreadState';
 
 /** Valeur de « Sans mission » dans le choix de mission (une option ne peut pas valoir ''). */
 const NO_MISSION = '__none__';
@@ -57,6 +58,9 @@ interface MessagesInboxProps {
   onUnreadCountChange?: (count: number) => void;
   initialChatId?: string | null;
   onChatChange?: (chatId: string | null) => void;
+  /** Onglet ouvert au départ et rappel quand la personne en change (?onglet= de la page). */
+  initialTab?: ResponseFilter;
+  onTabChange?: (tab: ResponseFilter) => void;
   loading?: boolean;
   fullHeight?: boolean;
 }
@@ -95,6 +99,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   onUnreadCountChange,
   initialChatId,
   onChatChange,
+  initialTab,
+  onTabChange,
 }) => {
   // Warm-up des edge functions IA pour éviter les cold starts
   useEdgeFunctionWarmup(true);
@@ -104,6 +110,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     onUnreadCountChange,
     initialChatId,
     onChatChange,
+    initialResponseFilter: initialTab,
   });
 
   // Pré-chargement en background des analyses IA pour les chats récents.
@@ -226,6 +233,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           sourceFilter={inbox.sourceFilter}
           categoryFilter={inbox.chatCategories.categoryFilter}
           responseFilter={inbox.responseFilter}
+          threadCounts={inbox.threadCounts}
           statusFilter={inbox.chatStatus.statusFilter}
           onStatusFilterChange={inbox.chatStatus.setStatusFilter}
           enrollmentsMap={inbox.enrollmentsMap}
@@ -235,7 +243,10 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           onShowUnreadOnlyChange={inbox.setShowUnreadOnly}
           onSourceFilterChange={inbox.setSourceFilter}
           onCategoryFilterChange={inbox.chatCategories.setCategoryFilter}
-          onResponseFilterChange={inbox.setResponseFilter}
+          onResponseFilterChange={(tab) => {
+            inbox.setResponseFilter(tab);
+            onTabChange?.(tab);
+          }}
           onSetCategory={inbox.chatCategories.setCategory}
           onChatSelect={inbox.setSelectedChat}
           onRefresh={() => inbox.fetchChats(true)}

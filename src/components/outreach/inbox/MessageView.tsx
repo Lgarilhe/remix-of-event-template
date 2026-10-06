@@ -27,6 +27,8 @@ import { ActivityEventCard } from './ActivityEventCard';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
 import { MessageComposer } from './MessageComposer';
 import { SmartReplies } from './SmartReplies';
+import { ThreadNextStep } from './ThreadNextStep';
+import type { CtaReplyButtonProps } from './CtaReplyButton';
 import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
@@ -70,6 +72,8 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
+import { businessDaysSince, latestMessage, threadState } from '@/lib/inboxThreadState';
+import { useChatSuggestedAction } from '@/hooks/useChatSuggestedAction';
 import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
 // Boutons icône de l'en-tête : 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
@@ -673,6 +677,36 @@ export const MessageView: React.FC<MessageViewProps> = ({
     || undefined
   ), [user?.user_metadata?.full_name, user?.user_metadata?.first_name, user?.user_metadata?.last_name]);
 
+  // Ligne « À faire » : même règle que les onglets (src/lib/inboxThreadState.ts),
+  // avec le dernier message lu dans le fil (à jour dès l'envoi) et l'inscription
+  // active lue en base à l'ouverture.
+  const nextStep = useMemo(() => {
+    if (!selectedChat) return null;
+    const last = latestMessage(messages) ?? selectedChat.last_message ?? null;
+    const lastAt = last?.timestamp ?? null;
+    const now = new Date();
+    const state = threadState(
+      {
+        lastIsMine: last && typeof last.is_sender === 'boolean' ? last.is_sender : null,
+        lastAt,
+        sequenceActive: hasActiveEnrollment || (!!jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at),
+      },
+      now,
+    );
+    if (state !== 'to_reply' && state !== 'to_follow_up') return null;
+    return { state, lastAt, days: lastAt ? businessDaysSince(lastAt, now) : null };
+  }, [selectedChat, messages, hasActiveEnrollment, jobInfo]);
+
+  // Action déjà mise en cache par l'analyse IA (lecture seule), pour « À répondre » :
+  // écartée si le candidat a écrit depuis l'analyse.
+  const cachedSuggestion = useChatSuggestedAction(selectedChat, nextStep?.state === 'to_reply');
+  const nextStepSuggestion = useMemo(() => {
+    const cached = cachedSuggestion.data;
+    if (!cached?.action) return null;
+    if (nextStep?.lastAt && cached.analyzedAt && new Date(nextStep.lastAt) > new Date(cached.analyzedAt)) return null;
+    return cached.action;
+  }, [cachedSuggestion.data, nextStep?.lastAt]);
+
   // Aucune conversation ouverte (ordinateur)
   if (!selectedChat) {
     return (
@@ -1270,6 +1304,23 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
       {/* RANGÉE 3 : suggestions, panneau IA et composeur */}
       <div>
+        {nextStep && (
+          <ThreadNextStep
+            key={selectedChat.id}
+            state={nextStep.state}
+            days={nextStep.days}
+            suggestion={nextStepSuggestion}
+            chatHistory={ctaChatHistory}
+            candidateName={getChatDisplayName(selectedChat)}
+            recruiterName={ctaRecruiterName}
+            jobTitle={currentJobData?.title}
+            jobBrief={ctaJobBrief as CtaReplyButtonProps['jobBrief']}
+            calendlyLink={calendlyLink || undefined}
+            tone={currentTone}
+            // Même règle que le composeur : champ vide, le texte le remplace ; sinon il s'ajoute à la fin.
+            onInsert={(text) => onNewMessageChange(newMessage.trim() ? `${newMessage.trimEnd()}\n\n${text}` : text)}
+          />
+        )}
         {aiPanelOpen && (
           <div className="max-h-[40vh] overflow-y-auto border-t border-border">
             <InlineAIPanel

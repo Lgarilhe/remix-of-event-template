@@ -104,8 +104,8 @@ test('D-05, D-06 : trois rangées avant la liste, libellés visibles, état anno
 });
 
 // ---------------------------------------------------------------- D-07
-test('D-07 : « À répondre » ou « En attente » puis la mission, source neutre', () => {
-  assert.match(src.helpers, /kind: 'reply' \| 'waiting' \| null/);
+test('D-07 : « À répondre », « À relancer » ou « En attente » puis la mission, source neutre', () => {
+  assert.match(src.helpers, /kind: 'reply' \| 'follow_up' \| 'waiting' \| null/);
   assert.doesNotMatch(src.helpers, /label: 'Classic'/, 'la messagerie classique n’a pas de badge');
   assert.doesNotMatch(src.helpers, /color:/, 'la source reste en texte neutre');
   assert.doesNotMatch(src.item, /!sourceType && !categoryInfo/, 'le repère n’est plus masqué par la source');

@@ -1,6 +1,7 @@
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { Chat, Message, SequenceEnrollmentInfo } from './useMessagesInbox';
 import { timeAgo } from '@/lib/relativeTime';
+import { threadState, type ThreadState } from '@/lib/inboxThreadState';
 
 // Format timestamp for message display
 export const formatMessageTime = (timestamp?: string): string => {
@@ -151,27 +152,54 @@ export const getChatJobInfo = (chat: Chat, enrollmentsMap: Map<string, SequenceE
 };
 
 /**
+ * État d'une conversation (à répondre, à relancer, en attente) : la définition
+ * unique des onglets, des compteurs et des repères de la liste
+ * (src/lib/inboxThreadState.ts). Une inscription de séquence active et sans
+ * réponse garde la conversation « en attente » : la relance est déjà prévue.
+ */
+export const getChatThreadState = (
+  chat: Chat,
+  enrollmentsMap: Map<string, SequenceEnrollmentInfo>,
+  now: Date = new Date()
+): ThreadState => {
+  const last = chat.last_message;
+  const jobInfo = getChatJobInfo(chat, enrollmentsMap);
+  return threadState(
+    {
+      lastIsMine: last && typeof last.is_sender === 'boolean' ? last.is_sender : null,
+      lastAt: last?.timestamp ?? chat.timestamp ?? null,
+      sequenceActive: !!jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at,
+    },
+    now
+  );
+};
+
+/**
  * Repère principal d'une ligne de la liste (revue design D-07), dans un ordre
- * fixe : « À répondre » (message non lu) ou « En attente » (séquence en cours,
- * pas de réponse), puis la mission de l'inscription. Données seules : la
- * ligne choisit icônes et couleurs dans les jetons.
+ * fixe : « À répondre » (le candidat a écrit le dernier message), « À relancer »
+ * (sans réponse depuis trois jours ouvrés) ou « En attente », puis la mission de
+ * l'inscription. Mêmes états que les onglets. Données seules : la ligne choisit
+ * icônes et couleurs dans les jetons.
  */
 export interface ChatStatusInfo {
-  kind: 'reply' | 'waiting' | null;
+  kind: 'reply' | 'follow_up' | 'waiting' | null;
   /** Poste de l'inscription en séquence, seule source sûre de la mission. */
   mission: string | null;
 }
 
 export const getChatStatusInfo = (
   chat: Chat,
-  enrollmentsMap: Map<string, SequenceEnrollmentInfo>
+  enrollmentsMap: Map<string, SequenceEnrollmentInfo>,
+  now: Date = new Date()
 ): ChatStatusInfo | null => {
   const jobInfo = getChatJobInfo(chat, enrollmentsMap);
   const mission = jobInfo?.job_title || null;
+  const state = getChatThreadState(chat, enrollmentsMap, now);
 
-  if (hasUnread(chat)) return { kind: 'reply', mission };
+  if (hasUnread(chat) || state === 'to_reply') return { kind: 'reply', mission };
+  if (state === 'to_follow_up') return { kind: 'follow_up', mission };
 
-  if (jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at && jobInfo.current_step_order > 0) {
+  if (state === 'waiting' || (jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at && jobInfo.current_step_order > 0)) {
     return { kind: 'waiting', mission };
   }
 
