@@ -19,7 +19,7 @@ type PlaybackState = 'playing' | 'paused' | 'completed';
 const CHAPTERS = [
   'Une consigne dans la conversation',
   'Une proposition à relire',
-  'Le bon niveau de mémoire',
+  'Vous choisissez et confirmez',
   'Votre consigne rejoint les mémoires',
 ] as const;
 const phaseAt = (progress: number): Phase => progress < 0.20 ? 0 : progress < 0.44 ? 1 : progress < 0.78 ? 2 : 3;

@@ -32,6 +32,22 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Mémoire : vraies cartes dans la démonstration
+
+**Fait** : propositions et mémoires confirmées partagent désormais leur présentation avec la scène de découverte : cadre, typographie, niveau, type, effets, date et actions natives. Le pointeur choisit le niveau, presse « Garder », puis la consigne rejoint les mémoires actives. Les actions illustrées sont des éléments décoratifs sans contrôle ni écriture. Horloge de neuf secondes, pause, reprise, relecture et mouvement réduit conservés.
+**Adaptation mobile** : scène de 336 px, en-tête compact et marge intérieure réduite uniquement pour la découverte. À 320 px avec trois niveaux, la proposition garde deux lignes d’actions et 8 px avant le rail ; tous les niveaux et « Garder » restent visibles pendant le clic illustré. Les actions finales restent fixes et le contenu défile localement sur écran court.
+**Validation locale** : build réussi et contenu des cinq sources vérifié dans les sourcemaps ; lint ciblé et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs de dette design restent identiques à main. Chromium avec API simulées : 23 contrôles ciblés de démonstration, six régressions des cartes réelles à 320/1440 px et sept audits axe sans violation. Aucun message d’erreur navigateur ni écriture métier depuis la démonstration ; six écritures simulées attendues dans les parcours réels de confirmation, rejet et désactivation. Les 35 contrôles de la version précédente ne sont pas ajoutés à ce décompte.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Vraies cartes, clic illustré, pause complète, reprise, fin sans boucle et relecture | PASS |
+| Claire | Brouillon conservé, confirmation avec les bons paramètres, rejet et désactivation avec confirmation | PASS |
+| Théo | Scène sans action métier, mouvement réduit initial et changement dans les deux sens | PASS |
+| Sophie | Clair/sombre à 320/390/1440 px, trois niveaux à 320 px, actions fixes et défilement clavier à 390×400 | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryPresentation.tsx`, `src/components/agent/AgentMemoryProposalCard.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`.
+
 ## 2026-10-07 — DECISION — Mémoire : scène continue et commandes de lecture
 
 **Fait** : démonstration de neuf secondes : surlignage de la consigne, extraction d’une proposition, choix du niveau et rangement dans les mémoires confirmées. Le même ticket se déplace et les traits se dessinent ; parcours diagonal sur mobile, horizontal sur ordinateur. Pause, reprise au temps restant et relecture partagent une seule horloge ; l’onglet masqué met la scène en pause. Exemple fixe avec mouvement réduit, préférence suivie dans les deux sens pendant la découverte. Niveaux adaptés au cabinet, à l’entreprise et à l’indépendant, avec mission ou poste selon le contexte.

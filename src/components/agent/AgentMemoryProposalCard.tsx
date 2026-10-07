@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Brain, Check, Loader2, Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAgentMemoryActions, useAgentMemoryContext } from '@/hooks/useAgentMemories';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
 import { AgentMemoryFields } from './AgentMemoryFields';
+import { AgentMemoryProposalActions, AgentMemoryProposalFrame, AgentMemorySummary } from './AgentMemoryPresentation';
 import {
-  AGENT_MEMORY_EFFECT_LABEL, AGENT_MEMORY_KIND_LABEL, agentMemoryScopeLabel, canManageAgentMemory, isAgentMemoryDraftValid,
+  canManageAgentMemory, isAgentMemoryDraftValid,
   type AgentMemoryDraft, type AgentMemoryProposal,
 } from '@/types/agentMemory';
 
@@ -43,22 +41,13 @@ export function AgentMemoryProposalCard({ proposal, onReload }: { proposal: Agen
   };
 
   return (
-    <Card role="article" aria-label="Proposition de mémoire" className="p-3 space-y-3">
-      <div className="flex items-center gap-2 text-sm font-medium"><Brain aria-hidden="true" className="h-4 w-4 shrink-0" />À garder en mémoire ?</div>
-      {proposal.legacy_insight_id && <p className="text-xs text-muted-foreground">Ancienne mémoire automatique : à vérifier avant de la confirmer.</p>}
+    <AgentMemoryProposalFrame legacy={Boolean(proposal.legacy_insight_id)}>
       {editing ? (
         <AgentMemoryFields value={draft} onChange={setDraft} projectId={proposal.project_id} orgType={orgType} autoFocus
           canManageOrganization={context.data?.can_manage_organization === true}
           canManageProject={context.data?.can_manage_project === true} disabled={Boolean(busy)} />
       ) : (
-        <>
-          <p className="text-sm whitespace-pre-wrap break-words">{draft.content}</p>
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant="secondary">{agentMemoryScopeLabel(draft.scope, orgType)}</Badge>
-            <Badge variant="outline">{AGENT_MEMORY_KIND_LABEL[draft.kind]}</Badge>
-          </div>
-          <p className="text-xs text-muted-foreground">Effet : {draft.effects.map((effect) => AGENT_MEMORY_EFFECT_LABEL[effect]).join(', ')}.</p>
-        </>
+        <AgentMemorySummary value={draft} orgType={orgType} variant="proposal" />
       )}
       {proposal.source_excerpt && (
         <details className="text-xs">
@@ -73,19 +62,9 @@ export function AgentMemoryProposalCard({ proposal, onReload }: { proposal: Agen
       {error && <div role="alert" className="text-xs text-danger">{error}
         {onReload && <Button type="button" variant="link" size="sm" className="min-h-11 md:min-h-0" disabled={Boolean(busy)} onClick={onReload}>Recharger la proposition</Button>}
       </div>}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" variant="primary" className="min-h-11 md:min-h-0" onClick={() => void submit('approve')}
-          disabled={Boolean(busy) || context.isPending || context.isError || !canApprove || !isAgentMemoryDraftValid(draft)} aria-busy={busy === 'approve'}>
-          {busy === 'approve' ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <Check aria-hidden="true" className="h-3.5 w-3.5" />}
-          {editing ? 'Garder les modifications' : 'Garder'}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" className="min-h-11 md:min-h-0" disabled={Boolean(busy)} onClick={() => setEditing((current) => !current)}>
-          <Pencil aria-hidden="true" className="h-3.5 w-3.5" />{editing ? 'Fermer l’édition' : 'Modifier'}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" className="min-h-11 text-muted-foreground md:min-h-0" disabled={Boolean(busy)} onClick={() => void submit('dismiss')} aria-busy={busy === 'dismiss'}>
-          {busy === 'dismiss' ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <X aria-hidden="true" className="h-3.5 w-3.5" />}Ignorer
-        </Button>
-      </div>
-    </Card>
+      <AgentMemoryProposalActions editing={editing} busy={busy} disabled={Boolean(busy)}
+        approveDisabled={context.isPending || context.isError || !canApprove || !isAgentMemoryDraftValid(draft)}
+        onApprove={() => void submit('approve')} onEdit={() => setEditing((current) => !current)} onDismiss={() => void submit('dismiss')} />
+    </AgentMemoryProposalFrame>
   );
 }
