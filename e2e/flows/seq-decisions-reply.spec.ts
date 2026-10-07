@@ -6,7 +6,8 @@
  *   terminée « A répondu » dans le panneau des inscrits de la mission ;
  * - 10 : quand l'arrêt des autres inscriptions du candidat échoue, l'alerte
  *   « Relances non arrêtées après une réponse » apparaît dans À traiter et
- *   mène aux séquences de la mission.
+ *   mène aux séquences de la mission ; sans séquence ni mission (InMails
+ *   seuls), elle ouvre la fiche du candidat (décision du 07/10/2026).
  *
  * Le webhook tourne pour de vrai (stack locale, E2E_EDGE_FUNCTIONS=1) ; seule
  * la liste des comptes LinkedIn du prestataire est simulée dans le navigateur.
@@ -56,6 +57,7 @@ test.afterEach(async () => {
   for (const { org, extra } of orgs.splice(0)) {
     await admin().from('job_candidate_status').delete().eq('organization_id', org.orgId);
     await admin().from('notifications').delete().eq('organization_id', org.orgId);
+    await admin().from('inmail_queue').delete().eq('organization_id', org.orgId);
     await deleteOrg(org, extra);
   }
 });
@@ -104,19 +106,30 @@ async function reply(accountId: string, profileId: string) {
   return res.status;
 }
 
+const psql = (sql: string) => execFileSync(
+  'psql',
+  ['-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atc', sql],
+  { env: { ...process.env, PGPASSWORD: 'postgres' }, encoding: 'utf8' },
+);
+
 /** L'arrêt des inscriptions `ids` (passage à 'stopped') échoue jusqu'à la fin du test. */
 function failSiblingStop(ids: string[]) {
   const name = `e2e_drui_fail_${rand()}`;
-  const psql = (sql: string) => execFileSync(
-    'psql',
-    ['-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atc', sql],
-    { env: { ...process.env, PGPASSWORD: 'postgres' }, encoding: 'utf8' },
-  );
   psql(
     `CREATE FUNCTION public.${name}() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'échec simulé (e2e)'; END $f$;` +
     `CREATE TRIGGER ${name} BEFORE UPDATE ON public.sequence_enrollments FOR EACH ROW WHEN (NEW.status = 'stopped' AND OLD.id IN (${ids.map((id) => `'${id}'`).join(', ')})) EXECUTE FUNCTION public.${name}();`,
   );
   cleanups.push(() => psql(`DROP TRIGGER IF EXISTS ${name} ON public.sequence_enrollments; DROP FUNCTION IF EXISTS public.${name}();`));
+}
+
+/** L'annulation des InMails `ids` (passage à 'cancelled') échoue jusqu'à la fin du test. */
+function failInMailCancel(ids: string[]) {
+  const name = `e2e_drui_fail_${rand()}`;
+  psql(
+    `CREATE FUNCTION public.${name}() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'échec simulé (e2e)'; END $f$;` +
+    `CREATE TRIGGER ${name} BEFORE UPDATE ON public.inmail_queue FOR EACH ROW WHEN (NEW.status = 'cancelled' AND OLD.id IN (${ids.map((id) => `'${id}'`).join(', ')})) EXECUTE FUNCTION public.${name}();`,
+  );
+  cleanups.push(() => psql(`DROP TRIGGER IF EXISTS ${name} ON public.inmail_queue; DROP FUNCTION IF EXISTS public.${name}();`));
 }
 
 /** Séquence de deux messages rattachée à la mission, nommée pour être retrouvée à l'écran. */
@@ -197,5 +210,33 @@ test.describe('Décisions réponses : ce que voit le recruteur', () => {
     await expect(alert).toBeVisible({ timeout: 30_000 });
     await alert.click();
     await expect(page).toHaveURL(new RegExp(`/missions/${missionId}\\?tab=outreach`));
+  });
+
+  // Décision du 07/10/2026 : l'écran Séquences ne montrait pas le candidat.
+  test('annulation des InMails programmés en échec, sans séquence ni mission : l’alerte ouvre la fiche du candidat', async ({ browser }) => {
+    const org = await createOrg('agency', 'E2E DR10 UI sans séquence');
+    orgs.push({ org, extra: [] });
+    await setOrgPlan(org.orgId);
+    const owner = org.owner.userId;
+    const accountId = await seedLinkedInAccount(org.orgId, owner, `acc_drui_${rand()}`);
+    const tag = rand();
+    const profileName = `Camille Sans Séquence ${tag}`;
+    const profileId = `ACoAAE2EDRUI${tag}${rand()}`;
+    const { data, error } = await admin().from('inmail_queue').insert({
+      account_id: accountId, recipient_profile_id: profileId, recipient_name: profileName, subject: 'Poste', message: 'Bonjour',
+      status: 'scheduled', scheduled_at: new Date(Date.now() + 48 * HOUR).toISOString(), created_by: owner, organization_id: org.orgId,
+    }).select('id').single();
+    if (error || !data) throw new Error(`inmail_queue: ${error?.message}`);
+    failInMailCancel([data.id as string]);
+
+    expect(await reply(accountId, profileId), '500 pour obtenir un rejeu').toBe(500);
+
+    const page = await openAs(browser, org.owner, [accountId]);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const alert = page.locator('#sidebar-panel').getByRole('button', { name: /Relances non arrêtées après une réponse/ });
+    await expect(alert).toBeVisible({ timeout: 30_000 });
+    await alert.click();
+    await expect(page).toHaveURL(new RegExp(`/pipeline\\?candidate=${profileId}$`));
+    await expect(page.getByRole('dialog').getByText(profileName).first(), 'fiche du candidat ouverte').toBeVisible({ timeout: 30_000 });
   });
 });

@@ -249,9 +249,11 @@ test.describe('Décision 10 : alerte « Relances non arrêtées après une répo
     };
     expect(notificationKind({ type: 'action', link: '/missions/p1?tab=outreach', metadata: { ...metadata, project_id: 'p1' } }))
       .toBe('action');
-    // Lot 5h : sans mission, la page de la séquence (ou l'écran Séquences) au lieu de /missions.
+    // Lot 5h : sans mission, la page de la séquence au lieu de /missions.
     expect(notificationKind({ type: 'action', link: '/sequences/s1', metadata })).toBe('action');
-    expect(notificationKind({ type: 'action', link: '/sequences', metadata: { ...metadata, sequence_id: undefined } })).toBe('action');
+    // Décision du 07/10/2026 : ni mission ni séquence, la fiche du candidat.
+    expect(notificationKind({ type: 'action', link: '/pipeline?candidate=ACo1', metadata: { ...metadata, enrollment_ids: [], sequence_id: undefined } }))
+      .toBe('action');
   });
 
   test('inscrite à l’inventaire des écritures, comme l’écrit unipile-webhook', () => {
@@ -269,7 +271,7 @@ test.describe('Décision 10 : alerte « Relances non arrêtées après une répo
       'unipile-webhook (relances non arrêtées après une réponse)',
       'action',
       'Relances non arrêtées après une réponse',
-      '/missions/…?tab=outreach, /sequences/… ou /sequences',
+      '/missions/…?tab=outreach, /sequences/… ou /pipeline?candidate=…',
       'reply_sibling_stop_failed',
       'action',
     ]);

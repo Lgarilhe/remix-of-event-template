@@ -145,6 +145,8 @@ async function alertSiblingStopFailure(
     candidateName: string | null;
     sequenceId: string | null;
     enrollmentIds: string[];
+    /** Identifiant du candidat au /pipeline, pour une alerte sans séquence (chemin LinkedIn). */
+    candidateId?: string | null;
   }>,
 ): Promise<void> {
   for (const alert of alerts) {
@@ -171,10 +173,15 @@ async function alertSiblingStopFailure(
         type: 'action',
         title: 'Relances non arrêtées après une réponse',
         body: `${alert.candidateName || 'Le candidat'} a répondu, mais ses autres séquences ou InMails programmés n'ont pas pu être arrêtés. Un nouvel essai automatique est en cours : vérifiez ses inscriptions pour qu'aucune relance ne parte.`,
-        // Lot 5h : sans mission, la page de la séquence (ou l'écran Séquences) au lieu de /missions.
+        // Lot 5h : sans mission, la page de la séquence au lieu de /missions. Sans
+        // séquence (InMails seuls, y compris ceux d'une mission : la mission ne
+        // vient que de la séquence) : la fiche du candidat (décision du
+        // 07/10/2026), que l'écran Séquences ne montre pas.
         link: projectId
           ? `/missions/${projectId}?tab=outreach`
-          : alert.sequenceId ? `/sequences/${alert.sequenceId}` : '/sequences',
+          : alert.sequenceId
+            ? `/sequences/${alert.sequenceId}`
+            : alert.candidateId ? `/pipeline?candidate=${encodeURIComponent(alert.candidateId)}` : '/pipeline',
         metadata: {
           source: SIBLING_STOP_FAILED_SOURCE,
           event_key: eventKey,
@@ -2020,6 +2027,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           candidateName: orgRows[0]?.profile_name || payload.sender?.attendee_name || null,
           sequenceId: orgRows[0]?.sequence_id ?? null,
           enrollmentIds: orgRows.map((e) => e.id),
+          // Sans séquence : l'identifiant d'un InMail de l'organisation, celui de
+          // son entrée au /pipeline, sinon l'expéditeur. Aucune lecture de plus.
+          candidateId: (inmailMatches ?? []).find((m) => m.organization_id === orgId)?.recipient_profile_id ?? senderId ?? null,
         };
       }));
     }

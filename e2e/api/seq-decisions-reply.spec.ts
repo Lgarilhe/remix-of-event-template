@@ -6,7 +6,9 @@
  *   relance) la passe « A répondu », compte une réponse et met à jour le
  *   pipeline (unipile-webhook, message LinkedIn).
  * - 10 : échec persistant de l'arrêt des autres inscriptions du candidat : le
- *   webhook répond 500 (rejeu) ET le recruteur est prévenu, une seule fois.
+ *   webhook répond 500 (rejeu) ET le recruteur est prévenu, une seule fois ;
+ *   sans séquence ni mission (InMails seuls), l'alerte ouvre la fiche du
+ *   candidat (décision du 07/10/2026).
  * - 11 : format new_message sans indication d'expéditeur, vérification
  *   impossible : échec (500) et rejeu, rien n'est clos.
  * - 27 : un rendez-vous annule aussi les InMails en attente vers le candidat
@@ -127,6 +129,16 @@ function failSiblingStop(ids: string[]): () => void {
   };
   cleanups.push(drop);
   return drop;
+}
+
+/** L'annulation des InMails `ids` (passage à 'cancelled') échoue tant que la panne n'est pas retirée. */
+function failInMailCancel(ids: string[]): void {
+  const name = `e2e_dr_fail_${rand()}`;
+  psql(
+    `CREATE FUNCTION public.${name}() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'échec simulé (e2e décisions réponse)'; END $f$;` +
+    `CREATE TRIGGER ${name} BEFORE UPDATE ON public.inmail_queue FOR EACH ROW WHEN (NEW.status = 'cancelled' AND OLD.id IN (${ids.map(lit).join(', ')})) EXECUTE FUNCTION public.${name}();`,
+  );
+  cleanups.push(() => psql(`DROP TRIGGER IF EXISTS ${name} ON public.inmail_queue; DROP FUNCTION IF EXISTS public.${name}();`));
 }
 
 // ─── Lectures ───────────────────────────────────────────────────────────────
@@ -522,6 +534,64 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].user_id).toBe(s.org.owner.userId);
     expect(alerts[0].metadata).toMatchObject({ source: ALERT_SOURCE, event_key: `unipile:mail_received:${emailId}` });
+  });
+
+  // Décision du 07/10/2026 : ni mission ni séquence, la fiche du candidat (l'écran Séquences ne le montre pas).
+  async function inmail(org: TestOrg, accountId: string, recipient: string, o: Record<string, unknown> = {}) {
+    const { data, error } = await admin().from('inmail_queue').insert({
+      account_id: accountId, recipient_profile_id: recipient, subject: 'Poste', message: 'Bonjour',
+      status: 'scheduled', scheduled_at: minutesFromNow(2 * DAY), created_by: org.owner.userId, organization_id: org.orgId, ...o,
+    }).select('id').single();
+    if (error || !data) throw new Error(`inmail_queue: ${error?.message}`);
+    return data.id as string;
+  }
+
+  test('sans séquence ni mission (InMail programmé seul, annulation en échec) : l’alerte ouvre la fiche du candidat', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E DR10 sans séquence');
+    const profileId = newProfileId();
+    const scheduled = await inmail(org, accountId, profileId);
+    failInMailCancel([scheduled]);
+
+    const w = replyFrom(accountId, profileId);
+    const res = await rawWebhook(w.payload);
+    expect(res.status, JSON.stringify(res.body)).toBe(500);
+    expect((await inmailRow(scheduled)).status, 'InMail toujours programmé').toBe('scheduled');
+    const alerts = await alertsOf(org.orgId);
+    expect(alerts, JSON.stringify(alerts)).toHaveLength(1);
+    const [alert] = alerts;
+    expect(alert.user_id, 'membre relié au compte qui a reçu la réponse').toBe(org.owner.userId);
+    expect(alert.title).toBe(ALERT_TITLE);
+    expect(alert.body).toContain('Camille Martin a répondu');
+    expect(alert.link, 'fiche du candidat, plus l’écran Séquences').toBe(`/pipeline?candidate=${encodeURIComponent(profileId)}`);
+    expect(alert.metadata).toMatchObject({ source: ALERT_SOURCE, event_key: w.eventKey, enrollment_ids: [], profile_name: 'Camille Martin' });
+    expect(alert.metadata, 'aucune séquence').not.toHaveProperty('sequence_id');
+    expect(alert.metadata, 'aucune mission').not.toHaveProperty('project_id');
+  });
+
+  test('organisation reliée par un InMail envoyé sous un autre identifiant : la fiche porte l’identifiant de l’InMail, pas celui de l’expéditeur', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E DR10 InMail autre identifiant');
+    const recruiterId = `AEMAAE2EDR${rand()}${rand()}`;
+    const senderId = newProfileId();
+    // LinkedIn : l'expéditeur classique correspond à l'identifiant Recruiter des InMails.
+    await setMockMode(accountId, {
+      routes: [{
+        method: 'GET', path: `^/api/v1/users/${senderId}$`, status: 200,
+        body: { object: 'UserProfile', provider: 'LINKEDIN', provider_id: senderId, id: recruiterId },
+      }],
+    });
+    cleanups.push(() => setMockMode(accountId, {}));
+    await inmail(org, accountId, recruiterId, { status: 'sent', sent_at: minutesFromNow(-DAY), scheduled_at: minutesFromNow(-DAY) });
+    const followUp = await inmail(org, accountId, recruiterId);
+    failInMailCancel([followUp]);
+
+    const res = await rawWebhook(replyFrom(accountId, senderId).payload);
+    expect(res.status, JSON.stringify(res.body)).toBe(500);
+    const alerts = await alertsOf(org.orgId);
+    expect(alerts, JSON.stringify(alerts)).toHaveLength(1);
+    // Entrée de l'InMail au /pipeline : son recipient_profile_id (useATSData).
+    expect(alerts[0].link).toBe(`/pipeline?candidate=${encodeURIComponent(recruiterId)}`);
+    expect(alerts[0].metadata).not.toHaveProperty('sequence_id');
+    expect(alerts[0].metadata).not.toHaveProperty('project_id');
   });
 });
 

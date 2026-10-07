@@ -167,7 +167,9 @@ Notion n'apparaît dans l'application que comme connecteur de l'assistant : une 
                            secours ?sequences-v2=0 ou clé à '0' jusqu'au lot 5j : l'ancien parcours, SequencesGate renvoie
                            vers /missions et aucun lien n'y mène. /outreach mène à /sequences (secours : /missions ;
                            ?sequences-v2= suit la redirection, onlySequencesBetaParam).
-                           Notifications d'une séquence sans mission : /sequences/<id> (ou /sequences), plus /missions.
+                           Notifications d'une séquence sans mission : /sequences/<id>, plus /missions ; l'alerte
+                           « Relances non arrêtées » sans séquence (InMails seuls, y compris ceux d'une mission)
+                           ouvre la fiche du candidat (/pipeline?candidate=<id>, décision du 07/10/2026).
 /marketplace             → Marketplace
 /settings                → Settings, coquille à deux portes (src/pages/Settings.tsx, registre src/components/settings/shell/sections.tsx).
   Mon compte : /settings/account/connections | writing | journal (provisoire, part dans /agents au lot 9).

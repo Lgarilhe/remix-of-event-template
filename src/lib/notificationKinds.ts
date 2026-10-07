@@ -14,7 +14,7 @@
  * | unipile-webhook (message reçu)                    | new_message           | Nouveau message de …                 | /inbox?chatId=… ou /inbox | —                     | message |
  * | unipile-webhook (réponse par e-mail, sans chat_id)| new_message           | Nouveau message de …                 | /missions/…?tab=outreach ou /sequences/… | —      | message |
  * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach ou /sequences/… | email_bounce | action |
- * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach, /sequences/… ou /sequences | reply_sibling_stop_failed | action |
+ * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach, /sequences/… ou /pipeline?candidate=… | reply_sibling_stop_failed | action |
  * | calendly-webhook (RDV pris)                       | action                | RDV pris, séquence arrêtée           | /qualification/… ou /missions | calendly          | action  |
  * | unipile-webhook (compte déconnecté ou en erreur)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
  * | unipile-webhook (rattachement du compte échoué)   | error                 | Compte LinkedIn non rattaché         | /settings?tab=account     | —                     | action  |
@@ -37,11 +37,13 @@
  * Écrivains : supabase/functions (from('notifications').insert), src/ (même
  * appel) et supabase/migrations (INSERT INTO public.notifications).
  *
- * Séquence sans mission (lot 5h) : le lien mène à sa page (/sequences/<id>),
- * ou à l'écran Séquences (/sequences) quand l'écrivain n'a pas la séquence ;
+ * Séquence sans mission (lot 5h) : le lien mène à sa page (/sequences/<id>) ;
  * avant, à /missions. Avec le secours ?sequences-v2=0, ces adresses renvoient
  * à /missions. Une séquence d'une mission garde /missions/…?tab=outreach
- * (panneau Prise de contact).
+ * (panneau Prise de contact). Relances non arrêtées sans séquence (InMails
+ * seuls, y compris ceux d'une mission) : la fiche du candidat,
+ * /pipeline?candidate=<id> (décision du 07/10/2026), ou /pipeline sans
+ * identifiant connu.
  *
  * Compte déconnecté : écrit sur account_disconnected / account_error, et sur
  * account_status_updated au passage de OK vers CREDENTIALS, ERROR ou

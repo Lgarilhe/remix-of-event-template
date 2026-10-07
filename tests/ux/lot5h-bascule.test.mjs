@@ -10,8 +10,9 @@
  *   séquence », « Modifier » et « Dupliquer » de SequencesList mènent aux pages.
  * - /outreach mène à /sequences (le secours le renvoie vers /missions par la
  *   garde des pages) ; ?tab=outreach mène toujours au panneau de la mission.
- * - Les notifications d'une séquence sans mission mènent à /sequences/<id>
- *   (ou /sequences) au lieu de /missions.
+ * - Les notifications d'une séquence sans mission mènent à /sequences/<id> au
+ *   lieu de /missions ; l'alerte « Relances non arrêtées » sans séquence ni
+ *   mission ouvre la fiche du candidat (décision du 07/10/2026).
  *
  * Modules purs transpilés en mémoire (esbuild), le reste par lecture des
  * sources (patron des autres tests de tests/ux).
@@ -213,7 +214,7 @@ test('5h : les notifications d’une séquence sans mission mènent à /sequence
     ['supabase/functions/process-sequences/index.ts', "metadata: { source: 'sequence_auto_pause'",
       /link: seqRow\.project_id \? `\/missions\/\$\{seqRow\.project_id\}\?tab=outreach` : `\/sequences\/\$\{seqId\}`,/],
     ['supabase/functions/unipile-webhook/index.ts', 'source: SIBLING_STOP_FAILED_SOURCE,',
-      /link: projectId\s*\?\s*`\/missions\/\$\{projectId\}\?tab=outreach`\s*:\s*alert\.sequenceId \? `\/sequences\/\$\{alert\.sequenceId\}` : '\/sequences',/],
+      /link: projectId\s*\?\s*`\/missions\/\$\{projectId\}\?tab=outreach`\s*:\s*alert\.sequenceId\s*\?\s*`\/sequences\/\$\{alert\.sequenceId\}`\s*:/],
     ['supabase/functions/unipile-webhook/index.ts', "channel: 'email',",
       /link: projectId \? `\/missions\/\$\{projectId\}\?tab=outreach` : `\/sequences\/\$\{primary\.sequence_id\}`,/],
     ['supabase/functions/unipile-webhook/index.ts', "source: 'email_bounce',",
@@ -232,6 +233,21 @@ test('5h : les notifications d’une séquence sans mission mènent à /sequence
   assert.doesNotMatch(engine, /\?tab=outreach` : '\/missions'/);
 });
 
+// Décision du 07/10/2026 : l'écran Séquences ne montre pas le candidat.
+test('relances non arrêtées sans séquence ni mission : la fiche du candidat, plus /sequences', () => {
+  const rel = 'supabase/functions/unipile-webhook/index.ts';
+  const notif = notificationAround(rel, 'source: SIBLING_STOP_FAILED_SOURCE,');
+  assert.match(notif, /: alert\.candidateId \? `\/pipeline\?candidate=\$\{encodeURIComponent\(alert\.candidateId\)\}` : '\/pipeline',/);
+  assert.doesNotMatch(notif, /'\/sequences'/, 'repli sur l’écran Séquences');
+  const webhook = code(rel);
+  assert.doesNotMatch(webhook, /:\s*'\/sequences'/);
+  // Identifiant : celui d'un InMail de l'organisation (son entrée au /pipeline), sinon l'expéditeur.
+  assert.match(webhook, /candidateId: \(inmailMatches \?\? \[\]\)\.find\(\(m\) => m\.organization_id === orgId\)\?\.recipient_profile_id \?\? senderId \?\? null,/);
+  // Le /pipeline ouvre la fiche par cet identifiant, celui de l'entrée d'un InMail sans ligne de mission.
+  assert.match(code('src/pages/ATS.tsx'), /candidates\.find\(c => c\.candidateId === deepLinkCandidateId\)/);
+  assert.match(code('src/hooks/useATSData.ts'), /candidateId: inmail\.recipient_profile_id,/);
+});
+
 test('5h : l’inventaire des notifications inscrit /sequences, et le classement ne change pas', () => {
   const header = read('src/lib/notificationKinds.ts').split('*/')[0];
   const row = (writer) => {
@@ -241,13 +257,13 @@ test('5h : l’inventaire des notifications inscrit /sequences, et le classement
   };
   assert.equal(row('unipile-webhook (réponse par e-mail, sans chat_id)')[3], '/missions/…?tab=outreach ou /sequences/…');
   assert.equal(row("unipile-webhook (rebond d'e-mail)")[3], '/missions/…?tab=outreach ou /sequences/…');
-  assert.equal(row('unipile-webhook (relances non arrêtées après une réponse)')[3], '/missions/…?tab=outreach, /sequences/… ou /sequences');
+  assert.equal(row('unipile-webhook (relances non arrêtées après une réponse)')[3], '/missions/…?tab=outreach, /sequences/… ou /pipeline?candidate=…');
   assert.equal(row("process-sequences (auto-pause, trop d'échecs)")[3], '/missions/…?tab=outreach ou /sequences/…');
   assert.match(header, /Séquence sans mission \(lot 5h\)/);
   // Les nouvelles adresses restent classées comme avant (le classement ne lit le lien que pour la marketplace).
   assert.equal(kinds.notificationKind({ type: 'error', link: '/sequences/s1', metadata: { source: 'sequence_auto_pause', sequence_id: 's1' } }), 'action');
   assert.equal(kinds.notificationKind({ type: 'action', link: '/sequences/s1', metadata: { source: 'email_bounce', sequence_id: 's1' } }), 'action');
-  assert.equal(kinds.notificationKind({ type: 'action', link: '/sequences', metadata: { source: 'reply_sibling_stop_failed' } }), 'action');
+  assert.equal(kinds.notificationKind({ type: 'action', link: '/pipeline?candidate=ACo1', metadata: { source: 'reply_sibling_stop_failed' } }), 'action');
   assert.equal(kinds.notificationKind({ type: 'new_message', link: '/sequences/s1', metadata: { channel: 'email', is_candidate: true } }), 'message');
 });
 
