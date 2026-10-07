@@ -46,7 +46,7 @@ const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(
 // ---------------------------------------------------------------- D-01
 test('D-01 : la frise d’activité passe par les tables partagées des séquences', () => {
   assert.match(src.activity, /sequenceExecutionTitle\(actionType, status\)/, 'même titre que la fiche candidat');
-  assert.match(src.activity, /<SequenceActionIcon type=\{activityActionType\(event\)\}/);
+  assert.match(src.activity, /<ServiceLogo service=\{activityService\(event\)\}/);
   assert.match(src.activity, /<ExecutionStatusBadge/);
   assert.match(src.activity, /formatSkipReason\(event\.skipReason\)/, 'une raison d’arrêt se traduit');
   assert.match(src.activity, /formatSequenceError\(event\.errorMessage\)/, 'une erreur se traduit');

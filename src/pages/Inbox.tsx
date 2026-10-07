@@ -19,6 +19,8 @@ import { AttendeePicturesProvider } from '@/contexts/AttendeePicturesContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
 import { responseFilterFromParam, responseFilterToParam, type ResponseFilter } from '@/lib/inboxThreadState';
+import { InboxDemo } from '@/components/outreach/inbox/InboxDemo';
+import { Button } from '@/components/ui/button';
 
 /**
  * Hauteur disponible sous le bord haut d'un élément : `100dvh` moins sa
@@ -62,6 +64,7 @@ export default function Inbox() {
   const { ref: frameRef, height } = useAvailableHeight<HTMLDivElement>();
   // Deep link depuis une notification de nouveau message : /inbox?chatId=<id>
   const [searchParams, setSearchParams] = useSearchParams();
+  const demo = searchParams.get('demo') === '1';
   const initialChatId = searchParams.get('chatId');
   // Onglet de la liste : /inbox?onglet=a-repondre | a-relancer | en-attente
   // (absent : toutes). Lu au montage, réécrit à chaque changement d'onglet.
@@ -101,6 +104,7 @@ export default function Inbox() {
   // la liste. Sans conversation, rien n'est marqué : les autres réponses
   // restent dans « À traiter » et dans son chiffre.
   const markChatRead = useCallback(async (chatId: string | null) => {
+    if (demo) return;
     if (!user?.id || !chatId) return;
     const { error } = await supabase
       .from('notifications')
@@ -110,7 +114,7 @@ export default function Inbox() {
       .is('read_at', null)
       .eq('metadata->>chat_id', chatId); // même filtre que le webhook (réponse envoyée depuis LinkedIn)
     if (error) console.warn('[Inbox] marquage lu de la conversation en échec :', error);
-  }, [user?.id]);
+  }, [demo, user?.id]);
 
   useEffect(() => {
     markChatRead(initialChatId).catch((err) => console.warn('[Inbox] marquage lu en échec :', err));
@@ -120,10 +124,20 @@ export default function Inbox() {
     markChatRead(chatId).catch((err) => console.warn('[Inbox] marquage lu en échec :', err));
   }, [markChatRead]);
 
+  const setDemo = (enabled: boolean) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (enabled) next.set('demo', '1');
+    else next.delete('demo');
+    return next;
+  }, { replace: true });
+
   return (
     <>
       <SEOHead title="Messagerie | Konekt" description="Vos conversations LinkedIn avec les candidats" />
       <div ref={frameRef} className="min-h-0 overflow-hidden bg-background" style={height ? { height } : undefined}>
+        {demo ? <InboxDemo onExit={() => setDemo(false)} /> : <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 justify-end border-b border-border px-3 py-1"><Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDemo(true)}>Voir la démo</Button></div>
+        <div className="min-h-0 flex-1">
         <AttendeePicturesProvider organizationId={organizationId || null}>
           <MessagesInbox
             key={initialChatId ?? 'inbox'}
@@ -138,6 +152,8 @@ export default function Inbox() {
             fullHeight
           />
         </AttendeePicturesProvider>
+        </div>
+        </div>}
       </div>
     </>
   );

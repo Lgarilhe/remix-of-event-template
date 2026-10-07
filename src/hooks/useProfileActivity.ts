@@ -6,10 +6,11 @@ import { rowToPhoneCall } from '@/lib/phoneCalls';
 import { toE164 } from '@/lib/phone';
 import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
 import { extractLinkedInSlug } from '@/lib/linkedinUtils';
+import type { MessagingService } from '@/lib/messagingServices';
 
 export interface ActivityEvent {
   id: string;
-  type: 'sequence_step' | 'booking' | 'aircall';
+  type: 'sequence_step' | 'booking' | 'aircall' | 'message';
   timestamp: string;
   actionType: string;
   stepOrder: number;
@@ -21,6 +22,9 @@ export interface ActivityEvent {
   finalMessage?: string | null;
   channel?: string | null;
   recipient?: string | null;
+  /** Origine connue de l'événement ; absente quand le fournisseur n'est pas enregistré. */
+  service?: MessagingService;
+  direction?: 'inbound' | 'outbound';
   // Booking-specific fields
   qualificationSessionId?: string | null;
   eventName?: string | null;

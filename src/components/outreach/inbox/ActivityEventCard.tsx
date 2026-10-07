@@ -6,17 +6,18 @@
  * partagé src/lib/sequenceActionLabels.ts) : « InMail envoyé », « InMail :
  * échec », « Invitation : étape sautée ». Jamais un identifiant technique
  * (« connection_request »), jamais un message d'erreur brut : raisons et
- * erreurs sont traduites (revue design D-01). Icônes neutres ; l'appel prend
- * l'icône du canal (ChannelIcon), sans couleur propre (D-16, D-65).
+ * erreurs sont traduites (revue design D-01). Le logo identifie le service
+ * connu ; le canal reste générique quand son fournisseur n'est pas enregistré.
  */
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck } from 'lucide-react';
 import { ActivityEvent } from '@/hooks/useProfileActivity';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
-import { ExecutionStatusBadge, SequenceActionIcon } from '@/components/outreach/SequenceBadges';
+import { ExecutionStatusBadge } from '@/components/outreach/SequenceBadges';
+import { ServiceLogo } from '@/components/ui/ServiceLogo';
+import { activityService, meetingService, SERVICE_LABELS } from '@/lib/messagingServices';
 import { STEP_TYPE_LABELS, stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
@@ -26,7 +27,7 @@ import {
   sequenceExecutionTitle,
 } from '@/lib/sequenceActionLabels';
 import { cn } from '@/lib/utils';
-import { activityActionType, activityMessageText } from '@/lib/inboxTimeline';
+import { activityActionType, activityChannel, activityMessageText } from '@/lib/inboxTimeline';
 
 /** Durée d'appel : « 45 s », « 3 min », « 3 min 20 s ». */
 function formatDuration(seconds: number): string {
@@ -72,12 +73,12 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
 
   if (isCall) {
     // Décorative : le libellé dit déjà « Appel »
-    icon = <ChannelIcon channel="call" size="xs" decorative className="shrink-0" />;
+    icon = event.service ? <ServiceLogo service={event.service} decorative /> : <ChannelIcon channel="call" size="xs" decorative className="shrink-0" />;
     label = event.callDirection === 'inbound' ? 'Appel entrant' : 'Appel sortant';
     if (event.callDuration != null && event.callDuration > 0) details.push(formatDuration(event.callDuration));
     if (event.callUserName) details.push(event.callUserName);
   } else if (isBooking) {
-    icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />;
+    icon = <ServiceLogo service={activityService(event)} decorative />;
     const bookingLabel = ['cancelled', 'canceled'].includes(event.status) ? 'Entretien annulé' : ['completed', 'done'].includes(event.status) ? 'Entretien terminé' : 'Entretien planifié';
     label = event.qualificationSessionId ? (
       <Link
@@ -91,10 +92,12 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     );
     if (event.eventName) details.push(event.eventName);
   } else {
-    icon = <SequenceActionIcon type={activityActionType(event)} className="text-foreground" />;
+    icon = <ServiceLogo service={activityService(event)} decorative />;
     // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
     // jamais présentée comme envoyée.
-    label = sequenceStepTitle(activityActionType(event), event.status);
+    label = event.type === 'message'
+      ? `${activityChannel(event) === 'email' ? 'E-mail' : 'Message'} ${event.direction === 'inbound' ? 'reçu' : 'envoyé'}`
+      : sequenceStepTitle(activityActionType(event), event.status);
     stepFailed = event.status === 'failed' || event.status === 'bounced';
     if (REACTION_STATUSES.has(event.status)) {
       details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
@@ -111,6 +114,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         {icon}
         <span className={cn('font-medium', stepFailed ? 'text-danger' : 'text-foreground')}>{label}</span>
+        {event.service && <><Separator /><span>{SERVICE_LABELS[event.service]}</span></>}
         {details.map((detail, i) => (
           <React.Fragment key={i}>
             <Separator />
@@ -125,7 +129,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
         )}
       </div>
       {event.sequenceName && <p className="mt-1 break-words text-muted-foreground">{event.sequenceName} · Étape {event.stepOrder + 1}</p>}
-      {event.recipient && <p className="mt-1 break-all text-muted-foreground">À : {event.recipient}</p>}
+      {event.recipient && <p className="mt-1 break-all text-muted-foreground">{event.direction === 'inbound' ? 'De' : 'À'} : {event.recipient}</p>}
       {event.finalSubject && <p className="mt-3 break-words text-sm font-medium text-foreground">{event.finalSubject}</p>}
       {message && (message.length > 280 ? (
         <details className="group/content mt-2">
@@ -140,7 +144,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           {event.eventEndAt && Number.isFinite(Date.parse(event.eventEndAt)) && <> · Jusqu'à {new Date(event.eventEndAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</>}
         </p>
       )}
-      {isBooking && event.eventLocation && <p className="mt-2 break-words text-muted-foreground [overflow-wrap:anywhere]">{event.eventLocation}</p>}
+      {isBooking && event.eventLocation && <p className="mt-2 flex items-start gap-2 break-words text-muted-foreground [overflow-wrap:anywhere]">{meetingService(event.eventLocation) && <ServiceLogo service="google_meet" decorative />}<span>{event.eventLocation}</span></p>}
       </article>
     </div>
   );

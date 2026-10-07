@@ -94,6 +94,7 @@ const card = await loadModule('src/components/outreach/inbox/ActivityEventCard.t
   // Composants du kit (revue design) : leurs enfants suffisent au texte lu.
   '@/components/ui/badge': "export const Badge = 'Badge';",
   '@/components/ui/ChannelIcon': "export const ChannelIcon = 'ChannelIcon';",
+  '@/components/ui/ServiceLogo': "export const ServiceLogo = 'ServiceLogo';",
   '@/assets/aircall-logo.webp': "export default 'aircall.webp';",
   '@/hooks/useProfileActivity': 'export {};',
   '@/hooks/useMessagesInboxHelpers': "export const formatMessageTime = () => '10:00';",

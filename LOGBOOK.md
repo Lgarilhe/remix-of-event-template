@@ -32,6 +32,22 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Messagerie : exemples fictifs et logos des services
+
+**Contexte** : visualiser les emails, les discussions WhatsApp et les autres événements sans attendre une activité réelle.
+**Décision / Fait** : bouton « Voir la démo » dans la messagerie, accès direct `/inbox?demo=1`. Trois candidats fictifs avec invitations LinkedIn, emails Gmail et Outlook entrants et sortants, échanges WhatsApp, appel Aircall et entretien Calendly avec Google Meet. Réponses simulées en mémoire, brouillons distincts par candidat, sortie vers la messagerie réelle. Les cartes et le contexte réutilisent les composants de la messagerie ; les logos identifient les services connus, sans déduire un fournisseur de l'adresse du destinataire.
+**Validation** : Chromium en StrictMode sur la page Inbox, clair/sombre, 320/390/1280/1600/1920 px : email développé, changement de candidat, réponse unique, brouillon conservé, panneau de contexte, sortie et réouverture sans compte LinkedIn. Aucun débordement, aucune erreur navigateur, aucune écriture serveur dans la démo, composeur visible à 500 px de hauteur. Build réussi ; TypeScript à 11 erreurs héritées ; lint des fichiers touchés sans nouveau diagnostic ; dette design inchangée. Suites UX et C1 vérifiées.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Parcours des trois candidats, Gmail/Outlook/WhatsApp et réponse simulée | PASS |
+| Claire | Distinction de la démo, contenu des emails, entretien et sortie sans compte connecté | PASS |
+| Théo | Lien avec chat réel sans marquage lu en démo, zéro écriture, brouillons séparés et essais effacés à la sortie | PASS |
+| Sophie | Retour à la liste, changement de candidat, contexte et réponse à 320/390 px et hauteur 500 px | PASS |
+
+**Limites** : navigateur avec services simulés pour vérifier l'absence d'écritures ; aucun message réel envoyé. Le mode démo illustre les réponses email/WhatsApp, dont la synchronisation réelle reste à connecter. Fournisseur d'email générique si l'origine de l'événement n'est pas enregistrée.
+**Refs** : PR #312, branche `codex/inbox-candidate-history`.
+
 ## 2026-10-07 — SPEC — Messagerie : historique candidat et largeur utile
 
 **Contexte** : la liste étroite et la conversation isolée masquaient le suivi effectué sur les autres canaux.

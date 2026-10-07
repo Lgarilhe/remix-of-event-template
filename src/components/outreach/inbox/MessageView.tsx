@@ -58,7 +58,7 @@ import {
 import { EmptyState } from '@/components/layout';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import {
-  Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock, ExternalLink,
+  Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock,
   FileText, GitBranch, ListPlus, UserRound, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
@@ -68,6 +68,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
+import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { channelLabel } from '@/lib/channels';
 import {
   getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
@@ -925,7 +926,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {profileUrl && (
                   <DropdownMenuItem asChild className={MENU_ITEM}>
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                      <ServiceLogo service="linkedin" decorative className="mr-2" />
                       Voir le profil LinkedIn
                     </a>
                   </DropdownMenuItem>
@@ -1202,6 +1203,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                           )}
                         >
                           <span className="tabular-nums">{formatMessageTime(msg.timestamp)}</span>
+                          <ChannelIcon channel={channel} size="xs" />
                           {isSender && (msg.read || msg.seen === 1 ? (
                             <span title="Lu" className="inline-flex">
                               <CheckCheck className="h-3 w-3 text-foreground" aria-hidden="true" />
