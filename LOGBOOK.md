@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — DECISION — Réutiliser le profil candidat existant dans la messagerie
+
+**Fait** : le profil de la messagerie et la fiche fictive réutilisent `ProfileDetailedTab`, déjà utilisé dans le pipeline, avec logos des sociétés/écoles, périodes, compétences et listes dépliables. Les logos sont conservés lors de la normalisation des données ; les dates utilisent le parseur existant. Suppression de la présentation et des formateurs de dates ajoutés pour cette vue. Cibles tactiles des boutons de dépliage portées à 44 px sur mobile ; logos fictifs locaux dans l'exemple principal.
+**Validation** : build réussi ; 11 erreurs TypeScript héritées, aucun diagnostic sur les fichiers nouveaux ; régressions profil/historique/contraste réussies ; lint ciblé propre et dette design sans augmentation. Six scénarios Chromium sur composants réels avec services simulés, clair/sombre et mobile : logos chargés, dates, listes dépliables, fiche et chat identiques, cache par organisation et absence d'écriture en démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Profil existant, anciens postes/formations dépliables et même historique sur les deux vues | PASS |
+| Claire | Logos des entreprises/écoles chargés et périodes lisibles | PASS |
+| Théo | Normalisation conservant les logos, actualisation isolée et démo sans écriture | PASS |
+| Sophie | Profil sans débordement à 390 px, onglets au clavier et composeur visible à 500 px | PASS |
+
+**Refs** : PR #312, aperçu de `codex/inbox-candidate-history`.
+
 ## 2026-10-07 — SPEC — Profil candidat dans la messagerie et interactions partagées
 
 **Fait** : onglets Suivi et Profil dans le contexte candidat, expériences et formations intégrales, compétences, langues et autres rubriques présentes dans le profil. Lecture des instantanés de l'organisation, puis du compte LinkedIn personnel si nécessaire ; actualisation explicite conservant le cache de l'organisation de départ. Les fiches sourcing, pipeline et mission reprennent les cartes et la chronologie des interactions : séquences, emails/WhatsApp envoyés, entretiens, appels et messages LinkedIn paginés. Les réponses LinkedIn utilisent uniquement le compte personnel. La démo contient trois parcours fictifs complets et une fiche Profil/Interactions reprenant exactement les événements du chat, réponses simulées comprises.

@@ -41,9 +41,11 @@ test('Le profil conserve tous les postes, formations et compétences des formats
   assert.equal(result.skills.length,12);
   assert.equal(result.languages[0].name,'Français');
   assert.equal(result.certifications[0].organization,'École');
-  assert.equal(profile.profilePeriod({year:2020},null,true),"2020 – Aujourd'hui");
-  assert.equal(profile.profileDate('2020'),'2020');
-  assert.equal(profile.profilePeriod(null,null),'');
+  const logos = profile.normalizeCandidateProfile({ work_experience:[{company:'Entreprise',company_logo:'company.svg'}], education:[{school_details:{name:'École',logo:'school.svg'}}] }, 'candidate');
+  assert.equal(logos.work_experience[0].company_picture_url,'company.svg');
+  assert.equal(logos.education[0].school,'École');
+  assert.equal(logos.education[0].school_picture_url,'school.svg');
+  assert.equal(profile.normalizeCandidateProfile(logos,'candidate').education[0].school_picture_url,'school.svg');
 });
 test('Un slug public doit provenir exactement de LinkedIn, sans rapprocher des candidats homonymes', () => {
   assert.equal(profile.candidateLinkedInSlug('https://fr.linkedin.com/in/Camille/?trk=test'),'camille');

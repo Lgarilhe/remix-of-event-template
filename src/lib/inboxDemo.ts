@@ -16,6 +16,7 @@ export interface DemoConversation {
 
 /** Exemples en mémoire : aucune identité réelle, aucun identifiant de compte ou de session. */
 export function createInboxDemo(now = new Date()): DemoConversation[] {
+  const demoLogo = (letters: string) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><rect width="80" height="80" rx="12" fill="#f5f3ee"/><text x="40" y="49" text-anchor="middle" font-family="sans-serif" font-size="26" font-weight="600" fill="#292524">${letters}</text></svg>`)}`;
   const at = (day: number, hour: number, minute = 0) => {
     const date = new Date(now);
     date.setDate(date.getDate() + day);
@@ -36,11 +37,11 @@ export function createInboxDemo(now = new Date()): DemoConversation[] {
       profile: {
         id: 'demo-camille', name: 'Camille Durand', headline: 'Développeuse React senior', location: 'Paris', summary: 'Développeuse frontend depuis huit ans, j’aime construire des produits accessibles et accompagner les équipes sur la qualité du code. Je cherche une équipe produit où contribuer aux choix techniques et au mentorat.',
         work_experience: [
-          { company: 'Lumen Produit (fictif)', role: 'Développeuse frontend senior', start: { year: 2022, month: 3 }, current: true, description: 'Refonte React et TypeScript d’une plateforme B2B. Design system, accessibilité, tests et accompagnement de trois développeurs.' },
-          { company: 'Atelier Nova (fictif)', role: 'Développeuse React', start: { year: 2018, month: 9 }, end: { year: 2022, month: 2 }, description: 'Applications web pour des équipes métier, intégration d’API et amélioration des performances.' },
-          { company: 'Studio Boréal (fictif)', role: 'Développeuse web', start: '2016', end: '2018', description: 'Premiers projets JavaScript et interfaces responsives.' },
+          { company: 'Lumen Produit (fictif)', company_picture_url: demoLogo('LP'), role: 'Développeuse frontend senior', start: { year: 2022, month: 3 }, current: true, description: 'Refonte React et TypeScript d’une plateforme B2B. Design system, accessibilité, tests et accompagnement de trois développeurs.' },
+          { company: 'Atelier Nova (fictif)', company_picture_url: demoLogo('AN'), role: 'Développeuse React', start: { year: 2018, month: 9 }, end: { year: 2022, month: 2 }, description: 'Applications web pour des équipes métier, intégration d’API et amélioration des performances.' },
+          { company: 'Studio Boréal (fictif)', company_picture_url: demoLogo('SB'), role: 'Développeuse web', start: '2016', end: '2018', description: 'Premiers projets JavaScript et interfaces responsives.' },
         ],
-        education: [{ school: 'Université Paris-Saclay', degree: 'Master informatique', field_of_study: 'Génie logiciel', start: '2014', end: '2016' }, { school: 'Université de Nantes', degree: 'Licence informatique', start: '2011', end: '2014' }],
+        education: [{ school: 'Université Paris-Saclay', school_picture_url: demoLogo('PS'), degree: 'Master informatique', field_of_study: 'Génie logiciel', start: '2014', end: '2016' }, { school: 'Université de Nantes', school_picture_url: demoLogo('UN'), degree: 'Licence informatique', start: '2011', end: '2014' }],
         skills: ['React', 'TypeScript', 'JavaScript', 'Accessibilité', 'Design system', 'Tests', 'API REST', 'Git', 'Mentorat', 'Performance web'].map(name => ({ name })),
         languages: [{ name: 'Français', proficiency: 'Langue maternelle' }, { name: 'Anglais', proficiency: 'Professionnel' }],
         certifications: [{ name: 'Accessibilité numérique', organization: 'Parcours de formation fictif' }],
