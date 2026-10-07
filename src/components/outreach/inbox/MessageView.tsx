@@ -1302,8 +1302,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* RANGÉE 3 : suggestions, panneau IA et composeur */}
-      <div>
+      {/* RANGÉE 3 : ligne « À faire », suggestions, panneau IA et composeur */}
+      <div className="group/compose">
         {nextStep && (
           <ThreadNextStep
             key={selectedChat.id}

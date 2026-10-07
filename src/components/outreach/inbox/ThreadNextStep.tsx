@@ -12,6 +12,11 @@
  *   votre envoi ;
  * - créer un rappel : une tâche « Relance » préremplie pour le prochain jour
  *   ouvré à 9 h.
+ *
+ * Sur téléphone, la ligne s'efface quand le champ de saisie a le focus : le
+ * clavier prend la moitié de l'écran et la ligne laisserait moins d'un message
+ * visible. Le parent pose `group/compose` sur la rangée qui réunit la ligne et
+ * le composeur.
  */
 
 import React, { Suspense, lazy, useState } from 'react';
@@ -64,7 +69,10 @@ export const ThreadNextStep: React.FC<ThreadNextStepProps> = ({
   const name = candidateName?.trim() || 'le candidat';
 
   return (
-    <section aria-label="À faire pour cette conversation" className="border-t border-border bg-muted px-3 py-2 md:px-5">
+    <section
+      aria-label="À faire pour cette conversation"
+      className="border-t border-border bg-muted px-3 py-2 group-has-[textarea:focus]/compose:max-md:hidden md:px-5"
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1 basis-60">
           <p className="text-sm text-foreground">{sentence}</p>
