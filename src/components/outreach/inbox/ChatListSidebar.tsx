@@ -2,8 +2,10 @@
  * ChatListSidebar — colonne des conversations de la messagerie.
  *
  * Trois rangées avant la première conversation (revue design D-05, D-06) :
- * le titre, la recherche avec le bouton « Filtres », puis le tri visible
- * « Toutes / À répondre / En attente » (SegmentedControl, aria-pressed). Le
+ * le titre, la recherche avec le bouton « Filtres », puis les onglets
+ * « Toutes / À répondre / À relancer / En attente » (SegmentedControl,
+ * aria-pressed, compteurs des conversations actives, états de
+ * src/lib/inboxThreadState.ts). Le
  * statut (sommeil, archive), l'étiquette, la boîte d'origine et les non-lus
  * sont dans « Filtres », avec le nombre de filtres actifs.
  *
@@ -31,9 +33,9 @@ import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
 import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
 import { useChatIntents } from '@/hooks/useChatIntents';
+import type { ResponseFilter, ThreadCounts } from '@/lib/inboxThreadState';
 
 type StatusFilter = 'active' | 'snoozed' | 'archived' | 'all';
-type ResponseFilter = 'all' | 'waiting_candidate' | 'waiting_me';
 type SourceFilter = 'all' | 'classic' | 'recruiter';
 
 interface ChatListSidebarProps {
@@ -48,6 +50,8 @@ interface ChatListSidebarProps {
   sourceFilter: SourceFilter;
   categoryFilter: ChatCategory | 'all';
   responseFilter: ResponseFilter;
+  /** Conversations actives par état, pour les compteurs des onglets */
+  threadCounts: ThreadCounts;
   /** Statut de mise en sommeil ou d'archive */
   statusFilter?: StatusFilter;
   onStatusFilterChange?: (filter: StatusFilter) => void;
@@ -106,6 +110,16 @@ const HeaderIconButton: React.FC<{
   </Tooltip>
 );
 
+/** Libellé d'onglet suivi de son compteur, écrit seulement s'il n'est pas nul. */
+const TabLabel: React.FC<{ text: string; count: number }> = ({ text, count }) =>
+  count > 0 ? (
+    <>
+      {text} <span className="tabular-nums text-muted-foreground">{count}</span>
+    </>
+  ) : (
+    <>{text}</>
+  );
+
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   chats,
   filteredChats,
@@ -117,6 +131,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   sourceFilter,
   categoryFilter,
   responseFilter,
+  threadCounts,
   statusFilter = 'active',
   onStatusFilterChange,
   enrollmentsMap,
@@ -156,8 +171,6 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   // Intentions lues par l'IA pour les conversations visibles (cache des analyses).
   const visibleAccountId = filteredChats[0]?.account_id || chats[0]?.account_id || null;
   const { data: intentsMap } = useChatIntents(filteredChats, visibleAccountId);
-
-  const waitingMeCount = chats.filter(c => c.last_message?.is_sender === false).length;
 
   // Filtres du menu « Filtres » (le tri visible et la recherche sont à part)
   const filterCount = [
@@ -411,24 +424,24 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               </FilterPill>
             </div>
 
-            {/* Tri visible : qui doit répondre */}
+            {/* Onglets : à qui est la main. Quatre options ne tiennent pas sur une ligne de 300 px : grille de deux colonnes. */}
             <SegmentedControl
               aria-label="Conversations affichées"
               variant="quiet"
+              className="grid w-full grid-cols-2"
               value={responseFilter}
               onValueChange={onResponseFilterChange}
               options={[
                 { value: 'all', label: 'Toutes' },
                 {
                   value: 'waiting_me',
-                  label: waitingMeCount > 0 ? (
-                    <>
-                      À répondre <span className="tabular-nums text-muted-foreground">{waitingMeCount}</span>
-                    </>
-                  ) : (
-                    'À répondre'
-                  ),
+                  label: <TabLabel text="À répondre" count={threadCounts.to_reply} />,
                   title: 'Le candidat a écrit le dernier message',
+                },
+                {
+                  value: 'to_follow_up',
+                  label: <TabLabel text="À relancer" count={threadCounts.to_follow_up} />,
+                  title: 'Sans réponse depuis trois jours ouvrés',
                 },
                 { value: 'waiting_candidate', label: 'En attente', title: 'Vous avez écrit le dernier message' },
               ]}

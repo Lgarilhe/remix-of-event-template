@@ -27,8 +27,11 @@ import { ActivityEventCard } from './ActivityEventCard';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
 import { MessageComposer } from './MessageComposer';
 import { SmartReplies } from './SmartReplies';
+import { ThreadNextStep } from './ThreadNextStep';
+import type { CtaReplyButtonProps } from './CtaReplyButton';
 import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useNow } from '@/hooks/sidebar/useNow';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberName } from '@/hooks/useTeamMembers';
@@ -70,6 +73,8 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
+import { businessDaysSince, latestMessage, threadState } from '@/lib/inboxThreadState';
+import { useChatSuggestedAction } from '@/hooks/useChatSuggestedAction';
 import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
 // Boutons icône de l'en-tête : 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
@@ -184,6 +189,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   isReacting,
   isDeleting,
 }) => {
+  const currentTime = useNow(30_000);
   const replySuggestions = Array.isArray(replySuggestionsRaw) ? replySuggestionsRaw : [];
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
@@ -672,6 +678,36 @@ export const MessageView: React.FC<MessageViewProps> = ({
     || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
     || undefined
   ), [user?.user_metadata?.full_name, user?.user_metadata?.first_name, user?.user_metadata?.last_name]);
+
+  // Ligne « À faire » : même règle que les onglets (src/lib/inboxThreadState.ts),
+  // avec le dernier message lu dans le fil (à jour dès l'envoi) et l'inscription
+  // active lue en base à l'ouverture.
+  const nextStep = useMemo(() => {
+    if (!selectedChat) return null;
+    const last = latestMessage(messages) ?? selectedChat.last_message ?? null;
+    const lastAt = last?.timestamp ?? null;
+    const now = new Date(currentTime);
+    const state = threadState(
+      {
+        lastIsMine: last && typeof last.is_sender === 'boolean' ? last.is_sender : null,
+        lastAt,
+        sequenceActive: hasActiveEnrollment || jobInfo?.status === 'active',
+      },
+      now,
+    );
+    if (state !== 'to_reply' && state !== 'to_follow_up') return null;
+    return { state, lastAt, days: lastAt ? businessDaysSince(lastAt, now) : null };
+  }, [selectedChat, messages, hasActiveEnrollment, jobInfo, currentTime]);
+
+  // Action déjà mise en cache par l'analyse IA (lecture seule), pour « À répondre » :
+  // écartée si le candidat a écrit depuis l'analyse.
+  const cachedSuggestion = useChatSuggestedAction(selectedChat, nextStep?.state === 'to_reply');
+  const nextStepSuggestion = useMemo(() => {
+    const cached = cachedSuggestion.data;
+    if (!cached?.action) return null;
+    if (nextStep?.lastAt && cached.analyzedAt && new Date(nextStep.lastAt) > new Date(cached.analyzedAt)) return null;
+    return cached.action;
+  }, [cachedSuggestion.data, nextStep?.lastAt]);
 
   // Aucune conversation ouverte (ordinateur)
   if (!selectedChat) {
@@ -1268,8 +1304,25 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* RANGÉE 3 : suggestions, panneau IA et composeur */}
-      <div>
+      {/* RANGÉE 3 : ligne « À faire », suggestions, panneau IA et composeur */}
+      <div className="group/compose">
+        {nextStep && (
+          <ThreadNextStep
+            key={selectedChat.id}
+            state={nextStep.state}
+            days={nextStep.days}
+            suggestion={nextStepSuggestion}
+            chatHistory={ctaChatHistory}
+            candidateName={getChatDisplayName(selectedChat)}
+            recruiterName={ctaRecruiterName}
+            jobTitle={currentJobData?.title}
+            jobBrief={ctaJobBrief as CtaReplyButtonProps['jobBrief']}
+            calendlyLink={calendlyLink || undefined}
+            tone={currentTone}
+            // Même règle que le composeur : champ vide, le texte le remplace ; sinon il s'ajoute à la fin.
+            onInsert={(text) => onNewMessageChange(newMessage.trim() ? `${newMessage.trimEnd()}\n\n${text}` : text)}
+          />
+        )}
         {aiPanelOpen && (
           <div className="max-h-[40vh] overflow-y-auto border-t border-border">
             <InlineAIPanel

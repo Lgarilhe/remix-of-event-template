@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useReducer, useState } from 'react';
+import { useCallback, useMemo, useRef, useEffect, useReducer, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -7,6 +7,8 @@ import { autoAnalyzeKey, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useNow } from '@/hooks/sidebar/useNow';
+import { fetchInboxEnrollmentRows, indexInboxEnrollments } from '@/lib/inboxEnrollments';
 import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, type JobDetails } from '@/types/jobDetails';
 import { useChatCategories } from './useChatCategories';
 import { useChatStatus, getEffectiveStatus } from './useChatStatus';
@@ -14,6 +16,7 @@ import {
   getChatDisplayName,
   getChatHeadline,
   getChatJobInfo,
+  getChatThreadState,
   getAttendeeProfileId,
   getMessageText,
   isRecruiterChat,
@@ -22,6 +25,12 @@ import {
   getUnreadCount,
   buildChatSearchText,
 } from './useMessagesInboxHelpers';
+import {
+  RESPONSE_FILTER_STATE,
+  countThreadStates,
+  type ResponseFilter,
+  type ThreadState,
+} from '@/lib/inboxThreadState';
 
 /** Identifiant de mission (sourcing_projects.id). */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -123,6 +132,8 @@ export interface Message {
 
 export interface SequenceEnrollmentInfo {
   profile_id: string;
+  provider_id?: string | null;
+  resolved_profile_id?: string | null;
   job_title: string | null;
   job_id: string | null;
   status: string;
@@ -299,6 +310,8 @@ interface UseMessagesInboxOptions {
   onUnreadCountChange?: (count: number) => void;
   initialChatId?: string | null;
   onChatChange?: (chatId: string | null) => void;
+  /** Onglet ouvert au départ (?onglet= de /inbox). */
+  initialResponseFilter?: ResponseFilter;
 }
 
 // ── Reducer: Chat State ─────────────────────────────────
@@ -377,7 +390,7 @@ interface UIState {
   newMessage: string;
   showUnreadOnly: boolean;
   sourceFilter: 'all' | 'classic' | 'recruiter';
-  responseFilter: 'all' | 'waiting_candidate' | 'waiting_me';
+  responseFilter: ResponseFilter;
   showSequenceSelect: boolean;
   showPipelineModal: boolean;
   pipelinePreSelectedJobId: string | undefined;
@@ -391,7 +404,7 @@ type UIAction =
   | { type: 'UPDATE_NEW_MESSAGE'; updater: (prev: string) => string }
   | { type: 'SET_SHOW_UNREAD_ONLY'; value: boolean }
   | { type: 'SET_SOURCE_FILTER'; value: 'all' | 'classic' | 'recruiter' }
-  | { type: 'SET_RESPONSE_FILTER'; value: 'all' | 'waiting_candidate' | 'waiting_me' }
+  | { type: 'SET_RESPONSE_FILTER'; value: ResponseFilter }
   | { type: 'SET_SHOW_SEQUENCE_SELECT'; value: boolean }
   | { type: 'SET_SHOW_PIPELINE_MODAL'; value: boolean }
   | { type: 'SET_PIPELINE_PRE_SELECTED_JOB_ID'; value: string | undefined }
@@ -475,9 +488,10 @@ function contextReducer(state: ContextState, action: ContextAction): ContextStat
   }
 }
 
-export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }: UseMessagesInboxOptions) {
+export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange, initialResponseFilter }: UseMessagesInboxOptions) {
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
+  const currentTime = useNow(30_000);
 
   // ── Chat state (useReducer #1) ──
   const [chatState, chatDispatch] = useReducer(chatReducer, {
@@ -544,7 +558,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     newMessage: '',
     showUnreadOnly: false,
     sourceFilter: 'all' as const,
-    responseFilter: 'all' as const,
+    responseFilter: initialResponseFilter ?? ('all' as ResponseFilter),
     showSequenceSelect: false,
     showPipelineModal: false,
     pipelinePreSelectedJobId: undefined,
@@ -591,7 +605,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   }, [selectChat, onChatChange]);
   const setShowUnreadOnly = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_UNREAD_ONLY', value: v }), []);
   const setSourceFilter = useCallback((v: 'all' | 'classic' | 'recruiter') => uiDispatch({ type: 'SET_SOURCE_FILTER', value: v }), []);
-  const setResponseFilter = useCallback((v: 'all' | 'waiting_candidate' | 'waiting_me') => uiDispatch({ type: 'SET_RESPONSE_FILTER', value: v }), []);
+  const setResponseFilter = useCallback((v: ResponseFilter) => uiDispatch({ type: 'SET_RESPONSE_FILTER', value: v }), []);
   const setShowSequenceSelect = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_SEQUENCE_SELECT', value: v }), []);
   const setShowPipelineModal = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_PIPELINE_MODAL', value: v }), []);
   const setPipelinePreSelectedJobId = useCallback((v: string | undefined) => uiDispatch({ type: 'SET_PIPELINE_PRE_SELECTED_JOB_ID', value: v }), []);
@@ -635,21 +649,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Le outreach_config sert à passer le contexte d'incarnation IA aux
   // smart replies dans l'inbox (cohérence avec les messages sortants).
   const fetchEnrollments = useCallback(async () => {
+    if (!organizationId) return;
     try {
-      let query = supabase
-        .from('sequence_enrollments')
-        // Lot 5b : raison de fin et trace d'un arrêt manuel (« Arrêtée par … le … »).
-        // Ligne typée à la main : l'inférence des chemins JSON dépasse la profondeur de TypeScript.
-        .select<string, Omit<SequenceEnrollmentInfo, 'outreach_config' | 'client_name'>>('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop')
-        .order('created_at', { ascending: false })
-        .limit(500);
-
-      if (organizationId) {
-        query = query.eq('organization_id', organizationId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const data = await fetchInboxEnrollmentRows(supabase, organizationId);
 
       // Récupère outreach_config + client_name pour chaque job_id distinct (1 query batch)
       const jobIds = Array.from(new Set((data || []).map(e => e.job_id).filter(Boolean) as string[]));
@@ -668,17 +670,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         });
       }
 
-      const map = new Map<string, SequenceEnrollmentInfo>();
-      data?.forEach(enrollment => {
-        if (!map.has(enrollment.profile_id)) {
-          const projectInfo = enrollment.job_id ? projectsMap.get(enrollment.job_id) : undefined;
-          map.set(enrollment.profile_id, {
-            ...enrollment,
-            outreach_config: projectInfo?.outreach_config || null,
-            client_name: projectInfo?.client_name || null,
-          });
-        }
-      });
+      const map = indexInboxEnrollments(data.map(enrollment => {
+        const projectInfo = enrollment.job_id ? projectsMap.get(enrollment.job_id) : undefined;
+        return {
+          ...enrollment,
+          outreach_config: projectInfo?.outreach_config || null,
+          client_name: projectInfo?.client_name || null,
+        };
+      }));
       setEnrollmentsMap(map);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
@@ -1473,6 +1472,27 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   };
 
+  // État de chaque conversation (à répondre, à relancer, en attente), relu avec
+  // la liste (toutes les 30 s) et les inscriptions.
+  const threadStates = useMemo(() => {
+    const now = new Date(currentTime);
+    const map = new Map<string, ThreadState>();
+    for (const chat of chats) map.set(chat.id, getChatThreadState(chat, enrollmentsMap, now));
+    return map;
+  }, [chats, enrollmentsMap, currentTime]);
+
+  // Compteurs des onglets : conversations actives seulement, ni en sommeil ni archivées.
+  const threadCounts = useMemo(() => {
+    const now = currentTime;
+    const active: ThreadState[] = [];
+    for (const chat of chats) {
+      if (getEffectiveStatus(chatStatus.statusMap.get(chat.id), now) === 'active') {
+        active.push(threadStates.get(chat.id) ?? 'none');
+      }
+    }
+    return countThreadStates(active);
+  }, [chats, chatStatus.statusMap, threadStates, currentTime]);
+
   // Filter chats effect
   useEffect(() => {
     let result = chats;
@@ -1498,17 +1518,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     // - 'archived' : archived_at IS NOT NULL
     // - 'all' : aucun filtre
     if (chatStatus.statusFilter !== 'all') {
-      const now = Date.now();
+      const now = currentTime;
       result = result.filter(chat => getEffectiveStatus(chatStatus.statusMap.get(chat.id), now) === chatStatus.statusFilter);
     }
 
-    // Response status filter: based on who sent the last message
-    if (responseFilter === 'waiting_candidate') {
-      // I sent the last message → candidate hasn't replied yet
-      result = result.filter(chat => chat.last_message?.is_sender === true);
-    } else if (responseFilter === 'waiting_me') {
-      // Candidate sent the last message → I need to respond
-      result = result.filter(chat => chat.last_message?.is_sender === false);
+    // Onglets : un seul état par conversation (src/lib/inboxThreadState.ts)
+    if (responseFilter !== 'all') {
+      const wanted = RESPONSE_FILTER_STATE[responseFilter];
+      result = result.filter(chat => threadStates.get(chat.id) === wanted);
     }
 
     if (searchQuery.trim()) {
@@ -1517,7 +1534,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
 
     setFilteredChats(result);
-  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, chatCategories.categoryFilter, chatCategories.categoriesMap, chatStatus.statusFilter, chatStatus.statusMap]);
+  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, threadStates, currentTime, chatCategories.categoryFilter, chatCategories.categoriesMap, chatStatus.statusFilter, chatStatus.statusMap]);
 
   // Unread count effect
   useEffect(() => {
@@ -1779,6 +1796,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setSourceFilter,
     responseFilter,
     setResponseFilter,
+    threadCounts,
     
     // Categories
     chatCategories,

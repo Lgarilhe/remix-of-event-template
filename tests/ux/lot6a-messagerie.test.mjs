@@ -35,6 +35,7 @@ const FILES = {
   tone: 'src/components/outreach/inbox/ToneSelector.tsx',
   pipeline: 'src/components/outreach/AddToPipelineModal.tsx',
   hook: 'src/hooks/useMessagesInbox.ts',
+  enrollments: 'src/lib/inboxEnrollments.ts',
   helpers: 'src/hooks/useMessagesInboxHelpers.ts',
   intents: 'src/hooks/useChatIntents.ts',
   categories: 'src/hooks/useChatCategories.ts',
@@ -104,8 +105,8 @@ test('D-05, D-06 : trois rangées avant la liste, libellés visibles, état anno
 });
 
 // ---------------------------------------------------------------- D-07
-test('D-07 : « À répondre » ou « En attente » puis la mission, source neutre', () => {
-  assert.match(src.helpers, /kind: 'reply' \| 'waiting' \| null/);
+test('D-07 : « À répondre », « À relancer » ou « En attente » puis la mission, source neutre', () => {
+  assert.match(src.helpers, /kind: 'reply' \| 'follow_up' \| 'waiting' \| null/);
   assert.doesNotMatch(src.helpers, /label: 'Classic'/, 'la messagerie classique n’a pas de badge');
   assert.doesNotMatch(src.helpers, /color:/, 'la source reste en texte neutre');
   assert.doesNotMatch(src.item, /!sourceType && !categoryInfo/, 'le repère n’est plus masqué par la source');
@@ -205,7 +206,7 @@ test('D-18 : statut d’inscription du catalogue, une seule conversation montée
   assert.doesNotMatch(src.view, /SequenceStatusBadge|config\.active|En séquence/, 'plus de repli « En séquence »');
   assert.equal((src.inbox.match(/<MessageView\b/g) || []).length, 1, 'MessageView monté une fois');
   // Lot 5b : la raison de fin et la trace d'un arrêt manuel sont lues avec elle.
-  assert.match(src.hook, /current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'\)/, 'la raison d’une pause est lue');
+  assert.match(src.enrollments, /current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'/, 'la raison d’une pause est lue');
 });
 
 // ---------------------------------------------------------------- D-19

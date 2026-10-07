@@ -6,6 +6,9 @@
  * 2. L'IA rédige une réponse qui amène cette suite ; elle s'affiche dans un
  *    dialogue : « Régénérer » ou « Insérer dans le message ».
  * 3. Le texte inséré se relit et se modifie dans le composeur avant l'envoi.
+ *
+ * Avec `presetCta`, le bouton rédige tout de suite cette suite, sans menu (ligne
+ * « À faire » de la conversation) ; le dialogue de relecture est le même.
  */
 
 import React, { useState } from 'react';
@@ -69,6 +72,10 @@ export interface CtaReplyButtonProps {
   onInsert: (message: string) => void;
   /** Désactive le bouton (typiquement quand pas de chat sélectionné). */
   disabled?: boolean;
+  /** Rédige directement cette suite au clic, sans menu de choix. */
+  presetCta?: CtaType;
+  /** Libellé du bouton avec `presetCta`. */
+  triggerLabel?: string;
 }
 
 export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
@@ -81,6 +88,8 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
   tone,
   onInsert,
   disabled = false,
+  presetCta,
+  triggerLabel,
 }) => {
   const { ctaReply, ctaReplyLoading } = useTextActions();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -124,45 +133,60 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
 
   return (
     <>
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={isDisabled}
-                loading={ctaReplyLoading}
-                aria-label="Proposer une suite"
-                className="h-11 w-11 px-0 sm:h-7 sm:w-auto sm:px-2"
-              >
-                {!ctaReplyLoading && <MessageSquareReply aria-hidden="true" />}
-                <span className="hidden sm:inline">Proposer une suite</span>
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="top">Rédiger une réponse qui propose la suite de l'échange</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent side="top" align="start" className="w-80">
-          <DropdownMenuLabel>Choisissez la suite à proposer</DropdownMenuLabel>
-          {CTA_OPTIONS.map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <DropdownMenuItem
-                key={opt.value}
-                onSelect={() => void handlePick(opt.value)}
-                className="min-h-11 items-start gap-2 md:min-h-0"
-              >
-                <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm text-foreground">{opt.label}</span>
-                  <span className="block text-xs text-muted-foreground">{opt.description}</span>
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {presetCta ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isDisabled}
+          loading={ctaReplyLoading}
+          onClick={() => void handlePick(presetCta)}
+          className="max-md:h-11"
+        >
+          {!ctaReplyLoading && <MessageSquareReply aria-hidden="true" />}
+          {triggerLabel ?? 'Proposer une suite'}
+        </Button>
+      ) : (
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={isDisabled}
+                  loading={ctaReplyLoading}
+                  aria-label="Proposer une suite"
+                  className="h-11 w-11 px-0 sm:h-7 sm:w-auto sm:px-2"
+                >
+                  {!ctaReplyLoading && <MessageSquareReply aria-hidden="true" />}
+                  <span className="hidden sm:inline">Proposer une suite</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">Rédiger une réponse qui propose la suite de l'échange</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent side="top" align="start" className="w-80">
+            <DropdownMenuLabel>Choisissez la suite à proposer</DropdownMenuLabel>
+            {CTA_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              return (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onSelect={() => void handlePick(opt.value)}
+                  className="min-h-11 items-start gap-2 md:min-h-0"
+                >
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-foreground">{opt.label}</span>
+                    <span className="block text-xs text-muted-foreground">{opt.description}</span>
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
