@@ -529,7 +529,7 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
                       aria-expanded={styleOpen}
                       aria-controls={`${id}-style-fields`}
                       onClick={() => setStyleOpen((v) => !v)}
-                      className="h-auto p-0 align-baseline text-muted-foreground underline underline-offset-2 max-md:flex max-md:min-h-11"
+                      className="h-auto p-0 align-baseline text-foreground underline underline-offset-2 max-md:flex max-md:min-h-11"
                     >
                       {styleOpen ? 'Fermer' : 'Modifier'}
                     </Button>
