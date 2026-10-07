@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, PanelRight, Send } from 'lucide-react';
 import { CandidateInteractionTimeline } from './CandidateInteractionTimeline';
 import { CandidateProfileContent } from './CandidateProfileContent';
+import { DemoCandidateActions, type DemoActionStatus } from './DemoCandidateActions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConversationContext } from './ConversationContext';
@@ -12,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { createInboxDemo } from '@/lib/inboxDemo';
+import { createDemoCandidateActions } from '@/lib/inboxDemoActions';
 import { SERVICE_LABELS, type MessagingService } from '@/lib/messagingServices';
 import type { ActivityEvent } from '@/hooks/useProfileActivity';
 import { cn } from '@/lib/utils';
@@ -29,11 +31,19 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
   const [service, setService] = useState<MessagingService>('whatsapp');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, ActivityEvent[]>>({});
+  const [actionStatuses, setActionStatuses] = useState<Record<string, DemoActionStatus>>({});
+  const suggestedActions = useMemo(() => createDemoCandidateActions(conversations), [conversations]);
   const endRef = useRef<HTMLDivElement>(null);
   const selected = conversations.find(conversation => conversation.id === selectedId) ?? null;
   const events = useMemo(() => selected ? [...selected.events, ...(replies[selected.id] ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)) : [], [selected, replies]);
   const draft = selected ? drafts[selected.id] ?? '' : '';
-  const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} sequenceStatus="Exemple de suivi candidat" readOnly onEnroll={noop} onAddToPipeline={noop} />;
+  const actions = selected && <DemoCandidateActions actions={suggestedActions[selected.id]} statuses={actionStatuses} onStatusChange={(id, status) => setActionStatuses(previous => {
+    const next = { ...previous };
+    if (status) next[id] = status;
+    else delete next[id];
+    return next;
+  })} />;
+  const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} sequenceStatus="Exemple de suivi candidat" followupContent={actions} readOnly onEnroll={noop} onAddToPipeline={noop} />;
 
   function send() {
     if (!selected || !draft.trim()) return;
@@ -93,7 +103,17 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
           </form>
         </div>
         <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-muted 2xl:block">{context}</aside>
-        <Dialog open={profileOpen} onOpenChange={setProfileOpen}><DialogContent className="flex max-h-[90dvh] max-w-3xl flex-col overflow-hidden p-0 [&>button]:h-11 [&>button]:w-11"><DialogHeader className="shrink-0 p-5 pb-2 pr-14"><DialogTitle>{selected.name}</DialogTitle><DialogDescription>Fiche fictive · Les mêmes interactions que dans la messagerie</DialogDescription></DialogHeader><Tabs defaultValue="profile" className="flex min-h-0 flex-1 flex-col"><TabsList className="mx-5 grid h-auto shrink-0 grid-cols-2"><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger><TabsTrigger value="interactions" className="min-h-11">Interactions</TabsTrigger></TabsList><TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateProfileContent profile={selected.profile} /></TabsContent><TabsContent value="interactions" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateInteractionTimeline events={events} name={selected.name} /></TabsContent></Tabs></DialogContent></Dialog>
+        <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+          <DialogContent className="flex max-h-[90dvh] max-w-3xl flex-col overflow-hidden p-0 [&>button]:h-11 [&>button]:w-11">
+            <DialogHeader className="shrink-0 p-5 pb-2 pr-14"><DialogTitle>{selected.name}</DialogTitle><DialogDescription>Fiche fictive · Les mêmes interactions et propositions que dans la messagerie</DialogDescription></DialogHeader>
+            <Tabs defaultValue="profile" className="flex min-h-0 flex-1 flex-col">
+              <TabsList className="mx-5 grid h-auto shrink-0 grid-cols-3"><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger><TabsTrigger value="interactions" className="min-h-11">Interactions</TabsTrigger><TabsTrigger value="actions" className="min-h-11">Actions</TabsTrigger></TabsList>
+              <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateProfileContent profile={selected.profile} /></TabsContent>
+              <TabsContent value="interactions" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateInteractionTimeline events={events} name={selected.name} /></TabsContent>
+              <TabsContent value="actions" className="min-h-0 flex-1 overflow-y-auto p-5">{actions}</TabsContent>
+            </Tabs>
+          </DialogContent>
+        </Dialog>
         <Sheet open={contextOpen} onOpenChange={setContextOpen}><SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11"><SheetHeader className="p-5 pb-0"><SheetTitle>Contexte de la conversation fictive</SheetTitle></SheetHeader>{context}</SheetContent></Sheet>
       </div>}
     </div>

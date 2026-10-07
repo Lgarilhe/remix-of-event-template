@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Actions proposées selon les interactions et le contexte candidat
+
+**Fait** : démo enrichie de trois propositions sourcées : préparation d’entretien avec contexte LinkedIn, coordination avec un autre recruteur et clarification d’un critère non évalué dans une scorecard. Sources datées, auteur et logos des services, responsable et échéance suggérés. Création, achèvement et rejet simulés en mémoire, état partagé entre le contexte du chat et l’onglet Actions de la fiche fictive, effacement à la sortie. Les exemples sont écrits pour l’aperçu ; aucun moteur IA réel ni tâche serveur ajouté.
+**Spécification** : `docs/candidate-contextual-actions.md` reprend les procédures Notion actuelles de calage, débrief et relances. Prévoit un contexte partagé, les avis distincts de chaque évaluateur, le travail de l’équipe, les sources indisponibles, les règles de cadence, la provenance, l’attribution et une déduplication serveur. L’API V2 permet les publications LinkedIn ; l’app utilise encore la lecture V1. Prérequis du moteur réel : rattachements entretien/scorecard/rapport à alimenter, responsable de tâche distinct du créateur, mission interne, états durables et politique de partage des interactions.
+**Validation** : build réussi, TypeScript à 11 diagnostics hérités sans ajout, lint ciblé propre, dette design inchangée, trois fichiers de régression profil/historique/contraste réussis. Douze scénarios Chromium avec composants réels et services simulés : six variantes des actions de 320 à 1920 px, clair/sombre, puis six régressions profil et interactions. Aucune écriture ni génération distante pendant les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Création simulée unique, tâche terminée depuis la fiche et état conservé dans le chat au changement de candidat | PASS |
+| Claire | Motif, sources avec logos, distinction entre scorecard et décision humaine, contexte d’un collègue visible | PASS |
+| Théo | Double clic sans duplication, tâches séparées par candidat, rejet réversible, sortie effaçant les essais, zéro écriture réelle | PASS |
+| Sophie | Contexte et fiche sans débordement à 320/390 px, actions tactiles de 44 px, clair et sombre | PASS |
+
+**Refs** : PR #312 ; consignes Notion `4ccaf5bf38da4fe1ae0a438a03feb05a` et compétences référencées dans la spécification. Aucun envoi réel, aucune migration ni fonction serveur modifiée.
+
 ## 2026-10-07 — DECISION — Réutiliser le profil candidat existant dans la messagerie
 
 **Fait** : le profil de la messagerie et la fiche fictive réutilisent `ProfileDetailedTab`, déjà utilisé dans le pipeline, avec logos des sociétés/écoles, périodes, compétences et listes dépliables. Les logos sont conservés lors de la normalisation des données ; les dates utilisent le parseur existant. Suppression de la présentation et des formateurs de dates ajoutés pour cette vue. Cibles tactiles des boutons de dépliage portées à 44 px sur mobile ; logos fictifs locaux dans l'exemple principal.
