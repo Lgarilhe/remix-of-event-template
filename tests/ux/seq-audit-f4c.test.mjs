@@ -178,7 +178,7 @@ test('SEQ-184 / SEQ-245 — messagerie : une étape interne prend le nom de l’
   assert.equal(textOf(renderCard({ actionType: 'wait_connection', status: 'sent' })).replace(/·10:00$/, ''), graph.stepTypeLabel('wait_connection'));
   assert.match(textOf(renderCard({ actionType: 'wait_reply', status: 'skipped' })), /^Attendre une réponse : étape sautée/);
   // Rendez-vous : libellé sans abréviation (passe texte du design).
-  assert.match(textOf(renderCard({ type: 'booking', actionType: 'calendly_booking', status: 'scheduled' })), /Rendez-vous planifié/);
+  assert.match(textOf(renderCard({ type: 'booking', actionType: 'calendly_booking', status: 'scheduled' })), /Entretien planifié/);
 });
 
 // ---------------------------------------------------------------- SEQ-245

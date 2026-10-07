@@ -26,6 +26,7 @@ import {
   sequenceExecutionTitle,
 } from '@/lib/sequenceActionLabels';
 import { cn } from '@/lib/utils';
+import { activityActionType, activityMessageText } from '@/lib/inboxTimeline';
 
 /** Durée d'appel : « 45 s », « 3 min », « 3 min 20 s ». */
 function formatDuration(seconds: number): string {
@@ -77,22 +78,23 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     if (event.callUserName) details.push(event.callUserName);
   } else if (isBooking) {
     icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />;
+    const bookingLabel = ['cancelled', 'canceled'].includes(event.status) ? 'Entretien annulé' : ['completed', 'done'].includes(event.status) ? 'Entretien terminé' : 'Entretien planifié';
     label = event.qualificationSessionId ? (
       <Link
         to={`/qualification/${event.qualificationSessionId}`}
         className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Rendez-vous planifié
+        {bookingLabel}
       </Link>
     ) : (
-      'Rendez-vous planifié'
+      bookingLabel
     );
     if (event.eventName) details.push(event.eventName);
   } else {
-    icon = <SequenceActionIcon type={event.actionType} className="text-foreground" />;
+    icon = <SequenceActionIcon type={activityActionType(event)} className="text-foreground" />;
     // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
     // jamais présentée comme envoyée.
-    label = sequenceStepTitle(event.actionType, event.status);
+    label = sequenceStepTitle(activityActionType(event), event.status);
     stepFailed = event.status === 'failed' || event.status === 'bounced';
     if (REACTION_STATUSES.has(event.status)) {
       details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
@@ -101,9 +103,12 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     if (event.status === 'failed' && event.errorMessage) details.push(formatSequenceError(event.errorMessage));
   }
 
+  const message = activityMessageText(event.finalMessage);
+  const hasContent = !!message || !!event.finalSubject || isBooking;
   return (
-    <div className="my-2 flex justify-center">
-      <div className="inline-flex max-w-[85%] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-foreground-secondary">
+    <div className="my-4 flex justify-center">
+      <article className={cn('w-full min-w-0 rounded-lg border border-border bg-muted p-3 text-xs text-foreground-secondary md:p-4', hasContent ? 'max-w-2xl' : 'max-w-xl')}>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         {icon}
         <span className={cn('font-medium', stepFailed ? 'text-danger' : 'text-foreground')}>{label}</span>
         {details.map((detail, i) => (
@@ -119,6 +124,24 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           </>
         )}
       </div>
+      {event.sequenceName && <p className="mt-1 break-words text-muted-foreground">{event.sequenceName} · Étape {event.stepOrder + 1}</p>}
+      {event.recipient && <p className="mt-1 break-all text-muted-foreground">À : {event.recipient}</p>}
+      {event.finalSubject && <p className="mt-3 break-words text-sm font-medium text-foreground">{event.finalSubject}</p>}
+      {message && (message.length > 280 ? (
+        <details className="group/content mt-2">
+          <summary className="cursor-pointer py-2 marker:text-muted-foreground max-md:min-h-11"><span className="font-medium text-foreground">Lire le message</span><p className="mt-2 whitespace-pre-wrap break-words text-sm font-normal leading-relaxed text-foreground-secondary group-open/content:hidden [overflow-wrap:anywhere]">{message.slice(0, 280)}…</p></summary>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground-secondary [overflow-wrap:anywhere]">{message}</p>
+        </details>
+      ) : <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground-secondary [overflow-wrap:anywhere]">{message}</p>)}
+      {isBooking && Number.isFinite(Date.parse(event.timestamp)) && (
+        <p className="mt-3 text-sm font-medium text-foreground">
+          {new Date(event.timestamp).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          {' à '}{new Date(event.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          {event.eventEndAt && Number.isFinite(Date.parse(event.eventEndAt)) && <> · Jusqu'à {new Date(event.eventEndAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</>}
+        </p>
+      )}
+      {isBooking && event.eventLocation && <p className="mt-2 break-words text-muted-foreground [overflow-wrap:anywhere]">{event.eventLocation}</p>}
+      </article>
     </div>
   );
 };

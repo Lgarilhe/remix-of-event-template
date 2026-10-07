@@ -320,7 +320,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       className={cn(
         'flex h-full min-h-0 flex-col overflow-hidden bg-background transition-[width] duration-200 ease-out',
         'w-full md:shrink-0 md:border-r md:border-border',
-        collapsed ? 'md:w-16' : 'md:w-[300px]',
+        collapsed ? 'md:w-16' : 'md:w-[320px] xl:w-[360px] 2xl:w-[380px]',
         selectedChat ? 'hidden md:flex' : 'flex',
       )}
     >

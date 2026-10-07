@@ -46,7 +46,7 @@ const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(
 // ---------------------------------------------------------------- D-01
 test('D-01 : la frise d’activité passe par les tables partagées des séquences', () => {
   assert.match(src.activity, /sequenceExecutionTitle\(actionType, status\)/, 'même titre que la fiche candidat');
-  assert.match(src.activity, /<SequenceActionIcon type=\{event\.actionType\}/);
+  assert.match(src.activity, /<SequenceActionIcon type=\{activityActionType\(event\)\}/);
   assert.match(src.activity, /<ExecutionStatusBadge/);
   assert.match(src.activity, /formatSkipReason\(event\.skipReason\)/, 'une raison d’arrêt se traduit');
   assert.match(src.activity, /formatSequenceError\(event\.errorMessage\)/, 'une erreur se traduit');
@@ -56,7 +56,7 @@ test('D-01 : la frise d’activité passe par les tables partagées des séquenc
 
 // ---------------------------------------------------------------- D-02
 test('D-02 : « Inscrire dans une séquence » depuis l’en-tête de la conversation', () => {
-  assert.match(src.view, /onClick=\{onEnrollInSequence\}[^>]*>\s*<ListPlus[^>]*\/>\s*Inscrire dans une séquence/);
+  assert.match(src.view, /className=\{MENU_ITEM\} onSelect=\{onEnrollInSequence\}/);
   assert.match(src.view, /onSelect=\{onEnrollInSequence\}/, 'aussi dans le menu « Plus d’actions » (téléphone)');
   const start = src.hook.indexOf('const handleEnrollInSequence');
   assert.ok(start !== -1, 'handleEnrollInSequence introuvable');

@@ -497,7 +497,7 @@ test('SEQ-184 — fil de la messagerie : vrais types d’étape, échec et étap
   // Passe 2 (demande de F5) : libellés et mentions du dictionnaire partagé
   // src/lib/sequenceActionLabels.ts, comportement vérifié dans seq-audit-f4c.
   // Revue design : icônes d'étape du socle (SequenceBadges.tsx).
-  assert.match(activityCard, /<SequenceActionIcon type=\{event\.actionType\}/);
+  assert.match(activityCard, /<SequenceActionIcon type=\{activityActionType\(event\)\}/);
   const badges = read('src/components/outreach/SequenceBadges.tsx');
   assert.match(badges, /connection_request: UserPlus,/);
   assert.match(badges, /profile_visit: Eye,/);

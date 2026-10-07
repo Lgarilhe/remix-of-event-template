@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchPhoneCallsForCandidate } from '@/lib/phoneCalls';
+import { rowToPhoneCall } from '@/lib/phoneCalls';
+import { toE164 } from '@/lib/phone';
+import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
+import { extractLinkedInSlug } from '@/lib/linkedinUtils';
 
 export interface ActivityEvent {
   id: string;
@@ -13,10 +18,14 @@ export interface ActivityEvent {
   errorMessage?: string | null;
   finalSubject?: string | null;
   sequenceName?: string | null;
+  finalMessage?: string | null;
+  channel?: string | null;
+  recipient?: string | null;
   // Booking-specific fields
   qualificationSessionId?: string | null;
   eventName?: string | null;
   eventLocation?: string | null;
+  eventEndAt?: string | null;
   // Aircall-specific fields
   callDirection?: string | null;
   callDuration?: number | null;
@@ -36,197 +45,139 @@ export function usableProfileName(name: string | null | undefined): string | nul
   return trimmed;
 }
 
-export function useProfileActivity(profileId: string | null, profileUrl?: string | null, profileName?: string | null) {
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [loading, setLoading] = useState(false);
+const PAGE = 500;
 
-  useEffect(() => {
-    if (!profileId && !profileUrl && !profileName) {
-      setEvents([]);
-      return;
+async function readPages<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await query(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < PAGE) return rows;
+  }
+}
+
+/** L'URL est comparée par slug exact après la recherche, jamais par inclusion. */
+function profileSlug(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.hostname !== 'linkedin.com' && !url.hostname.endsWith('.linkedin.com')) return null;
+    return extractLinkedInSlug(value);
+  } catch { return null; }
+}
+const sameProfileUrl = (a: string | null, b: string | null) => {
+  const slug = profileSlug(a);
+  return !!slug && slug === profileSlug(b);
+};
+
+export async function fetchProfileActivity(organizationId: string, profileIds: string[], profileUrl?: string | null, profileName?: string | null): Promise<{ events: ActivityEvent[]; incomplete: boolean }> {
+  if (!organizationId || (!profileIds.length && !profileUrl && !usableProfileName(profileName))) return { events: [], incomplete: false };
+  const urlSlug = profileSlug(profileUrl);
+  const exactName = usableProfileName(profileName);
+  const enrollmentColumns = 'id, sequence_id, profile_id, provider_id, resolved_profile_id, profile_url, email_used, phone_used';
+  const fetchSequenceEvents = async (): Promise<ActivityEvent[]> => {
+    let enrollments = profileIds.length || profileUrl ? await readPages((from, to) => {
+      let query = supabase.from('sequence_enrollments').select(enrollmentColumns).eq('organization_id', organizationId);
+      if (profileIds.length) query = query.or(profileIds.map(enrollmentProfileFilter).join(','));
+      else if (profileUrl) query = query.eq('profile_url', profileUrl);
+      else query = query.eq('profile_name', exactName!);
+      return query.order('id').range(from, to);
+    }) : [];
+    if (urlSlug) {
+      const matches = await readPages((from, to) => supabase.from('sequence_enrollments').select(enrollmentColumns)
+        .eq('organization_id', organizationId).ilike('profile_url', `%/in/${urlSlug}%`).order('id').range(from, to));
+      enrollments = [...new Map([...enrollments, ...matches.filter(row => sameProfileUrl(profileUrl ?? null, row.profile_url))].map(row => [row.id, row])).values()];
     }
-
-    let cancelled = false;
-    const fetchActivity = async () => {
-      console.log('[useProfileActivity] Fetching for:', { profileId, profileUrl, profileName });
-      setLoading(true);
-      try {
-        // Get enrollments for this profile with progressive fallback:
-        // 1) profile_id, 2) profile_url, 3) profile_name
-        let enrollments: Array<{ id: string; sequence_id: string }> = [];
-
-        if (profileId) {
-          const { data } = await supabase
-            .from('sequence_enrollments')
-            .select('id, sequence_id')
-            .eq('profile_id', profileId);
-          enrollments = data || [];
-        }
-
-        if (!enrollments.length && profileUrl) {
-          const { data } = await supabase
-            .from('sequence_enrollments')
-            .select('id, sequence_id')
-            .eq('profile_url', profileUrl);
-          enrollments = data || [];
-        }
-
-        // Dernier repli, par le nom : égalité exacte, et seulement s'il désigne
-        // une seule personne. L'ancienne inclusion partielle (« Paul Martin »
-        // dans « Jean-Paul Martinez ») affichait l'historique d'un autre candidat.
-        const exactName = usableProfileName(profileName);
-        if (!enrollments.length && exactName) {
-          const { data } = await supabase
-            .from('sequence_enrollments')
-            .select('id, sequence_id, profile_id')
-            .eq('profile_name', exactName);
-          const rows = data || [];
-          const people = new Set(rows.map(r => r.profile_id || `id:${r.id}`));
-          enrollments = people.size === 1 ? rows : [];
-        }
-
-        let mapped: ActivityEvent[] = [];
-
-        if (enrollments.length && !cancelled) {
-          // Get sequence names
-          const sequenceIds = [...new Set(enrollments.map(e => e.sequence_id))];
-          const { data: sequences } = await supabase
-            .from('outreach_sequences')
-            .select('id, name')
-            .in('id', sequenceIds);
-          const seqMap = new Map(sequences?.map(s => [s.id, s.name]) || []);
-
-          // Get executions
-          const enrollmentIds = enrollments.map(e => e.id);
-          const { data: executions } = await supabase
-            .from('sequence_step_executions')
-            .select('id, enrollment_id, step_id, step_order, status, executed_at, scheduled_at, skip_reason, error_message, final_subject')
-            .in('enrollment_id', enrollmentIds)
-            .order('executed_at', { ascending: true, nullsFirst: false });
-
-          if (executions?.length) {
-            // Get step details for action types
-            const stepIds = [...new Set(executions.map(e => e.step_id))];
-            const { data: steps } = await supabase
-              .from('sequence_steps')
-              .select('id, action_type, sequence_id')
-              .in('id', stepIds);
-            const stepMap = new Map(steps?.map(s => [s.id, s]) || []);
-
-            const enrollmentSeqMap = new Map(enrollments.map(e => [e.id, e.sequence_id]));
-
-            mapped = executions
-              .filter(ex => ex.executed_at)
-              .map(ex => {
-                const step = stepMap.get(ex.step_id);
-                const seqId = enrollmentSeqMap.get(ex.enrollment_id);
-                return {
-                  id: ex.id,
-                  type: 'sequence_step' as const,
-                  timestamp: ex.executed_at!,
-                  actionType: step?.action_type || 'unknown',
-                  stepOrder: ex.step_order,
-                  status: ex.status,
-                  skipReason: ex.skip_reason,
-                  errorMessage: ex.error_message,
-                  finalSubject: ex.final_subject,
-                  sequenceName: seqId ? seqMap.get(seqId) || null : null,
-                };
-              });
-          }
-        }
-
-        // Fetch booking events (qualification sessions) for this candidate
-        // Use multiple matching strategies: LinkedIn URL, profile_id, or name
-        let bookingEvents: ActivityEvent[] = [];
-        let sessions: any[] = [];
-
-        if (profileUrl) {
-          const normalizedPath = profileUrl.split('linkedin.com')[1]?.replace(/\/$/, '') || '';
-          if (normalizedPath) {
-            const { data } = await supabase
-              .from('qualification_sessions')
-              .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
-              .ilike('candidate_linkedin_url', `%${normalizedPath}%`);
-            sessions = data || [];
-          }
-        }
-
-        // Fallback: match by candidate_profile_id
-        if (!sessions.length && profileId) {
-          const { data } = await supabase
-            .from('qualification_sessions')
-            .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
-            .eq('candidate_profile_id', profileId);
-          sessions = data || [];
-        }
-
-        // Fallback: match by candidate FULL name only (no first-name-only fallback to avoid false positives)
-        if (!sessions.length && profileName?.trim()) {
-          const normalizedName = profileName
-            .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          // Only match if we have at least 2 words (first + last name) to avoid false positives
-          const nameParts = normalizedName.split(' ').filter(p => p.length >= 2);
-          if (nameParts.length >= 2) {
-            const nameLike = `%${normalizedName}%`;
-            const { data } = await supabase
-              .from('qualification_sessions')
-              .select('id, event_start_at, event_name, event_location, status, candidate_linkedin_url')
-              .ilike('candidate_name', nameLike);
-            sessions = data || [];
-          }
-        }
-
-        bookingEvents = sessions.map(s => ({
-          id: `booking-${s.id}`,
-          type: 'booking' as const,
-          timestamp: s.event_start_at || '',
-          actionType: 'calendly_booking',
-          stepOrder: 0,
-          status: s.status || 'scheduled',
-          qualificationSessionId: s.id,
-          eventName: s.event_name,
-          eventLocation: s.event_location,
-        }));
-
-        // Appels de l'opérateur relié (table phone_calls), par les numéros
-        // connus du candidat dans l'organisation.
-        let aircallEvents: ActivityEvent[] = [];
-        if (profileId && !cancelled) {
-          const calls = await fetchPhoneCallsForCandidate(profileId);
-          aircallEvents = calls
-            .filter(c => c.startedAt)
-            .map(c => ({
-              id: `aircall-${c.id}`,
-              type: 'aircall' as const,
-              timestamp: c.startedAt!,
-              actionType: 'aircall_call',
-              stepOrder: 0,
-              status: c.outcome === 'missed' ? 'missed' : 'done',
-              callDirection: c.direction,
-              callDuration: c.talkSeconds,
-              callUserName: c.agentName,
-            }));
-        }
-
-        const allEvents = [...mapped, ...bookingEvents, ...aircallEvents].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-
-        if (!cancelled) setEvents(allEvents);
-      } catch (err) {
-        console.error('Error fetching profile activity:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
+    if (!enrollments.length && !profileIds.length && !profileUrl && exactName) {
+      const rows = await readPages((from, to) => supabase.from('sequence_enrollments').select(enrollmentColumns)
+        .eq('organization_id', organizationId).eq('profile_name', exactName).order('id').range(from, to));
+      const people = new Set(rows.map(row => row.resolved_profile_id || row.provider_id || row.profile_id));
+      enrollments = people.size === 1 ? rows : [];
+    }
+    if (!enrollments.length) return [];
+    const sequenceIds = [...new Set(enrollments.map(row => row.sequence_id))];
+    const { data: sequences, error } = await supabase.from('outreach_sequences').select('id, name')
+      .eq('organization_id', organizationId).in('id', sequenceIds);
+    if (error) throw error;
+    const sequenceNames = new Map((sequences ?? []).map(row => [row.id, row.name]));
+    const result: ActivityEvent[] = [];
+    for (let offset = 0; offset < enrollments.length; offset += 100) {
+      const batch = enrollments.slice(offset, offset + 100);
+      const executions = await readPages((from, to) => supabase.from('sequence_step_executions')
+        .select('id, enrollment_id, step_id, step_order, status, executed_at, scheduled_at, skip_reason, error_message, final_subject, final_message, channel')
+        .eq('organization_id', organizationId).in('enrollment_id', batch.map(row => row.id))
+        .not('executed_at', 'is', null).order('executed_at').order('id').range(from, to));
+      if (!executions.length) continue;
+      const { data: steps, error: stepError } = await supabase.from('sequence_steps').select('id, action_type, step_channel')
+        .eq('organization_id', organizationId).in('id', [...new Set(executions.map(row => row.step_id))]);
+      if (stepError) throw stepError;
+      const stepMap = new Map((steps ?? []).map(row => [row.id, row]));
+      const enrollmentMap = new Map(batch.map(row => [row.id, row]));
+      for (const row of executions) {
+        const step = stepMap.get(row.step_id);
+        const enrollment = enrollmentMap.get(row.enrollment_id);
+        if (!row.executed_at || !step || !enrollment) continue;
+        const channel = row.channel || step.step_channel || (step.action_type === 'email' ? 'email' : step.action_type === 'whatsapp_message' ? 'whatsapp' : 'linkedin');
+        result.push({
+          id: row.id, type: 'sequence_step', timestamp: row.executed_at,
+          actionType: step.action_type, stepOrder: row.step_order, status: row.status,
+          skipReason: row.skip_reason, errorMessage: row.error_message,
+          finalSubject: row.final_subject, finalMessage: row.final_message, channel,
+          recipient: channel === 'email' ? enrollment.email_used : channel === 'whatsapp' ? enrollment.phone_used : null,
+          sequenceName: sequenceNames.get(enrollment.sequence_id) ?? null,
+        });
       }
-    };
+    }
+    return result;
+  };
+  const fetchBookings = async (): Promise<ActivityEvent[]> => {
+    const columns = 'id, event_start_at, event_end_at, event_name, event_location, status, candidate_profile_id, candidate_linkedin_url';
+    const byId = profileIds.length ? await readPages((from, to) => supabase.from('qualification_sessions').select(columns)
+      .eq('organization_id', organizationId).in('candidate_profile_id', profileIds).not('event_start_at', 'is', null).order('id').range(from, to)) : [];
+    const byUrl = urlSlug ? await readPages((from, to) => supabase.from('qualification_sessions').select(columns)
+      .eq('organization_id', organizationId).ilike('candidate_linkedin_url', `%/in/${urlSlug}%`).not('event_start_at', 'is', null).order('id').range(from, to)) : [];
+    const sessions = new Map([...byId, ...byUrl.filter(row => sameProfileUrl(profileUrl ?? null, row.candidate_linkedin_url))].map(row => [row.id, row]));
+    return [...sessions.values()].map(row => ({
+      id: `booking-${row.id}`, type: 'booking', timestamp: row.event_start_at!, actionType: 'calendly_booking',
+      stepOrder: 0, status: row.status, qualificationSessionId: row.id,
+      eventName: row.event_name, eventLocation: row.event_location, eventEndAt: row.event_end_at,
+    }));
+  };
+  const fetchCalls = async (): Promise<ActivityEvent[]> => {
+    if (!profileIds.length) return [];
+    const { data: contacts, error } = await supabase.from('candidate_contacts').select('phone')
+      .eq('organization_id', organizationId).in('candidate_id', profileIds);
+    if (error) throw error;
+    const numbers = [...new Set((contacts ?? []).map(row => toE164(row.phone)).filter((number): number is string => !!number))];
+    if (!numbers.length) return [];
+    const rows = await readPages((from, to) => supabase.from('phone_calls').select('*')
+      .eq('organization_id', organizationId).in('contact_number_e164', numbers).order('started_at').order('id').range(from, to));
+    return rows.map(rowToPhoneCall).filter(call => call.startedAt).map(call => ({
+      id: `aircall-${call.id}`, type: 'aircall', timestamp: call.startedAt!, actionType: 'aircall_call', stepOrder: 0,
+      status: call.outcome === 'missed' ? 'missed' : 'done', callDirection: call.direction, callDuration: call.talkSeconds, callUserName: call.agentName,
+    }));
+  };
+  const results = await Promise.allSettled([fetchSequenceEvents(), fetchBookings(), fetchCalls()]);
+  const events: ActivityEvent[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') events.push(...result.value);
+    else console.warn('[useProfileActivity] source unavailable:', result.reason);
+  }
+  return { events: events.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)), incomplete: results.some(result => result.status === 'rejected') };
+}
 
-    fetchActivity();
-    return () => { cancelled = true; };
-  }, [profileId, profileUrl, profileName]);
-
-  return { events, loading };
+export function useProfileActivity(profileId: string | null, profileUrl?: string | null, profileName?: string | null, aliases: string[] = []) {
+  const { organizationId } = useOrganization();
+  const { user, isReady } = useAuthReady();
+  const ids = [...new Set([profileId, ...aliases].filter((id): id is string => !!id))].sort();
+  const query = useQuery({
+    queryKey: ['profile-activity', user?.id, organizationId, ids.join('|'), profileUrl ?? '', usableProfileName(profileName)],
+    queryFn: () => fetchProfileActivity(organizationId!, ids, profileUrl, profileName),
+    enabled: isReady && !!user && !!organizationId && (!!ids.length || !!profileUrl || !!usableProfileName(profileName)),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+  return { events: query.data?.events ?? [], loading: query.isLoading, error: query.isError || !!query.data?.incomplete, retry: () => void query.refetch() };
 }

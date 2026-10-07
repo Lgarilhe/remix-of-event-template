@@ -32,6 +32,23 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Messagerie : historique candidat et largeur utile
+
+**Contexte** : la liste étroite et la conversation isolée masquaient le suivi effectué sur les autres canaux.
+**Décision / Fait** : fil chronologique commun aux messages LinkedIn et aux envois réels de séquences (invitation, email, WhatsApp), cartes avec contenu, sujet, destinataire, statut et date d'entretien. Liste élargie ; mission, séquence et prochain entretien dans un panneau latéral sur grand écran, accessible depuis l'en-tête sur les autres tailles. Avant sélection, conversations récentes et accès aux échanges à répondre ou relancer.
+**Validation** : build réussi, 118 fichiers UX et 28 fichiers C1 réussis ; TypeScript à 11 erreurs héritées, dette design sans augmentation, un diagnostic lint hérité sur les fichiers touchés. Régressions sur les alias, 501 envois, les homonymes, les fuseaux horaires, la déduplication et les clés de cache utilisateur/organisation. Chromium en StrictMode : thèmes clair/sombre, 320 à 1920 px, réponse unique, panneau mobile et composeur accessible à 500 px de hauteur.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Contenu des canaux, origine de séquence, 501 envois et texte LinkedIn non dupliqué | PASS |
+| Claire | Date et statut d'entretien, email développé, ouverture depuis les conversations récentes | PASS |
+| Théo | Organisation et candidat changés pendant une lecture, HTML inerte, panne partielle et réessai | PASS |
+| Sophie | Lecture et réponse sur 320/390 px, contexte accessible, aucun débordement horizontal | PASS |
+
+**Limites** : essais navigateur avec données simulées. Vérification SQL en lecture seule de la présence du périmètre organisation sur les sources existantes ; pas de test d'envoi avec un compte réel. Les réponses email et WhatsApp ne sont pas synchronisées dans cette page ; seuls leurs envois de séquence sont ajoutés. Aucun schéma ni serveur modifié.
+**Reste à faire** : relier les conversations et réponses des autres canaux ; validation en compte connecté après fusion.
+**Refs** : branche `codex/inbox-candidate-history`.
+
 ## 2026-10-07 — BUG — Messagerie : identités LinkedIn, échéances et catégories
 
 **Fait** : rapprochement des trois identifiants LinkedIn, priorité aux séquences actives avec pagination ; états, compteurs et filtres relus toutes les 30 secondes ; catégories automatiques écrites dans l’organisation vérifiée du compte. Conflit avec main résolu en conservant son contraste.
