@@ -34,6 +34,10 @@ export function shouldExtractMemory(messages: MemorySourceMessage[], total: numb
     /\b(préfère|pr[eé]f[eé]rence|toujours|retiens|retenir|mémorise|souviens|dorénavant|désormais)\b/i
       .test(getMemorySourceText(lastUser.content)) ||
     /(?:pour (?:ce poste|cette mission|notre entreprise|ce client)|garde.{0,20}mémoire)/i
+      .test(getMemorySourceText(lastUser.content)) ||
+    /(?:r[ée]pond(?:s(?:-moi)?|ez(?:-moi)?|re)|pr[ée]sentez? (?:tes|vos) r[ée]ponses).{0,60}(?:fran[çc]ais|anglais|courtes|concises|d[ée]taill[ée]es|listes|paragraphes)/i
+      .test(getMemorySourceText(lastUser.content)) ||
+    /(?:sois|reste) (?:bref|concis) dans tes r[ée]ponses|(?:answer(?: me)?|respond(?: to me)?) in (?:french|english)|(?:i prefer|(?:please )?give me) (?:short|concise|brief|detailed|in-depth) (?:answers|responses)|(?:present|format) (?:your )?(?:answers|responses) (?:as|in) (?:bullet points|bullets|lists|paragraphs)/i
       .test(getMemorySourceText(lastUser.content));
 }
 

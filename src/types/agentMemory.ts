@@ -2,6 +2,16 @@
 export type AgentMemoryScope = 'organization' | 'project' | 'user';
 export type AgentMemoryKind = 'constraint' | 'preference' | 'method' | 'context';
 export type AgentMemoryEffect = 'assistant' | 'search' | 'scoring' | 'presentation';
+export type AgentMemoryAutomationMode = 'manual' | 'automatic';
+
+export interface AgentMemoryAutomation {
+  mode: AgentMemoryAutomationMode;
+  version: number;
+  can_suggest: boolean;
+  calibration_count: number;
+  suggestion_dismissed: boolean;
+  enabled_at: string | null;
+}
 
 export interface AgentMemoryDraft {
   content: string;
@@ -34,6 +44,10 @@ export interface AgentMemory extends AgentMemoryDraft {
   created_by: string;
   confirmed_by: string;
   confirmed_at: string;
+  activation_mode: AgentMemoryAutomationMode;
+  automation_version: number | null;
+  automation_key: 'response_language' | 'response_length' | 'response_format' | null;
+  automation_source_created_at: string | null;
   status: 'active' | 'archived';
   version: number;
   expires_at: string | null;

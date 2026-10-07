@@ -573,7 +573,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         contextError={Boolean(conversationId && conversationMemoryContext.isError)}
         onRetryContext={() => void conversationMemoryContext.refetch()} />
 
-      <AgentMemoryProposals conversationId={conversationId} />
+      <AgentMemoryProposals conversationId={conversationId} onManageMemory={() => setMemoryOpen(true)} />
 
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
       <AgentToolApprovalCard conversationId={conversationId} />

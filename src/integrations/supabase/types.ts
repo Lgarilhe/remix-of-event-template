@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_memory_automation: {
+        Row: {
+          organization_id: string
+          user_id: string
+          mode: string
+          version: number
+          suggestion_dismissed: boolean
+          enabled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          organization_id: string
+          user_id: string
+          mode?: string
+          version?: number
+          suggestion_dismissed?: boolean
+          enabled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          organization_id?: string
+          user_id?: string
+          mode?: string
+          version?: number
+          suggestion_dismissed?: boolean
+          enabled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "agent_memory_automation_organization_id_fkey"
+          columns: ["organization_id"]
+          isOneToOne: false
+          referencedRelation: "organizations"
+          referencedColumns: ["id"]
+        }]
+      }
       agent_memory_proposals: {
         Row: {
           id: string
@@ -112,6 +151,10 @@ export type Database = {
       }
       agent_memories: {
         Row: {
+          activation_mode: string
+          automation_version: number | null
+          automation_key: string | null
+          automation_source_created_at: string | null
           id: string
           organization_id: string
           proposal_id: string | null
@@ -131,6 +174,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          activation_mode?: string
+          automation_version?: number | null
+          automation_key?: string | null
+          automation_source_created_at?: string | null
           id?: string
           organization_id: string
           proposal_id?: string | null
@@ -150,6 +197,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          activation_mode?: string
+          automation_version?: number | null
+          automation_key?: string | null
+          automation_source_created_at?: string | null
           id?: string
           organization_id?: string
           proposal_id?: string | null
@@ -6881,6 +6932,24 @@ export type Database = {
       }
     }
     Functions: {
+      get_agent_memory_automation: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      set_agent_memory_automation: {
+        Args: { p_organization_id: string; p_expected_version: number; p_mode: string; p_dismiss_suggestion?: boolean }
+        Returns: Json
+      }
+      auto_approve_agent_memory: {
+        Args: { p_proposal_id: string; p_automation_version: number }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"] | null
+      }
+      agent_memory_communication_policy: { Args: { p_text: string }; Returns: Json }
+      agent_memory_automatic_source: { Args: { p_proposal_id: string }; Returns: Json }
+      agent_memory_manual_policy_conflict: {
+        Args: { p_organization_id: string; p_project_id: string; p_policy: Json }
+        Returns: boolean
+      }
       approve_agent_memory: {
         Args: { p_proposal_id: string; p_expected_version: number; p_content?: string | null; p_scope?: string | null; p_kind?: string | null; p_effects?: string[] | null }
         Returns: Database["public"]["Tables"]["agent_memories"]["Row"]

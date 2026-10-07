@@ -3,9 +3,77 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
-import type { AgentMemory, AgentMemoryContext, AgentMemoryDraft, AgentMemoryProposal } from '@/types/agentMemory';
+import type { AgentMemory, AgentMemoryAutomation, AgentMemoryAutomationMode, AgentMemoryContext, AgentMemoryDraft, AgentMemoryProposal } from '@/types/agentMemory';
 
 const memoryKey = 'agent-memory';
+
+function readMemoryAutomation(data: unknown): AgentMemoryAutomation {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Le mode de mémoire n’a pas pu être chargé.');
+  const value = data as Record<string, unknown>;
+  if ((value.mode !== 'manual' && value.mode !== 'automatic') || typeof value.version !== 'number'
+    || typeof value.can_suggest !== 'boolean' || typeof value.calibration_count !== 'number'
+    || typeof value.suggestion_dismissed !== 'boolean') throw new Error('Le mode de mémoire n’a pas pu être chargé.');
+  return value as unknown as AgentMemoryAutomation;
+}
+
+/** The setting belongs to one user in one organization; it never falls back to another space. */
+export function useAgentMemoryAutomation(enabled = true) {
+  const { organizationId } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
+  const queryClient = useQueryClient();
+  const scopeRef = useRef({ organizationId, userId });
+  scopeRef.current = { organizationId, userId };
+  const inFlight = useRef(false);
+  const key = [memoryKey, 'automation', organizationId, userId];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: async () => {
+      if (!organizationId || !userId) throw new Error('Reconnectez-vous pour consulter le mode de mémoire.');
+      const { data, error } = await supabase.rpc('get_agent_memory_automation', { p_organization_id: organizationId });
+      if (error) { console.error('[agent-memory-automation] read', error); throw new Error('Le mode de mémoire n’a pas pu être chargé.'); }
+      return readMemoryAutomation(data);
+    },
+    enabled: enabled && Boolean(organizationId && userId),
+    staleTime: 10_000,
+    refetchInterval: enabled ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  });
+  const mutation = useMutation({
+    mutationFn: async ({ organizationId: targetOrganizationId, userId: targetUserId, mode, expectedVersion, dismissSuggestion }: {
+      organizationId: string; userId: string; mode: AgentMemoryAutomationMode; expectedVersion: number; dismissSuggestion: boolean;
+    }) => {
+      if (scopeRef.current.organizationId !== targetOrganizationId || scopeRef.current.userId !== targetUserId) {
+        throw new Error('L’espace actif a changé. Rouvrez les réglages de mémoire.');
+      }
+      const { data, error } = await supabase.rpc('set_agent_memory_automation', {
+        p_organization_id: targetOrganizationId,
+        p_expected_version: expectedVersion,
+        p_mode: mode,
+        p_dismiss_suggestion: dismissSuggestion,
+      });
+      if (error) {
+        console.error('[agent-memory-automation] update', error);
+        if (error.code === '40001') throw new Error('Le mode de mémoire a changé. Rechargez-le avant de réessayer.');
+        throw new Error('Le mode de mémoire n’a pas pu être enregistré. Réessayez.');
+      }
+      return readMemoryAutomation(data);
+    },
+    onSuccess: (data, variables) => {
+      const targetKey = [memoryKey, 'automation', variables.organizationId, variables.userId];
+      queryClient.setQueryData(targetKey, data);
+      void queryClient.invalidateQueries({ queryKey: targetKey, exact: true });
+    },
+  });
+  const setMode = async (mode: AgentMemoryAutomationMode, expectedVersion: number, dismissSuggestion = false) => {
+    if (!organizationId || !userId) throw new Error('Reconnectez-vous pour modifier le mode de mémoire.');
+    if (inFlight.current) throw new Error('Cette action est déjà en cours.');
+    inFlight.current = true;
+    try { return await mutation.mutateAsync({ organizationId, userId, mode, expectedVersion, dismissSuggestion }); }
+    finally { inFlight.current = false; }
+  };
+  return { ...query, setMode, isSaving: mutation.isPending };
+}
 
 function memoryError(error: { message?: string; code?: string; hint?: string } | null): Error {
   console.error('[agent-memory]', error);
@@ -34,7 +102,8 @@ export function useAgentMemoryContext(projectId: string | null, enabled = true) 
       return context;
     },
     enabled: enabled && Boolean(organizationId && user),
-    staleTime: 15_000,
+    // Background additions must be visible as soon as the memory dialog reopens.
+    staleTime: 0,
   });
 }
 

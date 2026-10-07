@@ -27,6 +27,13 @@ const raw = {
 
 test('an explicit preference proposes memory immediately; ordinary chat waits for the cadence', () => {
   assert.equal(shouldExtractMemory([user], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'Réponds-moi en français.' }], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'Présente tes réponses sous forme de listes.' }], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'Merci de répondre en anglais.' }], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'Sois bref dans tes réponses.' }], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'Please answer in English.' }], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'I prefer detailed responses.' }], 2), true);
+  assert.equal(shouldExtractMemory([{ role: 'user', content: 'Format your answers as bullet points.' }], 2), true);
   assert.equal(shouldExtractMemory([{ role: 'user', content: 'Bonjour, quelles sont les nouvelles ?' }], 2), false);
   assert.equal(shouldExtractMemory([{ role: 'user', content: 'Merci pour cette réponse.' }], 6), true);
   assert.equal(shouldExtractMemory([{ role: 'assistant', content: 'Je retiens toujours vos préférences.' }], 6), false);

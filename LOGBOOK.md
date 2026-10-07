@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — DECISION — Mémoire automatique personnelle après calibration
+
+**Fait** : invitation après cinq propositions extraites confirmées sans modification ; activation explicite possible dans les réglages, « Plus tard » persistant et retour manuel. Seules les préférences explicites de langue, longueur et format des réponses peuvent devenir automatiques, personnellement dans chaque espace. Les règles de recrutement, de mission et d’organisation restent à confirmer.
+**Validation locale** : build réussi ; TypeScript 11 erreurs héritées, aucune nouvelle ; lint et comparaison design avec main sans augmentation. Tests UX 117, C1 28 et agent 12 fichiers passent. Base reconstruite avec 294 migrations : automatique 50, manuel 38, RLS 32, replay et quatre courses de consentement/ordre passent. Chromium avec API simulées : aucune erreur navigateur, axe sans violation dans le dialogue mobile.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Seuil sans activation implicite, opt-in, Plus tard et retour manuel | PASS |
+| Claire | Périmètre expliqué, annulation sans écriture, erreurs et rechargement | PASS |
+| Théo | Consentement versionné, callbacks tardifs, isolation utilisateur et organisation | PASS |
+| Sophie | Actions tactiles de 44 px, dialogue court défilant et saisie visible à 390×400 | PASS |
+
+**État** : validé localement, non déployé ; aucun appel aux comptes réels ou au modèle de production.
+**Refs** : `supabase/migrations/20261007130313_agent_memory_automation.sql`, `supabase/tests/agent_memory_automation_audit.sql`, `tests/agent/automatic-memory-extraction.test.mjs`.
 ## 2026-10-07 — REFACTOR — Séparer les contenus de l’aperçu d’actions
 
 **Contexte** : l’aperçu de réponse et de coordination apparaissait comme un long panneau gris, avec des séparations trop faibles.

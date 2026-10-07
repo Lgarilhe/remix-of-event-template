@@ -1,4 +1,4 @@
-/** User statements become private proposals. Only approval activates memory. */
+/** User statements become private proposals; consent may activate bounded communication preferences. */
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
 import { callClaudeCompat } from './call-claude.ts';
 import { assertCredits } from './credit-guard.ts';
@@ -16,6 +16,7 @@ const EXTRACTION_PROMPT = [
   'Cite une source_excerpt exacte, de 12 à 500 caractères, tirée du dernier message utilisateur.',
   'Le contenu reformulé ne doit ajouter ni exigence, ni exclusion, ni généralisation.',
   'Portée la plus étroite : project pour une mission précise, user pour une préférence personnelle.',
+  'Une consigne sur la langue, la longueur ou le format de tes réponses est une préférence personnelle (scope user, kind preference), sauf si l’utilisateur la limite explicitement à une mission.',
   'organization uniquement si l’utilisateur indique explicitement une règle pour toute son organisation.',
   'Ne suppose jamais que l’utilisateur travaille dans un cabinet : il peut recruter en entreprise ou en indépendant.',
   'Types kind : constraint, preference, method, context.',
@@ -31,6 +32,8 @@ export async function extractInsightsFromConversation(
     organizationId: string;
     conversationId: string;
     projectId?: string | null;
+    /** Caller JWT, never the service client: personal consent/RLS governs automatic activation. */
+    memoryClient?: SupabaseClient;
     messages: MemorySourceMessage[];
   },
 ): Promise<{ extracted: number; error?: string }> {
@@ -54,6 +57,24 @@ export async function extractInsightsFromConversation(
     userId, organizationId, aiAction: 'memory_extract', modelId, adminClient,
   });
   if (!gate.ok) return { extracted: 0, error: 'insufficient_credits' };
+
+  // Snapshot consent before extraction. A later toggle must not grant consent
+  // to a job already in flight; SQL rechecks the version under a lock.
+  let automationVersion: number | null = null;
+  if (params.memoryClient) {
+    try {
+      const { data, error } = await params.memoryClient.rpc('get_agent_memory_automation', {
+        p_organization_id: organizationId,
+      });
+      if (error) throw error;
+      if (data?.mode === 'automatic' && Number.isInteger(data.version) && data.version >= 1) {
+        automationVersion = data.version;
+      }
+    } catch (error) {
+      // Unknown consent never expands automation. The private card is still useful.
+      console.warn('[user-memory] automatic mode unavailable; keep proposals manual:', error);
+    }
+  }
 
   let extracted: unknown[];
   try {
@@ -100,16 +121,31 @@ export async function extractInsightsFromConversation(
     const { data: duplicates, error: duplicateError } = await duplicateQuery.limit(1);
     if (duplicateError) return { extracted: savedCount, error: duplicateError.message };
     if (duplicates?.length) continue;
-    const { error } = await adminClient.from('agent_memory_proposals').insert({
+    const { data: saved, error } = await adminClient.from('agent_memory_proposals').insert({
       organization_id: organizationId,
       created_by: userId,
       project_id: projectId,
       source_conversation_id: conversationId,
       ...proposal,
       status: 'proposed',
-    });
+    }).select('id').single();
     if (error && error.code !== '23505') return { extracted: savedCount, error: error.message };
-    if (!error) savedCount++;
+    if (!error) {
+      savedCount++;
+      if (saved?.id && automationVersion !== null && params.memoryClient) {
+        // The RPC derives canonical communication content from the user's own
+        // source. Model-written text can never become an automatic criterion.
+        try {
+          const { error: automaticError } = await params.memoryClient.rpc('auto_approve_agent_memory', {
+            p_proposal_id: saved.id,
+            p_automation_version: automationVersion,
+          });
+          if (automaticError) throw automaticError;
+        } catch (error) {
+          console.warn('[user-memory] automatic activation skipped; proposal retained:', error);
+        }
+      }
+    }
   }
   return { extracted: savedCount };
 }

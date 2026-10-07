@@ -14,6 +14,7 @@ import { ErrorBox } from '@/components/layout/ErrorBox';
 import { Spinner } from '@/components/ui/spinner';
 import { AgentMemoryFields } from './AgentMemoryFields';
 import { AgentMemoryProposalCard } from './AgentMemoryProposalCard';
+import { AgentMemoryAutomation } from './AgentMemoryAutomation';
 import {
   AGENT_MEMORY_EFFECT_LABEL, AGENT_MEMORY_KIND_LABEL, agentMemoryScopeLabel, canManageAgentMemory, isAgentMemoryDraftValid,
   type AgentMemory, type AgentMemoryDraft,
@@ -44,14 +45,15 @@ function MemoryRow({ memory, canManage }: { memory: AgentMemory; canManage: bool
     finally { setBusy(false); }
   };
   return (
-    <article aria-label="Mémoire confirmée" className="rounded-lg border border-border p-3 space-y-2">
+    <article aria-label={memory.activation_mode === 'automatic' ? 'Mémoire automatique' : 'Mémoire confirmée'} className="rounded-lg border border-border p-3 space-y-2">
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="secondary">{agentMemoryScopeLabel(memory.scope, orgType)}</Badge>
         <Badge variant="outline">{AGENT_MEMORY_KIND_LABEL[memory.kind]}</Badge>
+        {memory.activation_mode === 'automatic' && <Badge variant="outline">Automatique</Badge>}
       </div>
       <p className="text-sm whitespace-pre-wrap break-words">{memory.content}</p>
       <p className="text-xs text-muted-foreground">Effets : {memory.effects.map((effect) => AGENT_MEMORY_EFFECT_LABEL[effect]).join(', ')}.</p>
-      <p className="text-xs text-muted-foreground">Confirmée le {new Date(memory.confirmed_at).toLocaleDateString('fr-FR')} · version {memory.version}
+      <p className="text-xs text-muted-foreground">{memory.activation_mode === 'automatic' ? 'Ajoutée automatiquement le' : 'Confirmée le'} {new Date(memory.activation_mode === 'automatic' ? memory.created_at : memory.confirmed_at).toLocaleDateString('fr-FR')} · version {memory.version}
         {memory.expires_at && ` · expire le ${new Date(memory.expires_at).toLocaleDateString('fr-FR')}`}</p>
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       {canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} aria-busy={busy} onClick={() => setConfirmOpen(true)}>
@@ -113,8 +115,9 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
       <DialogContent className="w-[calc(100%-2rem)] max-w-2xl max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 pr-7"><Brain aria-hidden="true" className="h-4 w-4" />{projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
-          <DialogDescription>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les règles confirmées guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</DialogDescription>
+          <DialogDescription>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</DialogDescription>
         </DialogHeader>
+        <AgentMemoryAutomation enabled={open} />
         <p className="text-xs text-muted-foreground">Une contrainte prime sur une préférence. Les règles de l’organisation encadrent celles de la mission ; vos préférences personnelles ne les remplacent pas.</p>
         {contextLoading ? <Spinner label="Chargement du contexte de la conversation" /> : contextError ? (
           <ErrorBox title="Le contexte de la conversation n’a pas pu être chargé." onRetry={onRetryContext} />

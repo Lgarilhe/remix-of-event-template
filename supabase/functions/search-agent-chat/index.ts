@@ -450,7 +450,7 @@ async function maybeGenerateTitle(
  * À lancer fire-and-forget via EdgeRuntime.waitUntil — ne bloque jamais le [DONE].
  */
 // deno-lint-ignore no-explicit-any
-async function runMemoryHooks(supabase: any, conversationId: string, userId: string, orgId: string, projectId: string | null): Promise<void> {
+async function runMemoryHooks(supabase: any, conversationId: string, userId: string, orgId: string, projectId: string | null, memoryClient: ReturnType<typeof createClient>): Promise<void> {
   try {
     const { count } = await supabase
       .from("agent_messages")
@@ -476,6 +476,7 @@ async function runMemoryHooks(supabase: any, conversationId: string, userId: str
           organizationId: orgId,
           conversationId,
           projectId,
+          memoryClient,
           messages: formatted,
         });
         if (extraction.error) console.warn("[search-agent-chat] memory proposal skipped:", extraction.error);
@@ -1850,7 +1851,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
               // Hooks mémoire (insights Sprint 3 + compaction P4.2) —
               // fire-and-forget, survit à la fermeture du stream via waitUntil.
-              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId, memoryProjectId);
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId, memoryProjectId, anonClient);
               try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
               memoryPromise.catch(() => {});
             }
@@ -2006,7 +2007,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // Hooks mémoire (insights + compaction) — P4.3 : le chemin
               // streaming simple n'extrayait JAMAIS d'insights, seule la
               // boucle d'outils le faisait. Fire-and-forget via waitUntil.
-              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId, memoryProjectId);
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId, memoryProjectId, anonClient);
               try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
               memoryPromise.catch(() => {});
             }
