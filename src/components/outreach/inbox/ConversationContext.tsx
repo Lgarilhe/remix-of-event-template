@@ -6,6 +6,10 @@ import { Button } from '@/components/ui/button';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { activityService, meetingService } from '@/lib/messagingServices';
 import { activityChannel } from '@/lib/inboxTimeline';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CandidateProfilePanel } from './CandidateProfilePanel';
+import { CandidateProfileContent } from './CandidateProfileContent';
+import type { LinkedInProfile } from '@/components/outreach/types';
 
 interface ConversationContextProps {
   name: string;
@@ -19,9 +23,12 @@ interface ConversationContextProps {
   onEnroll: () => void;
   onAddToPipeline: () => void;
   readOnly?: boolean;
+  profileId?: string | null;
+  profileAliases?: string[];
+  profile?: LinkedInProfile;
 }
 
-export function ConversationContext({ name, profileUrl, mission, missionUrl, probableMission, events, now, sequenceStatus, onEnroll, onAddToPipeline, readOnly = false }: ConversationContextProps) {
+export function ConversationContext({ name, profileUrl, mission, missionUrl, probableMission, events, now, sequenceStatus, onEnroll, onAddToPipeline, readOnly = false, profileId = null, profileAliases = [], profile }: ConversationContextProps) {
   const upcoming = events.find(event => event.type === 'booking' && Date.parse(event.timestamp) >= now && !['cancelled', 'canceled', 'completed', 'done'].includes(event.status));
   const sequence = [...events].reverse().find(event => event.sequenceName);
   const contacts = [...new Map(events.filter(event => event.recipient).map(event => [activityChannel(event), event])).values()];
@@ -33,6 +40,10 @@ export function ConversationContext({ name, profileUrl, mission, missionUrl, pro
         <h3 className="mt-1 break-words text-sm font-semibold text-foreground">{name}</h3>
         {canOpenProfile && <a href={profileUrl!} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-11 items-center gap-1.5 text-xs text-foreground underline-offset-4 hover:underline md:min-h-8"><ServiceLogo service="linkedin" decorative />Voir le profil LinkedIn<ExternalLink className="h-3.5 w-3.5 text-foreground" aria-hidden="true" /></a>}
       </div>
+      <Tabs key={profileId || profile?.id || profileUrl || name} defaultValue="followup">
+        <TabsList className="grid h-auto w-full grid-cols-2"><TabsTrigger value="followup" className="min-h-11">Suivi</TabsTrigger><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger></TabsList>
+        <TabsContent value="profile" className="mt-5">{profile ? <CandidateProfileContent profile={profile} /> : <CandidateProfilePanel profileId={profileId} profileUrl={profileUrl} profileName={name} aliases={profileAliases} />}</TabsContent>
+        <TabsContent value="followup" className="mt-5 space-y-6">
       <section>
         <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground"><Briefcase className="h-4 w-4" aria-hidden="true" />{probableMission ? 'Mission probable' : 'Mission'}</h4>
         {mission ? missionUrl ? <Link to={missionUrl} className="block min-h-11 break-words text-sm text-foreground underline-offset-4 md:min-h-0 hover:underline">{mission}</Link> : <p className="break-words text-sm text-foreground-secondary">{mission}</p> : <p className="text-xs text-muted-foreground">Aucune mission rattachée</p>}
@@ -60,6 +71,8 @@ export function ConversationContext({ name, profileUrl, mission, missionUrl, pro
         <Button variant="outline" size="sm" className="w-full justify-start max-md:min-h-11" onClick={onEnroll}><ListPlus aria-hidden="true" />Inscrire dans une séquence</Button>
         <Button variant="ghost" size="sm" className="w-full justify-start max-md:min-h-11" onClick={onAddToPipeline}><Briefcase aria-hidden="true" />Ajouter au pipeline</Button>
       </div>}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

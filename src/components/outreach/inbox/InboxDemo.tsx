@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, PanelRight, Send } from 'lucide-react';
-import { ActivityEventCard } from './ActivityEventCard';
+import { CandidateInteractionTimeline } from './CandidateInteractionTimeline';
+import { CandidateProfileContent } from './CandidateProfileContent';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConversationContext } from './ConversationContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -9,8 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { createInboxDemo } from '@/lib/inboxDemo';
-import { activityChannel, conversationTimeline } from '@/lib/inboxTimeline';
-import { activityService, SERVICE_LABELS, type MessagingService } from '@/lib/messagingServices';
+import { SERVICE_LABELS, type MessagingService } from '@/lib/messagingServices';
 import type { ActivityEvent } from '@/hooks/useProfileActivity';
 import { cn } from '@/lib/utils';
 
@@ -23,15 +25,15 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(conversations[0].id);
   const [search, setSearch] = useState('');
   const [contextOpen, setContextOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [service, setService] = useState<MessagingService>('whatsapp');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, ActivityEvent[]>>({});
   const endRef = useRef<HTMLDivElement>(null);
   const selected = conversations.find(conversation => conversation.id === selectedId) ?? null;
   const events = useMemo(() => selected ? [...selected.events, ...(replies[selected.id] ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)) : [], [selected, replies]);
-  const timeline = useMemo(() => conversationTimeline([], events), [events]);
   const draft = selected ? drafts[selected.id] ?? '' : '';
-  const context = selected && <ConversationContext name={selected.name} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} sequenceStatus="Exemple de suivi candidat" readOnly onEnroll={noop} onAddToPipeline={noop} />;
+  const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} sequenceStatus="Exemple de suivi candidat" readOnly onEnroll={noop} onAddToPipeline={noop} />;
 
   function send() {
     if (!selected || !draft.trim()) return;
@@ -78,24 +80,11 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:hidden" aria-label="Retour aux conversations" onClick={() => setSelectedId(null)}><ChevronLeft aria-hidden="true" /></Button>
             <Avatar className="hidden h-10 w-10 shrink-0 sm:flex"><AvatarFallback>{initials(selected.name)}</AvatarFallback></Avatar>
             <div className="min-w-0 flex-1"><h2 className="truncate text-md font-semibold text-foreground">{selected.name}</h2><p className="truncate text-xs text-muted-foreground">{selected.headline}</p><p className="mt-1 hidden truncate text-xs text-foreground-secondary md:block">{selected.mission}</p></div>
+            <Button variant="outline" size="sm" className="min-h-11 shrink-0" onClick={() => setProfileOpen(true)}>Fiche candidat</Button>
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 2xl:hidden" aria-label="Voir le contexte candidat" onClick={() => setContextOpen(true)}><PanelRight aria-hidden="true" /></Button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6" data-component="demo-timeline">
-            <div className="mx-auto max-w-5xl space-y-1">{timeline.map(item => {
-              if (item.kind === 'date') return <div key={item.date} className="my-6 flex items-center gap-3 text-2xs text-muted-foreground"><span className="h-px flex-1 bg-border" /><span>{item.label}</span><span className="h-px flex-1 bg-border" /></div>;
-              if (item.kind !== 'event') return null;
-              const event = item.data;
-              if ((event.type !== 'message' && event.actionType !== 'message') || activityChannel(event) === 'email') return <ActivityEventCard key={event.id} event={event} />;
-              const outgoing = event.direction === 'outbound';
-              return <div key={event.id} className={cn('flex py-2', outgoing ? 'justify-end' : 'justify-start')}>
-                <div className={cn('flex min-w-0 max-w-[85%] flex-col md:max-w-[min(80%,40rem)]', outgoing ? 'items-end' : 'items-start')}>
-                  <p className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground"><ServiceLogo service={activityService(event)} decorative /><span>{SERVICE_LABELS[activityService(event)]} · {outgoing ? 'Vous' : selected.name}</span></p>
-                  <p className={cn('max-w-full whitespace-pre-wrap break-words rounded-xl px-4 py-2.5 text-sm leading-relaxed [overflow-wrap:anywhere]', outgoing ? 'bg-foreground text-background' : 'bg-muted text-foreground')}>{event.finalMessage}</p>
-                  {event.sequenceName && <p className="mt-1 text-xs text-muted-foreground">{event.sequenceName} · Étape {event.stepOrder + 1}</p>}
-                  <span className="mt-1 text-2xs tabular-nums text-muted-foreground">{new Date(event.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-              </div>;
-            })}<div ref={endRef} /></div>
+            <div className="mx-auto max-w-5xl"><CandidateInteractionTimeline events={events} name={selected.name} /><div ref={endRef} /></div>
           </div>
           <form className="shrink-0 space-y-2 border-t border-border bg-background p-3 md:px-5" onSubmit={event => { event.preventDefault(); send(); }}>
             <div className="flex flex-wrap items-center gap-1" aria-label="Canal de la réponse fictive">{(['linkedin', selected.emailService, 'whatsapp'] as const).map(option => <Button type="button" key={option} variant={service === option ? 'outline' : 'ghost'} size="sm" className="min-h-11 gap-2 md:min-h-8" aria-pressed={service === option} onClick={() => setService(option)}><ServiceLogo service={option} decorative />{SERVICE_LABELS[option]}</Button>)}</div>
@@ -103,7 +92,8 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
             <div className="flex items-center justify-between gap-2"><p className="text-2xs text-muted-foreground">Simulation uniquement</p><Button type="submit" variant="primary" size="sm" disabled={!draft.trim()} className="min-h-11 gap-2 md:min-h-8"><Send aria-hidden="true" />Envoyer dans la démo</Button></div>
           </form>
         </div>
-        <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-border bg-muted 2xl:block">{context}</aside>
+        <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-muted 2xl:block">{context}</aside>
+        <Dialog open={profileOpen} onOpenChange={setProfileOpen}><DialogContent className="flex max-h-[90dvh] max-w-3xl flex-col overflow-hidden p-0 [&>button]:h-11 [&>button]:w-11"><DialogHeader className="shrink-0 p-5 pb-2 pr-14"><DialogTitle>{selected.name}</DialogTitle><DialogDescription>Fiche fictive · Les mêmes interactions que dans la messagerie</DialogDescription></DialogHeader><Tabs defaultValue="profile" className="flex min-h-0 flex-1 flex-col"><TabsList className="mx-5 grid h-auto shrink-0 grid-cols-2"><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger><TabsTrigger value="interactions" className="min-h-11">Interactions</TabsTrigger></TabsList><TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateProfileContent profile={selected.profile} /></TabsContent><TabsContent value="interactions" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateInteractionTimeline events={events} name={selected.name} /></TabsContent></Tabs></DialogContent></Dialog>
         <Sheet open={contextOpen} onOpenChange={setContextOpen}><SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11"><SheetHeader className="p-5 pb-0"><SheetTitle>Contexte de la conversation fictive</SheetTitle></SheetHeader>{context}</SheetContent></Sheet>
       </div>}
     </div>

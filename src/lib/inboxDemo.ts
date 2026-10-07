@@ -1,5 +1,6 @@
 import type { ActivityEvent } from '@/hooks/useProfileActivity';
 import type { MessagingService } from '@/lib/messagingServices';
+import type { LinkedInProfile } from '@/components/outreach/types';
 
 export interface DemoConversation {
   id: string;
@@ -10,6 +11,7 @@ export interface DemoConversation {
   preview: string;
   emailService: 'gmail' | 'outlook';
   events: ActivityEvent[];
+  profile: LinkedInProfile;
 }
 
 /** Exemples en mémoire : aucune identité réelle, aucun identifiant de compte ou de session. */
@@ -31,6 +33,19 @@ export function createInboxDemo(now = new Date()): DemoConversation[] {
   return [
     {
       id: 'demo-camille', name: 'Camille Durand', headline: 'Développeuse React · Paris', mission: 'Développeuse React senior', sequence: 'Approche développeurs React', preview: 'Parfait, à bientôt !', emailService: 'gmail',
+      profile: {
+        id: 'demo-camille', name: 'Camille Durand', headline: 'Développeuse React senior', location: 'Paris', summary: 'Développeuse frontend depuis huit ans, j’aime construire des produits accessibles et accompagner les équipes sur la qualité du code. Je cherche une équipe produit où contribuer aux choix techniques et au mentorat.',
+        work_experience: [
+          { company: 'Lumen Produit (fictif)', role: 'Développeuse frontend senior', start: { year: 2022, month: 3 }, current: true, description: 'Refonte React et TypeScript d’une plateforme B2B. Design system, accessibilité, tests et accompagnement de trois développeurs.' },
+          { company: 'Atelier Nova (fictif)', role: 'Développeuse React', start: { year: 2018, month: 9 }, end: { year: 2022, month: 2 }, description: 'Applications web pour des équipes métier, intégration d’API et amélioration des performances.' },
+          { company: 'Studio Boréal (fictif)', role: 'Développeuse web', start: '2016', end: '2018', description: 'Premiers projets JavaScript et interfaces responsives.' },
+        ],
+        education: [{ school: 'Université Paris-Saclay', degree: 'Master informatique', field_of_study: 'Génie logiciel', start: '2014', end: '2016' }, { school: 'Université de Nantes', degree: 'Licence informatique', start: '2011', end: '2014' }],
+        skills: ['React', 'TypeScript', 'JavaScript', 'Accessibilité', 'Design system', 'Tests', 'API REST', 'Git', 'Mentorat', 'Performance web'].map(name => ({ name })),
+        languages: [{ name: 'Français', proficiency: 'Langue maternelle' }, { name: 'Anglais', proficiency: 'Professionnel' }],
+        certifications: [{ name: 'Accessibilité numérique', organization: 'Parcours de formation fictif' }],
+        projects: [{ name: 'Bibliothèque de composants accessible', description: 'Composants partagés, documentation et tests visuels pour l’équipe produit.' }],
+      },
       events: [
         invitation('camille-invitation', 'Bonjour Camille, votre parcours React m’intéresse. Ravi de rejoindre votre réseau !', 'Approche développeurs React'),
         { ...message('camille-linkedin-out', 'linkedin', 'outbound', at(-2, 14), 'Bonjour Camille, nous recrutons une développeuse React senior pour une équipe produit à Paris. Seriez-vous disponible pour en discuter ?'), sequenceName: 'Approche développeurs React', stepOrder: 1 },
@@ -46,6 +61,7 @@ export function createInboxDemo(now = new Date()): DemoConversation[] {
     },
     {
       id: 'demo-alex', name: 'Alex Martin', headline: 'Account Executive · Lyon', mission: 'Account Executive SaaS', sequence: 'Approche commerciale SaaS', preview: 'Je suis disponible mardi ou jeudi matin.', emailService: 'outlook',
+      profile: { id: 'demo-alex', name: 'Alex Martin', headline: 'Account Executive SaaS', location: 'Lyon', summary: 'Six ans dans la vente de logiciels B2B. Je couvre le cycle commercial complet et apprécie les échanges avec les équipes produit.', work_experience: [{ company: 'Horizon Logiciels (fictif)', role: 'Account Executive', start: '2021', current: true, description: 'Comptes PME et ETI, démonstrations, négociation et suivi des partenaires.' }, { company: 'Passerelle SaaS (fictif)', role: 'Business Developer', start: '2018', end: '2021', description: 'Prospection et qualification des opportunités.' }], education: [{ school: 'Université Lyon 3', degree: 'Master commerce et marketing', start: '2016', end: '2018' }], skills: ['Vente SaaS', 'Négociation', 'CRM', 'Prospection', 'Démonstrations produit'].map(name => ({ name })), languages: [{ name: 'Français', proficiency: 'Langue maternelle' }, { name: 'Anglais', proficiency: 'Courant' }] },
       events: [
         invitation('alex-invitation', 'Bonjour Alex, j’aimerais échanger avec vous sur une opportunité commerciale.', 'Approche commerciale SaaS'),
         { ...message('alex-email-out', 'outlook', 'outbound', at(-1, 9, 30), 'Bonjour Alex,\n\nVotre expérience dans la vente SaaS a retenu mon attention. Nous accompagnons une équipe qui recrute un Account Executive à Lyon, avec deux jours de télétravail.\n\nLe package se situe entre 55 et 65 k€ de fixe, plus un variable déplafonné. Seriez-vous ouvert à un premier échange ?\n\nBonne journée,\nLaurent', 'Une opportunité Account Executive à Lyon'), type: 'sequence_step', sequenceName: 'Approche commerciale SaaS', stepOrder: 1, recipient: 'alex.martin@example.test', status: 'replied' },
@@ -55,6 +71,7 @@ export function createInboxDemo(now = new Date()): DemoConversation[] {
     },
     {
       id: 'demo-maya', name: 'Maya Bernard', headline: 'Product Designer · Nantes', mission: 'Product Designer senior', sequence: 'Approche design produit', preview: 'Merci ! Je regarde et je reviens vers vous.', emailService: 'gmail',
+      profile: { id: 'demo-maya', name: 'Maya Bernard', headline: 'Product Designer senior', location: 'Nantes', summary: 'Product designer orientée recherche utilisateur. Je travaille sur la découverte, les parcours et la conception d’interfaces avec le produit et la technique.', work_experience: [{ company: 'Orbite Mobilité (fictif)', role: 'Product Designer senior', start: '2022', current: true, description: 'Recherche terrain, parcours de réservation et design system mobile.' }, { company: 'Collectif Quartz (fictif)', role: 'UX/UI Designer', start: '2018', end: '2022', description: 'Entretiens utilisateurs, prototypes et tests d’utilisabilité.' }], education: [{ school: 'École de design de Nantes', degree: 'Diplôme de design', field_of_study: 'Design d’interaction', start: '2013', end: '2018' }], skills: ['Recherche utilisateur', 'Figma', 'Prototypage', 'Design system', 'Tests utilisateurs'].map(name => ({ name })), languages: [{ name: 'Français' }, { name: 'Anglais', proficiency: 'Professionnel' }], volunteering_experience: [{ company: 'Association fictive Les Ateliers', role: 'Mentore design', description: 'Accompagnement de personnes en reconversion.' }], projects: [{ name: 'Application de mobilité', description: 'Simplification du parcours de réservation à partir de tests utilisateurs.' }] },
       events: [
         invitation('maya-invitation', 'Bonjour Maya, votre portfolio m’a beaucoup intéressé. Ravi d’échanger avec vous !', 'Approche design produit'),
         message('maya-wa-out', 'whatsapp', 'outbound', at(-1, 14), 'Bonjour Maya, c’est Laurent. Comme convenu sur LinkedIn, je vous contacte ici pour organiser un premier échange.'),

@@ -24,7 +24,6 @@ import { CandidateSequencesPanel } from '@/components/outreach/CandidateSequence
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
-import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { useMissionCandidateDetail } from '@/hooks/useMissionCandidateDetail';
 import { useMissionStageActions } from '@/hooks/useMissionStageActions';
 import { useQueryClient } from '@tanstack/react-query';
@@ -205,7 +204,6 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
   const queryClient = useQueryClient();
   const { steps } = useMissionProcess(project.id);
   const actions = useMissionStageActions(project.id);
-  const { selectedAccount } = useFilteredLinkedInAccounts();
   const fullProfile = useCandidateFullProfile(row.candidateId, row.linkedinUrl);
   const [tab, setTabState] = useState<CandidatePanelTabKey>(getRememberedPanelTab);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -235,7 +233,6 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
   const pictureUrl = candidatePictureUrl(row, profileData);
   const position = positionLine(enriched, row.headline);
   const location = enriched?.location ?? null;
-  const accountId = fullProfile.accountId || selectedAccount || undefined;
   const jobTitle = candidate.jobTitle;
 
   // Voisins dans la liste affichée par Pipeline.
@@ -318,12 +315,13 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
       label: 'Échanges',
       content: (
         <div className="space-y-6">
-          <PanelSection title="Messages">
+          <PanelSection title="Interactions">
             <CardMessageThread
-              key={`${row.candidateId}:${accountId ?? ''}`}
-              accountId={accountId}
+              key={row.candidateId}
               profileId={row.candidateId}
               profileName={name}
+              profileUrl={row.linkedinUrl}
+              profileAliases={[pipelineProfile.provider_id, pipelineProfile.member_urn, pipelineProfile.recruiter_candidate_id].filter((id): id is string => !!id)}
               projectId={project.id}
               onMessageSent={() => void invalidateStageReaders(queryClient)}
             />

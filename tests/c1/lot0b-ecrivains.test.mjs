@@ -413,8 +413,8 @@ test('0b-2b : les envois du navigateur passent la mission (project_id)', () => {
   // Fil de la fiche : propriété projectId, passée au send_message.
   const thread = read('src/components/outreach/result-card/CardMessageThread.tsx');
   assert.match(thread, /projectId\?: string;/);
-  const threadSend = callbackBody(thread, 'handleSendReply');
-  assert.match(threadSend, /action: 'send_message',[\s\S]*project_id: projectId,/);
+  const threadSend = fnBody(thread, 'async function handleSendReply()');
+  assert.match(threadSend, /action: 'send_message',[\s\S]*project_id: projectId\b/);
   assert.match(read('src/components/outreach/result-card/CardExpandedContent.tsx'), /projectId=\{projectId\}/);
   const sheet = read('src/components/outreach/result-card/ProfileDetailSheet.tsx');
   assert.match(sheet, /projectId=\{missionIdOfJob\(activeProject\?\.id\)\}/);

@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Profil candidat dans la messagerie et interactions partagées
+
+**Fait** : onglets Suivi et Profil dans le contexte candidat, expériences et formations intégrales, compétences, langues et autres rubriques présentes dans le profil. Lecture des instantanés de l'organisation, puis du compte LinkedIn personnel si nécessaire ; actualisation explicite conservant le cache de l'organisation de départ. Les fiches sourcing, pipeline et mission reprennent les cartes et la chronologie des interactions : séquences, emails/WhatsApp envoyés, entretiens, appels et messages LinkedIn paginés. Les réponses LinkedIn utilisent uniquement le compte personnel. La démo contient trois parcours fictifs complets et une fiche Profil/Interactions reprenant exactement les événements du chat, réponses simulées comprises.
+**Validation** : build réussi ; TypeScript à 11 erreurs héritées, aucune nouvelle ; nouveaux composants et hooks sans diagnostic ESLint ; dette design sans augmentation ; 119 fichiers UX et 28 C1 réussis, puis régressions ciblées relancées après les derniers ajustements. Chromium en StrictMode, clair/sombre, 390/1280/1920 px et hauteur mobile 500 px : six scénarios réussis, aucune erreur navigateur et aucune écriture en démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Profil complet dans le chat, fiche avec historique identique, anciens messages paginés et réponse unique depuis la fiche | PASS |
+| Claire | Suivi/Profil explicites, formations et compétences, mêmes cartes et logos dans les deux parcours | PASS |
+| Théo | Changement de candidat/organisation/compte, actualisation tardive isolée, panne partielle conservant les événements et absence d'envoi doublé | PASS |
+| Sophie | Onglets accessibles au clavier et cibles de 44 px, fiche et contexte sans débordement mobile, composeur visible à 500 px | PASS |
+
+**Limites** : composants réels avec services simulés pour les essais navigateur ; aucun envoi réel. Les réponses entrantes email/WhatsApp restent illustrées en démo, leur synchronisation réelle n'est pas ajoutée. Aucun schéma ni serveur modifié. Disponible sur l'aperçu de la PR.
+**Refs** : PR #312, branche `codex/inbox-candidate-history`.
+
 ## 2026-10-07 — SPEC — Messagerie : exemples fictifs et logos des services
 
 **Contexte** : visualiser les emails, les discussions WhatsApp et les autres événements sans attendre une activité réelle.

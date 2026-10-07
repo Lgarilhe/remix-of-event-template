@@ -775,6 +775,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const linkedMission = activeMissions.find(mission => mission.id === jobInfo?.job_id || mission.job_id === jobInfo?.job_id);
   const contextProps = {
     name: displayName, profileUrl, events: activityEvents, now: currentTime,
+    profileId, profileAliases,
     mission: jobInfo?.job_title || inferredMission?.job_title || inferredMission?.name || null,
     missionUrl: linkedMission ? `/missions/${linkedMission.id}` : inferredMission ? `/missions/${inferredMission.id}` : undefined,
     probableMission: !jobInfo?.job_title && !!inferredMission,
@@ -1385,7 +1386,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       </AlertDialog>
 
     </div>
-    <aside aria-label="Contexte candidat" className="hidden h-full w-72 shrink-0 overflow-y-auto border-l border-border bg-muted 2xl:block">
+    <aside aria-label="Contexte candidat" className="hidden h-full w-80 shrink-0 overflow-y-auto border-l border-border bg-muted 2xl:block">
       <ConversationContext {...contextProps} />
     </aside>
     <Sheet open={contextOpen} onOpenChange={setContextOpen}>
