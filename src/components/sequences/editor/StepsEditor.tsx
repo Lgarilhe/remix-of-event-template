@@ -14,6 +14,7 @@ import type { SequencePreview } from '@/hooks/useSequencePreview';
 import { useInertWhile } from '@/hooks/useInertWhile';
 import type { AiDraftNotes } from '@/lib/sequenceDraft';
 import type { AskAIContext } from '../ai/AskAIMenu';
+import type { AskAiWriting } from '@/lib/sequenceDraft';
 import { useMediaQuery } from '@/components/missions/v3/shell/useMediaQuery';
 import { issueStepOrder, issuesByOrder, primaryOf } from '@/lib/sequenceEditor';
 import { plural } from '@/lib/plural';
@@ -105,6 +106,13 @@ export function StepsEditor({ editor, validation, enrolledCount, state, onRetry,
   const hasSteps = steps.length > 0;
   // Candidat de l'aperçu : le même d'une étape à l'autre.
   const [previewIndex, setPreviewIndex] = useState(0);
+  // Style et niveau de « Demander à l'IA » (lot 5e-2) : valent pour l'éditeur
+  // ouvert, d'une étape à l'autre, jamais enregistrés.
+  const [askAiWriting, setAskAiWriting] = useState<AskAiWriting | null>(null);
+  const askAIForPanel = useMemo(
+    () => (askAI ? { ...askAI, writing: askAiWriting, onWritingChange: setAskAiWriting } : undefined),
+    [askAI, askAiWriting],
+  );
   const showIssue = (issue: SequenceIssue) => {
     if (issue.area === 'senders') {
       onShowSettings();
@@ -169,7 +177,7 @@ export function StepsEditor({ editor, validation, enrolledCount, state, onRetry,
       previewIndex={previewIndex}
       onPreviewIndexChange={setPreviewIndex}
       extraKeys={extraKeys}
-      askAI={askAI}
+      askAI={askAIForPanel}
       aiNotes={aiNotes}
     />
   );
@@ -178,7 +186,7 @@ export function StepsEditor({ editor, validation, enrolledCount, state, onRetry,
     <div className="space-y-5">
       {enrolledCount > 0 && (
         <p role="note" className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-foreground">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {plural(enrolledCount, 'candidat est inscrit', 'candidats sont inscrits')}. Vos changements de texte et de délai valent pour les étapes pas encore envoyées. Une étape déjà envoyée ne peut pas être supprimée.
         </p>
       )}

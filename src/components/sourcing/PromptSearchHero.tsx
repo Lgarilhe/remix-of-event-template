@@ -142,7 +142,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
               type="button"
               disabled={generating}
               onClick={() => setPrompt(ex)}
-              className="h-6 px-2 rounded-full bg-muted text-2xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors max-w-full truncate"
+              className="h-6 px-2 rounded-full bg-muted text-2xs text-foreground hover:bg-accent transition-colors max-w-full truncate"
               title={ex}
             >
               {ex.slice(0, 52)}…
@@ -170,7 +170,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
               </>
             )}
           </Button>
-          <Button variant="ghost" onClick={onSkip} disabled={generating} className="gap-1.5 text-muted-foreground">
+          <Button variant="ghost" onClick={onSkip} disabled={generating} className="gap-1.5">
             <SlidersHorizontal className="w-4 h-4" />
             Configurer les filtres manuellement
           </Button>

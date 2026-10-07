@@ -31,7 +31,7 @@ function StepIcons({ types }: { types: string[] }) {
   return (
     <span className="flex items-center gap-1" aria-label={`${stepCount(types.length)} : ${types.slice(0, PREVIEW_STEPS).map(stepName).join(', ')}${types.length > PREVIEW_STEPS ? '…' : ''}`} role="img">
       {types.slice(0, PREVIEW_STEPS).map((type, i) => (
-        <span key={i} className="grid h-6 w-6 place-items-center rounded-md bg-muted text-foreground-secondary" title={stepName(type)}>
+        <span key={i} className="grid h-6 w-6 place-items-center rounded-md bg-muted text-foreground" title={stepName(type)}>
           <SequenceActionIcon type={type} className="h-3.5 w-3.5" />
         </span>
       ))}

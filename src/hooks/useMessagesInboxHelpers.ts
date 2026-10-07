@@ -146,16 +146,22 @@ export const getAttendeeProfileId = (chat: Chat): string | null => {
 
 // Get job info for a chat
 export const getChatJobInfo = (chat: Chat, enrollmentsMap: Map<string, SequenceEnrollmentInfo>): SequenceEnrollmentInfo | null => {
-  const profileId = getChatProfileId(chat);
-  if (!profileId) return null;
-  return enrollmentsMap.get(profileId) || null;
+  const attendee = chat.attendees?.[0];
+  const ids = [attendee?.provider_id, attendee?.attendee_provider_id, chat.attendee_provider_id];
+  let latest: SequenceEnrollmentInfo | null = null;
+  for (const id of ids) {
+    const enrollment = id ? enrollmentsMap.get(id) : null;
+    if (enrollment?.status === 'active') return enrollment;
+    latest ??= enrollment ?? null;
+  }
+  return latest;
 };
 
 /**
  * État d'une conversation (à répondre, à relancer, en attente) : la définition
  * unique des onglets, des compteurs et des repères de la liste
- * (src/lib/inboxThreadState.ts). Une inscription de séquence active et sans
- * réponse garde la conversation « en attente » : la relance est déjà prévue.
+ * (src/lib/inboxThreadState.ts). Une inscription de séquence active garde la
+ * conversation « en attente » : la relance est déjà prévue.
  */
 export const getChatThreadState = (
   chat: Chat,
@@ -168,7 +174,7 @@ export const getChatThreadState = (
     {
       lastIsMine: authorIsMine(last?.is_sender),
       lastAt: last?.timestamp ?? chat.timestamp ?? null,
-      sequenceActive: !!jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at,
+      sequenceActive: jobInfo?.status === 'active',
     },
     now
   );

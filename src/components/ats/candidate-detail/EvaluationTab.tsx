@@ -166,7 +166,7 @@ function FoldedSection({ title, hint, children }: { title: string; hint?: string
           {hint && <span className="block text-sm text-muted-foreground">{hint}</span>}
         </span>
         <ChevronDown
-          className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:text-foreground motion-reduce:transition-none', open && 'rotate-180')}
+          className={cn('h-4 w-4 shrink-0 text-foreground transition-transform duration-150 motion-reduce:transition-none', open && 'rotate-180')}
           aria-hidden="true"
         />
       </button>

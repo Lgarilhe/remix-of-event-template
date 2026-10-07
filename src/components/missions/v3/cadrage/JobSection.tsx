@@ -78,17 +78,17 @@ export function NativeSelect({
       <select
         {...props}
         className={cn(
-          'h-9 w-full min-w-0 appearance-none rounded-lg border border-input bg-background py-1.5 pl-3 pr-8 text-base text-foreground md:text-sm',
+          'peer h-9 w-full min-w-0 appearance-none rounded-lg border border-input bg-background py-1.5 pl-3 pr-8 text-base text-foreground md:text-sm',
           TOUCH_FIELD,
           'transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground',
-          'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
-          'disabled:cursor-not-allowed disabled:opacity-50',
+          'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground',
         )}
       >
         {children}
       </select>
       <ChevronDown
-        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground peer-disabled:text-muted-foreground"
         aria-hidden="true"
       />
     </span>
@@ -216,7 +216,7 @@ function RecruitmentModeLine({
               if (e.key === 'Escape') close();
             }}
             orientation="horizontal"
-            className="flex w-fit max-w-full flex-wrap gap-0.5 rounded-lg bg-muted/60 p-0.5"
+            className="flex w-fit max-w-full flex-wrap gap-0.5 rounded-lg bg-muted p-0.5"
           >
             {RECRUITMENT_MODE_OPTIONS.map((o) => (
               <RadioGroupPrimitive.Item
@@ -226,7 +226,7 @@ function RecruitmentModeLine({
                   'inline-flex h-7 items-center whitespace-nowrap rounded-md px-3 text-sm transition-colors duration-150 max-sm:min-h-11',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'text-muted-foreground hover:text-foreground',
-                  'data-[state=checked]:bg-background data-[state=checked]:font-semibold data-[state=checked]:text-foreground',
+                  'data-[state=checked]:bg-card data-[state=checked]:font-semibold data-[state=checked]:text-foreground dark:data-[state=checked]:bg-background',
                 )}
               >
                 {o.label}

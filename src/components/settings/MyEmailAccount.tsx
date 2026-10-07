@@ -221,7 +221,7 @@ export const MyEmailAccount = () => {
           size="icon-sm"
           onClick={handleRefresh}
           disabled={busy}
-          className="text-muted-foreground max-md:h-11 max-md:w-11"
+          className="max-md:h-11 max-md:w-11"
           aria-label="Actualiser la liste des comptes e-mail"
         >
           <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
@@ -405,7 +405,7 @@ export const MyEmailAccount = () => {
             {connectButtons}
 
             {unlinkedAccounts.length === 0 && (
-              <Button variant="outline" size="sm" className="w-full max-md:h-11" onClick={handleRefresh} disabled={busy}>
+              <Button variant="ghost" size="sm" className="max-md:h-11" onClick={handleRefresh} disabled={busy}>
                 <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
                 Rafraîchir les comptes
               </Button>

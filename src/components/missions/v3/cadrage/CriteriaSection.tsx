@@ -105,7 +105,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                 autoComplete="off"
                 className="min-w-0 basis-full sm:basis-auto"
               />
-              <div role="group" aria-label={`Importance du critère ${name}`} className="inline-flex rounded-lg bg-muted/60 p-0.5">
+              <div role="group" aria-label={`Importance du critère ${name}`} className="inline-flex rounded-lg bg-muted p-0.5">
                 {IMPORTANCE_OPTIONS.map((o) => {
                   const pressed = importance === o.value;
                   return (
@@ -121,7 +121,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                         'h-7 whitespace-nowrap rounded-md px-2.5 text-sm transition-colors duration-150 max-sm:h-11',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         'disabled:cursor-not-allowed',
-                        pressed ? 'bg-background font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                        pressed ? 'bg-card font-semibold text-foreground dark:bg-background' : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
                       {o.label}
@@ -201,7 +201,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
               variant="ghost"
               size="sm"
               onClick={add}
-              className={cn('-ml-3 mt-1 text-muted-foreground hover:text-foreground', TOUCH)}
+              className={cn('-ml-3 mt-1', TOUCH)}
             >
               <Plus aria-hidden="true" />
               Ajouter un critère

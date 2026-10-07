@@ -583,7 +583,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                      className="max-md:h-11 max-md:w-11"
                       aria-label={`Actions de la séquence ${seq.name}`}
                     >
                       <MoreHorizontal aria-hidden="true" />
@@ -795,7 +795,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 icon={Search}
                 title={`Aucune séquence ne correspond à « ${searchQuery.trim()} »`}
                 action={
-                  <Button type="button" variant="outline" size="sm" onClick={() => setSearchQuery('')} className="max-md:h-11">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="max-md:h-11">
                     Effacer la recherche
                   </Button>
                 }
@@ -869,7 +869,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="icon-sm" aria-label="Plus d'actions" className="max-md:h-11 max-md:w-11">
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Plus d'actions" className="max-md:h-11 max-md:w-11">
                     <MoreHorizontal aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>

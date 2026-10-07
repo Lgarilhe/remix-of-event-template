@@ -55,6 +55,16 @@ const { outputFiles } = await build({
 });
 const { threadWaitingSentence } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 
+const enrollmentBundle = await build({
+  stdin: {
+    contents: "export * from './src/lib/inboxEnrollments'; export { getChatJobInfo, getChatThreadState } from './src/hooks/useMessagesInboxHelpers';",
+    resolveDir: new URL('../../', import.meta.url).pathname,
+    loader: 'ts',
+  },
+  bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent',
+});
+const { fetchInboxEnrollmentRows, indexInboxEnrollments, getChatJobInfo, getChatThreadState } = await import(`data:text/javascript;base64,${Buffer.from(enrollmentBundle.outputFiles[0].text).toString('base64')}`);
+
 // Heures locales de Paris (le fuseau est fixé plus haut).
 const at = (y, m, d, h = 10, min = 0) => new Date(y, m - 1, d, h, min, 0);
 const iso = (date) => date.toISOString();
@@ -140,6 +150,41 @@ test('Une séquence active garde la conversation en attente : la relance est dé
   const old = at(2026, 9, 1);
   assert.equal(threadState(mine(old, { sequenceActive: true }), at(2026, 10, 6)), 'waiting');
   assert.equal(threadState(mine(old, { sequenceActive: false }), at(2026, 10, 6)), 'to_follow_up');
+});
+
+test('Une séquence Recruiter reste en attente dans la messagerie Classic, malgré un historique plus récent', () => {
+  const active = { profile_id: 'AE_recruiter', provider_id: 'provider', resolved_profile_id: 'ACo_classic', status: 'active', replied_at: null };
+  const closed = { profile_id: 'ACo_classic', status: 'completed' };
+  const index = indexInboxEnrollments([closed, active]);
+  const chat = { id: 'chat', attendees: [{ provider_id: 'other', attendee_provider_id: 'ACo_classic' }], last_message: { is_sender: true, timestamp: iso(at(2026, 9, 1)) } };
+  assert.equal(getChatJobInfo(chat, index), active);
+  assert.equal(getChatThreadState(chat, index, at(2026, 10, 6)), 'waiting');
+  assert.equal(index.get('AE_recruiter'), active);
+  assert.equal(index.get('provider'), active);
+  assert.equal(getChatThreadState({ ...chat, last_message: { ...chat.last_message, is_sender: false } }, index), 'to_reply');
+});
+
+test('Les séquences actives anciennes restent visibles au-delà de la première page, dans la bonne organisation', async () => {
+  const closed = Array.from({ length: 500 }, (_, i) => ({ profile_id: `closed-${i}`, status: 'completed' }));
+  const active = Array.from({ length: 501 }, (_, i) => ({ profile_id: `active-${i}`, status: 'active' }));
+  const organizations = [];
+  const client = {
+    from() {
+      let onlyActive = false;
+      const query = {
+        select() { return query; }, order() { return query; },
+        eq(field, value) { if (field === 'organization_id') organizations.push(value); if (field === 'status') onlyActive = value === 'active'; return query; },
+        async limit() { return { data: closed, error: null }; },
+        async range(from, to) { return { data: onlyActive ? active.slice(from, to + 1) : [], error: null }; },
+      };
+      return query;
+    },
+  };
+  const index = indexInboxEnrollments(await fetchInboxEnrollmentRows(client, 'org-a'));
+  assert.equal(index.get('active-500')?.status, 'active');
+  assert.equal(index.get('closed-0')?.status, 'completed');
+  assert.ok(organizations.length > 0 && organizations.every(id => id === 'org-a'));
+  assert.deepEqual(await fetchInboxEnrollmentRows({ from() { throw new Error('lecture hors organisation'); } }, ''), []);
 });
 
 test('Date illisible ou absente : en attente, jamais une relance devinée', () => {

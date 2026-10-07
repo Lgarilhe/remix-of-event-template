@@ -7,6 +7,8 @@ import { autoAnalyzeKey, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useNow } from '@/hooks/sidebar/useNow';
+import { fetchInboxEnrollmentRows, indexInboxEnrollments } from '@/lib/inboxEnrollments';
 import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, type JobDetails } from '@/types/jobDetails';
 import { useChatCategories } from './useChatCategories';
 import { useChatStatus, getEffectiveStatus } from './useChatStatus';
@@ -130,6 +132,8 @@ export interface Message {
 
 export interface SequenceEnrollmentInfo {
   profile_id: string;
+  provider_id?: string | null;
+  resolved_profile_id?: string | null;
   job_title: string | null;
   job_id: string | null;
   status: string;
@@ -487,6 +491,7 @@ function contextReducer(state: ContextState, action: ContextAction): ContextStat
 export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange, initialResponseFilter }: UseMessagesInboxOptions) {
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
+  const currentTime = useNow(30_000);
 
   // ── Chat state (useReducer #1) ──
   const [chatState, chatDispatch] = useReducer(chatReducer, {
@@ -644,21 +649,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Le outreach_config sert à passer le contexte d'incarnation IA aux
   // smart replies dans l'inbox (cohérence avec les messages sortants).
   const fetchEnrollments = useCallback(async () => {
+    if (!organizationId) return;
     try {
-      let query = supabase
-        .from('sequence_enrollments')
-        // Lot 5b : raison de fin et trace d'un arrêt manuel (« Arrêtée par … le … »).
-        // Ligne typée à la main : l'inférence des chemins JSON dépasse la profondeur de TypeScript.
-        .select<string, Omit<SequenceEnrollmentInfo, 'outreach_config' | 'client_name'>>('profile_id, job_title, job_id, status, replied_at, current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop')
-        .order('created_at', { ascending: false })
-        .limit(500);
-
-      if (organizationId) {
-        query = query.eq('organization_id', organizationId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const data = await fetchInboxEnrollmentRows(supabase, organizationId);
 
       // Récupère outreach_config + client_name pour chaque job_id distinct (1 query batch)
       const jobIds = Array.from(new Set((data || []).map(e => e.job_id).filter(Boolean) as string[]));
@@ -677,17 +670,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         });
       }
 
-      const map = new Map<string, SequenceEnrollmentInfo>();
-      data?.forEach(enrollment => {
-        if (!map.has(enrollment.profile_id)) {
-          const projectInfo = enrollment.job_id ? projectsMap.get(enrollment.job_id) : undefined;
-          map.set(enrollment.profile_id, {
-            ...enrollment,
-            outreach_config: projectInfo?.outreach_config || null,
-            client_name: projectInfo?.client_name || null,
-          });
-        }
-      });
+      const map = indexInboxEnrollments(data.map(enrollment => {
+        const projectInfo = enrollment.job_id ? projectsMap.get(enrollment.job_id) : undefined;
+        return {
+          ...enrollment,
+          outreach_config: projectInfo?.outreach_config || null,
+          client_name: projectInfo?.client_name || null,
+        };
+      }));
       setEnrollmentsMap(map);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
@@ -1485,15 +1475,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // État de chaque conversation (à répondre, à relancer, en attente), relu avec
   // la liste (toutes les 30 s) et les inscriptions.
   const threadStates = useMemo(() => {
-    const now = new Date();
+    const now = new Date(currentTime);
     const map = new Map<string, ThreadState>();
     for (const chat of chats) map.set(chat.id, getChatThreadState(chat, enrollmentsMap, now));
     return map;
-  }, [chats, enrollmentsMap]);
+  }, [chats, enrollmentsMap, currentTime]);
 
   // Compteurs des onglets : conversations actives seulement, ni en sommeil ni archivées.
   const threadCounts = useMemo(() => {
-    const now = Date.now();
+    const now = currentTime;
     const active: ThreadState[] = [];
     for (const chat of chats) {
       if (getEffectiveStatus(chatStatus.statusMap.get(chat.id), now) === 'active') {
@@ -1501,7 +1491,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       }
     }
     return countThreadStates(active);
-  }, [chats, chatStatus.statusMap, threadStates]);
+  }, [chats, chatStatus.statusMap, threadStates, currentTime]);
 
   // Filter chats effect
   useEffect(() => {
@@ -1528,7 +1518,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     // - 'archived' : archived_at IS NOT NULL
     // - 'all' : aucun filtre
     if (chatStatus.statusFilter !== 'all') {
-      const now = Date.now();
+      const now = currentTime;
       result = result.filter(chat => getEffectiveStatus(chatStatus.statusMap.get(chat.id), now) === chatStatus.statusFilter);
     }
 
@@ -1544,7 +1534,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
 
     setFilteredChats(result);
-  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, threadStates, chatCategories.categoryFilter, chatCategories.categoriesMap, chatStatus.statusFilter, chatStatus.statusMap]);
+  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, threadStates, currentTime, chatCategories.categoryFilter, chatCategories.categoriesMap, chatStatus.statusFilter, chatStatus.statusMap]);
 
   // Unread count effect
   useEffect(() => {

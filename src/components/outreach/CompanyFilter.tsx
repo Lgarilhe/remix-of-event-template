@@ -23,11 +23,11 @@ export interface CompanyKeywordFilter {
   scope: CompanyScope;
 }
 
-// Options for priority
+// Options for priority (fond teinté, texte à l'encre : la couleur ne porte pas le texte)
 export const COMPANY_PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-success', icon: '✓' },
-  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-info', icon: '○' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-destructive', icon: '✕' },
+  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-foreground', icon: '✓' },
+  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-foreground', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-foreground', icon: '✕' },
 ];
 
 // Options for scope
@@ -188,7 +188,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                     className="text-xs font-medium text-foreground flex-1 min-w-0 pr-2 text-left hover:text-linkedin transition-colors group flex items-start gap-1"
                   >
                     <span className="min-w-0 whitespace-normal break-words leading-snug">{company.keywords}</span>
-                    <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Pencil className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
                   <button 
                     type="button" 
@@ -283,7 +283,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             size="sm"
             onClick={handleAddKeyword}
             disabled={!newKeywords.trim()}
-            className="h-6 px-2 bg-linkedin hover:bg-linkedin-hover"
+            className="h-6 px-2 border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
           >
             <Plus className="w-3 h-3" />
           </Button>

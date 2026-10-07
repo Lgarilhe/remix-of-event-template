@@ -200,7 +200,7 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({ open, onOpen
                           overdue ? 'font-medium text-danger' : 'text-muted-foreground',
                         )}
                       >
-                        <Clock className="h-3 w-3" aria-hidden="true" />
+                        <Clock className={cn('h-3 w-3', !overdue && 'text-foreground')} aria-hidden="true" />
                         {overdue && 'En retard · '}
                         {dueLabelOf(reminder.due_at)}
                       </span>

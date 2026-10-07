@@ -51,7 +51,7 @@ export function PipelineToolbar({
         </button>
       )}
       <div className="ml-auto flex items-center gap-1">
-        <div role="group" aria-label="Affichage" className="inline-flex items-center rounded-lg bg-muted/60 p-0.5">
+        <div role="group" aria-label="Affichage" className="inline-flex items-center rounded-lg bg-muted p-0.5">
           {TOGGLE.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
@@ -61,7 +61,7 @@ export function PipelineToolbar({
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition-colors duration-150 ease-out',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                view === value ? 'bg-background font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                view === value ? 'bg-card font-semibold text-foreground dark:bg-background' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <Icon className="h-4 w-4" aria-hidden="true" />
@@ -75,7 +75,7 @@ export function PipelineToolbar({
           aria-label="Bilan"
           aria-expanded={bilanOpen}
           onClick={onToggleBilan}
-          className={cn('text-foreground-secondary hover:text-foreground max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0', bilanOpen && 'bg-muted text-foreground')}
+          className={cn('max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0', bilanOpen && 'bg-muted')}
         >
           <BarChart3 className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
           <span className="max-sm:hidden">Bilan</span>
@@ -85,7 +85,7 @@ export function PipelineToolbar({
           size="sm"
           aria-label="Prise de contact"
           onClick={onOpenContact}
-          className="text-foreground-secondary hover:text-foreground max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0"
+          className="max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0"
         >
           <Send className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
           <span className="max-sm:hidden">Prise de contact</span>

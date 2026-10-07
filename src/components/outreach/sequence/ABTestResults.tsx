@@ -24,7 +24,7 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        <FlaskConical className="h-3.5 w-3.5" aria-hidden="true" />
         <span className="text-sm font-semibold text-foreground">Résultats du test A/B</span>
       </div>
       <div className="overflow-x-auto">

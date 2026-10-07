@@ -35,7 +35,8 @@ interface SequenceStatusPillProps {
 
 export function SequenceStatusPill({ status, isActive, canToggle, disabled, lockedHint, onToggle }: SequenceStatusPillProps) {
   const label = LABELS[status];
-  const tone = status === 'paused' ? 'text-warning' : status === 'draft' ? 'text-muted-foreground' : 'text-foreground-secondary';
+  // Libellé à l'encre (le mot dit le statut) ; la pause garde sa couleur : elle demande d'agir.
+  const tone = status === 'paused' ? 'text-warning' : 'text-foreground';
   if (!canToggle) {
     return <span className={cn('text-sm font-medium', tone)}>{label}</span>;
   }

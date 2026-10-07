@@ -166,7 +166,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
             return (
               <li key={i} className="p-3">
                 <div className="flex items-start gap-2.5">
-                  <CatIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <CatIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <div className="mb-0.5 flex flex-wrap items-center gap-2">
                       <span className="eyebrow">{cat.label}</span>

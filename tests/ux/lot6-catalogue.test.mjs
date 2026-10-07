@@ -110,11 +110,12 @@ test('D-66 : la pastille de canal ne lit pas le nom deux fois', () => {
   assert.doesNotMatch(icon, /text-linkedin|text-whatsapp/, 'le libellé reste en texte neutre');
 });
 
-test('D-62 : trois tons de rédaction, en mots entiers', () => {
-  assert.deepEqual(
-    catalog.MESSAGE_TONES.map((t) => t.label),
-    ['Professionnel', 'Décontracté', 'Enthousiaste'],
-  );
+test('D-62 : trois tons de rédaction, en mots entiers', async () => {
+  // Lot 5e-2 : plus de liste de tons dans le catalogue des séquences ; le ton
+  // fait partie du style de rédaction (toujours au vouvoiement).
+  assert.equal(catalog.MESSAGE_TONES, undefined);
+  const style = await bundle('src/lib/writingStyle.ts');
+  assert.deepEqual(style.STYLE_FIELDS.tone.options.map((t) => t.label), ['Formel', 'Chaleureux', 'Direct']);
 });
 
 test('D-24 : les canaux d’une séquence, dans un ordre stable', () => {

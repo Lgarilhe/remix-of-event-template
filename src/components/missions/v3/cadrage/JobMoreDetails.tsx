@@ -138,8 +138,8 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger
         className={cn(
-          'group -ml-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-muted-foreground',
-          'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          'group -ml-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-foreground',
+          'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           TOUCH,
         )}
       >
@@ -284,7 +284,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
                 variant="ghost"
                 size="sm"
                 onClick={() => updateField({ languages: [...languages, { language: '', level: '' }] })}
-                className={cn('-ml-3 self-start text-muted-foreground hover:text-foreground', TOUCH)}
+                className={cn('-ml-3 self-start', TOUCH)}
               >
                 <Plus aria-hidden="true" />
                 Ajouter une langue

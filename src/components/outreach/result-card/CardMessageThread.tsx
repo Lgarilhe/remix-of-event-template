@@ -210,7 +210,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => { setMessagesLoaded(false); setMessages([]); }}
-          className="text-xs h-6 px-2 text-muted-foreground hover:text-foreground"
+          className="text-xs h-6 px-2"
         >
           Actualiser
         </Button>
@@ -261,7 +261,8 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
               onClick={handleSendReply}
               disabled={!replyText.trim() || isSending}
               size="icon"
-              className="h-auto min-h-[60px] w-12 bg-primary hover:bg-primary/90"
+              variant="primary"
+              className="h-auto min-h-[60px] w-12"
             >
               {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>

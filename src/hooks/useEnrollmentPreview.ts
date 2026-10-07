@@ -9,7 +9,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { invokeWithCredits, estimateActionCredits } from '@/lib/invokeWithCredits';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { DEFAULT_AI_LEVEL, levelCredits, modelForLevel, writingRefusalMessage, type AiLevel, type WritingStyle } from '@/lib/writingStyle';
 import type { EdgeFunctionError } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -126,8 +127,14 @@ export const PREVIEW_GENERATION_FAILED_MESSAGE =
  */
 export const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';
 
-/** Texte affiché sous un aperçu en échec : la phrase du serveur pour un aperçu refusé, sinon l'échec générique. */
+/**
+ * Texte affiché sous un aperçu en échec : la phrase du serveur pour un aperçu
+ * refusé ou un niveau refusé (lot 5e-2 : « Votre organisation n'autorise pas
+ * le niveau Avancé… »), sinon l'échec générique.
+ */
 export function previewErrorMessage(err: unknown): string {
+  const refusal = writingRefusalMessage(err);
+  if (refusal) return refusal;
   const e = err as EdgeFunctionError | null | undefined;
   return e?.code === PREVIEW_NOT_COMPLIANT_CODE && e.message ? e.message : PREVIEW_GENERATION_FAILED_MESSAGE;
 }
@@ -193,6 +200,33 @@ interface UseEnrollmentPreviewOptions {
    * départ quand leur génération échoue ; à défaut, le modèle brut.
    */
   writtenText?: (profile: LinkedInProfile, step: SequenceStepPreview) => Promise<{ subject: string; message: string } | null>;
+  /**
+   * Lot 5e-2 : style et niveau des messages rédigés par l'IA pour cette
+   * préparation (ligne « Rédaction par l'IA »). Envoyés à chaque génération
+   * (ai_level, style), la préautorisation estimée au modèle du niveau ; null
+   * tant qu'ils ne sont pas lus (le serveur applique alors les défauts de la
+   * personne et de l'organisation).
+   */
+  writing?: { level: AiLevel; style: WritingStyle } | null;
+  /**
+   * Lot 5e-2 : une génération refusée pour son niveau ou son style
+   * (AI_LEVEL_NOT_ALLOWED…). L'écran relit alors les réglages de rédaction :
+   * le plafond relu ramène le niveau affiché (clampLevel) avant le nouvel essai.
+   */
+  onWritingRefused?: () => void;
+}
+
+/**
+ * Champs de style et de niveau d'une génération (lot 5e-2) : le style affiché,
+ * jamais l'ancien ton de l'étape (sans style, le serveur applique celui de la
+ * personne). modelOverride : préautorisation au prix du niveau.
+ */
+export function writingRequest(writing: { level: AiLevel; style: WritingStyle } | null | undefined): {
+  body: Record<string, unknown>;
+  modelOverride: string;
+} {
+  if (!writing) return { body: {}, modelOverride: modelForLevel(DEFAULT_AI_LEVEL) };
+  return { body: { ai_level: writing.level, style: writing.style }, modelOverride: modelForLevel(writing.level) };
 }
 
 // Steps that have sendable messages
@@ -318,8 +352,10 @@ export function useMissionOutreachConfig(rawJobId: string | null | undefined) {
   const [state, setState] = useState<{
     outreachConfig: MissionOutreachConfig | null;
     missionClientName: string | null;
+    /** Lot 5e-2 : la mission a un lien d'agenda (celui que le moteur rend) ; null tant qu'il n'est pas lu. */
+    missionHasCalendlyLink: boolean | null;
     status: 'idle' | 'loading' | 'ready' | 'error';
-  }>({ outreachConfig: null, missionClientName: null, status: rawJobId ? 'loading' : 'idle' });
+  }>({ outreachConfig: null, missionClientName: null, missionHasCalendlyLink: null, status: rawJobId ? 'loading' : 'idle' });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -330,7 +366,7 @@ export function useMissionOutreachConfig(rawJobId: string | null | undefined) {
     // CABINET (mode INTERNE jamais appliqué, client jamais anonymisé).
     const jobId = normalizeMissionJobId(rawJobId);
     if (!jobId) {
-      setState({ outreachConfig: null, missionClientName: null, status: 'idle' });
+      setState({ outreachConfig: null, missionClientName: null, missionHasCalendlyLink: null, status: 'idle' });
       return;
     }
     setState(prev => ({ ...prev, status: 'loading' }));
@@ -338,7 +374,7 @@ export function useMissionOutreachConfig(rawJobId: string | null | undefined) {
       try {
         // Un identifiant non uuid (poste externe) ferait échouer id.eq : on ne
         // compare alors que job_id.
-        const base = supabase.from('sourcing_projects').select('id, job_id, job_details, client_name');
+        const base = supabase.from('sourcing_projects').select('id, job_id, job_details, client_name, calendly_link');
         const { data, error } = await (UUID_RE.test(jobId)
           ? base.or(`id.eq.${jobId},job_id.eq.${jobId}`)
           : base.eq('job_id', jobId)
@@ -351,11 +387,12 @@ export function useMissionOutreachConfig(rawJobId: string | null | undefined) {
           missionClientName: data?.client_name
             ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
             ?? null,
+          missionHasCalendlyLink: data ? !!(data.calendly_link?.trim() || (typeof jd?.calendly_link === 'string' && jd.calendly_link.trim())) : null,
           status: 'ready',
         });
       } catch (err) {
         console.warn('[useMissionOutreachConfig] outreach_config fetch failed:', err);
-        if (!cancelled) setState({ outreachConfig: null, missionClientName: null, status: 'error' });
+        if (!cancelled) setState({ outreachConfig: null, missionClientName: null, missionHasCalendlyLink: null, status: 'error' });
       }
     })();
     return () => { cancelled = true; };
@@ -422,7 +459,7 @@ export function useSenderFirstName(): string | undefined {
   return undefined;
 }
 
-export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, accountId, sessionKey, writtenText }: UseEnrollmentPreviewOptions) {
+export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, accountId, sessionKey, writtenText, writing = null, onWritingRefused }: UseEnrollmentPreviewOptions) {
   const [previews, setPreviews] = useState<PreviewMap>(() => restoreFromSession(sessionKey, steps, profiles));
   // Dernier état des aperçus, lu par les générations en cours : une closure
   // figée (raccourci clavier, workers de la génération groupée) ne voyait pas
@@ -443,6 +480,16 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   // Dernière fonction de rendu des étapes écrites, lue par les générations en cours.
   const writtenTextRef = useRef(writtenText);
   useEffect(() => { writtenTextRef.current = writtenText; }, [writtenText]);
+  // Refus de niveau ou de style : l'écran relit les réglages (plafond abaissé entre-temps).
+  const onWritingRefusedRef = useRef(onWritingRefused);
+  useEffect(() => { onWritingRefusedRef.current = onWritingRefused; }, [onWritingRefused]);
+  const reportGenerationError = useCallback((err: unknown): string => {
+    if (writingRefusalMessage(err)) onWritingRefusedRef.current?.();
+    return previewErrorMessage(err);
+  }, []);
+  // Derniers style et niveau choisis, lus par les générations en cours (lot 5e-2).
+  const writingRef = useRef(writing);
+  writingRef.current = writing;
   /** Texte d'une étape écrite (lot 5d-1) : valeurs du serveur, attendues ; sans elles, le modèle brut. */
   const writtenMessage = useCallback(async (profile: LinkedInProfile, step: SequenceStepPreview): Promise<{ subject: string; message: string }> => {
     const rendered = await writtenTextRef.current?.(profile, step).catch(() => null);
@@ -540,7 +587,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   // outreach_config de la mission (sourcing_projects.job_details). Sans ça,
   // l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet externe" même
   // si la mission est en mode interne, et n'anonymise pas le client.
-  const { outreachConfig, missionClientName } = useMissionOutreachConfig(job?.id);
+  const { outreachConfig, missionClientName, missionHasCalendlyLink } = useMissionOutreachConfig(job?.id);
 
   // Prénom de l'expéditeur (signature des messages et {{sender_name}}).
   const senderName = useSenderFirstName();
@@ -749,6 +796,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             })(),
           };
 
+          const writingFields = writingRequest(writingRef.current);
           const { data, error } = await invokeWithCredits<{
             subject?: string;
             message?: string;
@@ -765,7 +813,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
               location: job.location,
               accompagnement: job.accompagnement || [],
             } : undefined,
-            tone: step.aiTone || 'professional',
+            ...writingFields.body,
             senderName,
             accountId,
             profileId: profile.provider_id || profile.id,
@@ -788,7 +836,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             // Mission (préfixe « project: » accepté) : le serveur relit ses
             // réglages d'approche quand outreachConfig est absent (SEQ-051).
             missionId: job?.id || undefined,
-          });
+          }, { modelOverride: writingFields.modelOverride });
 
           if (error) throw error;
 
@@ -823,14 +871,14 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             isGenerated: false,
             isGenerating: false,
             isEdited: false,
-            error: previewErrorMessage(err),
+            error: reportGenerationError(err),
           };
           localPreviews.set(step.stepId, fallbackMsg);
           setPreview(profile.id, step.stepId, fallbackMsg);
         }
       }
     }
-  }, [messageSteps, steps, job, accountId, setPreview, keep, outreachConfig, missionClientName, senderName, writtenMessage, buildPrevSentSteps]);
+  }, [messageSteps, steps, job, accountId, setPreview, keep, outreachConfig, missionClientName, senderName, writtenMessage, buildPrevSentSteps, reportGenerationError]);
 
   // Génération pour un seul candidat : indépendante de l'arrêt de la
   // génération groupée, interrompue quand la préparation se ferme.
@@ -935,6 +983,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           stepId => previewsRef.current.get(candidateId)?.get(stepId),
         );
 
+        const writingFields = writingRequest(writingRef.current);
         const { data, error } = await invokeWithCredits<{
           subject?: string;
           message?: string;
@@ -949,7 +998,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             location: job.location,
             accompagnement: job.accompagnement || [],
           } : undefined,
-          tone: step.aiTone || 'professional',
+          ...writingFields.body,
           senderName,
           accountId,
           profileId: profile.provider_id || profile.id,
@@ -961,7 +1010,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           },
           outreachConfig: outreachConfig || undefined,
           missionId: job?.id || undefined,
-        });
+        }, { modelOverride: writingFields.modelOverride });
 
         if (error) throw error;
 
@@ -985,11 +1034,11 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           ...(await writtenMessage(profile, step)),
           isGenerated: false,
           isGenerating: false,
-          error: previewErrorMessage(err),
+          error: reportGenerationError(err),
         });
       }
     }
-  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, keep, outreachConfig, missionClientName, senderName, writtenMessage, removePreview, buildPrevSentSteps]);
+  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, keep, outreachConfig, missionClientName, senderName, writtenMessage, removePreview, buildPrevSentSteps, reportGenerationError]);
 
   // `base` (lot 5d-1) : première retouche d'une étape écrite, sans aperçu
   // gardé ; elle part de son texte et de son objet rendus pour ce candidat,
@@ -1097,7 +1146,8 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   // pas son estimation, et annonçait moins de la moitié de ce qui sera exigé.
   const aiStepCount = messageSteps.filter(s => s.useAiPersonalization).length;
   const hasAiSteps = aiStepCount > 0;
-  const creditsPerMessage = estimateActionCredits('outreach_message');
+  // Lot 5e-2 : coût au niveau choisi (la formule du garde serveur), Équilibré tant qu'il n'est pas lu.
+  const creditsPerMessage = levelCredits('outreach_message', writing?.level ?? DEFAULT_AI_LEVEL);
   const estimatedCredits = targets.length * aiStepCount * creditsPerMessage;
 
   // Aperçus prêts : candidats visés dont tous les messages sont générés ou
@@ -1140,8 +1190,10 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     totalToGenerate,
     isBulkGenerating,
     estimatedCredits,
-    /** Coût estimé d'un message personnalisé par l'IA, en crédits. */
+    /** Coût estimé d'un message personnalisé par l'IA, en crédits, au niveau choisi (lot 5e-2). */
     creditsPerMessage,
+    /** Lot 5e-2 : la mission a un lien d'agenda (sinon « Lien d'agenda » se replie, annoncé). */
+    missionHasCalendlyLink,
     candidateAnalysis,
     getPreview,
     generateForCandidateById,

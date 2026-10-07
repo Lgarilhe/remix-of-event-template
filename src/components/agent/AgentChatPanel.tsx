@@ -48,7 +48,7 @@ const HeaderIconButton: React.FC<{ label: string; onClick: () => void; children:
         size="icon-sm"
         onClick={onClick}
         aria-label={label}
-        className="shrink-0 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+        className="shrink-0 max-md:h-11 max-md:w-11"
       >
         {children}
       </Button>
@@ -478,7 +478,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             onClick={() => handleNewConversation()}
             className="h-auto w-full justify-start gap-2.5 rounded-xl bg-card px-4 py-3 text-left"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary" aria-hidden="true">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground" aria-hidden="true">
               <SquarePen />
             </span>
             <span className="text-sm font-semibold text-foreground">Nouvelle conversation</span>
@@ -500,7 +500,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               void queryClient.invalidateQueries({ queryKey: ['agent-conversations'] });
               navigate('/agents');
             }}
-            className="h-auto w-full justify-between px-2 py-2 text-xs text-muted-foreground hover:text-foreground max-md:min-h-11"
+            className="h-auto w-full justify-between px-2 py-2 text-xs max-md:min-h-11"
           >
             <span>Toutes les conversations</span>
             <ChevronRight aria-hidden="true" />

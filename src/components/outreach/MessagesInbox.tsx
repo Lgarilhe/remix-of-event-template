@@ -391,11 +391,11 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
                   <li key={sequence.id}>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => handleChooseSequence(sequence)}
-                      className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal"
+                      className="h-auto w-full justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
                     >
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
                         <GitBranch aria-hidden="true" />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -407,7 +407,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
                           ))}
                         </span>
                       </span>
-                      <ChevronRight className="text-muted-foreground" aria-hidden="true" />
+                      <ChevronRight aria-hidden="true" />
                     </Button>
                   </li>
                 );

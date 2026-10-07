@@ -158,13 +158,13 @@ function ExperienceList({ experiences }: { experiences: RawExperience[] }) {
         <ExperienceItem key={i} exp={exp} />
       ))}
       {hidden > 0 && !showAll && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5">
           <ChevronDown aria-hidden="true" />
           Voir {hidden} poste{hidden > 1 ? 's' : ''} de plus
         </Button>
       )}
       {showAll && sorted.length > 3 && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5">
           <ChevronUp aria-hidden="true" />
           Réduire
         </Button>
@@ -191,7 +191,7 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
           className="h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
         />
       ) : (
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
           <Building2 className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
@@ -215,14 +215,14 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           {period && (
             <span className="inline-flex items-center gap-1 tabular-nums">
-              <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+              <Calendar className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
               {period}
               {tenure && <span>· {tenure}</span>}
             </span>
           )}
           {exp.location && (
             <span className="inline-flex items-center gap-1">
-              <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+              <MapPin className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
               {exp.location}
             </span>
           )}
@@ -270,13 +270,13 @@ function EducationList({ education }: { education: RawEducation[] }) {
         <EducationItem key={i} edu={edu} />
       ))}
       {hidden > 0 && !showAll && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5">
           <ChevronDown aria-hidden="true" />
           Voir {hidden} formation{hidden > 1 ? 's' : ''} de plus
         </Button>
       )}
       {showAll && sorted.length > 2 && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5 text-foreground-secondary hover:text-foreground">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5">
           <ChevronUp aria-hidden="true" />
           Réduire
         </Button>
@@ -310,7 +310,7 @@ function EducationItem({ edu }: { edu: RawEducation }) {
           className="h-10 w-10 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5"
         />
       ) : (
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
           <GraduationCap className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
@@ -326,7 +326,7 @@ function EducationItem({ edu }: { edu: RawEducation }) {
         )}
         {(startYear || endYear) && (
           <p className="mt-1 inline-flex items-center gap-1 text-sm tabular-nums text-muted-foreground">
-            <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+            <Calendar className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
             {startYear || '?'} à {endYear || 'en cours'}
           </p>
         )}

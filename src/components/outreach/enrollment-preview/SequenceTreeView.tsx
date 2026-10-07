@@ -270,7 +270,7 @@ function DecisionFork({
       <div className="mb-2 flex justify-center">
         <div className="w-full max-w-sm rounded-xl border border-dashed border-border-strong bg-card px-4 py-3">
           <div className="flex items-start gap-3">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
               <SequenceActionIcon type={step.actionType} className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
@@ -349,7 +349,7 @@ function BranchHeader({ label, alternative = false }: { label: string; alternati
           alternative ? 'text-muted-foreground' : 'bg-card text-foreground',
         )}
       >
-        <CornerDownRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+        <CornerDownRight className="h-3 w-3 text-foreground" aria-hidden="true" />
         {label}
       </span>
     </div>
@@ -371,7 +371,7 @@ function BranchPlaceholder({ text }: { text: string }) {
 function FallbackHint() {
   return (
     <p className="flex items-start gap-1.5 px-1 text-xs leading-snug text-muted-foreground">
-      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
       Envoyé seulement si le candidat n'accepte pas l'invitation dans le délai.
     </p>
   );
@@ -406,7 +406,7 @@ function SimpleConnector({
   return (
     <div className="-my-1 flex items-center justify-center gap-2 py-1">
       <div className="h-px flex-1 bg-border" />
-      <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+      <ArrowDown className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
       {(hasDelay || editable) && (
         editable ? (
           <DelayEditor
@@ -423,7 +423,7 @@ function SimpleConnector({
               variant="ghost"
               size="xs"
               aria-label={`Délai avant l'étape suivante : ${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour tous les candidats de cette inscription`}
-              className={cn('gap-1 px-2 tabular-nums max-md:h-11', isOverridden ? 'text-brand' : 'text-muted-foreground')}
+              className={cn('gap-1 px-2 tabular-nums max-md:h-11', isOverridden && 'text-brand')}
             >
               {text}
               {isOverridden && <span className="font-normal">(modifié)</span>}
@@ -484,7 +484,7 @@ function InitialDelayChip({
           variant="outline"
           size="xs"
           aria-label={`Délai avant la première étape : ${start}${isOverridden ? ' (modifié)' : ''}. Modifier pour tous les candidats de cette inscription`}
-          className={cn('gap-1.5 max-md:h-11', isOverridden ? 'text-brand' : 'text-muted-foreground')}
+          className={cn('gap-1.5 max-md:h-11', isOverridden && 'text-brand')}
         >
           <Clock className="!size-3" aria-hidden="true" />
           {text}
@@ -626,7 +626,7 @@ function TimeoutEditor({
   if (!onChange) {
     return (
       <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <Clock className="h-3 w-3" aria-hidden="true" />
+        <Clock className="h-3 w-3 text-foreground" aria-hidden="true" />
         {text}
       </p>
     );
@@ -645,7 +645,7 @@ function TimeoutEditor({
         variant="outline"
         size="xs"
         aria-label={`${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour tous les candidats de cette inscription`}
-        className={cn('gap-1.5 max-md:h-11', isOverridden ? 'text-brand' : 'text-muted-foreground')}
+        className={cn('gap-1.5 max-md:h-11', isOverridden && 'text-brand')}
       >
         <Clock className="!size-3" aria-hidden="true" />
         {text}

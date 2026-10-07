@@ -49,7 +49,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
         <div className="flex items-center gap-3">
           <span
             className={cn(
-              'grid shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary',
+              'grid shrink-0 place-items-center rounded-lg bg-muted text-foreground',
               compact ? 'h-7 w-7' : 'h-9 w-9',
             )}
           >
@@ -70,7 +70,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
             )}
             {delayLabel && (
               <div className="mt-0.5 flex items-center gap-1 text-3xs text-muted-foreground">
-                <Clock className="h-2.5 w-2.5" aria-hidden="true" />
+                <Clock className="h-2.5 w-2.5 text-foreground" aria-hidden="true" />
                 Après {delayLabel}
               </div>
             )}

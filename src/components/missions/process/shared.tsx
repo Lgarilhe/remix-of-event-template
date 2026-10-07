@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import type { ProcessStep } from '@/hooks/useMissionProcess';
@@ -471,7 +472,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
       variant="ghost"
       size="sm"
       onClick={() => setShowAssign(true)}
-      className="-ml-3 text-muted-foreground hover:text-foreground max-sm:min-h-11"
+      className="-ml-3 max-sm:min-h-11"
     >
       <Plus aria-hidden="true" /> Assigner
     </Button>
@@ -545,7 +546,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             disabled={!selectedUserId}
             className={cn(
               'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm',
-              embedded && 'rounded-lg bg-transparent text-sm font-semibold text-foreground shadow-none hover:bg-accent max-sm:min-h-11',
+              embedded && 'rounded-lg bg-transparent text-sm font-semibold text-foreground shadow-none hover:bg-accent disabled:opacity-100 disabled:text-muted-foreground max-sm:min-h-11',
             )}
           >
             {embedded ? 'Assigner' : 'OK'}
@@ -554,7 +555,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
             aria-label={embedded ? 'Annuler' : undefined}
             className={embedded
-              ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11'
+              ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11'
               : 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-2xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'}
           >
             {embedded ? <X className="h-4 w-4" aria-hidden="true" /> : '×'}
@@ -680,7 +681,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
               </button>
               <button
                 onClick={() => { setShowInvite(false); setInviteEmail(''); }}
-                className="h-9 px-2 text-muted-foreground hover:text-foreground"
+                className={embedded ? 'h-9 px-2 text-foreground' : 'h-9 px-2 text-muted-foreground hover:text-foreground'}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -691,16 +692,19 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             <div className="space-y-1.5">
               {invitations.map(inv => (
                 <div key={inv.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-card">
-                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <Mail className={cn('w-3.5 h-3.5 shrink-0', !embedded && 'text-muted-foreground')} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-foreground truncate">{inv.email}</p>
                   </div>
-                  <span className={cn(
-                    "px-2 py-0.5 text-xs font-medium rounded-md border",
-                    inv.status === 'accepted' ? "border-success/30 text-success bg-success/10" :
-                    inv.status === 'pending' ? "border-warning/30 text-warning bg-warning/10" :
-                    "border-border text-muted-foreground"
-                  )}>
+                  {/* Nouvelle page : badge à la Qonto (texte à l'encre, pastille du statut) ; ancien rendu gardé. */}
+                  <span className={embedded
+                    ? badgeVariants({ variant: inv.status === 'accepted' ? 'success' : inv.status === 'pending' ? 'warning' : 'muted' })
+                    : cn(
+                      "px-2 py-0.5 text-xs font-medium rounded-md border",
+                      inv.status === 'accepted' ? "border-success/30 text-success bg-success/10" :
+                      inv.status === 'pending' ? "border-warning/30 text-warning bg-warning/10" :
+                      "border-border text-muted-foreground"
+                    )}>
                     {inv.status === 'pending' ? 'En attente' : inv.status === 'accepted' ? 'Acceptée' : inv.status === 'rejected' ? 'Refusée' : 'Expirée'}
                   </span>
                   {inv.status === 'pending' && (
@@ -715,7 +719,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                             toast.error('Lien : ' + url);
                           }
                         }}
-                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                        className={embedded ? 'text-foreground shrink-0' : 'text-muted-foreground hover:text-foreground transition-colors shrink-0'}
                         title="Copier le lien d'invitation"
                       >
                         <Link2 className="w-3.5 h-3.5" />

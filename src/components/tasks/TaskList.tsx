@@ -149,7 +149,7 @@ const TaskRow = React.memo(function TaskRow({
     'flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0';
   const body = (
     <>
-      <span className={cn('block text-pretty text-md text-foreground', isCompleted && 'line-through')}>{r.title}</span>
+      <span className={cn('block text-pretty text-md', isCompleted ? 'text-muted-foreground line-through' : 'text-foreground')}>{r.title}</span>
       {r.description && <span className="block truncate text-sm text-muted-foreground">{r.description}</span>}
       {/* Sur téléphone, l'échéance passe sous le titre et la ligne revient à la ligne au lieu d'être coupée. */}
       <span className={cn('block text-pretty text-sm text-muted-foreground md:truncate', !context && 'md:hidden')}>
@@ -163,7 +163,7 @@ const TaskRow = React.memo(function TaskRow({
   );
 
   return (
-    <li className={cn('group flex items-center gap-3.5 py-3', isCompleted && 'opacity-60')}>
+    <li className="group flex items-center gap-3.5 py-3">
       {/* Sur téléphone, la case se touche sur 44 px sans déplacer la ligne. */}
       <label className="-m-3.5 flex shrink-0 items-center justify-center p-3.5 md:m-0 md:p-0">
         <Checkbox
@@ -314,7 +314,7 @@ export function TaskSuggestions({ suggestions, photos, creatingKey, onAccept, on
           type="button"
           variant="link"
           size="sm"
-          className="mt-2 min-h-11 px-0 text-muted-foreground md:min-h-0"
+          className="mt-2 min-h-11 px-0 md:min-h-0"
           aria-expanded={showAll}
           onClick={() => setShowAll((v) => !v)}
         >

@@ -231,7 +231,7 @@ export const CalendarFiltersBar: React.FC<CalendarFiltersBarProps> = ({
       {onSavePreset && (
         <Popover>
           <PopoverTrigger asChild>
-            <Button type="button" variant="outline" size="sm">
+            <Button type="button" variant="ghost" size="sm">
               <Bookmark aria-hidden="true" />
               Vues{presets.length > 0 ? ` (${presets.length})` : ''}
             </Button>

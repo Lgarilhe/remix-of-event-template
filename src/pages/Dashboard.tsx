@@ -186,7 +186,7 @@ export default function Dashboard() {
             <h2 id="dashboard-todo" className="text-lg font-semibold text-foreground">
               À faire
             </h2>
-            <Button asChild variant="link" size="sm" className="min-h-11 px-0 text-muted-foreground md:min-h-0">
+            <Button asChild variant="link" size="sm" className="min-h-11 px-0 md:min-h-0">
               <Link to="/tasks">Toutes les tâches</Link>
             </Button>
           </div>

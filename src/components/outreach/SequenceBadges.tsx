@@ -63,7 +63,7 @@ export function SequenceActionIcon({ type, className }: { type: string | null | 
 export function SequenceActionLabel({ type, className }: { type: string | null | undefined; className?: string }) {
   return (
     <span className={cn('inline-flex min-w-0 items-center gap-1.5', className)}>
-      <SequenceActionIcon type={type} className="text-muted-foreground" />
+      <SequenceActionIcon type={type} className="text-foreground" />
       <span className="truncate">{sequenceActionLabel(type)}</span>
     </span>
   );

@@ -45,11 +45,20 @@ export interface ToolContext {
    */
   userBearer?: string | null;
   /**
-   * Détails de l'aperçu approuvé (dry_run_result.details), posés seulement
-   * sur le chemin cron (executeScheduledAction) : un tool y relit ce que
+   * Détails de l'aperçu approuvé (dry_run_result.details), posés sur le
+   * chemin programmé (executeScheduledAction) : un tool y relit ce que
    * l'utilisateur a vu au moment d'approuver (ex. compte d'envoi, décision 34).
+   * Sur l'approbation immédiate (confirmToolExecution), seulement pour un
+   * outil qui les demande (`approvedDetailsOnConfirm`).
    */
   approvedDetails?: Record<string, unknown> | null;
+  /**
+   * Modèle de la conversation de l'assistant, posé par search-agent-chat à la
+   * proposition seulement (lot 5e-2) : create_sequence refuse des textes écrits
+   * par un modèle au-dessus du niveau maximal de l'organisation. Absent à
+   * l'approbation (agent-tool-action) et sur le chemin cron.
+   */
+  modelId?: string | null;
 }
 
 export interface DryRunResult {
@@ -87,6 +96,14 @@ export interface AgentTool {
   dryRun: (params: Record<string, unknown>, ctx: ToolContext) => Promise<DryRunResult>;
   /** Exécution réelle */
   execute: (params: Record<string, unknown>, ctx: ToolContext) => Promise<ExecuteResult>;
+  /**
+   * L'approbation immédiate (carte, Journal) passe aussi à l'outil les
+   * détails de la carte approuvée (ctx.approvedDetails). Pour un outil dont la
+   * carte annonce un engagement à tenir à l'exécution (niveau et coût de
+   * draft_outreach_message, lot 5e-2). Sans ce drapeau, la décision 34
+   * s'applique : détails seulement sur le chemin programmé.
+   */
+  approvedDetailsOnConfirm?: boolean;
 }
 
 // ============================================================================
@@ -519,7 +536,22 @@ export async function confirmToolExecution(
   // conversation_id d'origine : on le réinjecte depuis la row pour que les
   // tools qui en dépendent (launch_search) le voient à l'exécution.
   const execParams = (reserved.params ?? {}) as Record<string, unknown>;
-  const execCtx: ToolContext = { ...ctx, conversationId: reserved.conversation_id ?? row.conversation_id ?? ctx.conversationId };
+  // Détails de la carte approuvée (dry_run_result.details) : seulement pour un
+  // outil qui les demande (draft_outreach_message exécute le niveau et le coût
+  // annoncés, lot 5e-2). Les autres gardent la décision 34 : rien ici, les
+  // détails ne passent que sur le chemin programmé (executeScheduledAction).
+  const approvedDetailsRaw = dryRunDetails.details;
+  const execCtx: ToolContext = {
+    ...ctx,
+    conversationId: reserved.conversation_id ?? row.conversation_id ?? ctx.conversationId,
+    ...(tool.approvedDetailsOnConfirm
+      ? {
+        approvedDetails: approvedDetailsRaw && typeof approvedDetailsRaw === 'object' && !Array.isArray(approvedDetailsRaw)
+          ? approvedDetailsRaw as Record<string, unknown>
+          : null,
+      }
+      : {}),
+  };
   const denied = await recheckAccess(tool, execParams, execCtx);
   let result: ExecuteResult;
   if (denied) {

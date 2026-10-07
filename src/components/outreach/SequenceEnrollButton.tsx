@@ -227,11 +227,11 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
             variant={quiet ? 'ghost' : 'outline'}
             size="sm"
             title="Inscrire dans une séquence"
-            className={cn('shrink-0', quiet && 'text-foreground-secondary hover:text-foreground max-sm:min-h-11', className)}
+            className={cn('shrink-0', quiet && 'max-sm:min-h-11', className)}
           >
             <GitBranch aria-hidden="true" />
             {triggerLabel}
-            <ChevronDown className="!size-3.5 text-muted-foreground" aria-hidden="true" />
+            <ChevronDown className="!size-3.5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="bg-card w-72 z-[9999]">
@@ -334,7 +334,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={onCreateSequence}
-                    className="cursor-pointer text-muted-foreground"
+                    className="cursor-pointer"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Nouvelle séquence

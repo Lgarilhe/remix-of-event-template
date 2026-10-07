@@ -2,7 +2,7 @@
  * AiContextSettings — cartes du contexte IA persistant, montées séparément
  * par les rubriques des Paramètres (src/components/settings/shell/sections.tsx) :
  *  - UserContextCard (chaque user édite le sien) — « Vos consignes de rédaction »,
- *    dans Mon compte › Rédaction (#style) ;
+ *    dans Mon compte › Rédaction (#vos-consignes, sous « Votre style ») ;
  *  - OrgContextCard (propriétaire et admin) — « Consignes de l’organisation »,
  *    dans Mon organisation › Règles de l’assistant (#consignes).
  *
@@ -42,14 +42,21 @@ const MAX_SPECIALTY = 200;
 const MAX_LIST_ITEM_CHARS = 200;
 const MAX_LIST_ITEMS = 10;
 
-/** Tons proposés : le libellé seul dans le champ, l'aide sous le champ (F-17). */
+/**
+ * Tons proposés : le libellé seul dans le champ, l'aide sous le champ (F-17).
+ * Lot 5e-2 : plus de choix « Tutoiement » (les messages d'approche vouvoient
+ * toujours, et leur style se règle dans « Votre style ») ; une valeur `tu` déjà
+ * enregistrée reste lisible (option ajoutée seulement pour elle) et vaut pour
+ * la messagerie et l'assistant.
+ */
 const TONE_OPTIONS: { value: AiContextTone | 'auto'; label: string; hint: string }[] = [
   { value: 'auto', label: 'Automatique', hint: 'L’assistant choisit le ton selon le contexte.' },
-  { value: 'tu', label: 'Tutoiement', hint: 'Direct et proche : tech, jeunes entreprises.' },
   { value: 'vous', label: 'Vouvoiement', hint: 'Plus formel : grands groupes, profils seniors.' },
   { value: 'casual', label: 'Décontracté', hint: 'Familier et chaleureux : jeunes marques, start-up.' },
   { value: 'formal', label: 'Formel', hint: 'Soutenu : banque, conseil, secteurs réglementés.' },
 ];
+/** Ancienne valeur, plus proposée : montrée seulement quand elle est enregistrée. */
+const LEGACY_TU_OPTION = { value: 'tu' as const, label: 'Tutoiement', hint: 'Ancien réglage, gardé pour la messagerie et l’assistant. Les messages d’approche vouvoient toujours.' };
 
 /** Chargement d'une carte : la forme du formulaire, jamais un indicateur décoratif (F-66). */
 function ContextSkeleton() {
@@ -74,7 +81,7 @@ export const UserContextCard: React.FC = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <UserIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <UserIcon className="h-4 w-4" aria-hidden="true" />
           Vos consignes de rédaction
         </CardTitle>
       </CardHeader>
@@ -82,7 +89,8 @@ export const UserContextCard: React.FC = () => {
         <p className="text-sm text-muted-foreground">
           Dites à l’assistant qui vous êtes, comment vous écrivez, ce qu’il doit faire et éviter.
           Ces consignes s’appliquent à tout ce qu’il rédige en votre nom : messages d’approche,
-          suggestions de réponse, conversations avec l’assistant.
+          suggestions de réponse, conversations avec l’assistant. Le ton des messages d’approche se règle
+          dans « Votre style », ci-dessus.
         </p>
         {isLoading ? (
           <ContextSkeleton />
@@ -108,7 +116,7 @@ export const OrgContextCard: React.FC = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Building2 className="h-4 w-4" aria-hidden="true" />
           Consignes de l’organisation
         </CardTitle>
       </CardHeader>
@@ -193,13 +201,15 @@ const AiContextForm: React.FC<AiContextFormProps> = ({ initial, onSave, isSaving
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(initial);
   const saveState: SaveState = isSaving ? 'saving' : saveFailed ? 'error' : isDirty ? 'unsaved' : 'saved';
-  const tone = TONE_OPTIONS.find((opt) => opt.value === (form.tone || 'auto')) ?? TONE_OPTIONS[0];
+  const toneOptions = initial.tone === 'tu' || form.tone === 'tu' ? [...TONE_OPTIONS, LEGACY_TU_OPTION] : TONE_OPTIONS;
+  const tone = toneOptions.find((opt) => opt.value === (form.tone || 'auto')) ?? toneOptions[0];
 
   return (
     <div className="space-y-5">
       {/* Tone */}
       <div className="space-y-1.5">
-        <Label htmlFor={ids.tone} className="text-xs font-medium">Ton</Label>
+        {/* Lot 5e-2 : les messages d'approche suivent « Votre style » (ce ton n'y est pas appliqué). */}
+        <Label htmlFor={ids.tone} className="text-xs font-medium">Ton de la messagerie et de l’assistant</Label>
         <Select
           value={form.tone || 'auto'}
           onValueChange={(v) =>
@@ -210,7 +220,7 @@ const AiContextForm: React.FC<AiContextFormProps> = ({ initial, onSave, isSaving
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {TONE_OPTIONS.map((opt) => (
+            {toneOptions.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
             ))}
           </SelectContent>

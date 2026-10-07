@@ -21,6 +21,10 @@ const HEAVY_AI_FUNCTIONS = new Set([
   // Rédaction d'une séquence (lot 5e) : un appel au modèle et une correction,
   // jusqu'aux 60 s de la fonction ; couper avant ferait perdre une rédaction débitée.
   'draft-sequence',
+  // Messages IA par candidat et « Demander à l'IA » (lot 5e-2) : appels de 30 s
+  // au plus, correction comprise, jusqu'à l'échéance de la fonction.
+  'generate-outreach-message',
+  'text-action',
 ]);
 const HEAVY_AI_TIMEOUT_MS = 90_000;
 

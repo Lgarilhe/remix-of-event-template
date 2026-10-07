@@ -89,7 +89,7 @@ export const CallDetailSheet = ({
               {call.tags.length > 0 && (
                 <Row label="Étiquettes">
                   <span className="flex flex-wrap items-center gap-1.5">
-                    <Tag className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <Tag className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                     {call.tags.map((t) => (
                       <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-xs">{t}</span>
                     ))}

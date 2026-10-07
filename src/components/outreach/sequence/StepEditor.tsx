@@ -9,7 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AlertTriangle, ChevronRight, GitBranch, Hourglass, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { sequenceActionLabel, MESSAGE_TONES } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { AI_STEP_STYLE_NOTICE } from '@/lib/writingStyle';
 import { SequenceActionIcon } from '@/components/outreach/SequenceBadges';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
@@ -111,7 +112,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
     <div className="flex flex-col gap-5">
       {/* En-tête */}
       <div className="flex items-center gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
           <SequenceActionIcon type={step.actionType} className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
@@ -134,7 +135,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       )}
       {step.actionType === 'smart_message' && (
         <p className="flex items-start gap-1.5 text-2xs text-muted-foreground">
-          <Info className="mt-px h-3 w-3 shrink-0" aria-hidden="true" />
+          <Info className="mt-px h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
           {SMART_MESSAGE_INMAIL_HELP}
         </p>
       )}
@@ -162,7 +163,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
       {/* Créneau d'envoi */}
       <Collapsible>
-        <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
+        <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-xs text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
           <ChevronRight className="h-3.5 w-3.5 transition-transform duration-150 group-data-[state=open]:rotate-90" aria-hidden="true" />
           Créneau d'envoi
         </CollapsibleTrigger>
@@ -266,7 +267,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       {stepIsTrigger && step.actionType !== 'condition_branch' && step.actionType !== 'check_connection' && (
         <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Hourglass className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            <Hourglass className="h-3.5 w-3.5" aria-hidden="true" />
             Réglages de l'attente
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -327,7 +328,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       {step.actionType === 'check_connection' && (
         <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <GitBranch className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
             Selon la connexion
           </p>
           <div>
@@ -384,11 +385,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
           {usesAi ? (
             <div>
-              <Label htmlFor={`${id}-tone`} className="text-2xs font-normal text-muted-foreground">Ton</Label>
-              <Select value={step.aiTone || 'professional'} onValueChange={(value) => onUpdate({ aiTone: value as SequenceStep['aiTone'] })}>
-                <SelectTrigger id={`${id}-tone`} className="mt-1 h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{MESSAGE_TONES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-              </Select>
+              {/* Lot 5e-2 : plus de ton par étape ; aiTone reste dans la charge enregistrée. */}
+              <p className="text-2xs text-muted-foreground">{AI_STEP_STYLE_NOTICE}</p>
               <p className="mt-1.5 text-2xs text-muted-foreground">L'IA rédige un message pour chaque candidat, à partir de son profil et du brief.</p>
             </div>
           ) : (
@@ -444,7 +442,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               {step.actionType === 'email' && (
                 <div className="space-y-3 border-t border-border pt-3">
                   <Collapsible>
-                    <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
+                    <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-xs text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
                       <ChevronRight className="h-3.5 w-3.5 transition-transform duration-150 group-data-[state=open]:rotate-90" aria-hidden="true" />
                       Copies (Cc, Cci)
                     </CollapsibleTrigger>

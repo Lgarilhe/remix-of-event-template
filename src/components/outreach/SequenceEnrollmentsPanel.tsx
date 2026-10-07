@@ -611,7 +611,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon-sm"
                   className="shrink-0 max-md:h-11 max-md:w-11"
                   onClick={() => { void fetchEnrollments(); }}
@@ -669,12 +669,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   {/* Lot 5b : pause immédiate, « Annuler » dans le toast. */}
                   {canBulkManage && activeCount > 0 && (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => { void runBulk('pause', bulkStopActive); }}
                       loading={bulkBusy === 'pause'}
                       disabled={bulkBusy !== null}
-                      className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
+                      className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-full"
                     >
                       {bulkBusy !== 'pause' && <StopCircle aria-hidden="true" />}
                       {statusCounts
@@ -685,12 +685,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   {/* Lot 5b : arrêt groupé (200 au plus), « Annuler » dans le toast. */}
                   {canBulkManage && stoppableCount > 0 && (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => { void runBulk('stop', bulkManualStop); }}
                       loading={bulkBusy === 'stop'}
                       disabled={bulkBusy !== null}
-                      className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
+                      className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-full"
                     >
                       {bulkBusy !== 'stop' && <XCircle aria-hidden="true" />}
                       {`Arrêter (${stoppableCount})`}
@@ -732,7 +732,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   title={`Aucun candidat ne correspond à « ${searchQuery.trim()} »`}
                   description="Cherchez par nom ou par intitulé de poste."
                   action={
-                    <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                    <Button variant="ghost" size="sm" onClick={() => setSearchQuery('')}>
                       Effacer la recherche
                     </Button>
                   }
@@ -795,7 +795,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             <div className="flex items-start gap-1">
                               <CollapsibleTrigger className="flex min-w-0 flex-1 items-start gap-2 rounded-lg p-1.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <ChevronRight
-                                  className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                  className={cn('mt-0.5 h-4 w-4 shrink-0 transition-transform duration-150', isExpanded && 'rotate-90')}
                                   aria-hidden="true"
                                 />
                                 <div className="min-w-0 flex-1">
@@ -1016,14 +1016,14 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       return (
                                         <li
                                           key={step.id}
-                                          className={cn('flex items-start gap-3 rounded-lg border border-border p-2.5', isChannelSkip && 'opacity-60')}
+                                          className="flex items-start gap-3 rounded-lg border border-border p-2.5"
                                         >
-                                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-foreground">
                                             <SequenceActionIcon type={step.action_type} />
                                           </span>
                                           <div className="min-w-0 flex-1">
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                              <span className={cn('text-sm font-medium', isPending ? 'text-foreground-secondary' : 'text-foreground')}>
+                                              <span className={cn('text-sm font-medium', isPending || isChannelSkip ? 'text-foreground-secondary' : 'text-foreground')}>
                                                 {actionTypeLabel(step.action_type)}
                                               </span>
                                               <Badge variant={executionStatusMeta(status).tone}>{executionLabel(status)}</Badge>
@@ -1043,9 +1043,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                         pause ou clos (enrollment_not_active) : bouton masqué. */}
                                                     {enrollment.status === 'active' && ownRow && (
                                                       <Button
-                                                        variant="outline"
+                                                        variant="ghost"
                                                         size="xs"
-                                                        className="max-md:h-11"
+                                                        className="text-muted-foreground max-md:h-11"
                                                         onClick={() => setConfirmAction({ type: 'skipStep', stepId: exec.id })}
                                                         title="Sauter cette étape pour ce candidat"
                                                       >
@@ -1131,7 +1131,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               {hasMore && (
                 <div className="flex justify-center pt-1">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => fetchEnrollments(true)}
                     loading={loadingMore}

@@ -124,12 +124,12 @@ function SectionLink({ section, variant }: { section: SettingsSection; variant: 
           ? 'font-medium text-foreground hover:bg-muted/60'
           : isActive
             ? 'bg-muted font-semibold text-foreground'
-            : 'font-medium text-foreground-secondary hover:bg-muted/60 hover:text-foreground',
+            : 'font-medium text-foreground hover:bg-muted/60',
       )}
     >
       <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
       <span className="flex-1">{section.label}</span>
-      {variant === 'list' && <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />}
+      {variant === 'list' && <ChevronRight className="w-4 h-4" aria-hidden="true" />}
     </NavLink>
   );
 }
@@ -179,7 +179,7 @@ function SectionFrame({ section, viewer, isDesktop }: { section: SettingsSection
             // Venu de la liste : on y revient dans l'historique, sans empiler une entrée de plus (D14).
             if (fromList) { e.preventDefault(); navigate(-1); }
           }}
-          className="inline-flex items-center gap-1 h-11 -ml-2 px-2 mb-1 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          className="inline-flex items-center gap-1 h-11 -ml-2 px-2 mb-1 rounded-md text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           Paramètres
         </Link>

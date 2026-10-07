@@ -67,7 +67,7 @@ export const PlatformAdminPanel: React.FC = () => {
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => { refresh().catch(() => undefined); }} disabled={isLoading} className="min-h-11 md:min-h-0">
+        <Button variant="ghost" size="sm" onClick={() => { refresh().catch(() => undefined); }} disabled={isLoading} className="min-h-11 md:min-h-0">
           <RefreshCw aria-hidden="true" />
           Actualiser la liste
         </Button>
@@ -135,12 +135,12 @@ export const PlatformAdminPanel: React.FC = () => {
                         )}
                         {p.status !== 'suspended' && (
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="xs"
                             onClick={() => setPending({ kind: 'suspend', partner: p })}
                             disabled={isMutating}
                             aria-label={`Suspendre ${name}`}
-                            className="min-h-11 md:min-h-0"
+                            className="min-h-11 text-muted-foreground hover:text-danger md:min-h-0"
                           >
                             Suspendre
                           </Button>

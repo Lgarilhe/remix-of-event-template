@@ -246,7 +246,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
               <div className="flex flex-col gap-0.5">
                 <span className="font-semibold text-foreground">Assistant de filtres</span>
                 <span className="text-xs font-normal text-muted-foreground flex items-center gap-1.5">
-                  <Briefcase className="w-3 h-3" />
+                  <Briefcase className="w-3 h-3 text-foreground" />
                   <span className="truncate max-w-[280px]">
                     {job.title}{job.client?.name && ` • ${job.client.name}`}
                   </span>
@@ -306,7 +306,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
             <button
               type="button"
               onClick={handleReset}
-              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              className="text-xs text-foreground underline underline-offset-2 transition-colors"
             >
               Recommencer depuis le début
             </button>

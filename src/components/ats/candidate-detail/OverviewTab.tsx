@@ -575,7 +575,7 @@ function AlertRow({ alert, onDismiss }: { alert: Alert; onDismiss: () => void })
         size="sm"
         onClick={onDismiss}
         aria-label={`Marquer comme traité : ${alert.title}`}
-        className={cn('shrink-0 text-foreground-secondary hover:bg-success-muted hover:text-success', REVEAL_ON_ROW)}
+        className={cn('shrink-0 hover:bg-success-muted hover:text-success', REVEAL_ON_ROW)}
       >
         <Check aria-hidden="true" />
         Traité
@@ -730,7 +730,7 @@ function ExperienceRow({
       {exp.logo ? (
         <img src={exp.logo} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5" />
       ) : (
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
           <Building2 className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
@@ -755,7 +755,7 @@ function EducationRow({
       {edu.logo ? (
         <img src={edu.logo} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-border bg-background object-contain p-0.5" />
       ) : (
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
           <GraduationCap className="h-4 w-4" aria-hidden="true" />
         </div>
       )}

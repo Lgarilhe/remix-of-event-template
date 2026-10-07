@@ -402,9 +402,10 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                 size="sm"
                 onClick={handleAutoFill}
                 disabled={isDisabled}
+                aria-busy={loading || undefined}
                 className={`gap-2 text-xs h-8 ${
-                  selectedJob 
-                    ? 'bg-brand-solid hover:bg-brand-solid/90 text-brand-solid-foreground' 
+                  selectedJob
+                    ? 'border-transparent bg-brand-solid text-brand-solid-foreground hover:bg-brand-solid/90 disabled:bg-muted dark:border-transparent aria-busy:bg-brand-solid aria-busy:text-brand-solid-foreground'
                     : ''
                 }`}
               >
@@ -462,7 +463,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {missingFields.critical.map(field => (
-                          <span key={field} className="text-xs px-2 py-0.5 rounded bg-destructive/20 text-destructive">
+                          <span key={field} className="text-xs px-2 py-0.5 rounded bg-destructive/20 text-foreground">
                             {field}
                           </span>
                         ))}

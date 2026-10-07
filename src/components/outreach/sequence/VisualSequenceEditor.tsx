@@ -77,7 +77,7 @@ function PickerOption({ value, label, description, onPick }: { value: string; la
       onClick={() => onPick(value)}
       className="group h-auto w-full justify-start gap-3 whitespace-normal px-3 py-2.5 text-left"
     >
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-foreground">
         <SequenceActionIcon type={value} />
       </span>
       <span className="min-w-0 flex-1">
@@ -85,7 +85,7 @@ function PickerOption({ value, label, description, onPick }: { value: string; la
         <span className="block text-sm font-medium leading-tight text-foreground">{label || sequenceActionLabel(value)}</span>
         <span className="block text-2xs leading-tight text-muted-foreground">{description}</span>
       </span>
-      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+      <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
     </Button>
   );
 }
@@ -243,7 +243,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
         <div key="picker" className="space-y-5 duration-150 animate-in fade-in-0">
           {pendingBranch && (
             <p className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs font-medium text-foreground">
-              <GitBranch className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+              <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
               {BRANCH_LABELS[pendingBranch.branch]}
             </p>
           )}
@@ -277,7 +277,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <span className="mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted">
-            <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4 text-foreground" aria-hidden="true" />
           </span>
           <p className="text-xs text-muted-foreground">Sélectionnez une étape dans le parcours.</p>
         </div>

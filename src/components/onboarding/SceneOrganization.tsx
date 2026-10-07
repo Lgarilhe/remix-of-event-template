@@ -399,9 +399,9 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
             {disambiguationCandidates.map((c) => (
               <Button
                 key={c.id}
-                variant="outline"
+                variant="ghost"
                 onClick={() => selectCandidate(c.id)}
-                className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal"
+                className="h-auto w-full justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
               >
                 <CompanyLogo key={`${c.id}-${c.domain}`} name={c.name} logoUrl={c.logoUrl} domain={c.domain} size="sm" />
                 <span className="min-w-0 flex-1">
@@ -410,11 +410,11 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
                     {[c.domain, c.industry, c.location, c.size ? `${c.size} salariés` : null].filter(Boolean).join(' · ')}
                   </span>
                 </span>
-                <ArrowRight className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                <ArrowRight className="shrink-0" aria-hidden="true" />
               </Button>
             ))}
           </div>
-          <Button variant="link" onClick={() => startScan(query.trim(), '__none__')} className="h-auto w-full px-0 py-1 text-muted-foreground hover:text-foreground min-h-11 md:min-h-0">
+          <Button variant="link" onClick={() => startScan(query.trim(), '__none__')} className="h-auto w-full px-0 py-1 min-h-11 md:min-h-0">
             Aucune ne correspond : continuer sans ces données
           </Button>
         </div>
@@ -443,9 +443,9 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
               </div>
               {company.industry && <p className="mt-0.5 text-sm text-muted-foreground">{company.industry}</p>}
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {company.size && <span className="flex items-center gap-1"><Users className="h-3 w-3" aria-hidden="true" />{company.size}</span>}
-                {company.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" aria-hidden="true" />{company.location}</span>}
-                {company.funding && <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" aria-hidden="true" />{company.funding}</span>}
+                {company.size && <span className="flex items-center gap-1"><Users className="h-3 w-3 text-foreground" aria-hidden="true" />{company.size}</span>}
+                {company.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3 text-foreground" aria-hidden="true" />{company.location}</span>}
+                {company.funding && <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3 text-foreground" aria-hidden="true" />{company.funding}</span>}
               </div>
             </div>
           </div>
@@ -551,7 +551,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
               const Icon = INSIGHT_ICONS[insight.key] || Lightbulb;
               return (
                 <div key={insight.key} className="flex gap-3 rounded-lg border border-border bg-card p-3">
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground-secondary">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
                     <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
@@ -577,7 +577,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
       {hasLinks && (
         <div className="flex flex-wrap gap-2">
           {company.websiteUrl && (
-            <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+            <Button asChild variant="ghost" size="sm" className="min-h-11 md:min-h-0">
               <a href={company.websiteUrl} target="_blank" rel="noopener noreferrer">
                 <Globe aria-hidden="true" /> Site web
                 <span className="sr-only">(nouvel onglet)</span>
@@ -585,7 +585,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
             </Button>
           )}
           {company.careersUrl && (
-            <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+            <Button asChild variant="ghost" size="sm" className="min-h-11 md:min-h-0">
               <a href={company.careersUrl} target="_blank" rel="noopener noreferrer">
                 <Briefcase aria-hidden="true" /> Page carrière
                 <span className="sr-only">(nouvel onglet)</span>
@@ -656,7 +656,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
       {headcountEntries.length >= 3 && (
         <div className="space-y-2">
           <h3 className="eyebrow flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5" aria-hidden="true" />
+            <Users className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
             Répartition des équipes
           </h3>
           <div className="space-y-2 rounded-lg border border-border bg-card p-3">
@@ -678,7 +678,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
       {fundingEvents.length > 0 && (
         <div className="space-y-2">
           <h3 className="eyebrow flex items-center gap-1.5">
-            <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+            <TrendingUp className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
             Historique des levées
           </h3>
           <ol className="space-y-3 rounded-lg border border-border bg-card p-3">
@@ -704,7 +704,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
       {newsArticles.length > 0 && (
         <div className="space-y-2">
           <h3 className="eyebrow flex items-center gap-1.5">
-            <Newspaper className="h-3.5 w-3.5" aria-hidden="true" />
+            <Newspaper className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
             Actualités
           </h3>
           <div className="space-y-1.5">
@@ -716,7 +716,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                 rel="noopener noreferrer"
                 className="group flex items-start gap-2 rounded-lg border border-border bg-card p-2.5 transition-colors duration-150 hover:border-border-strong hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+                <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="line-clamp-2 text-xs font-medium leading-snug text-foreground">{article.title}</p>
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
@@ -799,7 +799,7 @@ const TabRoles: React.FC<{
                 <span className="block text-sm font-medium text-foreground">{role.title}</span>
                 {role.location && (
                   <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                    <MapPin className="h-3 w-3" aria-hidden="true" />{role.location}
+                    <MapPin className="h-3 w-3 text-foreground" aria-hidden="true" />{role.location}
                   </span>
                 )}
               </label>
@@ -810,7 +810,7 @@ const TabRoles: React.FC<{
                 href={role.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="ml-7 mt-1 inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-md text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="ml-7 mt-1 inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-md text-xs text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Voir l'offre
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />

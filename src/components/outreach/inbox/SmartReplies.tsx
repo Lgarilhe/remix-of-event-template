@@ -51,7 +51,7 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
       data-component="smart-replies"
     >
       <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-muted-foreground">
-        <Lightbulb className="h-3 w-3" aria-hidden="true" />
+        <Lightbulb className="h-3 w-3 text-foreground" aria-hidden="true" />
         Suggestions
       </span>
       <ul className="flex items-center gap-1.5" aria-label="Suggestions de réponse">
@@ -72,7 +72,7 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
         ))}
       </ul>
       {onSeeMore && suggestions.length > 3 && (
-        <Button variant="ghost" size="xs" className="relative shrink-0 text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-2" onClick={onSeeMore}>
+        <Button variant="ghost" size="xs" className="relative shrink-0 after:absolute after:inset-x-0 after:-inset-y-2" onClick={onSeeMore}>
           Toutes les suggestions
           <ChevronRight aria-hidden="true" />
         </Button>
