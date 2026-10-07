@@ -468,6 +468,14 @@ jobs:
             cat calendar_anon.json; exit 1
           fi
 
+      - name: Audit actions candidat et connexions WhatsApp (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          for audit in candidate_actions_audit member_whatsapp_accounts_audit; do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "supabase/tests/$audit.sql"
+          done
+
       - name: Build front
         run: npm run build
         env:

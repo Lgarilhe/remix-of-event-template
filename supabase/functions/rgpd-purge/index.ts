@@ -81,6 +81,8 @@ Deno.serve(async (req) => {
       phone_calls_purged: 0,
       qualification_sessions_purged: 0,
       knowledge_chunks_purged: 0,
+      candidate_action_plans_purged: 0,
+      candidate_action_messages_purged: 0,
       errors: [] as string[],
     };
 
@@ -145,6 +147,26 @@ Deno.serve(async (req) => {
             );
             const orphans = batch.filter((c) => !stillPresent.has(c));
             if (orphans.length === 0) continue;
+            if (dryRun) {
+              const [actionPlans, actionMessages] = await Promise.all([
+                adminClient.from('candidate_action_plans').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).in('candidate_id', orphans),
+                adminClient.from('candidate_action_messages').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).in('candidate_id', orphans),
+              ]);
+              if (actionPlans.error || actionMessages.error) stats.errors.push('candidate actions count failed');
+              else {
+                stats.candidate_action_plans_purged += actionPlans.count ?? 0;
+                stats.candidate_action_messages_purged += actionMessages.count ?? 0;
+              }
+            } else {
+              const { data: erasedActions, error: actionError } = await adminClient.rpc('candidate_actions_purge', {
+                p_organization_id: orgId, p_candidate_ids: orphans, p_linkedin_url: null, p_email: null,
+              });
+              if (actionError) stats.errors.push(`candidate actions purge: ${actionError.message}`);
+              else {
+                stats.candidate_action_plans_purged += erasedActions?.plans ?? 0;
+                stats.candidate_action_messages_purged += erasedActions?.messages ?? 0;
+              }
+            }
             if (dryRun) {
               const { count, error: countError } = await adminClient
                 .from("knowledge_chunks")
@@ -488,7 +510,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("[rgpd-purge] Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Purge indisponible' }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

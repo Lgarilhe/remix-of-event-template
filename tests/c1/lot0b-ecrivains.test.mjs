@@ -611,6 +611,15 @@ function jcsWriteSites() {
     for (const m of code.matchAll(/(['"`])job_candidate_status\1/g)) {
       const head = code.slice(Math.max(0, m.index - 40), m.index);
       if (/\.from\(\s*$/.test(head) || /(?:Tables(?:Insert|Update)?<\s*|\[\s*['"]Tables['"]\s*\]\s*\[\s*)$/.test(head)) continue;
+      // Référence de provenance du lecteur de contexte : ce helper construit
+      // un objet source, sans requête ni écriture. Toutes ses vraies lectures
+      // `.from` restent contrôlées ci-dessus.
+      if (file === 'supabase/functions/_shared/candidate-actions/context.ts' && /if \(candidate\) add\(\s*$/.test(head)) {
+        const helper = code.slice(code.indexOf('const add = '), code.indexOf('if (candidate) add('));
+        assert.match(helper, /sources\.push\(/);
+        assert.doesNotMatch(helper, /\.(?:from|insert|update|upsert|delete)\(/);
+        continue;
+      }
       sites.push({ file, line: code.slice(0, m.index).split('\n').length, index: m.index, op: 'inconnue',
         payload: '', chain: '', keys: [], unresolved: ["nom de table hors d'un .from('…') littéral"], src: read(file) });
     }

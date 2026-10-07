@@ -14,6 +14,170 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_action_plans: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          candidate_id: string
+          project_id: string | null
+          scope: Json
+          intent: string
+          context_version: string
+          revision: number
+          title: string
+          reason: string
+          sources: Json
+          follow_up: Json | null
+          status: string
+          approved_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          candidate_id: string
+          project_id?: string | null
+          scope: Json
+          intent: string
+          context_version: string
+          revision?: number
+          title: string
+          reason: string
+          sources?: Json
+          follow_up?: Json | null
+          status?: string
+          approved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          candidate_id?: string
+          project_id?: string | null
+          scope?: Json
+          intent?: string
+          context_version?: string
+          revision?: number
+          title?: string
+          reason?: string
+          sources?: Json
+          follow_up?: Json | null
+          status?: string
+          approved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "candidate_action_plans_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_plans_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "sourcing_projects"; referencedColumns: ["id"] },
+        ]
+      }
+      candidate_action_effects: {
+        Row: {
+          id: string
+          plan_id: string
+          position: number
+          kind: string
+          audience: string | null
+          payload: Json
+          dedupe_key: string
+          business_key: string
+          status: string
+          claim_token: string | null
+          claimed_at: string | null
+          attempts: number
+          master_effect_id: string | null
+          result: Json | null
+          completed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          plan_id: string
+          position: number
+          kind: string
+          audience?: string | null
+          payload: Json
+          dedupe_key: string
+          business_key: string
+          status?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          attempts?: number
+          master_effect_id?: string | null
+          result?: Json | null
+          completed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          plan_id?: string
+          position?: number
+          kind?: string
+          audience?: string | null
+          payload?: Json
+          dedupe_key?: string
+          business_key?: string
+          status?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          attempts?: number
+          master_effect_id?: string | null
+          result?: Json | null
+          completed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "candidate_action_effects_plan_id_fkey"; columns: ["plan_id"]; isOneToOne: false; referencedRelation: "candidate_action_plans"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_effects_master_effect_id_fkey"; columns: ["master_effect_id"]; isOneToOne: false; referencedRelation: "candidate_action_effects"; referencedColumns: ["id"] },
+        ]
+      }
+      member_whatsapp_accounts: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          whatsapp_account_id: string
+          phone_number: string | null
+          name: string | null
+          account_status: string
+          linked_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          whatsapp_account_id: string
+          phone_number?: string | null
+          name?: string | null
+          account_status?: string
+          linked_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          whatsapp_account_id?: string
+          phone_number?: string | null
+          name?: string | null
+          account_status?: string
+          linked_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "member_whatsapp_accounts_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+        ]
+      }
       agent_memory_automation: {
         Row: {
           organization_id: string
@@ -241,6 +405,89 @@ export type Database = {
             referencedRelation: "agent_memory_proposals"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      candidate_action_messages: {
+        Row: {
+          id: string
+          organization_id: string
+          candidate_id: string
+          project_id: string | null
+          owner_user_id: string
+          account_id: string
+          channel: string
+          service: string
+          audience: string
+          direction: string
+          provider_message_id: string
+          provider_thread_id: string | null
+          in_reply_to: string | null
+          counterpart: string
+          sender: string
+          recipient: string
+          subject: string | null
+          content: string
+          occurred_at: string
+          action_plan_id: string | null
+          effect_id: string | null
+          action_completed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          candidate_id: string
+          project_id?: string | null
+          owner_user_id: string
+          account_id: string
+          channel: string
+          service: string
+          audience: string
+          direction: string
+          provider_message_id: string
+          provider_thread_id?: string | null
+          in_reply_to?: string | null
+          counterpart: string
+          sender: string
+          recipient: string
+          subject?: string | null
+          content: string
+          occurred_at: string
+          action_plan_id?: string | null
+          effect_id?: string | null
+          action_completed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          candidate_id?: string
+          project_id?: string | null
+          owner_user_id?: string
+          account_id?: string
+          channel?: string
+          service?: string
+          audience?: string
+          direction?: string
+          provider_message_id?: string
+          provider_thread_id?: string | null
+          in_reply_to?: string | null
+          counterpart?: string
+          sender?: string
+          recipient?: string
+          subject?: string | null
+          content?: string
+          occurred_at?: string
+          action_plan_id?: string | null
+          effect_id?: string | null
+          action_completed_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "candidate_action_messages_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_messages_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "sourcing_projects"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_messages_action_plan_id_fkey"; columns: ["action_plan_id"]; isOneToOne: false; referencedRelation: "candidate_action_plans"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_messages_effect_id_fkey"; columns: ["effect_id"]; isOneToOne: false; referencedRelation: "candidate_action_effects"; referencedColumns: ["id"] },
         ]
       }
       agent_conversations: {
@@ -1455,6 +1702,13 @@ export type Database = {
       }
       call_coaching_sessions: {
         Row: {
+          project_id: string | null
+          process_step_id: string | null
+          evaluation_id: string | null
+          qualification_session_id: string | null
+          candidate_consent_at: string | null
+          transcript_purged_at: string | null
+          transcript_expires_at: string
           alerts_log: Json | null
           candidate_id: string
           coach_feed: Json | null
@@ -1471,6 +1725,13 @@ export type Database = {
           transcript: string | null
         }
         Insert: {
+          project_id?: string | null
+          process_step_id?: string | null
+          evaluation_id?: string | null
+          qualification_session_id?: string | null
+          candidate_consent_at?: string | null
+          transcript_purged_at?: string | null
+          transcript_expires_at?: string
           alerts_log?: Json | null
           candidate_id: string
           coach_feed?: Json | null
@@ -1487,6 +1748,13 @@ export type Database = {
           transcript?: string | null
         }
         Update: {
+          project_id?: string | null
+          process_step_id?: string | null
+          evaluation_id?: string | null
+          qualification_session_id?: string | null
+          candidate_consent_at?: string | null
+          transcript_purged_at?: string | null
+          transcript_expires_at?: string
           alerts_log?: Json | null
           candidate_id?: string
           coach_feed?: Json | null
@@ -1873,6 +2141,8 @@ export type Database = {
       }
       candidate_evaluations: {
         Row: {
+          project_id: string | null
+          process_step_id: string | null
           ai_generated: boolean
           candidate_id: string
           comments: Json
@@ -1892,6 +2162,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          project_id?: string | null
+          process_step_id?: string | null
           ai_generated?: boolean
           candidate_id: string
           comments?: Json
@@ -1911,6 +2183,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          project_id?: string | null
+          process_step_id?: string | null
           ai_generated?: boolean
           candidate_id?: string
           comments?: Json

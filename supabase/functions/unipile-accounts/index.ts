@@ -1,6 +1,7 @@
 ﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { requireAuth } from "../_shared/require-auth.ts";
 import { stopLinkedInAccountSending, type LinkedInSendingStopResult } from "../_shared/linkedin-sending-stop.ts";
+import { projectWhatsAppAccount, validHostedAuthUrl, whatsappReturnUrl } from "../_shared/whatsapp-account.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -74,33 +75,37 @@ class HttpError extends Error {
   }
 }
 
-type AccountOwnership = { mapped: 'org' | 'foreign' | 'none'; userId: string | null };
+type AccountOwnership = { mapped: 'org' | 'foreign' | 'none'; userId: string | null; kind: 'linkedin' | 'email' | 'whatsapp' | null };
 
 /**
- * Appartenance d'un account_id Unipile (LinkedIn ou email) à l'organisation
+ * Appartenance d'un account_id Unipile (LinkedIn, email ou WhatsApp) à l'organisation
  * appelante. La clé Unipile plateforme est partagée entre les orgs : sans ce
  * contrôle, un account_id d'une autre org pouvait être déconnecté, reconfiguré
  * (proxy), lu, ou voir ses invitations traitées (SEC-004).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function lookupAccountOwnership(adminClient: any, organizationId: string, accountId: string): Promise<AccountOwnership> {
-  const tables: Array<[string, string]> = [
-    ['member_linkedin_accounts', 'linkedin_account_id'],
-    ['member_email_accounts', 'email_account_id'],
+  const tables: Array<[string, string, AccountOwnership['kind']]> = [
+    ['member_linkedin_accounts', 'linkedin_account_id', 'linkedin'],
+    ['member_email_accounts', 'email_account_id', 'email'],
+    ['member_whatsapp_accounts', 'whatsapp_account_id', 'whatsapp'],
   ];
   let foreign = false;
-  for (const [table, column] of tables) {
+  for (const [table, column, kind] of tables) {
     const { data, error } = await adminClient
       .from(table)
       .select('organization_id, user_id')
       .eq(column, accountId);
-    if (error) throw new HttpError(500, `Vérification du compte impossible (${table})`);
+    if (error) {
+      console.error('[unipile-accounts] Account ownership query failed', { table, code: error.code });
+      throw new HttpError(500, 'Impossible de vérifier ce compte pour le moment');
+    }
     const rows = (data ?? []) as Array<{ organization_id: string; user_id: string | null }>;
     const own = rows.find((r) => r.organization_id === organizationId);
-    if (own) return { mapped: 'org', userId: own.user_id ?? null };
+    if (own) return { mapped: 'org', userId: own.user_id ?? null, kind };
     if (rows.length > 0) foreign = true;
   }
-  return { mapped: foreign ? 'foreign' : 'none', userId: null };
+  return { mapped: foreign ? 'foreign' : 'none', userId: null, kind: null };
 }
 
 /**
@@ -112,6 +117,7 @@ async function assertAccountInOrg(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adminClient: any,
   organizationId: string,
+  callerUserId: string,
   accountId: unknown,
   opts: { allowOrphan?: boolean } = {},
 ): Promise<AccountOwnership> {
@@ -119,7 +125,12 @@ async function assertAccountInOrg(
   if (!id) throw new HttpError(400, 'Account ID requis');
   if (id.length > 512 || id.includes('..') || /[/\\?#]/.test(id)) throw new HttpError(400, 'Account ID invalide');
   const ownership = await lookupAccountOwnership(adminClient, organizationId, id);
-  if (ownership.mapped === 'org') return ownership;
+  if (ownership.mapped === 'org') {
+    if (ownership.kind === 'whatsapp' && ownership.userId !== callerUserId) {
+      throw new HttpError(403, 'Ce compte WhatsApp appartient à un autre membre');
+    }
+    return ownership;
+  }
   if (ownership.mapped === 'foreign' || !opts.allowOrphan) {
     throw new HttpError(403, "Ce compte n'est pas rattaché à votre organisation");
   }
@@ -147,6 +158,7 @@ async function assertCanManageAccount(
 ): Promise<void> {
   if (ownership.mapped !== 'org') return; // orphelin toléré en amont : aucun propriétaire à protéger
   if (ownership.userId === userId) return;
+  if (ownership.kind === 'whatsapp') throw new HttpError(403, 'Seul le propriétaire peut gérer ce compte WhatsApp');
   const role = await getCallerOrgRole(adminClient, organizationId, userId);
   if (role === 'owner' || role === 'admin') return;
   throw new HttpError(403, "Seul le propriétaire du compte ou un administrateur de l'organisation peut effectuer cette action");
@@ -259,7 +271,8 @@ Deno.serve(async (req) => {
     const credentials = await resolveUnipileCredentials(organizationId);
     if (!credentials && !DATABASE_ONLY_ACTIONS.has(action)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'LinkedIn non configuré pour cette organisation' }),
+        JSON.stringify({ success: false, error: action.includes('whatsapp') || params?.providers?.includes('WHATSAPP')
+          ? 'La connexion WhatsApp est momentanément indisponible' : 'LinkedIn non configuré pour cette organisation' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -521,14 +534,63 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'list_whatsapp': {
+        const { data: mappings, error } = await adminClient
+          .from('member_whatsapp_accounts')
+          .select('id, whatsapp_account_id, name, phone_number, account_status')
+          .eq('organization_id', organizationId)
+          .eq('user_id', user.id)
+          .order('linked_at', { ascending: false });
+        if (error) throw new HttpError(500, 'Impossible de lire vos comptes WhatsApp');
+        // Exact owned IDs only: never list other members' or orphan accounts.
+        const accounts = await Promise.all((mappings ?? []).map(async mapping => {
+          const response = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(mapping.whatsapp_account_id, 'Compte WhatsApp')}`, {
+            headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+          });
+          let account;
+          if (response.status === 404) {
+            account = { id: mapping.whatsapp_account_id, name: mapping.name, identifier: mapping.phone_number, type: 'WHATSAPP' as const, status: 'DELETED' };
+          } else {
+            if (!response.ok) throw new HttpError(502, 'Impossible de vérifier votre compte WhatsApp');
+            account = projectWhatsAppAccount(await response.json());
+            if (!account || account.id !== mapping.whatsapp_account_id) throw new HttpError(502, 'Compte WhatsApp non reconnu');
+          }
+          const { error: updateError } = await adminClient.from('member_whatsapp_accounts')
+            .update({ account_status: account.status, name: account.name, phone_number: account.identifier, updated_at: new Date().toISOString() })
+            .eq('id', mapping.id).eq('organization_id', organizationId).eq('user_id', user.id);
+          if (updateError) throw new HttpError(500, 'Impossible de mettre à jour votre compte WhatsApp');
+          return account;
+        }));
+        return new Response(JSON.stringify({ success: true, accounts }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'disconnect_whatsapp': {
+        const encodedId = pathId(params.account_id, 'Compte WhatsApp');
+        const { data: mapping, error } = await adminClient.from('member_whatsapp_accounts')
+          .select('id').eq('whatsapp_account_id', params.account_id)
+          .eq('organization_id', organizationId).eq('user_id', user.id).maybeSingle();
+        if (error) throw new HttpError(500, 'Impossible de vérifier votre compte WhatsApp');
+        if (!mapping) throw new HttpError(403, 'Ce compte WhatsApp ne vous appartient pas');
+        const response = await fetchWithTimeout(`${baseUrl}/accounts/${encodedId}`, {
+          method: 'DELETE', headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+        });
+        if (!response.ok && response.status !== 404) throw new HttpError(502, 'Impossible de déconnecter votre compte WhatsApp');
+        // Preserve ownership after revocation; an old ID cannot be claimed by a
+        // different organization. DELETED requires a fresh create, not reconnect.
+        const { error: updateError } = await adminClient.from('member_whatsapp_accounts')
+          .update({ account_status: 'DELETED', updated_at: new Date().toISOString() })
+          .eq('id', mapping.id).eq('organization_id', organizationId).eq('user_id', user.id);
+        if (updateError) throw new HttpError(500, 'La connexion a été retirée mais son état reste à actualiser');
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'hosted_auth_link': {
         // Generate a hosted auth link for white-label account connection (LinkedIn, WhatsApp, or Email)
         const { success_redirect_url, failure_redirect_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
-
-        if (typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0) {
-          const ownership = await assertAccountInOrg(adminClient, organizationId, reconnect_account_id, { allowOrphan: true });
-          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
-        }
 
         // Allow caller to specify provider(s), default to LinkedIn
         const resolvedProviders = Array.isArray(requestedProviders) && requestedProviders.length > 0
@@ -537,6 +599,15 @@ Deno.serve(async (req) => {
 
         // WhatsApp uses QR code auth — disable credential-based options
         const isWhatsApp = resolvedProviders.includes('WHATSAPP');
+        if (isWhatsApp && (resolvedProviders.length !== 1 || resolvedProviders[0] !== 'WHATSAPP')) {
+          throw new HttpError(400, 'La connexion WhatsApp doit être ouverte séparément');
+        }
+        if (typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0) {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, user.id, reconnect_account_id, { allowOrphan: !isWhatsApp });
+          if (isWhatsApp && ownership.kind !== 'whatsapp') throw new HttpError(400, 'Ce compte ne correspond pas à WhatsApp');
+          if (!isWhatsApp && ownership.kind === 'whatsapp') throw new HttpError(400, 'Choisissez la connexion WhatsApp pour ce compte');
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
         // 2026-05-13 : on N'inclut PLUS 'proxy' et 'autoproxy' dans disabled_options
         // pour le hosted flow LinkedIn — l'utilisateur doit pouvoir activer un
         // proxy résidentiel géolocalisé (auto-proxy Unipile). Sinon LinkedIn voit
@@ -588,13 +659,22 @@ Deno.serve(async (req) => {
           hostedBody.reconnect_account = reconnect_account_id;
         }
 
-        if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;
-        if (failure_redirect_url) hostedBody.failure_redirect_url = failure_redirect_url;
+        if (isWhatsApp) {
+          const defaultReturn = `${Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app'}/settings/account/connections#whatsapp`;
+          const successReturn = whatsappReturnUrl(success_redirect_url || defaultReturn, Deno.env.get('APP_URL'), Deno.env.get('ALLOWED_ORIGINS'));
+          const failureReturn = whatsappReturnUrl(failure_redirect_url || defaultReturn, Deno.env.get('APP_URL'), Deno.env.get('ALLOWED_ORIGINS'));
+          if (!successReturn || !failureReturn) throw new HttpError(400, 'La page de retour WhatsApp n’est pas autorisée');
+          hostedBody.success_redirect_url = successReturn;
+          hostedBody.failure_redirect_url = failureReturn;
+        } else {
+          if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;
+          if (failure_redirect_url) hostedBody.failure_redirect_url = failure_redirect_url;
+        }
         // Note : `org_name` est legacy/ignoré maintenant car `name` contient user:org encoding.
         // Si un caller veut un display name, il faut ajouter un champ custom séparé.
         if (org_name) hostedBody.organization_display_name = org_name;
 
-        console.log('[hosted_auth_link] Generating link with body:', JSON.stringify(hostedBody));
+        console.log('[hosted_auth_link] Generating link', { type: hostedBody.type, providers: resolvedProviders });
 
         const response = await fetchWithTimeout(`https://${dsn}/api/v1/hosted/accounts/link`, {
           method: 'POST',
@@ -607,15 +687,16 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
-        console.log('[hosted_auth_link] Response:', response.status, JSON.stringify(data));
+        console.log('[hosted_auth_link] Response:', response.status);
 
         if (!response.ok) {
           return new Response(
-            JSON.stringify({ success: false, error: data.message || 'Erreur de génération du lien' }),
+            JSON.stringify({ success: false, error: isWhatsApp ? 'Impossible d’ouvrir la connexion WhatsApp. Réessayez dans un instant.' : data.message || 'Erreur de génération du lien' }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
+        if (!validHostedAuthUrl(data.url)) throw new HttpError(502, 'Le lien de connexion est indisponible');
         return new Response(
           JSON.stringify({ success: true, url: data.url }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -651,7 +732,7 @@ Deno.serve(async (req) => {
         if (isReconnect) {
           // Remplacer la session LinkedIn d'un compte : jamais celui d'une autre org,
           // et seulement son propre compte (ou owner/admin).
-          const ownership = await assertAccountInOrg(adminClient, organizationId, reconnect_account_id, { allowOrphan: true });
+          const ownership = await assertAccountInOrg(adminClient, organizationId, user.id, reconnect_account_id, { allowOrphan: true });
           await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
         }
         const endpoint = isReconnect
@@ -875,7 +956,7 @@ Deno.serve(async (req) => {
           );
         }
         // Compte en cours de création : pas encore forcément mappé (orphelin toléré).
-        await assertAccountInOrg(adminClient, organizationId, account_id, { allowOrphan: true });
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id, { allowOrphan: true });
 
         const response = await fetchWithTimeout(`${baseUrl}/accounts/checkpoint`, {
           method: 'POST',
@@ -918,7 +999,7 @@ Deno.serve(async (req) => {
         }
 
         {
-          const ownership = await assertAccountInOrg(adminClient, organizationId, account_id);
+          const ownership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
           await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
         }
 
@@ -1220,7 +1301,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        await assertAccountInOrg(adminClient, organizationId, account_id);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         const response = await fetchWithTimeout(`${baseUrl}/linkedin/inmail_balance?account_id=${encodeURIComponent(String(account_id))}`, {
           headers: {
@@ -1268,7 +1349,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        await assertAccountInOrg(adminClient, organizationId, account_id);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           headers: {
@@ -1408,7 +1489,7 @@ Deno.serve(async (req) => {
         }
 
         {
-          const ownership = await assertAccountInOrg(adminClient, organizationId, account_id);
+          const ownership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
           await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
         }
 
@@ -1500,7 +1581,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'message_id et reaction requis');
         }
         const reactionMessageId = pathId(message_id, 'message_id');
-        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', reactionMessageId));
+        await assertAccountInOrg(adminClient, organizationId, user.id, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', reactionMessageId));
         console.log(`[add_reaction] Adding "${reaction}" to message ${message_id}`);
         const reactionRes = await fetchWithTimeout(`${baseUrl}/messages/${reactionMessageId}/reaction`, {
           method: 'POST',
@@ -1531,7 +1612,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'message_id requis');
         }
         const delMessageId = pathId(message_id, 'message_id');
-        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', delMessageId));
+        await assertAccountInOrg(adminClient, organizationId, user.id, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', delMessageId));
         console.log(`[delete_message] Deleting message ${message_id}`);
         const delMsgRes = await fetchWithTimeout(`${baseUrl}/messages/${delMessageId}`, {
           method: 'DELETE',
@@ -1560,7 +1641,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'chat_id requis');
         }
         const delChatId = pathId(chat_id, 'chat_id');
-        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'chats', delChatId));
+        await assertAccountInOrg(adminClient, organizationId, user.id, await resolveAccountFromUnipile(baseUrl, apiKey, 'chats', delChatId));
         console.log(`[delete_chat] Deleting chat ${chat_id}`);
         const delChatRes = await fetchWithTimeout(`${baseUrl}/chats/${delChatId}`, {
           method: 'DELETE',
@@ -1588,7 +1669,7 @@ Deno.serve(async (req) => {
         if (!account_id) {
           throw new HttpError(400, 'Account ID requis');
         }
-        await assertAccountInOrg(adminClient, organizationId, account_id);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
         let invUrl = `${baseUrl}/users/invite/received?account_id=${encodeURIComponent(String(account_id))}&limit=${Math.min(Math.max(Number(invLimit) || 20, 1), 100)}`;
         if (invCursor) invUrl += `&cursor=${encodeURIComponent(String(invCursor))}`;
 
@@ -1647,7 +1728,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'invitation_action doit être "accept" ou "decline"');
         }
 
-        await assertAccountInOrg(adminClient, organizationId, account_id);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
         console.log(`[handle_invitation_received] ${finalAction} invitation ${invitation_id}`);
         const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${pathId(invitation_id, 'invitation_id')}`, {
           method: 'POST',
@@ -1685,7 +1766,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'account_id et invitations[] requis');
         }
 
-        await assertAccountInOrg(adminClient, organizationId, account_id);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
         console.log(`[bulk_handle_invitations] Processing ${bulkInvitations.length} invitations`);
         const results: Array<{ invitation_id: string; status: string; error?: string }> = [];
 
@@ -1743,7 +1824,7 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'Account ID requis');
         }
 
-        await assertAccountInOrg(adminClient, organizationId, account_id);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         const detailResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           headers: {

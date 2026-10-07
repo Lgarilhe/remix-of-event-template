@@ -109,7 +109,7 @@ export interface CandidateFullProfile {
   loading: boolean;
 }
 
-export function useCandidateFullProfile(candidateId: string, linkedinUrl: string | null): CandidateFullProfile {
+export function useCandidateFullProfile(candidateId: string, linkedinUrl: string | null, reloadKey = 0): CandidateFullProfile {
   const [qualificationSessions, setQualificationSessions] = useState<QualificationSession[]>([]);
   const [sequenceEnrollments, setSequenceEnrollments] = useState<SequenceEnrollmentInfo[]>([]);
   // Auteur d'un arrêt manuel, pour la chronologie.
@@ -417,7 +417,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     }
 
     fetchAll();
-  }, [candidateId, linkedinUrl]);
+  }, [candidateId, linkedinUrl, reloadKey]);
 
   // Build unified timeline
   const timeline: CandidateActivity[] = [];

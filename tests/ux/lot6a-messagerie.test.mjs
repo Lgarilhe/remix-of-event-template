@@ -129,7 +129,10 @@ test('D-09 : erreur avec « Réessayer », vide filtré, compte à relier', () =
   assert.match(src.hook, /setChatsError\(error instanceof Error/);
   assert.match(src.sidebar, /<ErrorState[\s\S]*?onRetry=\{onRefresh\}/);
   assert.match(src.sidebar, /Effacer les filtres/);
-  assert.match(src.inbox, /to="\/settings\/account\/connections"/);
+  assert.match(src.sidebar, /to="\/settings\/account\/connections"/, 'le lien commun permet de relier un canal sans bloquer les autres');
+  assert.match(src.sidebar, /\(chatsError \|\| additionalError\) && totalConversations === 0/, 'une panne multicanale ne devient pas un état vide');
+  assert.match(src.inbox, /const multichannel = useMultichannelInbox\(\)/);
+  assert.doesNotMatch(src.inbox, /if\s*\(!selectedAccount\)\s*return/, 'e-mail et WhatsApp restent accessibles sans compte LinkedIn');
   assert.match(src.pipeline, /<ErrorState[\s\S]*?onRetry=\{reloadMissions\}/, 'les missions aussi : une panne n’est pas une liste vide');
 });
 

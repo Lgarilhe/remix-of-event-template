@@ -105,7 +105,6 @@ test('Illustrations : une par écran, là où l’écran était vide', () => {
     ['src/pages/ATS.tsx', 'recherche', "Aucun candidat pour l'instant"],
     ['src/pages/Agents.tsx', 'conversation', 'Aucune conversation'],
     ['src/components/outreach/SequencesList.tsx', 'envoi', 'Aucune séquence pour cette mission'],
-    ['src/components/outreach/MessagesInbox.tsx', 'connexion', 'Aucun compte LinkedIn relié'],
     ['src/components/outreach/inbox/MessageView.tsx', 'conversation', 'Sélectionnez une conversation'],
   ];
   for (const [rel, name, title] of placements) {
@@ -117,6 +116,12 @@ test('Illustrations : une par écran, là où l’écran était vide', () => {
     assert.match(around, new RegExp(`illustration="${name}"`), `${rel} : ${name} attendu avant « ${title} »`);
     assert.equal((src.match(/illustration="/g) ?? []).length, 1, `${rel} : une seule illustration`);
   }
+  // La boîte multicanale reste accessible sans compte LinkedIn : l’état vide
+  // appartient au fil commun, pas à un écran bloquant de connexion.
+  const inbox = code('src/components/outreach/MessagesInbox.tsx');
+  assert.doesNotMatch(inbox, /title="Aucun compte LinkedIn relié"/);
+  assert.match(inbox, /<MultichannelConversation/);
+  assert.match(inbox, /<MessageView/);
   const invite = code('src/pages/AcceptMissionInvite.tsx');
   assert.match(invite, /illustration="valide"\s+title="Invitation acceptée"/);
   assert.match(invite, /illustration="orientation" title="Invitation expirée"/);

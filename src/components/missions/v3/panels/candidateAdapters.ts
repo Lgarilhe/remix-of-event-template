@@ -173,6 +173,8 @@ export function toAtsCandidate(
     sourceId: row.id,
     jobId: row.jobId,
     jobTitle: text(jd.title) ?? project.name,
+    projectId: row.projectId,
+    processStepId: row.processStepId,
     lastActivity: row.updatedAt ?? row.stageEnteredAt,
     createdAt: row.createdAt ?? row.stageEnteredAt ?? row.updatedAt ?? now.toISOString(),
     score: row.score,

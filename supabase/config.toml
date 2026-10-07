@@ -34,6 +34,9 @@ verify_jwt = false
 [functions.agent-tool-action]
 verify_jwt = false
 
+[functions.candidate-actions]
+verify_jwt = false
+
 [functions.aircall-webhook]
 verify_jwt = false
 

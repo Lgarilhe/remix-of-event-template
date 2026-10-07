@@ -108,14 +108,14 @@ test('EV-6 — adresses : fiche, grille, assistant, avec la mission', () => {
   const links = interviewLinks({ id: 'q1', candidate_profile_id: 'cand 1', project_id: 'p-1' });
   assert.equal(links.qualification, '/qualification/q1');
   assert.equal(links.candidate, '/pipeline?candidate=cand%201');
-  assert.equal(links.scorecard, '/pipeline/scorecard/cand%201?mission=p-1');
-  assert.equal(links.coaching, '/pipeline/scorecard/cand%201?mission=p-1&coaching=1');
+  assert.equal(links.scorecard, '/pipeline/scorecard/cand%201?mission=p-1&session=q1');
+  assert.equal(links.coaching, '/pipeline/scorecard/cand%201?mission=p-1&session=q1&coaching=1');
 });
 
 test('EV-7 — adresses sans mission, puis sans candidat', () => {
   const noMission = interviewLinks({ id: 'q1', candidate_profile_id: 'c1', project_id: null });
-  assert.equal(noMission.scorecard, '/pipeline/scorecard/c1');
-  assert.equal(noMission.coaching, '/pipeline/scorecard/c1?coaching=1');
+  assert.equal(noMission.scorecard, '/pipeline/scorecard/c1?session=q1');
+  assert.equal(noMission.coaching, '/pipeline/scorecard/c1?session=q1&coaching=1');
   const noCandidate = interviewLinks({ id: 'q2', candidate_profile_id: null, project_id: 'p-1' });
   assert.deepEqual(noCandidate, { qualification: '/qualification/q2', candidate: null, scorecard: null, coaching: null });
 });

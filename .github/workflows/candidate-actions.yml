@@ -1,0 +1,110 @@
+name: Candidate actions (API)
+
+# Real local Auth, RLS, RPC and edge handlers; all vendor requests are redirected
+# to the scripted fake provider. No production credentials or browser are used.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'supabase/**'
+      - 'e2e/**'
+      - 'tests/c1/candidate-actions-*.test.mjs'
+      - 'tests/c1/whatsapp-accounts.test.mjs'
+      - 'tests/c1/multichannel-inbox.test.mjs'
+      - 'tests/c1/resolve-org-credentials.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.ts'
+      - '.github/workflows/candidate-actions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'supabase/**'
+      - 'e2e/**'
+      - 'tests/c1/candidate-actions-*.test.mjs'
+      - 'tests/c1/whatsapp-accounts.test.mjs'
+      - 'tests/c1/multichannel-inbox.test.mjs'
+      - 'tests/c1/resolve-org-credentials.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.ts'
+      - '.github/workflows/candidate-actions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-actions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate-actions:
+    name: Candidate actions, real local API
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_STACK_DIR: /tmp/konekt-candidate-actions-stack
+      E2E_BASE_URL: http://127.0.0.1:8080
+      PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/candidate-actions.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6
+      - name: Install dependencies
+        run: npm ci
+      - name: Candidate context, generation, history and personal account tests
+        run: node --test tests/c1/candidate-actions-*.test.mjs tests/c1/whatsapp-accounts.test.mjs tests/c1/multichannel-inbox.test.mjs tests/c1/resolve-org-credentials.test.mjs
+      - name: Real channel transport, receipt and incoming history tests
+        run: deno test --no-check --allow-env --import-map=e2e/local-stack/import_map.json supabase/functions/_shared/candidate-actions/transport.test.ts
+      - name: Check standalone edge contracts
+        run: |
+          deno check --import-map=e2e/local-stack/import_map.json \
+            supabase/functions/_shared/candidate-actions/types.ts \
+            supabase/functions/_shared/whatsapp-account.ts
+      - name: Start disposable local database, Auth, REST, edge functions and vendors
+        run: |
+          command -v psql
+          docker info > /dev/null
+          bash e2e/local-stack/up.sh
+      - name: Run candidate action API scenarios without setup dependencies
+        run: |
+          set -a
+          . "$E2E_STACK_DIR/env"
+          set +a
+          test "$E2E_SUPABASE_URL" = 'http://127.0.0.1:54321'
+          test "$E2E_EDGE_FUNCTIONS" = '1'
+          test "$E2E_VENDOR_MOCK_URL" = 'http://127.0.0.1:54340'
+          npx playwright test e2e/api/candidate-actions.spec.ts \
+            --project=api --no-deps --workers=1 --reporter=list,json,html
+          # A green job must contain executed scenarios, never a skipped suite
+          # caused by an absent edge server or missing fake-vendor variables.
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, 'utf8'));
+          const stats = report.stats;
+          if (!stats || stats.expected < 1 || stats.skipped !== 0 || stats.unexpected !== 0) {
+            throw new Error(`Candidate action scenarios were not all executed successfully: ${JSON.stringify(stats)}`);
+          }
+          JS
+      - name: Upload API report and local diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-actions-api-report
+          path: |
+            playwright-report/
+            test-results/
+            /tmp/konekt-candidate-actions-stack/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop disposable local services
+        if: always()
+        run: bash e2e/local-stack/down.sh --reset

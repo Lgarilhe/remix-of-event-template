@@ -51,6 +51,8 @@ export async function sentInvites(accountId: string): Promise<MockCall[]> {
 }
 
 export interface MockRoute {
+  /** Pour un GET par identifiant durable sans account_id ; utiliser un chemin propre au test. */
+  unscoped?: boolean;
   method?: string;
   /** Expression régulière appliquée au chemin, ex. '^/api/v1/chats$'. */
   path?: string;

@@ -2,7 +2,19 @@
 
 La messagerie et les fiches candidat doivent proposer du travail concret déjà préparé à partir des échanges, de l’avancement dans une mission, des entretiens et du travail de l’équipe. En deux ou trois clics, le recruteur doit pouvoir relire et modifier un brief, un message ou des changements dans l’app, puis valider les effets annoncés. Créer une tâche n’est utile que lorsque du travail doit réellement être différé.
 
-## Première version
+## Parcours réel
+
+La messagerie habituelle (`/inbox`, sans `demo=1`) et l’onglet Interactions des fiches mission/pipeline utilisent `candidate-actions`. « Préparer les actions » assemble le contexte autorisé, affiche le coût prévu selon les réglages de rédaction puis génère au plus trois propositions. Ouvrir le candidat et consulter les propositions existantes ne lance pas de génération payante.
+
+Les effets exécutables sont : envoyer un message au candidat via son compte personnel LinkedIn, Gmail/Outlook ou WhatsApp ; envoyer une demande ciblée à un membre identifié de l’équipe par e-mail ; enregistrer un brief, des questions ou un suivi dans les Notes de la fiche ; publier un commentaire avec mentions dans la mission. Chaque contenu est relu et modifiable. La confirmation nomme les envois et les enregistrements ; chaque effet conserve son propre résultat durable. Les tâches automatiques, changements d’étape et créations d’événements calendrier restent hors de ce parcours.
+
+Les propositions et textes modifiés persistent dans `candidate_action_plans` et `candidate_action_effects`. Un changement de source ou de destinataire impose une nouvelle préparation. Une clé métier indépendante du recruteur réserve chaque effet : deux validations ne dupliquent pas le même envoi ou document. Une reprise exécute seulement les effets restants. Un résultat d’envoi inconnu reste bloqué et demande de vérifier la boîte ou la conversation ; il n’est jamais renvoyé automatiquement.
+
+Les e-mails et messages WhatsApp identifiés sont conservés dans `candidate_action_messages`, indépendamment de l’état d’une séquence. Les réponses à une demande d’équipe sont rattachées par le fil ou l’identifiant de réponse, jamais par le seul nom du collègue. Le fil candidat et la coordination d’équipe restent distincts. Les brouillons et messages entrants d’une boîte personnelle restent privés ; les envois réalisés et les données de mission sont partagés selon les droits existants. L’export et l’effacement incluent ces nouvelles données.
+
+Les canaux disponibles proviennent des comptes personnels reliés dans **Paramètres → Mon compte → Connexions**. WhatsApp dispose d’une connexion par QR code, d’une reconnexion et d’une déconnexion personnelles. Aucun compte de collègue ne sert à envoyer à sa place. Les coordonnées, le compte d’envoi, les droits, les exclusions et les limites du canal sont revérifiés lors de la validation et de l’exécution.
+
+## Aperçu fictif
 
 La démo `/inbox?demo=1` illustre trois ensembles d’effets :
 
@@ -26,7 +38,7 @@ Une proposition peut associer plusieurs effets immédiats : informer le candidat
 
 Les actions qui dépendent d’une réponse restent en attente d’un événement précis. Par exemple, après réception des précisions du manager, proposer une réponse complète au candidat ; si le retour ouvre une question, préparer une nouvelle demande ciblée ; si un rendez-vous est confirmé, préparer son brief. La réception seule ne vaut pas décision : le moteur réel devra rapprocher le retour de la bonne demande et mission, relire les événements intervenus depuis, écarter les doublons et proposer un nouvel aperçu à valider. Les commentaires et échanges d’équipe conservent leur visibilité et ne deviennent pas automatiquement du contenu pour le candidat.
 
-Le moteur réel reste à brancher. Cette proposition reprend les procédures Notion actuelles ; les intégrations décrites pour Notion et n8n ne prouvent pas leur disponibilité dans l’app.
+Le moteur réel utilise les sources et effets décrits ci-dessus. Les procédures Notion ont alimenté la conception ; leurs intégrations Notion et n8n ne constituent pas des canaux d’exécution de ce parcours.
 
 ## Actions à proposer
 
@@ -62,9 +74,9 @@ Chaque source expose trois états : chargement, disponible, indisponible. Une le
 
 Conserver séparément, pour chaque entretien et étape du process, la grille et les commentaires de chaque évaluateur, les comptes rendus candidat et manager, les verbatims utiles et les points à confirmer. Distinguer brouillon, résultat IA et retour humain validé. Une question restée ouverte devient un sujet pour l’étape suivante ; un avis divergent devient une clarification. Une note globale n’avance jamais le pipeline et ne vaut jamais décision du manager.
 
-La migration `20261006144618_scorecard_live_lot1_rattachement.sql` prévoit `project_id` et `process_step_id` pour les évaluations, ainsi que `evaluation_id` et `qualification_session_id` pour les séances de coaching. Les créations dans `ScorecardTab.tsx` et `LiveCoachingPanel.tsx` n’alimentent pas encore ces rattachements. Avant le moteur réel, compléter ces écritures et les types générés. Les données historiques dont le rattachement reste ambigu apparaissent comme telles et ne ferment pas une tâche de débrief d’un entretien précis.
+La migration `20261006144618_scorecard_live_lot1_rattachement.sql` prévoit `project_id` et `process_step_id` pour les évaluations, ainsi que `evaluation_id` et `qualification_session_id` pour les séances de coaching. Les créations dans `ScorecardTab.tsx`, `LiveCoachingPanel.tsx` et `ScorecardFullPage.tsx` alimentent maintenant ces rattachements lorsqu’ils sont vérifiés. Les données historiques dont le rattachement reste ambigu apparaissent comme telles et ne prouvent pas le débrief d’un entretien précis.
 
-Les appels disposent déjà de synthèses structurées dans `phone_call_insights`, avec faits et `next_steps` contenant action, responsable et date. Les utiliser comme propositions sourcées, puis vérifier l’identité du candidat, l’auteur et la mission. Le nom ou l’email d’un agent téléphonique ne devient pas automatiquement un identifiant de membre.
+Les appels disposent déjà de synthèses structurées dans `phone_call_insights`. Ils restent exclus du lecteur actuel : `phone_calls` n’a pas de rattachement candidat fiable et un numéro seul ne suffit pas. Les comptes rendus du coaching, les scorecards et les sessions de qualification correctement rattachés sont lus séparément. Le nom ou l’email d’un agent téléphonique ne devient pas automatiquement un identifiant de membre.
 
 ## Coordination entre recruteurs
 

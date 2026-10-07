@@ -84,11 +84,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(false);
+  const [interactionReload, setInteractionReload] = useState(0);
   const { openAgent } = useAgent();
   const { organizationId } = useOrganization();
   const myLinkedInAccountId = useMyLinkedInAccountId();
 
-  const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
+  const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin, interactionReload);
+  // Relire les contenus enregistrés sans remonter les onglets ni leurs saisies.
+  const refreshInteractions = React.useCallback(() => setInteractionReload(value => value + 1), []);
   // Compte d'envoi du candidat (séquences, InMails), sinon le compte relié de la
   // personne : l'onglet Messages et le bouton Séquence existent aussi pour un
   // candidat contacté à la main.
@@ -220,7 +223,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     };
     void fetchData();
     return () => { cancelled = true; };
-  }, [candidate.candidateId]);
+  }, [candidate.candidateId, interactionReload]);
 
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -400,6 +403,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           profileUrl={candidate.linkedin}
           profileAliases={[profile.provider_id, profile.member_urn, profile.recruiter_candidate_id].filter((id): id is string => !!id)}
           projectId={missionIdOfJob(candidate.jobId)}
+          onMessageSent={refreshInteractions}
         />
       ),
     },
@@ -447,7 +451,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
-    reminders, loading, activeRemindersCount, openAgent, organizationId, accountId,
+    reminders, loading, activeRemindersCount, openAgent, organizationId, accountId, refreshInteractions,
   ]);
 
   return (
@@ -457,6 +461,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       onOpenChange={(open) => { if (!open) onClose(); }}
       selectedJob={null}
       accountId={accountId}
+      onMessageSent={refreshInteractions}
       airtableMatch={fullProfile.airtableMatch}
       pipelineMeta={{
         stage: candidate.stage,
