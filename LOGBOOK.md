@@ -32,6 +32,48 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-06 — SHIP — Brief IA : consigne dite une fois, offres filtrables, échec d'adresse plus clair
+
+**Contexte** : retour du propriétaire, « le design et l'UX sont à retravailler », puis « fais au mieux » après une revue de la fenêtre de création (choix, saisie, résultat, offres d'une société) en sombre, clair et téléphone.
+**Décision / Fait** :
+- La consigne « Collez la fiche de poste » n'était dite que par trois endroits à la fois (sous-titre, champ, panneau vide) : le champ la garde sans le glisser-déposer (déjà écrit sous le champ), le panneau vide annonce ce qui sera retenu (poste, lieu, expérience, contrat, compétences).
+- Adresse web : phrase d'aide sur une ligne ; les adresses « companies-v1 » sont reconnues aussi côté écran (`parseJobUrl`), donc la société est préremplie quand la page n'est pas lue ; l'échec dit d'ouvrir une offre et de coller son adresse, ou le texte de la fiche.
+- Offres d'une société : « Voir l'offre » sur chaque ligne (nouvel onglet, icône seule sur téléphone, cible de 44 px) ; au-delà de 8 offres, un champ filtre par intitulé ou lieu, sans accent ni casse, la sélection restant celle de toute la liste.
+- Non retenu : un second « Voir le pipeline » dans la barre du Sourcing (le groupe des profils retenus porte déjà « Ouvrir le Pipeline »), et la lecture automatique au collage d'une adresse (une lecture de page société peut coûter une page du service de rendu, plafonnée à 60 par personne et par jour).
+**Impact** : `CreateMissionV2.tsx`, `BriefAnalysisPanel.tsx`, `JobOffersPicker.tsx`, `tests/ux/import-offres.test.mjs`, `tests/ux/creation-mission-brief.test.mjs` (mutations « filtre retiré » et « companies-v1 retiré » détectées).
+**Refs** : `docs/design/06-simplicite.md`.
+
+---
+
+## 2026-10-06 — SHIP — Brief IA : les deux tuiles du premier écran redeviennent des cartes
+
+**Contexte** : depuis « tous les boutons sont des pilules » (#279), les deux tuiles « Coller une fiche de poste » et « Saisir à la main » (des `Button` à contenu empilé) s'affichaient en capsules, le texte touchant la courbe.
+**Décision / Fait** : coin de carte (`rounded-xl`) posé sur ces deux tuiles, qui restent des `Button` de la primitive (focus, clavier et survol inchangés).
+**Impact** : `src/components/missions/v2/CreateMissionV2.tsx` (`ChooseMode`), `tests/ux/creation-mission-brief.test.mjs`. Rendu vérifié sur le vrai composant, sombre, clair et téléphone.
+**Refs** : `docs/design/01-direction.md`, § 6.
+
+---
+
+## 2026-10-06 — SHIP — Cadrage : « Aller au sourcing »
+
+**Contexte** : après la création d'une mission, l'écran d'arrivée est le Cadrage (`?tab=brief` vers `cadrage?section=poste`). Les trois écrans ne se rejoignent que par les onglets de l'en-tête, en texte discret et dans l'ordre Pipeline, Sourcing, Cadrage : le propriétaire n'a trouvé aucun moyen de passer au Sourcing.
+**Décision / Fait** : un bouton « Aller au sourcing » termine la ligne du bandeau d'état du Cadrage (`CadrageReadiness`, prop `onContinue`, `goToScreen('sourcing')` dans `CadrageScreen`). Plein (`primary`) quand le poste est prêt, teinté (`secondary`) sinon : jamais verrouillé, jamais masqué en lecture seule (conception 3.1, écrans sans verrou). Un seul bouton plein par écran reste vrai : aucun autre n'existe sur le Cadrage.
+**Impact** : `src/components/missions/v3/cadrage/CadrageReadiness.tsx`, `CadrageScreen.tsx`, `tests/ux/lot12-cadrage.test.mjs` (nouveau test, mutation « bouton sous la condition de la dictée » détectée). Rendu vérifié sur le vrai composant (sombre et clair, 1100 et 390 px, 44 px de haut sur téléphone).
+**Reste à faire** :
+- [ ] Le Sourcing n'a pas de sortie vers le Pipeline autre que l'onglet : à décider avec le propriétaire.
+**Refs** : `docs/refonte-mission/conception.md` 3.1.
+
+---
+
+## 2026-10-06 — INSIGHT — Brief IA : une page société de Welcome to the Jungle ne se lit pas en lecture directe
+
+**Contexte** : essai en réel de `fetch-job-source` sur `…/fr/companies-v1/numspot/jobs`.
+**Fait** : la page reçue par le serveur (68 086 caractères, 32 liens) ne contenait ni donnée `JobPosting`, ni `__NEXT_DATA__`, ni aucune occurrence de `/jobs` : la liste d'offres est construite par le navigateur après l'ouverture. Seule la lecture de secours (rendu JavaScript par Firecrawl, `FIRECRAWL_API_KEY`) peut la voir ; sans clé, le journal note `firecrawl: "not_configured"`. Une page d'offre, elle, porte son `JobPosting` et son texte dans le HTML. Les adresses `companies-v1` existent comme `companies`.
+**Impact** : le journal `[fetch-job-source] resolve` porte désormais, quand rien n'est lu, le relevé de chaque niveau (`trace` : taille de la page, données `JobPosting`, liens, mentions de `/jobs`, `__NEXT_DATA__`, état de Firecrawl). La recherche des adresses d'offres dans les données intégrées de la page (`wttjLinksFromRawHtml`) est en place pour les sites qui les y écrivent.
+**Refs** : PR #275, commits f4bbd55 et 2540814.
+
+---
+
 ## 2026-10-05 — SHIP — Brief IA : lire une offre, ou toutes les offres d'une société, depuis une adresse web
 
 **Contexte** : « Une adresse web » du Brief IA ne lisait que le texte de l'adresse (poste, société, lieu d'une adresse Welcome to the Jungle) et demandait de coller la fiche. La fonction qui lisait les pages (`scrape-job-url`) avait été retirée le 06/09 faute d'appelant.
@@ -255,6 +297,45 @@ Sur téléphone (390 px), la page passe de 2 013 à 1 614 px en colonnes, de 2 3
 - [ ] Bandeau d'essai (hors page Tâches) : « Choisir un plan » (20 px) et « Fermer le bandeau » (36 px) restent sous 44 px sur téléphone.
 - [x] Les gardes `lot0c-lectures` (0c-1, jouée par la CI) et `lot12-sourcing` (S-7), cassées sur `main` par le commit 2148cfab (/sourcing refait) : alignées sur la nouvelle page par la PR #264.
 **Refs** : docs/design/06-simplicite.md (lot T), maquette « Konekt simplifié ».
+
+## 2026-10-05 — INSIGHT — Spike S1 : le CDN d'images sert la sortie réseau de la base
+
+**Contexte** : le propriétaire a donné son accord pour S1 (télécharger une vingtaine de vraies photos pour savoir si le CDN répond à un centre de données). Le proxy du poste de développement refuse le CDN et le domaine Supabase, donc l'essai est parti de la base de production par `pg_net`.
+**Décision / Fait** : 25 adresses valides tirées au hasard (20 petites, 5 grandes), tirées et lancées en SQL sans que la session lise une adresse, sans cookie ni `Referer`, plage d'octets 0-4095. 25 réponses sur 25 en 206, 24 JPEG et 1 PNG. Petites : 1,4 à 41 ko (médiane 5,3 ko) ; grandes : 25 à 131 ko et un PNG de 846 ko. Chemin identique pour 64 des 71 candidats relus avec des adresses différentes. Lignes de réponse de l'essai supprimées ensuite.
+**Raison** : la copie côté serveur du lot P dépend de cette réponse ; sans elle, le plan B (image du prestataire de messagerie) s'imposait.
+**Impact** : `docs/design/07-photos-lot-p.md` (S1, risques, porte d'activation de P-4). Aucun code, aucune fonction déployée, aucune donnée conservée.
+**Reste à faire** :
+- [x] Confirmé depuis une fonction le soir même : `capture-candidate-photos` a copié 459 photos (13 h 46 à 22 h 08 UTC) ; 1 176 liens refusés en 403, ce sont les adresses périmées.
+- [ ] Les côtés réels en pixels ne sont pas mesurés : la garde lira les octets de tête.
+**Refs** : docs/design/07-photos-lot-p.md (P-0, S1).
+
+---
+
+## 2026-10-05 — SHIP — P-0b, garder les adresses de photo fraîches
+
+**Contexte** : première étape du lot P, demandée par le propriétaire (« Oui lance »), livrée après la copie privée des photos d'une autre session (PR #271) qu'elle alimente. Les adresses de photo LinkedIn expirent après quelques semaines et une recherche qui retrouvait une personne connue n'écrivait pas son adresse fraîche.
+**Décision / Fait** : migration `20261006132610_photos_lot_p0b_rafraichir_adresses.sql` (`refresh_candidate_pictures`, `candidate_picture_expiry`, `candidate_picture_is_stale`, `candidate_picture_should_replace`) ; `batchDiscover` rafraîchit les adresses des profils de la page ; la découverte garde la grande photo ; la fiche garde la photo en enregistrant le profil visité ; « Retenir » et l'inscription en séquence créent leur ligne avec le profil entier (`src/lib/serializeProfile.ts`). Fusion jsonb côté base, lignes de l'appelant, profil existant seulement, aucune écriture si l'adresse enregistrée est bonne. Une ligne remplacée avance `updated_at`, exprès : `claim_candidate_photos` s'en sert pour relancer une copie expirée.
+**Raison** : 82 % des adresses stockées sont expirées ; la production le confirme (1 176 copies refusées en 403 le premier jour de la capture). Un profil réduit à une photo aurait rendu la ligne éligible à la notation de fond, d'où le profil entier.
+**Impact** : migration, `src/lib/pictureUrl.ts`, `src/lib/serializeProfile.ts`, `useJobCandidateStatus.ts`, `useLinkedInSearchActions.ts`, `useLinkedInScoring.ts`, `ProfileDetailSheet.tsx`, `EnrollmentPreviewModal.tsx`, `AddToProjectButton.tsx`, `CardActions.tsx`, `types.ts`, audit SQL et `e2e.yml`, `ci.yml`, tests, `CLAUDE.md`, plan du lot P. Coût mesuré en local : 200 lignes en 224 ms, 200 appels d'ingestion en file, aucun recalcul d'embedding.
+**QA** : relecture adverse en cinq angles (27 agents) : quatre constats retenus. Corrigés : poids des chunks de la messagerie et du Pipeline (sérialiseur sorti du hook de notation, +17 Ko gzip évités), test avec `esbuild` dans un job sans dépendances (fichier séparé, étape dans le job build), balise `@critical` absente de la spec API. Gardé tel quel et documenté : l'avance de `updated_at` (coût : « Dernière action », portail client, horloge de purge RGPD). Répétition de la migration et de l'audit en transaction sur le schéma de production, annulée proprement.
+**Reste à faire** :
+- [ ] Relever la part des lignes du Pipeline à adresse valide après quelques jours (3 % avant) et le nombre de copies « expirées » relancées.
+- [ ] Décider si le coût sur `updated_at` justifie une colonne dédiée lue par `claim_candidate_photos` (modifie la copie privée).
+**Refs** : docs/design/07-photos-lot-p.md (P-0b).
+
+---
+
+## 2026-10-05 — SPEC — Plan du lot P, copie privée des photos des candidats
+
+**Contexte** : le propriétaire demande de préparer le lot P (copie privée des photos LinkedIn, supprimée avec le candidat) après la mise en ligne des visages. Quatre enquêtes en lecture seule (captures, RGPD, stockage, modèle de données) et des comptages sur la production, puis relecture du plan par deux relecteurs.
+**Décision / Fait** : plan écrit dans `docs/design/07-photos-lot-p.md` : table `candidate_photos` par organisation et personne, bucket privé `candidate-photos`, liens signés d'une heure, déclencheur d'enfilage et worker de copie sans appel LinkedIn, effacement et purge branchés avant la première copie, sous-lots P-0 à P-7 (P-3 en deux parties). Aucun code livré. Deux relectures indépendantes ont corrigé le premier jet : trace d'effacement (ligne `erased`), course entre effacement et copie, verrou de réclamation, boîte d'envoi des suppressions de fichiers, droits par colonne, périmètre de la copie.
+**Raison** : les mesures du 05/10/2026 montrent que 82 % des adresses de photo stockées sont déjà expirées (durée médiane 20 jours entre la création d'une ligne et l'expiration), que 35 des 1 011 personnes du Pipeline ont une adresse valide et que 585 n'en ont aucune ; 27 % des adresses du Pipeline sont déjà expirées à la dernière écriture de la ligne. La copie doit donc se faire au moment où l'adresse est fraîche, et une première étape (P-0b) ferme les pertes d'adresse du navigateur. `rgpd-purge` n'est planifiée nulle part et l'effacement RGPD laisse l'adresse de la photo dans le profil de la ligne.
+**Impact** : `docs/design/07-photos-lot-p.md`, `docs/design/README.md`, `docs/design/06-simplicite.md`.
+**Reste à faire** :
+- [ ] Décisions D1 à D12 du plan (périmètre, durée, planification de `rgpd-purge`, lecture de profil LinkedIn, export des fichiers).
+- [ ] Spike S1 avant le 22/10/2026 : tant qu'il reste des adresses valides, vérifier que le CDN répond à une fonction Supabase.
+- [ ] Questions au juriste (section 10 du plan).
+**Refs** : docs/design/07-photos-lot-p.md.
 
 ---
 

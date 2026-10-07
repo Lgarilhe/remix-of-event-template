@@ -11,6 +11,7 @@ import {
   type GeneralStage,
 } from '@/lib/candidateStage';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
+import { PICTURE_REFRESH_BATCH, pictureRefreshItems } from '@/lib/pictureUrl';
 
 export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
@@ -134,6 +135,32 @@ async function keepStoredPictures<T extends { id: string; linkedinProfileData?: 
     const picture = stored.get(c.id);
     return picture ? { ...c, linkedinProfileData: { ...c.linkedinProfileData, ...picture } } : c;
   });
+}
+
+// Lot P, P-0b : une recherche retrouve des personnes déjà connues et a sous la
+// main leur adresse de photo fraîche (les anciennes expirent). La base ne
+// remplace que l'adresse manquante ou bientôt échue, sans toucher au reste du
+// profil (refresh_candidate_pictures) ; l'insertion de batchDiscover ignore les
+// lignes existantes. Au mieux : un échec est journalisé et ne gêne pas la recherche.
+async function refreshStoredPictures(
+  jobId: string,
+  profiles: Array<{ id: string; linkedinProfileData?: Record<string, unknown> | null }>,
+): Promise<void> {
+  const items = pictureRefreshItems(profiles);
+  if (items.length === 0) return;
+  // Les deux formes du job_id d'une mission (voir fetchStatuses).
+  const jobIdForms = jobId.startsWith('project:') ? [jobId, jobId.slice('project:'.length)] : [jobId];
+  try {
+    for (let i = 0; i < items.length; i += PICTURE_REFRESH_BATCH) {
+      const { error } = await supabase.rpc('refresh_candidate_pictures', {
+        p_job_ids: jobIdForms,
+        p_items: items.slice(i, i + PICTURE_REFRESH_BATCH),
+      });
+      if (error) throw error;
+    }
+  } catch (error) {
+    console.warn('[batchDiscover] picture refresh failed:', error);
+  }
 }
 
 export function useJobCandidateStatus(jobId: string | null) {
@@ -763,6 +790,9 @@ export function useJobCandidateStatus(jobId: string | null) {
     }>
   ) => {
     if (!jobId || profiles.length === 0) return;
+
+    // Indépendant de l'insertion ci-dessous, qui laisse telles quelles les lignes déjà connues.
+    void refreshStoredPictures(jobId, profiles);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();

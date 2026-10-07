@@ -56,8 +56,7 @@ export const BriefAnalysisPanel: React.FC<BriefAnalysisPanelProps> = ({
           <Illustration name="brief" size="sm" tile={false} className="mx-auto mb-4" />
           <p className="text-sm font-medium">L'analyse apparaîtra ici</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Collez la fiche de poste, puis lancez l'analyse. L'assistant en retire le poste, les
-            compétences, l'expérience et le lieu.
+            Le poste, le lieu, l'expérience, le contrat et les compétences retenus par l'assistant s'afficheront ici.
           </p>
         </div>
       )}

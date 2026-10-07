@@ -18,6 +18,8 @@ export interface LogoCandidate {
   logoUrl: string | null;
   /** Date de la dernière recherche infructueuse (logo_checked_at). */
   logoCheckedAt: string | null;
+  /** Site du client : un site ajouté relance la recherche. */
+  website?: string | null;
 }
 
 const RETRY_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
@@ -25,6 +27,7 @@ const RETRY_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 /** Clients déjà demandés ou en cours, pour toute la session : quitter la page n'interrompt pas la recherche. */
 const requested = new Set<string>();
 const normalize = (name: string) => name.trim().toLowerCase();
+const lookupKey = (p: Pick<LogoCandidate, 'clientName' | 'website'>) => `${normalize(p.clientName ?? '')}|${(p.website ?? '').trim().toLowerCase()}`;
 
 /** Une mission par client sans logo ni recherche récente. */
 export function logoLookups(projects: readonly LogoCandidate[], now = Date.now()): LogoCandidate[] {
@@ -48,9 +51,9 @@ export function useClientLogoBackfill(projects: readonly LogoCandidate[]): void 
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const todo = logoLookups(projects).filter((p) => !requested.has(normalize(p.clientName ?? '')));
+    const todo = logoLookups(projects).filter((p) => !requested.has(lookupKey(p)));
     if (todo.length === 0) return;
-    for (const p of todo) requested.add(normalize(p.clientName ?? ''));
+    for (const p of todo) requested.add(lookupKey(p));
     void (async () => {
       for (const p of todo) {
         try {

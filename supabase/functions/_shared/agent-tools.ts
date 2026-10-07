@@ -144,6 +144,8 @@ const NEVER_AUTO_TOOLS = new Set([
   // L'inscription et la reprise déclenchent des envois de la séquence.
   'enroll_in_sequence',
   'resume_sequence',
+  // Lot 5e : une séquence rédigée par l'IA est toujours relue avant d'exister.
+  'create_sequence',
 ]);
 
 const policyCache = new Map<string, { at: number; policies: Map<string, ToolPolicy> }>();

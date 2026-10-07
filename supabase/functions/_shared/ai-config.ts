@@ -167,6 +167,19 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "outreach",
   },
+  // Rédaction d'une séquence entière depuis le poste (draft-sequence, action
+  // draft, lot 5e) : un appel, une correction au plus. Consignes de style
+  // (~3 000 jetons), contexte IA, consignes de rédaction, poste, puis quatre
+  // textes en sortie : environ 7 000 jetons, soit 7 crédits avec le modèle par
+  // défaut. Miroir dans src/types/aiCredits.ts.
+  sequence_draft: {
+    action: "sequence_draft",
+    label: "Rédaction d'une séquence",
+    floor: 3,
+    typicalTokens: 7_000,
+    routingTier: "default",
+    category: "outreach",
+  },
   analyze_response: {
     action: "analyze_response",
     label: "Analyse réponse candidat",
@@ -210,6 +223,14 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     label: "Message après un entretien",
     floor: 1,
     typicalTokens: 3_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
+  phone_call_analysis: {
+    action: "phone_call_analysis",
+    label: "Analyse d'un appel",
+    floor: 1,
+    typicalTokens: 6_000,
     routingTier: "fast",
     category: "qualification",
   },

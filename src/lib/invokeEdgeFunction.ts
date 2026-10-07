@@ -18,6 +18,9 @@ const HEAVY_AI_FUNCTIONS = new Set([
   'generate-scorecard',
   'score-profile-job',
   'generate-call-report',
+  // Rédaction d'une séquence (lot 5e) : un appel au modèle et une correction,
+  // jusqu'aux 60 s de la fonction ; couper avant ferait perdre une rédaction débitée.
+  'draft-sequence',
 ]);
 const HEAVY_AI_TIMEOUT_MS = 90_000;
 

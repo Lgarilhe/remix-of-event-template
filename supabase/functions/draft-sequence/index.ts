@@ -1,6 +1,10 @@
 // draft-sequence : brouillon d'une séquence (refonte mission, lot 5).
 //
-// Une seule action pour l'instant (lot 5d-1) :
+// Trois actions :
+// - preview_values (lot 5d-1, gratuite), ci-dessous ;
+// - prepare (lot 5e, gratuite) et draft (lot 5e, payante : la seule action qui
+//   débite des crédits) : rédaction de la séquence par l'IA à partir du poste,
+//   dans compose.ts. Ce fichier ne débite rien et n'appelle aucun service.
 //
 // preview_values : valeurs des variables d'un message pour 20 candidats au plus,
 // calculées comme le moteur les calcule à l'envoi (buildSequenceContext), pour
@@ -28,6 +32,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
+import { handleDraft, handlePrepare } from "./compose.ts";
 import {
   buildPreviewValues,
   loadDrawnSenderSequences,
@@ -43,6 +48,8 @@ const SERVICE_KEY = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SER
 const FAILED_MESSAGE = "L'aperçu n'a pas pu être préparé. Réessayez dans un instant.";
 
 Deno.serve(async (req) => {
+  // Début de la requête : la rédaction (action draft) doit tenir dans les 60 s de la fonction.
+  const startedAt = Date.now();
   const corsHeaders = buildCorsHeaders(req);
   const json = (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -67,6 +74,9 @@ Deno.serve(async (req) => {
     } catch {
       return json({ error: "Requête illisible.", error_code: "PREVIEW_INVALID_INPUT" }, 400);
     }
+    const action = body && typeof body === "object" ? (body as { action?: unknown }).action : undefined;
+    if (action === "prepare") return await handlePrepare(body, { userId, corsHeaders, startedAt });
+    if (action === "draft") return await handleDraft(body, { userId, corsHeaders, startedAt });
     const parsed = parsePreviewRequest(body);
     if (!parsed.ok) return json({ error: parsed.error, error_code: parsed.code }, parsed.status);
     const {

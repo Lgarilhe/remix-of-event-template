@@ -11,7 +11,7 @@
  *   étape à message est ouverte.
  */
 import { useEffect, useMemo, useRef } from 'react';
-import type { SequenceIssue } from '@/components/outreach/sequence/sequenceGraph';
+import type { SequenceIssue, SequenceValidationOptions } from '@/components/outreach/sequence/sequenceGraph';
 import { stepHasMessageField, validateSequence } from '@/components/outreach/sequence/sequenceGraph';
 import { linkedSenderIdsOf, useMultiSenderTeam } from '@/components/outreach/sequence/useMultiSenderTeam';
 import type { SequenceSettingsDraft } from '@/components/sequences/SettingsTab';
@@ -49,10 +49,12 @@ interface SessionOptions<D> {
   onBlocked: (errors: readonly SequenceIssue[]) => void;
   /** Départ confirmé sans enregistrer : retour à l'état enregistré. */
   onDiscard: () => void;
+  /** Séquence rédigée par l'IA (lot 5e) : « À rédiger » bloquant, « À relire » en recommandation. */
+  aiDraft?: SequenceValidationOptions['aiDraft'];
 }
 
 export function useSequenceEditorSession<D>(options: SessionOptions<D>) {
-  const { editor, loaded, name, settings, settingsDirty, creating } = options;
+  const { editor, loaded, name, settings, settingsDirty, creating, aiDraft } = options;
   const { variables } = useUserTemplateVariables();
   const customKeys = useMemo(() => variables.map((v) => v.key), [variables]);
   const multiSender = !!settings?.multiSenderEnabled;
@@ -63,8 +65,8 @@ export function useSequenceEditorSession<D>(options: SessionOptions<D>) {
   const validation = useMemo(() => validateSequence(
     { name, steps: editor.steps, multiSenderEnabled: multiSender, senderAccounts: senders ?? [] },
     linkedSenderIds,
-    { unknownVariables: 'block', customKeys },
-  ), [name, editor.steps, multiSender, senders, linkedSenderIds, customKeys]);
+    { unknownVariables: 'block', customKeys, aiDraft },
+  ), [name, editor.steps, multiSender, senders, linkedSenderIds, customKeys, aiDraft]);
 
   const stepsDirty = loaded && (creating || editor.dirty);
   // Réglages modifiés sans que l'onglet Étapes ait été ouvert : enregistrables seuls.

@@ -10,7 +10,12 @@
 // de l'étape. Le message passe par MessageEditor (variables en puces
 // françaises, textes de secours, variable inconnue signalée), avec l'aperçu
 // réel dessous (MessagePreview).
-import { useEffect, useId, useState, type ReactNode } from 'react';
+//
+// Lot 5e : « Demander à l'IA » au-dessus du texte (AskAIMenu, proposition dans
+// AIProposal, remplacée seulement au clic) et, pour une séquence rédigée par
+// l'IA, les notes de l'étape : « À rédiger » (texte retiré par les contrôles)
+// et « À relire » (formulation signalée, tant que le texte n'a pas changé).
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { AlertCircle, AlertTriangle, ChevronRight, Info, Plus, Trash2, X } from 'lucide-react';
 import type { SequenceStep } from '@/types/sequence';
 import { Button } from '@/components/ui/button';
@@ -55,6 +60,9 @@ import {
 } from '@/lib/sequenceEditor';
 import { cn } from '@/lib/utils';
 import type { SequencePreview } from '@/hooks/useSequencePreview';
+import { ASK_AI_STEP_TYPES, stepNotes, type AiDraftNotes } from '@/lib/sequenceDraft';
+import { AskAIMenu, type AskAIContext, type AskAIProposal } from '../ai/AskAIMenu';
+import { AIProposal } from '../ai/AIProposal';
 import { DelayFields } from './DelayPill';
 import { MessageEditor } from './MessageEditor';
 import { MessagePreview } from './MessagePreview';
@@ -66,6 +74,8 @@ const INVITE_NOTE_MAX = 300;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const ACTION_TYPES = new Set(['connection_request', 'inmail', 'email', 'profile_visit', 'message', 'smart_message', 'whatsapp_message', 'condition_branch']);
 const FIELD = 'max-md:h-11';
+/** Lignes de validateSequence (sans le numéro d'étape) que le cadre « À rédiger » remplace. */
+const TO_WRITE_CHECKS = new Set(['message à rédiger.', "note d'invitation à rédiger.", 'objet à renseigner.']);
 
 type Step = SequenceStep;
 type Writer = 'manual' | 'ai';
@@ -79,10 +89,17 @@ function scoreThresholdError(value?: string): string | null {
   return null;
 }
 
-function Field({ label, htmlFor, children, help, error }: { label: string; htmlFor?: string; children: ReactNode; help?: ReactNode; error?: string | null }) {
+function Field({ label, htmlFor, children, help, error, aside }: { label: string; htmlFor?: string; children: ReactNode; help?: ReactNode; error?: string | null; aside?: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={htmlFor} className="text-sm">{label}</Label>
+      {aside ? (
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor={htmlFor} className="text-sm">{label}</Label>
+          {aside}
+        </div>
+      ) : (
+        <Label htmlFor={htmlFor} className="text-sm">{label}</Label>
+      )}
       {children}
       {error && <p className="text-xs text-danger">{error}</p>}
       {help && <p className="text-xs text-muted-foreground">{help}</p>}
@@ -143,6 +160,10 @@ export interface StepPanelProps {
   onPreviewIndexChange: (index: number) => void;
   /** Variables personnelles de l'expéditeur, connues du moteur. */
   extraKeys: readonly string[];
+  /** « Demander à l'IA » (lot 5e) ; absent, pas de menu. */
+  askAI?: AskAIContext;
+  /** Notes d'une séquence rédigée par l'IA (lot 5e). */
+  aiNotes?: AiDraftNotes;
 }
 
 export function StepPanel({
@@ -163,6 +184,8 @@ export function StepPanel({
   previewIndex,
   onPreviewIndexChange,
   extraKeys,
+  askAI,
+  aiNotes,
 }: StepPanelProps) {
   const id = useId();
   const primary = primaryOf(steps, stepId);
@@ -171,6 +194,22 @@ export function StepPanel({
   // Autre étape ouverte : le panneau suit sa version choisie.
   useEffect(() => setActiveId(stepId), [stepId]);
   const active = versions.find((v) => v.id === activeId) ?? versions[0] ?? primary;
+  // Proposition de l'IA : celle de la version affichée seulement.
+  const [proposal, setProposal] = useState<AskAIProposal | null>(null);
+  const activeVersionId = active?.id ?? null;
+  useEffect(() => setProposal(null), [activeVersionId]);
+  // « Remplacer » ou « Garder ma version » retire la proposition : le focus revient au texte de l'étape.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const focusMessageRef = useRef(false);
+  useEffect(() => {
+    if (!focusMessageRef.current || proposal) return;
+    focusMessageRef.current = false;
+    panelRef.current?.querySelector<HTMLElement>('#message')?.focus();
+  }, [proposal]);
+  const closeProposal = () => {
+    focusMessageRef.current = true;
+    setProposal(null);
+  };
   if (!primary || !active) return null;
 
   const number = flow.numbers.get(primary.id) ?? primary.order + 1;
@@ -196,6 +235,14 @@ export function StepPanel({
   const backwardTimeout = hasBackwardTimeoutTarget(primary, steps);
   const afterValue = afterStepValue(primary);
   const continueTo = continueTarget(steps, primary.id);
+  const notes = aiNotes ? stepNotes(aiNotes, active) : null;
+  const toWrite = !!notes && notes.toWrite.length > 0;
+  // Le cadre « À rédiger » dit déjà ce qui manque et pourquoi : la ligne générique de la vérification n'est pas répétée.
+  const shownErrors = (issues?.errors ?? []).filter((text) => !(toWrite && TO_WRITE_CHECKS.has(text.toLowerCase())));
+  const shownProposal = proposal && proposal.versionId === active.id ? proposal : null;
+  const askMenu = askAI && ASK_AI_STEP_TYPES.has(type) && !usesAi ? (
+    <AskAIMenu context={askAI} steps={steps} version={active} onProposal={setProposal} busy={shownProposal?.status === 'loading'} />
+  ) : undefined;
 
   const addVersion = () => {
     const created = onAddVersion(primary.id);
@@ -203,7 +250,7 @@ export function StepPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={panelRef} className="flex h-full min-h-0 flex-col">
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
         <div className="min-w-0 flex-1">
           {renderTitle ? renderTitle(title) : <h2 className="text-md font-semibold text-foreground">{title}</h2>}
@@ -223,15 +270,32 @@ export function StepPanel({
             {notice}
           </p>
         )}
-        {issues && issues.errors.length > 0 && (
+        {shownErrors.length > 0 && (
           <ul className="space-y-1" aria-label="Points à corriger">
-            {issues.errors.map((text) => (
+            {shownErrors.map((text) => (
               <li key={text} className="flex items-start gap-1.5 text-sm text-danger">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 {text}
               </li>
             ))}
           </ul>
+        )}
+
+        {notes && toWrite && (
+          <div role="note" className="space-y-1 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-sm text-foreground">
+            <p className="font-medium">À rédiger</p>
+            <ul className="space-y-0.5 text-foreground-secondary">
+              {notes.toWrite.map((text) => <li key={text}>{text}</li>)}
+            </ul>
+          </div>
+        )}
+        {notes && notes.toReview.length > 0 && (
+          <div role="note" className="space-y-1 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-sm text-foreground">
+            <p className="font-medium">À relire</p>
+            <ul className="space-y-0.5 text-foreground-secondary">
+              {notes.toReview.map((text) => <li key={text}>{text.replace(/^À relire\s*:\s*/, '')}</li>)}
+            </ul>
+          </div>
         )}
 
         {type === 'profile_visit' && (
@@ -301,7 +365,7 @@ export function StepPanel({
                 />
               </Field>
             )}
-            <Field label={isInvite ? 'Note d’invitation' : usesAi ? 'Modèle du message' : 'Message *'} htmlFor="message">
+            <Field label={isInvite ? 'Note d’invitation' : usesAi ? 'Modèle du message' : 'Message *'} htmlFor="message" aside={askMenu}>
               <MessageEditor
                 id="message"
                 value={active.messageTemplate ?? ''}
@@ -316,7 +380,9 @@ export function StepPanel({
                 belowField={(isInvite || usesAi) && (
                   <div className="flex items-start justify-between gap-3 text-xs">
                     <p id={`${id}-message-help`} className="text-muted-foreground">
-                      {isInvite ? 'Note facultative. Sans note, l’invitation part seule.' : 'L’IA Konekt s’en sert comme structure pour chaque candidat.'}
+                      {isInvite
+                        ? (toWrite ? 'Note à rédiger avant d’enregistrer.' : 'Note facultative. Sans note, l’invitation part seule.')
+                        : 'L’IA Konekt s’en sert comme structure pour chaque candidat.'}
                     </p>
                     {isInvite && (
                       <p id={`${id}-count`} className={cn('shrink-0 tabular-nums', textLength > INVITE_NOTE_MAX ? 'font-medium text-danger' : 'text-muted-foreground')}>
@@ -327,6 +393,16 @@ export function StepPanel({
                 )}
               />
             </Field>
+            {shownProposal && (
+              <AIProposal
+                proposal={shownProposal}
+                onDismiss={closeProposal}
+                onReplace={({ text, subject }) => {
+                  updateActive(subject !== null ? { messageTemplate: text, subjectTemplate: subject } : { messageTemplate: text });
+                  closeProposal();
+                }}
+              />
+            )}
             {(!isInvite || !!active.messageTemplate?.trim()) && (
               <MessagePreview
                 preview={preview}

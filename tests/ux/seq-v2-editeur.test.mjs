@@ -875,12 +875,16 @@ test('exemple fictif : une valeur pour chaque clé du moteur, alias compris', ()
   assert.equal(vars.EXAMPLE_CANDIDATE_NAME, 'Claire Dubois');
 });
 
-test('création : /sequences/nouvelle?mission=<id>&depart=zero|modele:<clé>|copie:<id>', () => {
+test('création : /sequences/nouvelle?mission=<id>&depart=zero|ia|modele:<clé>|copie:<id>', () => {
   assert.equal(beta.NEW_SEQUENCE_SLUG, 'nouvelle');
   assert.deepEqual(beta.parseNewSequenceStart('zero'), { kind: 'zero' });
   assert.deepEqual(beta.parseNewSequenceStart('modele:sequence-longue'), { kind: 'modele', key: 'sequence-longue' });
   assert.deepEqual(beta.parseNewSequenceStart('copie:0b9f'), { kind: 'copie', id: '0b9f' });
-  for (const raw of [null, '', 'ia', 'modele:', 'autre:x']) assert.equal(beta.parseNewSequenceStart(raw), null, String(raw));
+  // Lot 5e : rédaction par l'IA à partir du poste (et proposition de l'assistant par &proposition=).
+  assert.deepEqual(beta.parseNewSequenceStart('ia'), { kind: 'ia' });
+  for (const raw of [null, '', 'ia:x', 'modele:', 'autre:x']) assert.equal(beta.parseNewSequenceStart(raw), null, String(raw));
+  assert.equal(beta.newSequencePath({ kind: 'ia' }, 'm1'), '/sequences/nouvelle?mission=m1&depart=ia');
+  assert.equal(beta.aiProposalSequencePath('e1'), '/sequences/nouvelle?depart=ia&proposition=e1');
   assert.equal(beta.newSequencePath({ kind: 'zero' }), '/sequences/nouvelle?depart=zero');
   assert.equal(beta.newSequencePath({ kind: 'modele', key: 'sequence-longue' }, 'm1'), '/sequences/nouvelle?mission=m1&depart=modele:sequence-longue');
   assert.equal(beta.newSequencePath({ kind: 'copie', id: 's1' }, 'm1'), '/sequences/nouvelle?mission=m1&depart=copie:s1');
@@ -984,9 +988,10 @@ test('aperçu réel : preview_values seul appel nouveau ; inscrits, Retenus, exe
   for (const rel of ['src/hooks/useSequencePreview.ts', 'src/components/sequences/editor/MessagePreview.tsx', 'src/hooks/useSequenceEditorSession.ts']) {
     assert.doesNotMatch(codeOf(rel), /localStorage|sessionStorage|indexedDB|saveEditorDraft/, rel);
   }
-  // Le brouillon ne garde que ce qui sera enregistré : étapes, nom, réglages.
+  // Le brouillon ne garde que ce qui sera enregistré : étapes, nom, réglages ; pour une
+  // rédaction par l'IA (lot 5e), ses notes « À rédiger », « À relire » et ses réglages.
   assert.match(read('src/pages/SequenceDetailPage.tsx'), /const draftValue = useMemo<EditorDraftValue>\(\(\) => \(\{ steps: editor\.steps, settings: settingsDraft \}\)/);
-  assert.match(read('src/components/sequences/SequenceCreatePage.tsx'), /const draftValue = useMemo<CreateDraftValue>\(\(\) => \(\{ name, steps: editor\.steps, settings: settingsDraft \}\)/);
+  assert.match(read('src/components/sequences/SequenceCreatePage.tsx'), /const draftValue = useMemo<CreateDraftValue>\(\(\) => \(\{\s*name,\s*steps: editor\.steps,\s*settings: settingsDraft,\s*ai: aiFilled \? \{ notes: aiNotes, settings: aiSettings, description: aiDescription \} : null,\s*\}\)/);
   // Rendu : la copie du moteur ; texte sans aperçu pendant le chargement.
   const view = read('src/components/sequences/editor/MessagePreview.tsx');
   assert.match(view, /renderTemplatePreviewSegments\(template, values\)/);
@@ -1003,7 +1008,7 @@ test('aperçu réel : preview_values seul appel nouveau ; inscrits, Retenus, exe
 
 test('vérification et enregistrement : validateSequence seule règle, useSequenceSave seul chemin d’écriture des étapes', () => {
   const session = read('src/hooks/useSequenceEditorSession.ts');
-  assert.match(session, /\{ unknownVariables: 'block', customKeys \}/);
+  assert.match(session, /\{ unknownVariables: 'block', customKeys, aiDraft \}/);
   assert.doesNotMatch(codeOf('src/hooks/useSequenceEditorSession.ts'), /validateStepGraph|findUnknownTemplateVariables|computeSaveWarnings/);
   const bar = read('src/components/sequences/editor/ValidationBar.tsx');
   assert.match(bar, /plural\(errors\.length, 'point à corriger', 'points à corriger'\)\} avant d’enregistrer/);
@@ -1039,7 +1044,9 @@ test('vérification et enregistrement : validateSequence seule règle, useSequen
   const createPage = read('src/components/sequences/SequenceCreatePage.tsx');
   assert.ok(createPage.includes("export const FREE_PLAN_NOTICE = 'Votre formule permet de préparer des séquences et d’écrire aux candidats un par un. L’envoi automatique, avec les relances, fait partie des formules payantes.';"));
   assert.match(createPage, /const freePlan = !canSendSequences && !planStateUnknown;/);
-  assert.match(createPage, /\{showFreeNotice && \([\s\S]{0,800}\{FREE_PLAN_NOTICE\}\s*<\/Banner>/, 'annoncé avant d’enregistrer');
+  // Rédaction par l'IA en formule gratuite : le texte propre à la rédaction (lot 5e), dans le bandeau de la rédaction (un seul cadre) ; sinon l'avis.
+  assert.match(createPage, /\{!aiMode && showFreeNotice && \([\s\S]{0,800}\{FREE_PLAN_NOTICE\}\s*<\/Banner>/, 'annoncé avant d’enregistrer');
+  assert.match(createPage, /\{AI_DRAFT_BANNER\}[\s\S]{0,200}\{freePlan && <span className="mt-1 block text-foreground-secondary">\{AI_DRAFT_FREE_PLAN\}<\/span>\}/, 'rédaction en formule gratuite : annoncée dans le bandeau de la rédaction');
   // Une fois par personne (spécification, section 4) : « Compris » mémorisé, même clé que /sequences.
   assert.match(createPage, /const showFreeNotice = freePlan && !\(userId && \(freeNoticeDismissedFor === userId \|\| isFreeNoticeDismissed\(userId\)\)\);/);
   assert.match(createPage, />\s*Compris\s*<\/Button>/);
@@ -1091,14 +1098,18 @@ test('points d’entrée : drapeau allumé, l’éditeur unique ; éteint, l’a
   assert.match(list, /\{sequencesBeta && \(\s*<NewSequenceDialog/);
   assert.match(list, /<SequenceTemplateSelector/, 'éteint : l’ancien choix de départ');
   assert.match(list, /<SequenceBuilder/, 'éteint : l’ancien éditeur');
-  // « Nouvelle séquence » : trois départs, rien d'écrit avant « Enregistrer » ; l'IA vient au lot 5e.
+  // « Nouvelle séquence » : trois départs, rien d'écrit avant « Enregistrer » ; depuis une mission,
+  // la rédaction par l'IA vient en premier (lot 5e, AIDraftChoice).
   const dialog = read('src/components/sequences/NewSequenceDialog.tsx');
   for (const text of ['title="Partir d’un modèle"', 'title="Copier une séquence"', 'title="Partir de zéro"', "'Nouvelle séquence'"]) assert.ok(dialog.includes(text), text);
   assert.doesNotMatch(dialog, /Dupliquer|Depuis un modèle/);
   // Le modèle choisi s'ouvre par sa clé (modèle Konekt) ou son identifiant (modèle de l'organisation).
   assert.match(dialog, /<TemplatesGallery onUse=\{\(_sequence, key\) => go\(\{ kind: 'modele', key \}\)\} \/>/);
   assert.match(dialog, /onClick=\{\(\) => go\(\{ kind: 'copie', id: seq\.id \}\)\}/);
-  assert.doesNotMatch(dialog, /Rédiger avec l’IA/);
+  assert.match(dialog, /\{missionId && <AIDraftChoice missionId=\{missionId\} onGo=\{\(\) => onOpenChange\(false\)\} \/>\}/);
+  const door = read('src/components/sequences/ai/AIDraftDoor.tsx');
+  assert.ok(door.includes('Rédiger avec l’IA à partir du poste') && door.includes('<Badge variant="brand">Recommandé</Badge>'));
+  assert.match(door, /navigate\(newSequencePath\(\{ kind: 'ia' \}, missionId\)\)/);
   assert.match(dialog, /navigate\(newSequencePath\(start, missionId\)\)/);
   assert.doesNotMatch(codeOf('src/components/sequences/NewSequenceDialog.tsx'), /supabase|insert\(/, 'rien d’écrit');
 });

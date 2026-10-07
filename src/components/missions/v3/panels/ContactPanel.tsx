@@ -151,6 +151,8 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
               projectId={project.id}
               createRequestId={0}
               layout="compact"
+              // À côté de la page (lg et plus), la page garde son bouton plein ; en plein écran, le panneau a le sien.
+              besidePage={!fullscreen}
             />
           </SectionErrorBoundary>
         </div>

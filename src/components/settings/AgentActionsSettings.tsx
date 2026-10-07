@@ -22,6 +22,7 @@
  * (F-14) ; bascule des lectures annoncée (F-15) ; vouvoiement (F-11).
  */
 import { useCallback, useEffect, useId, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,6 +55,10 @@ import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { EnrollFirstMessagePreview } from '@/components/agent/EnrollFirstMessagePreview';
 import { readFirstStepPreview } from '@/components/agent/firstStepPreview';
+import { SequenceDraftPreview } from '@/components/agent/SequenceDraftPreview';
+import { PROPOSAL_EDITOR_NOTE, readSequenceDraftPreview } from '@/components/agent/sequenceDraftPreview';
+import { aiProposalSequencePath } from '@/lib/sequencesBeta';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import {
   CheckCircle2,
   Clock,
@@ -66,6 +71,7 @@ import {
   RotateCcw,
   Check,
   X,
+  ArrowUpRight,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -196,6 +202,10 @@ export const AgentActionsSettings = () => {
   const currentUserId = user?.id ?? null;
   const isPrivileged = isAdmin || isOwner;
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  // Lot 5e : « Ouvrir la séquence » mène à l'éditeur des pages Séquences,
+  // derrière l'interrupteur konekt.sequences-v2 ; éteint, pas de bouton.
+  const sequencesBeta = useSequencesBeta();
   const [scope, setScope] = useState<'mine' | 'org'>('mine');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [includeReads, setIncludeReads] = useState(false);
@@ -411,8 +421,32 @@ export const AgentActionsSettings = () => {
     [queryClient, organizationId],
   );
 
+  // Lot 5e : séquence proposée reprise dans l'éditeur (remplie, non
+  // enregistrée) ; la proposition est rejetée avec sa note, pour qu'elle ne
+  // puisse plus créer une seconde séquence par « Approuver ».
+  const openInEditor = useCallback(
+    async (row: AgentAction) => {
+      setActionLoading((prev) => ({ ...prev, [row.id]: 'open' }));
+      try {
+        const { data, error } = await invokeEdgeFunction<{ success: boolean; error?: string }>(
+          'agent-tool-action',
+          { execution_id: row.id, action: 'reject', reason: PROPOSAL_EDITOR_NOTE },
+        );
+        if (error || !data?.success) {
+          toast.error("La séquence n'a pas pu être ouverte dans l'éditeur. Réessayez dans un instant.");
+          return;
+        }
+        queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
+        navigate(aiProposalSequencePath(row.id));
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [row.id]: null }));
+      }
+    },
+    [queryClient, organizationId, navigate],
+  );
+
   const handleActionClick = useCallback(
-    (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel') => {
+    (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel' | 'open') => {
       // Sensitive approves → confirmation dialog. Everything else runs
       // directly (reject is intentional, requeue/cancel are reversible).
       if (action === 'approve' && isSensitiveAction(row.tool_name, row.params)) {
@@ -423,11 +457,13 @@ export const AgentActionsSettings = () => {
         runApproveReject(row, action);
       } else if (action === 'requeue') {
         requeueFailed(row);
+      } else if (action === 'open') {
+        openInEditor(row);
       } else {
         cancelScheduled(row);
       }
     },
-    [runApproveReject, requeueFailed, cancelScheduled],
+    [runApproveReject, requeueFailed, cancelScheduled, openInEditor],
   );
 
   if (!organizationId || isLoading) {
@@ -597,6 +633,7 @@ export const AgentActionsSettings = () => {
                   authorName={memberNames[action.user_id]}
                   loadingAction={actionLoading[action.id] ?? null}
                   canAct={!currentUserId || action.user_id === currentUserId}
+                  canOpenSequence={sequencesBeta}
                   onAction={handleActionClick}
                 />
               </li>
@@ -659,11 +696,13 @@ interface ActionRowProps {
   loadingAction: string | null;
   /** Action de l'utilisateur : seul son auteur peut l'approuver, l'annuler ou la relancer. */
   canAct: boolean;
-  onAction: (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel') => void;
+  /** Lot 5e : « Ouvrir la séquence » (interrupteur konekt.sequences-v2 allumé). */
+  canOpenSequence: boolean;
+  onAction: (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel' | 'open') => void;
 }
 
 /** Une action, une carte (Card du kit : repère des tests de parcours). */
-function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAction }: ActionRowProps) {
+function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canOpenSequence, onAction }: ActionRowProps) {
   // Sub-status : 'approved' avec scheduled_for futur = en attente d'envoi
   const isQueued =
     action.status === 'approved' &&
@@ -678,6 +717,9 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
   const warning = action.dry_run_result?.warning;
   const firstStepPreview = action.tool_name === 'enroll_in_sequence' && action.status === 'proposed'
     ? readFirstStepPreview(action.dry_run_result?.details)
+    : null;
+  const sequencePreview = action.tool_name === 'create_sequence' && action.status === 'proposed'
+    ? readSequenceDraftPreview(action.dry_run_result?.details)
     : null;
   const errorMessage =
     action.status === 'failed'
@@ -732,6 +774,9 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
             </p>
           )}
 
+          {/* Lot 5e : une séquence proposée s'approuve ici aussi, jamais sans ses textes entiers. */}
+          {sequencePreview && <SequenceDraftPreview preview={sequencePreview} />}
+
           {/* Lot 5a : une inscription s'approuve ici aussi, jamais sans son premier message en entier. */}
           {firstStepPreview && (
             <EnrollFirstMessagePreview
@@ -785,6 +830,19 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAc
                     {loadingAction !== 'reject' && <X aria-hidden="true" />}
                     Rejeter
                   </Button>
+                  {canOpenSequence && sequencePreview && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      loading={loadingAction === 'open'}
+                      disabled={loadingAction != null}
+                      onClick={() => onAction(action, 'open')}
+                      className="max-md:h-11"
+                    >
+                      {loadingAction !== 'open' && <ArrowUpRight aria-hidden="true" />}
+                      Ouvrir la séquence
+                    </Button>
+                  )}
                 </>
               )}
               {isQueued && (

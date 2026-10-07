@@ -12,6 +12,7 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   get_my_missions: 'Lecture des missions',
   get_mission_overview: 'Lecture de la mission',
   get_mission_brief: 'Lecture du brief',
+  get_sequence_draft_facts: 'Lecture du poste pour la séquence',
   get_mission_candidates: 'Lecture des candidats',
   get_mission_process: 'Lecture du process',
   get_sequences_status: 'Lecture des séquences',

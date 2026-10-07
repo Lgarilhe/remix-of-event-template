@@ -247,6 +247,7 @@ Deno.serve(async (req) => {
     const done = [
       plural(result.stoppedEnrollments, "séquence en cours arrêtée", "séquences en cours arrêtées"),
       plural(result.cancelledInmails, "InMail programmé annulé", "InMails programmés annulés"),
+      ...(result.deletedCalls > 0 ? [plural(result.deletedCalls, "appel supprimé", "appels supprimés")] : []),
       "données de contact supprimées",
     ].join(", ");
     const successMsg = scopeOrgId
@@ -268,7 +269,10 @@ Deno.serve(async (req) => {
       stopped_enrollments: result.stoppedEnrollments,
       anonymized_enrollments: result.anonymizedEnrollments,
       cancelled_inmails: result.cancelledInmails,
+      deleted_sessions: result.deletedSessions,
       email_suppressed: result.emailSuppressed,
+      deleted_calls: result.deletedCalls,
+      kept_shared_numbers: result.keptSharedNumbers,
     });
   } catch (err) {
     console.error("[rgpd-erase-contact] Error:", err);

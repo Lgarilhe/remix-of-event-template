@@ -3,7 +3,8 @@
 // « Partir d'un modèle » (TemplatesGallery), « Copier une séquence », « Partir
 // de zéro ». Chacun ouvre l'éditeur unique sur /sequences/nouvelle (?mission=,
 // &depart=) : rien n'est écrit avant « Enregistrer ».
-// « Rédiger avec l'IA à partir du poste » vient au lot 5e.
+// Lot 5e : depuis une mission, « Rédiger avec l'IA à partir du poste »
+// (« Recommandé ») vient en premier (AIDraftChoice, /sequences/nouvelle?depart=ia).
 import { useEffect, useState, type ElementType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Copy, FilePlus2, LayoutTemplate } from 'lucide-react';
@@ -14,6 +15,7 @@ import { STEP_TYPE_LABELS } from '@/components/outreach/sequence/sequenceGraph';
 import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { newSequencePath, type NewSequenceStart } from '@/lib/sequencesBeta';
 import { TemplatesGallery } from './TemplatesGallery';
+import { AIDraftChoice } from './ai/AIDraftDoor';
 
 /** Séquence proposée à la copie. */
 export interface CopyableSequence {
@@ -30,6 +32,8 @@ interface NewSequenceDialogProps {
   /** « Directeur financier · Groupe Hélios », sous le titre. */
   missionLabel?: string | null;
   existingSequences: readonly CopyableSequence[];
+  /** Écran ouvert d'abord : le choix de départ, ou la galerie des modèles. */
+  initialStep?: 'choice' | 'templates';
 }
 
 type Step = 'choice' | 'templates' | 'copy';
@@ -51,12 +55,12 @@ function Choice({ icon: Icon, title, description, onClick }: { icon: ElementType
   );
 }
 
-export function NewSequenceDialog({ open, onOpenChange, missionId, missionLabel, existingSequences }: NewSequenceDialogProps) {
+export function NewSequenceDialog({ open, onOpenChange, missionId, missionLabel, existingSequences, initialStep = 'choice' }: NewSequenceDialogProps) {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>('choice');
+  const [step, setStep] = useState<Step>(initialStep);
   useEffect(() => {
-    if (open) setStep('choice');
-  }, [open]);
+    if (open) setStep(initialStep);
+  }, [open, initialStep]);
 
   const go = (start: NewSequenceStart) => {
     onOpenChange(false);
@@ -87,6 +91,7 @@ export function NewSequenceDialog({ open, onOpenChange, missionId, missionLabel,
         <div className="-mx-1 flex-1 overflow-y-auto px-1 py-1">
           {step === 'choice' && (
             <div className="grid grid-cols-1 gap-3">
+              {missionId && <AIDraftChoice missionId={missionId} onGo={() => onOpenChange(false)} />}
               <Choice icon={LayoutTemplate} title="Partir d’un modèle" description="Un déroulé prêt à l’emploi, à adapter." onClick={() => setStep('templates')} />
               <Choice icon={Copy} title="Copier une séquence" description="Une séquence existante comme point de départ." onClick={() => setStep('copy')} />
               <Choice icon={FilePlus2} title="Partir de zéro" description="Un fil vide ; vous ajoutez les étapes une à une." onClick={() => go({ kind: 'zero' })} />

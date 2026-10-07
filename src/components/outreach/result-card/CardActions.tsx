@@ -136,6 +136,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           score={jobScore?.match_score}
           recommendation={jobScore?.recommendation}
           skipReason={jobScore?.missing_skills?.join(', ')}
+          profile={profile}
           jobId={selectedJob.id}
           activeProject={activeProject}
           compact
