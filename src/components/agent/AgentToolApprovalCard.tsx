@@ -28,12 +28,14 @@ import { EnrollFirstMessagePreview } from './EnrollFirstMessagePreview';
 import { readFirstStepPreview } from './firstStepPreview';
 import { SequenceDraftPreview } from './SequenceDraftPreview';
 import { PROPOSAL_EDITOR_NOTE, readSequenceDraftPreview } from './sequenceDraftPreview';
+import { writingDetailsLine } from './writingDetails';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -250,6 +252,8 @@ const READONLY_FIELDS_BY_TOOL: Record<string, ReadonlySet<string>> = {
   // Lot 5e : forme fixée par le serveur à partir de ces réglages ; seuls les
   // textes se modifient, et ils repassent les contrôles à l'approbation.
   create_sequence: new Set(['mission_id', 'first_contact', 'relances', 'profile_visit']),
+  // Lot 5e-2 : style et coût montrés sur la carte, calculés par dryRun avec ces champs.
+  draft_outreach_message: new Set(['style', 'tone']),
 };
 
 // Champs typés comme textarea (multilignes)
@@ -270,10 +274,23 @@ const TEXTAREA_FIELDS = new Set([
   'relance_3',
 ]);
 
-type FieldType = 'string' | 'textarea' | 'number' | 'boolean' | 'json' | 'readonly';
+// Champs à choix fermé d'un outil : libellés français des seules valeurs
+// acceptées par le serveur, jamais la valeur technique en saisie libre.
+const CHOICE_FIELDS_BY_TOOL: Record<string, Record<string, ReadonlyArray<{ value: string; label: string }>>> = {
+  draft_outreach_message: {
+    channel: [
+      { value: 'linkedin_dm', label: 'Message LinkedIn' },
+      { value: 'linkedin_inmail', label: 'InMail' },
+      { value: 'email', label: 'E-mail' },
+    ],
+  },
+};
+
+type FieldType = 'string' | 'textarea' | 'number' | 'boolean' | 'json' | 'readonly' | 'choice';
 
 function fieldTypeFor(key: string, value: unknown, toolName?: string): FieldType {
   if (READONLY_FIELDS.has(key) || (toolName && READONLY_FIELDS_BY_TOOL[toolName]?.has(key))) return 'readonly';
+  if (toolName && CHOICE_FIELDS_BY_TOOL[toolName]?.[key]) return 'choice';
   if (typeof value === 'boolean') return 'boolean';
   if (typeof value === 'number') return 'number';
   if (typeof value === 'string') {
@@ -308,7 +325,15 @@ const FIELD_LABEL: Record<string, string> = {
   relance_2_subject: 'Objet de la relance 2',
   relance_3: 'Relance 3',
   relance_3_subject: 'Objet de la relance 3',
+  // draft_outreach_message (lot 5e-2)
+  channel: 'Canal',
+  angle: 'Angle',
 };
+
+/** Au moins un champ que la personne peut modifier : sinon, pas de « Modifier ». */
+function hasEditableField(params: Record<string, unknown> | null | undefined, toolName: string): boolean {
+  return Object.entries(params ?? {}).some(([key, value]) => fieldTypeFor(key, value, toolName) !== 'readonly');
+}
 
 function humanLabel(key: string): string {
   // max_actions_per_day → "Max actions per day"
@@ -331,6 +356,23 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, t
   // Identifiants techniques : conservés dans les params à l'enregistrement,
   // mais rien à lire ni à modifier pour la personne.
   if (type === 'readonly') return null;
+
+  if (type === 'choice') {
+    const options = CHOICE_FIELDS_BY_TOOL[toolName]?.[field] ?? [];
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <SegmentedControl<string>
+          aria-label={label}
+          variant="quiet"
+          value={String(value ?? options[0]?.value ?? '')}
+          onValueChange={onChange}
+          options={options.map((o) => ({ value: o.value, label: o.label }))}
+          className="max-sm:flex max-sm:w-full max-sm:flex-col max-sm:items-stretch"
+        />
+      </div>
+    );
+  }
 
   if (type === 'boolean') {
     return (
@@ -635,6 +677,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           const sequencePreview = row.tool_name === 'create_sequence'
             ? readSequenceDraftPreview(row.dry_run_result?.details)
             : null;
+          // Lot 5e-2 : style et niveau de la rédaction proposée.
+          const writingLine = writingDetailsLine(row.tool_name, row.dry_run_result?.details, summary);
 
           return (
             <div
@@ -671,6 +715,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
               ) : (
                 <p className="text-sm leading-snug text-foreground">{summary}</p>
               )}
+
+              {writingLine && <p className="text-xs leading-snug text-muted-foreground">{writingLine}</p>}
 
               {/* Lot 5e : textes entiers de la séquence proposée. Masqués en mode
                   Modifier, où ces textes se réécrivent. */}
@@ -723,15 +769,17 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                       {loading === 'reject' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <X aria-hidden="true" />}
                       Rejeter
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => startEditing(row)}
-                      disabled={loading != null}
-                    >
-                      <Pencil aria-hidden="true" />
-                      Modifier
-                    </Button>
+                    {hasEditableField(row.params, row.tool_name) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startEditing(row)}
+                        disabled={loading != null}
+                      >
+                        <Pencil aria-hidden="true" />
+                        Modifier
+                      </Button>
+                    )}
                     {row.tool_name === 'create_sequence' && sequencesBeta && sequencePreview && (
                       <Button
                         size="sm"

@@ -10,7 +10,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { AiTextarea } from '@/components/ai/AiTextarea';
+import { Textarea } from '@/components/ui/textarea';
+import { WritingSettingsLine, type WritingSettingsValue } from '@/components/ai/WritingSettingsLine';
+import { useWritingPreferences } from '@/hooks/useWritingPreferences';
+import { AI_LEVEL_LABELS, clampLevel } from '@/lib/writingStyle';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -524,6 +527,19 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       message: previewEditableText(step.messageTemplate, entry.values, keep),
     };
   }, [ensurePreviewValues]);
+  // ── Lot 5e-2 : style et niveau des messages rédigés par l'IA ──
+  // Défauts de la personne et de l'organisation, modifiables pour cette
+  // préparation seulement (ligne « Rédaction par l'IA »). Envoyés à chaque
+  // génération ; le serveur refuse un niveau au-dessus du plafond.
+  const { prefs: writingPrefs, choices: writingChoices, refetch: refetchWritingPrefs } = useWritingPreferences();
+  const refreshWritingPreferences = useCallback(() => { void refetchWritingPrefs(); }, [refetchWritingPrefs]);
+  const [writingOverride, setWritingOverride] = useState<WritingSettingsValue | null>(null);
+  const writing: WritingSettingsValue | null = writingOverride
+    ? { style: writingOverride.style, level: writingPrefs ? clampLevel(writingOverride.level, writingPrefs) : writingOverride.level }
+    : writingPrefs ? { style: writingPrefs.style, level: writingPrefs.defaultLevel } : null;
+  /** Réglages changés alors que des aperçus existaient : ils gardent les leurs, annoncé. */
+  const [writingChangedAfterPreviews, setWritingChangedAfterPreviews] = useState(false);
+  // onWritingRefused : niveau refusé (plafond abaissé pendant que la préparation était ouverte), réglages relus.
   const {
     previews, messageSteps, hasMessageSteps, hasAiSteps,
     aiReviewSteps, aiReviewMissingCount, aiGenerationVersion,
@@ -531,8 +547,32 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     estimatedCredits, creditsPerMessage, candidateAnalysis,
     getPreview, generateForCandidateById, regenerateStep,
     editMessage, generateAll, cancelBulkGeneration, getMessageOverrides, discardSessionPreviews,
-    getStepConfig, setStepConfig, getStepConfigOverrides,
-  } = useEnrollmentPreview({ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi });
+    getStepConfig, setStepConfig, getStepConfigOverrides, missionHasCalendlyLink,
+  } = useEnrollmentPreview({ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi, writing, onWritingRefused: refreshWritingPreferences });
+  const changeWriting = (next: WritingSettingsValue) => {
+    const hadAiPreviews = [...previews.values()].some((byStep) => [...byStep.values()].some((m) => m.isGenerated));
+    if (hadAiPreviews) setWritingChangedAfterPreviews(true);
+    setWritingOverride(next);
+  };
+  /** « en Équilibré » : le niveau nommé à côté de tout coût de génération. */
+  const levelSuffix = writing ? ` en ${AI_LEVEL_LABELS[writing.level]}` : '';
+  // Ligne « Rédaction par l'IA » (style, niveau, coût par message, Modifier) :
+  // la même dans les aperçus et dans le Récapitulatif, avant toute génération.
+  const renderWritingLine = (className: string) => (hasAiSteps && activeProfiles.length > 0 && writing && writingPrefs ? (
+    <WritingSettingsLine
+      className={className}
+      value={writing}
+      onChange={changeWriting}
+      defaultStyle={writingPrefs.style}
+      choices={writingChoices('outreach_message')}
+      maxLevel={writingPrefs.maxLevel}
+      agendaFallback={missionHasCalendlyLink === false}
+      disabled={isBulkGenerating}
+      note={writingChangedAfterPreviews ? (
+        <p className="text-xs text-muted-foreground">Les aperçus déjà générés gardent leurs réglages. Régénérez-les pour appliquer les nouveaux.</p>
+      ) : undefined}
+    />
+  ) : null);
 
   // « Première action : …, dès maintenant / dans 2 jours, pendant vos heures
   // d'envoi » : première étape planifiée et son délai effectif (délai modifié
@@ -1416,6 +1456,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   steps={steps}
                   candidateAnalysis={candidateAnalysis}
                   estimatedCredits={estimatedCredits}
+                  levelSuffix={levelSuffix}
+                  writingLine={renderWritingLine('rounded-xl border border-border px-3 py-2.5')}
                   hasAiSteps={hasAiSteps}
                   hasMessageSteps={hasMessageSteps}
                   firstAction={firstAction}
@@ -1595,6 +1637,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   'min-h-0 flex-1 flex-col overflow-hidden',
                   !isSingle && mobilePane === 'list' ? 'hidden sm:flex' : 'flex',
                 )}>
+                  {/* Lot 5e-2 : style et niveau des messages rédigés par l'IA, coût par message au niveau choisi. */}
+                  {renderWritingLine('shrink-0 border-b border-border px-4 py-2.5 sm:px-6')}
                   {/* Génération groupée : bouton secondaire, coût annoncé avant
                       l'action, sur les seuls candidats qui seront inscrits. */}
                   {!isSingle && hasAiSteps && activeProfiles.length > 0 && (
@@ -1683,7 +1727,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                                   written={step.useAiPersonalization ? null : writtenPreviewOf(selectedProfile, step)}
                                   isEditing={isEditing}
                                   index={idx}
-                                  candidateName={selectedProfile.name}
                                   creditsPerMessage={creditsPerMessage}
                                   onToggleEdit={() => toggleEditing(step.stepId)}
                                   onRegenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
@@ -1734,7 +1777,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                       </Button>
                       {!isBulkGenerating && (
                         <span className="text-2xs tabular-nums text-muted-foreground">
-                          {creditsLabel(bulkMissingAi * creditsPerMessage)}
+                          {creditsLabel(bulkMissingAi * creditsPerMessage)}{bulkMissingAi > 0 ? levelSuffix : ''}
                         </span>
                       )}
                     </div>
@@ -1930,7 +1973,7 @@ function CandidatePreviewsBar({
 }
 
 function MessageStepCard({
-  step, preview, written, isEditing, index, candidateName, creditsPerMessage,
+  step, preview, written, isEditing, index, creditsPerMessage,
   onToggleEdit, onRegenerate, onEditMessage, onGenerate,
 }: {
   step: SequenceStepPreview;
@@ -1939,7 +1982,6 @@ function MessageStepCard({
   written?: WrittenStepPreview | null;
   isEditing: boolean;
   index: number;
-  candidateName?: string;
   creditsPerMessage: number;
   onToggleEdit: () => void;
   onRegenerate: () => void;
@@ -2094,17 +2136,12 @@ function MessageStepCard({
               {isEditing ? (
                 <>
                   <Label htmlFor={`${fieldId}-message`} className="text-xs text-muted-foreground">Message</Label>
-                  <AiTextarea
+                  {/* Lot 5e-2 : champ simple ; une nouvelle version par l'IA passe par « Régénérer » (style, niveau et contrôles du serveur). */}
+                  <Textarea
                     id={`${fieldId}-message`}
                     value={message.replace(/<[^>]+>/g, '')}
                     onChange={e => editField('message', e.target.value)}
-                    className="min-h-36 resize-y pr-10 text-sm leading-relaxed"
-                    context={{
-                      purpose: step.actionType === 'email' ? 'email outreach' : 'message LinkedIn',
-                      data: { step_type: step.actionType, candidate: candidateName },
-                      tone: 'casual',
-                    }}
-                    placeholder="Tapez /ai pour générer ou améliorer le message"
+                    className="min-h-36 resize-y text-sm leading-relaxed"
                   />
                 </>
               ) : (
@@ -2169,13 +2206,17 @@ function MessageStepCard({
 }
 
 function SummaryMode({
-  activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, firstAction, onSwitchToPreview,
+  activeProfiles, steps, candidateAnalysis, estimatedCredits, levelSuffix, writingLine, hasAiSteps, hasMessageSteps, firstAction, onSwitchToPreview,
   firstMessage, firstMessageNavigation, aiMessages, aiMessagesNavigation, renderText,
 }: {
   activeProfiles: LinkedInProfile[];
   steps: SequenceStepPreview[];
   candidateAnalysis: { total: number; withEmail: number; withoutEmail: number; withPhone: number; withoutPhone: number };
   estimatedCredits: number;
+  /** Lot 5e-2 : « en Équilibré », le niveau du coût annoncé. */
+  levelSuffix: string;
+  /** Lot 5e-2 : ligne « Rédaction par l'IA » (style, niveau, Modifier), comme dans les aperçus. */
+  writingLine: React.ReactNode;
   hasAiSteps: boolean;
   hasMessageSteps: boolean;
   firstAction: string | null;
@@ -2214,6 +2255,9 @@ function SummaryMode({
           <span>{firstAction}</span>
         </p>
       )}
+
+      {/* Lot 5e-2 : style, niveau et coût par message, avant tout « Générer l'aperçu ». */}
+      {writingLine}
 
       {firstMessage && (
         <FirstMessagePreviewBlock
@@ -2307,7 +2351,8 @@ function SummaryMode({
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           <span>
             Coût estimé de la personnalisation par l'IA :{' '}
-            <strong className="font-semibold tabular-nums text-foreground">{creditsLabel(estimatedCredits)}</strong>.
+            <strong className="font-semibold tabular-nums text-foreground">{creditsLabel(estimatedCredits)}</strong>
+            {estimatedCredits > 0 ? levelSuffix : ''}.
           </span>
         </p>
       )}

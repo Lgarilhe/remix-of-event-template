@@ -155,7 +155,8 @@ test('0c-2 : draft_outreach_message lit la ligne de toute l\'organisation, par p
   assert.equal(queriesOn(tool, 'job_candidate_status').length, 0);
   // Sans new_stage, le contrôle de update_candidate_stage refusait tout appel.
   assert.doesNotMatch(tool, /updateCandidateStage\.verifyAccess/);
-  assert.match(tool, /verifyAccess: \(params, ctx\) => verifySingleCandidate\(params, ctx\)/);
+  // Lot 5e-2 : contrôle du candidat et de la mission d'abord, puis réglages de rédaction.
+  assert.match(tool, /async verifyAccess\(params, ctx\) \{\n\s*const access = await verifySingleCandidate\(params, ctx\);\n\s*if \(!access\.allowed\) return access;/);
 });
 
 test('0c-2 : countUnscoredProfiles a le périmètre du worker (organisation et job_id échantillon)', () => {

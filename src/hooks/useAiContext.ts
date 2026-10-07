@@ -12,6 +12,12 @@
  * Le payload est validé/normalisé avant écriture : tone whitelist, longueurs max,
  * arrays cappés à 10 entrées. Pas d'erreur si on overshoot — on tronque silencieusement.
  *
+ * Lot 5e-2 : le même jsonb porte le style de rédaction de la personne
+ * (writing_style, carte « Votre style », useWritingPreferences). normalizeAiContext
+ * le garde, et l'enregistrement des consignes relit la ligne juste avant
+ * d'écrire puis ne remplace que ses propres clés : « Vos consignes » n'efface
+ * jamais le style, ni « Votre style » les consignes.
+ *
  * Phase 2 ajoutera l'injection backend via _shared/ai-context.ts.
  */
 
@@ -20,6 +26,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuthReady } from "./useAuthReady";
 import { useOrganization } from "./useOrganization";
 import { updateOrganization } from "@/lib/organizationUpdate";
+import { normalizeWritingStyle, type WritingStyle } from "@/lib/writingStyle";
+import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
 export type AiContextTone = "tu" | "vous" | "casual" | "formal";
@@ -31,7 +39,12 @@ export type AiContext = {
   do: string[];
   dont: string[];
   free_text: string;
+  /** Style de rédaction par défaut (lot 5e-2), écrit par la carte « Votre style ». Absent tant qu'il n'a jamais été enregistré. */
+  writing_style?: WritingStyle;
 };
+
+/** Clés écrites par le formulaire des consignes : les seules qu'il remplace dans le jsonb relu. */
+const CONSIGNE_KEYS = ["tone", "specialty", "do", "dont", "free_text"] as const;
 
 export const EMPTY_AI_CONTEXT: AiContext = {
   tone: null,
@@ -63,13 +76,18 @@ export function normalizeAiContext(raw: unknown): AiContext {
       .map((s) => s.trim().slice(0, MAX_LIST_ITEM_CHARS))
       .slice(0, MAX_LIST_ITEMS);
   };
-  return {
+  const context: AiContext = {
     tone,
     specialty,
     do: cleanList(r.do),
     dont: cleanList(r.dont),
     free_text: typeof r.free_text === "string" ? r.free_text.slice(0, MAX_FREE_TEXT) : "",
   };
+  // Style gardé (normalisé), jamais inventé : clé absente laissée absente.
+  if (r.writing_style && typeof r.writing_style === "object" && !Array.isArray(r.writing_style)) {
+    context.writing_style = normalizeWritingStyle(r.writing_style);
+  }
+  return context;
 }
 
 /** Profile-level (per-user) AI context */
@@ -99,10 +117,26 @@ export function useUserAiContext() {
       if (queryClient.getQueryState(queryKey)?.status !== "success") throw new Error("Votre contexte IA n'a pas pu être chargé : réessayez avant d'enregistrer.");
       if (!user?.id) throw new Error("Non authentifié");
       const normalized = normalizeAiContext(input);
+      // Ligne relue juste avant l'écriture : seules les clés des consignes sont
+      // remplacées, le style (writing_style) et toute autre clé restent.
+      const { data: current, error: readError } = await supabase
+        .from("profiles")
+        .select("ai_context")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (readError) {
+        console.error("[useUserAiContext] read before save", readError);
+        throw new Error("L'enregistrement a échoué. Réessayez.");
+      }
+      const base = current?.ai_context && typeof current.ai_context === "object" && !Array.isArray(current.ai_context)
+        ? (current.ai_context as Record<string, unknown>)
+        : {};
+      const merged = { ...base } as Record<string, unknown>;
+      for (const key of CONSIGNE_KEYS) merged[key] = normalized[key];
       // Sans .single() : 0 ligne (profil absent) donnait une erreur brute en anglais.
       const { data, error } = await supabase
         .from("profiles")
-        .update({ ai_context: normalized, updated_at: new Date().toISOString() })
+        .update({ ai_context: merged as Json, updated_at: new Date().toISOString() })
         .eq("user_id", user.id)
         .select("ai_context");
       if (error) {
@@ -114,6 +148,7 @@ export function useUserAiContext() {
     },
     onSuccess: (next) => {
       queryClient.setQueryData(queryKey, next);
+      void queryClient.invalidateQueries({ queryKey: ["writing-preferences"] });
       toast.success("Consignes de rédaction enregistrées");
     },
     onError: (err: Error) => {

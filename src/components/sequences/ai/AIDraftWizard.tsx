@@ -6,6 +6,13 @@
 //   par prepare, « Rien ne part avant que vous inscriviez des candidats. » ;
 // - « L'angle » : trois angles calculés sans IA, dont un « Recommandé »,
 //   chacun avec son « Pourquoi » ; « Rédiger la séquence » appelle draft.
+// Lot 5e-2 : sur « Le poste », section « Style et niveau » : le style de la
+// personne (« Modifier », pour cette rédaction seulement), le niveau de l'IA
+// avec le coût de chaque niveau permis (valeurs de prepare), le pied « Coût :
+// environ N crédits. » qui suit le niveau choisi. Style et niveau partent dans
+// draft (ai_level, style) et sont gardés pour « Rédiger à nouveau ». Un niveau
+// refusé par le serveur (au-dessus du plafond) ramène sur « Le poste » avec la
+// phrase du serveur ; le plafond est relu, les réglages restent.
 // La séquence rédigée va dans l'éditeur (onDrafted), remplie et non
 // enregistrée. Erreurs : textes de la spécification (section 2.6), réglages
 // gardés. Aucune valeur n'est gardée dans le navigateur.
@@ -26,14 +33,19 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Banner, bannerActionClass } from '@/components/ui/banner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { WritingStyleFields } from '@/components/ai/WritingStyleFields';
+import { AiLevelPicker } from '@/components/ai/AiLevelPicker';
 import { useMissionDraftReadiness, useSequenceAI } from '@/hooks/useSequenceAI';
 import { cn } from '@/lib/utils';
+import { AGENDA_FALLBACK_SENTENCE, STYLE_ONLY_THIS_TIME, sameStyle, styleSummary } from '@/lib/writingStyle';
 import {
   AI_DRAFT_NOTICE,
   AI_DRAFT_REPLACES_EDITS,
   EXTRA_ARGUMENTS_MAX,
   EXTRA_ARGUMENT_MAX_LENGTH,
   aboutCreditsLabel,
+  draftCostFor,
+  draftCreditsSufficient,
   draftRequestBody,
   hasArguments,
   settingsForPrepare,
@@ -113,6 +125,9 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<DraftError | null>(null);
   const [showAllFacts, setShowAllFacts] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
+  /** Niveau refusé par le serveur (plafond de l'organisation) : phrase montrée sur « Le poste ». */
+  const [levelError, setLevelError] = useState<string | null>(null);
   const settingsRef = useRef<DraftSettings | null>(null);
   settingsRef.current = settings;
   const previousRef = useRef(previousSettings);
@@ -122,6 +137,7 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
   const factsListRef = useRef<HTMLUListElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
+  const levelRef = useRef<HTMLDivElement>(null);
   const screenChangedAtRef = useRef(0);
   const focusScreenRef = useRef(false);
   /** Focus à poser après un ajout ou un retrait d'argument : rang du bouton « Retirer », ou « Ajouter un argument ». */
@@ -149,9 +165,19 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
     setAdding(false);
     setNewArgument('');
     setShowAllFacts(false);
+    setStyleOpen(false);
+    setLevelError(null);
     draftedRef.current = false;
     void load();
   }, [open, load]);
+
+  /** Plafond relu sans repasser par le chargement : les réglages restent, le niveau est ramené sous le plafond. */
+  const refreshLevels = useCallback(async () => {
+    const outcome = await runPrepare(missionId);
+    if (outcome.status !== 'ok') return;
+    setPrep({ state: 'ready', prepare: outcome.prepare });
+    setSettings((current) => settingsForPrepare(outcome.prepare, current));
+  }, [runPrepare, missionId]);
 
   const goTo = (next: Screen) => {
     screenChangedAtRef.current = Date.now();
@@ -197,8 +223,9 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
   });
 
   const prepare = prep.state === 'ready' ? prep.prepare : null;
-  const cost = prepare ? aboutCreditsLabel(prepare.cost.estimated) : null;
-  const creditsShort = prepare?.cost.sufficient === false;
+  // Coût et solde au niveau choisi (lot 5e-2) : le pied suit le niveau.
+  const cost = prepare ? aboutCreditsLabel(draftCostFor(prepare, settings?.level ?? null)) : null;
+  const creditsShort = !!prepare && draftCreditsSufficient(prepare, settings?.level ?? null) === false;
   const update = (patch: Partial<DraftSettings>) => setSettings((s) => (s ? { ...s, ...patch } : s));
 
   const addArgument = () => {
@@ -227,6 +254,13 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
         // Argument ajouté refusé avant tout appel au modèle : retour sur « Le poste », sous l'argument.
         setArgumentError({ index: outcome.error.argumentIndex ?? null, message: outcome.error.message });
         goTo('poste');
+        return;
+      }
+      if (outcome.error.kind === 'level') {
+        // Niveau au-dessus du plafond (refusé sans appel ni débit) : retour sur « Le poste », plafond relu.
+        setLevelError(outcome.error.message);
+        goTo('poste');
+        void refreshLevels();
         return;
       }
       setDraftError(outcome.error);
@@ -329,6 +363,22 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
           {prepare && settings && screen === 'poste' && (
             <>
               {creditsShort && creditsBanner}
+              {levelError && (
+                <WizardBanner
+                  actions={
+                    <Button
+                      type="button"
+                      variant="link"
+                      onClick={() => { levelRef.current?.scrollIntoView?.({ block: 'center' }); levelRef.current?.focus(); }}
+                      className={cn('h-auto p-0', bannerActionClass, 'max-md:min-h-11')}
+                    >
+                      Changer le niveau
+                    </Button>
+                  }
+                >
+                  {levelError}
+                </WizardBanner>
+              )}
               <section aria-labelledby={`${id}-facts`} className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <h3 id={`${id}-facts`} ref={factsHeadingRef} tabIndex={-1} className="text-sm font-semibold text-foreground outline-none">Ce que l’IA retient du poste</h3>
@@ -465,6 +515,51 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
                   />
                 </div>
                 <p className="text-xs text-muted-foreground sm:col-span-2">{CONTACT_HELP[settings.firstContact]}</p>
+              </section>
+
+              <section aria-labelledby={`${id}-writing`} className="space-y-4 border-t border-border pt-5">
+                <h3 id={`${id}-writing`} className="text-sm font-semibold text-foreground">Style et niveau</h3>
+                <div className="space-y-2">
+                  <p className="text-sm text-foreground-secondary">
+                    Style : {styleSummary(settings.style ?? prepare.writing.style)}.{' '}
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      aria-expanded={styleOpen}
+                      aria-controls={`${id}-style-fields`}
+                      onClick={() => setStyleOpen((v) => !v)}
+                      className="h-auto p-0 align-baseline text-muted-foreground underline underline-offset-2 max-md:flex max-md:min-h-11"
+                    >
+                      {styleOpen ? 'Fermer' : 'Modifier'}
+                    </Button>
+                  </p>
+                  {styleOpen && (
+                    <div id={`${id}-style-fields`} className="space-y-3 rounded-lg bg-muted/40 p-3">
+                      <WritingStyleFields compact value={settings.style ?? prepare.writing.style} onChange={(style) => update({ style })} />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 text-xs text-muted-foreground">{STYLE_ONLY_THIS_TIME}</p>
+                        {settings.style && !sameStyle(settings.style, prepare.writing.style) && (
+                          <Button type="button" variant="ghost" size="xs" onClick={() => update({ style: { ...prepare.writing.style } })} className={TOUCH}>
+                            Revenir à mon style
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {(settings.style ?? prepare.writing.style).cta === 'agenda' && !prepare.writing.hasCalendlyLink && (
+                    <p className="text-xs text-muted-foreground">{AGENDA_FALLBACK_SENTENCE}</p>
+                  )}
+                </div>
+                <div ref={levelRef} tabIndex={-1} className="space-y-2 outline-none">
+                  <p className="text-sm font-semibold text-foreground">Niveau de l’IA</p>
+                  <AiLevelPicker
+                    choices={prepare.writing.levels}
+                    value={settings.level ?? prepare.writing.level}
+                    maxLevel={prepare.writing.maxLevel}
+                    onChange={(level) => { update({ level }); setLevelError(null); }}
+                  />
+                </div>
               </section>
             </>
           )}
