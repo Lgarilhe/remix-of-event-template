@@ -166,8 +166,9 @@ test('D-60 : légende de la couleur réelle, blocs après chargement, titre « S
 test('D-62 : InMail groupé monochrome, tons du catalogue, annulation confirmée, navigation nommée', () => {
   for (const [name, src] of Object.entries({ bulk, single })) {
     assert.doesNotMatch(src, /bg-linkedin|text-linkedin/, `${name} : couleur LinkedIn hors logo`);
-    assert.match(src, /MESSAGE_TONES/, `${name} : tons du catalogue`);
-    assert.match(src, /SegmentedControl/, `${name} : un seul sélecteur de ton`);
+    // Lot 5e-2 : le ton (et le modèle) laissent la place au style et au niveau de la rédaction.
+    assert.doesNotMatch(src, /MESSAGE_TONES|ModelPicker/, `${name} : plus de sélecteur de ton ni de modèle`);
+    assert.match(src, /<WritingSettingsLine/, `${name} : style et niveau de la rédaction`);
     assert.doesNotMatch(src, /'(?:Pro|Cool|Wow)'/, `${name} : tons abrégés`);
   }
   assert.match(bulk, /onClick=\{\(\) => setConfirmCancel\(true\)\}/, 'annuler passe par la confirmation');

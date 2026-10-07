@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useId } from 'react';
+import React, { useState, useEffect, useMemo, useId, useRef } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -24,7 +24,10 @@ import {
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { RecipientsConfirm } from './enrollment-preview/RecipientsConfirm';
 import { useRecipientsConfirm } from './enrollment-preview/useRecipientsConfirm';
-import { executionStatusMeta, MESSAGE_TONES, type MessageTone } from '@/lib/sequenceCatalog';
+import { executionStatusMeta } from '@/lib/sequenceCatalog';
+import { WritingSettingsLine, type WritingSettingsValue } from '@/components/ai/WritingSettingsLine';
+import { useWritingPreferences } from '@/hooks/useWritingPreferences';
+import { clampLevel, writingRefusalMessage } from '@/lib/writingStyle';
 import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import {
   Dialog,
@@ -50,7 +53,6 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
@@ -104,7 +106,6 @@ interface GeneratedMessage {
   isEdited: boolean;
 }
 
-type Tone = MessageTone;
 
 interface QueueStats {
   pending: number;
@@ -243,7 +244,15 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const [generatedMessages, setGeneratedMessages] = useState<Record<string, GeneratedMessage>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingIndex, setGeneratingIndex] = useState(0);
-  const [tone, setTone] = useState<Tone>('professional');
+  // Lot 5e-2 : style et niveau des InMails rédigés par l'IA (défauts de la
+  // personne et de l'organisation, modifiables pour cet envoi), à la place du ton.
+  const { prefs: writingPrefs, choices: writingChoices, refetch: refetchWritingPrefs } = useWritingPreferences();
+  /** Dernier refus de niveau ou de style (lot 5e-2) : chaque autre essai échouerait pareil. */
+  const writingRefusalRef = useRef<string | null>(null);
+  const [writingOverride, setWritingOverride] = useState<WritingSettingsValue | null>(null);
+  const writing: WritingSettingsValue | null = writingOverride
+    ? { style: writingOverride.style, level: writingPrefs ? clampLevel(writingOverride.level, writingPrefs) : writingOverride.level }
+    : writingPrefs ? { style: writingPrefs.style, level: writingPrefs.defaultLevel } : null;
   const [senderName, setSenderName] = useState(() => {
     return localStorage.getItem('outreach_sender_name') || '';
   });
@@ -478,7 +487,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           remote: selectedJob.remote,
           accompagnement: selectedJob.accompagnement || [],
         },
-        tone,
+        // Lot 5e-2 : style et niveau affichés ; sans eux, le serveur applique les défauts.
+        ...(writing ? { ai_level: writing.level, style: writing.style } : {}),
+        // Longueurs et format de l'InMail (objet et corps), pas ceux d'un premier message.
+        message_kind: 'inmail',
         senderName: effectiveSenderName || undefined,
         accountId,
         profileId: recipient.profile?.provider_id || recipient.profile_id,
@@ -501,6 +513,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       };
     } catch (err) {
       console.error('Generate message error:', err);
+      // Niveau refusé (plafond abaissé entre-temps) : phrase du serveur gardée, réglages relus.
+      const refusal = writingRefusalMessage(err);
+      if (refusal) {
+        writingRefusalRef.current = refusal;
+        void refetchWritingPrefs();
+      }
       return null;
     }
   };
@@ -536,6 +554,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     setGeneratingIndex(0);
 
     const newMessages: Record<string, GeneratedMessage> = {};
+    writingRefusalRef.current = null;
 
     for (let i = 0; i < recipients.length; i++) {
       setGeneratingIndex(i);
@@ -546,11 +565,18 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         newMessages[recipient.id] = message;
         // Update state progressively for UI feedback
         setGeneratedMessages(prev => ({ ...prev, [recipient.id]: message }));
+      } else if (writingRefusalRef.current) {
+        // Niveau refusé : les suivants le seraient aussi, rien n'est débité.
+        break;
       }
     }
 
     setIsGenerating(false);
     setCurrentRecipientIndex(0); // Reset to first recipient to show editor
+    if (writingRefusalRef.current) {
+      toast.error(writingRefusalRef.current);
+      return;
+    }
     const generated = Object.keys(newMessages).length;
     const failedCount = recipients.length - generated;
     if (generated === 0) {
@@ -569,6 +595,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     if (!currentRecipient) return;
 
     setIsGenerating(true);
+    writingRefusalRef.current = null;
     const message = await generateMessageForRecipient(currentRecipient);
 
     if (message) {
@@ -576,7 +603,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       setEditingSubject(message.subject);
       setEditingMessage(message.message);
     } else {
-      toast.error(`Le message de ${currentRecipient.name} n'a pas pu être régénéré. Réessayez.`);
+      toast.error(writingRefusalRef.current ?? `Le message de ${currentRecipient.name} n'a pas pu être régénéré. Réessayez.`);
     }
 
     setIsGenerating(false);
@@ -973,8 +1000,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </div>
                 )}
 
-                {/* Signature et ton */}
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                {/* Signature, puis style et niveau des messages */}
+                <div className="space-y-3">
                   <div className="space-y-1.5">
                     <Label htmlFor={senderId} className="text-xs font-medium text-muted-foreground">
                       Votre prénom (signature)
@@ -986,17 +1013,16 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       placeholder={defaultSenderName ? `Par défaut : ${defaultSenderName}` : 'Ex. : Camille'}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground" aria-hidden="true">Ton</p>
-                    <SegmentedControl<Tone>
-                      aria-label="Ton des messages"
-                      size="default"
-                      value={tone}
-                      onValueChange={setTone}
-                      options={MESSAGE_TONES.map((t) => ({ value: t.value, label: t.label }))}
-                      className="max-w-full"
+                  {writing && writingPrefs && (
+                    <WritingSettingsLine
+                      value={writing}
+                      onChange={setWritingOverride}
+                      defaultStyle={writingPrefs.style}
+                      choices={writingChoices('outreach_message')}
+                      maxLevel={writingPrefs.maxLevel}
+                      disabled={isGenerating}
                     />
-                  </div>
+                  )}
                 </div>
 
                 {/* Générer */}

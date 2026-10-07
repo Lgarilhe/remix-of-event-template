@@ -57,6 +57,7 @@ import { EnrollFirstMessagePreview } from '@/components/agent/EnrollFirstMessage
 import { readFirstStepPreview } from '@/components/agent/firstStepPreview';
 import { SequenceDraftPreview } from '@/components/agent/SequenceDraftPreview';
 import { PROPOSAL_EDITOR_NOTE, readSequenceDraftPreview } from '@/components/agent/sequenceDraftPreview';
+import { writingDetailsLine } from '@/components/agent/writingDetails';
 import { aiProposalSequencePath } from '@/lib/sequencesBeta';
 import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import {
@@ -721,6 +722,7 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
   const sequencePreview = action.tool_name === 'create_sequence' && action.status === 'proposed'
     ? readSequenceDraftPreview(action.dry_run_result?.details)
     : null;
+  const writingLine = writingDetailsLine(action.tool_name, action.dry_run_result?.details, summary);
   const errorMessage =
     action.status === 'failed'
       ? action.real_result?.error || action.real_result?.message || null
@@ -766,6 +768,9 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
           {summary && (
             <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{summary}</p>
           )}
+
+          {/* Lot 5e-2 : style et niveau de la rédaction proposée. */}
+          {writingLine && <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{writingLine}</p>}
 
           {warning && action.status === 'proposed' && (
             <p className="mt-1 flex items-start gap-1 text-xs text-warning">

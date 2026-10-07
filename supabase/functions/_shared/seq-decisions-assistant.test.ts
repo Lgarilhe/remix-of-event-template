@@ -185,3 +185,23 @@ Deno.test('décision 34 : l’approbation immédiate (bandeau) ne pose pas appro
   strictEqual(executions, 1);
   strictEqual(seenApprovedDetails, undefined);
 });
+
+Deno.test('lot 5e-2 : un outil qui le demande (approvedDetailsOnConfirm) reçoit les détails de la carte à l’approbation immédiate', async () => {
+  let seen: unknown = 'absent';
+  registerTool({
+    ...probeTool,
+    name: 'seq_decisions_probe_card',
+    approvedDetailsOnConfirm: true,
+    execute: (_params, ctx) => { seen = ctx.approvedDetails; return Promise.resolve({ success: true }); },
+  });
+  const { client } = fakeClient((q) => {
+    if (hasOp(q, 'single')) {
+      return { data: { id: 'exec-4', user_id: 'user-1', organization_id: 'org-1', tool_name: 'seq_decisions_probe_card', status: 'proposed', dry_run_result: { details: { ai_level: 'rapide', estimated_credits: 2 } } }, error: null };
+    }
+    if (hasOp(q, 'update') && hasOp(q, 'select')) return { data: [{ params: {}, conversation_id: null }], error: null };
+    return { data: null, error: null };
+  });
+  const res = await confirmToolExecution('exec-4', ctxFor(client));
+  strictEqual(res.success, true, JSON.stringify(res));
+  deepStrictEqual(seen, { ai_level: 'rapide', estimated_credits: 2 });
+});

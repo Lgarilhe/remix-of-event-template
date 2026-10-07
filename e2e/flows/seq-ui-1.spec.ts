@@ -1115,6 +1115,44 @@ test.describe('Préparation d\'inscription', () => {
     await expect(enrollButton).toBeEnabled();
   });
 
+  // lot5e2-recapitulatif-redaction (plus de 10 candidats, étape rédigée par l'IA)
+  test('lot 5e-2 : 11 candidats, le Récapitulatif montre la ligne « Rédaction par l’IA », le niveau se change sur place et nomme chaque coût', async ({ browser, org }) => {
+    const { missionId, accountId } = await workspace(org);
+    const seq = await seedSeq(org.orgId, org.owner.userId, {
+      name: `Récapitulatif IA ui-1 ${rand()}`,
+      projectId: missionId,
+      steps: [{ action_type: 'message', message_template: 'Bonjour {{prenom}}', delay_days: 0, use_ai_personalization: true }],
+    });
+    const firsts = ['Alice', 'Bruno', 'Chloe', 'David', 'Emma', 'Fanny', 'Gaspard', 'Hugo', 'Ines', 'Jules', 'Karim'];
+    const people = firsts.map((first) => makeProfile(first, 'RecapIA'));
+    const { page } = await openAs(browser, org.owner, [{ id: accountId, name: 'Camille Recruteuse' }], { profiles: people });
+    await searchProfiles(page, missionId, people);
+    const dialog = await openEnrollPreview(page, people, seq.name);
+
+    // Récapitulatif (ouvert par défaut au-delà de 10 candidats) : style, niveau, coût par message, « Modifier ».
+    await expect(dialog.getByText('Avant l\'inscription', { exact: true })).toBeVisible();
+    await expect(dialog.getByText(/Rédaction par l’IA : .*Niveau Équilibré, environ 5 crédits par message\./)).toBeVisible();
+    await expect(dialog.getByText(/Coût estimé de la personnalisation par l'IA : environ 55 crédits en Équilibré\./)).toBeVisible();
+    await expect(dialog.getByText('environ 55 crédits en Équilibré', { exact: true })).toBeVisible();
+
+    // Niveau changé sur place : la ligne, le coût estimé et le pied le nomment aussitôt.
+    const modify = dialog.getByRole('button', { name: 'Modifier les réglages de rédaction' });
+    await modify.click();
+    const settings = page.getByRole('dialog', { name: 'Réglages de cette rédaction' });
+    await expect(settings).toBeVisible();
+    await settings.getByText('Rapide', { exact: true }).click();
+    await page.keyboard.press('Escape');
+    await expect(modify, 'focus rendu à « Modifier »').toBeFocused();
+    await expect(dialog.getByText(/Niveau Rapide, environ 2 crédits par message\./)).toBeVisible();
+    await expect(dialog.getByText(/Coût estimé de la personnalisation par l'IA : environ 22 crédits en Rapide\./)).toBeVisible();
+    await expect(dialog.getByText('environ 22 crédits en Rapide', { exact: true })).toBeVisible();
+
+    // « Générer tous les aperçus » envoie le niveau choisi.
+    const request = page.waitForRequest((r) => r.url().includes('/functions/v1/generate-outreach-message') && r.method() === 'POST');
+    await dialog.getByRole('button', { name: 'Générer tous les aperçus' }).click();
+    expect(((await request).postDataJSON() as Record<string, unknown>).ai_level).toBe('rapide');
+  });
+
   // lot5d1-apercu-reel : étapes écrites rendues avec les valeurs du serveur (preview_values)
   test('@critical lot 5d-1 : l\'aperçu d\'une étape écrite est le texte que le moteur envoie (prénom non fiable, titre « X chez Y », ville), sans copie dans message_overrides', async ({ browser, org }) => {
     const { missionId, accountId } = await workspace(org);

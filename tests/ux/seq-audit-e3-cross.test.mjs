@@ -180,8 +180,9 @@ test('SEQ-097 — aperçu et suggestions de réponse : l’expéditeur se prése
   const block = outreach.buildOutreachContext({ recruitment_mode: 'client' }, 'Qonto', 'Laurent', 'Cabinet Alpha');
   assert.match(block, /Tu es recruteur\(se\) chez Cabinet Alpha/);
   assert.doesNotMatch(block, /Konekt/);
-  // Nom lu seulement pour un membre vérifié de l'organisation active.
-  assert.match(outreachFn, /\.from\('organization_members'\)\s*\.select\('id'\)\.eq\('user_id', userId\)\.eq\('organization_id', orgId\)\.maybeSingle\(\)/);
+  // Nom lu seulement pour un membre vérifié de l'organisation (corps, sinon active ; lot 5e-2).
+  assert.match(outreachFn, /\.from\('organization_members'\)\s*\.select\('id'\)\.eq\('user_id', userId\)\.eq\('organization_id', organizationId\)\.maybeSingle\(\)/);
+  assert.match(outreachFn, /if \(!verifiedOrgId\) return json\(\{ error: ORG_REQUIRED_MESSAGE, error_code: 'AI_ORG_REQUIRED' \}, 403\);/);
   assert.match(outreachFn, /buildOutreachContext\(\s*outreachConfig as any,\s*clientName,\s*senderName \|\| 'Recruteur',\s*organizationName \|\| null,\s*\)/);
   assert.match(replyFn, /\.from\('organization_members'\)\s*\.select\('id'\)\.eq\('user_id', userId\)\.eq\('organization_id', orgId\)\.maybeSingle\(\)/);
   // Vague finale (REV engine-conditions-channels-13) : l'expéditeur est l'appelant, jamais le candidat.
@@ -195,11 +196,14 @@ test('SEQ-051 — configuration d’approche relue sur la mission quand le front
   assert.deepEqual(outreach.normalizeMissionId('recAbc123'), { kind: 'job_id', id: 'recAbc123' });
   assert.equal(outreach.normalizeMissionId('x),id.neq.(0'), null, 'jamais injecté dans un filtre');
   assert.equal(outreach.normalizeMissionId(''), null);
-  assert.match(outreachFn, /let outreachConfig: typeof bodyOutreachConfig = bodyOutreachConfig;\s*if \(!outreachConfig && verifiedOrgId\) \{/);
+  // Lot 5e-2 : la mission est relue dans l'organisation vérifiée (configuration absente du corps, lien d'agenda).
+  assert.match(outreachFn, /let outreachConfig: typeof bodyOutreachConfig = bodyOutreachConfig;/);
+  assert.match(outreachFn, /if \(!outreachConfig && cfg && typeof cfg === 'object'\) outreachConfig = cfg as typeof bodyOutreachConfig;/);
   assert.match(outreachFn, /normalizeMissionId\(missionId \?\? job\?\.id\)/);
-  assert.match(outreachFn, /\.from\('sourcing_projects'\)\.select\('job_details'\)\.eq\('organization_id', verifiedOrgId\)/);
+  assert.match(outreachFn, /\.from\('sourcing_projects'\)\.select\('job_details, calendly_link'\)\.eq\('organization_id', orgId\)/);
   // La config relue alimente le contexte d'approche ET l'anonymisation.
   const readAt = outreachFn.indexOf("outreachConfig = cfg as typeof bodyOutreachConfig;");
+  assert.ok(outreachFn.indexOf('const orgId = verifiedOrgId;') < readAt, 'organisation vérifiée avant la lecture de la mission');
   assert.ok(readAt > 0 && readAt < outreachFn.indexOf('buildOutreachContext('));
   assert.ok(readAt < outreachFn.indexOf('if (outreachConfig?.anonymize_client && clientNameRaw)'));
 });

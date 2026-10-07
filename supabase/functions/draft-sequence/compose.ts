@@ -6,22 +6,30 @@
 //   Sortie  { ok, mission: { id, title }, facts: [{ id, label }] (les plus forts d'abord), messages: string[],
 //             angles: [{ id, label, description, why, recommended }],
 //             defaults: { angle, relances, first_contact, profile_visit },
-//             cost: { estimated, label, remaining, sufficient }, notice }
+//             cost: { estimated, label, remaining, sufficient }, notice,
+//             style, style_summary, level, level_label, max_level,
+//             levels: [{ id, label, credits, allowed }], has_calendly_link }
 //   Arguments retenus du poste (liste fermée), « Vos messages » repris du
-//   Cadrage, trois angles fixes dont un « Recommandé », coût annoncé.
+//   Cadrage, trois angles fixes dont un « Recommandé », coût annoncé au niveau
+//   par défaut et pour chaque niveau (lot 5e-2), style par défaut de la personne.
 //
 // draft (payante : un appel au modèle, une correction au plus)
 //   Entrée  { action: 'draft', organization_id, mission_id, angle?, kept_fact_ids?,
 //             extra_arguments?, relances? (1 à 3), profile_visit?, first_contact?
-//             ('invitation' | 'inmail'), _ai_model? }
+//             ('invitation' | 'inmail'), ai_level? ('rapide' | 'equilibre' | 'avance'),
+//             style? (partiel : length, tone, spontaneity, hook, cta) }
 //   Sortie  { ok, mission_id, angle, draft: { name, description, steps }, flags,
-//             correction, credits: { used, remaining } }
+//             correction, credits: { used, remaining }, level, level_label,
+//             style, style_summary }
 //   steps : étapes au format de l'éditeur (SequenceStep), jamais enregistrées ;
 //   flags : « À rédiger » (texte retiré, l'enregistrement est bloqué) et « À relire ».
 //   Ordre : membre de l'organisation, mission lue dans cette organisation (sinon
-//   404), poste assez décrit (422), arguments ajoutés contrôlés (422), crédits
-//   (assertCredits, 402 sans appel), appel (call-claude.ts, 30 s au plus),
-//   correction s'il reste 30 s sur les 60, settleCredits. Aucune garde d'offre
+//   404), poste assez décrit (422), arguments ajoutés contrôlés (422), niveau
+//   (lot 5e-2 : absent → défaut de l'organisation, au-dessus du plafond → 403
+//   AI_LEVEL_NOT_ALLOWED, inconnu → 400), style (400 STYLE_INVALID), crédits
+//   au modèle du niveau (assertCredits, 402 sans appel), appel (call-claude.ts,
+//   30 s au plus), correction s'il reste 30 s sur les 60, settleCredits sur le
+//   modèle appelé. _ai_model n'est plus lu. Aucune garde d'offre
 //   (décision 6 : la formule gratuite rédige dans la limite de ses crédits).
 //   Seule écriture : le débit de crédits.
 // Erreurs : { error, error_code } (convention de invokeEdgeFunction).
@@ -30,11 +38,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { verifyOrgMembership } from "../_shared/require-auth.ts";
 import { callClaudeCompat, type OpenAIMessage } from "../_shared/call-claude.ts";
-import { MODEL_CATALOG, getAnthropicModelId, getModel } from "../_shared/ai-config.ts";
-import { assertCredits, estimateActionCredits } from "../_shared/credit-guard.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
+import { assertCredits } from "../_shared/credit-guard.ts";
 import { settleCredits } from "../_shared/settle-credits.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { hasTimeForAiCorrection } from "../_shared/sequence-send-rules.ts";
+import { loadWritingSettings } from "../_shared/writing-settings.ts";
+import {
+  AI_LEVEL_LABELS,
+  levelChoices,
+  levelCredits,
+  mergeStyle,
+  modelForLevel,
+  resolveAiLevel,
+  styleSummary,
+  type StyleLength,
+} from "../_shared/writing-style.ts";
 import {
   DRAFT_CREDITS_MESSAGE,
   DRAFT_DEFAULT_RELANCES,
@@ -86,8 +105,10 @@ const FUNCTION_BUDGET_MS = 60_000;
 const MODEL_TIMEOUT_MS = 30_000;
 /** Marge gardée pour le débit et la réponse. */
 const RESPONSE_MARGIN_MS = 5_000;
-const MAX_OUTPUT_TOKENS = 2_000;
+/** Jetons de sortie selon la longueur demandée (Standard = valeur du lot 5e). */
+const MAX_OUTPUT_TOKENS: Readonly<Record<StyleLength, number>> = { court: 1_500, standard: 2_000, detaille: 3_000 };
 const FAILED_MESSAGE = "La rédaction n'a pas pu être préparée. Réessayez dans un instant.";
+const SETTINGS_UNAVAILABLE_MESSAGE = "Vos réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant.";
 
 export interface ComposeContext {
   userId: string;
@@ -107,7 +128,6 @@ interface MissionRow {
 interface OrgRow {
   name: string | null;
   org_type: string | null;
-  ai_model_default: string | null;
 }
 
 type Loaded =
@@ -136,7 +156,7 @@ async function loadMission(organizationId: string, missionId: string, ctx: Compo
       .eq("id", missionId)
       .eq("organization_id", organizationId)
       .maybeSingle(),
-    admin.from("organizations").select("name, org_type, ai_model_default").eq("id", organizationId).maybeSingle(),
+    admin.from("organizations").select("name, org_type").eq("id", organizationId).maybeSingle(),
   ]);
   if (missionError || orgError) {
     console.error("[draft-sequence] lecture de la mission:", missionError?.message ?? orgError?.message);
@@ -146,7 +166,7 @@ async function loadMission(organizationId: string, missionId: string, ctx: Compo
     return { ok: false, response: json({ error: "Mission introuvable dans cette organisation.", error_code: "MISSION_NOT_FOUND" }, 404) };
   }
   const row = mission as MissionRow;
-  const orgRow = (org ?? { name: null, org_type: null, ai_model_default: null }) as OrgRow;
+  const orgRow = (org ?? { name: null, org_type: null }) as OrgRow;
   const facts = pickBriefFacts({
     jobDetails: row.job_details,
     missionName: row.name ?? "",
@@ -160,11 +180,6 @@ async function loadMission(organizationId: string, missionId: string, ctx: Compo
   return { ok: true, admin, mission: row, org: orgRow, facts, forbidden: briefForbiddenValues(row.job_details) };
 }
 
-/** Modèle de la rédaction : choix de la personne, puis de l'organisation, puis le défaut de l'action. */
-function draftModel(org: OrgRow, userModel: string | null): string {
-  const chosen = userModel && MODEL_CATALOG[userModel] ? userModel : null;
-  return getModel("default", chosen, org.ai_model_default, AI_ACTION);
-}
 
 /** Solde lu sans écriture ; null quand il est illisible ou que la période est échue (rechargée au prochain débit). */
 async function readRemainingCredits(admin: AdminClient, organizationId: string): Promise<number | null> {
@@ -190,10 +205,14 @@ async function prepare(body: unknown, ctx: ComposeContext): Promise<Response> {
 
   const loaded = await loadMission(organizationId, missionId, ctx);
   if (!loaded.ok) return loaded.response;
-  const { admin, org, facts } = loaded;
+  const { admin, facts } = loaded;
+
+  // Réglages de rédaction (lot 5e-2) : niveaux de l'organisation, style de la personne.
+  const settings = await loadWritingSettings(admin, { organizationId, userId: ctx.userId });
+  if (!settings.ok) return json({ error: SETTINGS_UNAVAILABLE_MESSAGE, error_code: "AI_SETTINGS_UNAVAILABLE" }, 503);
 
   const angles = deriveAngles(facts);
-  const { estimated } = estimateActionCredits(AI_ACTION, draftModel(org, null));
+  const estimated = levelCredits(AI_ACTION, settings.defaultLevel);
   const remaining = await readRemainingCredits(admin, organizationId);
 
   return json({
@@ -216,6 +235,13 @@ async function prepare(body: unknown, ctx: ComposeContext): Promise<Response> {
       sufficient: remaining === null ? null : remaining >= estimated,
     },
     notice: DRAFT_NOTICE,
+    style: settings.style,
+    style_summary: styleSummary(settings.style),
+    level: settings.defaultLevel,
+    level_label: AI_LEVEL_LABELS[settings.defaultLevel],
+    max_level: settings.maxLevel,
+    levels: levelChoices(AI_ACTION, settings),
+    has_calendly_link: facts.hasCalendlyLink,
   });
 }
 
@@ -255,8 +281,17 @@ async function draft(body: unknown, ctx: ComposeContext): Promise<Response> {
     if (refusal) return json({ error: refusal, error_code: "DRAFT_ARGUMENT_REFUSED", argument_index: index }, 422);
   }
 
-  // Crédits avant tout appel au modèle : 402 sans appel ni débit.
-  const modelId = draftModel(org, request.ai_model);
+  // Niveau et style (lot 5e-2), avant le garde des crédits : un niveau
+  // au-dessus du plafond de l'organisation est refusé sans appel ni débit.
+  const settings = await loadWritingSettings(admin, { organizationId, userId: ctx.userId });
+  if (!settings.ok) return json({ error: SETTINGS_UNAVAILABLE_MESSAGE, error_code: "AI_SETTINGS_UNAVAILABLE" }, 503);
+  const resolved = resolveAiLevel(request.ai_level, settings);
+  if (!resolved.ok) return json({ error: resolved.error, error_code: resolved.code }, resolved.status);
+  const level = resolved.level;
+  const style = mergeStyle(settings.style, request.style);
+
+  // Crédits avant tout appel au modèle, au prix du modèle du niveau : 402 sans appel ni débit.
+  const modelId = modelForLevel(level);
   const gate = await assertCredits({ userId: ctx.userId, organizationId, aiAction: AI_ACTION, modelId, adminClient: admin });
   if (!gate.ok) {
     return json({
@@ -281,8 +316,10 @@ async function draft(body: unknown, ctx: ComposeContext): Promise<Response> {
     angle,
     skeleton,
     organizationName,
+    style,
   });
-  const aiContext = await loadAndBuildAiContext(admin, { orgId: organizationId, userId: ctx.userId });
+  // Sans « Ton imposé » : le vouvoiement et le style de la rédaction priment.
+  const aiContext = await loadAndBuildAiContext(admin, { orgId: organizationId, userId: ctx.userId, omitTone: true });
   const anthropicModel = getAnthropicModelId(modelId);
 
   const callModel = async (messages: OpenAIMessage[]): Promise<ModelTurn> => {
@@ -291,7 +328,7 @@ async function draft(body: unknown, ctx: ComposeContext): Promise<Response> {
     const result = await callClaudeCompat({
       model: anthropicModel,
       messages,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: MAX_OUTPUT_TOKENS[style.length],
       antiAiStyle: "full",
       aiContext,
       response_format: { type: "json_object" },
@@ -377,6 +414,10 @@ async function draft(body: unknown, ctx: ComposeContext): Promise<Response> {
     flags,
     correction,
     credits: { used: settled.charged, remaining },
+    level,
+    level_label: AI_LEVEL_LABELS[level],
+    style,
+    style_summary: styleSummary(style),
   });
 }
 

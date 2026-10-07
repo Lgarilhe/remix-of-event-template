@@ -25,7 +25,7 @@ import { Switch } from '@/components/ui/switch';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MESSAGE_TONES } from '@/lib/sequenceCatalog';
+import { AI_STEP_STYLE_NOTICE } from '@/lib/writingStyle';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 import {
   SMART_MESSAGE_INMAIL_HELP,
@@ -339,14 +339,8 @@ export function StepPanel({
                 {usesAi && <p className="text-sm text-foreground-secondary">{AI_WRITES_NOTICE}</p>}
               </div>
             )}
-            {usesAi && (
-              <Field label="Ton" htmlFor={`${id}-tone`}>
-                <Select value={active.aiTone || 'professional'} onValueChange={(value) => updateActive({ aiTone: value as Step['aiTone'] })}>
-                  <SelectTrigger id={`${id}-tone`} className={FIELD}><SelectValue /></SelectTrigger>
-                  <SelectContent>{MESSAGE_TONES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-            )}
+            {/* Lot 5e-2 : plus de ton par étape ; le style se choisit à la rédaction, avant l'inscription (aiTone reste dans la charge enregistrée). */}
+            {usesAi && <p className="text-sm text-foreground-secondary">{AI_STEP_STYLE_NOTICE}</p>}
             {type === 'smart_message' && (
               <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                 <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />

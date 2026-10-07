@@ -193,7 +193,9 @@ test('prepare : gratuite, sans IA, sans débit', () => {
   const compose = read(DRAFT_COMPOSE);
   const prepare = fnBody(compose, 'async function prepare(');
   assert.doesNotMatch(prepare, /assertCredits|settleCredits|callClaudeCompat|callModel/);
-  assert.match(prepare, /estimateActionCredits\(AI_ACTION, draftModel\(org, null\)\)/, 'coût annoncé, sans débit');
+  // Lot 5e-2 : coût annoncé au niveau par défaut de l'organisation, et pour chaque niveau.
+  assert.match(prepare, /const estimated = levelCredits\(AI_ACTION, settings\.defaultLevel\);/, 'coût annoncé, sans débit');
+  assert.match(prepare, /levels: levelChoices\(AI_ACTION, settings\),/);
   assert.match(prepare, /notice: DRAFT_NOTICE,/);
   const shared = read(SEQUENCE_DRAFT);
   assert.match(shared, /export const DRAFT_NOTICE = 'Rien ne part avant que vous inscriviez des candidats\.';/);
@@ -316,11 +318,11 @@ test('text-action : sorties de séquence passées par checkDraftTexts, tutoiemen
   const review = at(src, 'const review = reviewTextProposal(');
   assert.ok(refuseTone < gate && refuseAction < gate, 'refus avant le garde des crédits');
   assert.ok(gate < call && call < settle && settle < review, 'crédits, appel, débit, puis contrôle de la proposition');
-  assert.match(src, /const SEQUENCE_ACTIONS = new Set<Action>\(\['rewrite', 'shorten', 'hook', 'proofread'\]\);/);
+  assert.match(src, /const SEQUENCE_ACTIONS = new Set<Action>\(\['rewrite', 'shorten', 'hook', 'proofread', 'restyle'\]\);/);
   assert.match(src.slice(review), /if \(review\.refusals\.length > 0\) \{[\s\S]*?error_code: 'PROPOSAL_NOT_COMPLIANT'[\s\S]*?\}, 422\);/);
   // La seule sortie réussie du contexte séquence est la proposition contrôlée.
   const sequenceExit = src.slice(at(src, 'if (sequenceContext) {\n      let proposal'));
-  assert.match(sequenceExit, /return json\(\{ success: true, text: proposal, warnings: review\.warnings, credits_used: creditsUsed \}\);/);
+  assert.match(sequenceExit, /return json\(\{ success: true, text: proposal, warnings: review\.warnings, credits_used: creditsUsed, \.\.\.applied \}\);/);
   // Vouvoiement imposé dans la consigne, même après le contexte IA ou les préférences ; modèle de l'action par getAnthropicModelId.
   assert.match(src, /"- Vouvoiement obligatoire dans le texte, même si le texte d'origine tutoie ou si un autre ton est indiqué plus haut\."/);
   // Aucune nouvelle tentative du modèle en contexte séquence : la réponse tient dans les 60 s.
@@ -328,15 +330,19 @@ test('text-action : sorties de séquence passées par checkDraftTexts, tutoiemen
   // Valeurs gardées pour l'équipe contrôlées avec la mission.
   assert.match(src, /sequenceForbidden = briefForbiddenValues\(mission\.job_details\);/);
   assert.match(src, /forbidden: sequenceForbidden,/);
-  assert.match(src, /model: sequenceContext \? getAnthropicModelId\(_aiParams\.modelId\) : undefined,/);
+  // Lot 5e-2 : modèle du niveau (jamais _ai_model) en contexte séquence.
+  assert.match(src, /const modelId = sequenceLevel \? modelForLevel\(sequenceLevel\) : _aiParams\.modelId;/);
+  assert.match(src, /model: sequenceContext \? getAnthropicModelId\(modelId\) : undefined,/);
   // Mission lue dans l'organisation seulement.
   assert.match(src, /\.eq\('id', body\.mission_id\)\s*\.eq\('organization_id', body\.organization_id!\)/);
   // reviewTextProposal applique checkDraftTexts.
   const reviewFn = fnBody(read(SEQUENCE_DRAFT), 'export function reviewTextProposal(');
   assert.match(reviewFn, /checkDraftTexts\(\[\{ slot: input\.slot, subject: '', body \}\], ctx\)/);
-  // Une proposition qui tutoie un texte qui vouvoyait est refusée, pas seulement signalée.
-  assert.match(reviewFn, /const addedTutoiement = \(i: DraftIssue\) => i\.code === 'tutoiement' && !before\.some\(\(b\) => b\.code === 'tutoiement'\);/);
-  assert.match(reviewFn, /\.\.\.after\.filter\(addedTutoiement\)/);
+  // Une proposition qui tutoie un texte qui vouvoyait est refusée, pas seulement signalée :
+  // le tutoiement est un refus de checkDraftTexts (lot 5e-2), hérité seulement s'il était déjà là.
+  assert.match(reviewFn, /const refusals = after\.filter\(\(i\) => i\.severity === 'refuse' && !inherited\(i\)\)/);
+  const checkFn = fnBody(read(SEQUENCE_DRAFT), 'export function checkDraftTexts(');
+  assert.match(checkFn, /if \(hasTutoiement\(plain, \[ctx\.organizationName, \.\.\.\(ctx\.knownNames \?\? \[\]\)\]\)\) \{\n\s*refuse\(field, 'tutoiement'/);
 });
 
 // ─── draft_outreach_message (correctif 3) ───────────────────────────────────
@@ -353,14 +359,18 @@ test('draft_outreach_message : vouvoiement, rémunération contrôlée, crédits
   assert.ok(gate < refused && refused < call, 'crédits contrôlés avant l’appel, refus sans appel');
   assert.ok(call < settle && settle < check, 'appel, débit, puis contrôle du brouillon');
   assert.match(exec.slice(refused, call), /return \{ success: false, error: 'Crédits IA insuffisants pour rédiger ce message\.' \};/);
-  assert.match(exec, /aiAction: 'outreach_message',\s*modelId: DRAFT_MESSAGE_MODEL,/);
-  assert.match(exec, /model: getAnthropicModelId\(DRAFT_MESSAGE_MODEL\),/);
+  // Lot 5e-2 : modèle du niveau par défaut de l'organisation, estimé par le garde puis appelé.
+  assert.match(exec, /const modelId = modelForLevel\(level\);/);
+  assert.match(exec, /aiAction: 'outreach_message',\s*modelId,/);
+  assert.match(exec, /model: getAnthropicModelId\(modelId\),/);
+  assert.doesNotMatch(src, /DRAFT_MESSAGE_MODEL/);
   assert.match(exec, /timeoutMs: 30000,/);
   // Aucune nouvelle tentative : trois essais de 30 s dépasseraient les 60 s.
   assert.match(exec.slice(call, settle), /maxRetries: 0,/);
   // Vouvoiement, quel que soit le ton ; plus aucun ton qui tutoie proposé.
   assert.match(exec, /Le message vouvoie toujours le candidat, quel que soit le ton\./);
   assert.match(exec, /- Vouvoiement obligatoire, jamais de tutoiement/);
+  assert.match(exec, /const styleRules = buildStyleInstructions\(style, \{ slots: \[slot\], audience: 'candidate', agenda: 'none' \}\);/);
   assert.match(tool, /The message always addresses the candidate with 'vous'\./);
   assert.match(tool, /enum: \['professional', 'concise'\],/);
   // Poste par la liste fermée (alias d'un client anonymisé), jamais client_name ni la description brute.
@@ -368,7 +378,7 @@ test('draft_outreach_message : vouvoiement, rémunération contrôlée, crédits
   assert.doesNotMatch(exec.slice(0, call), /\$\{project\.client_name|project\.description|jd\.description/);
   // Rémunération : interdite dans la consigne ; brouillon passé par checkDraftTexts (client anonymisé, tutoiement).
   assert.match(exec, /- Aucune rémunération : ni salaire, ni montant, ni fourchette, ni avantage chiffré/);
-  assert.match(exec.slice(check), /draftCheckContextFor\(facts, \{ organizationName, firstContact, forbidden: briefForbiddenValues\(project\.job_details\) \}\)/);
+  assert.match(exec.slice(check), /draftCheckContextFor\(facts, \{ organizationName, firstContact, forbidden: briefForbiddenValues\(project\.job_details\), knownNames \}\)/);
   assert.match(exec.slice(check), /const refusals = issues\.filter\(\(i\) => i\.severity === 'refuse' \|\| i\.code === 'tutoiement'\);/);
   assert.match(exec.slice(check), /return \{ success: false, error: `Brouillon refusé : \$\{why\}\. Demandez une nouvelle proposition\.` \};/);
 });

@@ -1,10 +1,55 @@
 // Deno.serve used directly
+//
+// generate-outreach-message : message d'approche rédigé par l'IA pour un
+// candidat précis (aperçus de la préparation de l'inscription, « Relire le
+// message », fenêtre de message, InMail groupé).
+//
+// Lot 5e-2 (style et niveau de l'IA) :
+//   Entrée en plus : organization_id (ajouté par le navigateur), ai_level?
+//   ('rapide' | 'equilibre' | 'avance'), style? (partiel : length, tone,
+//   spontaneity, hook, cta). L'ancien `tone` est converti, sans tutoiement.
+//   message_kind? ('message' | 'inmail', hors séquence : fenêtre de message,
+//   InMail groupé) : longueurs et format de l'InMail (objet et corps) ; sans
+//   lui, premier message. Ignoré quand sequenceContext donne le type d'étape ;
+//   toute autre valeur → 400 MESSAGE_KIND_INVALID.
+//   Organisation : celle du corps, vérifiée ; sinon l'organisation active,
+//   vérifiée ; sinon 403 AI_ORG_REQUIRED avant tout appel et tout débit.
+//   Niveau : absent → défaut de l'organisation ; au-dessus du plafond → 403
+//   AI_LEVEL_NOT_ALLOWED ; inconnu → 400 AI_LEVEL_INVALID ; style inconnu →
+//   400 STYLE_INVALID. Modèle du niveau, action outreach_message fixée par le
+//   serveur (_ai_model et _ai_action ignorés), garde et débit sur
+//   l'organisation vérifiée et le modèle appelé.
+//   Sortie en plus : level, level_label, style, style_summary.
+//   Contrôles de sortie bloquants (une correction, puis 422
+//   PREVIEW_NOT_COMPLIANT) : detectSequenceViolations, tutoiement (noms du
+//   profil masqués), note d'invitation de plus de 300 caractères.
+//   Délai : échéance de 55 s depuis le début de la requête, appels au modèle
+//   de 30 s au plus, correction seulement s'il reste 30 s.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
-import { detectSequenceViolations } from "../_shared/sequence-send-rules.ts";
+import { detectSequenceViolations, hasTimeForAiCorrection } from "../_shared/sequence-send-rules.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
+import { loadWritingSettings } from "../_shared/writing-settings.ts";
+import {
+  AI_LEVEL_LABELS,
+  INVITATION_NOTE_HARD_MAX,
+  LENGTH_TARGETS,
+  buildStyleInstructions,
+  ctaFor,
+  hasTutoiement,
+  lengthLine,
+  mergeStyle,
+  modelForLevel,
+  parseStyleOverrides,
+  resolveAiLevel,
+  slotFor,
+  styleFromLegacyTone,
+  styleSummary,
+  type AgendaContext,
+} from "../_shared/writing-style.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -246,6 +291,21 @@ function detectViolations(args: {
 /** Code d'erreur d'un aperçu refusé par les garde-fous bloquants du moteur. */
 const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';
 
+/** Libellés des contrôles ajoutés par le lot 5e-2 (vouvoiement, note d'invitation). */
+const TUTOIEMENT_LABEL = 'tutoiement du candidat';
+const INVITE_TOO_LONG_LABEL = `note d'invitation de plus de ${INVITATION_NOTE_HARD_MAX} caractères`;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Échéance de la fonction (le navigateur attend 90 s, la fonction en a 60). */
+const FUNCTION_BUDGET_MS = 55_000;
+/** Délai d'un appel au modèle (convention : 30 s pour un appel LLM). */
+const MODEL_TIMEOUT_MS = 30_000;
+/** Marge gardée pour les contrôles, le débit et la réponse. */
+const RESPONSE_MARGIN_MS = 5_000;
+const ORG_REQUIRED_MESSAGE = "Organisation introuvable pour cette rédaction. Rechargez la page.";
+const SETTINGS_UNAVAILABLE_MESSAGE = "Vos réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant.";
+const UNAVAILABLE_MESSAGE = "La rédaction est indisponible pour l'instant. Réessayez dans un instant.";
+
 /**
  * Phrase française d'un aperçu refusé, à partir des libellés de
  * detectSequenceViolations (sequence-send-rules.ts). Aucun code ni jeton
@@ -256,6 +316,8 @@ function previewRefusalMessage(labels: string[]): string {
   if (labels.some((l) => l.startsWith('mention de salaire'))) reasons.push('mentionne une rémunération');
   if (labels.some((l) => l.startsWith('signature'))) reasons.push('est signé « Recruteur »');
   if (labels.some((l) => l.startsWith('RPO'))) reasons.push('emploie une formulation de cabinet');
+  if (labels.includes(TUTOIEMENT_LABEL)) reasons.push('tutoie le candidat');
+  if (labels.includes(INVITE_TOO_LONG_LABEL)) reasons.push(`dépasse ${INVITATION_NOTE_HARD_MAX} caractères pour une note d'invitation`);
   const why = reasons.length > 0 ? reasons.join(' et ') : 'ne respecte pas les règles d\'envoi';
   return `Aperçu refusé : le message proposé ${why}, il ne peut pas partir. Régénérez l'aperçu.`;
 }
@@ -438,6 +500,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+  // Échéance de la requête : publications, contexte, appels au modèle et correction compris.
+  const deadline = Date.now() + FUNCTION_BUDGET_MS;
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
     // Auth check
@@ -506,24 +572,18 @@ Deno.serve(async (req) => {
       };
     };
 
-    // Resolve AI model from frontend
-    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
-      aiAction: "outreach_message", modelId: "claude-sonnet-4-6", description: null,
-    };
-    try {
-      const { extractAIParams } = await import("../_shared/settle-credits.ts");
-      _aiParams = extractAIParams(_body, "outreach_message");
-    } catch (e) {
-      console.warn("[generate-outreach-message] Failed to load settle-credits:", e);
+    // Lot 5e-2 : action fixée par le serveur, modèle choisi par le niveau
+    // (jamais _ai_model ni _ai_action) ; seule la description est reprise.
+    const AI_ACTION = "outreach_message";
+    const aiDescription = typeof _body?._ai_description === "string" ? _body._ai_description.slice(0, 200) : null;
+    const parsedStyle = parseStyleOverrides(_body?.style);
+    if (!parsedStyle.ok) return json({ error: parsedStyle.error, error_code: parsedStyle.code }, parsedStyle.status);
+    // Canal hors séquence (InMail groupé, fenêtre de message) : valeur fermée.
+    const rawMessageKind = _body?.message_kind;
+    if (rawMessageKind !== undefined && rawMessageKind !== null && rawMessageKind !== 'message' && rawMessageKind !== 'inmail') {
+      return json({ error: 'Type de message inconnu. Rechargez la page.', error_code: 'MESSAGE_KIND_INVALID' }, 400);
     }
-    let _resolvedAnthropicModel = "claude-sonnet-4-6";
-    try {
-      const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
-      const resolved = getAnthropicModelId(_aiParams.modelId);
-      _resolvedAnthropicModel = resolved.startsWith("claude-") ? resolved : "claude-sonnet-4-6";
-    } catch (e) {
-      console.warn("[generate-outreach-message] Failed to load ai-config:", e);
-    }
+    const messageKind: 'message' | 'inmail' | null = rawMessageKind === 'message' || rawMessageKind === 'inmail' ? rawMessageKind : null;
     
     // Build Calendly link with pre-filled fields (LinkedIn URL + name)
     const buildCalendlyPrefill = (base: string, linkedInUrl?: string, name?: string): string => {
@@ -558,75 +618,96 @@ Deno.serve(async (req) => {
       throw new Error("Profile and job data are required");
     }
 
-    // Fetch org_id for RAG context + credential resolution
-    let orgId: string | null = null;
-    try {
-      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
-      orgId = profileRow?.active_organization_id || null;
-    } catch (e) {
-      console.warn('[generate-outreach-message] Could not fetch org_id:', e);
+    // Organisation vérifiée (lot 5e-2, aucun repli permissif) : celle du corps
+    // (le navigateur l'ajoute à chaque appel), sinon l'organisation active, et
+    // l'appelant doit en être membre. Sans organisation vérifiée, aucun appel
+    // ni débit : garde des crédits, plafond du niveau et débit portent tous sur
+    // elle. Son nom porte l'identité de l'expéditeur (SEQ-097, jamais
+    // « Konekt »), et la mission n'est relue que dans cette organisation (SEQ-051).
+    // Même contrôle que verifyOrgMembership (require-auth.ts), sur ce client.
+    const isMemberOf = async (organizationId: string): Promise<boolean> => {
+      const { data: membership, error: memberError } = await svc.from('organization_members')
+        .select('id').eq('user_id', userId).eq('organization_id', organizationId).maybeSingle();
+      if (memberError) console.warn('[generate-outreach-message] membership check failed:', memberError.message);
+      return !!membership;
+    };
+    const bodyOrgId = typeof _body?.organization_id === 'string' && UUID_RE.test(_body.organization_id) ? _body.organization_id : null;
+    let verifiedOrgId: string | null = null;
+    if (bodyOrgId) {
+      if (!await isMemberOf(bodyOrgId)) {
+        return json({ error: "Vous n'êtes pas membre de cette organisation.", error_code: 'AI_ORG_FORBIDDEN' }, 403);
+      }
+      verifiedOrgId = bodyOrgId;
+    } else {
+      const { data: profileRow, error: profileError } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      if (profileError) console.warn('[generate-outreach-message] active organization read failed:', profileError.message);
+      const activeOrgId = (profileRow as { active_organization_id?: string | null } | null)?.active_organization_id || null;
+      if (activeOrgId && await isMemberOf(activeOrgId)) verifiedOrgId = activeOrgId;
     }
+    if (!verifiedOrgId) return json({ error: ORG_REQUIRED_MESSAGE, error_code: 'AI_ORG_REQUIRED' }, 403);
+    const orgId = verifiedOrgId;
+
+    const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
+    if (orgError) console.warn('[generate-outreach-message] organization name read failed:', orgError.message);
+    const organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim();
+
+    // Niveau et style (lot 5e-2), avant le garde des crédits : un niveau
+    // au-dessus du plafond de l'organisation est refusé sans appel ni débit.
+    const settings = await loadWritingSettings(svc, { organizationId: orgId, userId });
+    if (!settings.ok) return json({ error: SETTINGS_UNAVAILABLE_MESSAGE, error_code: 'AI_SETTINGS_UNAVAILABLE' }, 503);
+    const resolvedLevel = resolveAiLevel(_body?.ai_level, settings);
+    if (!resolvedLevel.ok) return json({ error: resolvedLevel.error, error_code: resolvedLevel.code }, resolvedLevel.status);
+    const level = resolvedLevel.level;
+    // Ancien ton (client sans `style`) : converti, jamais au tutoiement ;
+    // « professional », valeur envoyée par défaut, laisse le style de la personne.
+    const legacyTone = _body?.style == null && tone !== 'professional' ? styleFromLegacyTone(tone) : {};
+    const style = mergeStyle(mergeStyle(settings.style, legacyTone), parsedStyle.overrides);
+    const modelId = modelForLevel(level);
+    const _resolvedAnthropicModel = getAnthropicModelId(modelId);
+    const applied = { level, level_label: AI_LEVEL_LABELS[level], style, style_summary: styleSummary(style) };
 
     // Un seul garde à l'entrée, pas un par appel : la passe de correction
     // (callAnthropic une 2e fois) fait partie du même message. La refuser en
     // cours de route renverrait un message qui a échoué à sa propre
-    // validation. Placé après orgId pour ne pas relire l'org dans le garde,
-    // et avant le RAG et les identifiants LinkedIn, inutiles si on refuse.
+    // validation. Au prix du modèle du niveau, sur l'organisation vérifiée,
+    // avant le RAG et les identifiants LinkedIn, inutiles si on refuse.
     const gate = await assertCredits({
       userId,
       organizationId: orgId,
-      aiAction: _aiParams.aiAction,
-      modelId: _aiParams.modelId,
+      aiAction: AI_ACTION,
+      modelId,
     });
     if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
-    // Organisation vérifiée de l'appelant (membre de son organisation active) :
-    // son nom porte l'identité de l'expéditeur (SEQ-097, jamais « Konekt »), et
-    // la mission n'est relue que dans cette organisation (SEQ-051).
-    let verifiedOrgId: string | null = null;
-    let organizationName = '';
-    if (orgId) {
-      try {
-        // Même contrôle que verifyOrgMembership (require-auth.ts), sur ce client.
-        const { data: membership, error: memberError } = await svc.from('organization_members')
-          .select('id').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
-        if (memberError) console.warn('[generate-outreach-message] membership check failed:', memberError.message);
-        if (membership) {
-          verifiedOrgId = orgId;
-          const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
-          if (orgError) console.warn('[generate-outreach-message] organization name read failed:', orgError.message);
-          organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim();
-        }
-      } catch (e) {
-        console.warn('[generate-outreach-message] organization check failed:', e);
-      }
-    }
-
-    // SEQ-051 : configuration d'approche absente du body mais mission connue →
-    // relue sur la mission (job_details.outreach_config), pour que le mode
-    // interne ou cabinet et l'anonymisation du client s'appliquent toujours.
+    // Mission de l'organisation vérifiée (SEQ-051) : configuration d'approche
+    // quand le corps ne la donne pas, et lien d'agenda (lot 5e-2 : la variable
+    // {{lien_calendly}} n'est proposée que si le moteur pourra la rendre).
     let outreachConfig: typeof bodyOutreachConfig = bodyOutreachConfig;
-    if (!outreachConfig && verifiedOrgId) {
+    let missionHasCalendlyLink = false;
+    {
       const { normalizeMissionId } = await import('../_shared/outreach-context.ts');
       const missionKey = normalizeMissionId(missionId ?? job?.id);
       if (missionKey) {
         try {
-          const base = svc.from('sourcing_projects').select('job_details').eq('organization_id', verifiedOrgId);
+          const base = svc.from('sourcing_projects').select('job_details, calendly_link').eq('organization_id', orgId);
           const { data: mission, error: missionError } = await (missionKey.kind === 'uuid'
             ? base.or(`id.eq.${missionKey.id},job_id.eq.${missionKey.id}`)
             : base.eq('job_id', missionKey.id)
           ).limit(1).maybeSingle();
-          if (missionError) console.warn('[generate-outreach-message] mission outreach_config read failed:', missionError.message);
-          const cfg = ((mission as { job_details?: Record<string, unknown> | null } | null)?.job_details)?.outreach_config;
-          if (cfg && typeof cfg === 'object') outreachConfig = cfg as typeof bodyOutreachConfig;
+          if (missionError) console.warn('[generate-outreach-message] mission read failed:', missionError.message);
+          const row = mission as { job_details?: Record<string, unknown> | null; calendly_link?: string | null } | null;
+          const cfg = row?.job_details?.outreach_config;
+          if (!outreachConfig && cfg && typeof cfg === 'object') outreachConfig = cfg as typeof bodyOutreachConfig;
+          missionHasCalendlyLink = !!(row?.calendly_link || row?.job_details?.calendly_link);
         } catch (e) {
-          console.warn('[generate-outreach-message] mission outreach_config read failed:', e);
+          console.warn('[generate-outreach-message] mission read failed:', e);
         }
       }
     }
 
-    // Load AI context (Settings → Contexte IA) for prompt injection
-    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
+    // Load AI context (Settings → Contexte IA) for prompt injection, sans
+    // « Ton imposé » : le vouvoiement et le style de la rédaction priment.
+    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId, omitTone: true });
 
     // Resolve Unipile credentials from org_integrations with env fallback
     let resolvedUnipile: { dsn: string; apiKey: string } | null = null;
@@ -654,11 +735,21 @@ Deno.serve(async (req) => {
     // Debug: log accompagnement to verify it's being received
     console.log('[generate-outreach-message] Job accompagnement:', JSON.stringify(job.accompagnement), 'Client:', job.client?.name);
 
-    const toneInstructions = {
-      professional: "Vouvoiement obligatoire. Ton direct, sobre et respectueux. Langage professionnel standard, pas de jargon startup ni d'expressions familières. Évite 'ton taf', 'mise gros', 'ça colle', etc.",
-      casual: "Tutoiement naturel mais reste professionnel. Comme un message à un pair du secteur. Évite le jargon trop startup ('ton taf', 'mise gros'). Reste accessible sans être familier.",
-      enthusiastic: "Tutoiement, ton dynamique mais mesuré. Montre de l'intérêt sans surjouer. Garde un vocabulaire professionnel, évite les expressions trop cool."
-    };
+    // Emplacement et consigne de style (lot 5e-2). Hors séquence (fenêtre de
+    // message, InMail groupé), premier message ou InMail selon message_kind ;
+    // le lien d'agenda fourni par la personne y est permis. En séquence,
+    // {{lien_calendly}} seulement si la mission en a un.
+    const currentActionType = sequenceContext?.currentActionType || messageKind || 'message';
+    const REACH_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message'];
+    const isFirstMessage = !(sequenceContext?.prevSentSteps || []).some((p) => REACH_ACTION_TYPES.includes(p.actionType));
+    const writingSlot = slotFor(currentActionType, isFirstMessage);
+    const agenda: AgendaContext = sequenceContext?.currentActionType
+      ? (missionHasCalendlyLink ? 'variable' : 'none')
+      : (calendlyLink ? 'url' : 'none');
+    const styleRules = buildStyleInstructions(style, { slots: [writingSlot], audience: 'candidate', agenda });
+    const ctaInstruction = ctaFor(writingSlot, style.cta, { agenda }).instruction;
+    const slotLength = lengthLine(writingSlot.kind, style.length);
+    const slotTarget = LENGTH_TARGETS[writingSlot.kind][style.length];
 
     // Si on est dans un contexte de séquence (preview du modal d'enrollment),
     // on calcule le bon msgType (PREMIER MESSAGE / RELANCE 1 / INMAIL DE
@@ -676,7 +767,13 @@ Deno.serve(async (req) => {
           sequenceContext.prevSentSteps || [],
         );
         sequenceMsgType = ctx.msgType;
-        sequenceToneInstructions = ctx.toneInstructions;
+        // Longueurs et cohérence de politesse retirées : la longueur vient du
+        // style demandé, le vouvoiement est imposé (lot 5e-2).
+        sequenceToneInstructions = ctx.toneInstructions
+          .split('\n')
+          .filter((line) => !/caract[eè]res/i.test(line) && !/TUTOIEMENT/.test(line))
+          .join('\n')
+          .trim() || "Note d'invitation.";
         sequencePrevMessagesBlock = ctx.previousMessagesBlock;
         console.log(`[generate-outreach-message] Sequence context detected: ${ctx.msgType}`);
       } catch (e) {
@@ -905,11 +1002,8 @@ Tu écris comme un humain senior qui parle à un PAIR du métier — pas comme u
 - Opinion factuelle : "Le bridge [techno A] → [techno B] pourrait te coûter 0 effort, vu ce que tu fais déjà"
 - Question authentique : "Tu bosses sur [X] — comment tu vois la transition [Y] pour [contexte] ?"
 
-📏 LONGUEUR & CONSISTANCE — VISE LA SUBSTANCE, PAS LA BRIÈVETÉ
-Le sweet spot LinkedIn 1er message = **300-400 caractères** (pas 200, c'est trop sec).
-- Trop court (<250) = pas de substance, pas envie de répondre, l'effort du candidat n'est pas justifié
-- Trop long (>500) = pas lu sur mobile
-- 300-400 = parfait : assez de matière pour intriguer, assez court pour mobile
+📏 LONGUEUR & CONSISTANCE — VISE LA SUBSTANCE DANS LA LONGUEUR DEMANDÉE
+La longueur visée est celle du bloc STYLE DEMANDÉ plus bas (${slotLength}). Dans cette fourchette, préfère la substance à la brièveté.
 
 OBLIGATOIRE pour avoir de la SUBSTANCE :
 1. UNE phrase d'observation factuelle sur le candidat (50-80 chars)
@@ -919,8 +1013,6 @@ OBLIGATOIRE pour avoir de la SUBSTANCE :
    à CE candidat. Exemples : "tu définirais l'archi from scratch", "stack greenfield Go/K8s",
    "équipe de 4 seniors qui ont monté X chez Y", "mission régalienne sur le cloud souverain FR"
 4. UN CTA simple et engageant (40-60 chars)
-
-= 200-280 chars de personnalisation + 60 de pitch + 40 CTA = ~300-380 chars ✓
 
 ❌ NE COUPE PAS la phrase 3 (le différenciateur) — c'est elle qui fait que le candidat se dit
 "ah tiens, c'est pas un poste banal, je veux en savoir plus".
@@ -933,7 +1025,7 @@ ${(() => {
       // Omit the line entirely if the prénom is unreliable, rather than
       // injecting "(non fiable, ne pas utiliser)" verbatim (the LLM can echo
       // it back into the message). The salutation rule covers the no-prénom case.
-      return isLikelyRealFirstName(raw) ? `- Prénom: ${raw}` : '- Prénom: (aucun — utilise "Salut," sans prénom)';
+      return isLikelyRealFirstName(raw) ? `- Prénom: ${raw}` : '- Prénom: (aucun : commence par « Bonjour, » sans prénom)';
     })()}
 ${profile.headline ? `- Titre: ${profile.headline}` : ''}
 ${profile.currentRole || profile.currentCompany ? `- Poste actuel: ${profile.currentRole || ''}${profile.currentRole && profile.currentCompany ? ' chez ' : ''}${profile.currentCompany || ''}`.trimEnd() : ''}
@@ -1026,23 +1118,23 @@ L'accroche est ce qui sépare un message qui obtient une réponse d'un message i
 - Toute phrase qui RÉSUME le profil ("Tu es tech lead avec 8 ans d'XP en X et Y")
 - Toute phrase qui qualifie le profil ("c'est rare", "type de profil", "c'est impressionnant")
 
-✅ ACCROCHE MALINE = 1 des 4 patterns suivants :
+✅ ACCROCHE MALINE = 1 des 4 patterns suivants (exemples au vouvoiement, le seul permis) :
 
 1. **Observation pointue sur UN détail spécifique** (pas le résumé du parcours)
-   Au lieu de "Ton parcours en SRE chez Back Market" → "4 ans à galérer avec les migrations Postgres chez Back Market, je devine"
-   Au lieu de "Tu fais du Go" → "Ton commit sur [projet open source] sur la gestion mémoire en Rust"
+   Au lieu de "Votre parcours en SRE chez Back Market" → "Quatre ans de migrations Postgres chez Back Market, j'imagine les nuits de bascule"
+   Au lieu de "Vous faites du Go" → "Votre commit sur [projet open source] sur la gestion mémoire en Rust"
 
 2. **Question authentique sur UN choix de carrière**
-   "Tu es passé de [X] à [Y], qu'est-ce qui t'a motivé ?" (montre que tu as lu, ouvre le dialogue)
-   "Comment tu gères [problème spécifique au domaine] avec [contrainte précise] ?"
+   "Vous êtes passé de [X] à [Y], qu'est-ce qui vous a décidé ?" (montre que tu as lu, ouvre le dialogue)
+   "Comment gérez-vous [problème spécifique au domaine] avec [contrainte précise] ?"
 
 3. **Référence à un signal concret** (post, article, talk, side project)
-   "Ton post sur [sujet précis] cette semaine m'a fait penser à [angle]"
-   "Vu ton talk sur [X] au [event], [...]"
+   "Votre post sur [sujet précis] cette semaine m'a fait penser à [angle]"
+   "Votre intervention sur [X] au [event] m'a marqué, [...]"
 
 4. **Common ground inattendu** (qui montre que tu as creusé)
-   "Aussi passé par [entreprise ancien commun], dans ton temps c'était comment l'équipe [X] ?"
-   "On a [X en commun], donc je sais à quoi tu penses sur [Y]"
+   "Je suis aussi passé par [entreprise ancien commun], comment était l'équipe [X] à votre époque ?"
+   "Nous avons [X en commun], je vois bien ce que [Y] représente pour vous"
 
 🧠 TEST MENTAL OBLIGATOIRE avant de valider l'accroche :
 "Est-ce que 100 autres recruteurs IA pourraient écrire EXACTEMENT cette phrase pour ce candidat ?"
@@ -1051,22 +1143,26 @@ L'accroche est ce qui sépare un message qui obtient une réponse d'un message i
 
 Cite le contenu DIRECTEMENT, jamais la source ("dans ton À propos" ❌). Pas de "j'ai parcouru ton profil" ni "a retenu mon attention".
 
-Si tu n'as VRAIMENT rien de spécifique → pose une question ouverte authentique ("Qu'est-ce qui te ferait bouger aujourd'hui ?") plutôt qu'une accroche générique paresseuse. Une question franche > un résumé creux.
+Si tu n'as VRAIMENT rien de spécifique → pose une question ouverte authentique ("Qu'est-ce qui vous ferait bouger aujourd'hui ?") plutôt qu'une accroche générique paresseuse. Une question franche > un résumé creux.
 
 CE QUE LE CANDIDAT Y GAGNE :
 - Vends ce qu'il OBTIENT (latitude, équipe, mission), pas le poste.
 - 1-2 éléments différenciants MAX, intégrés naturellement (jamais en liste/énumération).
 
 CTA :
-- Simple, non-engageant ("Dispo 15 min cette semaine ?", "Curieux d'avoir ton avis", "Ça te parle ?").
-- Banni : "Es-tu intéressé ?", "Tu serais ouvert ?", "Ça t'intéresserait ?".
+- ${ctaInstruction}
+- Un seul appel à l'action, sans pression.
 
-TON : ${toneInstructions[tone]}
-ADAPTATION : si le candidat utilise un style décontracté/formel/technique → adapte-toi. But = un message de pair.
+TON : celui du bloc STYLE DEMANDÉ, toujours au vouvoiement.
+ADAPTATION : si le candidat a un style technique, emploie son vocabulaire de métier, sans quitter le vouvoiement ni le registre demandé.
+
+=== STYLE DEMANDÉ (PRIORITAIRE SUR LES EXEMPLES, LES LONGUEURS ET LES OBJECTIFS CI-DESSUS) ===
+${styleRules}
+=== FIN STYLE DEMANDÉ ===
 
 ⚠️ FORMAT SELON LE CANAL — RÈGLE CRITIQUE
 ${(() => {
-  const at = sequenceContext?.currentActionType?.toLowerCase() || '';
+  const at = (sequenceContext?.currentActionType || messageKind || '').toLowerCase();
   const isInMail = at === 'inmail' || at === 'smart_message';
   const isInvite = at === 'connection_request';
   const isEmail = at === 'email';
@@ -1075,18 +1171,18 @@ ${(() => {
 
   if (isInvite) {
     return `📩 NOTE D'INVITATION LINKEDIN (canal: connection_request)
-- LIMITE STRICTE : 280 caractères MAX (limite LinkedIn = 300, marge sécurité).
+- LIMITE STRICTE : ${INVITATION_NOTE_HARD_MAX} caractères au plus (limite LinkedIn). Longueur visée : ${slotLength}
 - Format : 1 phrase d'observation perso + 1 phrase de pitch ultra-courte. C'est tout.
 - PAS de salutation type "Salut Prénom," (gaspille des chars), tu peux commencer direct.
 - PAS de signature (limite chars).
 - PAS de paragraphes / sauts de ligne — 1 bloc compact.
-- Exemple : "Ton parcours infra cloud chez Doctolib m'a fait penser à un poste Lead Go qu'on monte. Curieux d'en parler 15 min ?"`;
+- Exemple : "Votre parcours infra cloud chez Doctolib m'a fait penser à un poste de Lead Go que nous ouvrons. Seriez-vous ouvert à en échanger ?"`;
   }
 
   if (isInMail) {
     return `✉️ INMAIL RECRUITER (canal: inmail / smart_message)
 - Format proche d'un email PRO : OBJET (< 40 chars) + corps structuré.
-- LONGUEUR corps : 200-400 caractères.
+- LONGUEUR : ${slotLength}
 - Salutation : "Bonjour [Prénom]," (l'InMail est plus formel qu'un DM).
 - 2-3 paragraphes courts séparés par \\n\\n (lisible comme un mini email).
 - Signature avec prénom à la fin sur sa propre ligne.
@@ -1097,7 +1193,7 @@ ${(() => {
     return `📧 EMAIL (canal: email)
 - Format email classique : OBJET + corps structuré.
 - LONGUEUR corps : 200-400 caractères.
-- Salutation : "Bonjour [Prénom]," (mail = formel par défaut, sauf si le tone est casual).
+- Salutation : "Bonjour [Prénom]," (vouvoiement).
 - 2-3 paragraphes courts séparés par \\n\\n.
 - Signature avec prénom à la fin sur sa propre ligne.`;
   }
@@ -1115,28 +1211,27 @@ ${(() => {
   if (isLinkedInDM) {
     return `💬 MESSAGE LINKEDIN DIRECT (canal: message — DM, pas InMail)
 - Style chat / messagerie LinkedIn — PROCHE D'UN SMS/WHATSAPP, PAS d'un email.
-- LONGUEUR : 200-350 caractères.
-- "Salut [Prénom]," puis directement l'observation (pas de saut de ligne avant).
+- LONGUEUR : ${slotLength}
+- "Bonjour [Prénom]," puis directement l'observation (pas de saut de ligne avant).
 - COMPACT : 1 saut de ligne MAX entre l'accroche et le CTA. JAMAIS 2-3 paragraphes séparés comme un email.
 - Le candidat lit ça comme un chat — pas comme un mail. Pas de structure email.
 - Signature minimale : juste ton prénom à la fin (pas obligé sur sa propre ligne, peut être inline si court).
 - Exemple format souhaité (compact) :
-  "Salut Théotime, ton parcours Principal Engineer à Back Market sur l'archi cloud-native, c'est exactement le type de profil qu'on cherche pour le poste Lead Go chez Numspot — archi greenfield, latitude tech.\\nDispo 15 min cette semaine ? Laurent"
+  "Bonjour Théotime, vos années sur l'architecture cloud-native chez Back Market m'ont fait penser au poste de Lead Go chez Numspot : une architecture à construire, une vraie latitude technique.\\nSeriez-vous ouvert à en échanger ? Laurent"
 - Exemple à NE PAS faire (trop email) :
-  "Salut Théotime,\\n\\nTon parcours [...]\\n\\nDispo 15 min ?\\n\\nLaurent"`;
+  "Bonjour Théotime,\\n\\nVotre parcours [...]\\n\\nSeriez-vous ouvert à en échanger ?\\n\\nLaurent"`;
   }
 
   // Fallback default
-  return `Format LinkedIn classique : 200-400 caractères, salutation + corps + signature.`;
+  return `Format LinkedIn classique : ${slotLength} Salutation, corps et signature.`;
 })()}
 ${calendlyWithPrefill ? `
 === LIEN CALENDLY DISPONIBLE ===
 Lien de prise de RDV: ${calendlyWithPrefill}
 RÈGLES D'UTILISATION:
-- Tu peux proposer ce lien comme CTA UNIQUEMENT quand le message vise à proposer un échange/call/rdv
-- Intègre-le naturellement: "Si ça te parle, tu peux bloquer un créneau ici: ${calendlyWithPrefill}" ou "Dispo pour un call ? ${calendlyWithPrefill}"
-- NE L'UTILISE PAS systématiquement — seulement quand le CTA est de type "proposer un échange"
-- Pour les messages de qualification (question ouverte), ne mets PAS le lien
+- Tu peux proposer ce lien comme CTA UNIQUEMENT si l'appel à l'action demandé (STYLE DEMANDÉ) est le lien d'agenda
+- Intègre-le naturellement, au vouvoiement : "Si cela vous parle, vous pouvez choisir un créneau ici : ${calendlyWithPrefill}"
+- Pour un court échange ou une question ouverte, ne mets PAS le lien
 === FIN CALENDLY ===
 ` : ''}
 ${(messageTemplate?.trim() || subjectTemplate?.trim()) ? `
@@ -1167,16 +1262,57 @@ ${engagementInstructions}
 Réponds UNIQUEMENT en JSON valide:
 {
   "subject": "Objet court (max 40 car, mobile-first)",
-  "message": "Le message complet avec des \\n\\n entre les paragraphes. 200-400 caractères hors signature.",
+  "message": "Le message complet avec des \\n\\n entre les paragraphes. ${slotTarget.min}-${slotTarget.max} caractères hors signature, vouvoiement.",
   "personalization_points": ["HOOK 1: citation EXACTE ou fait PRÉCIS du profil utilisé comme accroche (ex: 'Post LinkedIn du 15/01 sur le DDD', 'Transition Doctolib→startup après 4 ans', 'Formation GOBELINS + parcours Rails/iOS')", "HOOK 2: lien CONCRET entre cet élément et le poste (ex: 'Expérience cloud souverain → projet infra greenfield', 'Double casquette dev/design → rôle VP Experience Design')"]
 }`;
+
+    // Contrôles bloquants d'un aperçu (une correction, puis 422) : règles du
+    // moteur (detectSequenceViolations), vouvoiement (noms propres connus du
+    // profil masqués, lot 5e-2) et plafond de la note d'invitation.
+    const knownNames = [
+      profile.name || '',
+      (profile.name || '').trim().split(/\s+/)[0] || '',
+      profile.currentCompany || '',
+      ...(profile.education || []),
+      ...(profile.pastPositions || []),
+      organizationName,
+      job.client?.name || '',
+      String((outreachConfig as { anonymized_alias?: string } | undefined)?.anonymized_alias || ''),
+    ];
+    const blockingViolations = (draft: { message: string; subject?: string }): string[] => {
+      const labels = detectSequenceViolations(isRPO, draft.message, draft.subject).filter((v) => v.blocking).map((v) => v.label);
+      if (hasTutoiement(`${draft.subject || ''}\n${draft.message || ''}`, knownNames)) labels.push(TUTOIEMENT_LABEL);
+      if (writingSlot.kind === 'invitation_note' && (draft.message || '').length > INVITATION_NOTE_HARD_MAX) labels.push(INVITE_TOO_LONG_LABEL);
+      return labels;
+    };
 
     // Track cumulative token usage across calls
     let _totalTokensIn = 0;
     let _totalTokensOut = 0;
+    // Débit des jetons réellement consommés (passe de correction comprise),
+    // sur l'organisation vérifiée et le modèle du niveau. Une seule fois, sur
+    // chaque sortie après un appel facturé : réponse normale, aperçu refusé, ou
+    // correction en échec (429, 402) qui rend sa propre réponse.
+    let _settled = false;
+    const settleConsumed = async () => {
+      if (_settled || _totalTokensIn + _totalTokensOut <= 0) return;
+      _settled = true;
+      try {
+        const { settleCredits } = await import("../_shared/settle-credits.ts");
+        await settleCredits(svc, {
+          organizationId: orgId, userId,
+          aiAction: AI_ACTION, modelId,
+          tokensInput: _totalTokensIn, tokensOutput: _totalTokensOut,
+          description: aiDescription,
+        });
+      } catch (e) { console.warn("[generate-outreach-message] settle skipped:", e); }
+    };
 
     const callAnthropic = async (userPrompt: string, maxRetries = 3): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
+        // 30 s au plus, et jamais au-delà de l'échéance de la requête.
+        const timeoutMs = Math.min(MODEL_TIMEOUT_MS, deadline - Date.now() - RESPONSE_MARGIN_MS);
+        if (timeoutMs <= 0) throw new Error("budget de la fonction épuisé");
         const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
@@ -1192,11 +1328,11 @@ Réponds UNIQUEMENT en JSON valide:
             system: [
               { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
               ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
-              { type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks." },
+              { type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn humains, qui vouvoient toujours le candidat, dans le style demandé. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks." },
             ],
             messages: [{ role: "user", content: userPrompt }],
           }),
-        });
+        }, timeoutMs);
 
         if (response.ok) {
           const data = await response.json();
@@ -1226,10 +1362,11 @@ Réponds UNIQUEMENT en JSON valide:
           };
         }
 
-        // Retry on 5xx errors
-        if (response.status >= 500 && attempt < maxRetries - 1) {
+        // Retry on 5xx errors, seulement s'il reste au moins 10 s d'appel après l'attente.
+        const retryWaitMs = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+        if (response.status >= 500 && attempt < maxRetries - 1 && deadline - Date.now() - retryWaitMs - RESPONSE_MARGIN_MS >= 10_000) {
           const errorText = await response.text();
-          const waitMs = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+          const waitMs = retryWaitMs;
           console.warn(`[generate-outreach-message] Anthropic ${response.status}, retry ${attempt + 1}/${maxRetries - 1} in ${waitMs}ms. Body: ${errorText.slice(0, 200)}`);
           await new Promise(r => setTimeout(r, waitMs));
           continue;
@@ -1254,7 +1391,14 @@ Réponds UNIQUEMENT en JSON valide:
       console.log(`[generate-outreach-message] Sequence: ${sequenceMsgType} | prevSteps=${(sequenceContext?.prevSentSteps || []).length}`);
     }
 
-    const first = await callAnthropic(prompt);
+    let first: Awaited<ReturnType<typeof callAnthropic>>;
+    try {
+      first = await callAnthropic(prompt);
+    } catch (e) {
+      // Aucun jeton consommé : rien à débiter.
+      console.error('[generate-outreach-message] appel au modèle:', e instanceof Error ? e.message : e);
+      return json({ error: UNAVAILABLE_MESSAGE, error_code: 'PREVIEW_UNAVAILABLE' }, 503);
+    }
     if (!first.ok) return first.response;
 
     let parsed = tryParseModelJson(first.content);
@@ -1281,12 +1425,14 @@ Réponds UNIQUEMENT en JSON valide:
     // montant, signature « Recruteur », formulations cabinet en RPO). Un aperçu
     // validé part tel quel : corrigés ici une fois, puis revérifiés sur le
     // texte final (correctif 2 du plan du lot 5).
-    for (const v of detectSequenceViolations(isRPO, parsed.message, parsed.subject)) {
-      if (v.blocking && !violations.includes(v.label)) violations.push(v.label);
+    for (const label of blockingViolations(parsed)) {
+      if (!violations.includes(label)) violations.push(label);
     }
-    if (violations.length > 0) {
+    if (violations.length > 0 && hasTimeForAiCorrection(deadline, Date.now())) {
       console.warn(`[generate-outreach-message] ${violations.length} violations detected:`, violations);
       const correctionRules: string[] = [
+        '- Vouvoiement obligatoire : jamais de tutoiement, quel que soit le style.',
+        `- Note d'invitation : ${INVITATION_NOTE_HARD_MAX} caractères au plus.`,
         '- JAMAIS de salaire, de TJM, de rémunération, de package ni de montant.',
         '- Signature : ton prénom, jamais "Recruteur".',
         '- Aucun tiret (—, –, -) nulle part dans le texte.',
@@ -1301,9 +1447,19 @@ Réponds UNIQUEMENT en JSON valide:
       }
       const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE (OBLIGATOIRE) ===\nLe draft ci-dessous viole ces règles : ${violations.join(' ; ')}.\n\nRÈGLES CRITIQUES À RESPECTER :\n${correctionRules.join('\n')}\n\nDRAFT_JSON :\n${JSON.stringify(parsed)}\n\nRéécris le message en respectant les règles. Réponds UNIQUEMENT en JSON valide avec les 3 clés : subject, message, personalization_points.`;
 
-      const second = await callAnthropic(correctionPrompt);
-      if (!second.ok) return second.response;
-      const parsed2 = tryParseModelJson(second.content);
+      let second: Awaited<ReturnType<typeof callAnthropic>> | null = null;
+      try {
+        second = await callAnthropic(correctionPrompt);
+      } catch (e) {
+        // Le premier brouillon reste ; la revérification finale décide.
+        console.warn('[generate-outreach-message] correction:', e instanceof Error ? e.message : e);
+      }
+      if (second && !second.ok) {
+        // Le premier appel a été facturé par le fournisseur : il est débité.
+        await settleConsumed();
+        return second.response;
+      }
+      const parsed2 = second ? tryParseModelJson(second.content) : null;
       if (parsed2) parsed = parsed2;
     }
 
@@ -1347,50 +1503,23 @@ Réponds UNIQUEMENT en JSON valide:
     // anonymisation), avec la règle du moteur : une violation bloquante
     // restante refuse l'aperçu, à régénérer. Les crédits consommés sont
     // débités plus bas comme pour tout appel au modèle.
-    const remainingBlocking = detectSequenceViolations(isRPO, parsed.message, parsed.subject).filter((v) => v.blocking);
+    const remainingBlocking = blockingViolations(parsed);
     if (remainingBlocking.length > 0) {
-      console.warn('[generate-outreach-message] Aperçu non conforme, refusé :', remainingBlocking.map((v) => v.label));
+      console.warn('[generate-outreach-message] Aperçu non conforme, refusé :', remainingBlocking);
     }
 
-    // Settle credits based on actual token usage (fire-and-forget)
-    if (_totalTokensIn + _totalTokensOut > 0) {
-      try {
-        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const orgId = await resolveOrgIdFromUser(userId, svc);
-        if (orgId) {
-          // Verify user still belongs to the resolved org before billing credits
-          const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-          const isMember = await verifyOrgMembership(svc, userId, orgId);
-          if (!isMember) {
-            console.warn("[generate-outreach-message] settle skipped: user is not a member of org", orgId);
-          } else {
-            const { settleCredits } = await import("../_shared/settle-credits.ts");
-            settleCredits(svc, {
-              organizationId: orgId, userId,
-              aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
-              tokensInput: _totalTokensIn, tokensOutput: _totalTokensOut,
-              description: _aiParams.description,
-            }).catch((e) => console.warn("[generate-outreach-message] settle error:", e));
-          }
-        }
-      } catch (e) { console.warn("[generate-outreach-message] settle skipped:", e); }
-    }
+    await settleConsumed();
 
     if (remainingBlocking.length > 0) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: previewRefusalMessage(remainingBlocking.map((v) => v.label)),
-          error_code: PREVIEW_NOT_COMPLIANT_CODE,
-        }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({
+        success: false,
+        error: previewRefusalMessage(remainingBlocking),
+        error_code: PREVIEW_NOT_COMPLIANT_CODE,
+        ...applied,
+      }, 422);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, ...parsed }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({ success: true, ...parsed, ...applied });
   } catch (error) {
     console.error("Error generating message:", error);
     return new Response(

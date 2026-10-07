@@ -39,7 +39,8 @@ import { SaveStatus, type SaveState } from '@/components/ui/save-status';
 import { getConditionsForActionType, isCrossChannelCondition, engagementConditionHint, retiredConditionNotice } from './sequence/conditionTypes';
 import { VariableInserter, UnknownVariablesNotice } from './sequence/VariableInserter';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
-import { sequenceActionLabel, MESSAGE_TONES, formatStepDelay } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
+import { AI_STEP_STYLE_NOTICE } from '@/lib/writingStyle';
 import { SequenceActionIcon } from './SequenceBadges';
 import {
   Plus,
@@ -1274,13 +1275,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                             {usesAi ? (
                               <div>
-                                <Label htmlFor={fieldId('tone')}>Ton du message</Label>
-                                <Select value={step.aiTone || 'professional'} onValueChange={(value) => updateStep(step.id, { aiTone: value as SequenceStep['aiTone'] })}>
-                                  <SelectTrigger id={fieldId('tone')} className="mt-1.5"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {MESSAGE_TONES.map(tone => <SelectItem key={tone.value} value={tone.value}>{tone.label}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
+                                {/* Lot 5e-2 : plus de ton par étape ; aiTone reste dans la charge enregistrée. */}
+                                <p className="text-sm text-foreground-secondary">{AI_STEP_STYLE_NOTICE}</p>
                                 <p className="mt-2 text-xs text-muted-foreground">Le message s'appuie sur le profil du candidat et le brief de la mission.</p>
                               </div>
                             ) : (

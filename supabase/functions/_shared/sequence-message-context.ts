@@ -98,7 +98,7 @@ export function computeMessageTypeContext(
 - Le candidat n'a JAMAIS reçu de message direct de toi
 - Tu n'as PAS échangé avec lui par messagerie LinkedIn
 - Donc NE DIS JAMAIS :
-  ❌ "J'avais tenté de te joindre via LinkedIn à plusieurs reprises, sans retour" (FAUX, aucun message envoyé)
+  ❌ "J'avais tenté de vous joindre via LinkedIn à plusieurs reprises, sans retour" (FAUX, aucun message envoyé)
   ❌ "Mes messages ne sont peut-être pas passés" (il n'y avait pas de message)
   ❌ "Suite à mon précédent message" (il n'y a pas eu de message)
   ❌ "Je relance" (aucune relance possible, c'est le 1er contact écrit)
@@ -122,10 +122,10 @@ export function computeMessageTypeContext(
     } else {
       msgType = 'INMAIL DE RELANCE';
       toneInstructions = `C'est une RELANCE. Le candidat a déjà reçu un premier InMail.
-- Tu PEUX et DOIS faire référence au fait que tu as déjà contacté le candidat (ex: "Suite à mon précédent message", "Je reviens vers toi", "Je me permets de te relancer")
+- Tu PEUX et DOIS faire référence au fait que tu as déjà contacté le candidat (ex: "Suite à mon précédent message", "Je reviens vers vous", "Je me permets de vous relancer")
 - Propose un angle complémentaire ou renforce le pitch initial
 - Objet < 40 caractères, peut référencer le premier message
-- Ton un peu plus direct/familier que le premier InMail
+- Ton un peu plus direct que le premier InMail, toujours au vouvoiement
 - 200-400 caractères pour le corps`;
     }
   } else {
@@ -144,17 +144,17 @@ export function computeMessageTypeContext(
       msgType = 'RELANCE 1';
       toneInstructions = `PREMIÈRE RELANCE. Tu DOIS référencer EXPLICITEMENT le sujet de ton précédent message — pas juste "je relance brièvement".
 - OBLIGATOIRE : mentionne le poste / l'entreprise / l'angle qui était dans le 1er message
-  Ex : "Je relance vite fait sur le poste Lead Go chez X"
-       "Je reviens sur l'idée du bridge Rust → Go dont je te parlais"
+  Ex : "Je reviens vers vous au sujet du poste de Lead Go chez X"
+       "Je reviens sur l'idée du passage de Rust à Go dont je vous parlais"
 - Apporte UN nouvel angle / UN nouvel argument / UNE question concrète
   (pas une simple copie ou réduction du 1er message)
 - Idéalement une question CONCRÈTE liée au profil ou au choix de carrière du candidat
-  Ex : "Tu fais du X en parallèle de ton Y ou c'est vraiment Y-first ?"
-       "Tu serais ouvert à du Z après [N] ans de [W] ?"
-- Ton plus direct, plus familier que le 1er
+  Ex : "Faites-vous du X en parallèle de votre Y, ou Y passe-t-il avant tout ?"
+       "Seriez-vous ouvert à du Z après [N] ans de [W] ?"
+- Ton plus direct que le 1er, toujours au vouvoiement
 - LONGUEUR 200-300 caractères : assez pour la référence + 1 nouvel angle, assez court pour rester punchy
 - ❌ INTERDIT : "Je relance brièvement, je sais que LinkedIn déborde" (générique vide)
-- ❌ INTERDIT : "Si le timing ne te parle pas, dis-le moi en un mot" sans avoir d'abord rappelé le sujet`;
+- ❌ INTERDIT : "Si le moment ne s'y prête pas, dites-le-moi en un mot" sans avoir d'abord rappelé le sujet`;
     } else {
       msgType = 'RELANCE 2';
       toneInstructions = `DEUXIÈME RELANCE. Tu DOIS rappeler le sujet précis dont vous parliez.

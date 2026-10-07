@@ -29,7 +29,20 @@
 //   et le navigateur bloque l'enregistrement (validateSequence) ; une
 //   formulation à relire est signalée sans être retirée.
 
-import { detectSequenceViolations } from './sequence-send-rules.ts';
+import { SALARY_EXPECTATION_SRC, detectSequenceViolations } from './sequence-send-rules.ts';
+import {
+  AI_LEVEL_INVALID_MESSAGE,
+  DEFAULT_WRITING_STYLE,
+  buildStyleInstructions,
+  hasTutoiement,
+  isAiLevel,
+  parseStyleOverrides,
+  slotFor,
+  type AgendaContext,
+  type AiLevel,
+  type WritingSlot,
+  type WritingStyle,
+} from './writing-style.ts';
 
 // ─── Constantes ─────────────────────────────────────────────────────────────
 
@@ -220,6 +233,12 @@ export interface DraftCheckContext {
    * l'organisation, nom du client, textes du poste.
    */
   allowedText?: string;
+  /**
+   * Noms propres connus (entreprise, intitulé, alias, prénom et entreprise du
+   * candidat…) retirés avant le test du tutoiement (« Minh Tu », « TU Munich »).
+   * Le nom de l'organisation l'est toujours.
+   */
+  knownNames?: readonly string[];
 }
 
 export interface DraftFlag {
@@ -714,6 +733,31 @@ export interface DraftPromptInput {
   angle: DraftAngleId;
   skeleton: DraftSkeleton;
   organizationName: string;
+  /** Style de la rédaction (lot 5e-2) : longueurs, ton, spontanéité, accroche, appel à l'action. Absent : le style par défaut. */
+  style?: WritingStyle;
+}
+
+/** Emplacements d'un squelette, pour la consigne de style. */
+export function skeletonWritingSlots(skeleton: Pick<DraftSkeleton, 'firstContact' | 'relances'>): WritingSlot[] {
+  const inmail = skeleton.firstContact === 'inmail';
+  const actionType = inmail ? 'inmail' : 'message';
+  return [
+    ...(inmail ? [] : [slotFor('connection_request', true)]),
+    slotFor(actionType, true),
+    ...(skeleton.relances > 0 ? [slotFor(actionType, false)] : []),
+  ];
+}
+
+/** Lien d'agenda d'une rédaction de modèles : {{lien_calendly}} si la mission en a un. */
+export const draftAgenda = (facts: Pick<BriefFacts, 'hasCalendlyLink'>): AgendaContext => (facts.hasCalendlyLink ? 'variable' : 'none');
+
+/** Consigne de style d'une rédaction de modèles (draft-sequence, get_sequence_draft_facts). */
+export function draftStyleRules(
+  style: WritingStyle,
+  skeleton: Pick<DraftSkeleton, 'firstContact' | 'relances'>,
+  facts: Pick<BriefFacts, 'hasCalendlyLink'>,
+): string {
+  return buildStyleInstructions(style, { slots: skeletonWritingSlots(skeleton), audience: 'template', agenda: draftAgenda(facts) });
 }
 
 const relanceTiming = (skeleton: DraftSkeleton): string => {
@@ -776,16 +820,17 @@ export function buildDraftPrompt(input: DraftPromptInput): { system: string; use
     'Règles :',
     '- Vouvoiement obligatoire dans chaque texte, même si un autre ton est indiqué plus haut : les exemples qui tutoient se transposent au vouvoiement.',
     "- Le premier message se lit seul : le candidat déjà en relation n'a reçu ni invitation ni note. Pas de remerciement pour une invitation acceptée, pas de « comme je vous le disais ».",
-    "- Écho factuel au poste, sans flatterie. Un seul appel à l'action, simple et non engageant. Aucune proposition d'appel ni de rendez-vous dans la note ni dans le premier message.",
+    "- Écho factuel au poste, sans flatterie. Un seul appel à l'action. Aucune proposition d'appel ni de rendez-vous dans la note ni dans le premier message.",
     '- Aucune rémunération : ni salaire, ni montant, ni fourchette, ni avantage chiffré.',
     '- Aucun critère discriminatoire : âge, sexe, origine, nationalité, situation de famille, grossesse, santé, handicap, religion, opinions, apparence, lieu de résidence. Ni « jeune », ni « natif ».',
     '- Aucun lien, aucune adresse web ni adresse e-mail.',
     `- Aucun nom d'outil ou de logiciel. L'expéditeur parle au nom de ${org}.${konektIsOrg ? '' : ' Ne citez jamais « Konekt ».'}`,
     `- Variables permises, écrites exactement ainsi : ${variables.join(' ; ')}. Aucune autre variable, jamais {{client}}${facts.titleRevealsClient ? ' ni {{poste_recherche}} : écrivez l\'intitulé du poste en toutes lettres, sans nom d\'entreprise' : ''}.`,
-    `- Longueurs : note d'invitation d'environ 200 caractères, ${INVITE_NOTE_MAX} au plus variables comprises ; premier message de 200 à 400 caractères ; relances de 200 à 350 caractères ; objet d'InMail de ${INMAIL_SUBJECT_SOFT_MAX} caractères au plus.`,
     '- Signature : {{mon_prenom}} sur la dernière ligne des messages, jamais « Recruteur ».',
     '- Ni tiret long, ni puces, ni emoji.',
     ...(posture.length > 0 ? ['Posture :', ...posture.map((p) => `- ${p}`)] : []),
+    'Style demandé (prioritaire sur les exemples) :',
+    draftStyleRules(input.style ?? DEFAULT_WRITING_STYLE, skeleton, facts),
     'Répondez uniquement par un objet JSON valide, sans texte avant ni après.',
   ].join('\n');
 
@@ -980,8 +1025,10 @@ const PAY_CONTEXT_SRC = 'bruts?|nets?|annuel(?:le)?s?|fixes?|par\\s+(?:an|année
 /**
  * Formulations de rémunération propres à la rédaction, plus larges que le
  * garde-fou du moteur (detectSequenceViolations) : montant en euros, montant
- * suivi de « brut », « net », « annuel », « par mois »…, fourchette, et les
- * racines salair*, rémunér*, package, TJM, prime. « k » seul ne compte que
+ * suivi de « brut », « net », « annuel », « par mois »…, fourchette, les
+ * racines salair*, rémunér*, package, TJM, prime, et les attentes sans ces
+ * mots (« attentes salariales », « prétentions », « vos revenus » :
+ * SALARY_EXPECTATION_SRC, partagé avec le moteur). « k » seul ne compte que
  * suivi d'un contexte de salaire ou en fin de phrase : « 500 k utilisateurs »
  * n'est pas une rémunération.
  */
@@ -991,6 +1038,8 @@ const REMUNERATION_PATTERNS: readonly RegExp[] = [
   word(`(?:${NUMBER_SRC})\\s*[kK](?=\\s*(?:$|[.,;:!?)]|(?:${PAY_CONTEXT_SRC})(?![\\p{L}\\p{N}])))`),
   word(`(?:${NUMBER_SRC})\\s*(?:[kK]\\s*)?(?:${PAY_CONTEXT_SRC})`),
   word('fourchettes?|salair\\p{L}*|r[ée]mun[ée]r\\p{L}*|packages?|TJM|primes?|compensations?'),
+  // Attentes salariales, prétentions, vos revenus : sans « salaire » ni montant.
+  word(SALARY_EXPECTATION_SRC),
 ];
 
 /** Première formulation de rémunération du texte, ou null. */
@@ -1072,8 +1121,6 @@ const DISCRIMINATION_PATTERNS: ReadonlyArray<{ re: RegExp; criterion: string }> 
 const DEPENDS_ON_INVITATION_RE = word(
   "merci\\s+(?:d['’]avoir|pour\\s+l['’])\\s*accept\\p{L}*|accept\\p{L}*\\s+(?:mon|ma)\\s+(?:invitation|demande)|mon\\s+invitation|notre\\s+(?:nouvelle\\s+)?connexion|comme\\s+je\\s+vous\\s+le\\s+disais",
 );
-/** Tutoiement : le vouvoiement est imposé. « ton » suivi d'un mot, sauf le nom (« le ton », « un ton »). */
-const TUTOIEMENT_RE = word("tu|toi|te\\s+\\p{L}+|t['’](?:es|as|ai|en|intéresse\\p{L}*)|ta\\s+\\p{L}+|tes\\s+\\p{L}+|(?<!(?:le|un|du|au|ce|même)\\s)ton\\s+\\p{L}+");
 
 const FALLBACK_KEYS = new Set(['poste_actuel', 'entreprise_actuelle', 'job_title', 'company', 'headline']);
 const CALENDLY_KEYS = new Set(['lien_calendly', 'calendly_link']);
@@ -1177,7 +1224,10 @@ export function checkDraftTexts(texts: readonly DraftSlotText[], ctx: DraftCheck
         const m = plain.match(d.re);
         if (m) warn(field, 'discriminatory', `${quote(m[0].trim())} peut être lu comme un critère lié ${d.criterion}.`);
       }
-      if (TUTOIEMENT_RE.test(plain)) warn(field, 'tutoiement', 'le texte tutoie le candidat ; les messages vouvoient.');
+      // Vouvoiement imposé (lot 5e-2) : un texte qui tutoie est retiré, noms propres connus mis à part.
+      if (hasTutoiement(plain, [ctx.organizationName, ...(ctx.knownNames ?? [])])) {
+        refuse(field, 'tutoiement', 'le texte tutoie le candidat ; les messages vouvoient.');
+      }
     }
 
     if (isFirst && t.body && DEPENDS_ON_INVITATION_RE.test(withFallbacks(t.body))) {
@@ -1330,6 +1380,8 @@ export function draftCheckContextFor(
     extraArguments?: readonly string[];
     /** Valeurs gardées pour l'équipe (briefForbiddenValues du même poste). */
     forbidden?: BriefForbiddenValues;
+    /** Noms propres connus en plus de ceux du poste (candidat d'un message par candidat). */
+    knownNames?: readonly string[];
   },
 ): DraftCheckContext {
   if (!facts) {
@@ -1342,6 +1394,7 @@ export function draftCheckContextFor(
       hiddenClientNames: [],
       jobTitleRevealsClient: false,
       allowedText: '',
+      knownNames: input.knownNames ?? [],
     };
   }
   return {
@@ -1353,6 +1406,7 @@ export function draftCheckContextFor(
     hiddenClientNames: facts.company.hiddenNames,
     jobTitleRevealsClient: facts.titleRevealsClient,
     forbidden: input.forbidden,
+    knownNames: [facts.company.name ?? '', facts.outreach.alias ?? '', facts.title, ...facts.company.hiddenNames, ...(input.knownNames ?? [])],
     allowedText: [
       facts.company.anonymized ? '' : facts.company.name ?? '',
       facts.title,
@@ -1444,16 +1498,13 @@ export function reviewTextProposal(
   const before = input.before.trim() ? check(input.before) : [];
   const after = check(input.after);
   const reason = (message: string) => message.replace(/^Texte retiré : /, '');
+  // Vouvoiement imposé : une proposition qui tutoie est refusée (refus de
+  // checkDraftTexts), sauf si le texte d'origine tutoyait déjà (point hérité).
   const inherited = (i: DraftIssue) => before.some((b) => b.severity === 'refuse' && b.code === i.code && b.message === i.message);
-  // Vouvoiement imposé : une proposition qui tutoie est refusée, sauf si le texte d'origine tutoyait déjà.
-  const addedTutoiement = (i: DraftIssue) => i.code === 'tutoiement' && !before.some((b) => b.code === 'tutoiement');
-  const refusals = [
-    ...after.filter((i) => i.severity === 'refuse' && !inherited(i)).map((i) => reason(i.message)),
-    ...after.filter(addedTutoiement).map((i) => i.message.replace(/^À relire : /, '')),
-  ];
+  const refusals = after.filter((i) => i.severity === 'refuse' && !inherited(i)).map((i) => reason(i.message));
   const warnings = [
     ...after.filter((i) => i.severity === 'refuse' && inherited(i)).map((i) => `Déjà dans votre texte, à revoir : ${reason(i.message)}`),
-    ...after.filter((i) => i.severity === 'warn' && !addedTutoiement(i)).map((i) => i.message),
+    ...after.filter((i) => i.severity === 'warn').map((i) => i.message),
   ];
   return { refusals: [...new Set(refusals)], warnings: [...new Set(warnings)] };
 }
@@ -1475,8 +1526,10 @@ export interface DraftRequest extends PrepareRequest {
   relances: number;
   profile_visit: boolean;
   first_contact: FirstContact;
-  /** Modèle choisi par la personne (sélecteur de modèle) ; validé contre le catalogue par l'appelant. */
-  ai_model: string | null;
+  /** Niveau de l'IA demandé (lot 5e-2) ; null : niveau par défaut de l'organisation. Le plafond est contrôlé par l'appelant. */
+  ai_level: AiLevel | null;
+  /** Style demandé pour cette rédaction, partiel (complété par le style de la personne). */
+  style: Partial<WritingStyle>;
 }
 
 export type ParsedDraftRequest<T> =
@@ -1531,6 +1584,12 @@ export function parseDraftRequest(body: unknown): ParsedDraftRequest<DraftReques
   }
   if (b.profile_visit != null && typeof b.profile_visit !== 'boolean') return invalid('Visite du profil invalide.');
   if (b.first_contact != null && b.first_contact !== 'invitation' && b.first_contact !== 'inmail') return invalid('Premier contact invalide.');
+  // Niveau et style (lot 5e-2). _ai_model n'est plus lu : le niveau choisit le modèle.
+  if (b.ai_level != null && b.ai_level !== '' && !isAiLevel(b.ai_level)) {
+    return { ok: false, status: 400, code: 'AI_LEVEL_INVALID', error: AI_LEVEL_INVALID_MESSAGE };
+  }
+  const style = parseStyleOverrides(b.style);
+  if (!style.ok) return style;
 
   return {
     ok: true,
@@ -1542,7 +1601,8 @@ export function parseDraftRequest(body: unknown): ParsedDraftRequest<DraftReques
       relances,
       profile_visit: b.profile_visit !== false,
       first_contact: b.first_contact === 'inmail' ? 'inmail' : 'invitation',
-      ai_model: typeof b._ai_model === 'string' && b._ai_model.length <= 64 ? b._ai_model : null,
+      ai_level: isAiLevel(b.ai_level) ? b.ai_level : null,
+      style: style.overrides,
     },
   };
 }

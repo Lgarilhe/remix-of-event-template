@@ -166,7 +166,8 @@ test('front-enroll-follow-2 — aperçu : ni génération facturée pour un e-ma
 
   assert.deepEqual(hook.messageSteps.map(s => s.stepId), ['msg']);
   assert.equal(hook.hasAiSteps, true);
-  assert.equal(hook.estimatedCredits, 1, 'une seule génération facturée par candidat (le message LinkedIn)');
+  // Lot 5e-2 : coût d'un message au niveau choisi (Équilibré tant que les réglages ne sont pas lus).
+  assert.equal(hook.estimatedCredits, hook.creditsPerMessage, 'une seule génération facturée par candidat (le message LinkedIn)');
 
   await hook.generateForCandidateById('p1');
   const calls = takeGenerationCalls();
