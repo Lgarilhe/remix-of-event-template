@@ -71,7 +71,7 @@ export const ModelPicker = ({
       <DropdownMenuTrigger asChild disabled={disabled}>
         <button
           type="button"
-          aria-label={`Modèle : ${isAutoRouted ? 'automatique' : resolvedModel?.name ?? 'Avancé'}, environ ${creditsLabel(estimatedCost)}`}
+          aria-label={`Modèle : ${isAutoRouted ? 'automatique' : resolvedModel?.name ?? 'Équilibré'}, environ ${creditsLabel(estimatedCost)}`}
           title="Choisir le modèle"
           className={cn(
             "inline-flex h-8 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs transition-colors",
@@ -82,8 +82,8 @@ export const ModelPicker = ({
         >
           <ModelLogo modelId={resolvedModelId} size={14} />
           {!compact && (
-            <span className="truncate text-muted-foreground">
-              {isAutoRouted ? 'Automatique' : resolvedModel?.name ?? 'Avancé'}
+            <span className="truncate">
+              {isAutoRouted ? 'Automatique' : resolvedModel?.name ?? 'Équilibré'}
             </span>
           )}
           <span className="ml-auto whitespace-nowrap font-medium tabular-nums text-foreground">

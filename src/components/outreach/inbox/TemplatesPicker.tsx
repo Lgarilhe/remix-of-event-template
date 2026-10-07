@@ -94,7 +94,7 @@ export const TemplatesPicker: React.FC<TemplatesPickerProps> = ({
     return (
       <div className={cn(PANEL, 'p-4')} role="status">
         <div className="mb-2 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <FileText className="h-4 w-4" aria-hidden="true" />
           <span className="text-sm font-medium text-foreground">Aucun modèle pour l'instant</span>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
@@ -130,7 +130,7 @@ export const TemplatesPicker: React.FC<TemplatesPickerProps> = ({
   return (
     <div className={cn(PANEL, 'overflow-hidden')}>
       <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
-        <FileText className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        <FileText className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
         <span className="text-xs font-medium text-muted-foreground">Modèles ({filtered.length})</span>
         <span className="ml-auto text-2xs text-muted-foreground">↑ ↓ pour parcourir · Entrée pour insérer</span>
       </div>
@@ -176,7 +176,7 @@ export const TemplatesPicker: React.FC<TemplatesPickerProps> = ({
             type="button"
             variant="ghost"
             size="xs"
-            className="w-full text-muted-foreground"
+            className="w-full"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onCreateNew}
           >

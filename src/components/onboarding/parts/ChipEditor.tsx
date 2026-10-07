@@ -77,7 +77,7 @@ export const ChipEditor: React.FC<Props> = ({ id, label, values, onChange, addLa
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-2xs text-muted-foreground">Proposé aussi :</span>
           {pending.map((s) => (
-            <Button key={s} variant="ghost" size="xs" onClick={() => add(s)} className="rounded-full text-muted-foreground">
+            <Button key={s} variant="ghost" size="xs" onClick={() => add(s)} className="rounded-full">
               <Plus aria-hidden="true" />
               {s}
             </Button>

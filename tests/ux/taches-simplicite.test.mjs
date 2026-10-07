@@ -173,8 +173,10 @@ test('Ligne : case touchable sur 44 px, corbeille au survol et sur écran tactil
 
 test('Terminées : barrées, atténuées, la case rouvre la tâche', () => {
   const html = section({ bucket: 'done', label: 'Terminées', items: [task({ title: 'Vérifier les références', completed_at: '2026-09-28T10:00:00Z' })] });
-  assert.match(html, /<li class="group flex items-center gap-3\.5 py-3 opacity-60">/);
-  assert.match(html, /line-through">Vérifier les références</);
+  // Atténuées par le gris secondaire du titre, jamais par une opacité sur la ligne (contraste v2).
+  assert.match(html, /<li class="group flex items-center gap-3\.5 py-3">/);
+  assert.doesNotMatch(html, /opacity-60/);
+  assert.match(html, /text-muted-foreground line-through">Vérifier les références</);
   assert.match(html, /aria-label="Rouvrir la tâche « Vérifier les références »"/);
 });
 

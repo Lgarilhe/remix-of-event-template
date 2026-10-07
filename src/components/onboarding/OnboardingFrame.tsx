@@ -69,7 +69,7 @@ export const OnboardingFrame: React.FC<Props> = ({ steps, activeIndex, progress,
           {Math.min(activeIndex + 1, steps.length)} / {steps.length}
         </p>
         {onLeave && (
-          <Button variant="ghost" size="sm" onClick={onLeave} className="hidden text-muted-foreground sm:inline-flex">
+          <Button variant="ghost" size="sm" onClick={onLeave} className="hidden sm:inline-flex">
             Terminer plus tard
           </Button>
         )}

@@ -143,7 +143,7 @@ export default function SourcingSearch() {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="shrink-0 text-muted-foreground"
+              className="shrink-0"
               onClick={() => navigate('/sourcing')}
               aria-label="Retour aux recherches"
               title="Retour aux recherches"

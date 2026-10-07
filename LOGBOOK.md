@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — BUG — Onboarding : reprises, classement et changement de client
+
+**Fait** : recherche et scoring partagés par le cache du parcours pendant les retours arrière ; tri des dix profils avant l’affichage des six meilleurs ; brief invalidé quand le client change, y compris après rechargement. Conflits avec main résolus et contrastes des nouvelles scènes alignés.
+**Validation** : build réussi ; TypeScript 11 erreurs héritées, lint et dette design sans augmentation. Régressions UX, C1 et agent vérifiées. Chromium en StrictMode, réponses simulées, largeurs de 320 à 1440 px et deux thèmes.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Premier candidat affiché et destinataire du message identiques | PASS |
+| Claire | Espace, brief, mission et fin du parcours entreprise | PASS |
+| Théo | Retour pendant le scoring : un seul appel ; client A puis B ; reprise sans mission dupliquée | PASS |
+| Sophie | Parcours mobile 320/390 px, sans débordement ni erreur navigateur | PASS |
+
+**Reste à faire** : validation en environnement connecté après fusion.
+**Refs** : PR #255.
+
 ## 2026-10-06 — SHIP — Brief IA : consigne dite une fois, offres filtrables, échec d'adresse plus clair
 
 **Contexte** : retour du propriétaire, « le design et l'UX sont à retravailler », puis « fais au mieux » après une revue de la fenêtre de création (choix, saisie, résultat, offres d'une société) en sombre, clair et téléphone.

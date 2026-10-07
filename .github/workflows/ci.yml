@@ -77,6 +77,13 @@ jobs:
       # seule la RPC écrit sequence_steps).
       - name: Lot 5e regression tests (rédaction par l'IA)
         run: node --test tests/c1/lot5e-redaction.test.mjs
+      # Refonte des séquences, lot 5e-2 : style et niveau de l'IA qui rédige
+      # (chaque rédacteur lit les réglages de l'appelant, refuse un niveau
+      # au-dessus du plafond de l'organisation avant le garde des crédits,
+      # garde et débit au modèle du niveau, aucun identifiant de modèle hors
+      # ai-config, aucun nom de modèle dans les textes, vouvoiement imposé).
+      - name: Lot 5e-2 regression tests (style et niveau de l'IA)
+        run: node --test tests/c1/lot5e2-style-niveau.test.mjs
       # Photos des candidats : la notation garde la photo LinkedIn enregistrée,
       # le rafraîchissement des adresses est branché (tests sans dépendance).
       - name: Photos des candidats (notation)
@@ -140,6 +147,11 @@ jobs:
         env:
           TZ: Europe/Paris
         run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs tests/ux/lot5e-redaction-ecrans.test.mjs
+      # Refonte des séquences, lot 5e-2 : écrans du style et du niveau de l'IA
+      # (parité navigateur et serveur, coût de chaque niveau, corps envoyés,
+      # carte du niveau au seul propriétaire). Empaquette les modules avec esbuild.
+      - name: Lot 5e-2 tests (style et niveau de l'IA, écrans)
+        run: node --test tests/ux/lot5e2-style-niveau.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié

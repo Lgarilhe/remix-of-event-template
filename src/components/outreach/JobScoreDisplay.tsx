@@ -130,7 +130,7 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-muted-foreground cursor-help rounded-lg bg-background">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-foreground cursor-help rounded-lg bg-background">
           <Icon className="w-3 h-3" /> {config.label}
         </span>
       </TooltipTrigger>
@@ -262,7 +262,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   if (result.hardFilterPassed === false && result.hardFilterKO) {
     return (
       <div className="flex items-start gap-2.5 p-3 border border-border bg-muted rounded-lg">
-        <Ban className="w-4 h-4 text-foreground/60 mt-0.5 shrink-0" />
+        <Ban className="w-4 h-4 mt-0.5 shrink-0" />
         <div>
           <p className="text-xs font-bold text-foreground">Éliminé par filtre</p>
           <p className="text-xs text-muted-foreground mt-0.5">{result.hardFilterKO}</p>
@@ -301,7 +301,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   const confidenceBadge = result.confidenceScore != null && result.confidenceScore < 70 ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-muted-foreground cursor-help rounded-lg bg-muted">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-foreground cursor-help rounded-lg bg-muted">
           {result.confidenceScore < 40 ? <AlertTriangle className="w-3 h-3" /> : <Search className="w-3 h-3" />}
           {result.confidenceScore < 40 ? 'Données insuffisantes' : 'Score partiel'}
         </span>
@@ -417,7 +417,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
           </div>
           {jobTitle && (
             <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <Target className="w-3 h-3 mt-0.5 shrink-0" />
+              <Target className="w-3 h-3 mt-0.5 shrink-0 text-foreground" />
               <span>Match pour <span className="text-foreground font-semibold">{jobTitle}</span></span>
             </div>
           )}
@@ -481,7 +481,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
             </span>
             {result.missing_skills.length > 0 && (
               <span className="flex items-center gap-1">
-                <XCircle className="w-3.5 h-3.5" /> {result.missing_skills.length} manquants
+                <XCircle className="w-3.5 h-3.5 text-foreground" /> {result.missing_skills.length} manquants
               </span>
             )}
           </div>
@@ -537,7 +537,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       {/* ─── DÉTAIL TECHNIQUE (collapsible) — dimensions algo brut ──────── */}
       {(result.dimensions && Object.values(result.dimensions).some(v => v != null)) || result.scoring_details ? (
         <Collapsible>
-          <CollapsibleTrigger className="group w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors hover:bg-muted/30">
+          <CollapsibleTrigger className="group w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-foreground border border-border rounded-md transition-colors hover:bg-muted/30">
             <span className="flex items-center gap-1.5">
               <Lightbulb className="w-3.5 h-3.5" />
               Détail du scoring
@@ -564,14 +564,14 @@ const CompatChip: React.FC<{ icon: React.ElementType; label: string; value: stri
     className={cn(
       'flex items-center gap-2.5 px-3 py-2 border rounded-md transition-colors',
       ok
-        ? 'border-emerald-500/30 bg-emerald-500/5'
+        ? 'border-success/30 bg-success-muted'
         : 'border-border bg-muted/30',
     )}
   >
-    <Icon className={cn('w-4 h-4 shrink-0', ok ? 'text-emerald-500' : 'text-muted-foreground')} />
+    <Icon className={cn('w-4 h-4 shrink-0', ok ? 'text-success' : 'text-muted-foreground')} />
     <div className="flex-1 min-w-0">
       <p className="text-2xs font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</p>
-      <p className={cn('text-xs font-semibold mt-0.5 truncate', ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
+      <p className="text-xs font-semibold mt-0.5 truncate text-foreground">
         {value}
       </p>
     </div>
@@ -613,10 +613,11 @@ const PowerScoreChip: React.FC<{ icon: React.ElementType; label: string; score: 
   icon: Icon, label, score, tooltip,
 }) => {
   const tone = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+  // Texte à l'encre, la couleur du niveau tient dans l'icône (badges à la Qonto).
   const cls = tone === 'high'
-    ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
+    ? 'border-success/30 bg-success-muted text-foreground [&>svg]:text-success'
     : tone === 'medium'
-    ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+    ? 'border-warning/30 bg-warning-muted text-foreground [&>svg]:text-warning'
     : 'border-border bg-muted/30 text-muted-foreground';
   const chip = (
     <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md', cls)}>
@@ -638,17 +639,18 @@ const PowerScoreChip: React.FC<{ icon: React.ElementType; label: string; score: 
 const PedigreeAssessmentBlock: React.FC<{ assessment: NonNullable<JobMatchResult['pedigreeAssessment']> }> = ({ assessment }) => {
   if (!assessment) return null;
   const verdictConfig = {
-    match: { icon: CheckCircle2, label: "Conforme à l'ICP", cls: 'text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
-    partial: { icon: AlertCircle, label: 'Partiellement conforme', cls: 'text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/5' },
-    mismatch: { icon: XCircle, label: 'Non conforme', cls: 'text-destructive border-destructive/30 bg-destructive/5' },
+    // Texte à l'encre, la couleur du verdict tient dans l'icône (badges à la Qonto).
+    match: { icon: CheckCircle2, label: "Conforme à l'ICP", cls: 'text-foreground border-success/30 bg-success-muted [&>svg]:text-success' },
+    partial: { icon: AlertCircle, label: 'Partiellement conforme', cls: 'text-foreground border-warning/30 bg-warning-muted [&>svg]:text-warning' },
+    mismatch: { icon: XCircle, label: 'Non conforme', cls: 'text-foreground border-destructive/30 bg-destructive/5 [&>svg]:text-destructive' },
   }[assessment.verdict || 'partial'];
   const Icon = verdictConfig.icon;
   return (
     <div className="space-y-2">
       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-        <Shield className="w-3.5 h-3.5" />
+        <Shield className="w-3.5 h-3.5 text-foreground" />
         ICP société {assessment.presetName ? `— ${assessment.presetName}` : ''}
-        {assessment.strictMode && <span className="text-3xs font-medium text-amber-600 dark:text-amber-400">(strict)</span>}
+        {assessment.strictMode && <span className="text-3xs font-medium text-foreground">(strict)</span>}
       </p>
       <div className={cn('flex items-start gap-2 px-2.5 py-2 border rounded-md text-xs', verdictConfig.cls)}>
         <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -678,13 +680,13 @@ const CriteriaSection: React.FC<{ criteriaEvaluations: NonNullable<JobMatchResul
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <Target className="w-3.5 h-3.5" />
+          <Target className="w-3.5 h-3.5 text-foreground" />
           Critères du brief ({criteriaEvaluations.length})
         </p>
         {criteriaEvaluations.length > 3 && (
           <button
             onClick={() => setShowAll(!showAll)}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs text-foreground transition-colors"
           >
             {showAll ? 'Réduire' : `+ ${criteriaEvaluations.length - 3} autres`}
           </button>
@@ -693,9 +695,9 @@ const CriteriaSection: React.FC<{ criteriaEvaluations: NonNullable<JobMatchResul
       <div className="space-y-1">
         {visible.map((ce, i) => {
           const verdictConfig = {
-            pass: { icon: CheckCircle2, cls: 'text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
-            partial: { icon: AlertCircle, cls: 'text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/5' },
-            fail: { icon: XCircle, cls: 'text-destructive border-destructive/30 bg-destructive/5' },
+            pass: { icon: CheckCircle2, cls: 'text-foreground border-success/30 bg-success-muted [&>svg]:text-success' },
+            partial: { icon: AlertCircle, cls: 'text-foreground border-warning/30 bg-warning-muted [&>svg]:text-warning' },
+            fail: { icon: XCircle, cls: 'text-foreground border-destructive/30 bg-destructive/5 [&>svg]:text-destructive' },
             unknown: { icon: Search, cls: 'text-muted-foreground border-border bg-muted/30' },
           }[ce.verdict] || { icon: AlertCircle, cls: 'text-muted-foreground border-border bg-muted/30' };
           const Icon = verdictConfig.icon;

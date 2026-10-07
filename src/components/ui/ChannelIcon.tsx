@@ -6,7 +6,7 @@ import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 
 /**
- * Pastille d'un canal : logo officiel pour LinkedIn et WhatsApp, icône grise
+ * Pastille d'un canal : logo officiel pour LinkedIn et WhatsApp, icône à l'encre
  * pour l'e-mail et l'appel (table `src/lib/channels.ts`). Le libellé, quand il
  * est affiché, reste en texte neutre et le logo devient décoratif, pour ne
  * pas lire le nom deux fois.
@@ -59,7 +59,7 @@ export const ChannelIcon: React.FC<ChannelIconProps> = ({
         <img src={logo} alt={hidden ? '' : label} aria-hidden={hidden || undefined} className={cn(sizeClass, 'rounded-sm')} />
       ) : Icon ? (
         <Icon
-          className={cn(sizeClass, 'text-muted-foreground')}
+          className={cn(sizeClass, 'text-foreground')}
           aria-hidden={hidden ? true : undefined}
           aria-label={hidden ? undefined : label}
           role={hidden ? undefined : 'img'}

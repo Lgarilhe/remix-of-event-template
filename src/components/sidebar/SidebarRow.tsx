@@ -67,7 +67,7 @@ export function SidebarRow({
       {leading != null && (
         <span
           aria-hidden="true"
-          className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground [&>svg]:h-4 [&>svg]:w-4"
+          className="flex h-5 w-5 shrink-0 items-center justify-center text-sidebar-foreground [&>svg]:h-4 [&>svg]:w-4"
         >
           {leading}
         </span>

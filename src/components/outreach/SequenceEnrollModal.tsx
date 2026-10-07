@@ -604,7 +604,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           {/* Résumé */}
           <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-3">
             <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Users className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
               {enrollCount} sur {plural(profiles.length, 'candidat')} {enrollCount > 1 ? 'seront inscrits' : 'sera inscrit'}
             </p>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -613,7 +613,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             </div>
             {firstAction && (
               <p className="flex items-start gap-2 text-sm text-foreground">
-                <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <CalendarClock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>{firstAction}</span>
               </p>
             )}
@@ -768,19 +768,19 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               )}
               {results.skipped > 0 && (
                 <p className="flex items-start gap-2 text-muted-foreground">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                   <span>{alreadyInSequenceLabel(results.skipped)}</span>
                 </p>
               )}
               {results.alreadyPassed > 0 && (
                 <p className="flex items-start gap-2 text-muted-foreground">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                   <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
                 </p>
               )}
               {results.samePerson.length > 0 && (
                 <div className="flex items-start gap-2 text-muted-foreground">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                   <div className="min-w-0">
                     <p>{samePersonRefusedLabel(results.samePerson.length)}</p>
                     <p className="text-xs">{refusedCandidatesLabel(results.samePerson)}</p>

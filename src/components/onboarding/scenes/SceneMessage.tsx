@@ -87,13 +87,13 @@ export const SceneMessage: React.FC<Props> = ({ candidate, missionId, jobTitle, 
         {TONES.map((t) => (
           <Button
             key={t.value}
-            variant="outline"
+            variant="ghost"
             role="radio"
             aria-checked={chosen === t.value}
             onClick={() => pickTone(t.value)}
             className={cn(
-              'h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl p-4 text-left font-normal',
-              chosen === t.value && 'border-foreground bg-accent',
+              'h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl border hover:border-foreground p-4 text-left font-normal',
+              chosen === t.value ? 'border-border-strong bg-accent' : 'border-border',
             )}
           >
             <span className="text-base font-semibold text-foreground">{t.label}</span>

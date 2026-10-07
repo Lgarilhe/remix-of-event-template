@@ -32,7 +32,7 @@ function MobileMenuTrigger() {
     <span className="relative inline-flex">
       {/* Le kit rend l'icône et le nom « Afficher ou masquer la navigation ». */}
       <SidebarTrigger
-        className="min-h-11 min-w-11 text-muted-foreground hover:text-foreground"
+        className="min-h-11 min-w-11"
         aria-describedby={show ? descriptionId : undefined}
       />
       {show && (

@@ -144,7 +144,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   const limitId = `${baseId}-limit-${sender.account_id}`;
                   return (
                     <li key={sender.account_id} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
                         {kind === 'linkedin'
                           ? <ChannelIcon channel="linkedin" size="sm" decorative />
                           : kind === 'email'
@@ -200,7 +200,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border py-6 text-center">
-              <Users className="mx-auto mb-2 h-5 w-5 text-muted-foreground" aria-hidden="true" />
+              <Users className="mx-auto mb-2 h-5 w-5 text-foreground" aria-hidden="true" />
               <p className="text-xs text-muted-foreground">Aucun expéditeur pour l'instant.</p>
             </div>
           )}
@@ -254,7 +254,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   </div>
                 ) : teamMembers.length === 0 ? (
                   <div className="py-12 text-center">
-                    <Users className="mx-auto mb-2 h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                    <Users className="mx-auto mb-2 h-6 w-6 text-foreground" aria-hidden="true" />
                     <p className="text-sm text-muted-foreground">Aucun membre trouvé.</p>
                   </div>
                 ) : (

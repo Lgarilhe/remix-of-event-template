@@ -122,7 +122,9 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
 
       <div className={cn(
         'relative w-full max-w-[640px] rounded-xl border bg-[var(--k-surface)] px-4 py-3.5 transition-[border-color,box-shadow] duration-150',
-        focused ? 'border-[var(--k-hairline-focus)] shadow-[0_1px_3px_rgba(0,0,0,0.2)]' : 'border-[var(--k-hairline)]',
+        // Focus comme un champ du kit : bord et anneau brand de 2 px en tout ; le bord de contrôle du repos
+        // (border-input) a la même valeur que l'ancien bord de focus, qui ne se voyait plus.
+        focused ? 'border-ring ring-1 ring-ring' : 'border-input',
       )}>
         <div className="flex items-start gap-2.5">
           <AiBurst className={cn('w-[17px] h-[17px] mt-1 shrink-0 transition-colors duration-150', (focused || armed) ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-placeholder)]')} />
@@ -207,8 +209,8 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         {HERO_EXAMPLES.map(ex => (
           <button key={ex} type="button" onClick={() => { setValue(ex); taRef.current?.focus(); }}
             className={isV3
-              ? 'rounded-sm px-1 py-1.5 text-sm text-[var(--k-text-2)] underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors hover:text-[var(--k-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
-              : 'rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors'}>
+              ? 'rounded-sm px-1 py-1.5 text-sm text-foreground underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
+              : 'rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-foreground hover:border-[var(--k-hairline-hover)] transition-colors'}>
             {ex}
           </button>
         ))}
@@ -570,6 +572,10 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   variant = 'default',
 }) => {
   const isV3 = variant === 'mission-v3';
+  // Nouvelle page : champs des puces au bord de champ (3:1 au moins) et focus brand, menus au filet
+  // (l'ombre les détache) ; l'ancienne page garde ses filets.
+  const chipField = isV3 ? 'border-input focus:border-ring' : 'border-[var(--k-hairline)] focus:border-[var(--k-hairline-focus)]';
+  const chipPop = isV3 ? 'border-border' : 'border-[var(--k-hairline-focus)]';
   const chips = buildChips(filters);
   const advCount = advancedCount(filters);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -809,7 +815,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 isV3 && 'rounded-l-lg py-1.5 max-sm:min-h-11',
                 !isV3 && chip.op && 'border-r border-[var(--k-hairline)]',
                 isV3
-                  ? chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-foreground-secondary'
+                  ? chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-foreground'
                   : chip.weight === 'must' ? 'text-[var(--k-text)]' : chip.weight === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'text-[var(--k-text-muted)]',
                 chip.canCycle ? 'cursor-pointer hover:bg-[var(--k-surface-2)]' : 'cursor-default',
               )}
@@ -847,7 +853,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 onClick={() => setOpenKey(openKey === `${chip.key}@scope` ? null : `${chip.key}@scope`)}
                 title="Portée : poste ou entreprise actuel(le), passé(e)…"
                 className={cn(
-                  'inline-flex items-center gap-0.5 px-1.5 py-1 font-normal text-[var(--k-text-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text-2)]',
+                  'inline-flex items-center gap-0.5 px-1.5 py-1 font-normal text-foreground hover:bg-[var(--k-surface-2)]',
                   isV3 ? 'text-sm py-1.5 max-sm:min-h-11' : 'border-l border-[var(--k-hairline)] text-2xs',
                 )}
               >
@@ -869,7 +875,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
 
             {/* Popover portée */}
             {openKey === `${chip.key}@scope` && (chip.key === 'poste' || chip.key === 'boite') && (
-              <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
+              <div data-chip-pop className={`absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border ${chipPop} bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150`}>
                 <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Portée</div>
                 {(chip.key === 'poste' ? ROLE_SCOPE_OPTIONS : COMPANY_SCOPE_OPTIONS).map(opt => {
                   const current = chip.key === 'poste' ? filters.role[0]?.scope : filters.company_keywords[0]?.scope;
@@ -890,28 +896,28 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
 
             {/* Popover valeurs */}
             {openKey === chip.key && (
-              <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[240px] max-w-[310px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
+              <div data-chip-pop className={`absolute z-40 top-full left-0 mt-1.5 min-w-[240px] max-w-[310px] rounded-[10px] border ${chipPop} bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150`}>
                 <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">{chip.field} : valeurs</div>
                 {chip.key === 'exp' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={50} value={filters.calculated_experience_min ?? ''} placeholder="min"
                       onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
-                      className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     →
                     <input type="number" min={0} max={50} value={filters.calculated_experience_max ?? ''} placeholder="max"
                       onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
-                      className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     ans
                   </div>
                 ) : chip.key === 'anciennete' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={40} value={filters.tenure_at_role_min ?? ''} placeholder="min"
                       onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_min: v })); }}
-                      className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     →
                     <input type="number" min={0} max={40} value={filters.tenure_at_role_max ?? ''} placeholder="max"
                       onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_max: v })); }}
-                      className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     ans dans le poste
                   </div>
                 ) : chip.key === 'contact' ? (
@@ -933,7 +939,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         <select
                           value={filters.activity_messages_days ?? ''}
                           onChange={e => { const v = e.target.value === '' ? null : Number(e.target.value); onFiltersEdit(f => ({ ...f, activity_messages_days: v })); }}
-                          className="h-7 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]"
+                          className={`h-7 rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
                         >
                           {CONTACT_TIMESPANS.map(o => <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>)}
                         </select>
@@ -1014,7 +1020,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           addValue(chip.key, v);
                         }
                       }}
-                      className="w-[calc(100%-8px)] m-1 h-7 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none focus:border-[var(--k-hairline-focus)]"
+                      className={`w-[calc(100%-8px)] m-1 h-7 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none`}
                     />
                     {chip.key === 'lieu' && (
                       <div className="border-t border-[var(--k-hairline)] mt-1 pt-1.5 px-2 pb-1 flex flex-col gap-1.5">
@@ -1024,7 +1030,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                             <select
                               value={filters.location_within_area ?? ''}
                               onChange={e => { const v = e.target.value === '' ? null : Number(e.target.value); onFiltersEdit(f => ({ ...f, location_within_area: v })); }}
-                              className="h-7 max-w-[160px] rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]"
+                              className={`h-7 max-w-[160px] rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
                             >
                               {LOCATION_RADIUS_OPTIONS.map(o => <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>)}
                             </select>
@@ -1035,7 +1041,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           <select
                             value={filters.location[0]?.scope ?? 'CURRENT_OR_OPEN_TO_RELOCATE'}
                             onChange={e => { const v = e.target.value as LocationScope; onFiltersEdit(f => ({ ...f, location: f.location.map(l => ({ ...l, scope: v })) })); }}
-                            className="h-7 max-w-[160px] rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]"
+                            className={`h-7 max-w-[160px] rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
                           >
                             {LOCATION_SCOPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
@@ -1057,14 +1063,14 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             data-chip-seg
             onClick={() => { setOpenKey(openKey === '__add' ? null : '__add'); setAddField(null); }}
             className={isV3
-              ? 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-foreground-secondary transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
-              : 'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors'}
+              ? 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
+              : 'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors'}
           >
             <svg viewBox="0 0 24 24" {...svgProps} className={isV3 ? 'w-3.5 h-3.5' : 'w-3 h-3'}><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
             Filtre
           </button>
           {openKey === '__add' && (
-            <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
+            <div data-chip-pop className={`absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border ${chipPop} bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150`}>
               {addField === null ? (
                 <>
                   <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Ajouter un filtre</div>
@@ -1100,22 +1106,22 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[var(--k-text-muted)]">
                   <input type="number" min={0} max={40} autoFocus placeholder="min"
                     onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_min: v })); }}
-                    className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   →
                   <input type="number" min={0} max={40} placeholder="max"
                     onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_max: v })); }}
-                    className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   ans dans le poste
                 </div>
               ) : addField === 'exp' ? (
                 <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[var(--k-text-muted)]">
                   <input type="number" min={0} max={50} autoFocus placeholder="min"
                     onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
-                    className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   →
                   <input type="number" min={0} max={50} placeholder="max"
                     onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
-                    className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   ans
                 </div>
               ) : (addField === 'seniorite' || addField === 'langue' || addField === 'taille') ? (
@@ -1160,7 +1166,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         if (addField) addValue(addField as FacetChip['key'], v);
                       }
                     }}
-                    className="w-[calc(100%-8px)] m-1 h-7 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none focus:border-[var(--k-hairline-focus)]"
+                    className={`w-[calc(100%-8px)] m-1 h-7 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none`}
                   />
                 </>
               )}
@@ -1174,7 +1180,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
           type="button"
           onClick={() => setFuOpen(o => !o)}
           title="Affiner en une phrase : l'IA la traduit en filtres visibles"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
         >
           <AiBurst className="w-3 h-3" />
           Affiner
@@ -1184,7 +1190,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         <button
           type="button"
           onClick={onOpenAdvanced}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
         >
           <svg viewBox="0 0 24 24" {...svgProps} className="w-3 h-3"><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
           Avancé{advCount > 0 ? ` · ${advCount}` : ''}

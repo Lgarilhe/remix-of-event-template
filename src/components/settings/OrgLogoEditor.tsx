@@ -239,7 +239,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
           htmlFor={editingWebsite && canEdit ? 'org-website' : undefined}
           className="flex items-center gap-1.5 text-sm text-muted-foreground"
         >
-          <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+          <Globe className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
           Site web
         </label>
         {editingWebsite && canEdit ? (
@@ -280,7 +280,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, canEd
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                    className="max-md:h-11 max-md:w-11"
                     onClick={() => { setWebsiteValue(website || ''); setEditingWebsite(true); }}
                     aria-label="Modifier le site web"
                   >

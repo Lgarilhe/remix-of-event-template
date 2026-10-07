@@ -199,7 +199,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
       {/* En-tête : titre, onglets, modèle, relance, fermeture */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted px-3 py-2">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-          <Bot className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
           Assistant IA
         </span>
 
@@ -285,9 +285,9 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                     {qualQuestions.map((q, i) => (
                       <Button
                         key={i}
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-auto min-h-8 w-full justify-start whitespace-normal py-1.5 text-left font-normal"
+                        className="h-auto min-h-8 w-full justify-start whitespace-normal rounded-lg border border-border py-1.5 text-left font-normal hover:border-foreground"
                         onClick={() => insert(q)}
                       >
                         {q}
@@ -321,8 +321,8 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                     return (
                       <Button
                         key={i}
-                        variant="outline"
-                        className="h-auto w-full items-start justify-start gap-3 whitespace-normal p-2.5 text-left font-normal"
+                        variant="ghost"
+                        className="h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-lg border border-border p-2.5 text-left font-normal hover:border-foreground"
                         onClick={() => onAddToPipeline?.(job.jobId, job.jobTitle)}
                         aria-label={`Ajouter au pipeline pour ${job.jobTitle} (correspondance ${job.matchScore} %, ${reco.label.toLowerCase()})`}
                       >
@@ -373,8 +373,8 @@ const SuggestionItem: React.FC<{
   onInsert: (text: string) => void;
 }> = ({ suggestion, onInsert }) => (
   <Button
-    variant="outline"
-    className="h-auto w-full flex-col items-stretch gap-1 whitespace-normal p-3 text-left font-normal"
+    variant="ghost"
+    className="h-auto w-full flex-col items-stretch gap-1 whitespace-normal rounded-lg border border-border p-3 text-left font-normal hover:border-foreground"
     onClick={() => onInsert(suggestion.text)}
   >
     <span className="text-sm leading-relaxed text-foreground">{suggestion.text}</span>

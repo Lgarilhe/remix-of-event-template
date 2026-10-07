@@ -128,7 +128,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                     <>
                       <span className="mx-1.5 text-muted-foreground/40">·</span>
                       <span className="inline-flex items-center gap-1 align-middle">
-                        <Clock className="w-3 h-3" /> {durationLabel}
+                        <Clock className="w-3 h-3 text-foreground" /> {durationLabel}
                       </span>
                     </>
                   )}
@@ -137,7 +137,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
             </div>
             <button
               onClick={() => onClose?.()}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors rounded-md"
+              className="p-1.5 text-foreground hover:bg-accent transition-colors rounded-md"
               aria-label="Fermer"
             >
               <X className="w-4 h-4" />
@@ -276,7 +276,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
             transition={{ delay: 0.5 }}
           >
             <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+              <Clock className="w-3 h-3 text-foreground" />
               {durationLabel}
             </span>
           </motion.div>
@@ -429,7 +429,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
               href={entry.profileUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground shrink-0 transition-colors opacity-0 group-hover:opacity-100"
+              className="text-foreground shrink-0 transition-colors opacity-0 group-hover:opacity-100"
               onClick={e => e.stopPropagation()}
               aria-label="Ouvrir le profil LinkedIn"
             >
@@ -460,7 +460,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
         animate={{ rotate: isSelected ? 90 : 0 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
       >
-        <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+        <ChevronRight className="w-4 h-4 text-foreground" />
       </motion.div>
     </div>
 

@@ -151,7 +151,7 @@ export const PedigreePresetSelector: React.FC<Props> = ({
       <div className="border-2 border-dashed border-border rounded-lg p-4 bg-muted/20">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-start gap-2">
-            <Sparkles className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
+            <Sparkles className="w-4 h-4 mt-0.5 shrink-0" />
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wider">
                 ICP société
@@ -325,7 +325,7 @@ const PedigreeSummary: React.FC<{ req: PedigreeRequirements }> = ({ req }) => {
 
 const SummaryLine: React.FC<{ icon: React.ReactNode; label: string; children: React.ReactNode }> = ({ icon, label, children }) => (
   <div className="flex items-start gap-2">
-    <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
+    <span className="text-foreground mt-0.5 shrink-0">{icon}</span>
     <span className="text-muted-foreground font-bold uppercase tracking-wider min-w-[100px] shrink-0">{label}</span>
     <span className={cn('text-foreground', 'flex-1')}>{children}</span>
   </div>

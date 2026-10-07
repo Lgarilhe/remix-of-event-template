@@ -130,7 +130,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               Commencer
               <ArrowRight aria-hidden="true" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleClose} className="text-muted-foreground min-h-11 md:min-h-0">
+            <Button variant="ghost" size="sm" onClick={handleClose} className="min-h-11 md:min-h-0">
               Passer
             </Button>
           </div>
@@ -158,11 +158,11 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <ArrowRight aria-hidden="true" />
             </Button>
             <div className="flex items-center justify-between">
-              <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground min-h-11 md:min-h-0">
+              <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="min-h-11 md:min-h-0">
                 <ChevronLeft aria-hidden="true" />
                 Retour
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleNext} className="text-muted-foreground min-h-11 md:min-h-0">
+              <Button variant="ghost" size="sm" onClick={handleNext} className="min-h-11 md:min-h-0">
                 Plus tard
               </Button>
             </div>
@@ -193,11 +193,11 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <ArrowRight aria-hidden="true" />
             </Button>
             <div className="flex items-center justify-between">
-              <Button variant="ghost" size="sm" onClick={() => setStep(hasLinkedIn ? 1 : 2)} className="text-muted-foreground min-h-11 md:min-h-0">
+              <Button variant="ghost" size="sm" onClick={() => setStep(hasLinkedIn ? 1 : 2)} className="min-h-11 md:min-h-0">
                 <ChevronLeft aria-hidden="true" />
                 Retour
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleClose} className="text-muted-foreground min-h-11 md:min-h-0">
+              <Button variant="ghost" size="sm" onClick={handleClose} className="min-h-11 md:min-h-0">
                 Fermer
               </Button>
             </div>

@@ -36,9 +36,8 @@ export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, 
   const ready = state.status === 'ready' ? state.results : null;
   const ordered = useMemo(() => {
     if (!ready) return [];
-    const list = ready.candidates.slice(0, VISIBLE);
-    if (ready.scoring !== 'done') return list;
-    return [...list].sort((a, b) => (ready.scores[b.id]?.score ?? -1) - (ready.scores[a.id]?.score ?? -1));
+    if (ready.scoring !== 'done') return ready.candidates.slice(0, VISIBLE);
+    return [...ready.candidates].sort((a, b) => (ready.scores[b.id]?.score ?? -1) - (ready.scores[a.id]?.score ?? -1)).slice(0, VISIBLE);
   }, [ready]);
 
   const total = ready?.total ?? null;
@@ -53,7 +52,7 @@ export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, 
         ? `A cherché sur LinkedIn${location ? ` autour de ${location}` : ''} : ${formatCount(total)} profils correspondent`
         : `A cherché sur LinkedIn${location ? ` autour de ${location}` : ''} : ${count} profil${count > 1 ? 's' : ''} trouvé${count > 1 ? 's' : ''}`,
     );
-    if (ready.scoring === 'done') done.push(`A noté les ${Math.min(count, VISIBLE)} premiers par rapport au brief`);
+    if (ready.scoring === 'done') done.push(`A noté les ${Object.keys(ready.scores).length} profils par rapport au brief`);
   }
 
   return (
@@ -118,7 +117,7 @@ export const SceneCandidates: React.FC<Props> = ({ missionId, account, results, 
             <ul className="space-y-1.5 text-sm text-foreground-secondary" aria-label="Ce que Konekt a fait">
               {done.map((line) => (
                 <li key={line} className="flex items-start gap-2">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>{line}</span>
                 </li>
               ))}

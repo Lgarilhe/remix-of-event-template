@@ -169,7 +169,7 @@ export const CallsTable = ({
                     {known ? (
                       <PersonAvatar name={known.name ?? title} src={known.avatarUrl} candidateId={known.candidateId} size={36} />
                     ) : (
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-foreground">
                         <Icon className="h-4 w-4" aria-hidden="true" />
                       </span>
                     )}
@@ -184,7 +184,7 @@ export const CallsTable = ({
                         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                           {recruiter && <RecruiterTag recruiter={recruiter} size={18} />}
                           {tags.map((tag) => (
-                            <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{tag}</span>
+                            <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground">{tag}</span>
                           ))}
                         </span>
                       )}

@@ -32,6 +32,7 @@ import { Job } from '@/types/jobs';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
@@ -405,7 +406,7 @@ const VerdictCell: React.FC<{ verdict: Verdict; label: string; reason?: string; 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center justify-center w-5 h-5 text-muted-foreground/40" aria-label={`${label} : non évalué`}>
+        <span className="inline-flex items-center justify-center w-5 h-5 text-muted-foreground" aria-label={`${label} : non évalué`}>
           <HelpCircle className="w-3 h-3" aria-hidden="true" />
         </span>
       </TooltipTrigger>
@@ -468,7 +469,7 @@ const ExperienceCell: React.FC<{ exp: any | undefined; empty?: React.ReactNode }
           {logo ? (
             <img src={logo} alt="" className="w-4 h-4 rounded-sm object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
-            <Building2 className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" aria-hidden="true" />
+            <Building2 className="w-3.5 h-3.5 text-foreground shrink-0" aria-hidden="true" />
           )}
           <span className="truncate">
             <span className="text-foreground">{role}</span>
@@ -483,7 +484,7 @@ const ExperienceCell: React.FC<{ exp: any | undefined; empty?: React.ReactNode }
             <img src={logo} alt="" className="w-12 h-12 rounded-md object-contain shrink-0 border border-border bg-background p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
             <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+              <Building2 className="w-5 h-5 text-foreground" aria-hidden="true" />
             </div>
           )}
           <div className="min-w-0 flex-1">
@@ -510,13 +511,13 @@ const ExperienceCell: React.FC<{ exp: any | undefined; empty?: React.ReactNode }
           <div className="flex flex-wrap gap-3 px-3 py-2 border-b border-border text-xs">
             {headcount && (
               <div className="flex items-center gap-1 text-muted-foreground">
-                <Users className="w-3 h-3" aria-hidden="true" />
+                <Users className="w-3 h-3 text-foreground" aria-hidden="true" />
                 <span>{headcount} <span className="text-muted-foreground/60">empl.</span></span>
               </div>
             )}
             {exp.location && (
               <div className="flex items-center gap-1 text-muted-foreground">
-                <MapPin className="w-3 h-3" aria-hidden="true" />
+                <MapPin className="w-3 h-3 text-foreground" aria-hidden="true" />
                 <span className="truncate max-w-[180px]">{exp.location}</span>
               </div>
             )}
@@ -536,7 +537,7 @@ const ExperienceCell: React.FC<{ exp: any | undefined; empty?: React.ReactNode }
           <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1.5">Poste occupé</p>
           <p className="text-sm font-medium text-foreground">{role || '—'}</p>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-            <CalendarDays className="w-3 h-3" aria-hidden="true" />
+            <CalendarDays className="w-3 h-3 text-foreground" aria-hidden="true" />
             <span>{start || '?'} → {end}{dur && <span className="text-muted-foreground/70"> · {dur}</span>}</span>
           </div>
           {exp.description && (
@@ -570,7 +571,7 @@ const EducationCell: React.FC<{ edu: any | undefined; empty?: React.ReactNode }>
           {logo ? (
             <img src={logo} alt="" className="w-4 h-4 rounded-sm object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
-            <GraduationCap className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" aria-hidden="true" />
+            <GraduationCap className="w-3.5 h-3.5 text-foreground shrink-0" aria-hidden="true" />
           )}
           <span className="truncate">
             <span className="text-foreground">{school}</span>
@@ -585,7 +586,7 @@ const EducationCell: React.FC<{ edu: any | undefined; empty?: React.ReactNode }>
             <img src={logo} alt="" className="w-12 h-12 rounded-md object-contain shrink-0 border border-border bg-background p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
             <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center shrink-0">
-              <GraduationCap className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+              <GraduationCap className="w-5 h-5 text-foreground" aria-hidden="true" />
             </div>
           )}
           <div className="min-w-0 flex-1">
@@ -611,13 +612,13 @@ const EducationCell: React.FC<{ edu: any | undefined; empty?: React.ReactNode }>
           <div className="flex flex-wrap gap-3 px-3 py-2 border-b border-border text-xs">
             {employeeCount != null && (
               <div className="flex items-center gap-1 text-muted-foreground">
-                <Users className="w-3 h-3" aria-hidden="true" />
+                <Users className="w-3 h-3 text-foreground" aria-hidden="true" />
                 <span>{employeeCount.toLocaleString('fr-FR')} <span className="text-muted-foreground/60">empl.</span></span>
               </div>
             )}
             {schoolLocation && (
               <div className="flex items-center gap-1 text-muted-foreground">
-                <MapPin className="w-3 h-3" aria-hidden="true" />
+                <MapPin className="w-3 h-3 text-foreground" aria-hidden="true" />
                 <span className="truncate max-w-[180px]">{schoolLocation}</span>
               </div>
             )}
@@ -637,7 +638,7 @@ const EducationCell: React.FC<{ edu: any | undefined; empty?: React.ReactNode }>
           <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold">Cursus</p>
           {degree && (
             <div className="flex items-start gap-1.5 text-xs">
-              <BookOpen className="w-3 h-3 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />
+              <BookOpen className="w-3 h-3 mt-0.5 text-foreground shrink-0" aria-hidden="true" />
               <div>
                 <span className="text-foreground font-medium">{degree}</span>
                 {field && <span className="text-muted-foreground"> · {field}</span>}
@@ -649,7 +650,7 @@ const EducationCell: React.FC<{ edu: any | undefined; empty?: React.ReactNode }>
           )}
           {(start || end) && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <CalendarDays className="w-3 h-3" aria-hidden="true" />
+              <CalendarDays className="w-3 h-3 text-foreground" aria-hidden="true" />
               <span>{start || '?'} → {end || '?'}</span>
             </div>
           )}
@@ -1037,7 +1038,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {isV3 ? (
-                <Button variant="ghost" size="sm" className="text-foreground-secondary hover:text-foreground max-sm:min-h-11">
+                <Button variant="ghost" size="sm" className="max-sm:min-h-11">
                   <Columns3 aria-hidden="true" />
                   Colonnes
                 </Button>
@@ -1089,7 +1090,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                   if (isV3) commitV3Choice(null);
                   else setHiddenColumns(new Set(allColumns.filter(c => !c.defaultVisible).map(c => c.id)));
                 }}
-                className={isV3 ? 'text-sm cursor-pointer text-muted-foreground' : 'text-xs cursor-pointer text-muted-foreground'}
+                className={isV3 ? 'text-sm cursor-pointer' : 'text-xs cursor-pointer text-muted-foreground'}
               >
                 <Eye className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Réinitialiser
@@ -1100,7 +1101,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                   if (isV3) commitV3Choice(new Set());
                   else setHiddenColumns(new Set());
                 }}
-                className={isV3 ? 'text-sm cursor-pointer text-muted-foreground' : 'text-xs cursor-pointer text-muted-foreground'}
+                className={isV3 ? 'text-sm cursor-pointer' : 'text-xs cursor-pointer text-muted-foreground'}
               >
                 <EyeOff className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Tout afficher
@@ -1156,10 +1157,10 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                           <span className="truncate max-w-[140px]" title={isV3 ? col.label : undefined}>{col.label}</span>
                           {isSorted ? (
                             sortBy?.dir === 'desc'
-                              ? <ArrowDown className="w-3 h-3" aria-hidden="true" />
-                              : <ArrowUp className="w-3 h-3" aria-hidden="true" />
+                              ? <ArrowDown className="w-3 h-3 text-foreground" aria-hidden="true" />
+                              : <ArrowUp className="w-3 h-3 text-foreground" aria-hidden="true" />
                           ) : (
-                            <ArrowUpDown className={isV3 ? 'w-3 h-3 opacity-0 transition-opacity group-hover/sort:opacity-40 group-focus-visible/sort:opacity-60' : 'w-3 h-3 opacity-30'} aria-hidden="true" />
+                            <ArrowUpDown className={isV3 ? 'w-3 h-3 opacity-0 transition-opacity group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100' : 'w-3 h-3 opacity-30'} aria-hidden="true" />
                           )}
                         </button>
                       ) : col.isCriterion ? (
@@ -1293,14 +1294,15 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                       if (col.id === 'recommendation') {
                         const r = score?.recommendation;
                         if (!r) return <td key={col.id} className={`${baseTd} text-center`}>{empty}</td>;
+                        // Badge à la Qonto : texte à l'encre, pastille de la couleur du statut.
                         const cfg = r === 'go'
-                          ? { label: 'Recommandé', cls: 'bg-success-muted text-success' }
+                          ? { label: 'Recommandé', variant: 'success' as const }
                           : r === 'maybe'
-                            ? { label: 'À voir', cls: 'bg-warning-muted text-warning' }
-                            : { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground' };
+                            ? { label: 'À voir', variant: 'warning' as const }
+                            : { label: 'Peu adapté', variant: 'muted' as const };
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
-                            <span className={`inline-flex items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs ${cfg.cls}`}>
+                            <span className={cn(badgeVariants({ variant: cfg.variant }), 'whitespace-nowrap')}>
                               {cfg.label}
                             </span>
                           </td>
@@ -1460,12 +1462,12 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         return (
                           <td key={col.id} className={baseTd}>
                             {statusLabel ? (
-                              <span className={`text-2xs px-1.5 py-0.5 uppercase tracking-wider font-bold ${
-                                status?.status === 'replied' ? 'bg-success/10 text-success'
-                                : status?.status === 'messaged' ? 'bg-info/10 text-info'
-                                : status?.status === 'dismissed' ? 'bg-destructive/10 text-destructive'
-                                : 'bg-muted text-muted-foreground'
-                              }`}>
+                              <span className={cn(badgeVariants({
+                                variant: status?.status === 'replied' ? 'success'
+                                  : status?.status === 'messaged' ? 'info'
+                                  : status?.status === 'dismissed' ? 'danger'
+                                  : 'muted',
+                              }), 'whitespace-nowrap')}>
                                 {statusLabel}
                               </span>
                             ) : empty}
@@ -1488,7 +1490,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                                   <DropdownMenuItem onSelect={() => window.open(profileUrl, '_blank', 'noopener,noreferrer')} className="cursor-pointer text-xs">
                                     <Linkedin className="w-3.5 h-3.5 mr-2 text-info" aria-hidden="true" />
                                     Ouvrir le profil LinkedIn
-                                    <ExternalLink className="w-3 h-3 ml-auto text-muted-foreground" aria-hidden="true" />
+                                    <ExternalLink className="w-3 h-3 ml-auto" aria-hidden="true" />
                                   </DropdownMenuItem>
                                 )}
                                 {profile.can_send_inmail && (

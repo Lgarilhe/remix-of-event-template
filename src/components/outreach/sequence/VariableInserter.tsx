@@ -91,7 +91,7 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
           type="button"
           variant="ghost"
           size="xs"
-          className={cn('gap-1 text-muted-foreground hover:text-foreground max-md:h-11', className)}
+          className={cn('gap-1 max-md:h-11', className)}
           aria-label={fieldLabel ? `Variables à insérer dans ${fieldLabel}` : undefined}
         >
           <Braces aria-hidden="true" />

@@ -36,6 +36,8 @@ export interface PersistedProgress {
   tone: WritingTone | null;
   /** Brief corrigé à l'écran : il survit au voyage chez LinkedIn (le message et la fin en ont besoin). */
   brief?: BriefDraft | null;
+  /** Client ayant servi au brief : changer de client invalide le brouillon avant création. */
+  briefClient?: string | null;
 }
 
 export function loadOnboardingProgress(): PersistedProgress | null {

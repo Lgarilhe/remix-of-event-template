@@ -103,7 +103,13 @@ const AgentsPage = () => {
           title="Aucune conversation"
           headingLevel={2}
           description="Posez une question à l'assistant ou confiez-lui une recherche."
-          action={newConversation}
+          action={
+            // L'en-tête porte déjà le bouton plein : un seul aplat d'encre par zone (01-direction, § 6).
+            <Button type="button" variant="outline" onClick={startNewConversation}>
+              <Plus aria-hidden="true" />
+              Nouvelle conversation
+            </Button>
+          }
         />
       ) : (
         <div className="space-y-4">
@@ -163,7 +169,7 @@ function ConversationRowItem({
             </span>
           )}
         </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
+        <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>
     </li>
   );

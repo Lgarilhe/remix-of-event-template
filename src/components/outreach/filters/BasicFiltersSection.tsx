@@ -66,7 +66,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
     <FilterSection
       id="basic"
       title="Recherche de base"
-      icon={<Filter className="w-4 h-4 text-muted-foreground" />}
+      icon={<Filter className="w-4 h-4" />}
       badge={countBasicFilters}
       isOpen={isOpen}
       onToggle={onToggle}

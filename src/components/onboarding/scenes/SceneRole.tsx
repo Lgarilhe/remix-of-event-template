@@ -112,7 +112,7 @@ export const SceneRole: React.FC<Props> = ({
             </p>
             <div className="flex flex-wrap gap-2">
               {openRoles.map((role) => (
-                <Button key={role.title} variant="outline" size="sm" onClick={() => onTitleChange(role.title)} className="h-auto max-w-full whitespace-normal py-1.5 text-left">
+                <Button key={role.title} variant="ghost" size="sm" onClick={() => onTitleChange(role.title)} className="h-auto max-w-full whitespace-normal rounded-lg border border-border hover:border-foreground py-1.5 text-left">
                   <Briefcase aria-hidden="true" />
                   <span className="min-w-0 truncate">{role.title}</span>
                 </Button>

@@ -56,7 +56,7 @@ export function GeneralSection() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <Building2 className="h-4 w-4" aria-hidden="true" />
               Organisation
             </CardTitle>
           </CardHeader>
@@ -109,7 +109,7 @@ export function GeneralSection() {
                             type="button"
                             variant="ghost"
                             size="icon-xs"
-                            className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                            className="max-md:h-11 max-md:w-11"
                             onClick={() => { setNewName(organization?.name || ''); setEditingName(true); }}
                             aria-label="Modifier le nom de l’organisation"
                           >

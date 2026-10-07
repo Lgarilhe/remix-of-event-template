@@ -176,7 +176,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
             key={ex}
             type="button"
             onClick={() => { setValue(ex); taRef.current?.focus(); requestAnimationFrame(autogrow); }}
-            className="rounded-full border border-[var(--k-hairline)] px-2.5 py-1 text-xs text-[var(--k-text-muted)] transition-colors duration-150 hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)]"
+            className="rounded-full border border-[var(--k-hairline)] px-2.5 py-1 text-xs text-foreground transition-colors duration-150 hover:border-[var(--k-hairline-hover)]"
           >
             {ex}
           </button>

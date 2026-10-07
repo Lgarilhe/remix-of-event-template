@@ -88,9 +88,9 @@ export const CompanyCard: React.FC<Props> = ({ lookup, onPick, onNone, onRetry, 
             {lookup.candidates.map((c) => (
               <Button
                 key={c.id}
-                variant="outline"
+                variant="ghost"
                 onClick={() => onPick(c.id)}
-                className="h-auto w-full justify-start gap-3 whitespace-normal p-2.5 text-left font-normal"
+                className="h-auto w-full justify-start gap-3 whitespace-normal rounded-lg border border-border hover:border-foreground p-2.5 text-left font-normal"
               >
                 <Logo name={c.name} url={c.logoUrl} />
                 <span className="min-w-0 flex-1">
@@ -102,7 +102,7 @@ export const CompanyCard: React.FC<Props> = ({ lookup, onPick, onNone, onRetry, 
               </Button>
             ))}
           </div>
-          <Button variant="ghost" size="sm" onClick={onNone} className="text-muted-foreground">
+          <Button variant="ghost" size="sm" onClick={onNone} >
             Aucune ne correspond
           </Button>
         </div>

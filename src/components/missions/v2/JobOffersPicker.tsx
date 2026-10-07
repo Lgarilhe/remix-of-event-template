@@ -164,7 +164,7 @@ export const JobOffersPicker: React.FC<JobOffersPickerProps> = ({
                 asChild
                 variant="ghost"
                 size="xs"
-                className="shrink-0 text-muted-foreground hover:text-foreground max-sm:min-h-11 max-sm:min-w-11"
+                className="shrink-0 max-sm:min-h-11 max-sm:min-w-11"
               >
                 <a href={job.url} target="_blank" rel="noopener noreferrer" aria-label={`Voir l'offre ${job.title} (nouvel onglet)`}>
                   <span className="max-sm:sr-only">Voir l'offre</span>

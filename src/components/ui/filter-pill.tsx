@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * FilterPill — filtre d'une barre de filtres : un bouton qui ouvre ses
- * options. Actif, il porte le nombre de valeurs choisies dans une pastille
- * d'accent (la sélection est un usage de l'accent, 01-direction.md, § 2). Sur
+ * options. Puce grise sans filet au repos, contour d'encre quand il est actif,
+ * avec le nombre de valeurs choisies dans une pastille d'accent (la sélection
+ * est un usage de l'accent, 01-direction.md, § 2). Icônes à l'encre. Sur
  * téléphone, le bouton et chaque option font 44 px de haut.
  *
  * Usage :
@@ -34,18 +35,18 @@ export function FilterPill({ label, count, icon: Icon, children, align = "start"
           type="button"
           aria-label={active ? `${label} : ${count} choisi${count > 1 ? "s" : ""}` : label}
           className={cn(
-            "inline-flex h-8 shrink-0 items-center gap-1.5 max-md:h-11 whitespace-nowrap rounded-lg border px-3 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent [&_svg]:size-3.5 [&_svg]:shrink-0",
-            active ? "border-border-strong" : "border-border",
+            "inline-flex h-8 shrink-0 items-center gap-1.5 max-md:h-11 whitespace-nowrap rounded-lg border bg-muted px-3 text-sm font-medium text-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3.5 [&_svg]:shrink-0",
+            active ? "border-foreground" : "border-transparent hover:border-border-strong data-[state=open]:border-border-strong",
           )}
         >
-          {Icon && <Icon className="text-muted-foreground" aria-hidden="true" />}
+          {Icon && <Icon aria-hidden="true" />}
           {label}
           {active && (
             <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand/15 px-1 text-3xs font-semibold tabular-nums text-brand">
               {count}
             </span>
           )}
-          <ChevronDown className="text-muted-foreground" aria-hidden="true" />
+          <ChevronDown aria-hidden="true" />
         </button>
       </PopoverTrigger>
       <PopoverContent align={align} className={cn("w-60 p-1.5", contentClassName)}>

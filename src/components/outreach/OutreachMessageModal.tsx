@@ -6,7 +6,10 @@ import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
-import { ModelPicker } from '@/components/ai/ModelPicker';
+import { WritingSettingsLine, type WritingSettingsValue } from '@/components/ai/WritingSettingsLine';
+import { useWritingPreferences } from '@/hooks/useWritingPreferences';
+import { writingRequest } from '@/hooks/useEnrollmentPreview';
+import { clampLevel, writingRefusalMessage } from '@/lib/writingStyle';
 import { useOrganization } from '@/hooks/useOrganization';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import {
@@ -21,9 +24,7 @@ import { InMailTextEditor } from './InMailTextEditor';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { MESSAGE_TONES, type MessageTone } from '@/lib/sequenceCatalog';
 import { 
   Copy, 
   Check, 
@@ -54,7 +55,6 @@ interface OutreachMessageModalProps {
   projectId?: string;
 }
 
-type Tone = MessageTone;
 
 export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   open,
@@ -73,14 +73,19 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   const [message, setMessage] = useState('');
   const [personalizationPoints, setPersonalizationPoints] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
-  const [tone, setTone] = useState<Tone>('professional');
   const [hasGenerated, setHasGenerated] = useState(false);
   const [messageSent, setMessageSent] = useState(false);
   const [senderName, setSenderName] = useState(() => {
     return localStorage.getItem('outreach_sender_name') || '';
   });
   const [customInstructions, setCustomInstructions] = useState('');
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  // Lot 5e-2 : style et niveau de la rédaction (défauts de la personne et de
+  // l'organisation, modifiables pour ce message), à la place du ton et du choix de modèle.
+  const { prefs: writingPrefs, choices: writingChoices, refetch: refetchWritingPrefs } = useWritingPreferences();
+  const [writingOverride, setWritingOverride] = useState<WritingSettingsValue | null>(null);
+  const writing: WritingSettingsValue | null = writingOverride
+    ? { style: writingOverride.style, level: writingPrefs ? clampLevel(writingOverride.level, writingPrefs) : writingOverride.level }
+    : writingPrefs ? { style: writingPrefs.style, level: writingPrefs.defaultLevel } : null;
   const senderId = useId();
   const instructionsId = useId();
   const subjectId = useId();
@@ -188,6 +193,11 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         || (job as any)?.job_details?.outreach_config
         || undefined;
 
+      const writingFields = writingRequest(writing);
+      // Même règle que l'envoi : message direct au 1er niveau, InMail sinon
+      // (longueurs et format de l'InMail, objet compris).
+      const generationDistance = profile.network_distance || profileAny.specifics?.network_distance;
+      const messageKind = generationDistance === 'DISTANCE_1' || generationDistance === 1 ? 'message' : 'inmail';
       const { data, error } = await invokeWithCredits<{ subject?: string; message?: string; personalization_points?: string[] }>('generate-outreach-message', 'outreach_message', {
         profile: profileData,
         job: {
@@ -199,7 +209,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           remote: job.remote,
           accompagnement: job.accompagnement || [],
         },
-        tone,
+        ...writingFields.body,
+        message_kind: messageKind,
         senderName: senderName.trim() || undefined,
         // Le serveur relit outreach_config de la mission (anonymisation du client)
         // quand le front ne le transmet pas.
@@ -212,7 +223,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
         ragContext,
         outreachConfig,
-      }, { modelOverride: selectedModel ?? undefined });
+      }, { modelOverride: writingFields.modelOverride });
 
       if (error) throw error;
       
@@ -228,7 +239,11 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       setHasGenerated(true);
     } catch (err) {
       console.error('Generate message error:', err);
-      toast.error("Le message n'a pas pu être généré. Réessayez.");
+      // Niveau ou style refusé (lot 5e-2) : la phrase du serveur, et les
+      // réglages relus pour que le niveau affiché redescende sous le plafond.
+      const refusal = writingRefusalMessage(err);
+      if (refusal) void refetchWritingPrefs();
+      toast.error(refusal ?? "Le message n'a pas pu être généré. Réessayez.");
     } finally {
       setLoading(false);
     }
@@ -376,17 +391,19 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         </div>
 
         <div className="space-y-4 p-4 sm:p-6">
-          {/* ── Ton et signature ── */}
+          {/* ── Style, niveau et signature ── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground" aria-hidden="true">Ton</p>
-              <SegmentedControl<Tone>
-                aria-label="Ton du message"
-                size="default"
-                value={tone}
-                onValueChange={setTone}
-                options={MESSAGE_TONES.map((t) => ({ value: t.value, label: t.label }))}
-              />
+            <div className="min-w-0 flex-1">
+              {writing && writingPrefs && (
+                <WritingSettingsLine
+                  value={writing}
+                  onChange={setWritingOverride}
+                  defaultStyle={writingPrefs.style}
+                  choices={writingChoices('outreach_message')}
+                  maxLevel={writingPrefs.maxLevel}
+                  disabled={loading}
+                />
+              )}
             </div>
             <div className="shrink-0 space-y-1.5">
               <Label htmlFor={senderId} className="text-xs font-medium text-muted-foreground">Signature</Label>
@@ -427,13 +444,6 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
               >
                 {loading ? 'Génération…' : 'Générer le message'}
               </Button>
-              <ModelPicker
-                actionId="outreach_message"
-                value={selectedModel}
-                onChange={setSelectedModel}
-                compact
-                disabled={loading}
-              />
             </div>
           )}
 
@@ -465,7 +475,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
               {personalizationPoints.length > 0 && (
                 <div className="rounded-lg border border-border bg-muted p-3">
                   <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
+                    <Lightbulb className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                     Points de personnalisation
                   </p>
                   <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground-secondary">
@@ -519,7 +529,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                       onClick={generateMessage}
                       disabled={loading}
                       aria-label="Régénérer le message"
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
+                      className="shrink-0"
                     >
                       <RefreshCw className={loading ? 'animate-spin' : undefined} aria-hidden="true" />
                     </Button>

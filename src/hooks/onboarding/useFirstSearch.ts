@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { GeneratedFilters } from '@/components/outreach/search/generateFiltersFromJob';
 import {
@@ -59,34 +60,48 @@ export function useFirstSearch(input: {
   onResults: (results: PreviewResults) => void;
 }) {
   const { missionId, account, initial, onResults } = input;
+  const queryClient = useQueryClient();
   const [state, setState] = useState<FirstSearchState>(initial ? { status: 'ready', results: initial } : { status: 'loading' });
   const runRef = useRef(0);
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
   const onResultsRef = useRef(onResults);
   onResultsRef.current = onResults;
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (showLoading = true) => {
     const id = ++runRef.current;
-    setState({ status: 'loading' });
+    if (showLoading) setState({ status: 'loading' });
     try {
-      const { data: row, error } = await supabase
-        .from('sourcing_projects')
-        .select('name, client_name, description, filters_snapshot, job_details')
-        .eq('id', missionId)
-        .maybeSingle();
-      if (error || !row) throw new FirstSearchError("La mission n'a pas pu être relue. Réessayez dans un instant.", 'other');
-      const { generated_at: _g, brief_text: _b, source: _s, ...filters } = (row.filters_snapshot ?? {}) as Raw;
-      void _g; void _b; void _s;
+      // La promesse appartient au parcours, pas à la scène : elle continue au
+      // retour arrière et un remontage attend le même scoring sans le repayer.
+      const done = await queryClient.fetchQuery({
+        queryKey: ['onboarding-preview', missionId, account.id],
+        staleTime: Infinity,
+        retry: false,
+        queryFn: async () => {
+          const { data: row, error } = await supabase
+            .from('sourcing_projects')
+            .select('name, client_name, description, filters_snapshot, job_details')
+            .eq('id', missionId)
+            .maybeSingle();
+          if (error || !row) throw new FirstSearchError("La mission n'a pas pu être relue. Réessayez dans un instant.", 'other');
+          const { generated_at: _g, brief_text: _b, source: _s, ...filters } = (row.filters_snapshot ?? {}) as Raw;
+          void _g; void _b; void _s;
 
-      const found = await runFirstSearch({ filters: filters as unknown as GeneratedFilters, accountId: account.id, subscriptions: account.subscriptions, limit: 10 });
-      if (id !== runRef.current) return;
-      const first: PreviewResults = { candidates: found.candidates, total: found.total, scores: {}, scoring: found.candidates.length > 0 ? 'pending' : 'none' };
-      setState({ status: 'ready', results: first });
-      onResultsRef.current(first);
-      if (found.candidates.length === 0) return;
+          const pending = initialRef.current;
+          const found = pending?.scoring === 'pending' ? pending : await runFirstSearch({ filters: filters as unknown as GeneratedFilters, accountId: account.id, subscriptions: account.subscriptions, limit: 10 });
+          const first: PreviewResults = { candidates: found.candidates, total: found.total, scores: {}, scoring: found.candidates.length > 0 ? 'pending' : 'none' };
+          if (id === runRef.current) setState({ status: 'ready', results: first });
+          onResultsRef.current(first);
+          if (found.candidates.length === 0) return first;
 
-      const scores = await scorePreview(found.candidates, scoringJobOf(missionId, row));
+          const scores = await scorePreview(found.candidates, scoringJobOf(missionId, row));
+          const done: PreviewResults = { ...first, scores: Object.fromEntries(scores.map((s) => [s.id, s])), scoring: scores.length > 0 ? 'done' : 'none' };
+          onResultsRef.current(done);
+          return done;
+        },
+      });
       if (id !== runRef.current) return;
-      const done: PreviewResults = { ...first, scores: Object.fromEntries(scores.map((s) => [s.id, s])), scoring: scores.length > 0 ? 'done' : 'none' };
       setState({ status: 'ready', results: done });
       onResultsRef.current(done);
     } catch (e) {
@@ -94,15 +109,19 @@ export function useFirstSearch(input: {
       const err = e instanceof FirstSearchError ? e : new FirstSearchError("La recherche n'a pas abouti. Réessayez dans un instant.", 'other');
       setState({ status: 'error', message: err.message, kind: err.kind });
     }
-  }, [missionId, account.id, account.subscriptions]);
+  }, [missionId, account.id, account.subscriptions, queryClient]);
 
   useEffect(() => {
-    if (!initial) void run();
+    if (initial) setState({ status: 'ready', results: initial });
+  }, [initial]);
+
+  useEffect(() => {
+    if (!initial || initial.scoring === 'pending') void run(!initial);
     return () => {
       runRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, retry: run };
+  return { state, retry: () => run() };
 }

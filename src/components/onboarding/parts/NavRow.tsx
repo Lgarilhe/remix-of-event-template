@@ -26,7 +26,7 @@ export const NavRow: React.FC<Props> = ({ onBack, onNext, nextLabel = 'Continuer
     )}
     <div className="flex items-center gap-2">
       {skipLabel && onSkip && (
-        <Button variant="ghost" onClick={onSkip} className="min-h-11 text-muted-foreground md:min-h-0">
+        <Button variant="ghost" onClick={onSkip} className="min-h-11 md:min-h-0">
           {skipLabel}
         </Button>
       )}

@@ -95,7 +95,7 @@ export const SceneFinale: React.FC<Props> = ({ firstName, jobTitle, missionReady
         {TEASERS.map((t) => (
           <li key={t.key} className="rounded-xl border border-border bg-card p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <t.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <t.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               {t.title}
             </p>
             <p className="mt-1.5 text-xs leading-relaxed text-foreground-secondary">{t.line}</p>
@@ -110,7 +110,7 @@ export const SceneFinale: React.FC<Props> = ({ firstName, jobTitle, missionReady
           {missionReady ? 'Ouvrir ma mission' : 'Créer ma première mission'}
           <ArrowRight aria-hidden="true" />
         </Button>
-        <Button variant="ghost" onClick={onDashboard} className="min-h-11 text-muted-foreground md:min-h-0">
+        <Button variant="ghost" onClick={onDashboard} className="min-h-11 md:min-h-0">
           Aller au tableau de bord
         </Button>
       </div>

@@ -63,7 +63,7 @@ export function SequenceMenu({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Plus d’actions sur la séquence" className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11">
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Plus d’actions sur la séquence" className="max-md:h-11 max-md:w-11">
                 <MoreHorizontal aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>

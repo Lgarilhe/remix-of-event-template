@@ -135,7 +135,8 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           variant="ghost"
           size="xs"
           onClick={() => handleSort(key)}
-          className="relative -mx-1.5 gap-1 rounded-md px-1.5 text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-2 hover:text-foreground [&_svg]:size-3.5"
+          // Colonne triée à l'encre ; les autres, non choisies, restent au gris secondaire.
+          className={cn('relative -mx-1.5 gap-1 rounded-md px-1.5 after:absolute after:inset-x-0 after:-inset-y-2 hover:text-foreground [&_svg]:size-3.5', active ? 'text-foreground' : 'text-muted-foreground')}
         >
           {label}
           <Icon className={cn(active && 'text-foreground')} aria-hidden="true" />
@@ -195,11 +196,11 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                           <span className="truncate">{candidate.name}</span>
                         </Button>
                         {candidate.hasReminder && (
-                          <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
+                          <Bell className="h-3.5 w-3.5 shrink-0" role="img" aria-label="Rappel en attente" />
                         )}
                         {(candidate.notesCount || 0) > 0 && (
                           <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
-                            <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+                            <StickyNote className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                             {candidate.notesCount}
                             <span className="sr-only"> note{(candidate.notesCount || 0) > 1 ? 's' : ''}</span>
                           </span>
@@ -223,7 +224,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                       type="button"
                       variant="link"
                       onClick={() => onJobClick(candidate.jobId as string)}
-                      className={cn(TEXT_BUTTON, 'max-w-[240px] font-normal text-foreground-secondary hover:text-foreground')}
+                      className={cn(TEXT_BUTTON, 'max-w-[240px] font-normal')}
                     >
                       <span className="sr-only">Voir la mission </span>
                       <span className="truncate">{candidate.jobTitle}</span>

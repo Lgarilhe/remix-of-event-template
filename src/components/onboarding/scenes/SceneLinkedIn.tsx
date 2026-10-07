@@ -149,7 +149,7 @@ export const SceneLinkedIn: React.FC<Props> = ({ orgName, returning, onLeave, on
             <ArrowLeft aria-hidden="true" />
             Retour
           </Button>
-          <Button variant="ghost" onClick={onSkip} className="min-h-11 text-muted-foreground md:min-h-0">
+          <Button variant="ghost" onClick={onSkip} className="min-h-11 md:min-h-0">
             Plus tard
           </Button>
         </div>
@@ -161,7 +161,7 @@ export const SceneLinkedIn: React.FC<Props> = ({ orgName, returning, onLeave, on
               Retour
             </Button>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" onClick={onSkip} className="min-h-11 text-muted-foreground md:min-h-0">
+              <Button variant="ghost" onClick={onSkip} className="min-h-11 md:min-h-0">
                 Plus tard
               </Button>
               <Button variant="primary" size="lg" onClick={() => void connect()} loading={connecting} className="min-h-11 md:min-h-0">

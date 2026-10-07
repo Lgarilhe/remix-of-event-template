@@ -66,7 +66,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       aria-label={`Colonne ${stage.label}, ${plural(candidates.length, 'candidat')}`}
       className={cn(
         'flex w-[280px] shrink-0 flex-col gap-2 rounded-xl p-2.5 transition-colors duration-150',
-        isOver ? 'bg-muted/60 ring-1 ring-inset ring-brand/50' : 'bg-card',
+        isOver ? 'bg-muted/60 ring-1 ring-inset ring-brand/50' : 'bg-muted dark:bg-card',
       )}
     >
       <header className="flex items-baseline justify-between gap-2 px-0.5 text-xs text-muted-foreground">

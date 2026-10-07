@@ -206,7 +206,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
       {body}
       {!isArchived && (
         <div className="sticky bottom-0 mt-auto flex shrink-0 items-start gap-2 border-t border-border bg-background px-5 py-3.5 text-xs text-muted-foreground">
-          <Info className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
+          <Info className="mt-px h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           <span>Pour contacter des candidats, cochez-les dans la liste puis « Contacter ».</span>
         </div>
       )}

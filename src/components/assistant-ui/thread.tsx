@@ -110,7 +110,7 @@ const ReasoningBlock = ({ text }: { text: string }) => {
         variant="ghost"
         onClick={() => setUserToggled(!open)}
         aria-expanded={open}
-        className="h-auto gap-1.5 rounded-sm px-0 py-0.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground max-md:min-h-11 [&_svg]:size-3.5"
+        className="h-auto gap-1.5 rounded-sm px-0 py-0.5 text-xs hover:bg-transparent max-md:min-h-11 [&_svg]:size-3.5"
       >
         <ChevronRight className={cn('transition-transform duration-150', open && 'rotate-90')} aria-hidden="true" />
         {streaming ? 'Réflexion en cours…' : 'Réflexion'}
@@ -445,7 +445,7 @@ const SearchPlanCard = ({ plan }: { plan: SearchPlanData }) => {
   return (
     <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-        <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <Search className="h-4 w-4" aria-hidden="true" />
         <span className="text-sm font-semibold text-foreground">Plan de recherche</span>
         {typeof targetGo === 'number' && (
           <Badge variant="muted" className="ml-auto">
@@ -478,7 +478,7 @@ const ScoringTestCard = ({ data }: { data: ScoringTestData }) => {
     <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
       <div className="border-b border-border px-3.5 py-2.5">
         <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <BarChart3 className="h-4 w-4" aria-hidden="true" />
           <span className="text-sm font-semibold text-foreground">Test du scoring</span>
         </div>
         {data.purpose && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{data.purpose}</p>}
@@ -556,7 +556,7 @@ const SampleProfilesCards = ({ profiles }: { profiles: SampleProfileData[] }) =>
                 </div>
                 {profile.title && (
                   <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
-                    <Briefcase className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <Briefcase className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                     {[profile.title, profile.company].filter(Boolean).join(' · ')}
                   </p>
                 )}
@@ -564,7 +564,7 @@ const SampleProfilesCards = ({ profiles }: { profiles: SampleProfileData[] }) =>
                   <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                     {profile.location && (
                       <span className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3" aria-hidden="true" /> {profile.location}
+                        <MapPin className="h-3 w-3 text-foreground" aria-hidden="true" /> {profile.location}
                       </span>
                     )}
                     {profile.yearsExp > 0 && <span>{profile.yearsExp} ans d’expérience</span>}
@@ -651,7 +651,7 @@ const OptionsChips = ({ options }: { options: string[] }) => {
         >
           <span className="flex-1 leading-snug">{opt}</span>
           {stacked && (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           )}
         </ThreadPrimitive.Suggestion>
       ))}
@@ -746,7 +746,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                   send
                   className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary" aria-hidden="true">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground" aria-hidden="true">
                     <s.icon className="h-4 w-4" />
                   </span>
                   <span className="text-sm font-medium text-foreground">{s.label}</span>
@@ -780,7 +780,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                       key={`${f.name}-${i}`}
                       className="group flex items-center gap-1.5 rounded-lg border border-border bg-muted py-1 pl-2 pr-1 text-2xs text-foreground-secondary"
                     >
-                      <FileText className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <FileText className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                       <span className="max-w-[140px] truncate">{f.name}</span>
                       {/* Sur téléphone, une zone invisible porte la cible à 44 px sans grossir l'étiquette. */}
                       <Button
@@ -824,7 +824,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                           variant="ghost"
                           size="icon-sm"
                           aria-label="Joindre un fichier"
-                          className="shrink-0 rounded-full text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                          className="shrink-0 rounded-full max-md:h-11 max-md:w-11"
                         >
                           <Paperclip aria-hidden="true" />
                         </Button>
@@ -844,7 +844,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                     className={cn(
                       'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors max-md:h-11 max-md:w-11',
                       'bg-foreground text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                      'disabled:cursor-not-allowed disabled:opacity-40'
+                      'disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground'
                     )}
                   >
                     <ArrowUp className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />

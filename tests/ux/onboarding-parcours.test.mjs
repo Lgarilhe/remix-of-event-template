@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { transformSync } from 'esbuild';
+import { build, transformSync } from 'esbuild';
 
 const ROOT = new URL('../../', import.meta.url);
 /** Chemin disque d'un fichier du dépôt (valable sous Windows comme ailleurs). */
@@ -35,6 +35,33 @@ const ramp = await load('src/lib/onboarding/ramp.ts');
 const brief = await load('src/lib/onboarding/brief.ts');
 const company = await load('src/lib/onboarding/company.ts');
 const meta = await load('src/components/onboarding/onboardingMeta.ts');
+
+const candidateBundle = await build({
+  stdin: {
+    contents: "export { SceneCandidates } from './src/components/onboarding/scenes/SceneCandidates'; export { createElement } from 'react'; export { renderToStaticMarkup } from 'react-dom/server.browser';",
+    resolveDir: fileURLToPath(ROOT), loader: 'ts',
+  },
+  bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent',
+  tsconfig: pathOf('tsconfig.app.json'), define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [{ name: 'preview-response', setup(b) {
+    b.onResolve({ filter: /hooks\/onboarding\/useFirstSearch$/ }, args => ({ path: args.path, namespace: 'preview' }));
+    b.onLoad({ filter: /.*/, namespace: 'preview' }, () => ({ contents: 'export const useFirstSearch = ({initial}) => ({state: {status: "ready", results: initial}, retry() {}});', loader: 'js' }));
+  } }],
+});
+const candidateKit = await import(`data:text/javascript;base64,${Buffer.from(candidateBundle.outputFiles[0].text).toString('base64')}`);
+
+test('L’aperçu affiche le meilleur des dix profils, même au-delà des six premiers résultats LinkedIn', () => {
+  const candidates = Array.from({ length: 10 }, (_, i) => ({ id: String(i), name: `Candidate-${i}`, firstName: 'Camille', initials: 'CP', photo: null, profileUrl: null, headline: 'React', location: 'Paris', role: null, company: null }));
+  const scores = Object.fromEntries(candidates.map((c, i) => [c.id, { id: c.id, score: 80 + i, strengths: [], recommendation: null, summary: null }]));
+  const html = candidateKit.renderToStaticMarkup(candidateKit.createElement(candidateKit.SceneCandidates, {
+    missionId: 'mission', account: { id: 'account', subscriptions: null }, results: { candidates, total: 10, scores, scoring: 'done' }, skillsCount: 2,
+    onResults() {}, onWriteFirst() {}, onSkip() {}, onBack() {}, location: 'Paris',
+  }));
+  assert.match(html, /Candidate-9/);
+  assert.doesNotMatch(html, /Candidate-0/);
+  assert.ok(html.indexOf('Candidate-9') < html.indexOf('Candidate-8'));
+  assert.deepEqual(candidates.map(c => c.id), Array.from({ length: 10 }, (_, i) => String(i)), 'le classement ne modifie pas les résultats gardés par le parcours');
+});
 
 function walk(dir) {
   const out = [];

@@ -227,7 +227,7 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
                 active && 'bg-accent',
               )}
             >
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-foreground-secondary">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-foreground">
                 <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">

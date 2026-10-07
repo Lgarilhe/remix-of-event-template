@@ -59,14 +59,14 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
         <button className="w-full flex items-center justify-between px-3 py-2 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] hover:bg-[var(--k-surface-2)] transition-colors text-sm">
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-foreground">
             <History className="w-4 h-4" />
             <span className="font-medium">Historique</span>
             <Badge variant="secondary" className="text-xs h-5">
               {history.length}
             </Badge>
           </div>
-          {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground/60" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/60" />}
+          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -107,24 +107,24 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <Users className="w-3 h-3" />
+                    <Users className="w-3 h-3 text-foreground" />
                     {entry.results_count} résultats
                   </span>
                   {entry.messaged_count > 0 && (
                     <span className="flex items-center gap-1">
-                      <MessageSquare className="w-3 h-3" />
+                      <MessageSquare className="w-3 h-3 text-foreground" />
                       {entry.messaged_count}
                     </span>
                   )}
                   {entry.shortlisted_count > 0 && (
                     <span className="flex items-center gap-1">
-                      <Star className="w-3 h-3" />
+                      <Star className="w-3 h-3 text-foreground" />
                       {entry.shortlisted_count}
                     </span>
                   )}
                   {entry.dismissed_count > 0 && (
                     <span className="flex items-center gap-1">
-                      <Archive className="w-3 h-3" />
+                      <Archive className="w-3 h-3 text-foreground" />
                       {entry.dismissed_count}
                     </span>
                   )}

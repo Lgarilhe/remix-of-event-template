@@ -65,9 +65,11 @@ export function missingLinkedInText(count: number): string | null {
     : `${plural(count, 'candidat')} sans profil LinkedIn, laissé de côté.`;
 }
 
-/** Bouton plein clair (couleur du texte en fond). */
-const FILLED = 'border-0 bg-foreground text-background hover:bg-foreground/90 hover:text-background';
-/** Même style imposé au déclencheur de SequenceEnrollButton (enfant direct). */
+/**
+ * Aplat d'encre imposé au déclencheur de SequenceEnrollButton (enfant direct). Le bouton désactivé
+ * prend la variante primary : son désactivé (fond gris, libellé gris, 5,10:1) remplace l'aplat,
+ * jamais un libellé gris sur l'encre.
+ */
 const FILLED_TRIGGER =
   '[&>button]:!h-8 [&>button]:!border-0 [&>button]:!bg-foreground [&>button]:!text-sm [&>button]:!text-background ' +
   '[&>button]:!shadow-none [&>button:hover]:!bg-foreground/90';
@@ -94,7 +96,7 @@ export function ContactSelectionButton({ rows, project, disabled, onSuccess }: C
     control = <Skeleton className="h-8 w-24" aria-label="Chargement des comptes LinkedIn" />;
   } else if (disabled || !selectedAccount || profiles.length === 0) {
     control = (
-      <Button variant="outline" size="sm" disabled className={FILLED}>
+      <Button variant="primary" size="sm" disabled>
         <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Contacter
       </Button>

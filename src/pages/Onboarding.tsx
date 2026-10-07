@@ -76,6 +76,9 @@ const Onboarding = () => {
 
   // Ce qui vit le temps du parcours : le brief est gardé avec la progression, le reste se refait au besoin
   const [brief, setBrief] = useState<BriefDraft | null>(restored?.brief ?? null);
+  const [briefClient, setBriefClient] = useState<string | null>(() =>
+    restored?.briefClient !== undefined ? restored.briefClient : ((restored?.orgType === 'enterprise' ? restored.orgName : restored?.clientName)?.trim() || null),
+  );
   const [processKey, setProcessKey] = useState<ProcessKey>('standard');
   const [creatingMission, setCreatingMission] = useState(false);
   const [preview, setPreview] = useState<PreviewResults | null>(null);
@@ -126,12 +129,13 @@ const Onboarding = () => {
     linkedinSkipped,
     tone,
     brief,
+    briefClient,
   };
   const progressRef = useRef(progress);
   progressRef.current = progress;
   useEffect(() => {
     saveOnboardingProgress(progressRef.current);
-  }, [scene, completed, firstName, orgType, orgName, createdOrgId, jobTitle, clientName, missionId, linkedinSkipped, tone, brief]);
+  }, [scene, completed, firstName, orgType, orgName, createdOrgId, jobTitle, clientName, missionId, linkedinSkipped, tone, brief, briefClient]);
 
   // ─── Navigation ───
   const markCompleted = useCallback((key: SceneKey) => {
@@ -234,19 +238,26 @@ const Onboarding = () => {
     [startLookup],
   );
 
+  const missionClient = (isEnterprise ? orgName.trim() : clientName.trim()) || null;
   const handleRoleSubmit = useCallback(() => {
     if (jobTitle.trim().length < 3) return;
     markCompleted('role');
-    // Nouveau poste : l'ancien brief ne vaut plus (tant que la mission n'est pas créée).
-    if (brief && brief.title !== jobTitle.trim() && !missionId) setBrief(null);
+    // Le brief dépend du poste et du client, tant que la mission n'est pas créée.
+    if (brief && (brief.title !== jobTitle.trim() || briefClient !== missionClient) && !missionId) setBrief(null);
     goNext('role');
-  }, [jobTitle, brief, missionId, markCompleted, goNext]);
+  }, [jobTitle, brief, briefClient, missionClient, missionId, markCompleted, goNext]);
 
-  const missionClient = isEnterprise ? orgName.trim() : clientName.trim() || null;
   const briefRequest = useMemo(
     () => ({ title: jobTitle.trim(), client: missionClient, sector: company?.industry ?? null, context: companyContext(company) }),
     [jobTitle, missionClient, company],
   );
+  const handleDraft = useCallback((draft: BriefDraft | null) => {
+    const current = progressRef.current;
+    const currentClient = (current.orgType === 'enterprise' ? current.orgName.trim() : current.clientName.trim()) || null;
+    if (draft && (current.jobTitle.trim() !== jobTitle.trim() || currentClient !== missionClient)) return;
+    setBrief(draft);
+    setBriefClient(missionClient);
+  }, [jobTitle, missionClient]);
 
   const handleCreateMission = useCallback(async () => {
     const orgId = createdOrgId ?? organization?.id ?? null;
@@ -404,7 +415,7 @@ const Onboarding = () => {
           <SceneBrief
             request={briefRequest}
             draft={brief}
-            onDraft={setBrief}
+            onDraft={handleDraft}
             processKey={processKey}
             onProcessKey={setProcessKey}
             locked={!!missionId}

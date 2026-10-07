@@ -76,7 +76,7 @@ export const EmailSignatures: React.FC = () => {
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Mail className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Mail className="h-4 w-4" aria-hidden="true" />
           Signatures e-mail
         </CardTitle>
         <Button size="sm" variant="outline" onClick={openCreate} disabled={isLoading || isError} className="max-md:h-11">
@@ -120,7 +120,7 @@ export const EmailSignatures: React.FC = () => {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                        className="max-md:h-11 max-md:w-11"
                         onClick={() => openEdit(sig)}
                         aria-label={`Modifier la signature ${sig.name}`}
                       >

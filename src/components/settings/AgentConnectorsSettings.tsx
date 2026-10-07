@@ -230,7 +230,7 @@ export function AgentConnectorsSettings() {
           <Button
             type="button"
             variant="outline"
-            className="w-full justify-between px-3.5 text-xs font-medium text-muted-foreground hover:text-foreground active:scale-100 max-md:h-11"
+            className="w-full justify-between px-3.5 text-xs font-medium active:scale-100 max-md:h-11"
           >
             <span className="flex items-center gap-2">
               <SlidersHorizontal aria-hidden="true" />
@@ -245,7 +245,7 @@ export function AgentConnectorsSettings() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2">
-              <Plug className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <Plug className="h-4 w-4" aria-hidden="true" />
               Connecteurs de l'assistant (MCP)
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
@@ -379,7 +379,7 @@ export function AgentConnectorsSettings() {
                             size="icon-xs"
                             variant="ghost"
                             aria-label={`Modifier les outils autorisés pour ${s.name}`}
-                            className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                            className="max-md:h-11 max-md:w-11"
                             onClick={() => {
                               setEditingToolsId(s.id);
                               setEditingToolsText(s.allowed_tools.join(' '));

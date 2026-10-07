@@ -240,7 +240,7 @@ const ToolStatusLine: React.FC<{
   doneLabel: string;
 }> = ({ icon: Icon, label, status, doneLabel }) => (
   <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+    <Icon className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
     <span className="font-medium text-foreground">{label}</span>
     {status === 'running' && <span>en cours…</span>}
     {status === 'complete' && <span>{doneLabel}</span>}

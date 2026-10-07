@@ -93,12 +93,12 @@ interface DelayPillProps {
 }
 
 export function DelayPill({ label, stepNumber, value, onChange, readOnly = false }: DelayPillProps) {
-  const pillClass = 'inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 text-xs text-muted-foreground';
+  const pillClass = 'inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 text-xs';
   if (readOnly) {
     return (
       <div className="flex justify-center">
-        <span className={cn(pillClass, 'py-0.5')}>
-          <Clock className="h-3 w-3" aria-hidden="true" />
+        <span className={cn(pillClass, 'py-0.5 text-muted-foreground')}>
+          <Clock className="h-3 w-3 text-foreground" aria-hidden="true" />
           {label}
         </span>
       </div>
@@ -113,7 +113,7 @@ export function DelayPill({ label, stepNumber, value, onChange, readOnly = false
             variant="ghost"
             size="xs"
             aria-label={`Délai de l’étape ${stepNumber} : ${label}. Modifier`}
-            className={cn(pillClass, 'h-6 font-normal hover:border-border-strong hover:text-foreground max-md:h-11')}
+            className={cn(pillClass, 'h-6 font-normal text-foreground hover:border-border-strong max-md:h-11')}
           >
             <Clock className="!size-3" aria-hidden="true" />
             {label}

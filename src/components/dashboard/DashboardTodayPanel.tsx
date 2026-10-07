@@ -345,7 +345,7 @@ const TaskRow: React.FC<{
   const isDone = !!r.completed_at;
   const context = [r.candidate_name, r.job_title].filter(Boolean).join(' · ');
   return (
-    <li className={cn('flex items-center gap-3.5 py-3', isDone && 'opacity-60')}>
+    <li className="flex items-center gap-3.5 py-3">
       {time}
       {/* Sur téléphone, la case se touche sur 44 px sans déplacer la ligne. */}
       <label className="-m-3.5 flex shrink-0 items-center justify-center p-3.5 md:m-0 md:p-0">
@@ -360,7 +360,7 @@ const TaskRow: React.FC<{
         to={r.candidate_id ? `/pipeline?candidate=${r.candidate_id}` : '/tasks'}
         className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
       >
-        <span className={cn('block truncate text-md text-foreground', isDone && 'line-through')}>{r.title}</span>
+        <span className={cn('block truncate text-md', isDone ? 'text-muted-foreground line-through' : 'text-foreground')}>{r.title}</span>
         {context && <span className="block truncate text-sm text-muted-foreground">{context}</span>}
       </Link>
       {when && <span className="shrink-0 text-sm text-muted-foreground">{when}</span>}
@@ -400,7 +400,7 @@ const TodayItem: React.FC<{
     ) : null;
 
     return (
-      <li className={cn('flex items-center gap-2 py-1', isDone && 'opacity-60')}>
+      <li className="flex items-center gap-2 py-1">
         <button
           type="button"
           onClick={() => onClickEvent(ev)}
@@ -409,7 +409,7 @@ const TodayItem: React.FC<{
           <TimeCell time={item.time} note={note} muted={isDone || (isLate && !isLive)} />
           <CandidateAvatar name={candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} candidateId={meta.candidateId} size={36} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-md font-medium text-foreground">
+            <span className={cn('block truncate text-md font-medium', isDone ? 'text-muted-foreground' : 'text-foreground')}>
               {candidateName}
               {round && <span className="font-normal text-muted-foreground"> · {round}</span>}
             </span>
@@ -465,7 +465,7 @@ const TodayItem: React.FC<{
   const subtitle = pendingStatusLabel ? `${pendingStatusLabel} · ${baseSubtitle}` : baseSubtitle;
 
   return (
-    <li className={cn('flex items-center gap-3.5 py-3', isDone && 'opacity-60')}>
+    <li className="flex items-center gap-3.5 py-3">
       <TimeCell
         time={item.time}
         muted={isDone || isLate}
@@ -474,7 +474,7 @@ const TodayItem: React.FC<{
       <CandidateAvatar name={recipientName} avatarUrl={null} size={36} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-md text-foreground">{recipientName}</span>
+          <span className={cn('truncate text-md', isDone ? 'text-muted-foreground' : 'text-foreground')}>{recipientName}</span>
           <Badge variant="muted" className="shrink-0">
             {isInmail ? 'InMail' : 'Séquence'}
           </Badge>

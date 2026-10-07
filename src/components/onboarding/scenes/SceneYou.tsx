@@ -179,13 +179,13 @@ export const SceneYou: React.FC<Props> = ({
               return (
                 <Button
                   key={c.value}
-                  variant="outline"
+                  variant="ghost"
                   role="radio"
                   aria-checked={picked}
                   // Un espace créé garde son type : il se corrige ensuite depuis les Paramètres.
                   disabled={!!createdOrgId && !picked}
                   onClick={() => onOrgTypeChange(c.value)}
-                  className={cn('h-auto w-full items-center justify-between gap-3 whitespace-normal rounded-xl p-3 text-left font-normal', picked && 'border-foreground bg-accent')}
+                  className={cn('h-auto w-full items-center justify-between gap-3 whitespace-normal rounded-xl border hover:border-foreground p-3 text-left font-normal', picked ? 'border-border-strong bg-accent' : 'border-border')}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-foreground">{c.title}</span>

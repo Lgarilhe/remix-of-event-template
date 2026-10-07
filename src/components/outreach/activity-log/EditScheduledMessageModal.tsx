@@ -18,9 +18,11 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Sparkles } from 'lucide-react';
 import { sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
-import { estimateActionCredits } from '@/lib/invokeWithCredits';
 import { plural } from '@/lib/plural';
 import { useSenderFirstName } from '@/hooks/useEnrollmentPreview';
+import { useWritingPreferences } from '@/hooks/useWritingPreferences';
+import { WritingSettingsLine, type WritingSettingsValue } from '@/components/ai/WritingSettingsLine';
+import { DEFAULT_AI_LEVEL, clampLevel, levelCredits, writingRefusalMessage } from '@/lib/writingStyle';
 import { proposeAiMessage } from './proposeAiMessage';
 
 interface EditScheduledMessageModalProps {
@@ -71,6 +73,12 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   const messageId = useId();
   const helpId = useId();
   const senderName = useSenderFirstName();
+  // Lot 5e-2 : style et niveau de « Proposer avec l'IA », pour cette proposition seulement.
+  const { prefs: writingPrefs, choices: writingChoices, refetch: refetchWritingPrefs } = useWritingPreferences();
+  const [writingOverride, setWritingOverride] = useState<WritingSettingsValue | null>(null);
+  const writing: WritingSettingsValue | null = writingOverride
+    ? { style: writingOverride.style, level: writingPrefs ? clampLevel(writingOverride.level, writingPrefs) : writingOverride.level }
+    : writingPrefs ? { style: writingPrefs.style, level: writingPrefs.defaultLevel } : null;
 
   const actionType = execution?.step?.action_type;
   // Un e-mail a un objet comme un InMail : sans ce champ, l'enregistrement
@@ -99,10 +107,12 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
     if (!execution) return;
     setProposing(true);
     try {
-      const proposal = await proposeAiMessage(execution.id, senderName);
+      const proposal = await proposeAiMessage(execution.id, senderName, writing);
       setMessage(proposal.message);
       if (showsSubject && proposal.subject) setSubject(proposal.subject);
     } catch (err) {
+      // Niveau refusé (plafond abaissé entre-temps) : réglages relus, le niveau affiché redescend.
+      if (writingRefusalMessage(err)) void refetchWritingPrefs();
       toast.error(err instanceof Error ? err.message : "La proposition de l'IA a échoué. Réessayez, ou écrivez le message vous-même.");
     } finally {
       setProposing(false);
@@ -191,14 +201,29 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
 
         <div className="space-y-4">
           {aiReview && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handlePropose} loading={proposing} disabled={saving} className="max-md:h-11">
-                {!proposing && <Sparkles aria-hidden="true" />}
-                Proposer avec l'IA
-              </Button>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                environ {plural(estimateActionCredits('outreach_message'), 'crédit')}
-              </span>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handlePropose} loading={proposing} disabled={saving} className="max-md:h-11">
+                  {!proposing && <Sparkles aria-hidden="true" />}
+                  Proposer avec l'IA
+                </Button>
+                {/* Coût au niveau choisi ; la ligne de réglages le répète quand elle est lue. */}
+                {!writing && (
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    environ {plural(levelCredits('outreach_message', DEFAULT_AI_LEVEL), 'crédit')}
+                  </span>
+                )}
+              </div>
+              {writing && writingPrefs && (
+                <WritingSettingsLine
+                  value={writing}
+                  onChange={setWritingOverride}
+                  defaultStyle={writingPrefs.style}
+                  choices={writingChoices('outreach_message')}
+                  maxLevel={writingPrefs.maxLevel}
+                  disabled={proposing}
+                />
+              )}
             </div>
           )}
 

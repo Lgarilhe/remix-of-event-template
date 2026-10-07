@@ -152,7 +152,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           variant={isAdded || quiet ? "ghost" : "outline"}
           size="sm"
           title={isAdded ? `Déjà retenu pour « ${activeProject.name} »` : `Retenir pour « ${activeProject.name} »`}
-          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : quiet ? 'text-foreground-secondary hover:text-foreground' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
+          className={`shrink-0 ${isAdded ? 'text-success hover:text-success disabled:text-success' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >
@@ -172,7 +172,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
       <Button
         variant={isAdded ? "ghost" : "outline"}
         size="sm"
-        className={`gap-1.5 ${isAdded ? 'text-success' : ''}`}
+        className={`gap-1.5 ${isAdded ? 'text-success disabled:text-success' : ''}`}
         onClick={() => !isAdded && addToProject(activeProject)}
         disabled={isAdding || isAdded}
       >
@@ -238,7 +238,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             onClick={() => addToProject(project)}
             className="gap-2"
           >
-            <FolderOpen className="w-4 h-4 text-linkedin" />
+            <FolderOpen className="w-4 h-4" />
             <span className="flex-1 truncate">{project.name}</span>
             {project.job_id === jobId && (
               <Badge variant="outline" className="text-xs px-1 py-0">

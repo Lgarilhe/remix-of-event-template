@@ -170,7 +170,7 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Puzzle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Puzzle className="h-4 w-4" aria-hidden="true" />
           Extension Chrome Konekt
         </CardTitle>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -236,7 +236,7 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
 
         {/* Plus de procédure d'installation pour développeur (F-10) : une phrase neutre. */}
         <p className="flex items-start gap-2 rounded-lg bg-muted p-3 text-xs text-foreground-secondary">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
           L'extension Chrome vous sera proposée ici dès sa publication. Les jetons ci-dessous la relient à votre compte Konekt.
         </p>
 
@@ -299,7 +299,7 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
             <ul className="space-y-2">
               {activeTokens.map(token => (
                 <li key={token.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5">
-                  <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <KeyRound className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{token.label}</p>
                     <p className="text-xs text-muted-foreground">

@@ -155,7 +155,7 @@ export function WebhookManager() {
     <section aria-labelledby="notifications-temps-reel" className="space-y-4 rounded-lg border border-border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Bell className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <div className="min-w-0">
             <h5 id="notifications-temps-reel" className="text-sm font-semibold text-foreground">
               Notifications en temps réel
@@ -171,7 +171,7 @@ export function WebhookManager() {
               type="button"
               variant="ghost"
               size="icon-xs"
-              className="shrink-0 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+              className="shrink-0 max-md:h-11 max-md:w-11"
               onClick={fetchWebhooks}
               disabled={loading}
               aria-label="Actualiser l’état des notifications"

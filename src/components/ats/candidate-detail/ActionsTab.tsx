@@ -40,7 +40,7 @@ const ShortcutRow: React.FC<{
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
     >
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground-secondary">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground">
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
@@ -159,12 +159,12 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
         ) : (
           <ul className="divide-y divide-border">
             {reminders.map(r => (
-              <li key={r.id} className={cn('group flex items-start gap-3 py-3', r.completed_at && 'opacity-60')}>
-                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground-secondary">
+              <li key={r.id} className="group flex items-start gap-3 py-3">
+                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground">
                   <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className={cn('text-sm font-medium text-foreground', r.completed_at && 'line-through')}>{r.title}</p>
+                  <p className={cn('text-sm font-medium', r.completed_at ? 'text-muted-foreground line-through' : 'text-foreground')}>{r.title}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     {format(parseISO(r.due_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}
                     {!r.completed_at && (

@@ -232,7 +232,7 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
               type="button"
               size="icon-xs"
               variant="ghost"
-              className="absolute right-1.5 top-1.5 text-muted-foreground hover:text-foreground"
+              className="absolute right-1.5 top-1.5"
               title="Aide à la rédaction (/ai)"
               aria-label="Aide à la rédaction"
             >

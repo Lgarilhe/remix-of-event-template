@@ -152,13 +152,13 @@ const BoardCard = memo(function BoardCard({
   return (
     <div
       className={cn(
-        'flex flex-col gap-0.5 rounded-lg border bg-muted p-2.5 text-left text-sm transition-colors duration-150 ease-out',
+        'flex flex-col gap-0.5 rounded-lg border bg-card p-2.5 text-left text-sm shadow-sm transition-colors duration-150 ease-out dark:bg-muted dark:shadow-none',
         active ? 'border-brand ring-1 ring-brand' : 'border-border hover:border-border-strong',
-        overlay && 'cursor-grabbing shadow-lg',
+        overlay && 'cursor-grabbing shadow-lg dark:shadow-lg',
       )}
     >
       <div className="flex items-center gap-2">
-        {/* Fond de la page : la pastille ne se confond pas avec la carte (même ton que bg-muted). */}
+        {/* Fond de la page : la pastille ne se confond pas avec la carte (blanche en clair, bg-muted en sombre). */}
         <PersonAvatar name={row.name} src={row.pictureUrl} candidateId={row.candidateId} size={28} className="bg-background" />
         <p className="min-w-0 flex-1 truncate font-medium text-foreground">{candidateName(row)}</p>
         <ScorePill score={row.score} title={row.recommendation} />
@@ -248,7 +248,7 @@ function Column({
       ref={setNodeRef}
       aria-label={`${column.label}, ${plural(rows.length, 'candidat')}`}
       className={cn(
-        'flex max-h-[calc(100dvh-300px)] min-h-[120px] w-[224px] shrink-0 flex-col gap-2 rounded-[10px] bg-card p-2.5 transition-colors duration-150',
+        'flex max-h-[calc(100dvh-300px)] min-h-[120px] w-[224px] shrink-0 flex-col gap-2 rounded-[10px] bg-muted p-2.5 transition-colors duration-150 dark:bg-card',
         aside && 'ml-2 border border-dashed border-border-strong',
         isOver && 'bg-muted/60 ring-1 ring-inset ring-brand/50',
       )}

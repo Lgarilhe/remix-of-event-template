@@ -7,12 +7,17 @@
  * Lectures seulement, sous la RLS de l'appelant : le texte proposé reste
  * modifiable et n'est écrit (final_message, final_subject) qu'à
  * « Enregistrer », par EditScheduledMessageModal. Jamais de tracking_data.
+ *
+ * Lot 5e-2 : style et niveau de la ligne « Rédaction par l'IA » (ai_level,
+ * style), préautorisation au prix du niveau ; l'ancien ton de l'étape n'est
+ * plus envoyé.
  */
 import { supabase } from '@/integrations/supabase/client';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { normalizeNetworkDistance } from '@/lib/sequenceCompatibility';
 import type { EdgeFunctionError } from '@/lib/invokeEdgeFunction';
-import { missionIdOfJob, normalizeMissionJobId, PREVIEW_NOT_COMPLIANT_CODE } from '@/hooks/useEnrollmentPreview';
+import { missionIdOfJob, normalizeMissionJobId, PREVIEW_NOT_COMPLIANT_CODE, writingRequest } from '@/hooks/useEnrollmentPreview';
+import { writingRefusalMessage, type AiLevel, type WritingStyle } from '@/lib/writingStyle';
 
 const SENT_STATUSES = ['sent', 'opened', 'clicked', 'replied'];
 
@@ -26,7 +31,6 @@ interface ExecutionForProposal {
     action_type: string;
     message_template: string | null;
     subject_template: string | null;
-    ai_tone: string | null;
   } | null;
   sequence_enrollments: {
     profile_id: string;
@@ -46,10 +50,11 @@ interface ExecutionForProposal {
 export async function proposeAiMessage(
   executionId: string,
   senderName?: string,
+  writing?: { level: AiLevel; style: WritingStyle } | null,
 ): Promise<{ subject: string; message: string }> {
   const { data, error } = await supabase
     .from('sequence_step_executions')
-    .select('id, enrollment_id, step_order, sequence_steps(action_type, message_template, subject_template, ai_tone), sequence_enrollments(profile_id, provider_id, profile_name, profile_headline, profile_url, job_title, company_name, network_distance, job_id, account_id)')
+    .select('id, enrollment_id, step_order, sequence_steps(action_type, message_template, subject_template), sequence_enrollments(profile_id, provider_id, profile_name, profile_headline, profile_url, job_title, company_name, network_distance, job_id, account_id)')
     .eq('id', executionId)
     .maybeSingle();
   const exec = data as unknown as ExecutionForProposal | null;
@@ -98,6 +103,7 @@ export async function proposeAiMessage(
     };
   }
 
+  const writingFields = writingRequest(writing);
   const { data: generated, error: genError } = await invokeWithCredits<{ subject?: string; message?: string }>(
     'generate-outreach-message',
     'outreach_message',
@@ -110,7 +116,7 @@ export async function proposeAiMessage(
         networkDistance: normalizeNetworkDistance(enrollment.network_distance),
       },
       job,
-      tone: step.ai_tone || 'professional',
+      ...writingFields.body,
       senderName,
       accountId: enrollment.account_id || undefined,
       profileId: enrollment.provider_id || enrollment.profile_id,
@@ -120,11 +126,16 @@ export async function proposeAiMessage(
       sequenceContext: { currentActionType: step.action_type, prevSentSteps },
       missionId: enrollment.job_id || undefined,
     },
+    { modelOverride: writingFields.modelOverride },
   );
   if (genError || !generated?.message?.trim()) {
     // Aperçu refusé par les garde-fous (rémunération, signature, posture) : la
     // phrase du serveur, à régénérer ; sinon l'échec générique.
     const e = genError as EdgeFunctionError | null;
+    // Niveau ou style refusé (lot 5e-2) : la phrase du serveur et son code,
+    // pour que l'écran relise les réglages avant un nouvel essai.
+    const refusal = writingRefusalMessage(e);
+    if (refusal) throw Object.assign(new Error(refusal), { code: e?.code });
     throw new Error(e?.code === PREVIEW_NOT_COMPLIANT_CODE && e.message ? e.message : PROPOSAL_FAILED_MESSAGE);
   }
   return { subject: generated.subject || '', message: generated.message };

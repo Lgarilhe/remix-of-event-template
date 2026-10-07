@@ -48,7 +48,7 @@ function renderIcon(icon: EmptyStateProps['icon'], compact: boolean) {
   return (
     <span
       className={cn(
-        'mb-3 grid place-items-center rounded-lg bg-muted text-foreground-secondary',
+        'mb-3 grid place-items-center rounded-lg bg-muted text-foreground',
         compact ? 'h-8 w-8' : 'h-10 w-10',
       )}
     >

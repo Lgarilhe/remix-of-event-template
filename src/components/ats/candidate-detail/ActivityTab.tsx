@@ -52,7 +52,7 @@ export const ActivityTab = React.memo<ActivityTabProps>(({ loading, timeline }) 
         const date = parseISO(event.date);
         return (
           <li key={i} className="flex items-start gap-3 py-3 first:pt-0">
-            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground-secondary">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-foreground">
               {ACTIVITY_TYPE_ICON[event.type] ?? <Clock className={ICON_CLASS} aria-hidden="true" />}
             </span>
             <div className="min-w-0 flex-1">

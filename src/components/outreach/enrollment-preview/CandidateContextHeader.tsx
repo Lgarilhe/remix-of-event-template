@@ -64,13 +64,13 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
             {profile.location && (
               <span className="inline-flex items-center gap-1">
-                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                <MapPin className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                 {profile.location.split(',')[0]}
               </span>
             )}
             {yearsXP != null && (
               <span className="inline-flex items-center gap-1">
-                <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
+                <Briefcase className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                 <span className="tabular-nums">{yearsXP} ans d'expérience</span>
               </span>
             )}
@@ -89,7 +89,7 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
         <div className="mt-4 space-y-2 border-t border-border pt-4">
           {workSummary && (
             <div className="flex items-start gap-2.5">
-              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                 <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
@@ -105,7 +105,7 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
           )}
           {education && (
             <div className="flex items-start gap-2.5">
-              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                 <GraduationCap className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
@@ -134,7 +134,7 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
 }
 
 const triggerClass =
-  'inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11';
+  'inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11';
 
 function CandidateHistorySection({ candidateId, linkedinUrl }: { candidateId: string; linkedinUrl: string | null }) {
   const [isOpen, setIsOpen] = useState(false);

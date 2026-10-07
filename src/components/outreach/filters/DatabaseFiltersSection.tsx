@@ -71,7 +71,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
     <FilterSection
       id="database"
       title="Filtres avancés Base Konekt"
-      icon={<Database className="w-4 h-4 text-muted-foreground" />}
+      icon={<Database className="w-4 h-4" />}
       badge={countActive}
       isOpen={isOpen}
       onToggle={onToggle}
