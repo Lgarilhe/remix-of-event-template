@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — DECISION — Première découverte animée de la mémoire
+
+**Fait** : démonstration de 4,12 secondes à la première ouverture volontaire de la mémoire : conversation, proposition, niveau et confirmation. Explications permanentes, actions « Compris » et « Passer » fixes sur mobile, relecture depuis l’aide. Découverte enregistrée par utilisateur et espace dans le navigateur, avec repli de session si le stockage est bloqué. Mouvement réduit : exemple fixe ; changement de préférence ou onglet masqué arrêtent la démonstration. Aucune activation ni mémorisation métier depuis le tutoriel.
+**Validation locale** : build final, lint et gardes contraste/fondations passent ; 117 contrôles UX ; TypeScript identique à ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 40 contrôles fonctionnels, six audits axe stabilisés sans violation, aucune erreur navigateur ni écriture métier.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Démonstration finie sans boucle, replay, accès direct après rechargement et relecture depuis l’aide | PASS |
+| Claire | Texte permanent, activation automatique distincte, fermeture sans flash et focus restauré | PASS |
+| Théo | Isolation utilisateur/espace, changement pendant la démonstration, stockage bloqué et aucune écriture métier | PASS |
+| Sophie | Deux actions visibles à 320/390 px et 390×400, défilement local, mouvement réduit initial et en cours | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryIntro.tsx`, `src/hooks/useAgentMemoryIntroduction.ts`, `src/components/agent/AgentMemoryDialog.tsx`.
+
 ## 2026-10-07 — BUG — Mémoire : cohérence visuelle et actions accessibles sur mobile
 
 **Fait** : surfaces et boutons alignés sur les primitives du site ; réglages allégés, actions « Garder » et « Proposer » mises en avant. Guide repliable des niveaux adapté aux comptes cabinet, entreprise et indépendant. Confirmation de désactivation défilante pour les mémoires longues ; saisie focalisée et visible à la création ou à l’édition.

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Archive, Brain, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { useAgentMemoryIntroduction } from '@/hooks/useAgentMemoryIntroduction';
 import { useAgentMemoryActions, useAgentMemoryContext, useAgentMemoryProposals } from '@/hooks/useAgentMemories';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,6 +20,7 @@ import { AgentMemoryFields } from './AgentMemoryFields';
 import { AgentMemoryProposalCard } from './AgentMemoryProposalCard';
 import { AgentMemoryAutomation } from './AgentMemoryAutomation';
 import { AgentMemoryScopeGuide } from './AgentMemoryScopeGuide';
+import { AgentMemoryIntro } from './AgentMemoryIntro';
 import {
   AGENT_MEMORY_EFFECT_LABEL, AGENT_MEMORY_KIND_LABEL, agentMemoryScopeLabel, canManageAgentMemory, isAgentMemoryDraftValid,
   type AgentMemory, type AgentMemoryDraft,
@@ -87,7 +90,15 @@ function MemoryRow({ memory, canManage }: { memory: AgentMemory; canManage: bool
 }
 
 export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projectTitle, contextLoading = false, contextError = false, onRetryContext }: Props) {
-  const { orgType } = useOrganization();
+  const { orgType, organizationId } = useOrganization();
+  const { user } = useAuthReady();
+  const introduction = useAgentMemoryIntroduction(organizationId, user?.id);
+  const [replayKey, setReplayKey] = useState<string | null>(null);
+  const [closingIntroKey, setClosingIntroKey] = useState<string | null>(null);
+  const showingIntroduction = Boolean(introduction.key) && (introduction.shouldIntroduce || replayKey === introduction.key
+    || (!open && closingIntroKey === introduction.key));
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const context = useAgentMemoryContext(projectId, open);
   const proposals = useAgentMemoryProposals({ projectId, enabled: open });
   const actions = useAgentMemoryActions();
@@ -97,8 +108,30 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
   const [draft, setDraft] = useState<AgentMemoryDraft>({ content: '', scope: 'user', kind: 'preference', effects: ['assistant'] });
 
   // Isolate drafts between missions and organization/context changes.
-  const { organizationId } = useOrganization();
   useEffect(() => { setAdding(false); setError(null); setDraft({ content: '', scope: 'user', kind: 'preference', effects: ['assistant'] }); }, [projectId, organizationId, open]);
+  useEffect(() => {
+    setReplayKey(null);
+    if (open) setClosingIntroKey(null);
+  }, [organizationId, user?.id, open]);
+  useEffect(() => {
+    if (!open) return;
+    // Keep focus in the dialog when the introduction replaces its action buttons.
+    const frame = requestAnimationFrame(() => titleRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, showingIntroduction]);
+
+  const finishIntroduction = () => {
+    introduction.markSeen();
+    setReplayKey(null);
+  };
+  const changeOpen = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      // Keep the outgoing view intact during the dialog's 200 ms exit transition.
+      setClosingIntroKey(showingIntroduction ? introduction.key : null);
+      if (showingIntroduction) finishIntroduction();
+    }
+    onOpenChange(nextOpen);
+  };
 
   const startAdding = () => {
     setDraft({ content: '', scope: projectId && context.data?.can_manage_project ? 'project' : 'user', kind: 'preference', effects: ['assistant'] });
@@ -118,12 +151,22 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-2rem)] max-w-2xl max-h-[85dvh] overflow-y-auto max-md:[&>button:last-child]:min-h-11 max-md:[&>button:last-child]:min-w-11">
-        <DialogHeader className="text-left">
-          <DialogTitle className="flex items-center gap-2 pr-7"><Brain aria-hidden="true" className="h-4 w-4 shrink-0" />{projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
-          <DialogDescription>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</DialogDescription>
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogContent className={`w-[calc(100%-2rem)] max-w-2xl max-h-[85dvh] max-md:[&>button:last-child]:min-h-11 max-md:[&>button:last-child]:min-w-11 ${showingIntroduction ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+        onOpenAutoFocus={(event) => {
+          openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          event.preventDefault();
+          titleRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (openerRef.current?.isConnected) openerRef.current.focus();
+        }}>
+        <DialogHeader className="shrink-0 text-left">
+          <DialogTitle ref={titleRef} tabIndex={-1} className="flex items-center gap-2 pr-7"><Brain aria-hidden="true" className="h-4 w-4 shrink-0" />{showingIntroduction ? 'Découvrir la mémoire' : projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
+          <DialogDescription>{showingIntroduction ? 'Des consignes utiles que vous gardez sous votre contrôle.' : <>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</>}</DialogDescription>
         </DialogHeader>
+        {showingIntroduction ? <AgentMemoryIntro key={introduction.key} orgType={orgType} hasProject={Boolean(projectId)} onDone={finishIntroduction} onSkip={finishIntroduction} /> : <>
         <AgentMemoryAutomation enabled={open} />
         {contextLoading ? <Spinner label="Chargement du contexte de la conversation" /> : contextError ? (
           <ErrorBox title="Le contexte de la conversation n’a pas pu être chargé." onRetry={onRetryContext} />
@@ -165,7 +208,8 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
             ) : <Button type="button" size="sm" variant={context.data?.memories.length || proposals.data?.length ? 'outline' : 'primary'} className="min-h-11 md:min-h-0" onClick={startAdding}><Plus aria-hidden="true" className="h-4 w-4" />Proposer une mémoire</Button>}
           </>
         )}
-        <AgentMemoryScopeGuide orgType={orgType} hasProject={Boolean(projectId)} />
+        <AgentMemoryScopeGuide orgType={orgType} hasProject={Boolean(projectId)} onReplay={() => setReplayKey(introduction.key)} />
+        </>}
       </DialogContent>
     </Dialog>
   );

@@ -1,11 +1,14 @@
 import { agentMemoryScopeLabel } from '@/types/agentMemory';
+import { PlayCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface Props {
   orgType: 'agency' | 'enterprise' | 'freelance' | null;
   hasProject: boolean;
+  onReplay?: () => void;
 }
 
-export function AgentMemoryScopeGuide({ orgType, hasProject }: Props) {
+export function AgentMemoryScopeGuide({ orgType, hasProject, onReplay }: Props) {
   return (
     <details className="space-y-2">
       <summary className="min-h-11 cursor-pointer rounded-lg py-3 text-sm font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:min-h-0 md:py-1">
@@ -19,6 +22,9 @@ export function AgentMemoryScopeGuide({ orgType, hasProject }: Props) {
           <li><span className="font-medium text-foreground">{agentMemoryScopeLabel('user', orgType)}</span> : préférences personnelles dans cet espace.</li>
         </ol>
         <p>En cas de conflit entre des mémoires, l’assistant vous demande une clarification.</p>
+        {onReplay && <Button type="button" variant="ghost" size="sm" className="min-h-11 md:min-h-0" onClick={onReplay}>
+          <PlayCircle aria-hidden="true" className="h-4 w-4" />Revoir l’explication
+        </Button>}
       </div>
     </details>
   );
