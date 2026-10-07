@@ -36,6 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Agent security regression tests
         run: npm run test:agent
       # Lot C1 : garde-fous statiques des fonctions (plus de Notion hors
