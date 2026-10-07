@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — BUG — Mémoire : cohérence visuelle et actions accessibles sur mobile
+
+**Fait** : surfaces et boutons alignés sur les primitives du site ; réglages allégés, actions « Garder » et « Proposer » mises en avant. Guide repliable des niveaux adapté aux comptes cabinet, entreprise et indépendant. Confirmation de désactivation défilante pour les mémoires longues ; saisie focalisée et visible à la création ou à l’édition.
+**Validation locale** : build et lint ciblé réussis ; 117 contrôles UX passent ; TypeScript conserve ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 38 contrôles de parcours, six groupes de régression automatique, état vide sans défilement initial à 320/390 px ; audits axe clair/sombre sans violation et aucune erreur de page.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Actions principales lisibles, création et confirmation ; activation automatique explicite | PASS |
+| Claire | Réglages moins denses, niveaux et périmètre expliqués, annulation sans écriture | PASS |
+| Théo | Erreur sans utilisation, contexte adapté au compte, conflits et callbacks tardifs préservés | PASS |
+| Sophie | Cibles de 44 px, champ visible, archive longue accessible à 390×400, CTA initial à 320 px | PASS |
+
+**État** : validé localement, non déployé. Guide fonctionnel retenu pour expliquer la cascade ; aucun ajout d’illustration décorative dans les cartes.
+**Refs** : `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryScopeGuide.tsx`, `docs/design/01-direction.md`.
+
 ## 2026-10-07 — DECISION — Mémoire automatique personnelle après calibration
 
 **Fait** : invitation après cinq propositions extraites confirmées sans modification ; activation explicite possible dans les réglages, « Plus tard » persistant et retour manuel. Seules les préférences explicites de langue, longueur et format des réponses peuvent devenir automatiques, personnellement dans chaque espace. Les règles de recrutement, de mission et d’organisation restent à confirmer.

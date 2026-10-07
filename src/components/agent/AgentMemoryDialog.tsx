@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Archive, Brain, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -6,15 +6,18 @@ import { useAgentMemoryActions, useAgentMemoryContext, useAgentMemoryProposals }
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ErrorBox } from '@/components/layout/ErrorBox';
 import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/layout/EmptyState';
 import { AgentMemoryFields } from './AgentMemoryFields';
 import { AgentMemoryProposalCard } from './AgentMemoryProposalCard';
 import { AgentMemoryAutomation } from './AgentMemoryAutomation';
+import { AgentMemoryScopeGuide } from './AgentMemoryScopeGuide';
 import {
   AGENT_MEMORY_EFFECT_LABEL, AGENT_MEMORY_KIND_LABEL, agentMemoryScopeLabel, canManageAgentMemory, isAgentMemoryDraftValid,
   type AgentMemory, type AgentMemoryDraft,
@@ -36,6 +39,7 @@ function MemoryRow({ memory, canManage }: { memory: AgentMemory; canManage: bool
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const archiveTitleRef = useRef<HTMLHeadingElement>(null);
   const archive = async () => {
     if (busy) return;
     setBusy(true);
@@ -45,7 +49,7 @@ function MemoryRow({ memory, canManage }: { memory: AgentMemory; canManage: bool
     finally { setBusy(false); }
   };
   return (
-    <article aria-label={memory.activation_mode === 'automatic' ? 'Mémoire automatique' : 'Mémoire confirmée'} className="rounded-lg border border-border p-3 space-y-2">
+    <article aria-label={memory.activation_mode === 'automatic' ? 'Mémoire automatique' : 'Mémoire confirmée'} className="p-4 space-y-2">
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="secondary">{agentMemoryScopeLabel(memory.scope, orgType)}</Badge>
         <Badge variant="outline">{AGENT_MEMORY_KIND_LABEL[memory.kind]}</Badge>
@@ -53,23 +57,26 @@ function MemoryRow({ memory, canManage }: { memory: AgentMemory; canManage: bool
       </div>
       <p className="text-sm whitespace-pre-wrap break-words">{memory.content}</p>
       <p className="text-xs text-muted-foreground">Effets : {memory.effects.map((effect) => AGENT_MEMORY_EFFECT_LABEL[effect]).join(', ')}.</p>
-      <p className="text-xs text-muted-foreground">{memory.activation_mode === 'automatic' ? 'Ajoutée automatiquement le' : 'Confirmée le'} {new Date(memory.activation_mode === 'automatic' ? memory.created_at : memory.confirmed_at).toLocaleDateString('fr-FR')} · version {memory.version}
+      <p className="text-xs text-muted-foreground">{memory.activation_mode === 'automatic' ? 'Ajoutée automatiquement le' : 'Confirmée le'} {new Date(memory.activation_mode === 'automatic' ? memory.created_at : memory.confirmed_at).toLocaleDateString('fr-FR')}
         {memory.expires_at && ` · expire le ${new Date(memory.expires_at).toLocaleDateString('fr-FR')}`}</p>
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
-      {canManage && <Button type="button" size="sm" variant="ghost" disabled={busy} aria-busy={busy} onClick={() => setConfirmOpen(true)}>
+      {canManage && <Button type="button" size="sm" variant="ghost" className="min-h-11 text-muted-foreground md:min-h-0" disabled={busy} aria-busy={busy} onClick={() => setConfirmOpen(true)}>
         {busy ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <Archive aria-hidden="true" className="h-3.5 w-3.5" />}Désactiver
       </Button>}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-h-[85dvh] overflow-y-auto" onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          archiveTitleRef.current?.focus();
+        }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Désactiver cette mémoire ?</AlertDialogTitle>
+            <AlertDialogTitle ref={archiveTitleRef} tabIndex={-1}>Désactiver cette mémoire ?</AlertDialogTitle>
             <AlertDialogDescription>L’assistant cessera de l’appliquer au niveau « {agentMemoryScopeLabel(memory.scope, orgType)} ». Pour la rétablir, il faudra créer et confirmer une nouvelle proposition.</AlertDialogDescription>
           </AlertDialogHeader>
           <p className="text-sm whitespace-pre-wrap break-words">{memory.content}</p>
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Annuler</AlertDialogCancel>
-            <AlertDialogAction disabled={busy} aria-busy={busy} onClick={(event) => { event.preventDefault(); void archive(); }}>
+            <AlertDialogCancel className="min-h-11 md:min-h-0" disabled={busy}>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="min-h-11 md:min-h-0" disabled={busy} aria-busy={busy} onClick={(event) => { event.preventDefault(); void archive(); }}>
               {busy && <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />}Désactiver la mémoire
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -112,13 +119,12 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-2rem)] max-w-2xl max-h-[85dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 pr-7"><Brain aria-hidden="true" className="h-4 w-4" />{projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
+      <DialogContent className="w-[calc(100%-2rem)] max-w-2xl max-h-[85dvh] overflow-y-auto max-md:[&>button:last-child]:min-h-11 max-md:[&>button:last-child]:min-w-11">
+        <DialogHeader className="text-left">
+          <DialogTitle className="flex items-center gap-2 pr-7"><Brain aria-hidden="true" className="h-4 w-4 shrink-0" />{projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
           <DialogDescription>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</DialogDescription>
         </DialogHeader>
         <AgentMemoryAutomation enabled={open} />
-        <p className="text-xs text-muted-foreground">Une contrainte prime sur une préférence. Les règles de l’organisation encadrent celles de la mission ; vos préférences personnelles ne les remplacent pas.</p>
         {contextLoading ? <Spinner label="Chargement du contexte de la conversation" /> : contextError ? (
           <ErrorBox title="Le contexte de la conversation n’a pas pu être chargé." onRetry={onRetryContext} />
         ) : context.isPending ? <Spinner label="Chargement des mémoires" /> : context.isError ? (
@@ -127,9 +133,10 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
           <>
             <section aria-label="Mémoires actives" className="space-y-2">
               <h3 className="text-sm font-semibold">Mémoires actives {context.data?.memories.length ? `(${context.data.memories.length})` : ''}</h3>
-              {context.data?.memories.length ? context.data.memories.map((memory) => (
+              {context.data?.memories.length ? <Card className="divide-y divide-border overflow-hidden">{context.data.memories.map((memory) => (
                 <MemoryRow key={`${memory.id}:${memory.version}`} memory={memory} canManage={canManageAgentMemory(memory.scope, context.data)} />
-              )) : <p className="text-sm text-muted-foreground">Aucune mémoire confirmée pour ce contexte.</p>}
+              ))}</Card> : <EmptyState title="Aucune mémoire confirmée pour ce contexte." variant="compact" headingLevel={4} className="items-start border-0 p-0 text-left"
+                description="Confirmez une proposition dans la conversation ou ajoutez une règle ici." />}
             </section>
             <section aria-label="Propositions à confirmer" className="space-y-2">
               <h3 className="text-sm font-semibold">À confirmer</h3>
@@ -140,24 +147,25 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
               )) : <p className="text-sm text-muted-foreground">Aucune proposition en attente.</p>}
             </section>
             {adding ? (
-              <section aria-label="Ajouter une proposition" className="rounded-lg border border-border p-3 space-y-3">
+              <Card role="region" aria-label="Ajouter une proposition" className="p-4 space-y-3">
                 <h3 className="text-sm font-semibold">Proposer une mémoire</h3>
-                <AgentMemoryFields value={draft} onChange={setDraft} projectId={projectId} orgType={orgType}
+                <AgentMemoryFields value={draft} onChange={setDraft} projectId={projectId} orgType={orgType} autoFocus
                   canManageOrganization={context.data?.can_manage_organization === true}
                   canManageProject={context.data?.can_manage_project === true} disabled={saving} />
                 {error && <p role="alert" className="text-xs text-danger">{error}</p>}
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" onClick={() => void create()} aria-busy={saving}
+                  <Button type="button" size="sm" variant="primary" className="min-h-11 md:min-h-0" onClick={() => void create()} aria-busy={saving}
                     disabled={saving || !isAgentMemoryDraftValid(draft) || !canManageAgentMemory(draft.scope, context.data)}>
                     {saving && <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />}Créer la proposition
                   </Button>
-                  <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={() => setAdding(false)}>Annuler</Button>
+                  <Button type="button" size="sm" variant="ghost" className="min-h-11 md:min-h-0" disabled={saving} onClick={() => setAdding(false)}>Annuler</Button>
                 </div>
                 <p className="text-xs text-muted-foreground">Vous pourrez relire et confirmer cette proposition avant son application.</p>
-              </section>
-            ) : <Button type="button" size="sm" variant="outline" onClick={startAdding}><Plus aria-hidden="true" className="h-4 w-4" />Proposer une mémoire</Button>}
+              </Card>
+            ) : <Button type="button" size="sm" variant={context.data?.memories.length || proposals.data?.length ? 'outline' : 'primary'} className="min-h-11 md:min-h-0" onClick={startAdding}><Plus aria-hidden="true" className="h-4 w-4" />Proposer une mémoire</Button>}
           </>
         )}
+        <AgentMemoryScopeGuide orgType={orgType} hasProject={Boolean(projectId)} />
       </DialogContent>
     </Dialog>
   );
