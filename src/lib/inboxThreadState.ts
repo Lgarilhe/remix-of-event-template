@@ -45,6 +45,18 @@ export function responseFilterToParam(filter: ResponseFilter): string | null {
   return filter === 'all' ? null : TAB_PARAMS[filter];
 }
 
+/**
+ * Auteur d'un message : true = vous, false = le candidat, null = inconnu.
+ * La liste des conversations donne un booléen (le serveur le convertit), mais
+ * les messages d'une conversation arrivent tels que LinkedIn les envoie : 1 ou 0.
+ * Un champ absent reste inconnu, jamais deviné.
+ */
+export function authorIsMine(value: unknown): boolean | null {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  return null;
+}
+
 export interface ThreadInput {
   /** Auteur du dernier message : true = vous, false = le candidat, null = inconnu. */
   lastIsMine: boolean | null;
@@ -78,7 +90,7 @@ export function businessDaysSince(iso: string, now: Date): number | null {
 }
 
 export interface LastMessageLike {
-  is_sender?: boolean | null;
+  is_sender?: boolean | number | null;
   timestamp?: string | null;
   is_deleted?: boolean;
 }

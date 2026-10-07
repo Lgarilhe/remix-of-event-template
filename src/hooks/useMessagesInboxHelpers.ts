@@ -1,7 +1,7 @@
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { Chat, Message, SequenceEnrollmentInfo } from './useMessagesInbox';
 import { timeAgo } from '@/lib/relativeTime';
-import { threadState, type ThreadState } from '@/lib/inboxThreadState';
+import { authorIsMine, threadState, type ThreadState } from '@/lib/inboxThreadState';
 
 // Format timestamp for message display
 export const formatMessageTime = (timestamp?: string): string => {
@@ -166,7 +166,7 @@ export const getChatThreadState = (
   const jobInfo = getChatJobInfo(chat, enrollmentsMap);
   return threadState(
     {
-      lastIsMine: last && typeof last.is_sender === 'boolean' ? last.is_sender : null,
+      lastIsMine: authorIsMine(last?.is_sender),
       lastAt: last?.timestamp ?? chat.timestamp ?? null,
       sequenceActive: !!jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at,
     },

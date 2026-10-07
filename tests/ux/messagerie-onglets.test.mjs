@@ -34,6 +34,7 @@ const load = async (rel) => {
 const {
   FOLLOW_UP_BUSINESS_DAYS,
   RESPONSE_FILTER_STATE,
+  authorIsMine,
   businessDaysSince,
   countThreadStates,
   latestMessage,
@@ -74,6 +75,33 @@ test('À répondre : le candidat a écrit le dernier message, quelle que soit l�
   const now = at(2026, 10, 6);
   assert.equal(threadState({ lastIsMine: false, lastAt: iso(at(2026, 10, 6, 9)), sequenceActive: false }, now), 'to_reply');
   assert.equal(threadState({ lastIsMine: false, lastAt: iso(at(2026, 6, 1)), sequenceActive: true }, now), 'to_reply');
+});
+
+test('Auteur d’un message : LinkedIn envoie 1 ou 0, la liste un booléen, un champ absent reste inconnu', () => {
+  // Régression : la ligne « À faire » s'affichait puis disparaissait quand les messages chargeaient, car
+  // seuls les vrais booléens étaient lus. Les messages arrivent tels que LinkedIn les envoie (1 ou 0).
+  assert.equal(authorIsMine(true), true);
+  assert.equal(authorIsMine(1), true);
+  assert.equal(authorIsMine(false), false);
+  assert.equal(authorIsMine(0), false);
+  for (const unknown of [undefined, null, '1', '0', 'true', 2, NaN, {}]) assert.equal(authorIsMine(unknown), null, String(unknown));
+});
+
+test('Fil réel : un dernier message du candidat envoyé en 0 donne À répondre, en 1 donne En attente ou À relancer', () => {
+  const now = at(2026, 10, 6, 10);
+  const thread = (lastFlag) => [
+    { id: 'a', timestamp: iso(at(2026, 9, 28)), is_sender: 1 },
+    { id: 'b', timestamp: iso(at(2026, 10, 5)), is_sender: lastFlag },
+  ];
+  const stateOf = (messages) => {
+    const last = latestMessage(messages);
+    return threadState({ lastIsMine: authorIsMine(last?.is_sender), lastAt: last?.timestamp ?? null, sequenceActive: false }, now);
+  };
+  assert.equal(stateOf(thread(0)), 'to_reply', 'candidat, valeur numérique');
+  assert.equal(stateOf(thread(false)), 'to_reply', 'candidat, valeur booléenne');
+  assert.equal(stateOf(thread(1)), 'waiting', 'vous, 1 jour ouvré');
+  const old = [{ id: 'a', timestamp: iso(at(2026, 9, 28)), is_sender: 1 }];
+  assert.equal(stateOf(old), 'to_follow_up', 'vous, une semaine sans réponse');
 });
 
 test('Auteur du dernier message inconnu : aucun état', () => {
@@ -264,10 +292,17 @@ test('Ligne « À faire » : montée une fois au-dessus du composeur, seulement 
   assert.ok(view.indexOf('<ThreadNextStep') < view.indexOf('<MessageComposer'), 'au-dessus du composeur');
   // Même règle que les onglets, avec le fil et l'inscription lus en base.
   assert.match(view, /const last = latestMessage\(messages\) \?\? selectedChat\.last_message \?\? null;/);
+  // L'auteur passe par authorIsMine (1 ou 0 côté messages) : jamais un test « est un booléen ».
+  assert.match(view, /lastIsMine: authorIsMine\(last\?\.is_sender\)/);
+  assert.doesNotMatch(view + helpers, /typeof last[\w?.]*is_sender === 'boolean'/);
+  assert.match(helpers, /lastIsMine: authorIsMine\(last\?\.is_sender\)/);
   assert.match(view, /sequenceActive: hasActiveEnrollment \|\|/);
   // L'action IA ne s'affiche que pour À répondre, et pas si le candidat a écrit depuis l'analyse.
   assert.match(view, /useChatSuggestedAction\(selectedChat, nextStep\?\.state === 'to_reply'\)/);
   assert.match(view, /new Date\(nextStep\.lastAt\) > new Date\(cached\.analyzedAt\)/);
+  // « À relancer » attend la lecture des inscriptions actives : sans elle, la ligne s'affichait puis disparaissait.
+  assert.match(view, /if \(state === 'to_follow_up' && chatProfileId && enrollmentsReadFor !== chatProfileId\) return null;/);
+  assert.equal(view.split('setEnrollmentsReadFor(chatProfileId)').length - 1, 2, 'lecture réussie et lecture en échec');
   // Téléphone : la ligne s'efface quand le champ de saisie a le focus. Clavier ouvert, elle laissait 117 px
   // de fil (moins d'un message) ; effacée, il en reste 226 (mesuré sur 390 x 470).
   assert.match(view, /<div className="group\/compose">/, 'la rangée réunit la ligne et le composeur');

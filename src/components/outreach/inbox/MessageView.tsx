@@ -72,7 +72,7 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
-import { businessDaysSince, latestMessage, threadState } from '@/lib/inboxThreadState';
+import { authorIsMine, businessDaysSince, latestMessage, threadState } from '@/lib/inboxThreadState';
 import { useChatSuggestedAction } from '@/hooks/useChatSuggestedAction';
 import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
@@ -424,6 +424,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
   const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
   const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
+  // Profil dont les inscriptions actives ont été lues : « À relancer » attend cette lecture
+  // pour ne pas s'afficher puis disparaître quand une séquence active s'en charge.
+  const [enrollmentsReadFor, setEnrollmentsReadFor] = useState<string | null>(null);
 
   // Nouvelle conversation : la pause affichée ne concerne que la précédente
   useEffect(() => {
@@ -452,9 +455,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
         // Lecture impossible : pas d'action de pause (on n'invente pas d'inscription).
         console.warn('[MessageView] active enrollments lookup failed:', error);
         setActiveEnrollments([]);
+        setEnrollmentsReadFor(chatProfileId);
         return;
       }
       setActiveEnrollments(data ?? []);
+      setEnrollmentsReadFor(chatProfileId);
     })();
     return () => { cancelled = true; };
   }, [chatProfileId, activeEnrollmentsKey]);
@@ -687,15 +692,17 @@ export const MessageView: React.FC<MessageViewProps> = ({
     const now = new Date();
     const state = threadState(
       {
-        lastIsMine: last && typeof last.is_sender === 'boolean' ? last.is_sender : null,
+        lastIsMine: authorIsMine(last?.is_sender),
         lastAt,
         sequenceActive: hasActiveEnrollment || (!!jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at),
       },
       now,
     );
     if (state !== 'to_reply' && state !== 'to_follow_up') return null;
+    // Une relance n'est proposée qu'une fois les inscriptions du candidat lues (sans profil à chercher, rien à attendre).
+    if (state === 'to_follow_up' && chatProfileId && enrollmentsReadFor !== chatProfileId) return null;
     return { state, lastAt, days: lastAt ? businessDaysSince(lastAt, now) : null };
-  }, [selectedChat, messages, hasActiveEnrollment, jobInfo]);
+  }, [selectedChat, messages, hasActiveEnrollment, jobInfo, chatProfileId, enrollmentsReadFor]);
 
   // Action déjà mise en cache par l'analyse IA (lecture seule), pour « À répondre » :
   // écartée si le candidat a écrit depuis l'analyse.
