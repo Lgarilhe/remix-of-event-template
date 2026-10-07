@@ -94,6 +94,7 @@ const card = await loadModule('src/components/outreach/inbox/ActivityEventCard.t
   // Composants du kit (revue design) : leurs enfants suffisent au texte lu.
   '@/components/ui/badge': "export const Badge = 'Badge';",
   '@/components/ui/ChannelIcon': "export const ChannelIcon = 'ChannelIcon';",
+  '@/components/ui/ServiceLogo': "export const ServiceLogo = 'ServiceLogo';",
   '@/assets/aircall-logo.webp': "export default 'aircall.webp';",
   '@/hooks/useProfileActivity': 'export {};',
   '@/hooks/useMessagesInboxHelpers': "export const formatMessageTime = () => '10:00';",
@@ -178,7 +179,7 @@ test('SEQ-184 / SEQ-245 — messagerie : une étape interne prend le nom de l’
   assert.equal(textOf(renderCard({ actionType: 'wait_connection', status: 'sent' })).replace(/·10:00$/, ''), graph.stepTypeLabel('wait_connection'));
   assert.match(textOf(renderCard({ actionType: 'wait_reply', status: 'skipped' })), /^Attendre une réponse : étape sautée/);
   // Rendez-vous : libellé sans abréviation (passe texte du design).
-  assert.match(textOf(renderCard({ type: 'booking', actionType: 'calendly_booking', status: 'scheduled' })), /Rendez-vous planifié/);
+  assert.match(textOf(renderCard({ type: 'booking', actionType: 'calendly_booking', status: 'scheduled' })), /Entretien planifié/);
 });
 
 // ---------------------------------------------------------------- SEQ-245

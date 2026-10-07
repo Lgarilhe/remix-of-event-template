@@ -32,6 +32,175 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Séparer les contenus de l’aperçu d’actions
+
+**Contexte** : l’aperçu de réponse et de coordination apparaissait comme un long panneau gris, avec des séparations trop faibles.
+**Fait** : chaque message ou contenu à enregistrer dispose d’une carte opaque bordée, avec bandeau de métadonnées distinct du texte. Destinataire, canal, adresse et objet sont alignés et restent lisibles sur petit écran. Sources et suite en attente ont leurs cartes ; l’en-tête et la validation sont séparés par des bordures visibles. La fenêtre passe à 672 px maximum et garde des marges mobiles ; les boutons Modifier et de validation font 44 px. Les cartes texturées de proposition restent inchangées.
+**Validation** : sept parcours fonctionnels et sept contrôles visuels Chromium sur les composants réels avec services simulés, clair/sombre de 320 à 1920 px et hauteur minimale de 500 px : lecture sans saisie initiale, édition, champs vides, annulation conservant les brouillons, validation unique, coordination distincte, focus et résultat partagé entre chat et fiche. Aucun débordement horizontal ; seule la zone centrale défile et la validation reste visible. Contraste minimal des textes contrôlés sur les surfaces opaques : 6,69:1 en sombre et 5,95:1 en clair. Build réussi, lint ciblé propre, cinq fichiers UX réussis et dette design sans hausse ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans les essais.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lire les effets séparément, modifier puis retrouver les résultats dans chat et fiche | PASS |
+| Claire | Identifier destinataire, service et contenu ; valider depuis la barre fixe | PASS |
+| Théo | Contenu vide, annulation, double clic et séparation des coordonnées candidat/équipe | PASS |
+| Sophie | Lecture, édition et validation sur 390 px et 320 × 500 px, sans débordement ni ouverture initiale du clavier | PASS |
+
+**Limites** : contrôles locaux sur une fixture avec services simulés ; pas de connexion fournisseur ni d’envoi réel. À 320 × 500 px, le corps de lecture reste défilable avec environ 166 px disponibles, l’en-tête et la validation restant visibles.
+**Impact** : `DemoCandidateActions.tsx`, documentation des actions et journal.
+**Refs** : PR #312.
+
+## 2026-10-07 — REFACTOR — Faire ressortir les propositions de la messagerie
+
+**Fait** : les cartes d’actions à préparer reprennent `texturedCard('teal')`, le dégradé et le grain fixes de l’accueil, avec texte clair et bouton principal blanc. Chat et onglet Actions de la fiche partagent le même rendu. Une action réalisée revient à une carte neutre et au bouton de consultation ; les dialogues et les échanges conservent leur fond habituel. Le groupe de boutons se replie sur petit écran et le filet au-dessus de la carte est retiré.
+**Décision** : nouvel usage demandé explicitement par le propriétaire le 07/10/2026, consigné dans la direction design et le commentaire de la primitive ; la liste des usages autorisés du test de l’accueil inclut uniquement ce quatrième composant. Aucun nouveau gradient ni jeton global.
+**Validation** : sept parcours Chromium réussis, clair/sombre de 320 à 1920 px et hauteur de 500 px : texture dans chat/fiche, boutons de 44 px sur mobile, aucun débordement horizontal, sources et focus, dialogue conservant les couleurs de son thème, validation puis carte neutre. Contraste conservateur mesuré sur les fonds capturés sans texte : 4,94:1 minimum pour les textes ; borne minimale du bouton principal survolé 13,01:1. Build réussi, lint ciblé propre, cinq fichiers UX réussis et dette design sans hausse ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans les essais.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Repérer la proposition, préparer puis appliquer et retrouver un résultat visuellement distinct | PASS |
+| Claire | Contraste de la texture et des textes, bouton principal blanc, résultat neutre et aperçu dans son thème | PASS |
+| Théo | Sources accessibles, focus restauré, état par candidat et aucun changement serveur dans la démo | PASS |
+| Sophie | Carte, boutons et fiche à 320/390 px, thèmes clair/sombre, hauteur de 500 px et sans débordement | PASS |
+
+**Refs** : PR #312 ; `docs/design/01-direction.md` § 7. Composants réels avec services simulés, sans compte recruteur réel ni appareil iOS physique. Le contraste est calculé contre le pixel de fond le plus lumineux à l’intérieur de la carte, hors bordure.
+
+## 2026-10-07 — SPEC — Réponse candidat et demande d’équipe liées
+
+**Fait** : la proposition d’Alex prépare trois effets relus ensemble : une réponse Outlook au candidat, une demande Outlook à Guillaume, puis un commentaire dans la fiche. Guillaume ayant déjà sollicité le manager, la demande lui propose de partager les précisions attendues. Une suite distincte reste en attente : compléter la réponse à Alex après réception du retour.
+**Décision** : chaque effet message porte un périmètre explicite candidat/équipe. Les messages aux collègues se lisent dans « Coordination avec l’équipe », partagé entre chat et fiche Interactions. Ils restent hors des événements du candidat utilisés pour ses coordonnées et ses bulles. La suite est une proposition conditionnelle, sans retour reçu supposé ni exécution automatique dans cette démo.
+**Validation** : sept parcours Chromium réussis de 320 à 1920 px, clair/sombre et hauteur de 500 px : destinataires distincts, modification des deux emails, champ d’équipe vide bloquant la validation, annulation conservant les brouillons, double clic produisant un message unique par destinataire, adresse d’Alex conservée, coordination identique dans la fiche et suite en attente. Six régressions profil/interactions et quatre fichiers UX réussis. Build réussi, lint ciblé propre, dette design inchangée ; les 11 diagnostics TypeScript hérités restent identiques. Aucune écriture serveur ni invocation distante dans les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Répondre au candidat et demander au collègue le retour manager en une validation des trois effets | PASS |
+| Claire | Identifier destinataires Candidat/Équipe, service Outlook et suite dépendant d’un retour avant d’appliquer | PASS |
+| Théo | Double clic, annulation, contenus relus, email interne hors coordonnées du candidat et aucun effet différé exécuté | PASS |
+| Sophie | Préparer, modifier les emails, annuler et valider sur 320/390 px, contenu défilant et cibles de 44 px | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Composants réels avec services simulés ; aucun compte recruteur réel ni appareil iOS physique. Réception du retour, nouveau plan et envois réels restent à brancher.
+
+## 2026-10-07 — REFACTOR — Lire les actions préparées avant de les modifier
+
+**Fait** : l’aperçu affiche les contenus complets en lecture, avec destinataires, destinations et nombre d’effets. « Modifier » ouvre seulement le champ choisi ; le focus initial reste sur le titre. « Annuler » ferme sans retirer la suggestion ni perdre les brouillons. « Ignorer la suggestion » reste dans le détail des sources. Un contenu vide affiche une explication et bloque la validation. Les résultats appliqués se relisent sans champ de saisie.
+**Raison** : les grands champs ouverts d’emblée coupaient les textes et focalisaient la saisie avant la lecture ; le bouton de rejet servait de recul ambigu. Le parcours sans retouche conserve deux clics, préparer puis valider.
+**Validation** : sept parcours Chromium réussis, de 320 à 1920 px, clair/sombre et hauteur de 500 px : lecture sans saisie, édition à la demande, annulation conservant le brouillon, partage chat/fiche, validation unique, résultat non éditable, rejet réversible, focus et cibles mobiles de 44 px. Six régressions profil/interactions et quatre fichiers UX réussis. Build réussi, lint ciblé propre, compteurs design inchangés ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans la démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lire puis appliquer deux effets, retrouver les documents dans la fiche et les messages dans les interactions | PASS |
+| Claire | Comprendre les effets et leurs destinations, lire les textes complets avant une édition facultative | PASS |
+| Théo | Champ vide, annulation sans effet, brouillon partagé, double clic unique et isolation des candidats | PASS |
+| Sophie | Lecture sans saisie initiale, modification et annulation à 320/390 px, focus restauré et validation visible | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Composants réels avec services simulés ; aucun compte recruteur réel ni appareil iOS physique. Le moteur et les envois restent fictifs.
+
+## 2026-10-07 — SPEC — Préparer et appliquer des actions concrètes depuis le chat
+
+**Fait** : la démo propose des contenus préparés et des modifications concrètes : brief et questions d’entretien ; commentaire d’équipe avec mention et réponse Outlook ; questions de scorecard et email Gmail ciblé. Le parcours « Préparer », aperçu modifiable, puis « Enregistrer la préparation » ou « Envoyer et enregistrer » applique les deux effets en mémoire. Les documents et commentaires sont visibles dans l’onglet Actions de la fiche fictive, les emails simulés dans le même fil d’interactions. Le résultat s’ouvre en lecture seule. Les brouillons relus et résultats sont partagés entre chat et fiche ; fermer l’aperçu ne les applique pas, une validation double ne les duplique pas, quitter la démo les efface.
+**Décision** : les propositions portent du travail exécutable, une tâche restant utile pour du travail réellement différé. La spécification décrit des effets typés, leur aperçu, leurs destinations, les droits et conflits, des résultats durables par effet et la reprise partielle. Les écritures internes et envois externes ne sont pas présentés comme une transaction atomique. Aucun moteur IA ni service d’envoi réel ajouté à cette démo.
+**Validation** : sept parcours Chromium avec composants réels et services simulés, de 320 à 1920 px, clair/sombre et hauteur de 500 px. Aperçu avant effet, champ vide bloquant la validation, contenu retouché conservé entre les vues puis appliqué, résultat readonly, double clic sans doublon de document ou message, rejet réversible, isolation par candidat, focus clavier, logos et réponses fictives. Six régressions profil/interactions réussies avec pagination, compte personnel, cache isolé et erreurs partielles. Build réussi, lint ciblé propre, quatre fichiers UX réussis, dette design inchangée ; 11 diagnostics TypeScript hérités identiques au contrôle précédent. Aucun appel de génération, envoi ni écriture serveur dans les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparer puis appliquer deux effets, retrouver les contenus enregistrés dans la fiche et le message dans le chat | PASS |
+| Claire | Aperçu éditable montrant destinations, destinataire, objet et service avant un bouton de validation explicite | PASS |
+| Théo | Texte vide, fermeture sans effet, brouillon partagé, double validation unique, changement de candidat et remise à zéro | PASS |
+| Sophie | Préparation, édition, validation et réponse à 320/390 px, hauteur de 500 px ; boutons de 44 px et focus restauré | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Vérification sur Chromium avec services simulés, sans compte recruteur réel ni appareil iOS physique. Le critère de scorecard reste non évalué ; la mention d’équipe et les envois sont fictifs.
+
+## 2026-10-07 — REFACTOR — Clarifier la prochaine action dans la démo de messagerie
+
+**Fait** : une seule prochaine action suit les échanges récents, avec titre, motif court et bouton « Ajouter à mes tâches ». « Pourquoi ? » ouvre le responsable, l’échéance et des sources résumées avec logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil. La fiche fictive et le chat partagent toujours l’état des tâches. Retour du focus à la fermeture du détail et après un rejet ; une modification de tâche ne déplace pas la lecture en cours.
+**Raison** : le panneau précédent mélangeait le contexte et les propositions, avec trop de détails visibles et un bouton de création ambigu. La proposition est maintenant près de la réponse, dans le contenu qui défile, pour préserver l’espace de lecture sur mobile. Bandeau et boutons raccourcis sur petit écran ; les trois canaux restent sur une ligne à 320 px.
+**Validation** : neuf parcours Chromium sur les composants réels avec services simulés, de 320 à 1920 px, clair/sombre et hauteur de 500 px : sources à la demande, boutons visibles dès l’ouverture, logos chargés, focus clavier, détail depuis la fiche, double clic sans doublon, tâches séparées par candidat, rejet réversible et sortie effaçant les essais. Aucun envoi ni écriture serveur. Six régressions profil/interactions avec pagination, compte personnel, erreurs partielles et cache isolé réussies. Build réussi, quatre fichiers de régression UX réussis, lint ciblé propre, dette design inchangée ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Ajouter une tâche, ouvrir son détail depuis la fiche, la terminer et retrouver le même état dans le chat sans déplacement de lecture | PASS |
+| Claire | Prochaine action et motif courts visibles dès l’ouverture ; contexte détaillé et extraits sur demande | PASS |
+| Théo | Double clic, changement de candidat, rejet réversible et remise à zéro ; aucune écriture ni génération distante | PASS |
+| Sophie | Répondre, ouvrir et fermer le détail à 320/390 px, hauteur de 500 px ; boutons de 44 px et aucun débordement | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Vérification sur Chromium avec données simulées, sans session recruteur réelle ni appareil iOS physique.
+
+## 2026-10-07 — SPEC — Actions proposées selon les interactions et le contexte candidat
+
+**Fait** : démo enrichie de trois propositions sourcées : préparation d’entretien avec contexte LinkedIn, coordination avec un autre recruteur et clarification d’un critère non évalué dans une scorecard. Sources datées, auteur et logos des services, responsable et échéance suggérés. Création, achèvement et rejet simulés en mémoire, état partagé entre le contexte du chat et l’onglet Actions de la fiche fictive, effacement à la sortie. Les exemples sont écrits pour l’aperçu ; aucun moteur IA réel ni tâche serveur ajouté.
+**Spécification** : `docs/candidate-contextual-actions.md` reprend les procédures Notion actuelles de calage, débrief et relances. Prévoit un contexte partagé, les avis distincts de chaque évaluateur, le travail de l’équipe, les sources indisponibles, les règles de cadence, la provenance, l’attribution et une déduplication serveur. L’API V2 permet les publications LinkedIn ; l’app utilise encore la lecture V1. Prérequis du moteur réel : rattachements entretien/scorecard/rapport à alimenter, responsable de tâche distinct du créateur, mission interne, états durables et politique de partage des interactions.
+**Validation** : build réussi, TypeScript à 11 diagnostics hérités sans ajout, lint ciblé propre, dette design inchangée, trois fichiers de régression profil/historique/contraste réussis. Douze scénarios Chromium avec composants réels et services simulés : six variantes des actions de 320 à 1920 px, clair/sombre, puis six régressions profil et interactions. Aucune écriture ni génération distante pendant les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Création simulée unique, tâche terminée depuis la fiche et état conservé dans le chat au changement de candidat | PASS |
+| Claire | Motif, sources avec logos, distinction entre scorecard et décision humaine, contexte d’un collègue visible | PASS |
+| Théo | Double clic sans duplication, tâches séparées par candidat, rejet réversible, sortie effaçant les essais, zéro écriture réelle | PASS |
+| Sophie | Contexte et fiche sans débordement à 320/390 px, actions tactiles de 44 px, clair et sombre | PASS |
+
+**Refs** : PR #312 ; consignes Notion `4ccaf5bf38da4fe1ae0a438a03feb05a` et compétences référencées dans la spécification. Aucun envoi réel, aucune migration ni fonction serveur modifiée.
+
+## 2026-10-07 — DECISION — Réutiliser le profil candidat existant dans la messagerie
+
+**Fait** : le profil de la messagerie et la fiche fictive réutilisent `ProfileDetailedTab`, déjà utilisé dans le pipeline, avec logos des sociétés/écoles, périodes, compétences et listes dépliables. Les logos sont conservés lors de la normalisation des données ; les dates utilisent le parseur existant. Suppression de la présentation et des formateurs de dates ajoutés pour cette vue. Cibles tactiles des boutons de dépliage portées à 44 px sur mobile ; logos fictifs locaux dans l'exemple principal.
+**Validation** : build réussi ; 11 erreurs TypeScript héritées, aucun diagnostic sur les fichiers nouveaux ; régressions profil/historique/contraste réussies ; lint ciblé propre et dette design sans augmentation. Six scénarios Chromium sur composants réels avec services simulés, clair/sombre et mobile : logos chargés, dates, listes dépliables, fiche et chat identiques, cache par organisation et absence d'écriture en démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Profil existant, anciens postes/formations dépliables et même historique sur les deux vues | PASS |
+| Claire | Logos des entreprises/écoles chargés et périodes lisibles | PASS |
+| Théo | Normalisation conservant les logos, actualisation isolée et démo sans écriture | PASS |
+| Sophie | Profil sans débordement à 390 px, onglets au clavier et composeur visible à 500 px | PASS |
+
+**Refs** : PR #312, aperçu de `codex/inbox-candidate-history`.
+
+## 2026-10-07 — SPEC — Profil candidat dans la messagerie et interactions partagées
+
+**Fait** : onglets Suivi et Profil dans le contexte candidat, expériences et formations intégrales, compétences, langues et autres rubriques présentes dans le profil. Lecture des instantanés de l'organisation, puis du compte LinkedIn personnel si nécessaire ; actualisation explicite conservant le cache de l'organisation de départ. Les fiches sourcing, pipeline et mission reprennent les cartes et la chronologie des interactions : séquences, emails/WhatsApp envoyés, entretiens, appels et messages LinkedIn paginés. Les réponses LinkedIn utilisent uniquement le compte personnel. La démo contient trois parcours fictifs complets et une fiche Profil/Interactions reprenant exactement les événements du chat, réponses simulées comprises.
+**Validation** : build réussi ; TypeScript à 11 erreurs héritées, aucune nouvelle ; nouveaux composants et hooks sans diagnostic ESLint ; dette design sans augmentation ; 119 fichiers UX et 28 C1 réussis, puis régressions ciblées relancées après les derniers ajustements. Chromium en StrictMode, clair/sombre, 390/1280/1920 px et hauteur mobile 500 px : six scénarios réussis, aucune erreur navigateur et aucune écriture en démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Profil complet dans le chat, fiche avec historique identique, anciens messages paginés et réponse unique depuis la fiche | PASS |
+| Claire | Suivi/Profil explicites, formations et compétences, mêmes cartes et logos dans les deux parcours | PASS |
+| Théo | Changement de candidat/organisation/compte, actualisation tardive isolée, panne partielle conservant les événements et absence d'envoi doublé | PASS |
+| Sophie | Onglets accessibles au clavier et cibles de 44 px, fiche et contexte sans débordement mobile, composeur visible à 500 px | PASS |
+
+**Limites** : composants réels avec services simulés pour les essais navigateur ; aucun envoi réel. Les réponses entrantes email/WhatsApp restent illustrées en démo, leur synchronisation réelle n'est pas ajoutée. Aucun schéma ni serveur modifié. Disponible sur l'aperçu de la PR.
+**Refs** : PR #312, branche `codex/inbox-candidate-history`.
+
+## 2026-10-07 — SPEC — Messagerie : exemples fictifs et logos des services
+
+**Contexte** : visualiser les emails, les discussions WhatsApp et les autres événements sans attendre une activité réelle.
+**Décision / Fait** : bouton « Voir la démo » dans la messagerie, accès direct `/inbox?demo=1`. Trois candidats fictifs avec invitations LinkedIn, emails Gmail et Outlook entrants et sortants, échanges WhatsApp, appel Aircall et entretien Calendly avec Google Meet. Réponses simulées en mémoire, brouillons distincts par candidat, sortie vers la messagerie réelle. Les cartes et le contexte réutilisent les composants de la messagerie ; les logos identifient les services connus, sans déduire un fournisseur de l'adresse du destinataire.
+**Validation** : Chromium en StrictMode sur la page Inbox, clair/sombre, 320/390/1280/1600/1920 px : email développé, changement de candidat, réponse unique, brouillon conservé, panneau de contexte, sortie et réouverture sans compte LinkedIn. Aucun débordement, aucune erreur navigateur, aucune écriture serveur dans la démo, composeur visible à 500 px de hauteur. Build réussi ; TypeScript à 11 erreurs héritées ; lint des fichiers touchés sans nouveau diagnostic ; dette design inchangée. Suites UX et C1 vérifiées.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Parcours des trois candidats, Gmail/Outlook/WhatsApp et réponse simulée | PASS |
+| Claire | Distinction de la démo, contenu des emails, entretien et sortie sans compte connecté | PASS |
+| Théo | Lien avec chat réel sans marquage lu en démo, zéro écriture, brouillons séparés et essais effacés à la sortie | PASS |
+| Sophie | Retour à la liste, changement de candidat, contexte et réponse à 320/390 px et hauteur 500 px | PASS |
+
+**Limites** : navigateur avec services simulés pour vérifier l'absence d'écritures ; aucun message réel envoyé. Le mode démo illustre les réponses email/WhatsApp, dont la synchronisation réelle reste à connecter. Fournisseur d'email générique si l'origine de l'événement n'est pas enregistrée.
+**Refs** : PR #312, branche `codex/inbox-candidate-history`.
+
+## 2026-10-07 — SPEC — Messagerie : historique candidat et largeur utile
+
+**Contexte** : la liste étroite et la conversation isolée masquaient le suivi effectué sur les autres canaux.
+**Décision / Fait** : fil chronologique commun aux messages LinkedIn et aux envois réels de séquences (invitation, email, WhatsApp), cartes avec contenu, sujet, destinataire, statut et date d'entretien. Liste élargie ; mission, séquence et prochain entretien dans un panneau latéral sur grand écran, accessible depuis l'en-tête sur les autres tailles. Avant sélection, conversations récentes et accès aux échanges à répondre ou relancer.
+**Validation** : build réussi, 118 fichiers UX et 28 fichiers C1 réussis ; TypeScript à 11 erreurs héritées, dette design sans augmentation, un diagnostic lint hérité sur les fichiers touchés. Régressions sur les alias, 501 envois, les homonymes, les fuseaux horaires, la déduplication et les clés de cache utilisateur/organisation. Chromium en StrictMode : thèmes clair/sombre, 320 à 1920 px, réponse unique, panneau mobile et composeur accessible à 500 px de hauteur.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Contenu des canaux, origine de séquence, 501 envois et texte LinkedIn non dupliqué | PASS |
+| Claire | Date et statut d'entretien, email développé, ouverture depuis les conversations récentes | PASS |
+| Théo | Organisation et candidat changés pendant une lecture, HTML inerte, panne partielle et réessai | PASS |
+| Sophie | Lecture et réponse sur 320/390 px, contexte accessible, aucun débordement horizontal | PASS |
+
+**Limites** : essais navigateur avec données simulées. Vérification SQL en lecture seule de la présence du périmètre organisation sur les sources existantes ; pas de test d'envoi avec un compte réel. Les réponses email et WhatsApp ne sont pas synchronisées dans cette page ; seuls leurs envois de séquence sont ajoutés. Aucun schéma ni serveur modifié.
+**Reste à faire** : relier les conversations et réponses des autres canaux ; validation en compte connecté après fusion.
+**Refs** : branche `codex/inbox-candidate-history`.
+
 ## 2026-10-07 — BUG — Messagerie : identités LinkedIn, échéances et catégories
 
 **Fait** : rapprochement des trois identifiants LinkedIn, priorité aux séquences actives avec pagination ; états, compteurs et filtres relus toutes les 30 secondes ; catégories automatiques écrites dans l’organisation vérifiée du compte. Conflit avec main résolu en conservant son contraste.

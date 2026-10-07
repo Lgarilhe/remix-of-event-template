@@ -215,11 +215,12 @@ Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto
 - Option `contained` : dans un conteneur à marges (le sourcing), les bords se fondent aussi sur les côtés.
 - Pas d'autre écran sans décision du propriétaire.
 
-Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Trois usages, pas d'autre sans décision du propriétaire :
+Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Quatre usages, pas d'autre sans décision du propriétaire :
 
 - La carte « Maintenant » du Pipeline d'une mission (`NowCard.tsx`), seulement quand il y a une action : bleue, chaude pour le rang 0 (blocage). Les états « chargement », « rien à faire » et « tout est reporté » gardent la bande grise.
 - Le bandeau « Compte LinkedIn à reconnecter » en tête de « À faire » (`DashboardFocusPanel`), chaud, placé au-dessus de la liste.
 - La carte de bienvenue de l'accueil (`DashboardGreeting`), bleue, en permanence : une zone réservée aux cas particuliers ne se voyait pas sur un compte qui fonctionne (demande du propriétaire, 05/10/2026). Le bandeau LinkedIn s'y ajoute en dessous quand il y en a un, et la zone « Aucune mission active » reste neutre. Sur téléphone, le titre passe sur deux lignes dans la carte au lieu d'être coupé.
+- Les propositions à préparer dans la démo de messagerie (`DemoCandidateActions`, demande du propriétaire du 07/10/2026), bleu-vert avec un bouton principal blanc, dans le chat et la fiche. Les actions réalisées reviennent à une carte neutre ; les contenus de l’aperçu et les échanges gardent leur fond habituel.
 
 La carte porte ses propres couleurs de texte, claires dans les deux thèmes : en thème clair, c'est une île sombre. Le contenu s'écrit avec les classes habituelles, le bouton plein de la carte est blanc. Le survol d'un bouton discret y assombrit au lieu d'éclaircir, car un survol blanc translucide faisait tomber le contraste à 4,3:1. Mesure faite le 05/10/2026 sur les vrais composants, carte repliée, dépliée et bouton survolé : 6,0:1 au pire sur la carte « Maintenant », 6,4 à 7,1:1 sur l'accueil (carte de bienvenue et bandeau LinkedIn). Une teinte plus claire se mesure avant livraison.
 

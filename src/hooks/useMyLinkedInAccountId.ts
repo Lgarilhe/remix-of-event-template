@@ -9,8 +9,8 @@ import { resolveMyLinkedInStatus } from '@/lib/linkedinStatus';
  * utilisable (relié et connecté). Liaison stricte par user_id : jamais le compte
  * d'un collègue (src/lib/linkedinStatus.ts). Sans compte utilisable : null.
  *
- * Sert de repli quand un candidat n'a aucun compte d'envoi dans ses séquences
- * ni ses InMails (onglet Messages de la fiche du Pipeline).
+ * Sert aux lecteurs et aux envois de la fiche candidat : les comptes d'envoi
+ * des séquences ne déterminent pas le compte personnel à utiliser.
  */
 export function useMyLinkedInAccountId(): string | null {
   const { user } = useAuthReady();

@@ -158,13 +158,13 @@ function ExperienceList({ experiences }: { experiences: RawExperience[] }) {
         <ExperienceItem key={i} exp={exp} />
       ))}
       {hidden > 0 && !showAll && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5 min-h-11 md:min-h-8">
           <ChevronDown aria-hidden="true" />
           Voir {hidden} poste{hidden > 1 ? 's' : ''} de plus
         </Button>
       )}
       {showAll && sorted.length > 3 && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5 min-h-11 md:min-h-8">
           <ChevronUp aria-hidden="true" />
           Réduire
         </Button>
@@ -270,13 +270,13 @@ function EducationList({ education }: { education: RawEducation[] }) {
         <EducationItem key={i} edu={edu} />
       ))}
       {hidden > 0 && !showAll && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(true)} className="-ml-2.5 min-h-11 md:min-h-8">
           <ChevronDown aria-hidden="true" />
           Voir {hidden} formation{hidden > 1 ? 's' : ''} de plus
         </Button>
       )}
       {showAll && sorted.length > 2 && (
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowAll(false)} className="-ml-2.5 min-h-11 md:min-h-8">
           <ChevronUp aria-hidden="true" />
           Réduire
         </Button>

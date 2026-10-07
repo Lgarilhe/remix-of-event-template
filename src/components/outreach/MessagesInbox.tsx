@@ -23,6 +23,7 @@ import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
 import { useChatDrafts } from '@/hooks/useChatDraft';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
+import { InboxOverview } from './inbox/InboxOverview';
 import { AddToPipelineModal } from './AddToPipelineModal';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import type { LinkedInProfile } from './types';
@@ -270,6 +271,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           )}
         >
           <MessageView
+            overview={<InboxOverview chats={inbox.chats} replyCount={inbox.threadCounts.to_reply} followUpCount={inbox.threadCounts.to_follow_up} onSelect={inbox.setSelectedChat} onFilter={(tab) => { inbox.setResponseFilter(tab); onTabChange?.(tab); }} />}
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
             loadingMessages={inbox.loadingMessages}

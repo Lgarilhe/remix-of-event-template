@@ -1,277 +1,87 @@
-import React, { useState, useCallback } from 'react';
-import { emitQuotaAction } from '@/lib/quotaEvents';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { Loader2, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Link } from 'react-router-dom';
-import { MessageSquare, Loader2, Send } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { ServiceLogo } from '@/components/ui/ServiceLogo';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CandidateInteractionTimeline } from '@/components/outreach/inbox/CandidateInteractionTimeline';
+import { useProfileActivity } from '@/hooks/useProfileActivity';
+import { useCandidateMessages, type CandidateMessages } from '@/hooks/useCandidateMessages';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useMyLinkedInAccountId } from '@/hooks/useMyLinkedInAccountId';
+import { emitQuotaAction } from '@/lib/quotaEvents';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
-import { ChatMessage } from './types';
-import { EmptyState } from '@/components/layout/EmptyState';
 
 interface CardMessageThreadProps {
-  accountId?: string;
   profileId: string;
   profileName: string;
-  /**
-   * Mission de l'envoi (uuid, sans « project: ») : le serveur y pose
-   * « Contacté » (lot 0b). Absente, il la résout lui-même.
-   */
+  profileUrl?: string | null;
+  profileAliases?: string[];
+  /** Mission de l'envoi : le serveur y pose « Contacté ». */
   projectId?: string;
   onMessageSent?: () => void;
   onProfileTreated?: () => void;
 }
 
-const formatMessageTime = (timestamp?: string) => {
-  if (!timestamp) return '';
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+/** L'état de saisie repart de zéro à chaque candidat, utilisateur, organisation ou compte. */
+export function CardMessageThread(props: CardMessageThreadProps) {
+  const { user } = useAuthReady();
+  const { organizationId } = useOrganization();
+  const accountId = useMyLinkedInAccountId();
+  return <InteractionThread key={JSON.stringify([user?.id, organizationId, accountId, props.profileId, props.profileUrl])} {...props} />;
+}
 
-  if (diffDays === 0) return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  if (diffDays === 1) return 'Hier';
-  if (diffDays < 7) return date.toLocaleDateString('fr-FR', { weekday: 'short' });
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-};
-
-export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
-  accountId,
-  profileId,
-  profileName,
-  projectId,
-  onMessageSent,
-  onProfileTreated,
-}) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [messagesLoaded, setMessagesLoaded] = useState(false);
-  const [chatId, setChatId] = useState<string | null>(null);
-  const [noConversation, setNoConversation] = useState(false);
+function InteractionThread({ profileId, profileName, profileUrl, profileAliases = [], projectId, onMessageSent, onProfileTreated }: CardMessageThreadProps) {
+  const activity = useProfileActivity(profileId, profileUrl, profileName, profileAliases);
+  const query = useCandidateMessages({ profileId, profileUrl, aliases: profileAliases });
+  const queryClient = useQueryClient();
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [replyChatId, setReplyChatId] = useState('');
+  const sending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const messages = query.data?.messages ?? [];
+  const chats = query.data?.chats ?? [];
+  const chatId = chats.some(chat => chat.id === replyChatId) ? replyChatId : chats[0]?.id;
 
-  const loadMessages = useCallback(async () => {
-    if (!accountId || messagesLoaded || messagesLoading) return;
-
-    setMessagesLoading(true);
-    setNoConversation(false);
-
-    try {
-      const { data: chatsData } = await invokeUnipile({
-        body: {
-          action: 'get_chats',
-          account_id: accountId,
-          attendee_provider_id: profileId,
-          limit: 10,
-        },
-      });
-
-      if (!chatsData?.success || !(chatsData?.chats as any[])?.length) {
-        setNoConversation(true);
-        setMessagesLoaded(true);
-        return;
-      }
-
-      const foundChat = (chatsData.chats as any[])[0];
-      setChatId(foundChat.id);
-
-      const { data: msgsData } = await invokeUnipile({
-        body: {
-          action: 'get_messages',
-          account_id: accountId,
-          chat_id: foundChat.id,
-          limit: 50,
-        },
-      });
-
-      if (msgsData?.success && msgsData?.messages) {
-        setMessages(msgsData.messages as ChatMessage[]);
-      }
-
-      setMessagesLoaded(true);
-    } catch (error) {
-      console.error('Error loading messages:', error);
-      toast.error("Erreur lors du chargement des messages");
-    } finally {
-      setMessagesLoading(false);
-    }
-  }, [accountId, profileId, messagesLoaded, messagesLoading]);
-
-  const handleSendReply = useCallback(async () => {
-    if (!chatId || !replyText.trim() || isSending) return;
-
+  async function handleSendReply() {
+    if (!query.accountId || !query.organizationId || !chatId || !replyText.trim() || sending.current) return;
+    sending.current = true;
     setIsSending(true);
+    const text = replyText.trim();
     try {
-      const { data } = await invokeUnipile({
-        body: {
-          action: 'send_message',
-          account_id: accountId,
-          chat_id: chatId,
-          text: replyText.trim(),
-          project_id: projectId,
-        },
-      });
-
-      if (!data?.success) throw new Error(data?.error as string || "Erreur lors de l'envoi");
-      emitQuotaAction('messagesSent', 1, accountId);
-
-      const newMessage: ChatMessage = {
-        id: (data.message as any)?.id || Date.now().toString(),
-        text: replyText.trim(),
-        is_sender: true,
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, newMessage]);
-      setReplyText('');
-      toast.success('Message envoyé !');
-      onMessageSent?.();
-      onProfileTreated?.();
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error("Erreur lors de l'envoi du message");
+      const { data } = await invokeUnipile({ body: { action: 'send_message', organization_id: query.organizationId, account_id: query.accountId, chat_id: chatId, text, project_id: projectId } });
+      if (!data.success) throw new Error('Envoi impossible');
+      emitQuotaAction('messagesSent', 1, query.accountId);
+      const sent = data.message && typeof data.message === 'object' ? data.message as Record<string, unknown> : {};
+      queryClient.setQueryData<CandidateMessages>(query.queryKey, previous => previous && ({ ...previous, messages: [...previous.messages, { id: typeof sent.id === 'string' ? sent.id : `sent-${Date.now()}`, text, is_sender: true, timestamp: new Date().toISOString() }] }));
+      if (mounted.current) { setReplyText(''); toast.success('Message envoyé !'); onMessageSent?.(); onProfileTreated?.(); }
+    } catch {
+      if (mounted.current) toast.error("Erreur lors de l'envoi du message");
     } finally {
-      setIsSending(false);
+      sending.current = false;
+      if (mounted.current) setIsSending(false);
     }
-  }, [chatId, replyText, isSending, accountId, projectId, onMessageSent, onProfileTreated]);
-
-  // États sans fil à montrer : un titre, une phrase, une action au besoin, sans cadre.
-  const emptyClass = 'border-0 py-8';
-
-  if (!accountId) {
-    return (
-      <EmptyState
-        className={emptyClass}
-        title="Aucun compte LinkedIn utilisable"
-        description="Reliez ou reconnectez votre compte LinkedIn pour lire et envoyer des messages à ce candidat."
-        action={(
-          <Button asChild variant="outline" size="sm">
-            <Link to="/settings/account/connections">Ouvrir mes connexions</Link>
-          </Button>
-        )}
-      />
-    );
   }
 
-  if (messagesLoading) {
-    return (
-      <EmptyState
-        className={emptyClass}
-        icon={<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-        title="Chargement des messages"
-      />
-    );
-  }
-
-  if (!messagesLoaded) {
-    return (
-      <EmptyState
-        className={emptyClass}
-        title="Historique des messages"
-        description="Consultez les échanges avec ce candidat."
-        action={(
-          <Button variant="outline" size="sm" onClick={loadMessages}>
-            <MessageSquare aria-hidden="true" />
-            Charger l'historique
-          </Button>
-        )}
-      />
-    );
-  }
-
-  if (noConversation) {
-    return (
-      <EmptyState
-        className={emptyClass}
-        title="Aucune conversation"
-        description="Vous n'avez pas encore échangé avec ce candidat."
-      />
-    );
-  }
-
-  if (messages.length === 0) {
-    return (
-      <EmptyState
-        className={emptyClass}
-        title="Conversation vide"
-        description="La conversation existe, mais aucun message n'a été trouvé."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-3 max-h-96 overflow-y-auto">
-      <div className="flex items-center justify-between pb-2 border-b border-border">
-        <span className="text-xs font-medium text-muted-foreground">
-          {messages.length} message{messages.length > 1 ? 's' : ''}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => { setMessagesLoaded(false); setMessages([]); }}
-          className="text-xs h-6 px-2"
-        >
-          Actualiser
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        {[...messages].reverse().map((msg, index) => (
-          <div
-            key={msg.id || index}
-            className={`flex ${msg.is_sender ? 'justify-end' : 'justify-start'}`}
-          >
-            <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
-              msg.is_sender
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-foreground'
-            }`}>
-              <p className="text-sm whitespace-pre-wrap break-words">
-                {msg.text || '(Message sans texte)'}
-              </p>
-              {msg.timestamp && (
-                <p className={`text-xs mt-1 ${
-                  msg.is_sender ? 'text-primary-foreground/60' : 'text-muted-foreground'
-                }`}>
-                  {formatMessageTime(msg.timestamp)}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {chatId && (
-        <div className="pt-3 border-t border-border">
-          <div className="flex gap-2">
-            <Textarea
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              placeholder="Écrire un message..."
-              className="min-h-[60px] max-h-[120px] resize-none text-sm"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendReply();
-                }
-              }}
-            />
-            <Button
-              onClick={handleSendReply}
-              disabled={!replyText.trim() || isSending}
-              size="icon"
-              variant="primary"
-              className="h-auto min-h-[60px] w-12"
-            >
-              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Appuyez sur Entrée pour envoyer, Shift+Entrée pour un retour à la ligne
-          </p>
-        </div>
-      )}
-    </div>
-  );
-};
+  return <div className="space-y-4">
+    <div className="flex items-center justify-between gap-2 border-b border-border pb-2"><p className="text-xs text-muted-foreground">Tous les échanges et événements disponibles</p><Button variant="ghost" size="sm" className="min-h-11" disabled={query.isFetching || activity.loading} onClick={() => { activity.retry(); if (query.accountId) void query.refetch(); }}>Actualiser</Button></div>
+    {(activity.loading || query.isLoading) && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Chargement des interactions…</p>}
+    {activity.error && <div role="status" className="space-y-2"><p className="text-sm text-muted-foreground">Certaines interactions sont temporairement indisponibles.</p><Button variant="outline" size="sm" className="min-h-11" onClick={activity.retry}>Réessayer les événements</Button></div>}
+    {query.isError && <div role="status" className="space-y-2"><p className="text-sm text-muted-foreground">Les messages LinkedIn sont temporairement indisponibles.</p><Button variant="outline" size="sm" className="min-h-11" onClick={() => void query.refetch()}>Réessayer les messages</Button></div>}
+    {!query.accountId && <div className="space-y-2"><p className="text-sm text-muted-foreground">Connectez votre compte LinkedIn pour retrouver aussi vos conversations.</p><Button asChild variant="outline" size="sm" className="min-h-11"><Link to="/settings/account/connections">Ouvrir mes connexions</Link></Button></div>}
+    {!activity.loading && !query.isLoading && !activity.error && !query.isError && !messages.length && !activity.events.length && <p className="py-6 text-sm text-muted-foreground">Aucune interaction enregistrée avec ce candidat.</p>}
+    <CandidateInteractionTimeline messages={messages} events={activity.events} name={profileName} />
+    {!!chatId && !query.isError && <div className="space-y-2 border-t border-border pt-3">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground"><ServiceLogo service="linkedin" decorative />Réponse via votre compte LinkedIn</p>
+      {chats.length > 1 && <div className="space-y-1"><p className="text-xs text-muted-foreground">Conversation de la réponse</p><Select value={chatId} onValueChange={setReplyChatId} disabled={isSending}><SelectTrigger className="min-h-11" aria-label="Conversation de la réponse"><SelectValue /></SelectTrigger><SelectContent>{chats.map((chat, index) => <SelectItem key={chat.id} value={chat.id} className="min-h-11">{chat.label} {index + 1}</SelectItem>)}</SelectContent></Select></div>}
+      <div className="flex gap-2"><Textarea value={replyText} onChange={event => setReplyText(event.target.value)} disabled={isSending} aria-label={`Répondre à ${profileName} sur LinkedIn`} placeholder="Écrire un message…" className="min-h-[60px] max-h-[120px] resize-none text-sm" onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void handleSendReply(); } }} /><Button onClick={() => void handleSendReply()} disabled={!replyText.trim() || isSending} aria-label="Envoyer le message LinkedIn" size="icon" variant="primary" className="h-auto min-h-[60px] w-12">{isSending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}</Button></div>
+      <p className="text-xs text-muted-foreground">Entrée pour envoyer, Maj + Entrée pour un retour à la ligne.</p>
+    </div>}
+  </div>;
+}

@@ -6,17 +6,18 @@
  * partagé src/lib/sequenceActionLabels.ts) : « InMail envoyé », « InMail :
  * échec », « Invitation : étape sautée ». Jamais un identifiant technique
  * (« connection_request »), jamais un message d'erreur brut : raisons et
- * erreurs sont traduites (revue design D-01). Icônes neutres ; l'appel prend
- * l'icône du canal (ChannelIcon), sans couleur propre (D-16, D-65).
+ * erreurs sont traduites (revue design D-01). Le logo identifie le service
+ * connu ; le canal reste générique quand son fournisseur n'est pas enregistré.
  */
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck } from 'lucide-react';
 import { ActivityEvent } from '@/hooks/useProfileActivity';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
-import { ExecutionStatusBadge, SequenceActionIcon } from '@/components/outreach/SequenceBadges';
+import { ExecutionStatusBadge } from '@/components/outreach/SequenceBadges';
+import { ServiceLogo } from '@/components/ui/ServiceLogo';
+import { activityService, meetingService, SERVICE_LABELS } from '@/lib/messagingServices';
 import { STEP_TYPE_LABELS, stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
@@ -26,6 +27,7 @@ import {
   sequenceExecutionTitle,
 } from '@/lib/sequenceActionLabels';
 import { cn } from '@/lib/utils';
+import { activityActionType, activityChannel, activityMessageText } from '@/lib/inboxTimeline';
 
 /** Durée d'appel : « 45 s », « 3 min », « 3 min 20 s ». */
 function formatDuration(seconds: number): string {
@@ -71,28 +73,31 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
 
   if (isCall) {
     // Décorative : le libellé dit déjà « Appel »
-    icon = <ChannelIcon channel="call" size="xs" decorative className="shrink-0" />;
+    icon = event.service ? <ServiceLogo service={event.service} decorative /> : <ChannelIcon channel="call" size="xs" decorative className="shrink-0" />;
     label = event.callDirection === 'inbound' ? 'Appel entrant' : 'Appel sortant';
     if (event.callDuration != null && event.callDuration > 0) details.push(formatDuration(event.callDuration));
     if (event.callUserName) details.push(event.callUserName);
   } else if (isBooking) {
-    icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />;
+    icon = <ServiceLogo service={activityService(event)} decorative />;
+    const bookingLabel = ['cancelled', 'canceled'].includes(event.status) ? 'Entretien annulé' : ['completed', 'done'].includes(event.status) ? 'Entretien terminé' : 'Entretien planifié';
     label = event.qualificationSessionId ? (
       <Link
         to={`/qualification/${event.qualificationSessionId}`}
         className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Rendez-vous planifié
+        {bookingLabel}
       </Link>
     ) : (
-      'Rendez-vous planifié'
+      bookingLabel
     );
     if (event.eventName) details.push(event.eventName);
   } else {
-    icon = <SequenceActionIcon type={event.actionType} className="text-foreground" />;
+    icon = <ServiceLogo service={activityService(event)} decorative />;
     // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
     // jamais présentée comme envoyée.
-    label = sequenceStepTitle(event.actionType, event.status);
+    label = event.type === 'message'
+      ? `${activityChannel(event) === 'email' ? 'E-mail' : 'Message'} ${event.direction === 'inbound' ? 'reçu' : 'envoyé'}`
+      : sequenceStepTitle(activityActionType(event), event.status);
     stepFailed = event.status === 'failed' || event.status === 'bounced';
     if (REACTION_STATUSES.has(event.status)) {
       details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
@@ -101,11 +106,15 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     if (event.status === 'failed' && event.errorMessage) details.push(formatSequenceError(event.errorMessage));
   }
 
+  const message = activityMessageText(event.finalMessage);
+  const hasContent = !!message || !!event.finalSubject || isBooking;
   return (
-    <div className="my-2 flex justify-center">
-      <div className="inline-flex max-w-[85%] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-foreground-secondary">
+    <div className="my-4 flex justify-center">
+      <article className={cn('w-full min-w-0 rounded-lg border border-border bg-muted p-3 text-xs text-foreground-secondary md:p-4', hasContent ? 'max-w-2xl' : 'max-w-xl')}>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         {icon}
         <span className={cn('font-medium', stepFailed ? 'text-danger' : 'text-foreground')}>{label}</span>
+        {event.service && <><Separator /><span>{SERVICE_LABELS[event.service]}</span></>}
         {details.map((detail, i) => (
           <React.Fragment key={i}>
             <Separator />
@@ -119,6 +128,24 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           </>
         )}
       </div>
+      {event.sequenceName && <p className="mt-1 break-words text-muted-foreground">{event.sequenceName} · Étape {event.stepOrder + 1}</p>}
+      {event.recipient && <p className="mt-1 break-all text-muted-foreground">{event.direction === 'inbound' ? 'De' : 'À'} : {event.recipient}</p>}
+      {event.finalSubject && <p className="mt-3 break-words text-sm font-medium text-foreground">{event.finalSubject}</p>}
+      {message && (message.length > 280 ? (
+        <details className="group/content mt-2">
+          <summary className="cursor-pointer py-2 marker:text-muted-foreground max-md:min-h-11"><span className="font-medium text-foreground">Lire le message</span><p className="mt-2 whitespace-pre-wrap break-words text-sm font-normal leading-relaxed text-foreground-secondary group-open/content:hidden [overflow-wrap:anywhere]">{message.slice(0, 280)}…</p></summary>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground-secondary [overflow-wrap:anywhere]">{message}</p>
+        </details>
+      ) : <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground-secondary [overflow-wrap:anywhere]">{message}</p>)}
+      {isBooking && Number.isFinite(Date.parse(event.timestamp)) && (
+        <p className="mt-3 text-sm font-medium text-foreground">
+          {new Date(event.timestamp).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          {' à '}{new Date(event.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          {event.eventEndAt && Number.isFinite(Date.parse(event.eventEndAt)) && <> · Jusqu'à {new Date(event.eventEndAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</>}
+        </p>
+      )}
+      {isBooking && event.eventLocation && <p className="mt-2 flex items-start gap-2 break-words text-muted-foreground [overflow-wrap:anywhere]">{meetingService(event.eventLocation) && <ServiceLogo service="google_meet" decorative />}<span>{event.eventLocation}</span></p>}
+      </article>
     </div>
   );
 };

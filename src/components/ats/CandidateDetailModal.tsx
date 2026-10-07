@@ -390,14 +390,15 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
     {
       key: 'messages',
-      label: 'Messages',
-      shortLabel: 'Msg',
+      label: 'Interactions',
+      shortLabel: 'Échanges',
       icon: MessageSquare,
       content: (
         <CardMessageThread
-          accountId={accountId}
           profileId={candidate.candidateId}
           profileName={candidate.name}
+          profileUrl={candidate.linkedin}
+          profileAliases={[profile.provider_id, profile.member_urn, profile.recruiter_candidate_id].filter((id): id is string => !!id)}
           projectId={missionIdOfJob(candidate.jobId)}
         />
       ),
@@ -486,4 +487,3 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     />
   );
 };
-
