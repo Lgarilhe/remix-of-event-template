@@ -32,6 +32,23 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Séparer les contenus de l’aperçu d’actions
+
+**Contexte** : l’aperçu de réponse et de coordination apparaissait comme un long panneau gris, avec des séparations trop faibles.
+**Fait** : chaque message ou contenu à enregistrer dispose d’une carte opaque bordée, avec bandeau de métadonnées distinct du texte. Destinataire, canal, adresse et objet sont alignés et restent lisibles sur petit écran. Sources et suite en attente ont leurs cartes ; l’en-tête et la validation sont séparés par des bordures visibles. La fenêtre passe à 672 px maximum et garde des marges mobiles ; les boutons Modifier et de validation font 44 px. Les cartes texturées de proposition restent inchangées.
+**Validation** : sept parcours fonctionnels et sept contrôles visuels Chromium sur les composants réels avec services simulés, clair/sombre de 320 à 1920 px et hauteur minimale de 500 px : lecture sans saisie initiale, édition, champs vides, annulation conservant les brouillons, validation unique, coordination distincte, focus et résultat partagé entre chat et fiche. Aucun débordement horizontal ; seule la zone centrale défile et la validation reste visible. Contraste minimal des textes contrôlés sur les surfaces opaques : 6,69:1 en sombre et 5,95:1 en clair. Build réussi, lint ciblé propre, cinq fichiers UX réussis et dette design sans hausse ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans les essais.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lire les effets séparément, modifier puis retrouver les résultats dans chat et fiche | PASS |
+| Claire | Identifier destinataire, service et contenu ; valider depuis la barre fixe | PASS |
+| Théo | Contenu vide, annulation, double clic et séparation des coordonnées candidat/équipe | PASS |
+| Sophie | Lecture, édition et validation sur 390 px et 320 × 500 px, sans débordement ni ouverture initiale du clavier | PASS |
+
+**Limites** : contrôles locaux sur une fixture avec services simulés ; pas de connexion fournisseur ni d’envoi réel. À 320 × 500 px, le corps de lecture reste défilable avec environ 166 px disponibles, l’en-tête et la validation restant visibles.
+**Impact** : `DemoCandidateActions.tsx`, documentation des actions et journal.
+**Refs** : PR #312.
+
 ## 2026-10-07 — REFACTOR — Faire ressortir les propositions de la messagerie
 
 **Fait** : les cartes d’actions à préparer reprennent `texturedCard('teal')`, le dégradé et le grain fixes de l’accueil, avec texte clair et bouton principal blanc. Chat et onglet Actions de la fiche partagent le même rendu. Une action réalisée revient à une carte neutre et au bouton de consultation ; les dialogues et les échanges conservent leur fond habituel. Le groupe de boutons se replie sur petit écran et le filet au-dessus de la carte est retiré.
