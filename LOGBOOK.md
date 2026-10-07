@@ -32,6 +32,23 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Film explicatif de la mémoire
+
+**Contexte** : la découverte expliquait la création d’une mémoire par quatre fondus d’interface, sans montrer son utilité dans l’échange suivant.
+**Fait** : film de 18 secondes avec une consigne persistante : ouverture à 18 px, extraction par raccord du trait au contour, passage au corps natif à 14 px, geste « Modifier → Niveau → Pour moi → Garder », puis mémoire rangée et synthèse en trois points suivis des réserves. Exemple de préférence personnelle confirmée manuellement ; niveaux adaptés au cabinet, à l’entreprise et à l’indépendant. Le préfixe se retire avant la levée de la consigne pour éviter leur croisement ; le titre de confirmation suit le compactage pour conserver la séparation des lignes. Le lecteur, les surfaces et les contrôles reprennent les primitives et jetons Konekt.
+**Lecture** : horloge unique pour les mots, cadrages, curseur, appuis et tracés. Pause complète, reprise au temps restant, relecture à zéro, arrêt sans boucle et pause à l’onglet masqué. Mouvement réduit : consigne, confirmation et bénéfice fixes, avec préférence suivie dans les deux sens. Pied fixe sur écran court, explication complète à 320 px, équivalent accessible permanent.
+**Validation locale** : build final réussi, trois sources identiques aux sourcemaps ; lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs design restent identiques à main. Chromium avec API simulées : 36 contrôles de découverte, quatre de continuité de lecture et 15 ciblés sur l’extraction ; sept audits axe sans violation, aucune erreur navigateur ni écriture métier. Captures clair/sombre à 320/390/1440 px et revue d’images successives du film ; les six régressions métier antérieures sont référencées sans rejeu et exclues des décomptes.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Pause à plusieurs moments, reprise sans redémarrage, relecture et fin tenue | PASS |
+| Claire | Consigne, choix du niveau, confirmation et bénéfice au prochain échange lisibles | PASS |
+| Théo | Scène inerte, aucune écriture, mouvement réduit initial/live et retrait du préfixe avant extraction | PASS |
+| Sophie | Film et explication complets à 320/390 px, niveaux adaptés et commandes de 44 px à 390×400 | PASS |
+
+**État** : validé localement, non déployé. Revue temporelle par images successives ; aucune mesure de fluidité sur un téléphone physique ni essai avec un lecteur d’écran réel.
+**Refs** : `src/components/agent/AgentMemoryMotionScene.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `docs/design/01-direction.md`.
+
 ## 2026-10-07 — BUG — Mémoire : composition alignée sur le design system
 
 **Contexte** : le partage des primitives ne couvrait pas la composition de la découverte. Le canevas imbriquait les cartes métier dans une carte de scène, ajoutait un sélecteur de niveaux absent du produit et masquait une partie de l’explication à 320 px.

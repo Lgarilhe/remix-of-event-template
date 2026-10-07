@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { agentMemoryScopeLabel } from '@/types/agentMemory';
-import { AgentMemoryMotionScene } from './AgentMemoryMotionScene';
+import { AgentMemoryMotionScene, MEMORY_FILM_DURATION } from './AgentMemoryMotionScene';
 
 interface Props {
   orgType: 'agency' | 'enterprise' | 'freelance' | null;
@@ -17,12 +17,15 @@ interface Props {
 type Phase = 0 | 1 | 2 | 3;
 type PlaybackState = 'playing' | 'paused' | 'completed';
 const CHAPTERS = [
-  'Dans la conversation',
+  'Une consigne dans l’échange',
   'Une proposition à relire',
-  'Modifier le niveau',
-  'Une mémoire confirmée',
+  'Vous choisissez, puis confirmez',
+  'La synthèse garde votre format',
 ] as const;
-const phaseAt = (progress: number): Phase => progress < 0.20 ? 0 : progress < 0.44 ? 1 : progress < 0.78 ? 2 : 3;
+const phaseAt = (progress: number): Phase => {
+  const time = progress * MEMORY_FILM_DURATION;
+  return time < 2.2 ? 0 : time < 5.8 ? 1 : time < 12 ? 2 : 3;
+};
 
 /** A single shared clock drives every movement, so pausing freezes the entire example. */
 export function AgentMemoryIntro({ orgType, hasProject, onDone, onSkip }: Props) {
@@ -59,7 +62,7 @@ export function AgentMemoryIntro({ orgType, hasProject, onDone, onSkip }: Props)
     setPhase(0);
     setPlaybackState('playing');
     const controls = animate(progress, 1, {
-      duration: 9,
+      duration: MEMORY_FILM_DURATION,
       ease: 'linear',
       onComplete: () => setPlaybackState('completed'),
     });
@@ -105,8 +108,8 @@ export function AgentMemoryIntro({ orgType, hasProject, onDone, onSkip }: Props)
     <section aria-label="Découvrir la mémoire" className="flex min-h-0 flex-1 flex-col gap-4">
       <div role="region" aria-label="Exemple et explication de la mémoire" tabIndex={0}
         className="min-h-0 space-y-3 overflow-y-auto rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{reducedMotion ? 'Exemple fixe' : 'Exemple'}</span>
+        <div className="flex items-center justify-between gap-1">
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{reducedMotion ? 'Exemple fixe' : `Exemple · ${MEMORY_FILM_DURATION} s`}</span>
           <div className="flex items-center gap-1">
             <Button type="button" variant={playbackState === 'playing' || reducedMotion ? 'ghost' : 'secondary'} size="sm"
               className={`min-h-11 md:min-h-0 ${playbackState === 'playing' ? 'text-muted-foreground' : ''}`} disabled={reducedMotion}
@@ -136,9 +139,9 @@ export function AgentMemoryIntro({ orgType, hasProject, onDone, onSkip }: Props)
           </div>
         </div>
         <AgentMemoryMotionScene phase={phase} progress={progress} reducedMotion={reducedMotion} orgType={orgType} hasProject={hasProject} />
-        <p className="sr-only">Relisez la proposition. Modifier permet de choisir le niveau « {levels} », selon vos droits. « Pour moi » garde vos préférences personnelles dans cet espace. Confirmez pour appliquer la consigne, ou ignorez-la. Vous pourrez désactiver une mémoire à tout moment.</p>
+        <p className="sr-only">Exemple : vous demandez des synthèses en trois points clés, puis les réserves. L’assistant propose de retenir ce format. Relisez la proposition. Modifier permet de choisir le niveau « {levels} », selon vos droits. « Pour moi » garde vos préférences personnelles dans cet espace. Confirmez pour appliquer la consigne, ou ignorez-la. Au prochain échange, votre synthèse reprend le format confirmé. Vous pourrez désactiver une mémoire à tout moment.</p>
         {reducedMotion && <p className="text-xs text-muted-foreground">Les animations sont réduites sur votre appareil.</p>}
-        <p className="text-sm text-foreground-secondary">L’ajout automatique est optionnel, pour la langue, la longueur et le format. Les critères de recrutement restent à confirmer.</p>
+        <p className="text-sm text-foreground-secondary">L’ajout automatique est optionnel : langue, longueur et format. Les critères de recrutement restent à confirmer.</p>
       </div>
       <DialogFooter className="shrink-0 border-t border-border pt-4">
         <Button type="button" variant="ghost" className="min-h-11 md:min-h-9" onClick={onSkip}>Passer</Button>

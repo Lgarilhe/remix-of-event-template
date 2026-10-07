@@ -157,7 +157,7 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
         }}>
         <DialogHeader className="shrink-0 text-left">
           <DialogTitle ref={titleRef} tabIndex={-1} className="flex items-center gap-2 pr-7">{!showingIntroduction && <Brain aria-hidden="true" className="h-4 w-4 shrink-0" />}{showingIntroduction ? 'Découvrir la mémoire' : projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
-          <DialogDescription>{showingIntroduction ? 'Vous relisez, choisissez le niveau puis confirmez.' : <>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</>}</DialogDescription>
+          <DialogDescription>{showingIntroduction ? 'Vous décidez ce qui est retenu.' : <>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</>}</DialogDescription>
         </DialogHeader>
         {showingIntroduction ? <AgentMemoryIntro key={introduction.key} orgType={orgType} hasProject={Boolean(projectId)} onDone={finishIntroduction} onSkip={finishIntroduction} /> : <>
         <AgentMemoryAutomation enabled={open} />
