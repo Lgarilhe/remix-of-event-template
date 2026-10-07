@@ -79,11 +79,15 @@ test('textes de la spécification, exacts', () => {
   assert.equal(draft.AI_DRAFT_ERRORS.unavailable, 'La rédaction est indisponible pour l’instant. Vos réglages sont gardés.');
   assert.equal(draft.ASK_AI_UNAVAILABLE, 'Proposition indisponible pour l’instant. Votre texte n’a pas changé.');
   assert.equal(draft.ASK_AI_NO_CREDITS, 'Crédits insuffisants');
-  assert.deepEqual(draft.ASK_AI_ACTIONS.map((a) => a.label), ['Raccourcir', 'Plus direct', 'Plus chaleureux', 'Ajouter une accroche sur le parcours', 'Corriger l’orthographe', 'Rédiger à partir du poste']);
+  // Lot 5e-2 : « Réécrire dans votre style » avant la correction d'orthographe.
+  assert.deepEqual(draft.ASK_AI_ACTIONS.map((a) => a.label), ['Raccourcir', 'Plus direct', 'Plus chaleureux', 'Ajouter une accroche sur le parcours', 'Réécrire dans votre style', 'Corriger l’orthographe', 'Rédiger à partir du poste']);
   assert.equal(draft.aboutCreditsLabel(7), 'environ 7 crédits');
   assert.equal(draft.aboutCreditsLabel(1), 'environ 1 crédit');
-  assert.equal(draft.draftCostEstimate(), 7, 'clé sequence_draft, modèle par défaut');
-  assert.equal(draft.askAiCostEstimate(), 1, 'clé rewrite_text, modèle rapide');
+  // Lot 5e-2 : coût par niveau (Rapide, Équilibré par défaut, Avancé), formule du garde serveur.
+  assert.equal(draft.draftCostEstimate(), 7, 'clé sequence_draft, niveau Équilibré (modèle actuel)');
+  assert.deepEqual(['rapide', 'equilibre', 'avance'].map((l) => draft.draftCostEstimate(l)), [3, 7, 11]);
+  assert.equal(draft.askAiCostEstimate(), 2, 'clé rewrite_text, niveau Équilibré par défaut (question 4 de la conception)');
+  assert.deepEqual(['rapide', 'equilibre', 'avance'].map((l) => draft.askAiCostEstimate(l)), [1, 2, 3]);
 });
 
 test('prepare : lecture défensive, réglages gardés d’une rédaction à l’autre', () => {
@@ -103,21 +107,40 @@ test('prepare : lecture défensive, réglages gardés d’une rédaction à l’
   assert.deepEqual(prepare.messages, ['Vous recrutez pour un client.']);
   assert.deepEqual(prepare.angles.map((a) => a.id), ['role']);
   assert.deepEqual(prepare.defaults, { angle: 'role', relances: 3, firstContact: 'inmail', profileVisit: false });
-  assert.deepEqual(prepare.cost, { estimated: 7, sufficient: false });
+  assert.deepEqual(prepare.cost, { estimated: 7, sufficient: false, remaining: null });
+  // Lot 5e-2 : un serveur antérieur (sans style ni niveau) donne les défauts.
+  assert.equal(prepare.writing.level, 'equilibre');
+  assert.equal(prepare.writing.maxLevel, 'avance');
+  assert.deepEqual(prepare.writing.style, { length: 'standard', tone: 'formel', spontaneity: 'naturel', hook: 'parcours', cta: 'echange' });
+  assert.deepEqual(prepare.writing.levels.map((l) => l.credits), [3, 7, 11]);
 
   const settings = { removedFactIds: ['location', 'disparu'], extraArguments: ['Création du poste'], relances: 1, firstContact: 'invitation', angle: 'environnement' };
-  assert.deepEqual(draft.settingsForPrepare(prepare, settings), { removedFactIds: ['location'], extraArguments: ['Création du poste'], relances: 1, firstContact: 'invitation', angle: 'role' });
+  assert.deepEqual(draft.settingsForPrepare(prepare, settings), {
+    removedFactIds: ['location'], extraArguments: ['Création du poste'], relances: 1, firstContact: 'invitation', angle: 'role',
+    style: prepare.writing.style, level: 'equilibre',
+  });
   assert.equal(draft.hasArguments(prepare, { ...settings, removedFactIds: ['mission', 'location'], extraArguments: [] }), false);
   // Le poste est relu par le serveur : seuls les identifiants des arguments gardés partent.
-  const body = draft.draftRequestBody('org', 'mission', prepare, { ...settings, removedFactIds: ['location'] });
+  const style = { length: 'court', tone: 'direct', spontaneity: 'spontane', hook: 'poste', cta: 'question' };
+  const body = draft.draftRequestBody('org', 'mission', prepare, { ...settings, removedFactIds: ['location'], style, level: 'rapide' });
   assert.deepEqual(body, {
     action: 'draft', organization_id: 'org', mission_id: 'mission', angle: 'environnement', kept_fact_ids: ['mission'],
     extra_arguments: ['Création du poste'], relances: 1, profile_visit: false, first_contact: 'invitation',
+    ai_level: 'rapide', style,
   });
   assert.equal(draft.readStoredSettings({ angle: 'inconnu' }), null);
+  // Brouillon local antérieur au lot 5e-2 : ni style ni niveau, repris de prepare.
   assert.deepEqual(draft.readStoredSettings({ angle: 'trajectoire', relances: 7, firstContact: 'x', extraArguments: ['a'.repeat(300)] }), {
-    removedFactIds: [], extraArguments: ['a'.repeat(160)], relances: 3, firstContact: 'invitation', angle: 'trajectoire',
+    removedFactIds: [], extraArguments: ['a'.repeat(160)], relances: 3, firstContact: 'invitation', angle: 'trajectoire', style: null, level: null,
   });
+  assert.deepEqual(draft.readStoredSettings({ angle: 'role', style, level: 'avance' }).style, style);
+  // Niveau gardé au-dessus d'un plafond relu plus bas : ramené sous le plafond.
+  const capped = draft.readPrepare({
+    ok: true, angles: [{ id: 'role', label: 'Le rôle', recommended: true }], level: 'equilibre', max_level: 'equilibre',
+    levels: [{ id: 'rapide', credits: 3, allowed: true }, { id: 'equilibre', credits: 7, allowed: true }, { id: 'avance', credits: 11, allowed: false }],
+  });
+  assert.equal(draft.settingsForPrepare(capped, { ...settings, style, level: 'avance' }).level, 'equilibre');
+  assert.equal(draft.draftCostFor(capped, 'rapide'), 3);
 });
 
 test('draft : étapes au format de l’éditeur, jamais de rédaction par l’IA à l’envoi ; notes de la rédaction', () => {
@@ -245,7 +268,7 @@ test('gardes : appels serveur dans useSequenceAI seulement, rien en stockage loc
   // Après un appel payant, le solde affiché est relu.
   assert.equal((hook.match(/refreshCredits\(\);/g) ?? []).length, 2);
   // Rédaction : jusqu'aux 60 s de la fonction, sans coupure du navigateur à 55 s.
-  assert.match(read('src/lib/invokeEdgeFunction.ts'), /'draft-sequence',\n\]\);/);
+  assert.match(read('src/lib/invokeEdgeFunction.ts'), /'draft-sequence',\n(?:\s*\/\/[^\n]*\n)*\s*'generate-outreach-message',\n\s*'text-action',\n\]\);/);
 });
 
 test('page de création : depart=ia, proposition relue sans écriture, bandeau, gratuit, « Rédiger à nouveau », option aiDraft', () => {
@@ -384,7 +407,9 @@ test('« Demander à l’IA » : « Crédits insuffisants » levé par la rechar
   const menu = read(`${AI_DIR}/AskAIMenu.tsx`);
   assert.doesNotMatch(menu, /setNoCredits\(true\)/, 'plus de drapeau figé');
   assert.match(menu, /const noCredits = creditsNeeded !== null && \(creditsFetching \|\| !hasBalance \|\| creditsRemaining < creditsNeeded\);/);
-  const cost = menu.indexOf('Retouches : {aboutCreditsLabel(askAiCostEstimate())} par proposition.');
+  // Lot 5e-2 : coût d'une retouche à chaque niveau permis, juste sous les retouches.
+  const cost = menu.indexOf('{c.label}, {aboutCreditsLabel(c.credits)}');
+  assert.ok(menu.indexOf('Niveau de l’IA, coût d’une retouche') > menu.indexOf('ASK_AI_ACTIONS.filter'), 'sous les retouches');
   const brief = menu.indexOf("run('brief', 'Rédiger à partir du poste')");
   assert.ok(cost > 0 && cost < brief, 'coût des retouches avant la rédaction à partir du poste');
   // Carte de la conversation et Journal : variables en puces françaises, jamais en syntaxe brute.

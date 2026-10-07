@@ -7,10 +7,11 @@ interface LikelyToSwitchBadgeProps {
   result: LikelyToSwitchResult;
 }
 
+// Badge à la Qonto : texte à l'encre, la couleur du niveau tient dans la pastille.
 const LEVEL_CONFIG = {
-  high: { label: 'Très dispo', shortLabel: 'Dispo', bg: 'bg-success/10 border-success/30', text: 'text-success', dot: 'bg-success' },
-  medium: { label: 'Potentiellement dispo', shortLabel: 'Signal', bg: 'bg-warning/10 border-warning/30', text: 'text-warning', dot: 'bg-warning' },
-  low: { label: 'Peu de signaux', shortLabel: 'Faible', bg: 'bg-muted border-border', text: 'text-muted-foreground', dot: 'bg-muted-foreground' },
+  high: { label: 'Très dispo', shortLabel: 'Dispo', bg: 'bg-success/10 border-success/30', text: 'text-foreground', dot: 'bg-success' },
+  medium: { label: 'Potentiellement dispo', shortLabel: 'Signal', bg: 'bg-warning/10 border-warning/30', text: 'text-foreground', dot: 'bg-warning' },
+  low: { label: 'Peu de signaux', shortLabel: 'Faible', bg: 'bg-muted border-border', text: 'text-foreground', dot: 'bg-muted-foreground' },
   unknown: { label: 'Pas de signal', shortLabel: '', bg: '', text: '', dot: '' },
 };
 
@@ -25,7 +26,7 @@ export const LikelyToSwitchBadge: React.FC<LikelyToSwitchBadgeProps> = ({ result
         <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-xs font-medium cursor-default', config.bg, config.text)}>
           <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', config.dot)} />
           {config.shortLabel}
-          <span className="opacity-60">{result.score}%</span>
+          <span className="text-foreground-secondary">{result.score}%</span>
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-xs p-3">

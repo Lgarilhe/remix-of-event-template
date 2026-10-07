@@ -544,7 +544,8 @@ test('SEQ-225 — crédits affichés seulement pour une étape IA, compteur d’
   assert.match(previewModal, /return n > 0 \? `environ \$\{plural\(n, 'crédit'\)\}` : 'aucun crédit';/);
   assert.match(card, /const cost = step\.useAiPersonalization \? creditsLabel\(creditsPerMessage\) : 'aucun crédit';/);
   assert.match(card, /\{step\.useAiPersonalization && <p className="text-xs text-muted-foreground">\{cost\}<\/p>\}/);
-  assert.match(previewHookSrc, /const creditsPerMessage = estimateActionCredits\('outreach_message'\);/);
+  // Lot 5e-2 : coût au niveau choisi, par la formule du garde serveur.
+  assert.match(previewHookSrc, /const creditsPerMessage = levelCredits\('outreach_message', writing\?\.level \?\? DEFAULT_AI_LEVEL\);/);
   // Lot 5d-1 : une étape écrite est rendue d'office avec les valeurs du serveur
   // (preview_values), gratuite, sans bouton « Voir l'aperçu » ; seule une étape
   // IA se génère, et le compteur ne compte qu'elles.

@@ -40,7 +40,7 @@ export const CreditCostBadge = ({ actionId, modelId, className }: CreditCostBadg
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs max-w-[220px]">
           <p>
-            Environ {cost} crédit{cost > 1 ? 's' : ''} avec le modèle {MODEL_CATALOG[resolvedModel]?.name ?? 'Avancé'}.
+            Environ {cost} crédit{cost > 1 ? 's' : ''} avec le modèle {MODEL_CATALOG[resolvedModel]?.name ?? 'Équilibré'}.
           </p>
           <p className="mt-0.5 text-muted-foreground">Le coût réel dépend de la longueur du texte traité.</p>
         </TooltipContent>

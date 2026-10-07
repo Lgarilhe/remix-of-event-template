@@ -238,7 +238,10 @@ test('5a-2 — « Relire le message » n’écrit que final_message et final_sub
   assert.doesNotMatch(editModal, /tracking_data/);
   assert.match(editModal, /\{aiReview \? 'Relire le message' : 'Modifier le message planifié'\}/);
   assert.match(editModal, /Proposer avec l'IA/);
-  assert.match(editModal, /estimateActionCredits\('outreach_message'\)/, 'coût annoncé');
+  // Lot 5e-2 : coût au niveau choisi, dans la ligne « Rédaction par l'IA » (style et niveau de la proposition).
+  assert.match(editModal, /levelCredits\('outreach_message', DEFAULT_AI_LEVEL\)/, 'coût annoncé avant la lecture des réglages');
+  assert.match(editModal, /<WritingSettingsLine[\s\S]*?choices=\{writingChoices\('outreach_message'\)\}/, 'coût annoncé par niveau');
+  assert.match(editModal, /proposeAiMessage\(execution\.id, senderName, writing\)/);
   assert.doesNotMatch(propose, /\.(update|insert|upsert|delete)\(/, 'lectures seulement');
   assert.match(propose, /'generate-outreach-message',\s*'outreach_message'/);
 });
@@ -254,16 +257,19 @@ test('correctif 2 — aucune rémunération dans le prompt des aperçus', () => 
 });
 
 test('correctif 2 — detectSequenceViolations passé sur l’aperçu : corrigé une fois, revérifié sur le texte final, refus 422 en français', () => {
-  assert.match(outreach, /import \{ detectSequenceViolations \} from "\.\.\/_shared\/sequence-send-rules\.ts";/);
-  const first = between(outreach, 'for (const v of detectSequenceViolations(isRPO, parsed.message, parsed.subject)) {', 'if (violations.length > 0) {');
-  assert.match(first, /if \(v\.blocking && !violations\.includes\(v\.label\)\) violations\.push\(v\.label\);/);
+  assert.match(outreach, /import \{ detectSequenceViolations, hasTimeForAiCorrection \} from "\.\.\/_shared\/sequence-send-rules\.ts";/);
+  // Lot 5e-2 : une seule règle bloquante (moteur, tutoiement, note de 300 caractères), avant et après correction.
+  const rule = between(outreach, 'const blockingViolations = (draft: { message: string; subject?: string }): string[] => {', '};');
+  assert.match(rule, /detectSequenceViolations\(isRPO, draft\.message, draft\.subject\)\.filter\(\(v\) => v\.blocking\)\.map\(\(v\) => v\.label\)/);
+  const first = between(outreach, 'for (const label of blockingViolations(parsed)) {', 'if (violations.length > 0');
+  assert.match(first, /if \(!violations\.includes\(label\)\) violations\.push\(label\);/);
   // Revérification après le nettoyage et l'anonymisation.
-  const finalCheck = outreach.indexOf('const remainingBlocking = detectSequenceViolations(isRPO, parsed.message, parsed.subject).filter((v) => v.blocking);');
+  const finalCheck = outreach.indexOf('const remainingBlocking = blockingViolations(parsed);');
   assert.ok(finalCheck > outreach.indexOf('parsed.message = sanitizeMessage(parsed.message);'));
   assert.ok(finalCheck > outreach.indexOf('applyClientAnonymization(parsed.message'));
-  const refusal = between(outreach, 'if (remainingBlocking.length > 0) {\n      return new Response(', '}\n\n    return new Response(');
+  const refusal = between(outreach, 'if (remainingBlocking.length > 0) {\n      return json({', '}, 422);');
   assert.match(refusal, /error_code: PREVIEW_NOT_COMPLIANT_CODE,/);
-  assert.match(refusal, /status: 422/);
+  assert.match(outreach.slice(outreach.indexOf('if (remainingBlocking.length > 0) {\n      return json({')), /\}, 422\);/);
   assert.match(outreach, /const PREVIEW_NOT_COMPLIANT_CODE = 'PREVIEW_NOT_COMPLIANT';/);
   assert.match(outreach, /`Aperçu refusé : le message proposé \$\{why\}, il ne peut pas partir\. Régénérez l'aperçu\.`/);
   // Le navigateur affiche la phrase du serveur sous l'aperçu, à régénérer.
@@ -271,7 +277,12 @@ test('correctif 2 — detectSequenceViolations passé sur l’aperçu : corrigé
   const refused = Object.assign(new Error('Aperçu refusé : le message proposé mentionne une rémunération, il ne peut pas partir. Régénérez l\'aperçu.'), { code: 'PREVIEW_NOT_COMPLIANT', status: 422 });
   assert.equal(previewHook.previewErrorMessage(refused), refused.message);
   assert.equal(previewHook.previewErrorMessage(new Error('boom')), previewHook.PREVIEW_GENERATION_FAILED_MESSAGE);
-  assert.equal(hookSrc.split('error: previewErrorMessage(err),').length - 1, 2, 'génération et régénération');
+  // Lot 5e-2 : la génération et la régénération passent par reportGenerationError, qui rend previewErrorMessage.
+  assert.equal(hookSrc.split('error: reportGenerationError(err),').length - 1, 2, 'génération et régénération');
+  assert.match(between(hookSrc, 'const reportGenerationError = useCallback(', '}, []);'), /return previewErrorMessage\(err\);/);
+  // Niveau refusé (plafond abaissé entre-temps) : la phrase du serveur, jamais « Réessayez ».
+  const levelRefused = Object.assign(new Error("Votre organisation n'autorise pas le niveau Avancé. Choisissez Rapide ou Équilibré."), { code: 'AI_LEVEL_NOT_ALLOWED', status: 403 });
+  assert.equal(previewHook.previewErrorMessage(levelRefused), levelRefused.message);
 });
 
 // ─── Textes ─────────────────────────────────────────────────────────────

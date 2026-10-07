@@ -151,10 +151,10 @@ export function JourneyPanel({
     }
     if (item.kind === 'not_taken') {
       return (
-        <li key={item.key} className="flex items-start gap-3 opacity-70">
+        <li key={item.key} className="flex items-start gap-3">
           <StateIcon state="not_taken" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-foreground">Branche non prise : {item.label}</p>
+            <p className="text-sm text-muted-foreground">Branche non prise : {item.label}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{item.steps.join(', ')}</p>
           </div>
         </li>
@@ -163,7 +163,7 @@ export function JourneyPanel({
     if (item.kind === 'join') {
       return (
         <li key={item.key} className="flex items-center gap-3 text-xs text-muted-foreground">
-          <CornerDownRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <CornerDownRight className="h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           Rejoint l’étape {item.number} · {item.title}
         </li>
       );
@@ -171,7 +171,7 @@ export function JourneyPanel({
     if (item.kind === 'end') {
       return (
         <li key={item.key} className="flex items-center gap-3 text-xs text-muted-foreground">
-          <Flag className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <Flag className="h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           {item.label}
         </li>
       );
@@ -182,12 +182,12 @@ export function JourneyPanel({
     const canEditMessage = acting && !!exec && exec.status === 'scheduled' && !review && !!(exec.final_message || exec.step?.message_template);
     const canSkip = acting && live && !!exec && (exec.status === 'scheduled' || exec.status === 'quota_blocked');
     return (
-      <li key={item.key} className={cn('flex items-start gap-3', item.state === 'skip' && 'opacity-70')}>
+      <li key={item.key} className="flex items-start gap-3">
         <StateIcon state={item.state} />
         <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-foreground">
+          <p className={cn('flex flex-wrap items-center gap-x-1.5 text-sm', item.state === 'skip' ? 'text-muted-foreground' : 'text-foreground')}>
             <span className="tabular-nums text-muted-foreground">{item.number}</span>
-            <SequenceActionIcon type={item.actionType} className="text-muted-foreground" />
+            <SequenceActionIcon type={item.actionType} className="text-foreground" />
             <span>{item.title}</span>
             <span className="sr-only">, {STATE_LABEL[item.state]}</span>
           </p>

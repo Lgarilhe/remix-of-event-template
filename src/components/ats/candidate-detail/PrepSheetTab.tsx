@@ -115,7 +115,7 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
                 "w-3.5 h-3.5 shrink-0 mt-0.5",
                 point.type === 'strength' ? "text-foreground" :
                 point.type === 'risk' ? "text-red-500" :
-                "text-muted-foreground"
+                "text-foreground"
               )} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground">{point.label}</p>

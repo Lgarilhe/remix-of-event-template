@@ -156,7 +156,7 @@ const IntegrationHeader = ({ config, open, status }: { config: IntegrationConfig
           <span className="mt-1 flex sm:hidden">{status}</span>
         </span>
         <span className="hidden shrink-0 sm:flex">{status}</span>
-        <ChevronDown className={cn('text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden="true" />
+        <ChevronDown className={cn('transition-transform', open && 'rotate-180')} aria-hidden="true" />
       </Button>
     </CollapsibleTrigger>
   </h4>
@@ -376,7 +376,7 @@ const LinkedInHostedAuthCard = ({
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="icon-sm"
                     className="max-md:h-11 max-md:w-11"
                     onClick={() => { void loadAccounts(); }}

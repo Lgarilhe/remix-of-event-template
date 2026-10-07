@@ -204,7 +204,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         <select
           value={selectedJob?.id || 'none'}
           onChange={(e) => handleChange(e.target.value)}
-          className="flex h-9 w-full items-center border border-border bg-background px-3 py-2 text-sm focus:outline-none"
+          className="flex h-9 w-full items-center border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="none">Aucune mission</option>
           {jobs.map((job) => (
@@ -218,10 +218,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           <button
             type="button"
             className={cn(
-              "flex h-9 w-full items-center justify-between border border-border bg-background px-3 py-1.5 text-sm transition-shadow",
+              "flex h-9 w-full items-center justify-between border border-input bg-background px-3 py-1.5 text-sm transition-shadow",
               "hover:shadow-sm",
-              "focus:outline-none focus:shadow-sm",
-              selectedJob && "border-accent"
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             )}
             onClick={() => setPopoverOpen((prev) => !prev)}
           >
@@ -243,7 +242,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
             ) : (
               <span className="text-muted-foreground">Sélectionner une mission…</span>
             )}
-            <ChevronDown className={cn("h-4 w-4 opacity-50 shrink-0 ml-2 transition-transform", popoverOpen && "rotate-180")} />
+            <ChevronDown className={cn("h-4 w-4 shrink-0 ml-2 transition-transform", popoverOpen && "rotate-180")} />
           </button>
 
           {popoverOpen && (
@@ -258,7 +257,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     placeholder="Rechercher une mission..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-sm border-border rounded-lg"
+                    className="pl-8 h-8 text-sm"
                     autoFocus
                   />
                 </div>
@@ -329,7 +328,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                         />
                       ) : (
                         <div className="w-4 h-4 border border-border bg-muted flex items-center justify-center shrink-0">
-                          <Building2 className="w-2.5 h-2.5 text-muted-foreground" />
+                          <Building2 className="w-2.5 h-2.5 text-foreground" />
                         </div>
                       )}
 
@@ -396,9 +395,10 @@ export const BatchScoreButton: React.FC<BatchScoreButtonProps> = ({
 
   return (
     <Button
+      variant="primary"
       onClick={onScore}
       disabled={disabled || loading}
-      className="bg-foreground text-background hover:bg-foreground/90"
+      aria-busy={loading || undefined}
     >
       {loading ? (
         <Loader2 className="w-4 h-4 animate-spin mr-2" />

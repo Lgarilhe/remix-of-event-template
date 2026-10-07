@@ -518,9 +518,10 @@ export const MyLinkedInAccount = () => {
             ) : (
               <>
                 {/* Aucun compte relié ni disponible : le dessin « connexion » (§ Illustrations),
-                    jamais à côté de la liste des comptes disponibles. */}
+                    jamais à côté de la liste des comptes disponibles. Déjà posé sur la carte des
+                    Paramètres : sans tuile (elle aurait la couleur de la carte). */}
                 <div className="flex flex-col items-center gap-3 py-2 text-center">
-                  <Illustration name="connexion" size="md" />
+                  <Illustration name="connexion" size="md" tile={false} />
                   <p className="text-sm text-muted-foreground">
                     Connectez votre compte LinkedIn pour pouvoir effectuer des recherches et envoyer des messages.
                   </p>
@@ -531,7 +532,7 @@ export const MyLinkedInAccount = () => {
                     Connecter mon LinkedIn
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     className="w-full max-md:h-11"
                     onClick={handleRefreshAndLink}
@@ -1062,7 +1063,7 @@ function LinkedInQuotaCard({ accountId }: { accountId: string }) {
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Gauge className="h-4 w-4" aria-hidden="true" />
           Plafonds du jour
         </CardTitle>
         {/* Design simplifié : le palier en texte, absent une fois le compte mature (rien à savoir). */}

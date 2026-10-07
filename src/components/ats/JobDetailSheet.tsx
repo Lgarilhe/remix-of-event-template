@@ -298,13 +298,13 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                       </SheetHeader>
                       {jobInfo?.clientName && (
                         <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                          <Building2 className="h-3 w-3" aria-hidden="true" /> {jobInfo.clientName}
+                          <Building2 className="h-3 w-3 text-foreground" aria-hidden="true" /> {jobInfo.clientName}
                         </p>
                       )}
                       <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         {jobInfo?.city && (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3" aria-hidden="true" /> {jobInfo.city}
+                            <MapPin className="h-3 w-3 text-foreground" aria-hidden="true" /> {jobInfo.city}
                           </span>
                         )}
                         {(() => {
@@ -541,7 +541,7 @@ function CandidatsTab({
               )}
             </div>
             <Badge variant="muted" className="shrink-0">{atsColumnTitle(candidate.stage)}</Badge>
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           </button>
         ))}
       </div>
@@ -637,7 +637,7 @@ function IATab({
 
       <section className="rounded-xl border border-border bg-card p-3">
         <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Database className="h-4 w-4" aria-hidden="true" />
           Documents de la mission
         </h3>
         {ragCount !== null ? (
@@ -652,7 +652,7 @@ function IATab({
 
       <section className="rounded-xl border border-border bg-card p-3">
         <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <BarChart3 className="h-4 w-4" aria-hidden="true" />
           Scores des candidats
         </h3>
         {scoreSummary ? (

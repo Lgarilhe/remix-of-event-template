@@ -1296,10 +1296,12 @@ test('relecture : panneau et barre collés à la fenêtre, bulle effacée, fil r
 });
 
 test('relecture : textes et petits défauts visuels', () => {
-  // Palette : la raison reste lisible (seuls l'icône et le titre s'estompent), onglets de 44 px, hauteur constante.
+  // Palette : la raison reste lisible (seuls l'icône et le titre s'estompent, au gris secondaire et sans
+  // opacité depuis le contraste façon Qonto), onglets de 44 px, hauteur constante.
   const palette = read('src/components/sequences/editor/AddStepPalette.tsx');
   assert.doesNotMatch(palette, /cursor-not-allowed opacity-60/);
-  assert.match(palette, /!allowance\.allowed && 'opacity-50'/);
+  assert.doesNotMatch(palette, /opacity-[3-7]0/);
+  assert.equal((palette.match(/allowance\.allowed \? 'text-foreground' : 'text-muted-foreground'/g) ?? []).length, 2);
   assert.match(palette, /\{allowance\.allowed \? DESCRIPTIONS\[type\] : allowance\.reason\}/);
   assert.equal((palette.match(/max-md:min-h-11">(Actions LinkedIn|Conditions et attentes)/g) ?? []).length, 2);
   assert.equal((palette.match(/<TabsContent forceMount value="\w+" className="mt-0 \[grid-area:1\/1\] data-\[state=inactive\]:invisible">/g) ?? []).length, 2);

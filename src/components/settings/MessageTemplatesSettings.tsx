@@ -149,7 +149,7 @@ const TemplatesSection: React.FC = () => {
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <FileText className="h-4 w-4" aria-hidden="true" />
           Modèles de messages
         </CardTitle>
         <Button
@@ -195,7 +195,7 @@ const TemplatesSection: React.FC = () => {
                     aria-label={`Ajouter le modèle ${tpl.name}`}
                     className="h-auto w-full items-start justify-start gap-2 whitespace-normal px-2 py-2 text-left font-normal"
                   >
-                    <Plus className="mt-0.5 text-muted-foreground" aria-hidden="true" />
+                    <Plus className="mt-0.5" aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-foreground">{tpl.name}</span>
@@ -243,7 +243,7 @@ const TemplatesSection: React.FC = () => {
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                        className="max-md:h-11 max-md:w-11"
                         onClick={() => setEditingTemplate(tpl)}
                         aria-label={`Modifier le modèle ${tpl.name}`}
                       >

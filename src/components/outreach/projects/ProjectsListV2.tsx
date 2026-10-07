@@ -239,7 +239,7 @@ const ActionLine: React.FC<{
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); retry(); }}
-          className="relative rounded-sm text-foreground-secondary underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
+          className="relative rounded-sm text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
         >
           Réessayer
         </button>
@@ -834,7 +834,7 @@ export const ProjectsListV2: React.FC = () => {
       {countsQuery.isError && (
         <p className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground" role="alert">
           Les effectifs des missions n'ont pas pu être chargés.
-          <Button variant="ghost" size="xs" className="max-sm:min-h-11" onClick={() => { void countsQuery.refetch(); }}>
+          <Button variant="ghost" size="xs" className="text-foreground max-sm:min-h-11" onClick={() => { void countsQuery.refetch(); }}>
             <RefreshCw aria-hidden="true" />
             Réessayer
           </Button>
@@ -890,7 +890,7 @@ export const ProjectsListV2: React.FC = () => {
                 className="-ml-1 inline-flex items-center gap-2 rounded-md px-1 py-1 text-lg font-semibold text-foreground hover:text-foreground-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11"
               >
                 <ChevronRight
-                  className={cn('h-4 w-4 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none', archiveOpen && 'rotate-90')}
+                  className={cn('h-4 w-4 transition-transform duration-150 motion-reduce:transition-none', archiveOpen && 'rotate-90')}
                   aria-hidden="true"
                 />
                 <span id="missions-archivees">Terminées, archivées</span>

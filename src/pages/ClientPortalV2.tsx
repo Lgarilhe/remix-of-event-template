@@ -713,9 +713,9 @@ const PipelineCard: React.FC<{
   const displayName = displayNameOf(candidate, permissions);
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       onClick={onClick}
-      className="h-auto w-full flex-col items-stretch gap-1.5 whitespace-normal bg-card p-2.5 text-left font-normal active:scale-100"
+      className="h-auto w-full flex-col items-stretch gap-1.5 whitespace-normal rounded-lg border border-border bg-card p-2.5 text-left font-normal hover:border-foreground active:scale-100"
     >
       <span className="flex items-center gap-2">
         <Initials name={permissions.can_see_names ? candidate.candidate_name : null} size="sm" />

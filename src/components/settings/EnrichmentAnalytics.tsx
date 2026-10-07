@@ -208,7 +208,7 @@ export const EnrichmentAnalytics: React.FC = () => {
       {/* Revue design (F-01, F-22) : titre de carte commun, plus d'étincelle (réservée à une génération IA). */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Contact className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Contact className="h-4 w-4" aria-hidden="true" />
           Enrichissement de contact
         </h3>
         <span className="text-xs text-muted-foreground">30 derniers jours</span>
@@ -219,7 +219,7 @@ export const EnrichmentAnalytics: React.FC = () => {
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Package className="h-3.5 w-3.5" aria-hidden="true" />
+            <Package className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
             <span>Forfait du mois (1 par e-mail, 10 par mobile)</span>
           </div>
           {includedUsed > 0 || includedMonthly <= 0 ? (

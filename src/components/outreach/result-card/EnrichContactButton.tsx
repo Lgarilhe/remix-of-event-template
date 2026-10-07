@@ -252,7 +252,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       <button
         type="button"
         onClick={() => setBackgrounded(false)}
-        className={`inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors ${className}`}
+        className={`inline-flex items-center gap-1 text-2xs text-foreground transition-colors ${className}`}
         title="Recherche en arrière-plan, cliquer pour rouvrir"
       >
         <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
@@ -280,7 +280,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           variant="ghost"
           size={compact ? 'sm' : 'default'}
           onClick={() => setBackgrounded(true)}
-          className="h-7 px-2 text-2xs text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-2xs"
           title="Continuer en arrière-plan (vous pouvez fermer cette card)"
         >
           <X className="w-3 h-3" aria-hidden="true" />
@@ -309,7 +309,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
+        className={`shrink-0 ${quiet ? 'max-sm:min-h-11 ' : ''}${className}`}
         title="Demandez à votre administrateur d'activer la récupération de coordonnées"
       >
         <AtSign aria-hidden="true" />
@@ -324,7 +324,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
+        className={`shrink-0 ${quiet ? 'max-sm:min-h-11 ' : ''}${className}`}
         title="L'enrichissement de contact nécessite un abonnement"
       >
         <AtSign aria-hidden="true" />
@@ -339,7 +339,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
+        className={`shrink-0 ${quiet ? 'max-sm:min-h-11 ' : ''}${className}`}
         title={`Récupérer email & téléphone de ${fullName}`}
       >
         <AtSign aria-hidden="true" />
@@ -364,7 +364,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
                 onCheckedChange={(c) => setWithEmail(c === true)}
                 aria-label="Email professionnel"
               />
-              <Mail className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <Mail className="w-4 h-4 shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Email professionnel</div>
                 <div className="text-2xs text-muted-foreground">
@@ -379,7 +379,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
                 onCheckedChange={(c) => setWithPhone(c === true)}
                 aria-label="Téléphone mobile"
               />
-              <Phone className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <Phone className="w-4 h-4 shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
                 <div className="text-2xs text-muted-foreground">

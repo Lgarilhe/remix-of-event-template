@@ -154,7 +154,7 @@ export const PendingInvitations = ({
             >
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted" aria-hidden="true">
-                  <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Mail className="h-3.5 w-3.5" />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm text-foreground">{inv.email}</p>
@@ -173,7 +173,7 @@ export const PendingInvitations = ({
                     type="button"
                     variant="ghost"
                     size="xs"
-                    className="text-muted-foreground hover:text-foreground max-md:h-11"
+                    className="max-md:h-11"
                     onClick={() => handleResend(inv)}
                     disabled={isResending}
                   >
@@ -188,7 +188,7 @@ export const PendingInvitations = ({
                         type="button"
                         variant="ghost"
                         size="icon-xs"
-                        className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                        className="max-md:h-11 max-md:w-11"
                         onClick={() => handleCopyLink(inv)}
                         aria-label={`Copier le lien d'invitation de ${inv.email}`}
                       >

@@ -7,6 +7,8 @@ import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { AssistantConnectorsCard } from '@/components/settings/AssistantConnectorsCard';
 import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
 import { UserContextCard, OrgContextCard } from '@/components/settings/AiContextSettings';
+import { WritingStyleCard } from '@/components/settings/WritingStyleCard';
+import { AiLevelSettings } from '@/components/settings/AiLevelSettings';
 import { MessageTemplatesSettings } from '@/components/settings/MessageTemplatesSettings';
 import { EmailSignatures } from '@/components/settings/EmailSignatures';
 import { AgentActionsSettings } from '@/components/settings/AgentActionsSettings';
@@ -63,7 +65,9 @@ function ConnectionsSection() {
 }
 const WritingSection = () => (
   <>
-    <SettingsAnchor id="style"><UserContextCard /></SettingsAnchor>
+    {/* Lot 5e-2 : « Votre style » en tête (cible de l'ancien ?tab=ai-context), puis les consignes. */}
+    <SettingsAnchor id="style"><WritingStyleCard /></SettingsAnchor>
+    <SettingsAnchor id="vos-consignes"><UserContextCard /></SettingsAnchor>
     <SettingsAnchor id="modeles"><MessageTemplatesSettings /></SettingsAnchor>
     <SettingsAnchor id="signatures"><EmailSignatures /></SettingsAnchor>
   </>
@@ -77,6 +81,7 @@ const BillingSection = () => (
 const AssistantSection = () => (
   <>
     <SettingsAnchor id="consignes"><OrgContextCard /></SettingsAnchor>
+    <SettingsAnchor id="niveau-ia"><AiLevelSettings /></SettingsAnchor>
     <SettingsAnchor id="resume"><AgentPoliciesSettings /></SettingsAnchor>
     <SettingsAnchor id="icp"><PedigreePresetsSettings /></SettingsAnchor>
     <SettingsAnchor id="connecteurs"><AgentConnectorsSettings /></SettingsAnchor>

@@ -220,14 +220,14 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
         className="inline-flex shrink-0 items-center gap-1 text-muted-foreground"
         title={`En sommeil jusqu'au ${snoozedUntil.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
       >
-        <AlarmClock className="h-3 w-3" aria-hidden="true" />
+        <AlarmClock className="h-3 w-3 text-foreground" aria-hidden="true" />
         Réveil {formatSnoozeUntil(snoozedUntil)}
       </span>
     );
   } else if (archivedAt) {
     state = (
       <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
-        <Archive className="h-3 w-3" aria-hidden="true" />
+        <Archive className="h-3 w-3 text-foreground" aria-hidden="true" />
         Archivée {formatArchivedAt(archivedAt)}
       </span>
     );
@@ -248,7 +248,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   } else if (statusInfo?.kind === 'waiting') {
     state = (
       <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
-        <Hourglass className="h-3 w-3" aria-hidden="true" />
+        <Hourglass className="h-3 w-3 text-foreground" aria-hidden="true" />
         En attente
       </span>
     );
@@ -353,7 +353,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               {state}
               {statusInfo?.mission ? (
                 <span className="inline-flex min-w-0 items-center gap-1 text-foreground-secondary">
-                  <Briefcase className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <Briefcase className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                   <span className="truncate">{statusInfo.mission}</span>
                 </span>
               ) : source ? (
@@ -374,7 +374,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
                 size="icon-sm"
                 aria-label={`Actions pour la conversation avec ${displayName}`}
                 className={cn(
-                  'absolute right-3 top-1/2 h-11 w-11 -translate-y-1/2 text-muted-foreground hover:text-foreground',
+                  'absolute right-3 top-1/2 h-11 w-11 -translate-y-1/2',
                   '[@media(hover:hover)]:h-8 [@media(hover:hover)]:w-8 [@media(hover:hover)]:bg-accent',
                   '[@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100',
                 )}

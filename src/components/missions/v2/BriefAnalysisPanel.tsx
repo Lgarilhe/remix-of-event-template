@@ -53,7 +53,7 @@ export const BriefAnalysisPanel: React.FC<BriefAnalysisPanelProps> = ({
     >
       {state === 'idle' && (
         <div className="m-auto max-w-xs text-center">
-          <Illustration name="brief" size="sm" className="mx-auto mb-4" />
+          <Illustration name="brief" size="sm" tile={false} className="mx-auto mb-4" />
           <p className="text-sm font-medium">L'analyse apparaîtra ici</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Le poste, le lieu, l'expérience, le contrat et les compétences retenus par l'assistant s'afficheront ici.

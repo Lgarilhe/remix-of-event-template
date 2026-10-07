@@ -192,7 +192,7 @@ const OpenMissionsTab: React.FC = () => {
                   <div>
                     <h3 className="text-md font-semibold text-foreground">{jd.title || mission.name}</h3>
                     <p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
-                      <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <Building2 className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
                       {mission.organization_name || 'Entreprise'}
                     </p>
                   </div>
@@ -223,12 +223,12 @@ const OpenMissionsTab: React.FC = () => {
                       {bountyText(mission.hunt_bounty_percent)}
                     </p>
                     <p className="flex items-center gap-1.5">
-                      <Users className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <Users className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                       {mission.accepted_count}/{max} recruteurs
                     </p>
                     {mission.hunt_deadline && (
                       <p className="flex items-center gap-1.5">
-                        <Calendar className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        <Calendar className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                         Date limite : {formatDate(mission.hunt_deadline)}
                       </p>
                     )}
@@ -340,7 +340,7 @@ const MyApplicationsTab: React.FC = () => {
             </div>
             <Badge variant={applicationStatusVariant(a.status)}>{applicationStatusLabel(a.status)}</Badge>
             {a.status === 'pending' && (
-              <Button variant="outline" size="sm" onClick={() => setWithdrawTarget(a)} disabled={isWithdrawing} className="min-h-11 md:min-h-0">
+              <Button variant="ghost" size="sm" onClick={() => setWithdrawTarget(a)} disabled={isWithdrawing} className="min-h-11 text-muted-foreground hover:text-danger md:min-h-0">
                 Retirer la candidature
               </Button>
             )}
@@ -415,7 +415,7 @@ const PartnerMissionsTab: React.FC = () => {
           >
             <p className="text-md font-semibold text-foreground">{m.job_title || m.name}</p>
             <p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
-              <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <Building2 className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
               {m.client_name || m.organization_name || 'Entreprise'}
             </p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">

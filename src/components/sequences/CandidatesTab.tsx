@@ -337,9 +337,11 @@ export function CandidatesTab({
     if (!a) return null;
     const name = e.profile_name || 'ce candidat';
     const cls = 'max-md:h-11';
+    // Retraits d'envoi (pause, arrêt) en discret gris : le contour d'encre reste aux actions qui font avancer.
+    const retreat = cn(cls, 'text-muted-foreground');
     switch (a.kind) {
       case 'pause':
-        return ownRow(e) ? <Button type="button" variant="outline" size="xs" className={cls} onClick={() => { void stopEnrollment(e.id); }}>{a.label}</Button> : null;
+        return ownRow(e) ? <Button type="button" variant="ghost" size="xs" className={retreat} onClick={() => { void stopEnrollment(e.id); }}>{a.label}</Button> : null;
       case 'resume':
       case 'retry':
         return canResume(e) ? (
@@ -348,7 +350,7 @@ export function CandidatesTab({
           </Button>
         ) : null;
       case 'stop':
-        return ownRow(e) ? <Button type="button" variant="outline" size="xs" className={cls} onClick={() => { void stop([e.id]); }}>{a.label}</Button> : null;
+        return ownRow(e) ? <Button type="button" variant="ghost" size="xs" className={retreat} onClick={() => { void stop([e.id]); }}>{a.label}</Button> : null;
       case 'relaunch':
         return ownRow(e) && !isGdprErased(e) ? <Button type="button" variant="outline" size="xs" className={cls} onClick={() => setConfirm({ type: 'reEnroll', id: e.id })}>{a.label}</Button> : null;
       case 'review': {
@@ -495,7 +497,7 @@ export function CandidatesTab({
           <span className="text-sm text-foreground">
             <span className="font-semibold tabular-nums">{selectedRows.length}</span> candidat{selectedRows.length > 1 ? 's' : ''} sélectionné{selectedRows.length > 1 ? 's' : ''}
           </span>
-          <Button type="button" variant="outline" size="sm" className="max-md:h-11" loading={bulkBusy === 'pause'} disabled={bulkBusy !== null}
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground max-md:h-11" loading={bulkBusy === 'pause'} disabled={bulkBusy !== null}
             onClick={async () => { setBulkBusy('pause'); await pauseEnrollments(selectedRows.map((e) => e.id)); setBulkBusy(null); setSelected(new Set()); }}>
             {bulkBusy !== 'pause' && <Pause aria-hidden="true" />}
             Mettre en pause
@@ -505,7 +507,7 @@ export function CandidatesTab({
             {bulkBusy !== 'resume' && <Play aria-hidden="true" />}
             Reprendre
           </Button>
-          <Button type="button" variant="outline" size="sm" className="max-md:h-11" loading={bulkBusy === 'stop'} disabled={bulkBusy !== null}
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground max-md:h-11" loading={bulkBusy === 'stop'} disabled={bulkBusy !== null}
             onClick={() => { void stop(selectedRows.map((e) => e.id)); }}>
             {bulkBusy !== 'stop' && <XCircle aria-hidden="true" />}
             Arrêter
@@ -650,7 +652,7 @@ export function CandidatesTab({
                             variant="ghost"
                             size="icon-sm"
                             aria-label={`Actions pour ${name}`}
-                            className={cn(REVEAL_ON_ROW, 'text-muted-foreground hover:text-foreground data-[state=open]:opacity-100 max-md:h-11 max-md:w-11')}
+                            className={cn(REVEAL_ON_ROW, 'data-[state=open]:opacity-100 max-md:h-11 max-md:w-11')}
                           >
                             <MoreHorizontal aria-hidden="true" />
                           </Button>
@@ -742,7 +744,7 @@ export function CandidatesTab({
           </table>
           {data.hasMore && (
             <div className="flex justify-center">
-              <Button type="button" variant="outline" size="sm" onClick={() => { void data.loadMore(); }} loading={data.loadingMore} className="max-md:h-11">
+              <Button type="button" variant="ghost" size="sm" onClick={() => { void data.loadMore(); }} loading={data.loadingMore} className="max-md:h-11">
                 Afficher la suite
               </Button>
             </div>

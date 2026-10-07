@@ -564,6 +564,21 @@ const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
   thinking: "claude-sonnet-4-6",
 };
 
+// ─── Niveaux de l'IA qui rédige (lot 5e-2) ──────────────────────────────────
+
+/**
+ * Niveau de l'IA qui rédige les messages d'approche → modèle appelé. Seul
+ * endroit où un niveau devient un identifiant de modèle (règles et usages dans
+ * _shared/writing-style.ts). Équilibré = le modèle actuel de la rédaction de
+ * séquence et des messages par candidat (ROUTING_DEFAULTS.default). Miroir
+ * navigateur : src/types/aiCredits.ts.
+ */
+export const WRITING_LEVEL_MODELS = {
+  rapide: "claude-haiku-4-5",
+  equilibre: "claude-sonnet-4-6",
+  avance: "claude-opus-5-5",
+} as const;
+
 // ─── Credit Calculation ─────────────────────────────────────────────────────
 
 /**

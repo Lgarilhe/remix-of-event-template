@@ -80,7 +80,8 @@ test('D-46 : les aperçus générés et les retouches sont conservés pour la se
   assert.match(hook, /useState<PreviewMap>\(\(\) => restoreFromSession\(sessionKey, steps, profiles\)\)/);
   assert.match(hook, /signatures\.get\(stepId\) === entry\.signature/, 'une étape modifiée depuis ne reprend pas un vieil aperçu');
   // Revue design : l'appel porte aussi les candidats visés de l'audit (SEQ-045) : les incompatibles exclus ne sont ni générés ni comptés.
-  assert.match(preparation, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi \}\)/);
+  // Lot 5e-2 : style et niveau de la ligne « Rédaction par l'IA » complètent l'appel.
+  assert.match(preparation, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi, writing, onWritingRefused: refreshWritingPreferences \}\)/);
   assert.match(preparation, /discardSessionPreviews\(enrolledIds\)/, 'les candidats inscrits libèrent leurs aperçus');
 });
 

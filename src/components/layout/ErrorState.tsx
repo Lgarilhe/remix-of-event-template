@@ -68,7 +68,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 
   const technical = detail ? (
     <details className={cn('text-left', compact ? 'mt-2' : 'mt-4')}>
-      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Détails techniques</summary>
+      <summary className="cursor-pointer text-xs text-foreground underline-offset-4 hover:underline">Détails techniques</summary>
       <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{detail}</p>
     </details>
   ) : null;
@@ -84,7 +84,8 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
       )}
     >
       {illustration && !compact ? (
-        <Illustration name={illustration} size={variant === 'page' ? 'lg' : 'md'} className="mx-auto mb-4" />
+        // Déjà sur la carte de la panne : sans tuile (elle aurait la couleur de la carte).
+        <Illustration name={illustration} size={variant === 'page' ? 'lg' : 'md'} tile={false} className="mx-auto mb-4" />
       ) : (
         <span
           className={cn(

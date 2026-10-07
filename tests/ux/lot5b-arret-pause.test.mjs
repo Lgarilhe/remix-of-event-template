@@ -600,8 +600,8 @@ test('après un arrêt : « Arrêtée par Guillaume Martin le 29/09 » et « Rel
 });
 
 test('statut « Arrêtée par … le … » aussi dans la messagerie, le Pipeline et la chronologie du profil', () => {
-  const inboxHook = read('src/hooks/useMessagesInbox.ts');
-  assert.match(inboxHook, /completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'\)/);
+  const inboxHook = read('src/lib/inboxEnrollments.ts');
+  assert.match(inboxHook, /completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'/);
   assert.match(inbox, /const enrollmentManualStop = jobInfo \? readManualStop\(enrollmentStatus, jobInfo\.completion_reason, jobInfo\.manual_stop\) : null;/);
   assert.match(inbox, /manualStop=\{enrollmentManualStop\}\s*stoppedByName=\{memberName\(enrollmentManualStop\?\.by\)\}/);
   const ats = read('src/hooks/useATSData.ts');

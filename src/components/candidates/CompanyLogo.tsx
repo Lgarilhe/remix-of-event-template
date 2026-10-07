@@ -38,7 +38,7 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({ company, logoUrl, size
         sizeClasses[size],
         className,
       )}>
-        <Building2 className={cn(size === 'sm' ? 'w-3 h-3' : size === 'md' ? 'w-4 h-4' : 'w-5 h-5', 'text-muted-foreground')} />
+        <Building2 className={cn(size === 'sm' ? 'w-3 h-3' : size === 'md' ? 'w-4 h-4' : 'w-5 h-5', 'text-foreground')} />
       </div>
     );
   }

@@ -45,8 +45,8 @@ import { MESSAGE_EMOJIS } from '@/lib/messageEmojis';
 
 // Emoji à insérer dans le message (contenu du message, pas icônes d'interface)
 // Outils de la barre : 44 px au doigt, 28 px à la souris (01-direction.md, § 5)
-const TOOL_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground sm:h-7 sm:w-7';
-const TOOL_TEXT = 'h-11 w-11 px-0 text-muted-foreground hover:text-foreground sm:h-7 sm:w-auto sm:px-2';
+const TOOL_ICON = 'h-11 w-11 sm:h-7 sm:w-7';
+const TOOL_TEXT = 'h-11 w-11 px-0 sm:h-7 sm:w-auto sm:px-2';
 // Ligne du menu « Mise en forme » : 44 px au doigt.
 const FORMAT_ITEM = 'min-h-11 md:min-h-0';
 
@@ -328,7 +328,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   return (
     <TooltipProvider delayDuration={400}>
       <div className="border-t border-border bg-background px-3 py-3 md:px-4" data-component="message-composer">
-        <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+        <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
           {/* Barre d'outils */}
           <div className="flex items-center gap-0.5 border-b border-border px-1.5 py-1">
             {/* Mise en forme : un menu à toutes les tailles ; ses raccourcis restent actifs */}
@@ -549,7 +549,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                       aria-label="Insérer un lien de rendez-vous"
                       aria-disabled={!hasCalendlyLink || undefined}
                       onClick={hasCalendlyLink ? onScheduleCall : undefined}
-                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 md:h-8 md:w-auto md:px-3"
+                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground md:h-8 md:w-auto md:px-3"
                     >
                       <CalendarPlus aria-hidden="true" />
                       <span className="hidden md:inline">Rendez-vous</span>
@@ -605,7 +605,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             </div>
             <div>
               <p className="eyebrow mb-1">Traduction</p>
-              <div className="whitespace-pre-wrap rounded-lg border border-border-strong bg-card p-3 text-sm leading-relaxed text-foreground">
+              <div className="whitespace-pre-wrap rounded-lg border border-border bg-card p-3 text-sm leading-relaxed text-foreground">
                 {translateResult}
               </div>
             </div>
@@ -636,14 +636,14 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               <Button
                 key={i}
                 type="button"
-                variant="outline"
+                variant="ghost"
                 onClick={() => applyRewriteVariant(v)}
-                className="group h-auto w-full flex-col items-stretch gap-2 whitespace-normal p-4 text-left font-normal"
+                className="group h-auto w-full flex-col items-stretch gap-2 whitespace-normal rounded-xl border border-border p-4 text-left font-normal hover:border-foreground"
               >
                 <span className="flex items-center gap-2">
                   <span className="rounded-sm bg-muted px-2 py-0.5 text-2xs font-semibold text-foreground">{v.label}</span>
                   <span className="text-2xs text-muted-foreground">{v.text.length} caractères</span>
-                  <Check className="ml-auto text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+                  <Check className="ml-auto" aria-hidden="true" />
                 </span>
                 <span className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{v.text}</span>
               </Button>

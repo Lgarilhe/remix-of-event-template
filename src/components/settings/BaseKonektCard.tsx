@@ -92,7 +92,7 @@ export const BaseKonektCard = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Database className="h-4 w-4" aria-hidden="true" />
           Base Konekt
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
@@ -147,7 +147,7 @@ export const BaseKonektCard = () => {
                   </span>
                   {resetLabel && (
                     <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" aria-hidden="true" />
+                      <Clock className="h-3 w-3 text-foreground" aria-hidden="true" />
                       Remise à zéro le {resetLabel}
                     </span>
                   )}

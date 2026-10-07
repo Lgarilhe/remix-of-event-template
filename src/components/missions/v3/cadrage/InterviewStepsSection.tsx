@@ -256,7 +256,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
         ) : stepsFailed ? (
           <div className="flex flex-wrap items-center gap-3 py-2 text-sm text-muted-foreground" role="alert">
             <span>Impossible de charger les étapes pour l'instant.</span>
-            <Button type="button" variant="ghost" size="sm" onClick={() => void refetchSteps()} className={TOUCH}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void refetchSteps()} className={cn('text-foreground', TOUCH)}>
               Réessayer
             </Button>
           </div>
@@ -274,12 +274,12 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                       disabled={isAdding}
                       onClick={() => void initializeFromTemplate(tpl.steps, tpl.label)}
                       className={cn(
-                        'flex flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2.5 text-left transition-colors duration-150',
+                        'group flex flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2.5 text-left transition-colors duration-150',
                         'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        'disabled:cursor-not-allowed disabled:opacity-50',
+                        'disabled:cursor-not-allowed',
                       )}
                     >
-                      <span className="text-sm font-medium text-foreground">{tpl.label}</span>
+                      <span className="text-sm font-medium text-foreground group-disabled:text-muted-foreground">{tpl.label}</span>
                       <span className="text-sm text-muted-foreground">{tpl.steps.map((s) => s.name).join(', ')}</span>
                     </button>
                   ))}
@@ -352,8 +352,8 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                             aria-label={`Intervieweur de l'étape ${name} : ${whoLabel}${isExt ? ', hors Konekt' : ''}`}
                             className={cn(
                               'flex h-[34px] w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm transition-colors max-sm:h-11',
-                              'hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
-                              'disabled:cursor-not-allowed disabled:opacity-60',
+                              'hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                              'disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground',
                             )}
                           >
                             {userId && (
@@ -372,7 +372,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                                 hors Konekt
                               </span>
                             )}
-                            {!readOnly && <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                            {!readOnly && <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />}
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="w-[min(330px,calc(100vw-32px))]">
@@ -562,7 +562,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                     setAdding(false);
                     setNewName('');
                   }}
-                  className={cn('text-muted-foreground hover:text-foreground', TOUCH)}
+                  className={TOUCH}
                 >
                   Annuler
                 </Button>
@@ -574,7 +574,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                 variant="ghost"
                 size="sm"
                 onClick={() => setAdding(true)}
-                className={cn('-ml-3 text-muted-foreground hover:text-foreground', TOUCH)}
+                className={cn('-ml-3', TOUCH)}
               >
                 <Plus aria-hidden="true" />
                 Ajouter une étape

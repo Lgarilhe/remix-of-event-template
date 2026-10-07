@@ -20,7 +20,7 @@ export function BadgeItem({ children, icon }: { children: React.ReactNode; icon?
 }
 
 export function ContactLine({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return <div className="flex items-center gap-2"><span className="text-muted-foreground">{icon}</span>{children}</div>;
+  return <div className="flex items-center gap-2"><span className="text-foreground">{icon}</span>{children}</div>;
 }
 
 export function BrutalButton({ children, onClick, first = true }: { children: React.ReactNode; onClick: () => void; first?: boolean }) {
@@ -64,7 +64,7 @@ export function CollapsibleSection({ title, defaultOpen = false, children }: { t
     <div className="border border-border">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-foreground/[0.03] transition-colors">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
-        {open ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </button>
       {open && <div className="px-3 pb-3">{children}</div>}
     </div>
@@ -143,7 +143,7 @@ export function ExperienceItem({ exp }: { exp: { title: string; company: string;
       </div>
       {exp.description && (
         <>
-          <button onClick={() => setExpanded(!expanded)} className="text-3xs text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
+          <button onClick={() => setExpanded(!expanded)} className="text-3xs text-foreground underline-offset-2 hover:underline mt-0.5 flex items-center gap-0.5">
             {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
             {expanded ? 'Masquer' : 'Détails'}
           </button>
@@ -180,7 +180,7 @@ export function EducationItem({ edu }: { edu: { school: string; logo?: string; d
       </div>
       {hasDetails && (
         <>
-          <button onClick={() => setExpanded(!expanded)} className="text-3xs text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
+          <button onClick={() => setExpanded(!expanded)} className="text-3xs text-foreground underline-offset-2 hover:underline mt-0.5 flex items-center gap-0.5">
             {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
             {expanded ? 'Masquer' : 'Détails'}
           </button>

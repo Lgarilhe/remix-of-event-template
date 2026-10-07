@@ -78,6 +78,19 @@ BEGIN
     IF v_hint IS DISTINCT FROM 'ORG_OWNER_ONLY' THEN failures := failures || format('[4 : indice %s] ', v_hint); END IF;
   WHEN OTHERS THEN failures := failures || format('[4 : %s] ', SQLERRM);
   END;
+  -- 4b. Niveau de l'IA qui rédige (lot 5e-2, agency_permissions.ai_writing) :
+  -- réservé au propriétaire, refus ORG_OWNER_ONLY pour l'administrateur.
+  BEGIN
+    UPDATE public.organizations
+       SET agency_permissions = '{"ai_writing": {"level": "avance", "max": "avance"}}'::jsonb
+     WHERE id = org_a;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    failures := failures || format('[4b : admin, niveau de l''IA sans refus (%s ligne(s))] ', n);
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ORG_OWNER_ONLY' THEN failures := failures || format('[4b : indice %s] ', v_hint); END IF;
+  WHEN OTHERS THEN failures := failures || format('[4b : %s] ', SQLERRM);
+  END;
   BEGIN
     UPDATE public.organizations SET ai_model_default = 'modele-test' WHERE id = org_a;
     GET DIAGNOSTICS n = ROW_COUNT;
@@ -162,6 +175,23 @@ BEGIN
     GET DIAGNOSTICS n = ROW_COUNT;
     IF n <> 1 THEN failures := failures || format('[10 : propriétaire, réglages : %s ligne(s)] ', n); END IF;
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[10 : propriétaire, réglages : %s] ', SQLERRM);
+  END;
+
+  -- 10b. Niveau de l'IA qui rédige (lot 5e-2) : le propriétaire l'écrit en
+  -- fusionnant agency_permissions (les autres clés restent) et le relit.
+  BEGIN
+    UPDATE public.organizations
+       SET agency_permissions = coalesce(agency_permissions, '{}'::jsonb)
+           || '{"ai_writing": {"level": "rapide", "max": "equilibre"}}'::jsonb
+     WHERE id = org_a;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    SELECT (agency_permissions #>> '{ai_writing,max}') || '/' || (agency_permissions #>> '{ai_writing,level}')
+           || '/' || coalesce(agency_permissions ->> 'only_owners_can_submit', '-')
+      INTO v_name FROM public.organizations WHERE id = org_a;
+    IF n <> 1 OR v_name IS DISTINCT FROM 'equilibre/rapide/true' THEN
+      failures := failures || format('[10b : propriétaire, niveau de l''IA : %s ligne(s), %s] ', n, v_name);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[10b : propriétaire, niveau de l''IA : %s] ', SQLERRM);
   END;
 
   -- 11. Type : cabinet vers entreprise, 1 ligne.
@@ -293,5 +323,5 @@ BEGIN
   IF failures <> '' THEN
     RAISE EXCEPTION 'org_writes_audit : contrôles en échec %', failures;
   END IF;
-  RAISE NOTICE 'org_writes_audit : 18 contrôles OK';
+  RAISE NOTICE 'org_writes_audit : 20 contrôles OK';
 END $$;

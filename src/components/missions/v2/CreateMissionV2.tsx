@@ -916,10 +916,10 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
       <Button
         key={opt.value}
         type="button"
-        variant="outline"
+        variant="ghost"
         onClick={() => onPick(opt.value)}
         // Une tuile de choix est une carte (coin de carte), pas une pilule : sinon son texte touche la courbe.
-        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl p-5 text-left"
+        className="h-auto flex-col items-start justify-start gap-4 whitespace-normal rounded-xl border border-border p-5 text-left hover:border-foreground"
       >
         <IconTile icon={opt.icon} tone={opt.recommended ? 'brand' : 'default'} size="md" />
         <span className="block space-y-1">
@@ -1036,7 +1036,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             size="xs"
             aria-expanded={showUrlInput}
             onClick={() => setShowUrlInput(s => !s)}
-            className={cn(showUrlInput && 'border-border-strong bg-accent')}
+            className={cn(showUrlInput && 'bg-accent')}
           >
             <Link2 />
             Une adresse web
@@ -1091,7 +1091,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
         {/* Adresse repérée dans la fiche collée */}
         {urlSuggestion && sourceInfo && (
           <div className="konekt-fade-up flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-            <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <Globe className="size-4 shrink-0" aria-hidden="true" />
             <p className="min-w-0 flex-1 truncate text-xs">Adresse {sourceInfo.label} détectée.</p>
             <Button variant="ghost" size="xs" onClick={() => onScanUrl()} loading={scanningUrl}>
               Lire la page

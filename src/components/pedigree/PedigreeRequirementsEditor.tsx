@@ -190,7 +190,7 @@ export function hasAnyRequirement(req: PedigreeRequirements | undefined | null):
 
 const SectionHeader: React.FC<{ icon: React.ElementType; title: string }> = ({ icon: Icon, title }) => (
   <div className="flex items-center gap-2 pt-2 pb-1 border-b border-border">
-    <Icon className="w-4 h-4 text-foreground/70" />
+    <Icon className="w-4 h-4" aria-hidden="true" />
     <h4 className="text-sm font-semibold">{title}</h4>
   </div>
 );

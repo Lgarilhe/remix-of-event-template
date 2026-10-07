@@ -10,15 +10,23 @@
 //   - shorten     : raccourcit un texte (une proposition : { text })
 //   - hook        : ajoute une accroche sur le parcours du destinataire ({ text })
 //   - proofread   : corrige l'orthographe sans reformuler ({ text })
+//   - restyle     : réécrit dans le style demandé (contexte séquence seulement, lot 5e-2)
 //
 // Contexte séquence (lot 5e, « Demander à l'IA » du panneau d'étape) :
-//   Entrée  { action: rewrite | shorten | hook | proofread, context: 'sequence',
+//   Entrée  { action: rewrite | shorten | hook | proofread | restyle, context: 'sequence',
 //             organization_id, text, tone? (formal | direct | empathetic),
 //             step?: { action_type: 'connection_request' | 'message' | 'inmail',
-//                      is_first_message?: boolean }, mission_id? }
-//   Sortie  { success, text, warnings, credits_used } : une seule proposition,
-//           rewrite compris (« Plus direct » = tone direct, « Plus chaleureux » =
-//           tone empathetic).
+//                      is_first_message?: boolean }, mission_id?,
+//             ai_level? ('rapide' | 'equilibre' | 'avance'), style? (partiel) }
+//   Sortie  { success, text, warnings, credits_used, level, level_label, style,
+//             style_summary } : une seule proposition, rewrite compris (« Plus
+//           direct » = tone direct, « Plus chaleureux » = tone empathetic) ;
+//           restyle : « Réécrire dans votre style », le style affiché.
+//   Niveau (lot 5e-2) : absent → défaut de l'organisation ; au-dessus du
+//   plafond → 403 AI_LEVEL_NOT_ALLOWED ; inconnu → 400 AI_LEVEL_INVALID ; style
+//   inconnu → 400 STYLE_INVALID ; tout avant le garde des crédits. Modèle du
+//   niveau, action rewrite_text fixée par le serveur (_ai_model et _ai_action
+//   ignorés), débit sur le modèle appelé.
 //   Le vouvoiement est imposé : le ton casual (tutoiement) est refusé (400
 //   SEQUENCE_TONE_REFUSED), comme translate, summarize et cta_reply (400
 //   SEQUENCE_ACTION_UNSUPPORTED). La proposition passe par checkDraftTexts
@@ -38,6 +46,21 @@ import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { getAnthropicModelId } from "../_shared/ai-config.ts";
+import { loadWritingSettings } from "../_shared/writing-settings.ts";
+import {
+  AI_LEVEL_LABELS,
+  buildStyleInstructions,
+  mergeStyle,
+  modelForLevel,
+  parseStyleOverrides,
+  resolveAiLevel,
+  slotFor,
+  styleFromLegacyTone,
+  styleSummary,
+  toneLines,
+  type AiLevel,
+  type WritingStyle,
+} from "../_shared/writing-style.ts";
 import {
   INVITE_NOTE_MAX,
   briefForbiddenValues,
@@ -57,18 +80,19 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type Action = 'rewrite' | 'translate' | 'summarize' | 'cta_reply' | 'shorten' | 'hook' | 'proofread';
+type Action = 'rewrite' | 'translate' | 'summarize' | 'cta_reply' | 'shorten' | 'hook' | 'proofread' | 'restyle';
 
 /** Actions qui rendent une seule proposition { text }. */
 const SINGLE_TEXT_ACTIONS = new Set<Action>(['shorten', 'hook', 'proofread']);
-/** Actions proposées sur le texte d'une étape de séquence. */
-const SEQUENCE_ACTIONS = new Set<Action>(['rewrite', 'shorten', 'hook', 'proofread']);
+/** Actions proposées sur le texte d'une étape de séquence (restyle : séquence seulement). */
+const SEQUENCE_ACTIONS = new Set<Action>(['rewrite', 'shorten', 'hook', 'proofread', 'restyle']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Textes du contexte séquence (spec-cible, section 4, « Demander à l'IA »). */
 const PROPOSAL_UNAVAILABLE_MESSAGE = "Proposition indisponible pour l'instant. Votre texte n'a pas changé.";
 const SEQUENCE_TONE_REFUSED_MESSAGE = "Le tutoiement n'est pas proposé : les messages de séquence vouvoient toujours le candidat.";
 const SEQUENCE_ACTION_UNSUPPORTED_MESSAGE = "Cette action n'est pas proposée pour un message de séquence.";
+const SETTINGS_UNAVAILABLE_MESSAGE = "Vos réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant.";
 
 /** Types de CTA supportés. "auto" = l'IA choisit. */
 export type CtaType =
@@ -121,6 +145,10 @@ interface ReqBody {
   step?: { action_type?: string; is_first_message?: boolean };
   /** Contexte séquence : mission de la séquence, pour les contrôles (lien de rendez-vous, client anonymisé). */
   mission_id?: string;
+  /** Contexte séquence : niveau de l'IA (lot 5e-2) ; absent : défaut de l'organisation. */
+  ai_level?: string;
+  /** Contexte séquence : style affiché pour cette rédaction (partiel). */
+  style?: Partial<WritingStyle>;
   warmup?: boolean;
 }
 
@@ -188,7 +216,14 @@ Deno.serve(async (req) => {
       new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     let stepSlot: DraftSlot = 'relance_1';
     let stepActionType = 'message';
+    let styleOverrides: Partial<WritingStyle> = {};
+    if (!sequenceContext && action === 'restyle') {
+      return json({ error: 'Invalid action' }, 400);
+    }
     if (sequenceContext) {
+      if (!userId) {
+        return json({ error: 'Session utilisateur requise.', error_code: 'USER_REQUIRED' }, 403);
+      }
       if (!SEQUENCE_ACTIONS.has(action)) {
         return json({ error: SEQUENCE_ACTION_UNSUPPORTED_MESSAGE, error_code: 'SEQUENCE_ACTION_UNSUPPORTED' }, 400);
       }
@@ -207,6 +242,9 @@ Deno.serve(async (req) => {
       }
       stepActionType = requestedType;
       stepSlot = stepTextSlot(stepActionType, body.step?.is_first_message === true);
+      const parsedStyle = parseStyleOverrides(body.style);
+      if (!parsedStyle.ok) return json({ error: parsedStyle.error, error_code: parsedStyle.code }, parsedStyle.status);
+      styleOverrides = parsedStyle.overrides;
     }
 
     // Build prompt selon l'action
@@ -214,30 +252,8 @@ Deno.serve(async (req) => {
     let userPrompt = '';
 
     if (sequenceContext) {
-      // Une seule proposition pour l'étape : « Plus direct » et « Plus
-      // chaleureux » passent par rewrite avec leur ton.
-      const instruction =
-        action === 'shorten' ? "Raccourcissez ce texte d'environ un tiers. Gardez l'appel à l'action et la signature."
-        : action === 'hook' ? 'Ajoutez en ouverture une phrase d\'accroche sur le parcours du candidat, écrite avec {{poste_actuel | fallback:"votre poste actuel"}} ou {{entreprise_actuelle | fallback:"votre entreprise"}}. Le reste du texte ne change pas.'
-        : action === 'proofread' ? "Corrigez l'orthographe, la grammaire et la ponctuation. Ne reformulez rien d'autre."
-        : `Réécrivez ce texte en une seule version, de longueur proche. ${body.tone ? toneToInstruction(body.tone) : ''}`.trim();
-      const stepLine =
-        stepSlot === 'invitation_note' ? `- Note d'invitation : ${INVITE_NOTE_MAX} caractères au plus, variables comprises.`
-        : stepSlot === 'first_message' ? "- Premier message : il se lit seul, sans supposer une invitation acceptée ni un échange précédent."
-        : '';
-      systemPrompt = [
-        "Vous retouchez le texte d'une étape de séquence d'approche LinkedIn, en français : un modèle envoyé tel quel à plusieurs candidats.",
-        'Règles :',
-        "- Vouvoiement obligatoire dans le texte, même si le texte d'origine tutoie ou si un autre ton est indiqué plus haut.",
-        '- Gardez chaque variable {{...}} exactement telle qu\'elle est écrite, texte de secours compris. Variables que vous pouvez ajouter : {{prenom}} (suivie d\'une virgule ou d\'un point), {{poste_actuel | fallback:"votre poste actuel"}}, {{entreprise_actuelle | fallback:"votre entreprise"}}, {{poste_recherche}}, {{mon_prenom}}. Jamais {{client}}.',
-        "- N'inventez aucun fait sur le candidat ni sur le poste.",
-        "- Aucune rémunération, aucun lien, aucune adresse web ni adresse e-mail, aucun nom d'outil ou de logiciel.",
-        '- Aucun critère discriminatoire.',
-        '- Ni tiret long, ni puces, ni emoji.',
-        ...(stepLine ? [stepLine] : []),
-        'Répondez uniquement par un objet JSON : {"text": "..."}',
-      ].join('\n');
-      userPrompt = `Consigne : ${instruction}\n\nTexte de l'étape :\n<texte>\n${text!.trim()}\n</texte>\n\nRetournez le JSON.`;
+      // Consigne du contexte séquence construite plus bas, une fois le style
+      // de la personne lu (lot 5e-2).
     }
     else if (SINGLE_TEXT_ACTIONS.has(action)) {
       const instruction =
@@ -458,7 +474,7 @@ Génère maintenant la réponse JSON.`;
     // Call Claude
     const aiAction =
       action === 'summarize' ? 'summarize_conversation'
-      : action === 'rewrite' || SINGLE_TEXT_ACTIONS.has(action) ? 'rewrite_text'
+      : action === 'rewrite' || action === 'restyle' || SINGLE_TEXT_ACTIONS.has(action) ? 'rewrite_text'
       : action === 'cta_reply' ? 'cta_reply'
       : 'translate_text';
     const _aiParams = extractAIParams(body, aiAction);
@@ -505,6 +521,61 @@ Génère maintenant la réponse JSON.`;
       }
     }
 
+    // Contexte séquence (lot 5e-2) : niveau et style, avant le garde des
+    // crédits. Un niveau au-dessus du plafond de l'organisation est refusé sans
+    // appel ni débit ; le modèle est celui du niveau, jamais _ai_model.
+    let sequenceLevel: AiLevel | null = null;
+    let sequenceStyle: WritingStyle | null = null;
+    if (sequenceContext) {
+      const settings = await loadWritingSettings(adminClient, { organizationId: body.organization_id!, userId: userId! });
+      if (!settings.ok) return json({ error: SETTINGS_UNAVAILABLE_MESSAGE, error_code: 'AI_SETTINGS_UNAVAILABLE' }, 503);
+      const resolved = resolveAiLevel(body.ai_level, settings);
+      if (!resolved.ok) return json({ error: resolved.error, error_code: resolved.code }, resolved.status);
+      sequenceLevel = resolved.level;
+      sequenceStyle = mergeStyle(settings.style, styleOverrides);
+
+      // Une seule proposition pour l'étape : « Plus direct » et « Plus
+      // chaleureux » passent par rewrite avec leur ton ; restyle applique le
+      // style affiché de l'emplacement.
+      const toneStyle = mergeStyle(sequenceStyle, styleFromLegacyTone(body.tone));
+      const writingSlot = slotFor(stepActionType, body.step?.is_first_message === true);
+      const instruction =
+        action === 'shorten' ? "Raccourcissez ce texte d'environ un tiers. Gardez l'appel à l'action et la signature."
+        : action === 'hook' ? 'Ajoutez en ouverture une phrase d\'accroche sur le parcours du candidat, écrite avec {{poste_actuel | fallback:"votre poste actuel"}} ou {{entreprise_actuelle | fallback:"votre entreprise"}}. Le reste du texte ne change pas.'
+        : action === 'proofread' ? "Corrigez l'orthographe, la grammaire et la ponctuation. Ne reformulez rien d'autre."
+        : action === 'restyle' ? "Réécrivez ce texte selon le style demandé, en gardant ses faits, ses variables et la signature."
+        : 'Réécrivez ce texte en une seule version, de longueur proche, dans le registre demandé.';
+      const styleBlock =
+        action === 'restyle'
+          ? ['Style demandé :', buildStyleInstructions(sequenceStyle, {
+            slots: [writingSlot],
+            audience: 'template',
+            agenda: sequenceFacts?.hasCalendlyLink ? 'variable' : 'none',
+          })]
+          : action === 'rewrite'
+          ? ['Style demandé :', toneLines(toneStyle).map((l) => `- ${l}`).join('\n')]
+          : [];
+      const stepLine =
+        stepSlot === 'invitation_note' ? `- Note d'invitation : ${INVITE_NOTE_MAX} caractères au plus, variables comprises.`
+        : stepSlot === 'first_message' ? "- Premier message : il se lit seul, sans supposer une invitation acceptée ni un échange précédent."
+        : '';
+      systemPrompt = [
+        "Vous retouchez le texte d'une étape de séquence d'approche LinkedIn, en français : un modèle envoyé tel quel à plusieurs candidats.",
+        'Règles :',
+        "- Vouvoiement obligatoire dans le texte, même si le texte d'origine tutoie ou si un autre ton est indiqué plus haut.",
+        '- Gardez chaque variable {{...}} exactement telle qu\'elle est écrite, texte de secours compris. Variables que vous pouvez ajouter : {{prenom}} (suivie d\'une virgule ou d\'un point), {{poste_actuel | fallback:"votre poste actuel"}}, {{entreprise_actuelle | fallback:"votre entreprise"}}, {{poste_recherche}}, {{mon_prenom}}. Jamais {{client}}.',
+        "- N'inventez aucun fait sur le candidat ni sur le poste.",
+        "- Aucune rémunération, aucun lien, aucune adresse web ni adresse e-mail, aucun nom d'outil ou de logiciel.",
+        '- Aucun critère discriminatoire.',
+        '- Ni tiret long, ni puces, ni emoji.',
+        ...(stepLine ? [stepLine] : []),
+        ...styleBlock,
+        'Répondez uniquement par un objet JSON : {"text": "..."}',
+      ].join('\n');
+      userPrompt = `Consigne : ${instruction}\n\nTexte de l'étape :\n<texte>\n${text!.trim()}\n</texte>\n\nRetournez le JSON.`;
+    }
+    const modelId = sequenceLevel ? modelForLevel(sequenceLevel) : _aiParams.modelId;
+
     // Placé après le ping warmup et les validations (action inconnue, texte ou
     // historique manquant) : ces retours ne consomment pas de modèle, les
     // refuser rendrait payant un chemin gratuit. Le settle plus bas s'exécute
@@ -512,8 +583,9 @@ Génère maintenant la réponse JSON.`;
     const gate = await assertCredits({
       userId,
       organizationId: body.organization_id ?? null,
+      // Action fixée par le serveur (jamais _ai_action) ; contexte séquence : modèle du niveau.
       aiAction,
-      modelId: _aiParams.modelId,
+      modelId,
       systemCall: authMethod === "service_role",
       // Client service-role déjà construit plus haut, le garde en
       // reconstruisait un à chaque appel.
@@ -525,6 +597,8 @@ Génère maintenant la réponse JSON.`;
     let aiContext = await loadAndBuildAiContext(adminClient, {
       userId,
       orgId: (body.organization_id as string) || null,
+      // Contexte séquence : vouvoiement et style de la rédaction, sans « Ton imposé ».
+      omitTone: sequenceContext,
     });
 
     // Mémoire cross-session (P1.4) : les insights appris par le Copilot
@@ -545,10 +619,10 @@ Génère maintenant la réponse JSON.`;
     }
 
     const callModel = () => callClaudeCompat({
-      // Contexte séquence : modèle de l'action (choix de la personne, sinon le
-      // défaut de l'action), celui que le garde des crédits a estimé. Les
-      // autres actions gardent le modèle rapide par défaut de call-claude.ts.
-      model: sequenceContext ? getAnthropicModelId(_aiParams.modelId) : undefined,
+      // Contexte séquence : modèle du niveau (lot 5e-2), celui que le garde des
+      // crédits a estimé. Les autres actions gardent le modèle rapide par
+      // défaut de call-claude.ts.
+      model: sequenceContext ? getAnthropicModelId(modelId) : undefined,
       max_tokens: action === 'summarize' ? 1024 : action === 'cta_reply' ? 1200 : 1500,
       temperature: action === 'cta_reply' ? 0.55 : 0.4, // un peu plus de créa pour les CTA
       messages: [
@@ -583,7 +657,7 @@ Génère maintenant la réponse JSON.`;
           organizationId: body.organization_id,
           userId,
           aiAction,
-          modelId: result.model || 'claude-haiku-4-5',
+          modelId: result.model || modelId,
           tokensInput: result.usage.input_tokens,
           tokensOutput: result.usage.output_tokens,
           description: `Action IA: ${action}`,
@@ -615,6 +689,12 @@ Génère maintenant la réponse JSON.`;
         forbidden: sequenceForbidden,
       });
       const review = reviewTextProposal({ before: text!, after: proposal, slot: stepSlot }, checkContext);
+      const applied = {
+        level: sequenceLevel,
+        level_label: sequenceLevel ? AI_LEVEL_LABELS[sequenceLevel] : null,
+        style: sequenceStyle,
+        style_summary: sequenceStyle ? styleSummary(sequenceStyle) : null,
+      };
       if (review.refusals.length > 0) {
         return json({
           success: false,
@@ -622,9 +702,10 @@ Génère maintenant la réponse JSON.`;
           error_code: 'PROPOSAL_NOT_COMPLIANT',
           refusals: review.refusals,
           credits_used: creditsUsed,
+          ...applied,
         }, 422);
       }
-      return json({ success: true, text: proposal, warnings: review.warnings, credits_used: creditsUsed });
+      return json({ success: true, text: proposal, warnings: review.warnings, credits_used: creditsUsed, ...applied });
     }
 
     // Parse response selon l'action

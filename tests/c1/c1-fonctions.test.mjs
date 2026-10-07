@@ -45,6 +45,15 @@ function fnBody(src, signature) {
 const FORBIDDEN_IN_UI = /Unipile|Apollo|People Data Labs|\bPDL\b|Anthropic|Claude|Notion|—/;
 
 const AUTO_ANALYZE = 'supabase/functions/auto-analyze-message/index.ts';
+
+test('Les catégories automatiques sont écrites dans l’organisation vérifiée du compte, lisible par sa RLS', () => {
+  const src = read(AUTO_ANALYZE);
+  const category = src.slice(src.indexOf('// 6. Update chat_categories'), src.indexOf('// 7. Trigger full AI analysis'));
+  assert.match(category, /if \([^\n]*&& accountOrgId\)/);
+  assert.match(category, /\.eq\('organization_id', accountOrgId\)/);
+  assert.match(category, /\.upsert\(\{[^}]*organization_id: accountOrgId,/s);
+  assert.doesNotMatch(category, /organization_id:\s*organization_id\b/);
+});
 const ADD_TO_SHORTLIST = 'supabase/functions/add-to-shortlist/index.ts';
 const SUBMIT_APP = 'supabase/functions/submit-application/index.ts';
 const SCORE = 'supabase/functions/score-profile-job/index.ts';

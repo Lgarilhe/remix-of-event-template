@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 type BannerTone = "neutral" | "info" | "warning" | "danger";
 
 const TONES: Record<BannerTone, { box: string; icon: string }> = {
-  neutral: { box: "border-border bg-muted/60", icon: "text-muted-foreground" },
+  neutral: { box: "border-border bg-muted/60", icon: "text-foreground" },
   info: { box: "border-info/25 bg-info-muted", icon: "text-info" },
   warning: { box: "border-warning/25 bg-warning-muted", icon: "text-warning" },
   danger: { box: "border-danger/25 bg-danger-muted", icon: "text-danger" },
@@ -60,7 +60,7 @@ export function Banner({
           type="button"
           onClick={onDismiss}
           aria-label={dismissLabel}
-          className="relative -mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:w-9 max-md:after:absolute max-md:after:-inset-1"
+          className="relative -mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-foreground transition-colors hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:w-9 max-md:after:absolute max-md:after:-inset-1"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

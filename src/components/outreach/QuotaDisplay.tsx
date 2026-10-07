@@ -1,4 +1,5 @@
 import React from 'react';
+import { badgeVariants } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertTriangle, Info, Search, User, UserPlus, Mail, Shield, Send, CirclePause } from 'lucide-react';
@@ -9,8 +10,8 @@ const SafeModeBadge = () => (
   <TooltipProvider>
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 cursor-help">
-          <Shield className="w-2.5 h-2.5" />
+        <span className={cn(badgeVariants({ variant: 'success' }), 'cursor-help')}>
+          <Shield className="h-3 w-3" aria-hidden="true" />
           Mode protégé
         </span>
       </TooltipTrigger>
@@ -153,7 +154,7 @@ const QuotaFooter: React.FC<{ status: LinkedInQuotaStatus }> = ({ status }) => (
       </p>
     )}
     <p className="flex items-start gap-1">
-      <Info className="w-3 h-3 mt-0.5 shrink-0" />
+      <Info className="w-3 h-3 mt-0.5 shrink-0 text-foreground" />
       {rampStageLabel(status.ramp_stage)}. Compteurs du jour remis à zéro à {formatHourMinute(status.day_resets_at, status.timezone)}.
     </p>
   </div>
@@ -177,8 +178,9 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({ accountId, compact =
           <TooltipTrigger asChild>
             <div className={cn(
               "flex items-center gap-1.5 px-2 py-1 text-xs font-medium cursor-help border",
-              isCritical ? "bg-destructive/10 text-destructive border-destructive/30" :
-              isWarning ? "bg-warning/10 text-warning border-warning/30" :
+              // Texte à l'encre, la couleur du statut tient dans l'icône (badges à la Qonto).
+              isCritical ? "bg-destructive/10 text-foreground border-destructive/30 [&>svg]:text-destructive" :
+              isWarning ? "bg-warning/10 text-foreground border-warning/30 [&>svg]:text-warning" :
               "bg-muted text-foreground border-border"
             )}>
               {paused ? <CirclePause className="w-3 h-3" /> : (isWarning || isCritical) && <AlertTriangle className="w-3 h-3" />}
@@ -208,7 +210,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({ accountId, compact =
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
-              <Info className="w-4 h-4 text-muted-foreground" />
+              <Info className="w-4 h-4" />
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs">
               <p className="text-xs">

@@ -38,7 +38,7 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
           <span>{stats.llmCalled} scorés par l'IA</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <BarChart3 className="w-3 h-3 text-foreground/50" />
+          <BarChart3 className="w-3 h-3 text-foreground" />
           <span>Moy: <span className="font-semibold text-foreground">{stats.avgScore}/100</span></span>
         </div>
         {escalated > 0 && (

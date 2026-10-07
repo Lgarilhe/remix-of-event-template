@@ -255,7 +255,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
       <button
         onClick={() => setOpen(true)}
         disabled={isFreePlan}
-        className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-1 hover:bg-muted rounded-sm text-foreground disabled:text-muted-foreground disabled:cursor-not-allowed"
         title={isFreePlan
           ? "L'enrichissement de contact nécessite un abonnement"
           : `Récupérer email/téléphone des ${count} profil${count > 1 ? 's' : ''} sélectionné${count > 1 ? 's' : ''}`}
@@ -292,7 +292,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
                 checked={withEmail}
                 onCheckedChange={(c) => setWithEmail(c === true)}
               />
-              <Mail className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <Mail className="w-4 h-4 shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Email professionnel</div>
                 <div className="text-2xs text-muted-foreground">
@@ -306,7 +306,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
                 checked={withPhone}
                 onCheckedChange={(c) => setWithPhone(c === true)}
               />
-              <Phone className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <Phone className="w-4 h-4 shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
                 <div className="text-2xs text-muted-foreground">

@@ -226,7 +226,8 @@ test('liste simplifiée : un seul bouton plein, des titres réels, aucun cadre, 
   assert.equal((src.match(/max-sm:relative max-sm:-mb-6 max-sm:pb-6/g) ?? []).length, 1);
   // Les boutons de la ligne d'action sont positionnés eux aussi (et plus bas) : ils gardent leur zone là où elles se recouvrent.
   assert.equal((src.match(/'relative inline-flex min-w-0 items-center gap-1\.5/g) ?? []).length, 1);
-  assert.match(src, /className="relative rounded-sm text-foreground-secondary underline/);
+  // « Réessayer » : libellé d'action à l'encre (contraste façon Qonto), toujours positionné.
+  assert.match(src, /className="relative rounded-sm text-foreground underline/);
   assert.match(src, /<tr\s+data-testid="mission-row"\s+onClick=\{onOpen\}/, 'toute la ligne ouvre la mission');
 });
 

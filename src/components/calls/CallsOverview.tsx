@@ -138,7 +138,7 @@ export const CallsOverview = ({
               const showNumber = title !== formatPhoneNumber(row.numberE164);
               return (
                 <li key={row.numberE164} className="flex items-center gap-3 py-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-foreground">
                     <PhoneMissed className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div className="min-w-0 flex-1">

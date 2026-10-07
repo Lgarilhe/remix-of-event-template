@@ -87,7 +87,7 @@ export function StepCard({ node, selected, issues, actions, toWrite }: StepCardP
         onClick={actions.onSelect}
         onKeyDown={onKeyDown}
         className={cn(
-          'cursor-pointer rounded-xl border bg-card p-3 pr-11 text-left transition-colors duration-150 hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'cursor-pointer rounded-xl border bg-card p-3 pr-11 text-left shadow-sm transition-colors duration-150 hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           error ? 'border-danger' : 'border-border',
           selected && 'ring-2 ring-brand',
         )}
@@ -96,7 +96,7 @@ export function StepCard({ node, selected, issues, actions, toWrite }: StepCardP
           <span className="grid h-6 min-w-6 place-items-center rounded-md bg-muted px-1 text-xs tabular-nums text-muted-foreground" aria-hidden="true">
             {node.number}
           </span>
-          <SequenceActionIcon type={node.actionType} className="h-4 w-4 text-muted-foreground" />
+          <SequenceActionIcon type={node.actionType} className="h-4 w-4 text-foreground" />
           <h3 className="min-w-0 text-sm font-semibold text-foreground">{node.title}</h3>
         </div>
         {node.excerpt && <p className="mt-1.5 line-clamp-2 text-sm text-foreground-secondary">{node.excerpt}</p>}
@@ -129,7 +129,7 @@ export function StepCard({ node, selected, issues, actions, toWrite }: StepCardP
               variant="ghost"
               size="icon-sm"
               aria-label={`Actions de l’étape ${node.number}`}
-              className={cn(REVEAL, 'text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11')}
+              className={cn(REVEAL, 'max-md:h-11 max-md:w-11')}
             >
               <MoreHorizontal aria-hidden="true" />
             </Button>

@@ -259,6 +259,21 @@ export function directFollowUpType(prevDirectCount: number): 'RELANCE 1' | 'RELA
   return prevDirectCount <= 1 ? 'RELANCE 1' : 'RELANCE 2';
 }
 
+/**
+ * Attentes de rémunération sans les mots « salaire » ni « rémunération » :
+ * « attentes salariales », « vos prétentions », « vos revenus », « évolution
+ * de revenus », « attentes financières ». Partagé par detectSequenceViolations
+ * et findRemuneration (sequence-draft.ts). N'en font pas partie : « salarié »
+ * (il a des emplois légitimes), les revenus d'une entreprise (« ses revenus »,
+ * « une croissance de revenus ») et « sans prétention ».
+ */
+export const SALARY_EXPECTATION_SRC =
+  "salaria(?:l|le|les|ux)|(?:vos|votre|les|des|de|en|leurs?)\\s+pr[ée]tentions?|attentes\\s+financi[èe]res" +
+  "|(?:vos|votre)\\s+revenus?|(?:[ée]volution|niveau|attentes?|perspectives?)\\s+(?:de|des|en)\\s+revenus?" +
+  "|revenus?\\s+(?:annuels?|mensuels?|fixes?|variables?|bruts?|nets?)";
+
+const SALARY_EXPECTATION_RE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${SALARY_EXPECTATION_SRC})(?![\\p{L}\\p{N}])`, 'iu');
+
 export interface SequenceViolation {
   label: string;
   /** Bloquante : le message ne part pas s'il la porte encore après correction. */
@@ -279,7 +294,7 @@ export function detectSequenceViolations(isRPO: boolean, message: string, subjec
   if (/^\s*[-•]\s+/m.test(msg)) add('tiret / puce en début de ligne');
   if (/[–—]/.test(msg) || /\s-\s/.test(msg)) add('tiret dans le texte');
   if (/\b(colle|match)e\s+parfaitement\b/i.test(text)) add('"colle parfaitement"');
-  if (/(\b\d{2,3}\s*k€?(?![\p{L}\d])|\b\d{2,3}\s*000\s*€|\b(salaire|rémunération|package|compensation|TJM)\b)/iu.test(text)) {
+  if (/(\b\d{2,3}\s*k€?(?![\p{L}\d])|\b\d{2,3}\s*000\s*€|\b(salaire|rémunération|package|compensation|TJM)\b)/iu.test(text) || SALARY_EXPECTATION_RE.test(text)) {
     add('mention de salaire/rémunération', true);
   }
   // Signature « Recruteur » : dernière ligne seule, pas « je suis recruteur ».
