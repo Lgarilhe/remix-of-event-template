@@ -32,6 +32,22 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — BUG — Mémoire : composition alignée sur le design system
+
+**Contexte** : le partage des primitives ne couvrait pas la composition de la découverte. Le canevas imbriquait les cartes métier dans une carte de scène, ajoutait un sélecteur de niveaux absent du produit et masquait une partie de l’explication à 320 px.
+**Fait** : fenêtre au format natif `max-w-2xl`, titre unique, légende à 14 px, progression fine, commandes de lecture et pied `DialogFooter`. Exemple pleine largeur à plat : conversation, proposition, détail du véritable champ `Select` Niveau fermé, puis mémoire confirmée. Les quatre états partagent une hauteur intrinsèque ; transitions de 200 ms et 4 px, pression à 98 %, toutes pilotées par l’horloge existante. Surface extérieure, rotation, curseur et rail de grandes pastilles retirés. Actions métier et champ illustratifs restent inertes. Une explication permanente pour les lecteurs d’écran nomme les niveaux selon le contexte, la confirmation et la désactivation.
+**Validation locale** : build final réussi, trois sources identiques aux sourcemaps, lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs design restent identiques à main. Revue de composition comparée aux vrais dialogues Nouvelle séquence et à OnboardingFrame, avec captures clair/sombre à 320/390/1440 px. Chromium avec API simulées : 27 nouveaux contrôles de découverte, sept audits axe sans violation, aucune erreur navigateur ni écriture métier. À 320 px avec entreprise et poste, scène et édition de 272 px ; explication et pied entièrement visibles sans défilement initial. Les six régressions métier de la version précédente sont référencées sans rejeu et exclues de ce décompte.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Pause complète, reprise, fin sans boucle, relecture à zéro et retour aux mémoires | PASS |
+| Claire | Titre unique, validation et automatique optionnel expliqués, fermeture et focus restauré | PASS |
+| Théo | Scène inerte sans écriture, équivalent accessible permanent, mouvement réduit initial et dans les deux sens | PASS |
+| Sophie | Texte et actions visibles à 320/390 px, niveaux adaptés, pied fixe et navigation à 390×400 | PASS |
+
+**État** : validé localement, non déployé. Équivalent lecteur d’écran vérifié dans l’interface et ses attributs ; aucun essai avec un lecteur d’écran réel dans cette passe.
+**Refs** : `docs/design/01-direction.md`, `src/components/sequences/NewSequenceDialog.tsx`, `src/components/onboarding/OnboardingFrame.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`.
+
 ## 2026-10-07 — REFACTOR — Mémoire : vraies cartes dans la démonstration
 
 **Fait** : propositions et mémoires confirmées partagent désormais leur présentation avec la scène de découverte : cadre, typographie, niveau, type, effets, date et actions natives. Le pointeur choisit le niveau, presse « Garder », puis la consigne rejoint les mémoires actives. Les actions illustrées sont des éléments décoratifs sans contrôle ni écriture. Horloge de neuf secondes, pause, reprise, relecture et mouvement réduit conservés.
