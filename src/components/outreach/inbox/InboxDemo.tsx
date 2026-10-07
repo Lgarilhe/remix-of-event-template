@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, PanelRight, Send } from 'lucide-react';
 import { CandidateInteractionTimeline } from './CandidateInteractionTimeline';
 import { CandidateProfileContent } from './CandidateProfileContent';
-import { DemoCandidateActions, type DemoActionStatus } from './DemoCandidateActions';
+import { DemoCandidateActions } from './DemoCandidateActions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConversationContext } from './ConversationContext';
@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { createInboxDemo } from '@/lib/inboxDemo';
-import { createDemoCandidateActions } from '@/lib/inboxDemoActions';
+import { createDemoCandidateActions, type DemoActionResult } from '@/lib/inboxDemoActions';
 import { SERVICE_LABELS, type MessagingService } from '@/lib/messagingServices';
 import type { ActivityEvent } from '@/hooks/useProfileActivity';
 import { cn } from '@/lib/utils';
@@ -31,22 +31,43 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
   const [service, setService] = useState<MessagingService>('whatsapp');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, ActivityEvent[]>>({});
-  const [actionStatuses, setActionStatuses] = useState<Record<string, DemoActionStatus>>({});
+  const [actionResults, setActionResults] = useState<Record<string, DemoActionResult>>({});
+  const [dismissedActions, setDismissedActions] = useState<Record<string, boolean>>({});
+  const [actionDrafts, setActionDrafts] = useState<Record<string, Record<string, string>>>({});
   const suggestedActions = useMemo(() => createDemoCandidateActions(conversations), [conversations]);
   const endRef = useRef<HTMLDivElement>(null);
   const selected = conversations.find(conversation => conversation.id === selectedId) ?? null;
-  const events = useMemo(() => selected ? [...selected.events, ...(replies[selected.id] ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)) : [], [selected, replies]);
+  const events = useMemo(() => {
+    if (!selected) return [];
+    const appliedMessages: ActivityEvent[] = suggestedActions[selected.id].flatMap(action => {
+      const result = actionResults[action.id];
+      if (!result) return [];
+      return action.effects.filter(effect => effect.kind === 'message').map(effect => ({
+        id: `demo-action-${action.id}-${effect.id}`, type: 'message', timestamp: result.appliedAt,
+        actionType: effect.service === 'whatsapp' ? 'whatsapp_message' : effect.service === 'linkedin' ? 'message' : 'email',
+        channel: effect.service === 'gmail' || effect.service === 'outlook' ? 'email' : effect.service,
+        service: effect.service, direction: 'outbound', recipient: effect.recipient,
+        finalMessage: result.contents[effect.id], finalSubject: effect.subject, stepOrder: 0, status: 'sent',
+      }));
+    });
+    return [...selected.events, ...(replies[selected.id] ?? []), ...appliedMessages].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  }, [selected, replies, suggestedActions, actionResults]);
   const draft = selected ? drafts[selected.id] ?? '' : '';
   useEffect(() => {
     const frame = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end' }));
     return () => cancelAnimationFrame(frame);
   }, [selectedId]);
-  const actions = selected && <DemoCandidateActions key={selected.id} actions={suggestedActions[selected.id]} statuses={actionStatuses} onStatusChange={(id, status) => setActionStatuses(previous => {
-    const next = { ...previous };
-    if (status) next[id] = status;
-    else delete next[id];
-    return next;
-  })} />;
+  function applyAction(id: string) {
+    const action = selected && suggestedActions[selected.id].find(item => item.id === id);
+    if (!action || actionResults[id] || dismissedActions[id]) return;
+    const contents = Object.fromEntries(action.effects.map(effect => [effect.id, (actionDrafts[id]?.[effect.id] ?? effect.content).trim()]));
+    if (Object.values(contents).some(value => !value)) return;
+    const result = { appliedAt: new Date().toISOString(), contents };
+    setActionResults(previous => previous[id] ? previous : { ...previous, [id]: result });
+  }
+  const actions = selected && <DemoCandidateActions key={selected.id} actions={suggestedActions[selected.id]} results={actionResults} dismissed={dismissedActions} drafts={actionDrafts}
+    onDraftChange={(id, effectId, value) => setActionDrafts(previous => ({ ...previous, [id]: { ...previous[id], [effectId]: value } }))}
+    onApply={applyAction} onDismiss={(id, dismissed) => setDismissedActions(previous => ({ ...previous, [id]: dismissed }))} />;
   const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} readOnly onEnroll={noop} onAddToPipeline={noop} />;
 
   function send() {
@@ -66,7 +87,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
 
   return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background" data-component="inbox-demo">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted px-3 py-2 text-xs md:px-5">
-      <p className="text-foreground-secondary"><span className="md:hidden"><strong className="font-semibold text-foreground">Démo</strong> · Données fictives</span><span className="hidden md:inline"><strong className="font-semibold text-foreground">Démonstration</strong> · Candidats fictifs. Vos messages et tâches restent dans cet aperçu.</span></p>
+      <p className="text-foreground-secondary"><span className="md:hidden"><strong className="font-semibold text-foreground">Démo</strong> · Données fictives</span><span className="hidden md:inline"><strong className="font-semibold text-foreground">Démonstration</strong> · Candidats fictifs. Vos messages et modifications restent dans cet aperçu.</span></p>
       <Button variant="outline" size="sm" aria-label="Quitter la démo" className="min-h-11 shrink-0 md:min-h-8" onClick={onExit}><span className="md:hidden">Quitter</span><span className="hidden md:inline">Quitter la démo</span></Button>
     </div>
     <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -118,7 +139,20 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
               <TabsList className="mx-5 grid h-auto shrink-0 grid-cols-3"><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger><TabsTrigger value="interactions" className="min-h-11">Interactions</TabsTrigger><TabsTrigger value="actions" className="min-h-11">Actions</TabsTrigger></TabsList>
               <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateProfileContent profile={selected.profile} /></TabsContent>
               <TabsContent value="interactions" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateInteractionTimeline events={events} name={selected.name} /></TabsContent>
-              <TabsContent value="actions" className="min-h-0 flex-1 overflow-y-auto p-5">{actions}</TabsContent>
+              <TabsContent value="actions" className="min-h-0 flex-1 overflow-y-auto p-5">
+                {actions}
+                {suggestedActions[selected.id].some(action => actionResults[action.id]) && <section className="mt-6 space-y-4 border-t border-border pt-4" aria-label="Contenus enregistrés dans la fiche" data-component="demo-saved-documents">
+                  <h4 className="text-sm font-semibold text-foreground">Enregistré dans la fiche</h4>
+                  {suggestedActions[selected.id].flatMap(action => {
+                    const result = actionResults[action.id];
+                    return result ? action.effects.filter(effect => effect.kind === 'document').map(effect => <div key={effect.id}>
+                      <h5 className="text-sm font-medium text-foreground">{effect.label}</h5>
+                      <p className="mt-1 text-xs text-muted-foreground">{effect.destination}</p>
+                      <p className="mt-2 whitespace-pre-line break-words text-sm leading-relaxed text-foreground-secondary">{result.contents[effect.id]}</p>
+                    </div>) : [];
+                  })}
+                </section>}
+              </TabsContent>
             </Tabs>
           </DialogContent>
         </Dialog>

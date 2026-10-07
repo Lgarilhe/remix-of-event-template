@@ -1,12 +1,18 @@
 # Actions proposées selon le contexte candidat
 
-La messagerie et les fiches candidat doivent proposer la prochaine action utile à partir des échanges, de l’avancement dans une mission, des entretiens et du travail de l’équipe. Le recruteur voit le motif, les sources datées, le responsable proposé et une échéance modifiable avant de créer une tâche. Les messages restent des brouillons à relire.
+La messagerie et les fiches candidat doivent proposer du travail concret déjà préparé à partir des échanges, de l’avancement dans une mission, des entretiens et du travail de l’équipe. En deux ou trois clics, le recruteur doit pouvoir relire et modifier un brief, un message ou des changements dans l’app, puis valider les effets annoncés. Créer une tâche n’est utile que lorsque du travail doit réellement être différé.
 
 ## Première version
 
-La démo `/inbox?demo=1` illustre trois situations : préparer un échange confirmé avec un sujet issu d’une publication LinkedIn fictive, se coordonner avec un collègue qui attend déjà une information du manager, et clarifier un critère non évalué dans une scorecard. Le chat s’ouvre sur les échanges récents. Une seule « Prochaine action » suit l’historique, avec un titre, un motif court et « Ajouter à mes tâches ». « Pourquoi ? » ouvre le responsable, l’échéance et les sources datées avec leurs logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil du candidat.
+La démo `/inbox?demo=1` illustre trois ensembles d’effets :
 
-Les propositions, sources complémentaires et tâches sont fictives, écrites pour cet aperçu, conservées en mémoire. Ajouter, terminer ou ignorer une tâche ne touche aucun service. La messagerie et l’onglet Actions de la fiche fictive partagent le même état. Le rejet est réversible ; quitter la démo efface les essais.
+- **Camille : préparer l’entretien confirmé.** Enregistrer un brief et des questions à partir du profil, des échanges et d’une publication LinkedIn fictive. Le rendez-vous existe déjà : aucune nouvelle réservation n’est créée.
+- **Alex : coordonner sa réponse avec Guillaume.** Préparer un commentaire d’équipe avec `@Guillaume` et une réponse Outlook. Le commentaire est enregistré et l’email relu est envoyé dans la simulation ; les informations encore attendues du manager ne sont pas inventées.
+- **Maya : clarifier son expérience B2B.** Enregistrer des questions pour la scorecard et envoyer un email Gmail ciblé dans la simulation. Le critère reste non évalué : préparer une question ne lui attribue pas une note.
+
+Le chat s’ouvre sur les échanges récents. Une seule « Prochaine action » suit l’historique, avec un titre et un motif court. Le parcours est **Préparer → aperçu éditable de tous les effets → validation explicite**, avec un bouton qui nomme le résultat, par exemple « Enregistrer et envoyer ». « Pourquoi ? » donne accès aux sources datées avec leurs logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil du candidat.
+
+Les propositions et sources complémentaires sont fictives, écrites pour cet aperçu, sans génération IA ni appel serveur. Les documents préparés, les commentaires et les résultats sont visibles dans l’onglet Actions de la fiche fictive ; les messages simulés rejoignent le même fil d’interactions. La messagerie et la fiche partagent les brouillons et l’état des effets par candidat. Fermer ou annuler l’aperçu ne produit aucun effet ; une validation n’exécute chaque effet qu’une fois. Les essais restent en mémoire et quitter la démo les efface.
 
 Le moteur réel reste à brancher. Cette proposition reprend les procédures Notion actuelles ; les intégrations décrites pour Notion et n8n ne prouvent pas leur disponibilité dans l’app.
 
@@ -14,17 +20,17 @@ Le moteur réel reste à brancher. Cette proposition reprend les procédures Not
 
 | Situation vérifiée | Proposition | Ce qui évite une mauvaise action |
 | --- | --- | --- |
-| Réponse avec une question ou une pièce demandée | Répondre ou préparer la pièce | Lire les échanges suivants et la tâche portée par un collègue avant de proposer |
+| Réponse avec une question ou une pièce demandée | Préparer la réponse ou la pièce, puis l’envoi après relecture | Lire les échanges suivants et le travail porté par un collègue avant de proposer |
 | Entretien confirmé et préparation à faire | Préparer le brief et les questions | Vérifier la date actuelle, l’étape, les comptes rendus précédents et la préparation existante |
 | Entretien passé sans retour candidat ou manager | Recueillir le retour manquant | Distinguer les deux retours ; une scorecard existante ne signifie pas que les deux sont recueillis |
-| Scorecard avec critère non évalué ou avis contradictoires | Clarifier ce point à l’entretien suivant | Montrer les avis et leurs auteurs, sans moyenner les notes ni décider du sort du candidat |
+| Scorecard avec critère non évalué ou avis contradictoires | Préparer et enregistrer les questions, puis demander les précisions utiles | Montrer les avis et leurs auteurs, sans moyenner les notes ni décider du sort du candidat |
 | Retour manager explicite pour poursuivre | Organiser l’étape suivante | Ne pas proposer un nouvel entretien si un rendez-vous existe déjà |
 | Manager sans réponse au-delà de sa cadence | Préparer sa relance et tenir le candidat informé | Lire la règle client et le dernier contact de toute l’équipe ; ne pas promettre une date de réponse client |
-| CV, portfolio, références ou disponibilités attendus | Demander l’élément manquant | Vérifier qu’il n’est pas arrivé depuis et rappeler le besoin concret |
+| CV, portfolio, références ou disponibilités attendus | Préparer la demande ciblée et son envoi | Vérifier qu’il n’est pas arrivé depuis et rappeler le besoin concret |
 | Candidat annonçant une offre concurrente avec échéance | Faire un point avec le responsable du mandat | Citer l’échéance exprimée ; ne pas négocier ou inventer une offre |
 | Candidat indisponible jusqu’à une date annoncée | Proposer un rappel à cette date | Suspendre les relances sur le même motif en attendant |
 
-Les cadences viennent de la règle client et de la compétence concernée. Pour les relances de silence, la procédure actuelle prévoit deux relances maximum, à J+3 et J+7. Le contrôle des candidats actifs sans échange utilise sept jours ouvrés. Le retour manager sur présentation se suit sous 48 heures ouvrées, sauf cadence client. Ne pas fusionner ces règles en un seuil universel de cinq jours. Les dates relatives utilisent le fuseau de l’organisation et distinguent une date métier promise d’une échéance de tâche suggérée.
+Les cadences viennent de la règle client et de la compétence concernée. Pour les relances de silence, la procédure actuelle prévoit deux relances maximum, à J+3 et J+7. Le contrôle des candidats actifs sans échange utilise sept jours ouvrés. Le retour manager sur présentation se suit sous 48 heures ouvrées, sauf cadence client. Ne pas fusionner ces règles en un seuil universel de cinq jours. Les dates relatives utilisent le fuseau de l’organisation et distinguent une date métier promise d’une échéance suggérée pour un travail différé.
 
 ## Sources métier
 
@@ -34,7 +40,7 @@ La [spec post-appel de février](https://app.notion.com/p/825ffcdf3dc046a0841275
 
 ## Contexte à assembler
 
-Un lecteur partagé assemble un contexte candidat pour une mission précise, utilisé par la messagerie, les fiches mission et pipeline, et la page Tâches. Il comprend le profil existant, le brief, les critères, l’étape et les décisions explicites, les échanges et engagements, les rendez-vous, chaque évaluation et compte rendu accessible, les tâches ouvertes et les interventions de l’équipe.
+Un lecteur partagé assemble un contexte candidat pour une mission précise, utilisé par la messagerie et les fiches mission et pipeline, ainsi que par la page Tâches pour le travail différé. Il comprend le profil existant, le brief, les critères, l’étape et les décisions explicites, les échanges et engagements, les rendez-vous, chaque évaluation et compte rendu accessible, les documents préparés, les effets déjà exécutés, les tâches ouvertes et les interventions de l’équipe.
 
 Chaque élément garde son identifiant durable, son type, sa date métier, sa date de collecte, sa version, son auteur, sa mission, sa visibilité et un lien vers la source. Les identifiants candidat sont rapprochés avec les alias et l’URL LinkedIn normalisée ; un nom seul ou un téléphone partagé ne suffit pas à fusionner deux personnes. Une interaction sur une autre mission conserve son rattachement et ne devient pas un retour sur la mission ouverte.
 
@@ -50,7 +56,7 @@ Les appels disposent déjà de synthèses structurées dans `phone_call_insights
 
 ## Coordination entre recruteurs
 
-Afficher le responsable de la candidature, les autres intervenants, leur dernier contact et les tâches qu’ils portent. Si une relance vient d’être faite, la supprimer des suggestions encore à accepter ou expliquer l’attente. Si un collègue porte déjà l’action, proposer de consulter ou compléter la tâche existante. Le créateur de la tâche et son responsable sont deux personnes possibles, donc deux champs distincts.
+Afficher le responsable de la candidature, les autres intervenants, leur dernier contact et le travail qu’ils portent. Si une relance vient d’être faite, la supprimer des suggestions encore à accepter ou expliquer l’attente. Si un collègue porte déjà l’action, préparer un commentaire avec mention ou compléter le travail existant avant de contacter à nouveau le candidat. Le créateur d’un document ou d’une tâche et son responsable sont deux personnes possibles, donc deux champs distincts.
 
 Les données partagées de la mission suivent les droits de l’app. Les autres missions ne contribuent que si l’utilisateur peut les consulter. Les règles Notion permettant à l’équipe Konekt de travailler sur tous les clients ne modifient pas les autorisations actuelles de l’app. Une boîte personnelle d’un collègue ne s’ouvre pas par défaut : définir ce qui est partagé, par qui et à quel niveau avant d’élargir la lecture. Garder le compte personnel pour toute réponse.
 
@@ -68,26 +74,35 @@ Conserver identifiant, URL, date et texte du post pour pouvoir le citer. Une pub
 
 Les règles vérifient les préconditions métier, dates, droits, doublons et décisions. L’IA extrait les engagements et questions dans les sources autorisées, puis rédige les propositions. Elle doit renvoyer les références qui justifient chaque action ; les textes externes sont des données, jamais des instructions à exécuter. Une source sans preuve suffisante donne une proposition à clarifier ou aucune proposition.
 
-Afficher au plus trois propositions prioritaires par candidat : engagement avec échéance ou réponse attendue, entretien imminent ou retour manquant, puis préparation et suivi. La carte contient le verbe d’action, le motif concret, les sources consultables avec leurs logos, le responsable proposé, la mission et l’échéance. Le recruteur peut modifier, créer, reporter ou écarter. L’absence de proposition est un résultat valide.
+Afficher au plus trois propositions prioritaires par candidat : engagement avec échéance ou réponse attendue, entretien imminent ou retour manquant, puis préparation et suivi. La carte contient le verbe d’action, le motif concret, les effets proposés et la mission. Les sources avec leurs logos sont accessibles à la demande. Le responsable, le compte d’envoi et une éventuelle échéance sont explicités dans l’aperçu lorsqu’ils concernent l’effet. Le recruteur peut préparer, modifier, valider, reporter ou écarter. L’absence de proposition est un résultat valide.
 
-Le serveur relit les sources et les tâches au moment de l’acceptation. Il vérifie l’organisation, l’accès à la mission, l’identité et les droits du responsable, puis crée ou retrouve une tâche dans une opération atomique. Une clé métier commune aux recruteurs associe organisation, candidat, mission, type d’action et objet concerné. Deux acceptations simultanées ne créent qu’une tâche active. Une source nouvelle peut faire évoluer la proposition ; un refus ne réapparaît pas sur la même version inchangée.
+Chaque proposition prépare un **plan d’effets typés** : enregistrer un brief, ajouter des questions ou des points de suivi à une évaluation, publier un commentaire d’équipe, préparer ou envoyer un message, modifier une information de fiche ou une étape de mission. Créer une tâche est un effet optionnel pour un travail différé. Chaque effet indique sa cible, le contenu proposé, les références de provenance et les préconditions ; un changement existant montre la valeur actuelle et la valeur proposée. L’aperçu permet de modifier le contenu et de voir tous les effets avant une validation au libellé précis. Annuler la préparation ne lance aucune écriture ni aucun envoi.
 
-Les caches comprennent utilisateur, organisation, candidat, mission et périmètre de partage. Un changement d’organisation efface les propositions locales et une réponse tardive ne remplit pas le nouveau contexte. La création d’une tâche ne valide ni un envoi, ni un changement d’étape. Tout brouillon garde une relecture et un geste d’envoi distinct.
+Au moment de la validation, le serveur relit les sources, les effets et les tâches déjà réalisés. Il vérifie l’organisation, l’accès à la mission, l’identité et les droits des intervenants, le compte personnel d’envoi, la disponibilité du canal et le destinataire. Il contrôle aussi les versions et les conflits : une modification concurrente, une réponse arrivée depuis ou un changement d’étape peut rendre une partie du plan inutile. Le plan concerné doit alors être actualisé et relu avant l’exécution, sans écraser le travail d’un collègue.
+
+La proposition, son contenu relu et l’exécution de chaque effet disposent d’identifiants durables. Une clé métier commune aux recruteurs associe organisation, candidat, mission, type d’effet, cible et version validée ; l’enregistrement interne empêche deux validations simultanées de lancer le même effet. Chaque résultat conserve son état, sa date, son auteur et la référence du document, commentaire ou message produit. Une source nouvelle peut faire évoluer la proposition ; un refus ne réapparaît pas sur la même version inchangée.
+
+Un ensemble mêlant écritures internes et envoi externe n’est pas une transaction atomique. Le moteur expose les effets réussis, échoués ou dont le résultat est encore inconnu et permet de reprendre seulement ce qui reste à faire. Il utilise l’idempotence du fournisseur lorsqu’elle existe ; après un délai d’envoi sans réponse, il vérifie le reçu ou l’historique avant de réessayer. Aucun envoi réussi ni document déjà enregistré n’est rejoué lors de la reprise, et aucune réussite globale n’est annoncée si un effet a échoué ou reste inconnu.
+
+Les caches comprennent utilisateur, organisation, candidat, mission et périmètre de partage. Un changement d’organisation efface les propositions locales et une réponse tardive ne remplit pas le nouveau contexte. Tout message garde un aperçu éditable et une validation qui nomme explicitement l’envoi ; la validation d’un enregistrement seul n’autorise ni envoi, ni invitation, ni changement d’étape. Les modifications de mission passent par les gestes métier existants et leurs contrôles, jamais par une écriture directe de statut.
 
 ## Ordre de branchement
 
 1. Fiabiliser les rattachements des entretiens, évaluations et rapports ; ajouter la provenance des actions d’équipe et leurs permissions.
-2. Étendre `candidate_reminders` avec la mission interne, le responsable distinct du créateur, les références de provenance et une déduplication atomique. Prévoir un état durable des propositions acceptées, reportées ou écartées. Aujourd’hui, `job_id` ne remplace pas `project_id`, et le précontrôle de doublon ne protège pas deux créations simultanées.
-3. Remplacer les faux positifs de `useAutoTaskSuggestions` : vérifier réellement les rapports, écarter les rendez-vous annulés et lire le dernier échange avant une relance. Partager le lecteur de contexte et le moteur entre les vues.
-4. Brancher d’abord préparation, débrief, question sans réponse et élément attendu sur les sources déjà fiables. Ajouter ensuite coordination multicanal et signaux LinkedIn, avec tests d’adaptateur V2 et quotas.
+2. Prévoir un état durable des propositions, des plans relus et des résultats par effet, avec déduplication interne, contrôles de version et reprise partielle. Pour les tâches optionnelles, compléter `candidate_reminders` avec la mission interne, le responsable distinct du créateur et les références de provenance : `job_id` ne remplace pas `project_id`, et un précontrôle de doublon ne protège pas deux créations simultanées.
+3. Partager le lecteur de contexte et le moteur entre les vues. Corriger les faux positifs actuellement portés par `useAutoTaskSuggestions` : vérifier réellement les rapports, écarter les rendez-vous annulés et lire le dernier échange avant une relance. Ces vérifications doivent servir à préparer l’effet utile, sans créer systématiquement une tâche.
+4. Brancher d’abord les aperçus éditables et les effets de préparation, débrief, réponse et demande ciblée sur les sources et gestes déjà fiables. Ajouter ensuite coordination multicanal et signaux LinkedIn, avec tests d’adaptateur V2 et quotas. Programmer un entretien dans l’app ne prouve pas qu’une invitation externe a été envoyée : chaque effet d’invitation ou de calendrier doit avoir son propre résultat vérifié.
 
 ## Critères de validation du moteur réel
 
-- Une tâche de débrief n’apparaît pas si le retour demandé est déjà enregistré ; un rendez-vous annulé ne génère pas de préparation.
+- Une demande de débrief n’apparaît pas si le retour demandé est déjà enregistré ; un rendez-vous annulé ne génère pas de préparation.
 - Une nouvelle réponse ou l’intervention d’un collègue invalide la relance devenue inutile, sans prétendre que toutes les tâches de ce candidat sont terminées.
 - Une scorecard avec critère inconnu génère une question, sans inventer une note ni une décision.
-- Deux recruteurs acceptant la même proposition retrouvent une seule tâche et le même responsable.
+- Préparer produit un aperçu modifiable de tous les effets ; annuler le laisse sans effet et les brouillons restent cohérents entre chat et fiche.
+- Deux recruteurs validant le même effet retrouvent une seule exécution et le résultat correspondant ; une double validation ne duplique ni document ni message.
+- Une modification concurrente de la cible ou une nouvelle interaction fait relire le plan concerné avant toute écriture.
+- Un envoi en échec après un enregistrement réussi montre les deux résultats séparément ; reprendre ne recrée pas le document et ne rejoue pas les autres effets réussis. Un résultat d’envoi inconnu est vérifié avant tout nouvel essai.
 - Un candidat engagé sur deux missions garde des propositions distinctes et des sources correctement rattachées.
 - Un utilisateur sans droit sur une source ne voit ni son contenu, ni un résumé qui le révèle.
 - Une panne ou une collecte partielle n’est pas traitée comme une absence ; un changement d’organisation ou de compte n’expose pas l’ancien contexte.
-- Reporter ou écarter reste durable, et aucune proposition ne crée un message, une invitation ou un changement de statut sans le geste correspondant.
+- Reporter ou écarter reste durable, et aucun message, invitation ou changement de statut n’est exécuté sans validation explicite de cet effet. Une tâche n’est créée que pour du travail réellement différé.

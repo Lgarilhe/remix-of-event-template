@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Préparer et appliquer des actions concrètes depuis le chat
+
+**Fait** : la démo propose des contenus préparés et des modifications concrètes : brief et questions d’entretien ; commentaire d’équipe avec mention et réponse Outlook ; questions de scorecard et email Gmail ciblé. Le parcours « Préparer », aperçu modifiable, puis « Enregistrer la préparation » ou « Envoyer et enregistrer » applique les deux effets en mémoire. Les documents et commentaires sont visibles dans l’onglet Actions de la fiche fictive, les emails simulés dans le même fil d’interactions. Le résultat s’ouvre en lecture seule. Les brouillons relus et résultats sont partagés entre chat et fiche ; fermer l’aperçu ne les applique pas, une validation double ne les duplique pas, quitter la démo les efface.
+**Décision** : les propositions portent du travail exécutable, une tâche restant utile pour du travail réellement différé. La spécification décrit des effets typés, leur aperçu, leurs destinations, les droits et conflits, des résultats durables par effet et la reprise partielle. Les écritures internes et envois externes ne sont pas présentés comme une transaction atomique. Aucun moteur IA ni service d’envoi réel ajouté à cette démo.
+**Validation** : sept parcours Chromium avec composants réels et services simulés, de 320 à 1920 px, clair/sombre et hauteur de 500 px. Aperçu avant effet, champ vide bloquant la validation, contenu retouché conservé entre les vues puis appliqué, résultat readonly, double clic sans doublon de document ou message, rejet réversible, isolation par candidat, focus clavier, logos et réponses fictives. Six régressions profil/interactions réussies avec pagination, compte personnel, cache isolé et erreurs partielles. Build réussi, lint ciblé propre, quatre fichiers UX réussis, dette design inchangée ; 11 diagnostics TypeScript hérités identiques au contrôle précédent. Aucun appel de génération, envoi ni écriture serveur dans les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparer puis appliquer deux effets, retrouver les contenus enregistrés dans la fiche et le message dans le chat | PASS |
+| Claire | Aperçu éditable montrant destinations, destinataire, objet et service avant un bouton de validation explicite | PASS |
+| Théo | Texte vide, fermeture sans effet, brouillon partagé, double validation unique, changement de candidat et remise à zéro | PASS |
+| Sophie | Préparation, édition, validation et réponse à 320/390 px, hauteur de 500 px ; boutons de 44 px et focus restauré | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Vérification sur Chromium avec services simulés, sans compte recruteur réel ni appareil iOS physique. Le critère de scorecard reste non évalué ; la mention d’équipe et les envois sont fictifs.
+
 ## 2026-10-07 — REFACTOR — Clarifier la prochaine action dans la démo de messagerie
 
 **Fait** : une seule prochaine action suit les échanges récents, avec titre, motif court et bouton « Ajouter à mes tâches ». « Pourquoi ? » ouvre le responsable, l’échéance et des sources résumées avec logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil. La fiche fictive et le chat partagent toujours l’état des tâches. Retour du focus à la fermeture du détail et après un rejet ; une modification de tâche ne déplace pas la lecture en cours.
