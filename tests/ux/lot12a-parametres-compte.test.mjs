@@ -337,7 +337,7 @@ test('F-66 — squelettes pour les blocs, confirmations destructives d’une seu
 test('F-21 — dissocier l’adresse e-mail passe par une confirmation', () => {
   const calls = [...src.email.matchAll(/handleUnlink/g)];
   assert.equal(calls.length, 2, 'définition et un seul appel');
-  assert.match(src.email, /<AlertDialogAction onClick=\{handleUnlink\} className="bg-destructive">/);
+  assert.match(src.email, /<AlertDialogAction onClick=\{handleUnlink\} className="bg-destructive" disabled=\{isUnlinking\}>/);
 });
 
 // ---------------------------------------------------------------- Illustrations

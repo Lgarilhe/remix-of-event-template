@@ -1,5 +1,14 @@
 -- Durable, private reviewed plans; per-effect reservations and truthful outcomes.
 -- All writes are service-only RPCs after the authenticated endpoint rereads context.
+-- A provider account ID is an attested sender binding, not a browser claim.
+-- Preserve organization metadata reads used by existing multi-sender screens.
+REVOKE ALL ON public.member_email_accounts FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.member_email_accounts TO authenticated;
+DROP POLICY IF EXISTS "member_email_accounts_insert" ON public.member_email_accounts;
+DROP POLICY IF EXISTS "member_email_accounts_update" ON public.member_email_accounts;
+DROP POLICY IF EXISTS "member_email_accounts_delete" ON public.member_email_accounts;
+GRANT ALL ON public.member_email_accounts TO service_role;
+
 CREATE TABLE public.candidate_action_plans (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,

@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
     // jamais bloquées par l'absence d'identifiants du prestataire, sinon
     // « Dissocier » et le retrait d'un membre deviennent impossibles sur une
     // organisation (ou un environnement) sans intégration LinkedIn.
-    const DATABASE_ONLY_ACTIONS = new Set(['unlink_linkedin_account', 'stop_member_linkedin']);
+    const DATABASE_ONLY_ACTIONS = new Set(['unlink_linkedin_account', 'stop_member_linkedin', 'unlink_email_account']);
     const credentials = await resolveUnipileCredentials(organizationId);
     if (!credentials && !DATABASE_ONLY_ACTIONS.has(action)) {
       return new Response(
@@ -478,6 +478,35 @@ Deno.serve(async (req) => {
           JSON.stringify({ success: true, accounts: linkedinAccounts }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+
+      case 'unlink_email_account': {
+        const mappingId = typeof params.mapping_id === 'string' ? params.mapping_id.trim() : '';
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mappingId)) {
+          throw new HttpError(400, 'Liaison e-mail invalide');
+        }
+        const expectedAccountId = typeof params.expected_account_id === 'string' ? params.expected_account_id.trim() : '';
+        if (!expectedAccountId) throw new HttpError(400, 'Compte e-mail attendu manquant');
+        // The current user can remove only their attested binding. No arbitrary
+        // account claim, administrator reassignment or client-supplied status.
+        const { data: mapping, error: mappingError } = await adminClient.from('member_email_accounts')
+          .select('id,email_account_id').eq('id', mappingId)
+          .eq('organization_id', organizationId).eq('user_id', user.id).maybeSingle();
+        if (mappingError) throw new HttpError(500, 'Impossible de vérifier votre compte e-mail');
+        if (!mapping) throw new HttpError(403, 'Cette liaison e-mail ne vous appartient pas');
+        if (mapping.email_account_id !== expectedAccountId) {
+          throw new HttpError(409, 'Cette liaison a changé. Actualisez avant de réessayer.');
+        }
+        // Dissociation preserves the existing UX: the remote mailbox and its
+        // messages remain intact. Linking requires a new signed hosted callback.
+        const { data: removed, error: removeError } = await adminClient.from('member_email_accounts')
+          .delete().eq('id', mapping.id).eq('organization_id', organizationId)
+          .eq('user_id', user.id).eq('email_account_id', expectedAccountId).select('id');
+        if (removeError) throw new HttpError(500, 'La dissociation n’a pas été enregistrée');
+        if (removed?.length !== 1) throw new HttpError(409, 'Cette liaison a changé. Actualisez avant de réessayer.');
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       case 'list_email': {

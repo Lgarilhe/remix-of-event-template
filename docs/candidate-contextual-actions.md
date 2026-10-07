@@ -12,7 +12,7 @@ Les propositions et textes modifiés persistent dans `candidate_action_plans` et
 
 Les e-mails et messages WhatsApp identifiés sont conservés dans `candidate_action_messages`, indépendamment de l’état d’une séquence. Les réponses à une demande d’équipe sont rattachées par le fil ou l’identifiant de réponse, jamais par le seul nom du collègue. Le fil candidat et la coordination d’équipe restent distincts. Les brouillons et messages entrants d’une boîte personnelle restent privés ; les envois réalisés et les données de mission sont partagés selon les droits existants. L’export et l’effacement incluent ces nouvelles données.
 
-Les canaux disponibles proviennent des comptes personnels reliés dans **Paramètres → Mon compte → Connexions**. WhatsApp dispose d’une connexion par QR code, d’une reconnexion et d’une déconnexion personnelles. Aucun compte de collègue ne sert à envoyer à sa place. Les coordonnées, le compte d’envoi, les droits, les exclusions et les limites du canal sont revérifiés lors de la validation et de l’exécution.
+Les canaux disponibles proviennent des comptes personnels reliés dans **Paramètres → Mon compte → Connexions**. Les associations e-mail et WhatsApp sont enregistrées par le serveur après un retour de connexion signé ; le navigateur ne peut ni revendiquer un identifiant de compte ni modifier son propriétaire ou son statut. WhatsApp dispose d’une connexion par QR code, d’une reconnexion et d’une déconnexion personnelles. Aucun compte de collègue ne sert à envoyer à sa place. Les coordonnées, le compte d’envoi, les droits, les exclusions et les limites du canal sont revérifiés lors de la validation et de l’exécution.
 
 ## Aperçu fictif
 

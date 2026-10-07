@@ -1,7 +1,9 @@
 /** Vraies Auth/RLS/RPC/edge functions locales ; tous les prestataires sont simulés. */
 import { test, expect } from '@playwright/test';
+import { createHmac } from 'node:crypto';
+import { E2E } from '../helpers/env';
 import { admin, addMember, createOrg, deleteOrg, seedCandidateRow, seedMission, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
-import { callFunction, engineAvailable, ENGINE_SKIP_REASON, mockCalls, rand, setMockMode, setPaidPlan, webhook } from '../helpers/sequence-engine';
+import { callFunction, engineAvailable, ENGINE_SKIP_REASON, mockCalls, postJson, rand, setMockMode, setPaidPlan, webhook, WEBHOOK_SECRET } from '../helpers/sequence-engine';
 import type { CandidateActionPlan, CandidateActionScope } from '../../supabase/functions/_shared/candidate-actions/types';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
@@ -67,6 +69,56 @@ async function execute(f: Awaited<ReturnType<typeof setup>>, plan: CandidateActi
   return res.body.plan as CandidateActionPlan;
 }
 async function sends(accountId: string) { return (await mockCalls(accountId)).filter(c => c.method === 'POST' && c.path === '/api/v1/emails'); }
+
+test('@critical liaison e-mail attestée : revendication REST refusée, callback signé et dissociation exacte', async () => {
+  const f = await setup();
+  const browserHeaders = { apikey: E2E.anonKey, Authorization: `Bearer ${f.token}`, 'Content-Type': 'application/json' };
+  for (const [method, suffix, body] of [
+    ['POST', '', { organization_id: f.org.orgId, user_id: f.org.owner.userId, linked_by: f.org.owner.userId,
+      email_account_id: `forged_${rand()}`, account_status: 'OK' }],
+    ['PATCH', `?email_account_id=eq.${f.accountId}`, { email_account_id: `forged_${rand()}`, account_status: 'OK' }],
+  ] as const) {
+    const response = await fetch(`${E2E.supabaseUrl}/rest/v1/member_email_accounts${suffix}`, {
+      method, headers: browserHeaders, body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    expect(response.status, JSON.stringify(result)).toBe(403);
+    expect(result.code).toBe('42501');
+  }
+  const hostedAccountId = `email_hosted_${rand()}`;
+  mockKeys.push(hostedAccountId);
+  await setMockMode(hostedAccountId, { routes: [{ method: 'GET', unscoped: true, path: `^/api/v1/accounts/${hostedAccountId}$`, body: {
+    id: hostedAccountId, type: 'GOOGLE', name: f.org.owner.email, sources: [{ status: 'OK' }],
+    connection_params: { mail: { imap_user: f.org.owner.email } },
+  } }] });
+  const state = `user:${f.org.owner.userId}|org:${f.org.orgId}|providers:GOOGLE|expires:${Date.now() + 10 * 60_000}`;
+  const signature = createHmac('sha256', WEBHOOK_SECRET).update(state).digest('hex');
+  const payload = { status: 'CREATION_SUCCESS', account_id: hostedAccountId, name: state };
+  const rejected = await postJson('/functions/v1/unipile-webhook?hosted_sig=invalid', payload);
+  expect(rejected.status).toBe(401);
+  const connected = await postJson(`/functions/v1/unipile-webhook?hosted_sig=${signature}`, payload);
+  expect(connected.status, JSON.stringify(connected.body)).toBe(200);
+  const { data: mapping, error } = await admin().from('member_email_accounts').select('*').eq('email_account_id', hostedAccountId).single();
+  expect(error).toBeNull();
+  expect(mapping).toMatchObject({ organization_id: f.org.orgId, user_id: f.org.owner.userId,
+    linked_by: f.org.owner.userId, email_address: f.org.owner.email, account_status: 'OK' });
+  const foreign = await createOrg('agency', 'E2E foreign mailbox');
+  orgs.push({ org: foreign, members: [] });
+  const { data: foreignMapping, error: foreignError } = await admin().from('member_email_accounts').insert({
+    organization_id: foreign.orgId, user_id: foreign.owner.userId, linked_by: foreign.owner.userId, email_account_id: `foreign_${rand()}`,
+  }).select('*').single();
+  expect(foreignError).toBeNull();
+  const remove = (mappingId: string, expectedAccountId: string) => callFunction('unipile-accounts', f.token, {
+    action: 'unlink_email_account', organization_id: f.org.orgId, mapping_id: mappingId, expected_account_id: expectedAccountId,
+  });
+  expect((await remove(foreignMapping!.id, foreignMapping!.email_account_id)).status).toBe(403);
+  expect((await remove(mapping!.id, 'previous-account-id')).status).toBe(409);
+  const removed = await remove(mapping!.id, hostedAccountId);
+  expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+  const remaining = await admin().from('member_email_accounts').select('id').eq('id', mapping!.id);
+  expect(remaining.data).toEqual([]);
+  expect((await mockCalls()).filter(call => call.method === 'DELETE' && call.path === `/api/v1/accounts/${hostedAccountId}`)).toHaveLength(0);
+});
 
 test('@critical préparation durable, modification et validation : aucun envoi avant confirmation ; exécution concurrente une seule fois', async () => {
   const f = await setup();

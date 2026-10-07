@@ -46,7 +46,7 @@ const unipileWebhook = readFileSync(
   'utf8',
 );
 const emailRlsMigration = readFileSync(
-  new URL('../../supabase/migrations/20260716130000_harden_member_email_account_writes.sql', import.meta.url),
+  new URL('../../supabase/migrations/20261007222116_candidate_contextual_actions.sql', import.meta.url),
   'utf8',
 );
 
@@ -144,10 +144,16 @@ test('email status and existing send path never fall back to a teammate mailbox'
   assert.doesNotMatch(unipileAccounts, /keyPrefix=/);
 });
 
-test('email mappings are self-write-only and hosted auth routes email accounts correctly', () => {
-  assert.match(emailRlsMigration, /user_id = auth\.uid\(\)/g);
-  assert.match(emailRlsMigration, /linked_by = auth\.uid\(\)/g);
-  assert.match(emailRlsMigration, /WITH CHECK/);
+test('email mappings are service-write-only and hosted auth routes email accounts correctly', () => {
+  assert.match(emailRlsMigration, /REVOKE ALL ON public\.member_email_accounts FROM PUBLIC, anon, authenticated/);
+  assert.match(emailRlsMigration, /GRANT SELECT ON public\.member_email_accounts TO authenticated/);
+  for (const operation of ['insert', 'update', 'delete']) {
+    assert.match(emailRlsMigration, new RegExp(`DROP POLICY IF EXISTS "member_email_accounts_${operation}" ON public\\.member_email_accounts`));
+  }
+  assert.match(emailRlsMigration, /GRANT ALL ON public\.member_email_accounts TO service_role/);
+  const emailMappingHook = readFileSync(new URL('../../src/hooks/useMemberEmailAccounts.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(emailMappingHook, /\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
+  assert.match(emailMappingHook, /action: 'unlink_email_account'/);
   assert.match(unipileWebhook, /EMAIL_ACCOUNT_TYPES/);
   assert.match(unipileWebhook, /\.from\('member_email_accounts'\)/);
   assert.match(unipileWebhook, /Refusing to reassign an email account to another user/);

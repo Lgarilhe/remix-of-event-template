@@ -26,6 +26,10 @@ BEGIN
          (org_a, peer_user, 'fixture-wa-peer', 'OK'),
          (org_b, foreign_user, 'fixture-wa-foreign', 'OK'),
          (org_b, own_user, 'fixture-wa-own-other-org', 'OK');
+  INSERT INTO public.member_email_accounts (organization_id, user_id, email_account_id, email_address, linked_by)
+  VALUES (org_a, own_user, 'fixture-email-own', 'wa-own@fixture.test', own_user),
+         (org_a, peer_user, 'fixture-email-peer', 'wa-peer@fixture.test', peer_user),
+         (org_b, foreign_user, 'fixture-email-foreign', 'wa-foreign@fixture.test', foreign_user);
   INSERT INTO public.candidate_action_messages
     (organization_id, candidate_id, owner_user_id, account_id, channel, service, audience, direction,
      provider_message_id, counterpart, sender, recipient, content, occurred_at)
@@ -38,6 +42,34 @@ BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('sub', own_user, 'role', 'authenticated')::text, true);
   PERFORM set_config('request.jwt.claim.sub', own_user::text, true);
   SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO count_rows FROM public.member_email_accounts;
+  IF count_rows <> 2 THEN RAISE EXCEPTION 'Email organization metadata reads changed or leaked another organization: %', count_rows; END IF;
+  IF has_table_privilege('authenticated', 'public.member_email_accounts', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.member_email_accounts', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.member_email_accounts', 'DELETE')
+     OR has_table_privilege('authenticated', 'public.member_email_accounts', 'TRUNCATE')
+     OR has_table_privilege('anon', 'public.member_email_accounts', 'INSERT')
+     OR has_table_privilege('anon', 'public.member_email_accounts', 'UPDATE')
+     OR has_table_privilege('anon', 'public.member_email_accounts', 'DELETE') THEN
+    RAISE EXCEPTION 'Browser roles retain email binding write privileges';
+  END IF;
+  refused := false;
+  BEGIN
+    -- The old policy allowed this exact forged own-user/linked-by claim.
+    INSERT INTO public.member_email_accounts (organization_id, user_id, email_account_id, linked_by, account_status)
+    VALUES (org_a, own_user, 'fixture-email-forged-provider-id', own_user, 'OK');
+  EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'Browser could forge an attested email provider account'; END IF;
+  refused := false;
+  BEGIN
+    UPDATE public.member_email_accounts SET email_account_id = 'fixture-email-forged-replacement', account_status = 'OK'
+    WHERE user_id = own_user;
+  EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'Browser could change email account identity or status'; END IF;
+  refused := false;
+  BEGIN DELETE FROM public.member_email_accounts WHERE user_id = own_user;
+  EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'Browser could remove an email sender binding'; END IF;
   SELECT count(*) INTO count_rows FROM public.member_whatsapp_accounts;
   IF count_rows <> 1 THEN RAISE EXCEPTION 'Own WhatsApp read leaked peer or inactive organization: %', count_rows; END IF;
   SELECT count(*) INTO count_rows FROM public.candidate_action_messages WHERE provider_message_id IN ('fixture-wa-inbound', 'fixture-wa-peer-inbound');
@@ -66,6 +98,14 @@ BEGIN
 
   RESET ROLE;
   SET LOCAL ROLE service_role;
+  INSERT INTO public.member_email_accounts (organization_id, user_id, email_account_id, linked_by)
+  VALUES (org_a, own_user, 'fixture-email-hosted-service', own_user);
+  UPDATE public.member_email_accounts SET account_status = 'CREDENTIALS' WHERE email_account_id = 'fixture-email-hosted-service';
+  GET DIAGNOSTICS count_rows = ROW_COUNT;
+  IF count_rows <> 1 THEN RAISE EXCEPTION 'Hosted service cannot update an email connection'; END IF;
+  DELETE FROM public.member_email_accounts WHERE email_account_id = 'fixture-email-hosted-service';
+  GET DIAGNOSTICS count_rows = ROW_COUNT;
+  IF count_rows <> 1 THEN RAISE EXCEPTION 'Own-account service cannot remove an email binding'; END IF;
   UPDATE public.member_whatsapp_accounts SET account_status = 'CREDENTIALS' WHERE whatsapp_account_id = 'fixture-wa-own';
   GET DIAGNOSTICS count_rows = ROW_COUNT;
   IF count_rows <> 1 THEN RAISE EXCEPTION 'Server cannot update verified account status'; END IF;
