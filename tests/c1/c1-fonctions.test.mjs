@@ -269,7 +269,7 @@ test('R2 : submit-application répond 410 sans rien lire ni journaliser', () => 
 test("R3 : search-agent-chat refuse la conversation d'un autre, avec ou sans organisation", () => {
   const src = read(AGENT_CHAT);
   const guard = src.indexOf('if (conv.created_by !== user.id) {');
-  const membership = src.indexOf('if (!createdConversation && conv.organization_id) {');
+  const membership = src.indexOf('if (conv.organization_id) {');
   assert.ok(guard > 0, 'contrôle de l\'auteur introuvable');
   assert.ok(membership > guard, 'le contrôle de l\'auteur précède celui de l\'appartenance');
   assert.doesNotMatch(

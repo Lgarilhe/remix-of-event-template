@@ -15,9 +15,9 @@ import {
 import {
   getRelevantInsights,
   formatInsightsForPrompt,
-  bumpInsightUsage,
   extractInsightsFromConversation,
 } from "../_shared/user-memory.ts";
+import { shouldExtractMemory, type ValidatedMemory } from "../_shared/memory-proposals.ts";
 import {
   maybeCompactConversation,
   formatSummaryForPrompt,
@@ -445,12 +445,12 @@ async function maybeGenerateTitle(
 
 /**
  * Hooks mémoire post-réponse, communs aux deux chemins (tools + streaming) :
- *   1. Extraction d'insights durables (tous les 6 messages — Sprint 3).
+ *   1. Propositions privées, sur décision explicite ou tous les 6 messages.
  *   2. Compaction : résumé glissant du contexte sorti de la fenêtre (P4.2).
  * À lancer fire-and-forget via EdgeRuntime.waitUntil — ne bloque jamais le [DONE].
  */
 // deno-lint-ignore no-explicit-any
-async function runMemoryHooks(supabase: any, conversationId: string, userId: string, orgId: string): Promise<void> {
+async function runMemoryHooks(supabase: any, conversationId: string, userId: string, orgId: string, projectId: string | null): Promise<void> {
   try {
     const { count } = await supabase
       .from("agent_messages")
@@ -458,24 +458,28 @@ async function runMemoryHooks(supabase: any, conversationId: string, userId: str
       .eq("conversation_id", conversationId);
     const total = count ?? 0;
 
-    // Tous les 6 messages, on tente une extraction (idempotent côté DB).
-    if (orgId && total >= 6 && total % 6 === 0) {
+    if (orgId && total >= 2) {
       const { data: msgs } = await supabase
         .from("agent_messages")
-        .select("role, content")
+        .select("id, role, content")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: false })
         .limit(20);
-      const formatted = (msgs ?? []).reverse().map((m: { role: string; content: unknown }) => ({
+      const formatted = (msgs ?? []).reverse().map((m: { id: string; role: string; content: unknown }) => ({
+        id: m.id,
         role: m.role,
         content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
       }));
-      await extractInsightsFromConversation(supabase, {
-        userId,
-        organizationId: orgId,
-        conversationId,
-        messages: formatted,
-      }).catch((e) => console.warn("[search-agent-chat] insight extraction failed:", e));
+      if (shouldExtractMemory(formatted, total)) {
+        const extraction = await extractInsightsFromConversation(supabase, {
+          userId,
+          organizationId: orgId,
+          conversationId,
+          projectId,
+          messages: formatted,
+        });
+        if (extraction.error) console.warn("[search-agent-chat] memory proposal skipped:", extraction.error);
+      }
     }
 
     // Compaction (no-op tant que la conversation tient dans la fenêtre de 24).
@@ -502,7 +506,9 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify user
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
     const { data: { user }, error: authError } = await (anonClient as any).auth.getUser(
       authHeader?.replace("Bearer ", "") || ""
     );
@@ -560,7 +566,7 @@ Deno.serve(async (req) => {
     // row lui-même). Le client web continue de créer côté RLS ; ce chemin sert
     // les autres callers (API, mobile). L'id est renvoyé en 1er event SSE.
     let createdConversation = false;
-    let conv: { organization_id: string | null; created_by: string | null } | null = null;
+    let conv: { organization_id: string | null; created_by: string | null; project_id: string | null } | null = null;
     if (!conversation_id) {
       const { data: prof } = await supabase
         .from("profiles")
@@ -574,7 +580,7 @@ Deno.serve(async (req) => {
           created_by: user.id,
           status: "calibrating",
         })
-        .select("id, organization_id, created_by")
+        .select("id, organization_id, created_by, project_id")
         .single();
       if (createErr || !created) {
         return new Response(JSON.stringify({ error: `Failed to create conversation: ${createErr?.message ?? "unknown"}` }), {
@@ -588,7 +594,7 @@ Deno.serve(async (req) => {
       // Verify user belongs to the conversation's organization
       const { data: existing } = await supabase
         .from("agent_conversations")
-        .select("organization_id, created_by, summary")
+        .select("organization_id, created_by, project_id, summary")
         .eq("id", conversation_id)
         .single();
       conv = existing;
@@ -609,7 +615,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!createdConversation && conv.organization_id) {
+    if (conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
         .select("id")
@@ -627,6 +633,59 @@ Deno.serve(async (req) => {
       if (!membership) {
         return new Response(JSON.stringify({ error: "Forbidden" }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // La mission appartient à la conversation, pas à la page visitée ensuite.
+    // Le chemin de création API peut la lier une fois, après contrôle RLS avec
+    // le JWT de l'auteur ; une ancienne conversation non liée reste générale.
+    const requestedMemoryProject = conv.project_id ?? (createdConversation
+      ? project_id ?? app_context?.missionId ?? null : null);
+    let memoryProjectId: string | null = null;
+    if (requestedMemoryProject) {
+      if (typeof requestedMemoryProject !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedMemoryProject) ||
+        !conv.organization_id) {
+        return new Response(JSON.stringify({ error: "Invalid memory mission context" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: visibleProject, error: projectError } = await anonClient
+        .from("sourcing_projects").select("id")
+        .eq("id", requestedMemoryProject).eq("organization_id", conv.organization_id).maybeSingle();
+      if (projectError || !visibleProject) {
+        return new Response(JSON.stringify({ error: "Mission context unavailable" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      memoryProjectId = visibleProject.id;
+      if (createdConversation && !conv.project_id) {
+        const { error: bindError } = await anonClient.from("agent_conversations")
+          .update({ project_id: memoryProjectId }).eq("id", conversation_id).is("project_id", null);
+        if (bindError) {
+          return new Response(JSON.stringify({ error: "Mission context could not be linked" }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        conv.project_id = memoryProjectId;
+      }
+    }
+
+    // Une mémoire indisponible peut cacher une contrainte validée. Refuser
+    // avant tout appel modèle/écriture plutôt que continuer sans ces règles.
+    let validatedMemories: ValidatedMemory[] = [];
+    if (conv.organization_id) {
+      try {
+        validatedMemories = await getRelevantInsights(anonClient, {
+          userId: user.id,
+          organizationId: conv.organization_id,
+          projectId: memoryProjectId,
+        });
+      } catch (error) {
+        console.error("[search-agent-chat] memory context unavailable:", error);
+        return new Response(JSON.stringify({ error: "La mémoire de l’assistant n’a pas pu être chargée. Réessayez." }), {
+          status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
@@ -832,24 +891,6 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       activeSystemPrompt = freeSystemPrompt;
     }
 
-    // Pré-LLM parallélisé : insights mémoire, contexte IA org/user et
-    // classifieur B.2 sont indépendants — les attendre en série coûtait
-    // ~0,5-1s de latence avant le premier octet sur CHAQUE message.
-    // Sprint 3 — Mémoire cross-session : injection des user_insights
-    // pertinents en début de system prompt (juste sous le rôle).
-    const insightsPromise = (async () => {
-      try {
-        return await getRelevantInsights(supabase, {
-          userId: user.id,
-          organizationId: orgId,
-          limit: 8,
-        });
-      } catch (e) {
-        console.warn('[search-agent-chat] user-memory injection skipped:', e);
-        return [];
-      }
-    })();
-
     // Contexte IA user/org (Settings → Contexte IA) — injecté en bloc system
     // séparé, AVANT le prompt opérationnel. Fail-soft : "" si rien configuré.
     const aiContextPromise = (async () => {
@@ -987,14 +1028,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       }
     })();
 
-    // Jointure des trois chargements parallèles.
-    const [insights, aiContextBlock, clfResult] = await Promise.all([
-      insightsPromise, aiContextPromise, classifierPromise,
+    // Les autres chargements pré-LLM restent indépendants et parallèles.
+    const [aiContextBlock, clfResult] = await Promise.all([
+      aiContextPromise, classifierPromise,
     ]);
-    if (insights.length > 0) {
-      activeSystemPrompt = activeSystemPrompt + formatInsightsForPrompt(insights);
-      // Fire-and-forget bump (ne bloque pas la conv)
-      bumpInsightUsage(supabase, insights.map((i) => i.id)).catch(() => {});
+    if (validatedMemories.length > 0) {
+      activeSystemPrompt = activeSystemPrompt + formatInsightsForPrompt(validatedMemories);
     }
     // Compaction (P4.2) : si la conversation a débordé de la fenêtre de 24
     // messages, un résumé glissant du contexte ancien existe sur la
@@ -1811,7 +1850,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
               // Hooks mémoire (insights Sprint 3 + compaction P4.2) —
               // fire-and-forget, survit à la fermeture du stream via waitUntil.
-              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId);
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId, memoryProjectId);
               try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
               memoryPromise.catch(() => {});
             }
@@ -1967,7 +2006,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // Hooks mémoire (insights + compaction) — P4.3 : le chemin
               // streaming simple n'extrayait JAMAIS d'insights, seule la
               // boucle d'outils le faisait. Fire-and-forget via waitUntil.
-              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId);
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId, memoryProjectId);
               try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
               memoryPromise.catch(() => {});
             }

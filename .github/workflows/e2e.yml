@@ -20,6 +20,7 @@ on:
       - 'supabase/**'
       - 'playwright.config.ts'
       - 'package.json'
+      - '.github/workflows/e2e.yml'
   workflow_dispatch:
     inputs:
       grep:
@@ -167,6 +168,8 @@ jobs:
           DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/assistant_conversations_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/agent_memory_audit.sql -c 'ROLLBACK;'
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/client_portal_audit.sql -c 'ROLLBACK;'
           # Appel anonyme réel de la lecture du portail, par l'API avec la clé

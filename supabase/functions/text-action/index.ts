@@ -601,20 +601,26 @@ Génère maintenant la réponse JSON.`;
       omitTone: sequenceContext,
     });
 
-    // Mémoire cross-session (P1.4) : les insights appris par le Copilot
-    // (style de message, préférences, secteur) profitent aussi aux actions
-    // texte inline. Fail-soft — l'absence de mémoire ne bloque rien.
+    // Mémoires confirmées : lecture sous le JWT utilisateur, avec la mission
+    // de la séquence lorsqu'elle est connue. Un échec ne doit pas ignorer ses contraintes.
     if (userId && body.organization_id) {
       try {
         const { getRelevantInsights, formatInsightsForPrompt } = await import("../_shared/user-memory.ts");
-        const insights = await getRelevantInsights(adminClient, {
+        const memoryClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+          global: { headers: { Authorization: req.headers.get('authorization')! } },
+        });
+        const insights = await getRelevantInsights(memoryClient, {
           userId,
           organizationId: body.organization_id as string,
-          limit: 5,
+          projectId: sequenceContext ? body.mission_id ?? null : null,
         });
         aiContext = (aiContext || "") + formatInsightsForPrompt(insights);
       } catch (e) {
-        console.warn("[text-action] user-memory injection skipped:", e);
+        console.error("[text-action] memory context unavailable:", e);
+        return json({
+          error: "La mémoire de l’assistant n’a pas pu être lue. Réessayez dans un instant.",
+          error_code: "MEMORY_CONTEXT_UNAVAILABLE",
+        }, 503);
       }
     }
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { History, ArrowLeft, SquarePen, X, ChevronRight } from 'lucide-react';
+import { History, ArrowLeft, Brain, SquarePen, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ import { RESERVED_BUILTIN_CONNECTORS, connectorLabel } from '@/lib/assistantConn
 import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
+import { AgentMemoryProposals } from './AgentMemoryProposals';
+import { AgentMemoryDialog } from './AgentMemoryDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isUsableNotionConnection, useNotionMcpStatus } from '@/hooks/useNotionMcpStatus';
 import { useEmailConnectorStatus, type EmailConnectorProvider } from '@/hooks/useEmailConnectorStatus';
@@ -129,6 +131,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   // Notion-AI-style: land directly in the chat. History/new conversation is
   // reachable from the header control, not a launcher screen.
   const [showList, setShowList] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -145,6 +148,21 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
   const { organizationId } = useOrganization();
   const { user } = useAuthReady();
+  // A resumed conversation keeps its own mission, even after navigating elsewhere.
+  const conversationMemoryContext = useQuery({
+    queryKey: ['agent-memory', 'conversation', organizationId, user?.id, conversationId],
+    queryFn: async () => {
+      if (!conversationId) return null;
+      const { data, error } = await supabase.from('agent_conversations')
+        .select('project_id, job_title').eq('id', conversationId).eq('organization_id', organizationId).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: Boolean(organizationId && user && conversationId),
+  });
+  const memoryProjectId = conversationId
+    ? conversationMemoryContext.data?.project_id ?? null
+    : projectId ?? appContext.missionId;
   const notionStatusQuery = useNotionMcpStatus(organizationId, user?.id);
   const emailStatusQuery = useEmailConnectorStatus(organizationId, user?.id);
   const { data: organizationMcpServers = [], isLoading: mcpServersLoading } = useQuery({
@@ -318,7 +336,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         job_title: job?.title || null,
         // Mission d'origine (Copilot ouvert depuis une mission ou une recherche) :
         // rattache la conversation à son projet.
-        project_id: projectId || null,
+        project_id: projectId || appContextRef.current.missionId || null,
         status: 'calibrating',
       })
       .select()
@@ -533,6 +551,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         <HeaderIconButton label="Nouvelle conversation" onClick={() => handleNewConversation()}>
           <SquarePen aria-hidden="true" />
         </HeaderIconButton>
+        <HeaderIconButton label="Mémoire de l’assistant" onClick={() => setMemoryOpen(true)}>
+          <Brain aria-hidden="true" />
+        </HeaderIconButton>
         {/* Fermeture. Le tiroir masque la croix native du Sheet
             (`[&>button]:hidden` dans AgentDrawer), et sur mobile il occupe
             toute la largeur : sans ce bouton il n'y a ni zone extérieure à
@@ -545,6 +566,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           </HeaderIconButton>
         )}
       </div>
+
+      <AgentMemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} projectId={memoryProjectId}
+        projectTitle={conversationMemoryContext.data?.job_title ?? appContext.missionTitle}
+        contextLoading={Boolean(conversationId && conversationMemoryContext.isPending)}
+        contextError={Boolean(conversationId && conversationMemoryContext.isError)}
+        onRetryContext={() => void conversationMemoryContext.refetch()} />
+
+      <AgentMemoryProposals conversationId={conversationId} />
 
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
       <AgentToolApprovalCard conversationId={conversationId} />
@@ -559,6 +588,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <Spinner label="Chargement de la conversation" />
         </div>
       ) : (
+        <div className="min-h-0 flex-1 overflow-hidden">
         <ChatThread
           key={seedKey}
           adapter={adapter}
@@ -581,6 +611,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             />
           }
         />
+        </div>
       )}
     </div>
   );
