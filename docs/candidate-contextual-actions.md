@@ -4,7 +4,9 @@ La messagerie et les fiches candidat doivent proposer la prochaine action utile 
 
 ## Première version
 
-La démo `/inbox?demo=1` illustre trois situations : préparer un échange confirmé avec un sujet issu d’une publication LinkedIn fictive, se coordonner avec un collègue qui attend déjà une information du manager, et clarifier un critère non évalué dans une scorecard. Les propositions, sources complémentaires et tâches sont fictives, écrites pour cet aperçu, conservées en mémoire. Créer, terminer ou écarter une tâche ne touche aucun service. La fiche fictive et le contexte de la messagerie partagent le même état.
+La démo `/inbox?demo=1` illustre trois situations : préparer un échange confirmé avec un sujet issu d’une publication LinkedIn fictive, se coordonner avec un collègue qui attend déjà une information du manager, et clarifier un critère non évalué dans une scorecard. Le chat s’ouvre sur les échanges récents. Une seule « Prochaine action » suit l’historique, avec un titre, un motif court et « Ajouter à mes tâches ». « Pourquoi ? » ouvre le responsable, l’échéance et les sources datées avec leurs logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil du candidat.
+
+Les propositions, sources complémentaires et tâches sont fictives, écrites pour cet aperçu, conservées en mémoire. Ajouter, terminer ou ignorer une tâche ne touche aucun service. La messagerie et l’onglet Actions de la fiche fictive partagent le même état. Le rejet est réversible ; quitter la démo efface les essais.
 
 Le moteur réel reste à brancher. Cette proposition reprend les procédures Notion actuelles ; les intégrations décrites pour Notion et n8n ne prouvent pas leur disponibilité dans l’app.
 

@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Clarifier la prochaine action dans la démo de messagerie
+
+**Fait** : une seule prochaine action suit les échanges récents, avec titre, motif court et bouton « Ajouter à mes tâches ». « Pourquoi ? » ouvre le responsable, l’échéance et des sources résumées avec logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil. La fiche fictive et le chat partagent toujours l’état des tâches. Retour du focus à la fermeture du détail et après un rejet ; une modification de tâche ne déplace pas la lecture en cours.
+**Raison** : le panneau précédent mélangeait le contexte et les propositions, avec trop de détails visibles et un bouton de création ambigu. La proposition est maintenant près de la réponse, dans le contenu qui défile, pour préserver l’espace de lecture sur mobile. Bandeau et boutons raccourcis sur petit écran ; les trois canaux restent sur une ligne à 320 px.
+**Validation** : neuf parcours Chromium sur les composants réels avec services simulés, de 320 à 1920 px, clair/sombre et hauteur de 500 px : sources à la demande, boutons visibles dès l’ouverture, logos chargés, focus clavier, détail depuis la fiche, double clic sans doublon, tâches séparées par candidat, rejet réversible et sortie effaçant les essais. Aucun envoi ni écriture serveur. Six régressions profil/interactions avec pagination, compte personnel, erreurs partielles et cache isolé réussies. Build réussi, quatre fichiers de régression UX réussis, lint ciblé propre, dette design inchangée ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Ajouter une tâche, ouvrir son détail depuis la fiche, la terminer et retrouver le même état dans le chat sans déplacement de lecture | PASS |
+| Claire | Prochaine action et motif courts visibles dès l’ouverture ; contexte détaillé et extraits sur demande | PASS |
+| Théo | Double clic, changement de candidat, rejet réversible et remise à zéro ; aucune écriture ni génération distante | PASS |
+| Sophie | Répondre, ouvrir et fermer le détail à 320/390 px, hauteur de 500 px ; boutons de 44 px et aucun débordement | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Vérification sur Chromium avec données simulées, sans session recruteur réelle ni appareil iOS physique.
+
 ## 2026-10-07 — SPEC — Actions proposées selon les interactions et le contexte candidat
 
 **Fait** : démo enrichie de trois propositions sourcées : préparation d’entretien avec contexte LinkedIn, coordination avec un autre recruteur et clarification d’un critère non évalué dans une scorecard. Sources datées, auteur et logos des services, responsable et échéance suggérés. Création, achèvement et rejet simulés en mémoire, état partagé entre le contexte du chat et l’onglet Actions de la fiche fictive, effacement à la sortie. Les exemples sont écrits pour l’aperçu ; aucun moteur IA réel ni tâche serveur ajouté.

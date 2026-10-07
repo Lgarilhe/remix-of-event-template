@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, PanelRight, Send } from 'lucide-react';
 import { CandidateInteractionTimeline } from './CandidateInteractionTimeline';
 import { CandidateProfileContent } from './CandidateProfileContent';
@@ -37,13 +37,17 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
   const selected = conversations.find(conversation => conversation.id === selectedId) ?? null;
   const events = useMemo(() => selected ? [...selected.events, ...(replies[selected.id] ?? [])].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)) : [], [selected, replies]);
   const draft = selected ? drafts[selected.id] ?? '' : '';
-  const actions = selected && <DemoCandidateActions actions={suggestedActions[selected.id]} statuses={actionStatuses} onStatusChange={(id, status) => setActionStatuses(previous => {
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end' }));
+    return () => cancelAnimationFrame(frame);
+  }, [selectedId]);
+  const actions = selected && <DemoCandidateActions key={selected.id} actions={suggestedActions[selected.id]} statuses={actionStatuses} onStatusChange={(id, status) => setActionStatuses(previous => {
     const next = { ...previous };
     if (status) next[id] = status;
     else delete next[id];
     return next;
   })} />;
-  const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} sequenceStatus="Exemple de suivi candidat" followupContent={actions} readOnly onEnroll={noop} onAddToPipeline={noop} />;
+  const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} readOnly onEnroll={noop} onAddToPipeline={noop} />;
 
   function send() {
     if (!selected || !draft.trim()) return;
@@ -62,8 +66,8 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
 
   return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background" data-component="inbox-demo">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted px-3 py-2 text-xs md:px-5">
-      <p className="text-foreground-secondary"><strong className="font-semibold text-foreground">Démonstration</strong> · Candidats et échanges fictifs. Vos réponses restent dans cette démo.</p>
-      <Button variant="outline" size="sm" className="min-h-11 shrink-0 md:min-h-8" onClick={onExit}>Quitter la démo</Button>
+      <p className="text-foreground-secondary"><span className="md:hidden"><strong className="font-semibold text-foreground">Démo</strong> · Données fictives</span><span className="hidden md:inline"><strong className="font-semibold text-foreground">Démonstration</strong> · Candidats fictifs. Vos messages et tâches restent dans cet aperçu.</span></p>
+      <Button variant="outline" size="sm" aria-label="Quitter la démo" className="min-h-11 shrink-0 md:min-h-8" onClick={onExit}><span className="md:hidden">Quitter</span><span className="hidden md:inline">Quitter la démo</span></Button>
     </div>
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside className={cn('h-full w-full shrink-0 flex-col border-r border-border md:flex md:w-[320px] xl:w-[360px] 2xl:w-[380px]', selected ? 'hidden' : 'flex')}>
@@ -90,14 +94,18 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:hidden" aria-label="Retour aux conversations" onClick={() => setSelectedId(null)}><ChevronLeft aria-hidden="true" /></Button>
             <Avatar className="hidden h-10 w-10 shrink-0 sm:flex"><AvatarFallback>{initials(selected.name)}</AvatarFallback></Avatar>
             <div className="min-w-0 flex-1"><h2 className="truncate text-md font-semibold text-foreground">{selected.name}</h2><p className="truncate text-xs text-muted-foreground">{selected.headline}</p><p className="mt-1 hidden truncate text-xs text-foreground-secondary md:block">{selected.mission}</p></div>
-            <Button variant="outline" size="sm" className="min-h-11 shrink-0" onClick={() => setProfileOpen(true)}>Fiche candidat</Button>
+            <Button variant="outline" size="sm" aria-label="Fiche candidat" className="min-h-11 shrink-0" onClick={() => setProfileOpen(true)}><span className="md:hidden">Fiche</span><span className="hidden md:inline">Fiche candidat</span></Button>
             <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 2xl:hidden" aria-label="Voir le contexte candidat" onClick={() => setContextOpen(true)}><PanelRight aria-hidden="true" /></Button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6" data-component="demo-timeline">
-            <div className="mx-auto max-w-5xl"><CandidateInteractionTimeline events={events} name={selected.name} /><div ref={endRef} /></div>
+            <div className="mx-auto max-w-5xl">
+              <CandidateInteractionTimeline events={events} name={selected.name} />
+              <div className="mt-5 border-t border-border pt-4" data-component="demo-next-action">{actions}</div>
+              <div ref={endRef} />
+            </div>
           </div>
           <form className="shrink-0 space-y-2 border-t border-border bg-background p-3 md:px-5" onSubmit={event => { event.preventDefault(); send(); }}>
-            <div className="flex flex-wrap items-center gap-1" aria-label="Canal de la réponse fictive">{(['linkedin', selected.emailService, 'whatsapp'] as const).map(option => <Button type="button" key={option} variant={service === option ? 'outline' : 'ghost'} size="sm" className="min-h-11 gap-2 md:min-h-8" aria-pressed={service === option} onClick={() => setService(option)}><ServiceLogo service={option} decorative />{SERVICE_LABELS[option]}</Button>)}</div>
+            <div className="flex flex-wrap items-center gap-1" aria-label="Canal de la réponse fictive">{(['linkedin', selected.emailService, 'whatsapp'] as const).map(option => <Button type="button" key={option} variant={service === option ? 'outline' : 'ghost'} size="sm" className="min-h-11 gap-2 px-2 md:min-h-8 md:px-3" aria-pressed={service === option} onClick={() => setService(option)}><ServiceLogo service={option} decorative />{SERVICE_LABELS[option]}</Button>)}</div>
             <Textarea value={draft} onChange={event => setDrafts(previous => ({ ...previous, [selected.id]: event.target.value }))} maxLength={2000} rows={2} className="min-h-16 resize-none" aria-label="Réponse fictive" placeholder="Essayez une réponse fictive…" />
             <div className="flex items-center justify-between gap-2"><p className="text-2xs text-muted-foreground">Simulation uniquement</p><Button type="submit" variant="primary" size="sm" disabled={!draft.trim()} className="min-h-11 gap-2 md:min-h-8"><Send aria-hidden="true" />Envoyer dans la démo</Button></div>
           </form>
@@ -114,7 +122,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
             </Tabs>
           </DialogContent>
         </Dialog>
-        <Sheet open={contextOpen} onOpenChange={setContextOpen}><SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11"><SheetHeader className="p-5 pb-0"><SheetTitle>Contexte de la conversation fictive</SheetTitle></SheetHeader>{context}</SheetContent></Sheet>
+        <Sheet open={contextOpen} onOpenChange={setContextOpen}><SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11"><SheetHeader className="p-5 pb-0"><SheetTitle>Suivi et profil du candidat</SheetTitle></SheetHeader>{context}</SheetContent></Sheet>
       </div>}
     </div>
   </div>;

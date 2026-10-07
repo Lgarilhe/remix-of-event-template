@@ -26,10 +26,9 @@ interface ConversationContextProps {
   profileId?: string | null;
   profileAliases?: string[];
   profile?: LinkedInProfile;
-  followupContent?: React.ReactNode;
 }
 
-export function ConversationContext({ name, profileUrl, mission, missionUrl, probableMission, events, now, sequenceStatus, onEnroll, onAddToPipeline, readOnly = false, profileId = null, profileAliases = [], profile, followupContent }: ConversationContextProps) {
+export function ConversationContext({ name, profileUrl, mission, missionUrl, probableMission, events, now, sequenceStatus, onEnroll, onAddToPipeline, readOnly = false, profileId = null, profileAliases = [], profile }: ConversationContextProps) {
   const upcoming = events.find(event => event.type === 'booking' && Date.parse(event.timestamp) >= now && !['cancelled', 'canceled', 'completed', 'done'].includes(event.status));
   const sequence = [...events].reverse().find(event => event.sequenceName);
   const contacts = [...new Map(events.filter(event => event.recipient).map(event => [activityChannel(event), event])).values()];
@@ -45,7 +44,6 @@ export function ConversationContext({ name, profileUrl, mission, missionUrl, pro
         <TabsList className="grid h-auto w-full grid-cols-2"><TabsTrigger value="followup" className="min-h-11">Suivi</TabsTrigger><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger></TabsList>
         <TabsContent value="profile" className="mt-5">{profile ? <CandidateProfileContent profile={profile} /> : <CandidateProfilePanel profileId={profileId} profileUrl={profileUrl} profileName={name} aliases={profileAliases} />}</TabsContent>
         <TabsContent value="followup" className="mt-5 space-y-6">
-      {followupContent}
       <section>
         <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground"><Briefcase className="h-4 w-4" aria-hidden="true" />{probableMission ? 'Mission probable' : 'Mission'}</h4>
         {mission ? missionUrl ? <Link to={missionUrl} className="block min-h-11 break-words text-sm text-foreground underline-offset-4 md:min-h-0 hover:underline">{mission}</Link> : <p className="break-words text-sm text-foreground-secondary">{mission}</p> : <p className="text-xs text-muted-foreground">Aucune mission rattachée</p>}
