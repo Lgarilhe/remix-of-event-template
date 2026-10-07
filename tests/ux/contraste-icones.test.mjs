@@ -319,7 +319,7 @@ test('cohérence entre écrans : un même geste a la même couleur, un statut ga
   assert.match(project, /isAdded \? 'text-success disabled:text-success'/, '« Shortlisté »');
   // Bouton à contour repeint d'un aplat de couleur : bord transparent et texte blanc, jamais l'encre sur le
   // bleu LinkedIn (3,25:1 en clair) ni le vert d'état en sombre (2,21:1) ; désactivé sur fond gris.
-  for (const rel of ['src/components/outreach/LinkedInAccountManager.tsx', 'src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/SceneLinkedIn.tsx']) {
+  for (const rel of ['src/components/outreach/LinkedInAccountManager.tsx', 'src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/scenes/SceneLinkedIn.tsx']) {
     for (const m of read(rel).matchAll(/className="([^"]*\bbg-linkedin\b[^"]*)"/g)) {
       if (!/<Button\b[^<]*$/.test(read(rel).slice(0, m.index))) continue;
       assert.match(m[1], /\bborder-transparent\b/, `${rel} : bord`);

@@ -92,12 +92,27 @@ export async function generateFiltersFromJob(params: {
     throw new Error(data?.error || "Réponse invalide de l'API");
   }
 
-  const generated = data.filters;
   const suggestions =
     data.suggestions && Object.values(data.suggestions).some(v => Array.isArray(v) && v.length > 0)
       ? data.suggestions
       : null;
 
+  const { update, filterCount } = await mapGeneratedFilters(data.filters, { accountId, currentLocation });
+  return { update, suggestions, filterCount };
+}
+
+/**
+ * Mappe les filtres au format IA (`generate-search-filters`) vers
+ * LinkedInFiltersState. Sépare de l'appel IA : l'onboarding relit les filtres
+ * enregistrés sur la mission au moment de la première recherche, sans
+ * repayer l'analyse. Les lieux sont résolus en identifiants LinkedIn avec le
+ * compte donné (sans compte, le lieu est ignoré).
+ */
+export async function mapGeneratedFilters(
+  generated: GeneratedFilters,
+  ctx: { accountId: string | null; currentLocation?: LocationFilterItem[] },
+): Promise<{ update: Partial<LinkedInFiltersState>; filterCount: number }> {
+  const { accountId, currentLocation } = ctx;
   const update: Partial<LinkedInFiltersState> = {};
 
   if (generated.keywords) update.keywords = generated.keywords;
@@ -191,5 +206,5 @@ export async function generateFiltersFromJob(params: {
     (update.school?.length || 0) +
     (update.skills_keywords?.length || 0);
 
-  return { update, suggestions, filterCount };
+  return { update, filterCount };
 }
