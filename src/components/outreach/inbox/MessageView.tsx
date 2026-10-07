@@ -306,7 +306,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       });
     }, 80);
     return () => clearTimeout(t);
-  }, [messages, timeline, loadingMessages, selectedChat?.id]);
+  }, [messages, timeline, activityEvents.length, loadingMessages, selectedChat?.id]);
 
   // ─── Synchronisation silencieuse d'une conversation vide ────────────
   // Une conversation qui s'ouvre sans message lance une synchronisation de
