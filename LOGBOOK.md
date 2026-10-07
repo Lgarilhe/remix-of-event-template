@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Faire ressortir les propositions de la messagerie
+
+**Fait** : les cartes d’actions à préparer reprennent `texturedCard('teal')`, le dégradé et le grain fixes de l’accueil, avec texte clair et bouton principal blanc. Chat et onglet Actions de la fiche partagent le même rendu. Une action réalisée revient à une carte neutre et au bouton de consultation ; les dialogues et les échanges conservent leur fond habituel. Le groupe de boutons se replie sur petit écran et le filet au-dessus de la carte est retiré.
+**Décision** : nouvel usage demandé explicitement par le propriétaire le 07/10/2026, consigné dans la direction design et le commentaire de la primitive ; la liste des usages autorisés du test de l’accueil inclut uniquement ce quatrième composant. Aucun nouveau gradient ni jeton global.
+**Validation** : sept parcours Chromium réussis, clair/sombre de 320 à 1920 px et hauteur de 500 px : texture dans chat/fiche, boutons de 44 px sur mobile, aucun débordement horizontal, sources et focus, dialogue conservant les couleurs de son thème, validation puis carte neutre. Contraste conservateur mesuré sur les fonds capturés sans texte : 4,94:1 minimum pour les textes ; borne minimale du bouton principal survolé 13,01:1. Build réussi, lint ciblé propre, cinq fichiers UX réussis et dette design sans hausse ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans les essais.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Repérer la proposition, préparer puis appliquer et retrouver un résultat visuellement distinct | PASS |
+| Claire | Contraste de la texture et des textes, bouton principal blanc, résultat neutre et aperçu dans son thème | PASS |
+| Théo | Sources accessibles, focus restauré, état par candidat et aucun changement serveur dans la démo | PASS |
+| Sophie | Carte, boutons et fiche à 320/390 px, thèmes clair/sombre, hauteur de 500 px et sans débordement | PASS |
+
+**Refs** : PR #312 ; `docs/design/01-direction.md` § 7. Composants réels avec services simulés, sans compte recruteur réel ni appareil iOS physique. Le contraste est calculé contre le pixel de fond le plus lumineux à l’intérieur de la carte, hors bordure.
+
 ## 2026-10-07 — SPEC — Réponse candidat et demande d’équipe liées
 
 **Fait** : la proposition d’Alex prépare trois effets relus ensemble : une réponse Outlook au candidat, une demande Outlook à Guillaume, puis un commentaire dans la fiche. Guillaume ayant déjà sollicité le manager, la demande lui propose de partager les précisions attendues. Une suite distincte reste en attente : compléter la réponse à Alex après réception du retour.

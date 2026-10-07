@@ -6,10 +6,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { texturedCard } from '@/components/layout/texturedCard';
+import { cn } from '@/lib/utils';
 import type { DemoActionResult, DemoActionSource, DemoCandidateAction } from '@/lib/inboxDemoActions';
 import { SERVICE_LABELS } from '@/lib/messagingServices';
 
 const dateLabel = (value: string) => new Date(value).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const ACTION_CARD = 'flex flex-col gap-3 rounded-xl p-4 md:p-5 xl:flex-row xl:items-center xl:justify-between';
 
 function ActionSources({ sources }: { sources: DemoActionSource[] }) {
   return <div className="divide-y divide-border">{sources.map(source => <Collapsible key={source.id}>
@@ -77,15 +80,15 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
   return <section aria-label="Prochaine action" data-component="demo-candidate-actions">
     {visible.map(action => {
       const applied = results[action.id];
-      return <article key={action.id} className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between" aria-label={action.title}>
+      return <article key={action.id} className={applied ? cn(ACTION_CARD, 'border border-border bg-muted') : texturedCard('teal', ACTION_CARD)} aria-label={action.title}>
         <div className="min-w-0 space-y-1">
-          <p className="text-xs text-muted-foreground">{applied ? 'Action réalisée dans la démo' : 'Prochaine action'}</p>
+          <p className={cn('text-xs', applied ? 'text-muted-foreground' : 'text-foreground')}>{applied ? 'Action réalisée dans la démo' : 'Prochaine action'}</p>
           <h4 className="break-words text-sm font-semibold text-foreground">{action.title}</h4>
-          {applied ? <p className="flex flex-wrap items-center gap-1.5 text-xs text-foreground" role="status"><Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{action.successLabel}</p> : <p className="break-words text-xs leading-relaxed text-foreground-secondary">{action.reason}</p>}
+          {applied ? <p className="flex flex-wrap items-center gap-1.5 text-xs text-foreground" role="status"><Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{action.successLabel}</p> : <p className="break-words text-xs leading-relaxed text-foreground">{action.reason}</p>}
           {applied && action.followUp && <p className="text-xs text-foreground-secondary">Suite en attente : {action.followUp.title}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button ref={node => { primaryButtonRefs.current[action.id] = node; }} variant="outline" size="sm" className="min-h-11 md:min-h-8" onClick={event => openDialog(action.id, applied ? 'result' : 'prepare', event.currentTarget)}>{applied ? 'Voir le résultat' : action.prepareLabel}</Button>
+        <div className="flex shrink-0 flex-wrap items-center gap-1">
+          <Button ref={node => { primaryButtonRefs.current[action.id] = node; }} variant={applied ? 'outline' : 'primary'} size="sm" className="min-h-11 md:min-h-8" onClick={event => openDialog(action.id, applied ? 'result' : 'prepare', event.currentTarget)}>{applied ? 'Voir le résultat' : action.prepareLabel}</Button>
           <Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={event => openDialog(action.id, 'sources', event.currentTarget)}>Pourquoi ?</Button>
         </div>
       </article>;

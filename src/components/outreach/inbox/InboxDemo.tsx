@@ -123,7 +123,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6" data-component="demo-timeline">
             <div className="mx-auto max-w-5xl">
               <CandidateInteractionTimeline events={events} name={selected.name} />
-              <div className="mt-5 border-t border-border pt-4" data-component="demo-next-action">{actions}</div>
+              <div className="mt-5" data-component="demo-next-action">{actions}</div>
               {teamCoordination}
               <div ref={endRef} />
             </div>
