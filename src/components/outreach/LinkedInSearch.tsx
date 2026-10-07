@@ -31,13 +31,19 @@ import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
 import { SearchHero, SearchPlan, FilterChipBar, chipsFromUpdate, countFilterChips, type PlanChip, type PlanStage } from './search/SourcingFlow';
 import { SourcingTopBar } from '@/components/missions/v3/sourcing/SourcingTopBar';
-import { buildAugmentedJob, generateFiltersFromJob } from './search/generateFiltersFromJob';
+import { buildAugmentedJob, generateFiltersFromJob, readGeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
 import { nlFilterEdit } from './search/nlFilterEdit';
 import { FilterWizard } from './filter-wizard';
 import type { JobDetails } from '@/types/jobDetails';
 import { SKILL_SYNONYMS } from '@/hooks/linkedin/skillSynonyms';
 import { PageBackdrop } from '@/components/layout/PageBackdrop';
 import { cn } from '@/lib/utils';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAgentMemoryContext } from '@/hooks/useAgentMemories';
+import { AgentMemoryDialog } from '@/components/agent/AgentMemoryDialog';
+import { SourcingMemoryNotice } from './search/SourcingMemoryNotice';
+import { getCurrentScoreStatuses, getSourcingMemoryVersionKey, stableScoringContextKey } from '@/lib/sourcingScoringContext';
+import type { GeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -189,6 +195,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   startWithFilters,
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
+  const { organizationId, orgType } = useOrganization();
+  const memory = useAgentMemoryContext(activeProject?.id ?? null);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [regeneratingMemoryFilters, setRegeneratingMemoryFilters] = useState(false);
+  const searchMemoryVersionKey = getSourcingMemoryVersionKey(memory.data?.memories ?? [], 'search');
+  const scoringMemoryVersionKey = getSourcingMemoryVersionKey(memory.data?.memories ?? [], 'scoring');
+  const memoryContextReady = memory.isSuccess;
+  const liveMemoryScope = useRef({ organizationId, projectId: activeProject?.id ?? null, searchMemoryVersionKey });
+  liveMemoryScope.current = { organizationId, projectId: activeProject?.id ?? null, searchMemoryVersionKey };
+  const snapshotMemoryContext = readGeneratedSearchMemoryContext((activeProject?.filters_snapshot as Record<string, unknown> | undefined)?.memory_context);
+  const [generatedMemory, setGeneratedMemory] = useState<{ organizationId: string | null; projectId: string | null; context: GeneratedSearchMemoryContext | null } | null>(null);
+  const appliedMemoryContext = generatedMemory?.organizationId === organizationId && generatedMemory?.projectId === (activeProject?.id ?? null)
+    ? generatedMemory.context : snapshotMemoryContext;
+  const searchMemoryCount = (memory.data?.memories ?? []).filter(row => row.scope !== 'user' && row.effects.includes('search')).length;
+  const filtersOutdated = memoryContextReady && appliedMemoryContext?.versionKey !== searchMemoryVersionKey
+    && (searchMemoryCount > 0 || (appliedMemoryContext?.provenance?.length ?? 0) > 0);
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
@@ -273,6 +295,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     activeProject,
     onProjectChange,
   });
+  const liveBriefKey = useRef('');
+  liveBriefKey.current = stableScoringContextKey({ job: search.selectedJob, details: activeProject?.job_details,
+    description: activeProject?.description });
+  const generationContextKey = stableScoringContextKey({ organizationId, projectId: activeProject?.id,
+    brief: liveBriefKey.current, searchMemoryVersionKey });
+  const generationEpoch = useRef({ key: generationContextKey, version: 0 });
+  if (generationEpoch.current.key !== generationContextKey) {
+    generationEpoch.current = { key: generationContextKey, version: generationEpoch.current.version + 1 };
+  }
 
   useEffect(() => {
     const currentProjectId = activeProject?.id ?? null;
@@ -291,6 +322,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setInlineSuggestions(nextSuggestions);
     search.mergeProjectSnapshotMeta({ suggestions: nextSuggestions });
   }, [search]);
+
+  const handleMemoryContextGenerated = useCallback((context: GeneratedSearchMemoryContext | null) => {
+    setGeneratedMemory({ organizationId, projectId: activeProject?.id ?? null, context });
+    search.mergeProjectSnapshotMeta({ memory_context: context });
+  }, [organizationId, activeProject?.id, search]);
 
   // Search history (must be after search hook)
   const searchHistory = useSearchHistory(search.selectedJob?.id || null);
@@ -402,6 +438,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Scoring hook
   const scoring = useLinkedInScoring({
+    organizationId,
+    projectId: activeProject?.id ?? null,
+    memoryVersionKey: scoringMemoryVersionKey,
+    memoryContextReady,
     selectedJob: search.selectedJob,
     selectedProfiles: search.selectedProfiles,
     results: search.results,
@@ -424,6 +464,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     scoringDisabledReason,
     skipBriefCheck: isStandaloneSearch,
   });
+  const currentScoreStatuses = useMemo(() => getCurrentScoreStatuses(search.candidateStatus.statuses, scoring.currentJobScores),
+    [search.candidateStatus.statuses, scoring.currentJobScores]);
 
   // Pool view toggle
   const [showPoolView, setShowPoolView] = useLocalState(false);
@@ -540,7 +582,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Filtered results hook
   const { filteredAndSortedResults, selectableProfiles, allSelectableSelected, poolCount, mergedResults } = useFilteredResults({
     results: search.results,
-    jobScores: search.jobScores,
+    jobScores: scoring.currentJobScores,
     sortByScore: search.sortByScore,
     selectedJob: search.selectedJob,
     autoHideTreated: search.autoHideTreated,
@@ -549,8 +591,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     candidateStatus: {
       treatedIds: search.candidateStatus.treatedIds,
       dismissedIds: search.candidateStatus.dismissedIds,
-      getStatus: search.candidateStatus.getStatus,
-      statuses: search.candidateStatus.statuses,
+      getStatus: (id) => currentScoreStatuses.get(id),
+      statuses: currentScoreStatuses,
     },
     selectedProfiles: search.selectedProfiles,
     calculatedExperienceMin: search.filters.calculated_experience_min,
@@ -1128,20 +1170,38 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Phrase (hero ou affinage) → filtres via IA Konekt. runSearch=false pour
   // l'affinage : les chips se mettent à jour, l'user choisit quand relancer.
   const applyPhrase = useCallback(async (phrase: string, runSearch: boolean) => {
+    if (!memoryContextReady) throw new Error('Attendez la vérification des mémoires avant de générer les filtres.');
     if (!search.selectedJob) throw new Error('Brief mission manquant.');
     if (!selectedAccount && searchSource !== 'database') throw new Error('Connectez votre compte LinkedIn pour lancer une recherche.');
     const job = buildAugmentedJob(search.selectedJob, phrase);
-    const { update, suggestions } = await generateFiltersFromJob({
+    const scopeAtStart = liveMemoryScope.current;
+    const briefAtStart = liveBriefKey.current;
+    const epochAtStart = generationEpoch.current.version;
+    const { update, suggestions, memoryContext } = await generateFiltersFromJob({
       job,
+      organizationId,
+      projectId: activeProject?.id ?? null,
       accountId: selectedAccount,
       searchSource: searchSource === 'database' ? 'database' : 'linkedin',
       currentLocation: search.filtersRef.current.location,
     });
+    const currentScope = liveMemoryScope.current;
+    if (scopeAtStart.organizationId !== currentScope.organizationId || scopeAtStart.projectId !== currentScope.projectId
+      || scopeAtStart.searchMemoryVersionKey !== currentScope.searchMemoryVersionKey || briefAtStart !== liveBriefKey.current
+      || epochAtStart !== generationEpoch.current.version) {
+      throw new Error('Le contexte a changé pendant la génération. Relancez-la pour appliquer les bons critères.');
+    }
+    if (memoryContext && memoryContext.versionKey !== currentScope.searchMemoryVersionKey) {
+      void memory.refetch();
+      throw new Error('Les mémoires ont changé. Rechargez-les, puis régénérez les filtres.');
+    }
+    if (!memoryContext && searchMemoryCount > 0) throw new Error('La génération n’a pas confirmé les mémoires utilisées. Réessayez.');
     setPlanChips(chipsFromUpdate(update));
     const merged = { ...search.filtersRef.current, ...update };
     search.setFilters(merged);
     search.filtersRef.current = merged;
     handleSuggestionsGenerated(suggestions ?? null);
+    if (memoryContext) handleMemoryContextGenerated(memoryContext);
     if (runSearch) {
       setPlanStage('search');
       await handleSearch(false);
@@ -1153,7 +1213,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setChipsDirty(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.selectedJob, selectedAccount, searchSource, handleSuggestionsGenerated, handleSearch]);
+  }, [search.selectedJob, selectedAccount, searchSource, handleSuggestionsGenerated, handleMemoryContextGenerated, handleSearch, organizationId, activeProject?.id, memoryContextReady]);
+
+  const regenerateMemoryFilters = async () => {
+    if (regeneratingMemoryFilters) return;
+    setRegeneratingMemoryFilters(true);
+    try {
+      await applyPhrase('', false);
+      setFiltersOpen(true);
+      toast.success('Filtres régénérés', { description: 'Vérifiez les critères, puis relancez la recherche.' });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Les filtres n’ont pas pu être régénérés.');
+    } finally { setRegeneratingMemoryFilters(false); }
+  };
 
   // Affinage par phrase (barre de chips) : édition DIFF des filtres courants
   // via nl-filter-edit — permet les retraits (« retire Lyon ») et les ajouts
@@ -1231,11 +1303,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const initialPhraseDoneRef = useRef(false);
   useEffect(() => {
     if (!isV3 || !initialPhrase?.trim() || initialPhraseDoneRef.current) return;
-    if (flowMode !== 'hero' || !search.selectedJob || search.loading) return;
+    if (flowMode !== 'hero' || !search.selectedJob || search.loading || !memoryContextReady) return;
     if (!selectedAccount && searchSource !== 'database') return;
     initialPhraseDoneRef.current = true;
     void launchFlow(initialPhrase.trim());
-  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow]);
+  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow, memoryContextReady]);
 
   // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
   // aucune recherche : recherche directe, sans repasser par la génération IA
@@ -1259,6 +1331,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [selectedAccount, searchSource, search.loading, handleSearch]);
 
   const resumeFromHistory = useCallback((entry: { filters_snapshot: LinkedInFiltersState }) => {
+    handleMemoryContextGenerated(null);
     const merged = { ...INITIAL_FILTERS, ...entry.filters_snapshot };
     search.setFilters(merged);
     search.filtersRef.current = merged;
@@ -1273,7 +1346,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     heroLaunchRef.current = true;
     queueMicrotask(() => handleSearch(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSearch]);
+  }, [handleSearch, handleMemoryContextGenerated]);
 
   const filtersPanel = (
     <SearchFiltersPanel
@@ -1285,6 +1358,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       selectedJob={search.selectedJob}
       onJobChange={search.setSelectedJob}
       onAutoFillFilters={handleAutoFillFilters}
+      onMemoryContextGenerated={handleMemoryContextGenerated}
       loading={search.loading}
       needsReconnection={!!needsReconnection}
       isApiModeAvailable={isApiModeAvailable}
@@ -1399,6 +1473,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   return (
     <div className={cn('w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]', showBackdrop && 'relative konekt-on-backdrop')}>
       {showBackdrop && <PageBackdrop follow contained />}
+      {activeProject && <SourcingMemoryNotice memories={memory.data?.memories ?? []} orgType={orgType}
+        loading={memory.isPending || memory.isFetching} error={memory.isError} filtersOutdated={filtersOutdated}
+        staleScoreCount={scoring.staleScoreCount} regenerating={regeneratingMemoryFilters}
+        onRetry={() => void memory.refetch()} onManage={() => setMemoryOpen(true)} onRegenerate={() => void regenerateMemoryFilters()} />}
+      <AgentMemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} projectId={activeProject?.id ?? null} projectTitle={activeProject?.name} />
 {/* Note merge: l'ancien FilterWizard ajouté en haut par design-audit-6EE0c est ignoré
     car HEAD a déjà un FilterWizard ligne ~1024 avec une signature plus complète
     (job, accountId, onApplyFilters). On garde la version HEAD. */}
@@ -1537,7 +1616,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           total={search.total}
           selectedJob={search.selectedJob}
           selectedProfiles={search.selectedProfiles}
-          jobScores={search.jobScores}
+          jobScores={scoring.currentJobScores}
           scoringInProgress={search.scoringInProgress}
           sortByScore={search.sortByScore}
           selectableProfiles={selectableProfiles}
@@ -1553,7 +1632,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           filtersReady={!!(search.filters.keywords?.trim() || (search.filters as any).role?.length > 0)}
           accountName={selectedAccountData?.name || selectedAccountData?.identifier || null}
           accountStatus={selectedAccountData?.status || null}
-          treatedCandidates={search.candidateStatus.statuses}
+          treatedCandidates={currentScoreStatuses}
           onRestoreCandidate={search.candidateStatus.restoreCandidate}
           showBulkInMailModal={search.showBulkInMailModal}
           poolCount={poolCount}
@@ -1573,7 +1652,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               : undefined
           }
           onBatchScore={scoring.handleBatchScore}
-          canBatchScore={!scoringDisabledReason}
+          canBatchScore={!scoringDisabledReason && memoryContextReady}
           onBulkDismiss={handleBulkDismiss}
           onBulkAddToProject={handleBulkAddToProject}
           onSetAutoHideTreated={search.setAutoHideTreated}

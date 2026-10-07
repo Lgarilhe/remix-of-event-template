@@ -77,6 +77,9 @@ export function useAgentMemoryAutomation(enabled = true) {
 
 function memoryError(error: { message?: string; code?: string; hint?: string } | null): Error {
   console.error('[agent-memory]', error);
+  if (error?.code === '23514' && /recruiting_scope_check/.test(error.message ?? '')) {
+    return new Error('Les critères de recherche et d’évaluation doivent être enregistrés au niveau du recrutement ou de l’organisation.');
+  }
   if (error?.code === '40001' || /version|conflict|changed|stale/i.test(`${error?.message ?? ''} ${error?.hint ?? ''}`)) {
     return new Error('Cette proposition a changé. Rechargez-la avant de confirmer.');
   }

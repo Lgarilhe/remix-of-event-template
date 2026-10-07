@@ -2826,24 +2826,58 @@ const regenerateSearchFilters: AgentTool = {
     // 1. Load the mission's job_details (used as `job` payload for generate-search-filters)
     const { data: project, error: fetchError } = await ctx.adminClient
       .from('sourcing_projects')
-      .select('id, name, job_title, job_details')
+      .select('id, name, job_title, client_name, description, job_details, updated_at')
       .eq('id', jobId)
       .eq('organization_id', ctx.organizationId)
       .single();
     if (fetchError) return { success: false, error: fetchError.message };
+    if (!project || typeof project.updated_at !== 'string' || !project.updated_at) {
+      return { success: false, error: 'La version du brief n’a pas pu être vérifiée. Aucun filtre n’a été modifié.' };
+    }
 
     const details = (project.job_details as Record<string, unknown> | null) ?? {};
+    const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+    const skills = (value: unknown): string[] => Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+      : [];
+    const mustHave = skills(details.skills_must_have);
+    const shouldHave = skills(details.skills_should_have);
+    const niceToHave = skills(details.skills_nice_to_have);
+    const client = details.client && typeof details.client === 'object' && !Array.isArray(details.client)
+      ? details.client as Record<string, unknown> : {};
+    const clientName = text(client.name) || text(project.client_name);
+    // The generator consumes these facts through sourcingCriteria, rather
+    // than reading arbitrary extra job fields. Keep their names and levels;
+    // a desired company or a bonus skill must not become a required filter.
+    const structuredCriteria = Object.fromEntries([
+      'contract_type', 'start_date', 'urgency', 'remote_days', 'team_size', 'reports_to', 'manages',
+      'salary_min', 'salary_max', 'salary_currency', 'salary_type', 'equity', 'benefits',
+      'skills_to_avoid', 'languages', 'certifications', 'target_companies', 'calibration_profiles',
+      'evaluation_criteria', 'evaluation_weights', 'pedigree_requirements', 'restrict_search_to_competitors',
+    ].filter((key) => details[key] !== undefined && details[key] !== null)
+      .map((key) => [key, details[key]]));
     const synthJob = {
       id: `project:${jobId}`,
       title: details.title || project.job_title || project.name,
-      description: details.mission_description || details.context || '',
-      mustHave: Array.isArray(details.skills_must_have) ? details.skills_must_have : [],
-      shouldHave: Array.isArray(details.skills_should_have) ? details.skills_should_have : [],
-      niceToHave: Array.isArray(details.skills_nice_to_have) ? details.skills_nice_to_have : [],
+      description: [...new Set([
+        details.mission_description, details.context, details.raw_brief, details.voice_transcript, project.description,
+      ].map(text).filter(Boolean))].join('\n\n'),
+      client: clientName ? { name: clientName, sector: text(client.sector) || undefined } : null,
+      remotePolicy: text(details.remote_policy) || undefined,
+      skills: mustHave,
+      mustHave: mustHave.join(', '),
+      shouldHave: shouldHave.join(', '),
+      niceToHave: niceToHave.join(', '),
+      sourcingCriteria: [
+        text(details.sourcingCriteria),
+        Object.keys(structuredCriteria).length
+          ? 'Critères structurés du brief (respecter les niveaux obligatoire, souhaité et bonus) :\n' + JSON.stringify(structuredCriteria)
+          : '',
+      ].filter(Boolean).join('\n\n'),
       seniority: details.seniority || null,
       location: details.location || null,
-      experience_min: details.experience_min ?? null,
-      experience_max: details.experience_max ?? null,
+      xpMin: details.experience_min ?? null,
+      xpMax: details.experience_max ?? null,
     };
 
     // 2. Invoke generate-search-filters in Mode B (service-role + user_id_override)
@@ -2857,18 +2891,30 @@ const regenerateSearchFilters: AgentTool = {
         body: JSON.stringify({
           job: synthJob,
           user_id_override: ctx.userId,
+          organization_id: ctx.organizationId,
+          project_id: jobId,
         }),
       });
       const data = await response.json();
       if (!response.ok) return { success: false, error: data.error || `generate-search-filters HTTP ${response.status}` };
+      if (!data.success || data.degraded || !data.filters) {
+        return { success: false, error: 'L’analyse est incomplète. Les filtres actuels ont été conservés.' };
+      }
 
-      // 3. Persist as filters_snapshot
-      const { error: updateError } = await ctx.adminClient
+      // 3. Persist only if the mission did not change during the AI call.
+      const { data: updatedProject, error: updateError } = await ctx.adminClient
         .from('sourcing_projects')
-        .update({ filters_snapshot: data })
+        .update({ filters_snapshot: { ...data.filters, suggestions: data.suggestions ?? null,
+          memory_context: data.memory_context ?? null, generated_at: new Date().toISOString() } })
         .eq('id', jobId)
-        .eq('organization_id', ctx.organizationId);
+        .eq('organization_id', ctx.organizationId)
+        .eq('updated_at', project.updated_at)
+        .select('id')
+        .maybeSingle();
       if (updateError) return { success: false, error: updateError.message };
+      if (!updatedProject) {
+        return { success: false, error: 'Le brief ou les filtres ont été modifiés pendant la génération. Les filtres actuels ont été conservés. Relance la génération.' };
+      }
 
       return {
         success: true,

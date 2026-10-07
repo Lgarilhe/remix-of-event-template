@@ -32,6 +32,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Mémoires appliquées à la recherche et à l’évaluation
+
+**Contexte** : les mémoires confirmées guidaient l’assistant, mais leurs effets Recherche et Évaluation n’étaient pas reliés à la génération des filtres ni aux notes des candidats.
+**Fait** : les décisions de l’organisation et de la mission sont chargées et autorisées côté serveur avant analyse. Contraintes avant préférences ; l’organisation encadre la mission ; contradiction avec le brief ou analyse de conflit incomplète bloque l’application. Les préférences restent des suggestions ou des bonus. Les mémoires personnelles restent Assistant/Présentation ; l’automatisation existante reste limitée aux préférences explicites de communication, après activation.
+**Recherche** : la confirmation signale les filtres anciens ; « Régénérer » ouvre la vraie revue des filtres, sans lancer LinkedIn. Brief libre complet conservé à la création d’une recherche. Critères obligatoires, souhaités et bonus distincts ; télétravail, client et critères structurés transmis ; temporalité explicite des postes et entreprises conservée. Provenance sauvegardée à plat dans `filters_snapshot` avec les filtres.
+**Évaluation** : cache et affichage vérifient le brief, les consignes, le modèle et les mémoires réellement utilisés. Une note ancienne disparaît des listes, tris et détails ; les décisions humaines restent intactes. La provenance serveur permet de relire une note valide après rechargement, y compris une note de fond. Les retours tardifs et lectures/sauvegardes de statuts d’une autre mission sont ignorés, y compris A→B→A.
+**Isolation** : nouvelle RPC de lecture partagée réservée au service, avec organisation, acteur membre et mission vérifiés ; aucun élargissement C1 des droits aux candidats d’une autre organisation. Migration reconstruite et rejouable ; audit SQL et refus HTTP anonyme câblés dans la CI.
+**UX** : composants et jetons natifs ; règles repliables, niveau/effet lisibles, panne avec Réessayer, commandes tactiles de 44 px à 320 px. Niveaux adaptés au cabinet, au client final et à l’indépendant. Motion inchangé à la demande du propriétaire.
+**Validation locale** : build final réussi ; 20 fichiers de tests agent, 117 UX et 28 C1 passent. Parmi les contrôles comportementaux exécutés directement : 50 scoring, 19 génération serveur, 15 courses du hook, 12 génération frontend, 6 régénération d’outil et 2 worker. Base isolée sans réseau : 295 migrations reconstruites, 150 assertions SQL réussies, puis migration et audit sourcing rejoués. Navigateur : 19 scénarios et 10 audits axe ciblés sans violation, aucune erreur JS finale. TypeScript conserve exactement les 11 erreurs héritées, lint sans aggravation et compteurs design inchangés. Aucune recherche LinkedIn réelle, aucun appel au modèle réel ni écriture en production ; les essais navigateur interceptent les API. Le runtime Deno et les advisors ne sont pas certifiés par ces essais. Le refus HTTP de la RPC doit s’exécuter en CI : le fixture local supautils plante sur un refus EXECUTE par psql, sans relâchement des permissions.
+
+| Persona | Scénario local avec API simulées | Verdict |
+|---|---|---|
+| Guillaume | Confirmer une règle, régénérer/revoir, lancer volontairement, noter et retrouver la provenance | PASS |
+| Claire | Niveaux entreprise/poste, portée des règles et effets distincts compréhensibles | PASS |
+| Théo | Contexte exact, conflits et panne fermés, réponses tardives, aucune écriture distante | PASS |
+| Sophie | Niveaux activité/mission, dialogue et commandes utilisables à 320 px sans débordement | PASS |
+
+**Reste à faire** : déployer cette version locale et ses migrations dans le cadre de la livraison ; vérifier les connecteurs et la qualité des analyses sur de vrais dossiers avant d’activer une recherche récurrente.
+**Refs** : `tests/agent/sourcing-memory-generation.test.mjs`, `tests/agent/scoring-memory-context.test.mjs`, `tests/agent/regenerate-search-filters.test.mjs`, `tests/agent/candidate-status-context-races.test.mjs`, `supabase/tests/agent_sourcing_memory_audit.sql`.
+
 ## 2026-10-07 — REFACTOR — Film explicatif de la mémoire
 
 **Contexte** : la découverte expliquait la création d’une mémoire par quatre fondus d’interface, sans montrer son utilité dans l’échange suivant.

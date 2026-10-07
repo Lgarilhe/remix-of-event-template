@@ -1,7 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { parseBriefResponse, type BriefDraft } from '@/lib/onboarding/brief';
+import { useOrganization } from '@/hooks/useOrganization';
+import { requireGeneratedFilters } from '@/components/outreach/search/generateFiltersFromJob';
 
 export type BriefGenState =
   | { status: 'idle' }
@@ -23,8 +25,23 @@ export interface BriefRequest {
  * rendu à l'appelant, qui le garde : revenir sur la scène ne repaie pas l'analyse.
  */
 export function useBriefGeneration(onDraft: (draft: BriefDraft) => void) {
+  const { organizationId } = useOrganization();
   const [state, setState] = useState<BriefGenState>({ status: 'idle' });
   const runRef = useRef(0);
+  const organizationRef = useRef(organizationId);
+  organizationRef.current = organizationId;
+  const previousOrganizationRef = useRef(organizationId);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  useEffect(() => {
+    if (previousOrganizationRef.current === organizationId) return;
+    previousOrganizationRef.current = organizationId;
+    runRef.current += 1;
+    setState(current => current.status === 'loading' ? { status: 'failed', reason: 'other' } : current);
+  }, [organizationId]);
 
   const generate = useCallback(
     async (req: BriefRequest) => {
@@ -32,7 +49,9 @@ export function useBriefGeneration(onDraft: (draft: BriefDraft) => void) {
       setState({ status: 'loading' });
       const description = [req.title, req.client ? `Poste chez ${req.client}.` : '', req.context].filter(Boolean).join('\n');
       try {
-        const { data, error } = await invokeWithCredits('generate-search-filters', 'filter_generation', {
+        const { data, error } = await invokeWithCredits('generate-search-filters', 'brief_analysis', {
+          organization_id: organizationId,
+          project_id: null,
           job: {
             id: 'draft',
             title: req.title,
@@ -44,11 +63,12 @@ export function useBriefGeneration(onDraft: (draft: BriefDraft) => void) {
           },
           search_source: 'linkedin',
         });
-        if (run !== runRef.current) return;
+        if (!mountedRef.current || run !== runRef.current || organizationRef.current !== organizationId) return;
         if (error) {
           setState({ status: 'failed', reason: isInsufficientCreditsError(error) ? 'credits' : 'other' });
           return;
         }
+        requireGeneratedFilters(data);
         const draft = parseBriefResponse(data, req.title);
         if (!draft) {
           setState({ status: 'failed', reason: 'other' });
@@ -57,10 +77,10 @@ export function useBriefGeneration(onDraft: (draft: BriefDraft) => void) {
         onDraft(draft);
         setState({ status: 'ready' });
       } catch {
-        if (run === runRef.current) setState({ status: 'failed', reason: 'other' });
+        if (mountedRef.current && run === runRef.current && organizationRef.current === organizationId) setState({ status: 'failed', reason: 'other' });
       }
     },
-    [onDraft],
+    [onDraft, organizationId],
   );
 
   return { state, generate };

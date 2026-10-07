@@ -3,7 +3,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1
 import { callClaudeCompat } from './call-claude.ts';
 import { assertCredits } from './credit-guard.ts';
 import {
-  formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText,
+  formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText, readValidatedMemories,
   type MemorySourceMessage, type ValidatedMemory,
 } from './memory-proposals.ts';
 
@@ -20,7 +20,10 @@ const EXTRACTION_PROMPT = [
   'organization uniquement si l’utilisateur indique explicitement une règle pour toute son organisation.',
   'Ne suppose jamais que l’utilisateur travaille dans un cabinet : il peut recruter en entreprise ou en indépendant.',
   'Types kind : constraint, preference, method, context.',
-  'Effets disponibles : assistant, presentation. Aucun effet sur les filtres exécutés ou le scoring dans ce lot.',
+  'Effets : assistant (réponses), presentation (synthèses), search (préparation des filtres), scoring (évaluation des profils).',
+  'search et scoring concernent uniquement une décision de recrutement au niveau project ou organization, jamais user.',
+  'Une préférence de profil reste une préférence : ne la transforme pas en exigence éliminatoire.',
+  'Une proposition de recherche ou d’évaluation nécessite toujours une confirmation humaine ; elle ne modifie aucun filtre appliqué ici.',
   'Retourne zéro proposition si rien n’est explicite et durable.',
   'JSON uniquement : {"proposals":[{"content":"...","scope":"project|user|organization","kind":"preference","effects":["assistant"],"source_excerpt":"citation exacte"}]}',
 ].join('\n');
@@ -132,7 +135,8 @@ export async function extractInsightsFromConversation(
     if (error && error.code !== '23505') return { extracted: savedCount, error: error.message };
     if (!error) {
       savedCount++;
-      if (saved?.id && automationVersion !== null && params.memoryClient) {
+      if (saved?.id && automationVersion !== null && params.memoryClient && proposal.scope === 'user' &&
+        proposal.effects.every((effect) => effect === 'assistant' || effect === 'presentation')) {
         // The RPC derives canonical communication content from the user's own
         // source. Model-written text can never become an automatic criterion.
         try {
@@ -160,22 +164,7 @@ export async function getRelevantInsights(
     p_project_id: params.projectId ?? null,
   });
   if (error) throw error;
-  const rows = data && typeof data === 'object' && !Array.isArray(data)
-    ? (data as { memories?: unknown }).memories : null;
-  if (!Array.isArray(rows)) throw new Error('Invalid memory context');
-  const valid = (row: unknown): row is ValidatedMemory => {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
-    const memory = row as ValidatedMemory;
-    return typeof memory.id === 'string' && typeof memory.content === 'string' &&
-      ['organization', 'project', 'user'].includes(memory.scope) &&
-      ['constraint', 'preference', 'method', 'context'].includes(memory.kind) &&
-      Number.isInteger(memory.version) && memory.version >= 1 &&
-      (memory.scope !== 'project' || typeof memory.project_id === 'string') &&
-      Array.isArray(memory.effects) && memory.effects.length > 0 &&
-      memory.effects.every((effect) => effect === 'assistant' || effect === 'presentation');
-  };
-  if (!rows.every(valid)) throw new Error('Invalid memory context');
-  return rows;
+  return readValidatedMemories(data);
 }
 
 export const formatInsightsForPrompt = formatValidatedMemories;

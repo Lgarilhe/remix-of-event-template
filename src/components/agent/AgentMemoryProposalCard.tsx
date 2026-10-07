@@ -57,8 +57,8 @@ export function AgentMemoryProposalCard({ proposal, onReload }: { proposal: Agen
       )}
       <p className="text-xs text-muted-foreground">Rien n’est appliqué avant votre confirmation.</p>
       {context.isError && <p role="alert" className="text-xs text-danger">Les droits n’ont pas pu être chargés. <Button type="button" variant="link" size="sm" className="min-h-11 md:min-h-0" onClick={() => void context.refetch()}>Réessayer</Button></p>}
-      {!context.isPending && !context.isError && !canApprove && <p className="text-xs text-muted-foreground">La validation à ce niveau est réservée à la personne responsable de la mission ou à un administrateur.</p>}
-      {!isAgentMemoryDraftValid(draft) && !editing && <p className="text-xs text-muted-foreground">Modifiez cette proposition pour choisir les effets disponibles.</p>}
+      {!context.isPending && !context.isError && !canApprove && <p className="text-xs text-muted-foreground">La validation à ce niveau est réservée aux personnes autorisées à gérer ce recrutement ou l’organisation.</p>}
+      {!isAgentMemoryDraftValid(draft) && !editing && <p className="text-xs text-muted-foreground">Modifiez cette proposition pour choisir un niveau et des utilisations compatibles.</p>}
       {error && <div role="alert" className="text-xs text-danger">{error}
         {onReload && <Button type="button" variant="link" size="sm" className="min-h-11 md:min-h-0" disabled={Boolean(busy)} onClick={onReload}>Recharger la proposition</Button>}
       </div>}

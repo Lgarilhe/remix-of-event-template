@@ -85,7 +85,12 @@ export default function SourcingSearches() {
     setLaunching(true);
     try {
       const title = titleFromPhrase(phrase);
-      const created = await createProject({ name: title, kind: 'search', job_details: { title } });
+      const created = await createProject({
+        name: title,
+        kind: 'search',
+        description: phrase,
+        job_details: { title, raw_brief: phrase },
+      });
       // Le temps de l'animation de sortie, au minimum.
       await new Promise((r) => setTimeout(r, reduceMotion ? 0 : 260));
       navigate(`/sourcing/${created.id}`, { state: { phrase } });

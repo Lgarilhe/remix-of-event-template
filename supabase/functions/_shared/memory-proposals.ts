@@ -7,7 +7,7 @@ export interface MemorySourceMessage {
 
 export type MemoryScope = 'organization' | 'project' | 'user';
 export type MemoryKind = 'constraint' | 'preference' | 'method' | 'context';
-export type MemoryEffect = 'assistant' | 'presentation';
+export type MemoryEffect = 'assistant' | 'presentation' | 'search' | 'scoring';
 
 export interface MemoryProposalInput {
   content: string;
@@ -63,9 +63,13 @@ export function normalizeMemoryProposal(
     value.kind === 'context' ? value.kind : 'preference';
   const effects = Array.isArray(value.effects)
     ? [...new Set(value.effects.filter(
-      (effect): effect is MemoryEffect => effect === 'assistant' || effect === 'presentation',
+      (effect): effect is MemoryEffect => effect === 'assistant' || effect === 'presentation' ||
+        effect === 'search' || effect === 'scoring',
     ))]
     : [];
+  // Individual preferences never become shared recruiting criteria. Keep an
+  // incorrectly scoped model suggestion out of the confirmation pipeline.
+  if (scope === 'user' && effects.some((effect) => effect === 'search' || effect === 'scoring')) return null;
   return {
     content, scope, kind,
     effects: effects.length ? effects : ['assistant'],
@@ -81,14 +85,38 @@ export interface ValidatedMemory {
   project_id?: string | null;
   kind: MemoryKind;
   version: number;
-  effects: string[];
+  effects: MemoryEffect[];
 }
 
-export function formatValidatedMemories(memories: ValidatedMemory[]): string {
-  if (!memories.length) return '';
+export function readValidatedMemories(data: unknown): ValidatedMemory[] {
+  const rows = data && typeof data === 'object' && !Array.isArray(data)
+    ? (data as { memories?: unknown }).memories : null;
+  const valid = (row: unknown): row is ValidatedMemory => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+    const memory = row as ValidatedMemory;
+    return typeof memory.id === 'string' && typeof memory.content === 'string' &&
+      ['organization', 'project', 'user'].includes(memory.scope) &&
+      ['constraint', 'preference', 'method', 'context'].includes(memory.kind) &&
+      Number.isInteger(memory.version) && memory.version >= 1 &&
+      (memory.scope !== 'project' || typeof memory.project_id === 'string') &&
+      Array.isArray(memory.effects) && memory.effects.length > 0 &&
+      memory.effects.every((effect) => ['assistant', 'presentation', 'search', 'scoring'].includes(effect)) &&
+      (memory.scope !== 'user' || !memory.effects.some((effect) => effect === 'search' || effect === 'scoring'));
+  };
+  if (!Array.isArray(rows) || !rows.every(valid)) throw new Error('Invalid memory context');
+  return rows;
+}
+
+/** Each consumer receives only the confirmed effects it implements. */
+export function formatValidatedMemories(
+  memories: ValidatedMemory[],
+  effects: MemoryEffect[] = ['assistant', 'presentation'],
+): string {
+  const relevant = memories.filter((memory) => memory.effects.some((effect) => effects.includes(effect)));
+  if (!relevant.length) return '';
   const scopeLabel = { organization: 'Organisation', project: 'Mission', user: 'Personnel' };
   const order = { organization: 0, project: 1, user: 2 };
-  const sorted = [...memories].sort((a, b) =>
+  const sorted = [...relevant].sort((a, b) =>
     Number(b.kind === 'constraint') - Number(a.kind === 'constraint') ||
     order[a.scope] - order[b.scope] || a.id.localeCompare(b.id));
   return [
@@ -99,7 +127,10 @@ export function formatValidatedMemories(memories: ValidatedMemory[]): string {
     'Une préférence personnelle ne remplace pas une contrainte de l’organisation ou de la mission.',
     'Une règle de mission ne concerne que son identifiant : ne l’applique pas à une autre mission consultée ou mentionnée. Si la mission visée est ambiguë, demande une clarification.',
     'Signale tout conflit avec les niveaux et demande une clarification au lieu de le résoudre en silence.',
-    'Les effets assistant/présentation concernent cette conversation : ils ne modifient pas la grille de scoring ni les filtres exécutés.',
+    effects.some((effect) => effect === 'search' || effect === 'scoring')
+      ? 'Les critères de recherche et d’évaluation concernent uniquement leur effet confirmé. Toute modification des filtres appliqués nécessite leur génération et leur application dans le sourcing.'
+      : 'Les effets assistant/présentation concernent cette conversation : ils ne modifient pas la grille de scoring ni les filtres exécutés.',
+    'N’utilise jamais un effet assistant/présentation pour ajouter ou modifier un critère de recherche ou de notation, même si le texte de la mémoire parle de candidats.',
     ...sorted.map((memory) =>
       '- ' + scopeLabel[memory.scope] + (memory.scope === 'project' && memory.project_id
         ? ' [id: ' + memory.project_id + ']' : '') + ' · ' + memory.kind + ' · v' + memory.version +

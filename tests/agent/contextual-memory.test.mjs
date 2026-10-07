@@ -67,10 +67,20 @@ test('a fabricated or overlong source is rejected before persistence', () => {
   assert.equal(normalizeMemoryProposal({ ...raw, content: 'x'.repeat(1201) }, [user], null), null);
 });
 
-test('this increment accepts only conversation and presentation effects', () => {
-  const proposal = normalizeMemoryProposal({ ...raw, effects: ['scoring', 'search', 'presentation', 'presentation'] }, [user], null);
-  assert.deepEqual(proposal.effects, ['presentation']);
-  assert.deepEqual(normalizeMemoryProposal({ ...raw, effects: ['scoring'] }, [user], null).effects, ['assistant']);
+test('confirmed recruiting effects have a shared scope and preserve their exact intent', () => {
+  const proposal = normalizeMemoryProposal({ ...raw, scope: 'project', effects: ['scoring', 'search', 'presentation', 'presentation'] }, [user], 'mission-a');
+  assert.deepEqual(proposal.effects, ['scoring', 'search', 'presentation']);
+  assert.equal(normalizeMemoryProposal({ ...raw, scope: 'user', effects: ['scoring'] }, [user], null), null);
+  assert.equal(normalizeMemoryProposal({ ...raw, effects: ['search'] }, [user], null), null);
+  assert.deepEqual(normalizeMemoryProposal({ ...raw, scope: 'organization', effects: ['search'] }, [user], null).effects, ['search']);
+});
+
+test('a conversation receives no recruiting-only instructions and effect selection stays explicit', () => {
+  const recruiting = { id: 'rule-a', scope: 'project', project_id: 'mission-a', kind: 'constraint',
+    content: 'Exclude the client company from searches', version: 1, effects: ['search'] };
+  assert.equal(formatValidatedMemories([recruiting]), '');
+  assert.match(formatValidatedMemories([recruiting], ['search']), /Exclude the client company/);
+  assert.equal(formatValidatedMemories([recruiting], ['scoring']), '');
 });
 
 test('validated constraints take precedence; mission identity stays explicit in the prompt', () => {

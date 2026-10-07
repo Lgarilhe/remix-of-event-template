@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -13,6 +13,9 @@ import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFil
 import { Job } from '@/types/jobs';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useOrganization } from '@/hooks/useOrganization';
+import { requireGeneratedFilters, requireGeneratedSearchMemoryContext, type GeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
+import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
 
 interface AutoFillFiltersButtonProps {
   selectedJob: Job | null;
@@ -29,6 +32,8 @@ interface AutoFillFiltersButtonProps {
   disabled?: boolean;
   /** Search source: affects which filters are generated */
   searchSource?: 'linkedin' | 'database';
+  projectId?: string | null;
+  onMemoryContextGenerated?: (context: GeneratedSearchMemoryContext | null) => void;
 }
 
 interface GeneratedFilters {
@@ -117,7 +122,10 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   onSuggestionsGenerated,
   disabled,
   searchSource = 'linkedin',
+  projectId,
+  onMemoryContextGenerated,
 }) => {
+  const { organizationId } = useOrganization();
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [showDebugModal, setShowDebugModal] = useState(false);
@@ -128,6 +136,14 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   const [showInput, setShowInput] = useState(true);
   const [showOutput, setShowOutput] = useState(true);
   const [missingFields, setMissingFields] = useState<{ critical: string[], optional: string[] }>({ critical: [], optional: [] });
+  const generationRef = useRef(0);
+  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource]);
+  const contextRef = useRef(contextKey);
+  contextRef.current = contextKey;
+  useEffect(() => {
+    setLoading(false);
+    return () => { generationRef.current += 1; };
+  }, [contextKey]);
 
   const handleShowInput = useCallback(() => {
     if (!selectedJob) {
@@ -156,14 +172,20 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       toast.error('Compte LinkedIn non connecté');
       return;
     }
+    if (!organizationId) {
+      toast.error('Attends le chargement de ton organisation avant de générer les filtres.');
+      return;
+    }
 
     // Capture input for debug
     const inputContext = buildJobContext(selectedJob);
 
+    const generation = ++generationRef.current;
+    const isCurrent = () => generationRef.current === generation && contextRef.current === contextKey;
     setLoading(true);
     try {
       const { data, error } = await invokeWithCredits<{
-        filters?: any;
+        filters?: GeneratedFilters;
         suggestions?: {
           alt_skills?: string[];
           alt_titles?: string[];
@@ -173,20 +195,25 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         } | null;
         success?: boolean;
         error?: string;
-      }>('generate-search-filters', 'filter_generation', { job: selectedJob, search_source: searchSource || 'linkedin' }, { modelOverride: selectedModel ?? undefined });
+        degraded?: boolean;
+        memory_context?: unknown;
+      }>('generate-search-filters', 'filter_generation', {
+        job: selectedJob,
+        search_source: searchSource || 'linkedin',
+        organization_id: organizationId,
+        project_id: projectId,
+      }, { modelOverride: selectedModel ?? undefined });
+
+      if (!isCurrent()) return;
 
       if (error) {
         console.error('[AutoFill] invokeWithCredits error:', error.message);
         throw error;
       }
 
-      if (!data?.success || !data?.filters) {
-        console.error('[AutoFill] Invalid response:', JSON.stringify(data).slice(0, 500));
-        throw new Error(data?.error || 'Réponse invalide de l\'API');
-      }
-
-      const generated: GeneratedFilters = data.filters;
-      const generatedSuggestions = data.suggestions && Object.values(data.suggestions).some(value => Array.isArray(value) && value.length > 0)
+      const generated = requireGeneratedFilters(data);
+      const memoryContext = requireGeneratedSearchMemoryContext(data?.memory_context);
+      const generatedSuggestions = data?.suggestions && Object.values(data.suggestions).some(value => Array.isArray(value) && value.length > 0)
         ? data.suggestions
         : null;
 
@@ -330,8 +357,10 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       }
 
       // Apply filters
+      if (!isCurrent()) return;
       onApplyFilters(update);
       onSuggestionsGenerated?.(generatedSuggestions);
+      onMemoryContextGenerated?.(memoryContext ?? null);
 
       // Count applied filters
       const filterCount = 
@@ -342,8 +371,12 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         (update.company_keywords?.length || 0) +
         (update.school?.length || 0);
 
-      toast.success(`${filterCount} filtres appliqués depuis le poste`);
+      const memoryCount = memoryContext?.provenance.length ?? 0;
+      toast.success(`${filterCount} filtres appliqués depuis le poste`, memoryCount > 0 ? {
+        description: `${memoryCount} règle${memoryCount > 1 ? 's' : ''} confirmée${memoryCount > 1 ? 's' : ''} en mémoire prise${memoryCount > 1 ? 's' : ''} en compte. Vérifie les filtres avant de rechercher.`,
+      } : undefined);
     } catch (error: any) {
+      if (!isCurrent()) return;
       console.error('[AutoFill] Error:', error);
 
       // Extract error message
@@ -366,9 +399,9 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       toast.error(errorMessage);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [selectedJob, accountId, currentLocation, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel]);
+  }, [selectedJob, accountId, currentLocation, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel, organizationId, projectId, contextKey, onMemoryContextGenerated]);
 
   const isDisabled = disabled || !selectedJob || !accountId || loading;
 

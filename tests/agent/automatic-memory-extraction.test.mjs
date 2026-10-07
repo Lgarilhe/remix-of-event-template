@@ -100,7 +100,7 @@ function harness(options = {}) {
     },
   };
   const memory = compile('supabase/functions/_shared/user-memory.ts', [
-    'const { formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText } = __pure;',
+    'const { formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText, readValidatedMemories } = __pure;',
     'const { assertCredits, callClaudeCompat } = __dependencies;',
     '',
   ].join('\n'), {
@@ -265,6 +265,23 @@ test('documents and previous assistant messages never reach the extraction model
 
 test('a fabricated quote is rejected before proposal insertion or automatic activation', async () => {
   const h = harness({ rawProposals: [{ ...proposal, source_excerpt: 'Je préfère ne voir que ces candidats.' }] });
+  assert.deepEqual(copy(await h.invoke()), { extracted: 0 });
+  assert.equal(h.proposals.length, 0);
+  assert.equal(h.rpcCalls.some((call) => call.name === 'auto_approve_agent_memory'), false);
+});
+
+test('recruiting memories remain manual even when personal communication automation is enabled', async () => {
+  const h = harness({ projectId: 'project-a', rawProposals: [{ ...proposal,
+    scope: 'project', effects: ['search', 'scoring'],
+  }] });
+  assert.deepEqual(copy(await h.invoke()), { extracted: 1 });
+  assert.deepEqual(h.proposals[0].effects, ['search', 'scoring']);
+  assert.equal(h.proposals[0].status, 'proposed');
+  assert.equal(h.rpcCalls.some((call) => call.name === 'auto_approve_agent_memory'), false);
+});
+
+test('a model cannot assign recruiting effects to a private personal preference', async () => {
+  const h = harness({ rawProposals: [{ ...proposal, effects: ['scoring'] }] });
   assert.deepEqual(copy(await h.invoke()), { extracted: 0 });
   assert.equal(h.proposals.length, 0);
   assert.equal(h.rpcCalls.some((call) => call.name === 'auto_approve_agent_memory'), false);

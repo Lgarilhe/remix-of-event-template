@@ -12,7 +12,9 @@ DECLARE
   project_c uuid := '86ccccc1-cccc-4ccc-8ccc-cccccccccccc';
   conv_a uuid; msg_a uuid; proposal_a uuid; proposal_user uuid; proposal_org uuid;
   proposal_b uuid; proposal_other uuid; proposal_expired uuid;
+  proposal_search uuid; proposal_scoring uuid; proposal_all_effects uuid;
   memory_a public.agent_memories; memory_user public.agent_memories; memory_org public.agent_memories;
+  memory_search public.agent_memories; memory_scoring public.agent_memories;
   replay public.agent_memories; decision public.agent_memory_proposals;
   context jsonb; n integer; hint text;
 BEGIN
@@ -65,13 +67,13 @@ BEGIN
   END;
   BEGIN
     INSERT INTO public.agent_memory_proposals (organization_id, created_by, content, effects)
-      VALUES (org_a, a, 'Unsupported scoring effect', ARRAY['scoring']);
-    RAISE EXCEPTION '[37] proposal accepted an unimplemented scoring effect';
+      VALUES (org_a, a, 'Unknown effect', ARRAY['unsupported']);
+    RAISE EXCEPTION '[37] proposal accepted an unknown effect';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   BEGIN
-    PERFORM public.approve_agent_memory(proposal_org, 1, NULL, NULL, NULL, ARRAY['scoring']);
-    RAISE EXCEPTION '[38] approval accepted an unimplemented scoring effect';
+    PERFORM public.approve_agent_memory(proposal_org, 1, NULL, NULL, NULL, ARRAY['unsupported']);
+    RAISE EXCEPTION '[38] approval accepted an unknown effect';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   SELECT * INTO decision FROM public.agent_memory_proposals WHERE id = proposal_org;
@@ -251,5 +253,67 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
   RESET ROLE;
-  RAISE NOTICE 'agent_memory_audit: 38 checks passed';
+
+  -- Recruiting decisions belong to the shared organization or exact mission.
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
+  PERFORM set_config('request.jwt.claim.sub', a::text, true);
+  SET LOCAL ROLE authenticated;
+  FOREACH hint IN ARRAY ARRAY['search', 'scoring'] LOOP
+    BEGIN
+      INSERT INTO public.agent_memory_proposals (organization_id, created_by, content, scope, effects)
+        VALUES (org_a, a, 'Personal recruiting preference', 'user', ARRAY[hint]);
+      RAISE EXCEPTION '[39] personal proposal accepted recruiting effect %', hint;
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+  END LOOP;
+  INSERT INTO public.agent_memory_proposals (organization_id, created_by, project_id, content, scope, kind, effects)
+    VALUES (org_a, a, project_a, 'Exclude the mission client from this search', 'project', 'constraint', ARRAY['search'])
+    RETURNING id INTO proposal_search;
+  BEGIN
+    PERFORM public.approve_agent_memory(proposal_search, 1, NULL, 'user');
+    RAISE EXCEPTION '[40] a shared search decision was promoted into private scope';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  SELECT * INTO decision FROM public.agent_memory_proposals WHERE id = proposal_search;
+  IF decision.status <> 'proposed' OR decision.version <> 1
+    OR EXISTS (SELECT 1 FROM public.agent_memories WHERE proposal_id = proposal_search) THEN
+    RAISE EXCEPTION '[41] failed scope change partially approved a recruiting decision';
+  END IF;
+  memory_search := public.approve_agent_memory(proposal_search, 1);
+  IF memory_search.scope <> 'project' OR memory_search.project_id <> project_a
+    OR memory_search.effects <> ARRAY['search'] THEN
+    RAISE EXCEPTION '[42] mission search approval has the wrong scope/effects';
+  END IF;
+  INSERT INTO public.agent_memory_proposals (organization_id, created_by, content, scope, kind, effects)
+    VALUES (org_a, a, 'Unknown experience must be verified', 'organization', 'constraint', ARRAY['scoring'])
+    RETURNING id INTO proposal_scoring;
+  memory_scoring := public.approve_agent_memory(proposal_scoring, 1);
+  IF memory_scoring.scope <> 'organization' OR memory_scoring.effects <> ARRAY['scoring'] THEN
+    RAISE EXCEPTION '[43] organization scoring approval has the wrong scope/effects';
+  END IF;
+  context := public.get_agent_memory_context(org_a, project_a);
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(context->'memories') m WHERE m->>'id' = memory_search.id::text)
+    OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(context->'memories') m WHERE m->>'id' = memory_scoring.id::text) THEN
+    RAISE EXCEPTION '[44] approved recruiting rules missing from matching mission context';
+  END IF;
+  context := public.get_agent_memory_context(org_a, project_b);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(context->'memories') m WHERE m->>'id' = memory_search.id::text)
+    OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(context->'memories') m WHERE m->>'id' = memory_scoring.id::text) THEN
+    RAISE EXCEPTION '[45] mission search scope leaked or organization scoring scope disappeared';
+  END IF;
+  replay := public.archive_agent_memory(memory_search.id, memory_search.version);
+  context := public.get_agent_memory_context(org_a, project_a);
+  IF replay.status <> 'archived'
+    OR EXISTS (SELECT 1 FROM jsonb_array_elements(context->'memories') m WHERE m->>'id' = memory_search.id::text) THEN
+    RAISE EXCEPTION '[46] archived recruiting decision remains applied';
+  END IF;
+  INSERT INTO public.agent_memory_proposals (organization_id, created_by, project_id, content, scope, effects)
+    VALUES (org_a, a, project_a, 'Explain criteria and search evidence', 'project',
+      ARRAY['assistant', 'presentation', 'search', 'scoring']) RETURNING id INTO proposal_all_effects;
+  replay := public.approve_agent_memory(proposal_all_effects, 1);
+  IF replay.effects <> ARRAY['assistant', 'presentation', 'scoring', 'search'] THEN
+    RAISE EXCEPTION '[47] all implemented effects were not accepted and normalized';
+  END IF;
+  RESET ROLE;
+  RAISE NOTICE 'agent_memory_audit: 47 checks passed';
 END $$;

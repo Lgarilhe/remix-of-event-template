@@ -6966,6 +6966,14 @@ export type Database = {
         Args: { p_organization_id: string; p_project_id?: string | null }
         Returns: Json
       }
+      get_agent_sourcing_memory_context: {
+        Args: {
+          p_organization_id: string
+          p_project_id: string | null
+          p_user_id: string
+        }
+        Returns: Json
+      }
       agent_memory_can_read_project: {
         Args: { p_organization_id: string; p_project_id: string }
         Returns: boolean

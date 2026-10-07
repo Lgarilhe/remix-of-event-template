@@ -75,12 +75,17 @@ export const AGENT_MEMORY_EFFECT_LABEL: Record<AgentMemoryEffect, string> = {
   scoring: 'Évaluation des profils',
 };
 
-/** Search/scoring effects need a separate integration before they are offered. */
-export const EDITABLE_AGENT_MEMORY_EFFECTS: readonly AgentMemoryEffect[] = ['assistant', 'presentation'];
+export const EDITABLE_AGENT_MEMORY_EFFECTS: readonly AgentMemoryEffect[] = ['assistant', 'presentation', 'search', 'scoring'];
+
+/** Shared recruiting decisions must not depend on one recruiter's private preferences. */
+export function canUseAgentMemoryEffect(scope: AgentMemoryScope, effect: AgentMemoryEffect): boolean {
+  return scope !== 'user' || (effect !== 'search' && effect !== 'scoring');
+}
 
 export function isAgentMemoryDraftValid(value: AgentMemoryDraft): boolean {
   return value.content.trim().length >= 5 && value.content.trim().length <= 2000
-    && value.effects.length > 0 && value.effects.every((effect) => EDITABLE_AGENT_MEMORY_EFFECTS.includes(effect));
+    && value.effects.length > 0 && value.effects.every((effect) => EDITABLE_AGENT_MEMORY_EFFECTS.includes(effect)
+      && canUseAgentMemoryEffect(value.scope, effect));
 }
 
 export function agentMemoryScopeLabel(

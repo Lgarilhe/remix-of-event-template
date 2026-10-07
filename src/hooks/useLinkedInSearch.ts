@@ -290,7 +290,7 @@ export function useLinkedInSearch({
 
     // If filters were manually edited (UI format already), load directly
     if (savedFilters.last_manual_edit) {
-      const { last_manual_edit, generated_at, suggestions, skills_keywords, location_keywords, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
+      const { last_manual_edit, generated_at, suggestions, memory_context, brief_text, skills_keywords, location_keywords, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
       // Mark as initial load so the save effect skips this change
       initialFilterLoadRef.current = true;
       // Don't restore api from snapshot — it must match the current search source toggle
@@ -346,7 +346,8 @@ export function useLinkedInSearch({
         }
       }
     } else {
-      setFilters({ ...INITIAL_FILTERS, ...savedFilters });
+      const { generated_at, suggestions, memory_context, brief_text, ...uiFilters } = savedFilters;
+      setFilters({ ...INITIAL_FILTERS, ...uiFilters });
     }
     // Mark as initial load so the save effect skips this filter change
     initialFilterLoadRef.current = true;

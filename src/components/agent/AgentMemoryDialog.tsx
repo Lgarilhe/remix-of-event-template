@@ -69,6 +69,7 @@ function MemoryRow({ memory, canManage }: { memory: AgentMemory; canManage: bool
             <AlertDialogDescription>L’assistant cessera de l’appliquer au niveau « {agentMemoryScopeLabel(memory.scope, orgType)} ». Pour la rétablir, il faudra créer et confirmer une nouvelle proposition.</AlertDialogDescription>
           </AlertDialogHeader>
           <p className="text-sm whitespace-pre-wrap break-words">{memory.content}</p>
+          {memory.effects.some((effect) => effect === 'search' || effect === 'scoring') && <p className="text-sm text-foreground-secondary">La désactivation s’applique aux prochaines recherches et évaluations. Les résultats déjà produits ne sont pas recalculés automatiquement.</p>}
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11 md:min-h-0" disabled={busy}>Annuler</AlertDialogCancel>
@@ -157,7 +158,7 @@ export function AgentMemoryDialog({ open, onOpenChange, projectId = null, projec
         }}>
         <DialogHeader className="shrink-0 text-left">
           <DialogTitle ref={titleRef} tabIndex={-1} className="flex items-center gap-2 pr-7">{!showingIntroduction && <Brain aria-hidden="true" className="h-4 w-4 shrink-0" />}{showingIntroduction ? 'Découvrir la mémoire' : projectId ? orgType === 'enterprise' ? 'Mémoire appliquée au poste' : 'Mémoire appliquée à la mission' : 'Mémoire de l’assistant'}</DialogTitle>
-          <DialogDescription>{showingIntroduction ? 'Vous décidez ce qui est retenu.' : <>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives guident l’assistant. Vos propositions restent privées jusqu’à leur confirmation.</>}</DialogDescription>
+          <DialogDescription>{showingIntroduction ? 'Vous décidez ce qui est retenu.' : <>{projectId && projectTitle ? `${projectTitle}. ` : ''}Les mémoires actives s’appliquent selon les utilisations choisies. Vos propositions restent privées jusqu’à leur confirmation.</>}</DialogDescription>
         </DialogHeader>
         {showingIntroduction ? <AgentMemoryIntro key={introduction.key} orgType={orgType} hasProject={Boolean(projectId)} onDone={finishIntroduction} onSkip={finishIntroduction} /> : <>
         <AgentMemoryAutomation enabled={open} />

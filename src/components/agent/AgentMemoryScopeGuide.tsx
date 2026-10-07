@@ -22,6 +22,7 @@ export function AgentMemoryScopeGuide({ orgType, hasProject, onReplay }: Props) 
           <li><span className="font-medium text-foreground">{agentMemoryScopeLabel('user', orgType)}</span> : préférences personnelles dans cet espace.</li>
         </ol>
         <p>En cas de conflit entre des mémoires, l’assistant vous demande une clarification.</p>
+        <p>La recherche et l’évaluation des profils utilisent les mémoires confirmées au niveau {hasProject ? `« ${agentMemoryScopeLabel('project', orgType)} » et ` : ''}« {agentMemoryScopeLabel('organization', orgType)} ». « Pour moi » reste réservé à vos réponses et à leur présentation.</p>
         {onReplay && <Button type="button" variant="ghost" size="sm" className="min-h-11 md:min-h-0" onClick={onReplay}>
           <PlayCircle aria-hidden="true" className="h-4 w-4" />Revoir l’explication
         </Button>}

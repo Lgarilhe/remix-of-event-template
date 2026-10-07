@@ -666,6 +666,40 @@ const STAGE_WRITE_WHITELIST = [
     },
   },
   {
+    id: 'S6-note',
+    why: 'score-profile-job : note seule sur les statuts humains ; le résultat opaque est copié uniquement dans scoring_details, jamais au premier niveau de la mise à jour',
+    file: SCORE,
+    match: (s) => s.op === 'update' && s.payload.trim() === 'note',
+    check: (s) => {
+      assert.deepEqual(s.keys, [], 'S6-note : aucune colonne de l’étape');
+      // Le scanner descend dans scoring_details et résout le paramètre result
+      // depuis une déclaration homonyme hors de syncJobCandidateStatus. Le
+      // résultat reste une valeur JSON : seules les clés SQL de note comptent.
+      assert.deepEqual(s.unresolved, ['data.scoring_result as ScoringResult'],
+        'S6-note : seule la copie du résultat dans les détails est opaque');
+      const decl = declarationOf(s.src, 'note', s.index);
+      assert.ok(decl, 'S6-note : objet note relu');
+      const text = stripComments(decl.text).trim();
+      assert.match(text, /^\{[\s\S]*\}$/, 'S6-note : objet littéral seulement');
+      const fields = [];
+      for (let at = 1; at < text.length - 1;) {
+        const end = scanTo(text, at, ',');
+        const property = text.slice(at, end).trim();
+        if (property) {
+          const key = /^(score|recommendation|scoring_details|updated_at)(?:\s*:|\s*$)/.exec(property);
+          assert.ok(key, `S6-note : champ SQL ou décomposition non autorisé : ${property.slice(0, 60)}`);
+          fields.push(key[1]);
+        }
+        at = end + 1;
+      }
+      assert.deepEqual(fields.sort(), ['recommendation', 'score', 'scoring_details', 'updated_at'],
+        'S6-note : uniquement les quatre champs de la note');
+      assert.match(s.chain, /\.eq\('organization_id', organizationId\)/);
+      assert.match(s.chain, /\.not\('status', 'in', AI_REWRITABLE_IN\)/,
+        'S6-note : les statuts humains ne sont jamais réécrits');
+    },
+  },
+  {
     id: 'S6',
     why: 'score-profile-job : « scored » sur les seuls statuts new, discovered, untreated, scored (étape À trier inchangée)',
     file: SCORE,

@@ -21,7 +21,7 @@ function compile(path, prelude = '', globals = {}) {
 }
 const pure = compile('supabase/functions/_shared/memory-proposals.ts');
 const memory = compile('supabase/functions/_shared/user-memory.ts',
-  'const { formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText } = __pure;\n', { __pure: pure });
+  'const { formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText, readValidatedMemories } = __pure;\n', { __pure: pure });
 const missionA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const missionB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 

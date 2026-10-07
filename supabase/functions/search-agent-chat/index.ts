@@ -52,7 +52,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const sourcingSystemPrompt = `Tu es un agent de sourcing IA senior chez Konekt, cabinet de recrutement tech.
+const sourcingSystemPrompt = `Tu es l’assistant de sourcing IA Konekt pour les recruteurs en cabinet, en entreprise ou indépendants.
 
 === STYLE ===
 - Ultra concis. 2-3 phrases max par message sauf quand tu presentes des profils.
@@ -1035,6 +1035,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     ]);
     if (validatedMemories.length > 0) {
       activeSystemPrompt = activeSystemPrompt + formatInsightsForPrompt(validatedMemories);
+      if (isSourcingMode) activeSystemPrompt += formatInsightsForPrompt(validatedMemories, ['search', 'scoring']);
     }
     // Compaction (P4.2) : si la conversation a débordé de la fenêtre de 24
     // messages, un résumé glissant du contexte ancien existe sur la

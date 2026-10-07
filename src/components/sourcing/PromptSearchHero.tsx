@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -7,15 +7,19 @@ import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { Sparkles, Loader2, SlidersHorizontal } from 'lucide-react';
 import type { JobDetails } from '@/types/jobDetails';
+import { useOrganization } from '@/hooks/useOrganization';
+import { requireGeneratedFilters, requireGeneratedSearchMemoryContext } from '@/components/outreach/search/generateFiltersFromJob';
 
 // Réponse de generate-search-filters (champs consommés ici)
 interface GenerateFiltersResponse {
   success?: boolean;
   error?: string;
   fallback?: boolean;
+  degraded?: boolean;
   filters?: Record<string, unknown>;
   analysis?: { suggested_title?: string | null };
   suggestions?: Record<string, string[]>;
+  memory_context?: unknown;
 }
 
 const EXAMPLES = [
@@ -40,10 +44,23 @@ interface PromptSearchHeroProps {
 // persiste le tout dans filters_snapshot → hydratation auto du panneau.
 export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onSkip }: PromptSearchHeroProps) => {
   const { updateProject } = useSourcingProjects('search');
+  const { organizationId } = useOrganization();
   const [prompt, setPrompt] = useState<string>(
     () => ((project.filters_snapshot as Record<string, unknown> | undefined)?.brief_text as string) || '',
   );
   const [generating, setGenerating] = useState(false);
+  const generationRef = useRef(0);
+  const contextKey = JSON.stringify([organizationId, project.id]);
+  const contextRef = useRef(contextKey);
+  contextRef.current = contextKey;
+  useEffect(() => {
+    setGenerating(false);
+    setPrompt(typeof project.filters_snapshot?.brief_text === 'string' ? project.filters_snapshot.brief_text : '');
+    return () => { generationRef.current += 1; };
+    // Le changement de contexte recharge le brouillon ; une sauvegarde de
+    // filtres dans le même contexte ne doit pas effacer la saisie en cours.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextKey]);
 
   const handleGenerate = async () => {
     const trimmed = prompt.trim();
@@ -51,6 +68,12 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
       toast.error('Décris un peu plus ta cible (poste, compétences, localisation…)');
       return;
     }
+    if (!organizationId || project.organization_id !== organizationId) {
+      toast.error('Attends le chargement de cette recherche avant de générer les filtres.');
+      return;
+    }
+    const generation = ++generationRef.current;
+    const isCurrent = () => generationRef.current === generation && contextRef.current === contextKey;
     setGenerating(true);
     try {
       const firstLine = trimmed.split('\n')[0].slice(0, 80);
@@ -59,7 +82,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
         'filter_generation',
         {
           job: {
-            id: 'draft',
+            id: `project:${project.id}`,
             title: firstLine,
             description: trimmed,
             client: null,
@@ -68,17 +91,17 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
             seniority: null,
           },
           search_source: 'linkedin',
+          organization_id: organizationId,
+          project_id: project.id,
         },
       );
 
-      if (error || !data?.success || !data.filters) {
-        toast.error('La génération a échoué', {
-          description: data?.error || error?.message || 'Réessaie dans quelques secondes.',
-        });
-        return;
-      }
+      if (!isCurrent()) return;
+      if (error) throw error;
+      const generatedFilters = requireGeneratedFilters(data);
+      const memoryContext = requireGeneratedSearchMemoryContext(data?.memory_context);
 
-      const title = (data.analysis?.suggested_title || firstLine).trim();
+      const title = (data?.analysis?.suggested_title || firstLine).trim();
       await updateProject({
         id: project.id,
         name: title || project.name,
@@ -88,21 +111,29 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
         description: trimmed,
         job_details: { ...(project.job_details || {}), title } as JobDetails,
         filters_snapshot: {
-          ...data.filters,
-          ...(data.suggestions ? { suggestions: data.suggestions } : {}),
+          ...generatedFilters,
+          ...(data?.suggestions ? { suggestions: data.suggestions } : {}),
+          memory_context: memoryContext ?? null,
           brief_text: trimmed,
           generated_at: new Date().toISOString(),
         },
       });
 
+      if (!isCurrent()) return;
+      const memoryCount = memoryContext?.provenance.length ?? 0;
       toast.success('Filtres générés', {
-        description: 'Vérifie les filtres appliqués et lance la recherche.',
+        description: memoryCount > 0
+          ? `${memoryCount} règle${memoryCount > 1 ? 's' : ''} confirmée${memoryCount > 1 ? 's' : ''} en mémoire prise${memoryCount > 1 ? 's' : ''} en compte. Vérifie les filtres avant de rechercher.`
+          : 'Vérifie les filtres appliqués et lance la recherche.',
       });
       onGenerated();
-    } catch {
-      toast.error('La génération a échoué', { description: 'Réessaie dans quelques secondes.' });
+    } catch (error) {
+      if (!isCurrent()) return;
+      toast.error('La génération a échoué', {
+        description: error instanceof Error ? error.message : 'Réessaie dans quelques secondes.',
+      });
     } finally {
-      setGenerating(false);
+      if (isCurrent()) setGenerating(false);
     }
   };
 
