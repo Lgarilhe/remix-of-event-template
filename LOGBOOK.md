@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — DECISION — Mémoire : scène continue et commandes de lecture
+
+**Fait** : démonstration de neuf secondes : surlignage de la consigne, extraction d’une proposition, choix du niveau et rangement dans les mémoires confirmées. Le même ticket se déplace et les traits se dessinent ; parcours diagonal sur mobile, horizontal sur ordinateur. Pause, reprise au temps restant et relecture partagent une seule horloge ; l’onglet masqué met la scène en pause. Exemple fixe avec mouvement réduit, préférence suivie dans les deux sens pendant la découverte. Niveaux adaptés au cabinet, à l’entreprise et à l’indépendant, avec mission ou poste selon le contexte.
+**Validation locale** : build final vérifié sur les trois sources livrées ; lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 35 nouveaux contrôles de déplacement, arrêt sans boucle, pause/reprise, relecture, fermeture et focus ; sept audits axe sans violation, aucune erreur navigateur ni écriture métier. Les 40 contrôles de la première version restent exclus de ce décompte. À 320 px avec trois niveaux, le ticket final conserve 6 px avant le rail ; exemple animé et fixe cohérents.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Parcours continu, pause complète, reprise au temps restant et relecture depuis le début | PASS |
+| Claire | Compris/Passer et relecture depuis l’aide, Échap/croix avec focus restauré | PASS |
+| Théo | Mouvement réduit initial, changements de préférence dans les deux sens et aucune écriture métier | PASS |
+| Sophie | Clair/sombre de 320 à 1440 px, trois niveaux à 320 px, CTA fixes et défilement clavier à 390×400 | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`, `src/components/agent/AgentMemoryDialog.tsx`.
+
 ## 2026-10-07 — DECISION — Première découverte animée de la mémoire
 
 **Fait** : démonstration de 4,12 secondes à la première ouverture volontaire de la mémoire : conversation, proposition, niveau et confirmation. Explications permanentes, actions « Compris » et « Passer » fixes sur mobile, relecture depuis l’aide. Découverte enregistrée par utilisateur et espace dans le navigateur, avec repli de session si le stockage est bloqué. Mouvement réduit : exemple fixe ; changement de préférence ou onglet masqué arrêtent la démonstration. Aucune activation ni mémorisation métier depuis le tutoriel.
