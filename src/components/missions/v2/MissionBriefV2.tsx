@@ -13,7 +13,7 @@
  * FilterReviewModal). Aucun changement de data model.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Loader2, Mic, Plus, X, Check, Cloud, CloudUpload, AlertCircle,
@@ -29,6 +29,8 @@ import { VoiceDictation } from '../VoiceDictation';
 import type { JobDetails } from '@/types/jobDetails';
 import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, SIZE_LABELS, URGENCY_LABELS } from '@/types/jobDetails';
 import { Pill } from './Pill';
+import { useOrganization } from '@/hooks/useOrganization';
+import { requireGeneratedFilters, requireGeneratedSearchMemoryContext, type GeneratedSearchMemoryContext } from '@/components/outreach/search/generateFiltersFromJob';
 
 interface MissionBriefV2Props {
   project: SourcingProject;
@@ -38,6 +40,7 @@ interface MissionBriefV2Props {
 interface AnalysisResult {
   filters: any;
   analysis: any;
+  memoryContext?: GeneratedSearchMemoryContext;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -45,58 +48,94 @@ interface AnalysisResult {
 export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnly = false }) => {
   const [, setSearchParams] = useSearchParams();
   const { updateProject } = useSourcingProjects();
+  const { organizationId } = useOrganization();
 
   const [showVoice, setShowVoice] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [showFilterReview, setShowFilterReview] = useState(false);
-  // Enregistrement automatique du brief (logique déplacée telle quelle dans
-  // useJobDetailsAutosave, partagée avec l'écran Cadrage de la nouvelle page).
+  // Une analyse en cours appartient à cette version précise du brief.
   const { jd, updateField, saveStatus } = useJobDetailsAutosave(project, readOnly);
-
+  const generationRef = useRef(0);
+  const contextKey = JSON.stringify([organizationId, project.id, jd, project.description, project.client_name, project.name, project.job_title]);
+  const contextRef = useRef(contextKey);
+  contextRef.current = contextKey;
+  useEffect(() => {
+    setIsAnalyzing(false);
+    setAnalysis(null);
+    setShowFilterReview(false);
+    return () => { generationRef.current += 1; };
+  }, [contextKey]);
   const handleAnalyze = async () => {
+    if (!organizationId || project.organization_id !== organizationId || readOnly) return;
     const descText = jd.mission_description || jd.raw_brief || jd.context || '';
     if (descText.trim().length < 20 && !jd.title) {
       toast.error('Renseigne au moins le titre ou la description pour analyser');
       return;
     }
+    const generation = ++generationRef.current;
+    const isCurrent = () => generationRef.current === generation && contextRef.current === contextKey;
     setIsAnalyzing(true);
     try {
       const response = await invokeWithCredits('generate-search-filters', 'filter_generation', {
+        organization_id: organizationId,
+        project_id: project.id,
         job: {
           id: project.id,
           title: jd.title || project.name,
-          description: [jd.mission_description, jd.context, jd.raw_brief].filter(Boolean).join('\n\n'),
+          description: [...new Set([jd.mission_description, jd.context, jd.raw_brief, project.description].filter(Boolean))].join('\n\n'),
           client: jd.client?.name ? { name: jd.client.name, sector: jd.client.sector } : (project.client_name ? { name: project.client_name } : null),
           location: jd.location || null,
-          skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
+          skills: jd.skills_must_have || [],
+          mustHave: (jd.skills_must_have || []).join(', '),
+          shouldHave: (jd.skills_should_have || []).join(', '),
+          niceToHave: (jd.skills_nice_to_have || []).join(', '),
+          remote: jd.remote_policy || null,
+          sourcingCriteria: 'Critères structurés du brief (respecter les niveaux obligatoire, souhaité et bonus) :\n' + JSON.stringify({
+            contract_type: jd.contract_type, start_date: jd.start_date, urgency: jd.urgency,
+            remote_days: jd.remote_days, team_size: jd.team_size, reports_to: jd.reports_to, manages: jd.manages,
+            salary_min: jd.salary_min, salary_max: jd.salary_max, salary_currency: jd.salary_currency,
+            salary_type: jd.salary_type, equity: jd.equity, benefits: jd.benefits,
+            skills_to_avoid: jd.skills_to_avoid, languages: jd.languages, certifications: jd.certifications,
+            target_companies: jd.target_companies, calibration_profiles: jd.calibration_profiles,
+            evaluation_criteria: jd.evaluation_criteria, evaluation_weights: jd.evaluation_weights,
+            pedigree_requirements: jd.pedigree_requirements,
+            restrict_search_to_competitors: jd.restrict_search_to_competitors,
+          }),
           seniority: jd.seniority || null,
           xpMin: jd.experience_min,
           xpMax: jd.experience_max,
         },
       });
+      if (!isCurrent()) return;
       if (response.error) throw new Error(response.error.message || 'Erreur IA');
-      if (!response.data?.success) throw new Error('Analyse échouée');
-      setAnalysis({ filters: response.data.filters, analysis: response.data.analysis });
+      const filters = requireGeneratedFilters(response.data);
+      const memoryContext = requireGeneratedSearchMemoryContext(response.data?.memory_context);
+      setAnalysis({ filters, analysis: response.data?.analysis, memoryContext });
       setShowFilterReview(true);
     } catch (err: any) {
+      if (!isCurrent()) return;
       toast.error(err.message || "Erreur lors de l'analyse");
     } finally {
-      setIsAnalyzing(false);
+      if (isCurrent()) setIsAnalyzing(false);
     }
   };
 
   const handleAcceptFilters = async (updatedFilters: any) => {
+    if (!analysis || !organizationId || project.organization_id !== organizationId || readOnly) return;
+    const acceptedContext = contextKey;
     try {
       await updateProject({
         id: project.id,
-        filters_snapshot: { ...updatedFilters, generated_at: new Date().toISOString() },
+        filters_snapshot: { ...updatedFilters, memory_context: analysis.memoryContext ?? null, generated_at: new Date().toISOString() },
       } as any);
+      if (contextRef.current !== acceptedContext) return;
       setShowFilterReview(false);
       toast.success('Filtres sauvegardés — direction sourcing');
       setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('tab', 'sourcing'); return n; }, { replace: true });
     } catch {
+      if (contextRef.current !== acceptedContext) return;
       toast.error('Erreur lors de la sauvegarde');
     }
   };

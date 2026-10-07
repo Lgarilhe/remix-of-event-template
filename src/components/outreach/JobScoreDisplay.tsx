@@ -5,6 +5,7 @@ import { ScoringBreakdown } from './ScoringBreakdown';
 import { CriteriaIndicators } from './CriteriaIndicators';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { ScoringContextMetadata } from '@/types/sourcingMemory';
 
 export interface SalaryAnalysis {
   status: 'adequate' | 'too_low' | 'too_high' | 'unknown';
@@ -40,6 +41,9 @@ export interface ScoringDetails {
 }
 
 export interface JobMatchResult {
+  /** Version of the brief and confirmed shared memories actually evaluated. */
+  scoringContext?: ScoringContextMetadata;
+  clientContextKey?: string;
   profile_name: string;
   match_score: number;
   matching_skills: string[];

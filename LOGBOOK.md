@@ -32,6 +32,134 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Mémoires appliquées à la recherche et à l’évaluation
+
+**Contexte** : les mémoires confirmées guidaient l’assistant, mais leurs effets Recherche et Évaluation n’étaient pas reliés à la génération des filtres ni aux notes des candidats.
+**Fait** : les décisions de l’organisation et de la mission sont chargées et autorisées côté serveur avant analyse. Contraintes avant préférences ; l’organisation encadre la mission ; contradiction avec le brief ou analyse de conflit incomplète bloque l’application. Les préférences restent des suggestions ou des bonus. Les mémoires personnelles restent Assistant/Présentation ; l’automatisation existante reste limitée aux préférences explicites de communication, après activation.
+**Recherche** : la confirmation signale les filtres anciens ; « Régénérer » ouvre la vraie revue des filtres, sans lancer LinkedIn. Brief libre complet conservé à la création d’une recherche. Critères obligatoires, souhaités et bonus distincts ; télétravail, client et critères structurés transmis ; temporalité explicite des postes et entreprises conservée. Provenance sauvegardée à plat dans `filters_snapshot` avec les filtres.
+**Évaluation** : cache et affichage vérifient le brief, les consignes, le modèle et les mémoires réellement utilisés. Une note ancienne disparaît des listes, tris et détails ; les décisions humaines restent intactes. La provenance serveur permet de relire une note valide après rechargement, y compris une note de fond. Les retours tardifs et lectures/sauvegardes de statuts d’une autre mission sont ignorés, y compris A→B→A.
+**Isolation** : nouvelle RPC de lecture partagée réservée au service, avec organisation, acteur membre et mission vérifiés ; aucun élargissement C1 des droits aux candidats d’une autre organisation. Migration reconstruite et rejouable ; audit SQL et refus HTTP anonyme câblés dans la CI.
+**UX** : composants et jetons natifs ; règles repliables, niveau/effet lisibles, panne avec Réessayer, commandes tactiles de 44 px à 320 px. Niveaux adaptés au cabinet, au client final et à l’indépendant. Motion inchangé à la demande du propriétaire.
+**Validation locale** : build final réussi ; 20 fichiers de tests agent, 117 UX et 28 C1 passent. Parmi les contrôles comportementaux exécutés directement : 50 scoring, 19 génération serveur, 15 courses du hook, 12 génération frontend, 6 régénération d’outil et 2 worker. Base isolée sans réseau : 295 migrations reconstruites, 150 assertions SQL réussies, puis migration et audit sourcing rejoués. Navigateur : 19 scénarios et 10 audits axe ciblés sans violation, aucune erreur JS finale. TypeScript conserve exactement les 11 erreurs héritées, lint sans aggravation et compteurs design inchangés. Aucune recherche LinkedIn réelle, aucun appel au modèle réel ni écriture en production ; les essais navigateur interceptent les API. Le runtime Deno et les advisors ne sont pas certifiés par ces essais. Le refus HTTP de la RPC doit s’exécuter en CI : le fixture local supautils plante sur un refus EXECUTE par psql, sans relâchement des permissions.
+
+| Persona | Scénario local avec API simulées | Verdict |
+|---|---|---|
+| Guillaume | Confirmer une règle, régénérer/revoir, lancer volontairement, noter et retrouver la provenance | PASS |
+| Claire | Niveaux entreprise/poste, portée des règles et effets distincts compréhensibles | PASS |
+| Théo | Contexte exact, conflits et panne fermés, réponses tardives, aucune écriture distante | PASS |
+| Sophie | Niveaux activité/mission, dialogue et commandes utilisables à 320 px sans débordement | PASS |
+
+**Reste à faire** : déployer cette version locale et ses migrations dans le cadre de la livraison ; vérifier les connecteurs et la qualité des analyses sur de vrais dossiers avant d’activer une recherche récurrente.
+**Refs** : `tests/agent/sourcing-memory-generation.test.mjs`, `tests/agent/scoring-memory-context.test.mjs`, `tests/agent/regenerate-search-filters.test.mjs`, `tests/agent/candidate-status-context-races.test.mjs`, `supabase/tests/agent_sourcing_memory_audit.sql`.
+
+## 2026-10-07 — REFACTOR — Film explicatif de la mémoire
+
+**Contexte** : la découverte expliquait la création d’une mémoire par quatre fondus d’interface, sans montrer son utilité dans l’échange suivant.
+**Fait** : film de 18 secondes avec une consigne persistante : ouverture à 18 px, extraction par raccord du trait au contour, passage au corps natif à 14 px, geste « Modifier → Niveau → Pour moi → Garder », puis mémoire rangée et synthèse en trois points suivis des réserves. Exemple de préférence personnelle confirmée manuellement ; niveaux adaptés au cabinet, à l’entreprise et à l’indépendant. Le préfixe se retire avant la levée de la consigne pour éviter leur croisement ; le titre de confirmation suit le compactage pour conserver la séparation des lignes. Le lecteur, les surfaces et les contrôles reprennent les primitives et jetons Konekt.
+**Lecture** : horloge unique pour les mots, cadrages, curseur, appuis et tracés. Pause complète, reprise au temps restant, relecture à zéro, arrêt sans boucle et pause à l’onglet masqué. Mouvement réduit : consigne, confirmation et bénéfice fixes, avec préférence suivie dans les deux sens. Pied fixe sur écran court, explication complète à 320 px, équivalent accessible permanent.
+**Validation locale** : build final réussi, trois sources identiques aux sourcemaps ; lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs design restent identiques à main. Chromium avec API simulées : 36 contrôles de découverte, quatre de continuité de lecture et 15 ciblés sur l’extraction ; sept audits axe sans violation, aucune erreur navigateur ni écriture métier. Captures clair/sombre à 320/390/1440 px et revue d’images successives du film ; les six régressions métier antérieures sont référencées sans rejeu et exclues des décomptes.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Pause à plusieurs moments, reprise sans redémarrage, relecture et fin tenue | PASS |
+| Claire | Consigne, choix du niveau, confirmation et bénéfice au prochain échange lisibles | PASS |
+| Théo | Scène inerte, aucune écriture, mouvement réduit initial/live et retrait du préfixe avant extraction | PASS |
+| Sophie | Film et explication complets à 320/390 px, niveaux adaptés et commandes de 44 px à 390×400 | PASS |
+
+**État** : validé localement, non déployé. Revue temporelle par images successives ; aucune mesure de fluidité sur un téléphone physique ni essai avec un lecteur d’écran réel.
+**Refs** : `src/components/agent/AgentMemoryMotionScene.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `docs/design/01-direction.md`.
+
+## 2026-10-07 — BUG — Mémoire : composition alignée sur le design system
+
+**Contexte** : le partage des primitives ne couvrait pas la composition de la découverte. Le canevas imbriquait les cartes métier dans une carte de scène, ajoutait un sélecteur de niveaux absent du produit et masquait une partie de l’explication à 320 px.
+**Fait** : fenêtre au format natif `max-w-2xl`, titre unique, légende à 14 px, progression fine, commandes de lecture et pied `DialogFooter`. Exemple pleine largeur à plat : conversation, proposition, détail du véritable champ `Select` Niveau fermé, puis mémoire confirmée. Les quatre états partagent une hauteur intrinsèque ; transitions de 200 ms et 4 px, pression à 98 %, toutes pilotées par l’horloge existante. Surface extérieure, rotation, curseur et rail de grandes pastilles retirés. Actions métier et champ illustratifs restent inertes. Une explication permanente pour les lecteurs d’écran nomme les niveaux selon le contexte, la confirmation et la désactivation.
+**Validation locale** : build final réussi, trois sources identiques aux sourcemaps, lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs design restent identiques à main. Revue de composition comparée aux vrais dialogues Nouvelle séquence et à OnboardingFrame, avec captures clair/sombre à 320/390/1440 px. Chromium avec API simulées : 27 nouveaux contrôles de découverte, sept audits axe sans violation, aucune erreur navigateur ni écriture métier. À 320 px avec entreprise et poste, scène et édition de 272 px ; explication et pied entièrement visibles sans défilement initial. Les six régressions métier de la version précédente sont référencées sans rejeu et exclues de ce décompte.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Pause complète, reprise, fin sans boucle, relecture à zéro et retour aux mémoires | PASS |
+| Claire | Titre unique, validation et automatique optionnel expliqués, fermeture et focus restauré | PASS |
+| Théo | Scène inerte sans écriture, équivalent accessible permanent, mouvement réduit initial et dans les deux sens | PASS |
+| Sophie | Texte et actions visibles à 320/390 px, niveaux adaptés, pied fixe et navigation à 390×400 | PASS |
+
+**État** : validé localement, non déployé. Équivalent lecteur d’écran vérifié dans l’interface et ses attributs ; aucun essai avec un lecteur d’écran réel dans cette passe.
+**Refs** : `docs/design/01-direction.md`, `src/components/sequences/NewSequenceDialog.tsx`, `src/components/onboarding/OnboardingFrame.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`.
+
+## 2026-10-07 — REFACTOR — Mémoire : vraies cartes dans la démonstration
+
+**Fait** : propositions et mémoires confirmées partagent désormais leur présentation avec la scène de découverte : cadre, typographie, niveau, type, effets, date et actions natives. Le pointeur choisit le niveau, presse « Garder », puis la consigne rejoint les mémoires actives. Les actions illustrées sont des éléments décoratifs sans contrôle ni écriture. Horloge de neuf secondes, pause, reprise, relecture et mouvement réduit conservés.
+**Adaptation mobile** : scène de 336 px, en-tête compact et marge intérieure réduite uniquement pour la découverte. À 320 px avec trois niveaux, la proposition garde deux lignes d’actions et 8 px avant le rail ; tous les niveaux et « Garder » restent visibles pendant le clic illustré. Les actions finales restent fixes et le contenu défile localement sur écran court.
+**Validation locale** : build réussi et contenu des cinq sources vérifié dans les sourcemaps ; lint ciblé et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs de dette design restent identiques à main. Chromium avec API simulées : 23 contrôles ciblés de démonstration, six régressions des cartes réelles à 320/1440 px et sept audits axe sans violation. Aucun message d’erreur navigateur ni écriture métier depuis la démonstration ; six écritures simulées attendues dans les parcours réels de confirmation, rejet et désactivation. Les 35 contrôles de la version précédente ne sont pas ajoutés à ce décompte.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Vraies cartes, clic illustré, pause complète, reprise, fin sans boucle et relecture | PASS |
+| Claire | Brouillon conservé, confirmation avec les bons paramètres, rejet et désactivation avec confirmation | PASS |
+| Théo | Scène sans action métier, mouvement réduit initial et changement dans les deux sens | PASS |
+| Sophie | Clair/sombre à 320/390/1440 px, trois niveaux à 320 px, actions fixes et défilement clavier à 390×400 | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryPresentation.tsx`, `src/components/agent/AgentMemoryProposalCard.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`.
+
+## 2026-10-07 — DECISION — Mémoire : scène continue et commandes de lecture
+
+**Fait** : démonstration de neuf secondes : surlignage de la consigne, extraction d’une proposition, choix du niveau et rangement dans les mémoires confirmées. Le même ticket se déplace et les traits se dessinent ; parcours diagonal sur mobile, horizontal sur ordinateur. Pause, reprise au temps restant et relecture partagent une seule horloge ; l’onglet masqué met la scène en pause. Exemple fixe avec mouvement réduit, préférence suivie dans les deux sens pendant la découverte. Niveaux adaptés au cabinet, à l’entreprise et à l’indépendant, avec mission ou poste selon le contexte.
+**Validation locale** : build final vérifié sur les trois sources livrées ; lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 35 nouveaux contrôles de déplacement, arrêt sans boucle, pause/reprise, relecture, fermeture et focus ; sept audits axe sans violation, aucune erreur navigateur ni écriture métier. Les 40 contrôles de la première version restent exclus de ce décompte. À 320 px avec trois niveaux, le ticket final conserve 6 px avant le rail ; exemple animé et fixe cohérents.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Parcours continu, pause complète, reprise au temps restant et relecture depuis le début | PASS |
+| Claire | Compris/Passer et relecture depuis l’aide, Échap/croix avec focus restauré | PASS |
+| Théo | Mouvement réduit initial, changements de préférence dans les deux sens et aucune écriture métier | PASS |
+| Sophie | Clair/sombre de 320 à 1440 px, trois niveaux à 320 px, CTA fixes et défilement clavier à 390×400 | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`, `src/components/agent/AgentMemoryDialog.tsx`.
+
+## 2026-10-07 — DECISION — Première découverte animée de la mémoire
+
+**Fait** : démonstration de 4,12 secondes à la première ouverture volontaire de la mémoire : conversation, proposition, niveau et confirmation. Explications permanentes, actions « Compris » et « Passer » fixes sur mobile, relecture depuis l’aide. Découverte enregistrée par utilisateur et espace dans le navigateur, avec repli de session si le stockage est bloqué. Mouvement réduit : exemple fixe ; changement de préférence ou onglet masqué arrêtent la démonstration. Aucune activation ni mémorisation métier depuis le tutoriel.
+**Validation locale** : build final, lint et gardes contraste/fondations passent ; 117 contrôles UX ; TypeScript identique à ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 40 contrôles fonctionnels, six audits axe stabilisés sans violation, aucune erreur navigateur ni écriture métier.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Démonstration finie sans boucle, replay, accès direct après rechargement et relecture depuis l’aide | PASS |
+| Claire | Texte permanent, activation automatique distincte, fermeture sans flash et focus restauré | PASS |
+| Théo | Isolation utilisateur/espace, changement pendant la démonstration, stockage bloqué et aucune écriture métier | PASS |
+| Sophie | Deux actions visibles à 320/390 px et 390×400, défilement local, mouvement réduit initial et en cours | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryIntro.tsx`, `src/hooks/useAgentMemoryIntroduction.ts`, `src/components/agent/AgentMemoryDialog.tsx`.
+
+## 2026-10-07 — BUG — Mémoire : cohérence visuelle et actions accessibles sur mobile
+
+**Fait** : surfaces et boutons alignés sur les primitives du site ; réglages allégés, actions « Garder » et « Proposer » mises en avant. Guide repliable des niveaux adapté aux comptes cabinet, entreprise et indépendant. Confirmation de désactivation défilante pour les mémoires longues ; saisie focalisée et visible à la création ou à l’édition.
+**Validation locale** : build et lint ciblé réussis ; 117 contrôles UX passent ; TypeScript conserve ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 38 contrôles de parcours, six groupes de régression automatique, état vide sans défilement initial à 320/390 px ; audits axe clair/sombre sans violation et aucune erreur de page.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Actions principales lisibles, création et confirmation ; activation automatique explicite | PASS |
+| Claire | Réglages moins denses, niveaux et périmètre expliqués, annulation sans écriture | PASS |
+| Théo | Erreur sans utilisation, contexte adapté au compte, conflits et callbacks tardifs préservés | PASS |
+| Sophie | Cibles de 44 px, champ visible, archive longue accessible à 390×400, CTA initial à 320 px | PASS |
+
+**État** : validé localement, non déployé. Guide fonctionnel retenu pour expliquer la cascade ; aucun ajout d’illustration décorative dans les cartes.
+**Refs** : `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryScopeGuide.tsx`, `docs/design/01-direction.md`.
+
+## 2026-10-07 — DECISION — Mémoire automatique personnelle après calibration
+
+**Fait** : invitation après cinq propositions extraites confirmées sans modification ; activation explicite possible dans les réglages, « Plus tard » persistant et retour manuel. Seules les préférences explicites de langue, longueur et format des réponses peuvent devenir automatiques, personnellement dans chaque espace. Les règles de recrutement, de mission et d’organisation restent à confirmer.
+**Validation locale** : build réussi ; TypeScript 11 erreurs héritées, aucune nouvelle ; lint et comparaison design avec main sans augmentation. Tests UX 117, C1 28 et agent 12 fichiers passent. Base reconstruite avec 294 migrations : automatique 50, manuel 38, RLS 32, replay et quatre courses de consentement/ordre passent. Chromium avec API simulées : aucune erreur navigateur, axe sans violation dans le dialogue mobile.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Seuil sans activation implicite, opt-in, Plus tard et retour manuel | PASS |
+| Claire | Périmètre expliqué, annulation sans écriture, erreurs et rechargement | PASS |
+| Théo | Consentement versionné, callbacks tardifs, isolation utilisateur et organisation | PASS |
+| Sophie | Actions tactiles de 44 px, dialogue court défilant et saisie visible à 390×400 | PASS |
+
+**État** : validé localement, non déployé ; aucun appel aux comptes réels ou au modèle de production.
+**Refs** : `supabase/migrations/20261007130313_agent_memory_automation.sql`, `supabase/tests/agent_memory_automation_audit.sql`, `tests/agent/automatic-memory-extraction.test.mjs`.
 ## 2026-10-07 — REFACTOR — Séparer les contenus de l’aperçu d’actions
 
 **Contexte** : l’aperçu de réponse et de coordination apparaissait comme un long panneau gris, avec des séparations trop faibles.

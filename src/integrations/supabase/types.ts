@@ -14,6 +14,235 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_memory_automation: {
+        Row: {
+          organization_id: string
+          user_id: string
+          mode: string
+          version: number
+          suggestion_dismissed: boolean
+          enabled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          organization_id: string
+          user_id: string
+          mode?: string
+          version?: number
+          suggestion_dismissed?: boolean
+          enabled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          organization_id?: string
+          user_id?: string
+          mode?: string
+          version?: number
+          suggestion_dismissed?: boolean
+          enabled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "agent_memory_automation_organization_id_fkey"
+          columns: ["organization_id"]
+          isOneToOne: false
+          referencedRelation: "organizations"
+          referencedColumns: ["id"]
+        }]
+      }
+      agent_memory_proposals: {
+        Row: {
+          id: string
+          organization_id: string
+          created_by: string
+          project_id: string | null
+          source_conversation_id: string | null
+          source_message_id: string | null
+          source_excerpt: string | null
+          legacy_insight_id: string | null
+          content: string
+          scope: string
+          kind: string
+          effects: string[]
+          confidence: number | null
+          status: string
+          version: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          created_by: string
+          project_id?: string | null
+          source_conversation_id?: string | null
+          source_message_id?: string | null
+          source_excerpt?: string | null
+          legacy_insight_id?: string | null
+          content: string
+          scope?: string
+          kind?: string
+          effects?: string[]
+          confidence?: number | null
+          status?: string
+          version?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          created_by?: string
+          project_id?: string | null
+          source_conversation_id?: string | null
+          source_message_id?: string | null
+          source_excerpt?: string | null
+          legacy_insight_id?: string | null
+          content?: string
+          scope?: string
+          kind?: string
+          effects?: string[]
+          confidence?: number | null
+          status?: string
+          version?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memory_proposals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "agent_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_source_message_id_fkey"
+            columns: ["source_message_id"]
+            isOneToOne: false
+            referencedRelation: "agent_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_legacy_insight_id_fkey"
+            columns: ["legacy_insight_id"]
+            isOneToOne: true
+            referencedRelation: "user_insights"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_memories: {
+        Row: {
+          activation_mode: string
+          automation_version: number | null
+          automation_key: string | null
+          automation_source_created_at: string | null
+          id: string
+          organization_id: string
+          proposal_id: string | null
+          created_by: string
+          confirmed_by: string
+          confirmed_at: string
+          scope: string
+          project_id: string | null
+          owner_user_id: string | null
+          content: string
+          kind: string
+          effects: string[]
+          status: string
+          version: number
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          activation_mode?: string
+          automation_version?: number | null
+          automation_key?: string | null
+          automation_source_created_at?: string | null
+          id?: string
+          organization_id: string
+          proposal_id?: string | null
+          created_by: string
+          confirmed_by: string
+          confirmed_at?: string
+          scope: string
+          project_id?: string | null
+          owner_user_id?: string | null
+          content: string
+          kind: string
+          effects?: string[]
+          status?: string
+          version?: number
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          activation_mode?: string
+          automation_version?: number | null
+          automation_key?: string | null
+          automation_source_created_at?: string | null
+          id?: string
+          organization_id?: string
+          proposal_id?: string | null
+          created_by?: string
+          confirmed_by?: string
+          confirmed_at?: string
+          scope?: string
+          project_id?: string | null
+          owner_user_id?: string | null
+          content?: string
+          kind?: string
+          effects?: string[]
+          status?: string
+          version?: number
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: true
+            referencedRelation: "agent_memory_proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_conversations: {
         Row: {
           archived_at: string | null
@@ -6703,6 +6932,56 @@ export type Database = {
       }
     }
     Functions: {
+      get_agent_memory_automation: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      set_agent_memory_automation: {
+        Args: { p_organization_id: string; p_expected_version: number; p_mode: string; p_dismiss_suggestion?: boolean }
+        Returns: Json
+      }
+      auto_approve_agent_memory: {
+        Args: { p_proposal_id: string; p_automation_version: number }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"] | null
+      }
+      agent_memory_communication_policy: { Args: { p_text: string }; Returns: Json }
+      agent_memory_automatic_source: { Args: { p_proposal_id: string }; Returns: Json }
+      agent_memory_manual_policy_conflict: {
+        Args: { p_organization_id: string; p_project_id: string; p_policy: Json }
+        Returns: boolean
+      }
+      approve_agent_memory: {
+        Args: { p_proposal_id: string; p_expected_version: number; p_content?: string | null; p_scope?: string | null; p_kind?: string | null; p_effects?: string[] | null }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"]
+      }
+      dismiss_agent_memory_proposal: {
+        Args: { p_proposal_id: string; p_expected_version: number }
+        Returns: Database["public"]["Tables"]["agent_memory_proposals"]["Row"]
+      }
+      archive_agent_memory: {
+        Args: { p_memory_id: string; p_expected_version: number }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"]
+      }
+      get_agent_memory_context: {
+        Args: { p_organization_id: string; p_project_id?: string | null }
+        Returns: Json
+      }
+      get_agent_sourcing_memory_context: {
+        Args: {
+          p_organization_id: string
+          p_project_id: string | null
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      agent_memory_can_read_project: {
+        Args: { p_organization_id: string; p_project_id: string }
+        Returns: boolean
+      }
+      agent_memory_can_manage: {
+        Args: { p_organization_id: string; p_scope: string; p_project_id: string; p_owner_user_id: string }
+        Returns: boolean
+      }
       acquire_sequence_lock: {
         Args: { p_run_id: string; p_ttl_minutes?: number }
         Returns: boolean

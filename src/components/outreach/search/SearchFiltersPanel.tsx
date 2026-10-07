@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Search, Loader2, AlertTriangle, Lock, Pencil, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { GeneratedSearchMemoryContext } from './generateFiltersFromJob';
 
 export interface FilterSuggestions {
   alt_skills?: string[];
@@ -90,6 +91,7 @@ interface SearchFiltersPanelProps {
   onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
   /** Nouvelle page mission : sans la barre en langage naturel (le champ « Affiner » la remplace). */
   hidePromptBar?: boolean;
+  onMemoryContextGenerated?: (context: GeneratedSearchMemoryContext | null) => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -119,6 +121,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   suggestions,
   onSuggestionsGenerated,
   hidePromptBar = false,
+  onMemoryContextGenerated,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -378,11 +381,13 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       {activeProject && selectedJob && !hidePromptBar && (
         <SearchPromptBar
           selectedJob={selectedJob}
+          projectId={activeProject.id}
           accountId={selectedAccount}
           searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           currentLocation={filters.location}
           onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
           onSuggestionsGenerated={onSuggestionsGenerated}
+          onMemoryContextGenerated={onMemoryContextGenerated}
         />
       )}
 
@@ -403,10 +408,12 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <div className={cn('flex-wrap items-center gap-1.5 sm:gap-2', activeProject ? 'hidden' : 'flex')}>
           <AutoFillFiltersButton
             selectedJob={selectedJob}
+            projectId={activeProject?.id ?? null}
             accountId={selectedAccount}
             currentLocation={filters.location}
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
             onSuggestionsGenerated={onSuggestionsGenerated}
+            onMemoryContextGenerated={onMemoryContextGenerated}
             searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           />
         </div>

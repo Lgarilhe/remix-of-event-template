@@ -20,6 +20,7 @@ on:
       - 'supabase/**'
       - 'playwright.config.ts'
       - 'package.json'
+      - '.github/workflows/e2e.yml'
   workflow_dispatch:
     inputs:
       grep:
@@ -168,6 +169,12 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/assistant_conversations_audit.sql -c 'ROLLBACK;'
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/agent_memory_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/agent_memory_automation_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/agent_sourcing_memory_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/client_portal_audit.sql -c 'ROLLBACK;'
           # Appel anonyme réel de la lecture du portail, par l'API avec la clé
           # anon : refus attendu (401, code 42501). Pas par psql, pour la même
@@ -181,6 +188,18 @@ jobs:
           if [ "$code" != "401" ] || ! grep -q '"42501"' portal_anon.json; then
             echo "::error::appel anonyme de client_portal_candidates : HTTP $code (401 et 42501 attendus)"
             cat portal_anon.json; exit 1
+          fi
+          # Cette RPC est réservée au serveur. Vérifier le refus par HTTP :
+          # le fixture local supautils ne supporte pas le refus EXECUTE par psql.
+          code=$(curl -sS -o sourcing_memory_anon.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/get_agent_sourcing_memory_context" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_organization_id":"00000000-0000-4000-8000-000000000001","p_project_id":null,"p_user_id":"00000000-0000-4000-8000-000000000002"}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' sourcing_memory_anon.json; then
+            echo "::error::appel anonyme de get_agent_sourcing_memory_context : HTTP $code (401 et 42501 attendus)"
+            cat sourcing_memory_anon.json; exit 1
           fi
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/partner_engagements_audit.sql -c 'ROLLBACK;'

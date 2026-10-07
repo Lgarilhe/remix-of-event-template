@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -170,6 +170,30 @@ export function useJobCandidateStatus(jobId: string | null) {
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
   const queryClient = useQueryClient();
+  const contextKey = JSON.stringify([organizationId, jobId, user?.id ?? null, isReady]);
+  const contextRef = useRef({ key: contextKey, generation: 0, mounted: true });
+  const fetchGenerationRef = useRef(0);
+  if (contextRef.current.key !== contextKey) {
+    contextRef.current.key = contextKey;
+    contextRef.current.generation += 1;
+  }
+  // A → B → A is a new context even though its identifiers match the first A.
+  useEffect(() => {
+    const context = contextRef.current;
+    context.mounted = true;
+    setStatusState(EMPTY_STATUS_STATE);
+    setLoading(false);
+    return () => {
+      context.mounted = false;
+      context.generation += 1;
+      fetchGenerationRef.current += 1;
+    };
+  }, [contextKey]);
+  const captureContextGuard = useCallback(() => {
+    const generation = contextRef.current.generation;
+    return () => contextRef.current.mounted && contextRef.current.key === contextKey &&
+      contextRef.current.generation === generation;
+  }, [contextKey]);
 
   // Helper setters that update individual parts of the batched state
   const setStatuses = useCallback((updater: Map<string, JobCandidateStatus> | ((prev: Map<string, JobCandidateStatus>) => Map<string, JobCandidateStatus>)) => {
@@ -195,7 +219,9 @@ export function useJobCandidateStatus(jobId: string | null) {
   // Phase 1: fetch lightweight columns (no linkedin_profile_data) for fast initial load
   // Phase 2: fetch linkedin_profile_data separately for pool rehydration (non-blocking)
   const fetchStatuses = useCallback(async () => {
-    if (!jobId) {
+    const contextIsCurrent = captureContextGuard();
+    if (!contextIsCurrent()) return;
+    if (!jobId || !organizationId) {
       setStatusState(EMPTY_STATUS_STATE);
       return;
     }
@@ -209,6 +235,8 @@ export function useJobCandidateStatus(jobId: string | null) {
       return;
     }
 
+    const fetchGeneration = ++fetchGenerationRef.current;
+    const isCurrent = () => contextIsCurrent() && fetchGenerationRef.current === fetchGeneration;
     setLoading(true);
     try {
       // Les statuts d'une mission synthétique existent sous 2 formes de job_id :
@@ -231,9 +259,11 @@ export function useJobCandidateStatus(jobId: string | null) {
           .from('job_candidate_status')
           .select(LIGHT_COLUMNS)
           .in('job_id', jobIdForms)
+          .eq('organization_id', organizationId)
           .eq('created_by', user.id)
           .range(offset, offset + PAGE_SIZE - 1);
 
+        if (!isCurrent()) return;
         if (error) throw error;
 
         if (data && data.length > 0) {
@@ -282,7 +312,8 @@ export function useJobCandidateStatus(jobId: string | null) {
       }
 
       // Single state update (1 re-render instead of 3)
-      setStatusState({ statuses: statusMap, dismissedIds: dismissed, treatedIds: treated });
+      setStatusState(prev => isCurrent()
+        ? { statuses: statusMap, dismissedIds: dismissed, treatedIds: treated } : prev);
 
       // Phase 2: fetch linkedin_profile_data for pool rehydration (non-blocking, max 500)
       // Only fetch for candidates that have profile data (not null)
@@ -299,12 +330,15 @@ export function useJobCandidateStatus(jobId: string | null) {
               .from('job_candidate_status')
               .select('candidate_id,linkedin_profile_data')
               .in('job_id', jobIdForms)
+              .eq('organization_id', organizationId)
               .eq('created_by', user.id)
               .in('candidate_id', candidateIds)
               .not('linkedin_profile_data', 'is', null);
 
+            if (!isCurrent()) return;
             if (profileData && profileData.length > 0) {
               setStatusState(prev => {
+                if (!isCurrent()) return prev;
                 const next = new Map(prev.statuses);
                 for (const row of profileData) {
                   const existing = next.get(row.candidate_id);
@@ -326,9 +360,9 @@ export function useJobCandidateStatus(jobId: string | null) {
     } catch (error) {
       console.error('Error fetching candidate statuses:', error);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [jobId, isReady, user?.id]);
+  }, [jobId, organizationId, isReady, user?.id, captureContextGuard]);
 
   // Load statuses when job changes
   useEffect(() => {
@@ -608,16 +642,19 @@ export function useJobCandidateStatus(jobId: string | null) {
       linkedinProfileData?: any;
     }
   ) => {
-    if (!jobId) return;
+    if (!jobId || !organizationId) return;
+    const isCurrent = captureContextGuard();
+    if (!isCurrent()) return;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !isCurrent()) return;
 
       const existing = statuses.get(candidateId);
       const [{ linkedinProfileData }] = await keepStoredPictures(jobId, user.id, [
         { id: candidateId, linkedinProfileData: candidateData.linkedinProfileData },
       ]);
+      if (!isCurrent()) return;
 
       // Note seule, sans statut. skip_reason seulement si présent : une raison
       // posée ailleurs n'est pas effacée par une nouvelle note.
@@ -644,12 +681,13 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (error) throw error;
 
       await markScored((saved ?? []).map(row => row.id));
-      const nextStatus = statusAfterScore(existing?.status, saved?.[0]?.status);
+      if (!isCurrent()) return;
 
       // Update local state
-      setTreatedIds(prev => new Set([...prev, candidateId]));
-      setStatuses(prev => {
-        const next = new Map(prev);
+      setStatusState(prev => {
+        if (!isCurrent()) return prev;
+        const next = new Map(prev.statuses);
+        const existing = next.get(candidateId);
         next.set(candidateId, {
           id: saved?.[0]?.id || existing?.id || '',
           job_id: jobId,
@@ -657,7 +695,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           linkedin_profile_url: candidateData.profileUrl || existing?.linkedin_profile_url || null,
           candidate_name: candidateData.name || existing?.candidate_name || null,
           candidate_headline: candidateData.headline || existing?.candidate_headline || null,
-          status: nextStatus,
+          status: statusAfterScore(existing?.status, saved?.[0]?.status),
           score: candidateData.score,
           recommendation: candidateData.recommendation,
           skip_reason: candidateData.skipReason || existing?.skip_reason || null,
@@ -665,12 +703,12 @@ export function useJobCandidateStatus(jobId: string | null) {
           created_at: existing?.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
-        return next;
+        return { ...prev, statuses: next, treatedIds: new Set([...prev.treatedIds, candidateId]) };
       });
     } catch (error) {
       console.error('Error saving score:', error);
     }
-  }, [jobId, statuses]);
+  }, [jobId, organizationId, statuses, captureContextGuard]);
 
   // Batch save scores for multiple candidates (même règle que saveScore)
   const batchSaveScores = useCallback(async (
@@ -686,16 +724,19 @@ export function useJobCandidateStatus(jobId: string | null) {
       linkedinProfileData?: any;
     }>
   ) => {
-    if (!jobId || candidates.length === 0) return;
+    if (!jobId || !organizationId || candidates.length === 0) return;
+    const isCurrent = captureContextGuard();
+    if (!isCurrent()) return;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !isCurrent()) return;
 
       // Un upsert groupé ne peut pas toucher deux fois la même ligne.
       const uniqueCandidates = await keepStoredPictures(jobId, user.id, Array.from(
         new Map(candidates.map(c => [c.id, c])).values()
       ));
+      if (!isCurrent()) return;
 
       const toRecord = (c: typeof uniqueCandidates[number]) => {
         const existing = statuses.get(c.id);
@@ -740,34 +781,37 @@ export function useJobCandidateStatus(jobId: string | null) {
       }
 
       // Update local state
-      const newTreated = new Set(treatedIds);
-      const newStatuses = new Map(statuses);
-      uniqueCandidates.forEach(c => {
-        newTreated.add(c.id);
-        const existing = newStatuses.get(c.id);
-        const saved = savedRows.get(c.id);
-        newStatuses.set(c.id, {
-          id: saved?.id || existing?.id || '',
-          job_id: jobId,
-          candidate_id: c.id,
-          linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
-          candidate_name: c.name || existing?.candidate_name || null,
-          candidate_headline: c.headline || existing?.candidate_headline || null,
-          status: statusAfterScore(existing?.status, saved?.status),
-          score: c.score,
-          recommendation: c.recommendation,
-          skip_reason: c.skipReason || existing?.skip_reason || null,
-          created_by: user.id,
-          created_at: existing?.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+      if (!isCurrent()) return;
+      setStatusState(prev => {
+        if (!isCurrent()) return prev;
+        const newTreated = new Set(prev.treatedIds);
+        const newStatuses = new Map(prev.statuses);
+        uniqueCandidates.forEach(c => {
+          newTreated.add(c.id);
+          const existing = newStatuses.get(c.id);
+          const saved = savedRows.get(c.id);
+          newStatuses.set(c.id, {
+            id: saved?.id || existing?.id || '',
+            job_id: jobId,
+            candidate_id: c.id,
+            linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
+            candidate_name: c.name || existing?.candidate_name || null,
+            candidate_headline: c.headline || existing?.candidate_headline || null,
+            status: statusAfterScore(existing?.status, saved?.status),
+            score: c.score,
+            recommendation: c.recommendation,
+            skip_reason: c.skipReason || existing?.skip_reason || null,
+            created_by: user.id,
+            created_at: existing?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
         });
+        return { ...prev, treatedIds: newTreated, statuses: newStatuses };
       });
-      setTreatedIds(newTreated);
-      setStatuses(newStatuses);
     } catch (error) {
       console.error('Error batch saving scores:', error);
     }
-  }, [jobId, statuses, treatedIds]);
+  }, [jobId, organizationId, statuses, captureContextGuard]);
 
   // Check if a candidate is dismissed
   const isDismissed = useCallback((candidateId: string) => {

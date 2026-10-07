@@ -10,7 +10,7 @@
  * ici il ne vit que dans le glyphe IA au focus et dans l'action une fois
  * la barre remplie.
  */
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
@@ -19,7 +19,9 @@ import { LinkedInFiltersState, LocationFilterItem } from '@/components/outreach/
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import type { FilterSuggestions } from './SearchFiltersPanel';
-import { buildAugmentedJob, generateFiltersFromJob } from './generateFiltersFromJob';
+import { buildAugmentedJob, generateFiltersFromJob, type GeneratedSearchMemoryContext } from './generateFiltersFromJob';
+import { useOrganization } from '@/hooks/useOrganization';
+import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
 
 interface SearchPromptBarProps {
   selectedJob: Job | null;
@@ -29,6 +31,8 @@ interface SearchPromptBarProps {
   onApplyFilters: (update: Partial<LinkedInFiltersState>) => void;
   onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
   disabled?: boolean;
+  projectId?: string | null;
+  onMemoryContextGenerated?: (context: GeneratedSearchMemoryContext | null) => void;
 }
 
 const EXAMPLES = [
@@ -51,11 +55,23 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
   onApplyFilters,
   onSuggestionsGenerated,
   disabled,
+  projectId,
+  onMemoryContextGenerated,
 }) => {
+  const { organizationId } = useOrganization();
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const generationRef = useRef(0);
+  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource]);
+  const contextRef = useRef(contextKey);
+  contextRef.current = contextKey;
+  useEffect(() => {
+    setLoading(false);
+    setValue('');
+    return () => { generationRef.current += 1; };
+  }, [contextKey]);
 
   const armed = value.trim().length > 0;
   const accentActive = focused || armed;
@@ -77,20 +93,34 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
       toast.error('Connectez votre compte LinkedIn pour lancer une recherche.');
       return;
     }
+    if (!organizationId) {
+      toast.error('Attends le chargement de ton organisation avant de générer les filtres.');
+      return;
+    }
 
+    const generation = ++generationRef.current;
+    const isCurrent = () => generationRef.current === generation && contextRef.current === contextKey;
     setLoading(true);
     try {
       const job = buildAugmentedJob(selectedJob, phrase);
-      const { update, suggestions, filterCount } = await generateFiltersFromJob({
+      const { update, suggestions, filterCount, memoryContext } = await generateFiltersFromJob({
         job,
         accountId,
         searchSource,
         currentLocation,
+        organizationId,
+        projectId,
       });
+      if (!isCurrent()) return;
       onApplyFilters(update);
       onSuggestionsGenerated?.(suggestions);
-      toast.success(`${filterCount} filtre${filterCount > 1 ? 's' : ''} généré${filterCount > 1 ? 's' : ''}`);
+      onMemoryContextGenerated?.(memoryContext ?? null);
+      const memoryCount = memoryContext?.provenance.length ?? 0;
+      toast.success(`${filterCount} filtre${filterCount > 1 ? 's' : ''} généré${filterCount > 1 ? 's' : ''}`, memoryCount > 0 ? {
+        description: `${memoryCount} règle${memoryCount > 1 ? 's' : ''} confirmée${memoryCount > 1 ? 's' : ''} en mémoire prise${memoryCount > 1 ? 's' : ''} en compte. Vérifie les filtres avant de rechercher.`,
+      } : undefined);
     } catch (error: any) {
+      if (!isCurrent()) return;
       const msg = error?.message || '';
       let humanized = 'Erreur lors de la génération des filtres';
       // Refus de crédits : test sur le code, le message est déjà traduit.
@@ -101,9 +131,9 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
       else if (msg && msg !== "Réponse invalide de l'API" && msg.length < 200) humanized = msg;
       toast.error(humanized);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [value, selectedJob, accountId, searchSource, currentLocation, onApplyFilters, onSuggestionsGenerated]);
+  }, [value, selectedJob, accountId, searchSource, currentLocation, onApplyFilters, onSuggestionsGenerated, organizationId, projectId, contextKey, onMemoryContextGenerated]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
