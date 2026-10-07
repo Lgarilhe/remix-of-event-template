@@ -333,7 +333,7 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
                 <div className="flex items-center justify-between gap-3">
                   <h3 id={`${id}-facts`} ref={factsHeadingRef} tabIndex={-1} className="text-sm font-semibold text-foreground outline-none">Ce que l’IA retient du poste</h3>
                   {cadrageHref && (
-                    <Link to={cadrageHref} className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground max-md:inline-flex max-md:min-h-11 max-md:items-center">
+                    <Link to={cadrageHref} className="text-sm text-foreground underline underline-offset-2 hover:no-underline max-md:inline-flex max-md:min-h-11 max-md:items-center">
                       Modifier dans le Cadrage
                     </Link>
                   )}
@@ -405,7 +405,7 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
                         update({ removedFactIds: [] });
                         focusArgumentRef.current = 0;
                       }}
-                      className={cn('h-auto px-0 text-muted-foreground', TOUCH)}
+                      className={cn('h-auto px-0', TOUCH)}
                     >
                       Remettre les arguments retirés ({settings.removedFactIds.length})
                     </Button>

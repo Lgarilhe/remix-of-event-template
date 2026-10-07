@@ -1091,7 +1091,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
         {/* Adresse repérée dans la fiche collée */}
         {urlSuggestion && sourceInfo && (
           <div className="konekt-fade-up flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-            <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <Globe className="size-4 shrink-0" aria-hidden="true" />
             <p className="min-w-0 flex-1 truncate text-xs">Adresse {sourceInfo.label} détectée.</p>
             <Button variant="ghost" size="xs" onClick={() => onScanUrl()} loading={scanningUrl}>
               Lire la page

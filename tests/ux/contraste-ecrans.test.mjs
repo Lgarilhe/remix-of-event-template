@@ -69,7 +69,7 @@ test('champs faits main : bord de champ, désactivé sans opacité', () => {
 });
 
 test('bascules faites main : rail gris plein, option choisie en carte blanche (creusée en sombre)', () => {
-  for (const rel of ['src/components/missions/v3/pipeline/PipelineToolbar.tsx', 'src/components/missions/v3/sourcing/SourcingResultsV3.tsx']) {
+  for (const rel of ['src/components/missions/v3/pipeline/PipelineToolbar.tsx', 'src/components/missions/v3/sourcing/SourcingResultsV3.tsx', 'src/components/missions/v3/cadrage/CriteriaSection.tsx']) {
     const src = read(rel);
     assert.doesNotMatch(src, /rounded-lg bg-muted\/60 p-0\.5/, `${rel} : rail voilé`);
     assert.match(src, /'bg-card font-semibold text-foreground dark:bg-background' : 'text-muted-foreground hover:text-foreground'/, `${rel} : option choisie`);

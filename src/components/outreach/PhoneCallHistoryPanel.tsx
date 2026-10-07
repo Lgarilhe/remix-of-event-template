@@ -33,7 +33,7 @@ const formatDate = (dateStr: string | null) => {
 
 const statusIcon = (call: PhoneCall) => {
   if (call.outcome === 'missed') return <PhoneMissed className="w-3.5 h-3.5 text-destructive" />;
-  if (call.direction === 'inbound') return <PhoneIncoming className="w-3.5 h-3.5 text-emerald-600" />;
+  if (call.direction === 'inbound') return <PhoneIncoming className="w-3.5 h-3.5 text-foreground" />;
   return <PhoneOutgoing className="w-3.5 h-3.5 text-primary" />;
 };
 
@@ -163,7 +163,7 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                   </Button>
                 )}
                 {call.voicemailUrl && (
-                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-xs text-amber-600 gap-1">
+                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-xs gap-1">
                     <a href={call.voicemailUrl} target="_blank" rel="noopener noreferrer">
                       <Mic className="w-2.5 h-2.5" />
                       Messagerie vocale

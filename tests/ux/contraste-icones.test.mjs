@@ -34,9 +34,12 @@ const OUT_OF_SCOPE = [
   /^src\/components\/(ui|landing|public|portal)\//,
   /^src\/pages\/(Auth|Pricing|SkalrLanding|CandidatePortal|ClientPortalV2|RecruiterPublicProfile|Privacy|PrivacyExtension|Unsubscribe)\.tsx$/,
 ];
-/** Exception h : l'ancienne page mission, inchangée (dossier missions/v2 et fichiers qu'elle seule rend). */
+/**
+ * Exception h : l'ancienne page mission, inchangée (dossier missions/v2 et fichiers qu'elle seule rend). La fenêtre
+ * « Nouvelle mission » (CreateMissionV2, et JobOffersPicker et BriefAnalysisPanel qu'elle seule rend) suit la règle.
+ */
 const OLD_MISSION_PAGE = [
-  /^src\/components\/missions\/v2\//,
+  /^src\/components\/missions\/v2\/(?!(CreateMissionV2|JobOffersPicker|BriefAnalysisPanel)\.tsx$)/,
   /^src\/components\/missions\/(MissionPipeline|MissionOutreach|MissionInsights|FilterReviewModal)\.tsx$/,
   /^src\/components\/outreach\/projects\/(ProjectCandidatesTableEnhanced|ProjectFunnel)\.tsx$/,
   /^src\/pages\/MissionWorkspace\.tsx$/,

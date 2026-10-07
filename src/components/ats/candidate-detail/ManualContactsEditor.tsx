@@ -120,7 +120,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           className={cn('shrink-0 max-sm:min-h-11', HEADER_ACTION_CLASS)}
           title="Ajouter ou modifier l'e-mail et le téléphone à la main"

@@ -216,7 +216,7 @@ function RecruitmentModeLine({
               if (e.key === 'Escape') close();
             }}
             orientation="horizontal"
-            className="flex w-fit max-w-full flex-wrap gap-0.5 rounded-lg bg-muted/60 p-0.5"
+            className="flex w-fit max-w-full flex-wrap gap-0.5 rounded-lg bg-muted p-0.5"
           >
             {RECRUITMENT_MODE_OPTIONS.map((o) => (
               <RadioGroupPrimitive.Item
@@ -226,7 +226,7 @@ function RecruitmentModeLine({
                   'inline-flex h-7 items-center whitespace-nowrap rounded-md px-3 text-sm transition-colors duration-150 max-sm:min-h-11',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'text-muted-foreground hover:text-foreground',
-                  'data-[state=checked]:bg-background data-[state=checked]:font-semibold data-[state=checked]:text-foreground',
+                  'data-[state=checked]:bg-card data-[state=checked]:font-semibold data-[state=checked]:text-foreground dark:data-[state=checked]:bg-background',
                 )}
               >
                 {o.label}

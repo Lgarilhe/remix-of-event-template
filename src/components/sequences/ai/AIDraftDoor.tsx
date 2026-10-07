@@ -40,20 +40,21 @@ export function AIDraftChoice({ missionId, onGo }: { missionId: string; onGo: ()
     <div className="space-y-2">
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         disabled={disabled}
         onClick={() => {
           onGo();
           navigate(newSequencePath({ kind: 'ia' }, missionId));
         }}
-        className="h-auto w-full justify-start gap-4 whitespace-normal p-4 text-left font-normal"
+        className="group h-auto w-full justify-start gap-4 whitespace-normal rounded-xl border border-border p-4 text-left font-normal hover:border-foreground"
       >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+        {/* Désactivée (poste non décrit) : pastille et titre au gris, sans opacité ; à l'encre, comme les autres départs, sinon. */}
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground group-disabled:text-muted-foreground">
           <Sparkles className="h-5 w-5" aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">Rédiger avec l’IA à partir du poste</span>
+            <span className="text-sm font-semibold text-foreground group-disabled:text-muted-foreground">Rédiger avec l’IA à partir du poste</span>
             <Badge variant="brand">Recommandé</Badge>
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">Vous relisez chaque message avant d’inscrire.</span>

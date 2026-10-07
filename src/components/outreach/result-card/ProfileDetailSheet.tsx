@@ -141,7 +141,7 @@ const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company,
   ].filter(Boolean) as string[];
 
   if (!sources[fallbackIndex]) {
-    return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />;
+    return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-foreground" />;
   }
 
   return (
@@ -1270,7 +1270,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                         ) : (
                           <>
                             <span
-                              className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                              className={badgeVariants({ variant: 'muted' })}
                               title="Évalué sur les données de la liste de recherche"
                             >
                               Évaluation rapide
@@ -1286,7 +1286,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                                 title={isEnriching
                                   ? 'Chargement du profil en cours…'
                                   : 'Ré-évaluer sur le profil complet (parcours détaillé, À propos…) — peut consommer 1 visite de profil LinkedIn'}
-                                className="rounded-md text-xs font-semibold text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-md text-xs font-semibold text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:text-muted-foreground"
                               >
                                 Analyse complète
                               </button>

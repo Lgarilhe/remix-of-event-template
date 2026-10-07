@@ -804,8 +804,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                           {row.dry_run_result?.summary || row.tool_name}
                         </p>
                         {row.dry_run_result?.warning && (
-                          <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
-                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <p className="mt-2 flex items-start gap-1.5 text-xs text-foreground">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
                             {row.dry_run_result.warning}
                           </p>
                         )}

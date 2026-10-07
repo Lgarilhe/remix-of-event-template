@@ -7,7 +7,7 @@
 // d'avancement, un titre et une phrase qui nomme ce qu'il reste à faire ; ce qui
 // est déjà complet ne s'écrit plus en coches (la liste reste pour les lecteurs
 // d'écran). « Dicter » est un bouton discret. « Aller au sourcing » ferme la
-// ligne : plein quand le poste est prêt, teinté sinon (les écrans ne sont jamais
+// ligne : plein quand le poste est prêt, contour d'encre sinon (les écrans ne sont jamais
 // verrouillés, conception 3.1).
 import { useCallback, useId, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, Loader2, Mic, X } from 'lucide-react';

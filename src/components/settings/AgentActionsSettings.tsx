@@ -660,8 +660,8 @@ export const AgentActionsSettings = () => {
                       </p>
                     )}
                     {pendingDialog.row.dry_run_result?.warning && (
-                      <p className="flex items-start gap-1 text-xs text-warning">
-                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                      <p className="flex items-start gap-1 text-xs text-foreground">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-warning" aria-hidden="true" />
                         {pendingDialog.row.dry_run_result.warning}
                       </p>
                     )}
@@ -768,8 +768,8 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
           )}
 
           {warning && action.status === 'proposed' && (
-            <p className="mt-1 flex items-start gap-1 text-xs text-warning">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+            <p className="mt-1 flex items-start gap-1 text-xs text-foreground">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-warning" aria-hidden="true" />
               <span>{warning}</span>
             </p>
           )}
