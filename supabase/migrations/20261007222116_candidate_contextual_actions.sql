@@ -100,8 +100,8 @@ CREATE POLICY candidate_action_messages_scoped_read ON public.candidate_action_m
     OR (direction = 'outbound' AND project_id IS NOT NULL
         AND action_plan_id IS NOT NULL AND effect_id IS NOT NULL AND action_completed_at IS NOT NULL
         AND EXISTS (SELECT 1 FROM public.sourcing_projects p WHERE p.id = candidate_action_messages.project_id AND p.organization_id = candidate_action_messages.organization_id)
-        AND ((organization_id = public.get_user_org_id((SELECT auth.uid())))
-             OR public.is_mission_team_member_for_project((SELECT auth.uid()),project_id)))
+        AND organization_id = public.get_user_org_id((SELECT auth.uid()))
+        AND public.is_org_member((SELECT auth.uid()),organization_id))
   );
 
 CREATE FUNCTION public.candidate_actions_assert_scope(p_user_id uuid,p_org uuid,p_candidate text,p_project uuid)

@@ -165,6 +165,15 @@ Deno.serve(async (req) => {
     sameIdentity(plan, context.scope);
     if (action === 'dismiss' || action === 'restore') return json({ success: true, plan: await dismissPlan(admin, userId, planId, action === 'dismiss') });
     if (plan.contextVersion !== context.contextVersion) {
+      if (action === 'execute_effect') {
+        // Another request may have claimed or completed this exact effect while
+        // the provider echoed its send into the newly read context. Return only
+        // its durable state; a different prepared effect still needs fresh review.
+        const latest = await getPlan(admin, userId, planId);
+        sameIdentity(latest, context.scope);
+        const recorded = latest.effects.find((effect) => effect.id === str(body.effect_id));
+        if (recorded && ['running', 'succeeded', 'skipped', 'unknown'].includes(recorded.status)) return json({ success: true, plan: latest });
+      }
       await markNeedsReview(admin, userId, planId);
       throw new ActionRequestError('ACTION_CONTEXT_CHANGED', 'Un échange ou une information a changé depuis la préparation. Préparez une nouvelle proposition.');
     }

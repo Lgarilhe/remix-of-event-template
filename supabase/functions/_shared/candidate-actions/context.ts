@@ -150,15 +150,20 @@ export async function loadCandidateActionContext(
 
   // Resolve ignored refs from durable effects, never from browser-supplied document ids.
   const excluded = new Set<string>();
+  const ownPlanIds = new Set<string>();
+  const ownEffectIds = new Set<string>();
   if (options.excludeEffectIds?.length) {
     let planQuery = userClient.from('candidate_action_plans').select('id').eq('organization_id', organizationId).eq('candidate_id', candidateId).eq('user_id', userId);
     planQuery = projectId ? planQuery.eq('project_id', projectId) : planQuery.is('project_id', null);
     const plans = await planQuery;
     if (plans.error) throw new CandidateActionContextError('EFFECTS_UNAVAILABLE', 'L’état des actions n’a pas pu être vérifié.', 503);
-    const allowed = new Set(rows(plans.data).map(r => text(r.id)));
-    const effects = allowed.size ? await userClient.from('candidate_action_effects').select('id, result, plan_id').in('plan_id', [...allowed]).in('id', options.excludeEffectIds).limit(100) : { data: [], error: null };
+    for (const plan of rows(plans.data)) ownPlanIds.add(text(plan.id));
+    const effects = ownPlanIds.size ? await userClient.from('candidate_action_effects').select('id, result, plan_id').in('plan_id', [...ownPlanIds]).in('id', options.excludeEffectIds).limit(100) : { data: [], error: null };
     if (effects.error) throw new CandidateActionContextError('EFFECTS_UNAVAILABLE', 'L’état des actions n’a pas pu être vérifié.', 503);
-    for (const effect of rows(effects.data)) if (allowed.has(text(effect.plan_id))) {
+    for (const effect of rows(effects.data)) if (ownPlanIds.has(text(effect.plan_id))) {
+      // The receipt can commit before result.referenceId is populated. Its
+      // effect_id is already trustworthy through the owned, scoped plan.
+      if (UUID.test(text(effect.id))) ownEffectIds.add(text(effect.id));
       const result = record(effect.result);
       for (const id of [result.referenceId, result.providerId]) if (text(id)) excluded.add(text(id));
     }
@@ -177,6 +182,8 @@ export async function loadCandidateActionContext(
     commentsQuery = commentsQuery.not('id', 'in', filter);
     recordedMessagesQuery = recordedMessagesQuery.not('id', 'in', filter);
   }
+  const ownEffectsFilter = ownEffectIds.size ? `effect_id.is.null,effect_id.not.in.(${[...ownEffectIds].join(',')})` : null;
+  if (ownEffectsFilter) recordedMessagesQuery = recordedMessagesQuery.or(ownEffectsFilter);
   const sourceReads = await Promise.all([
     read(userClient.from('candidate_contacts').select('candidate_id,email,phone,source,updated_at,updated_by').eq('organization_id', organizationId).in('candidate_id', ids).order('candidate_id').limit(101)),
     read(notesQuery.order('created_at', { ascending: false }).limit(101)),
@@ -248,12 +255,26 @@ export async function loadCandidateActionContext(
     readCandidateActionChatContext(admin, userId, { ...scope, account_id: scope.account_id ?? targets.find(t => t.channel === 'linkedin')?.senderAccountId ?? null, chat_id: scope.chat_id ?? targets.find(t => t.channel === 'linkedin')?.chatId ?? null }),
     readCandidateActionEmailContext(admin, userId, scope, targets),
   ]);
+  const ownProviderSources = new Set<string>();
+  if (ownEffectIds.size) {
+    // Link any live-provider echo to the same validated effect even while its
+    // durable result is still null. Do not suppress an unrelated account's
+    // copy of the provider ID, or a colleague's intervention.
+    let receiptsQuery = userClient.from('candidate_action_messages').select('channel,account_id,provider_message_id')
+      .eq('organization_id', organizationId).in('candidate_id', ids).eq('owner_user_id', userId)
+      .in('action_plan_id', [...ownPlanIds]).in('effect_id', [...ownEffectIds]).eq('direction', 'outbound');
+    receiptsQuery = projectId ? receiptsQuery.eq('project_id', projectId) : receiptsQuery.is('project_id', null);
+    const receipts = await read(receiptsQuery.limit(101));
+    if (receipts.state !== 'available') throw new CandidateActionContextError('EFFECTS_UNAVAILABLE', 'Les reçus de vos actions ne peuvent pas être vérifiés. Réessayez.', 503);
+    for (const receipt of receipts.data) ownProviderSources.add(`${text(receipt.channel)}-${text(receipt.account_id)}-${text(receipt.provider_message_id)}`);
+  }
   if (targets.some(target => target.channel === 'email' && target.audience === 'candidate')) {
     // An authorized provider read may hydrate the private email ledger. Read
     // its effective page now, so the first and next context have the same
     // canonical sources and pagination state.
     let refreshedQuery = userClient.from('candidate_action_messages').select('*').eq('organization_id', organizationId).in('candidate_id', ids);
     if (ownRowIds.length) refreshedQuery = refreshedQuery.not('id', 'in', `(${ownRowIds.join(',')})`);
+    if (ownEffectsFilter) refreshedQuery = refreshedQuery.or(ownEffectsFilter);
     const refreshed = await read(refreshedQuery.order('occurred_at', { ascending: false }).limit(101));
     recordedMessagesRead.data = refreshed.data;
     recordedMessagesRead.state = refreshed.state;
@@ -288,6 +309,7 @@ export async function loadCandidateActionContext(
     states[key] = !readableChannels[i] || result.status === 'rejected' ? 'unavailable' : result.value.complete ? 'available' : 'partial';
     if (result.status === 'fulfilled') for (const source of result.value.messages) {
       if (excluded.has(source.reference?.id ?? '') || excluded.has(source.id)) continue;
+      if (ownProviderSources.has(source.id)) continue;
       if (recordedProviderSources.has(source.id)) continue;
       const actualProjectId = source.reference?.table === 'provider_emails' ? source.projectId ?? null : projectId;
       if (projectId && actualProjectId && actualProjectId !== projectId) continue;

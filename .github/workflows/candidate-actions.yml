@@ -83,14 +83,14 @@ jobs:
           test "$E2E_EDGE_FUNCTIONS" = '1'
           test "$E2E_VENDOR_MOCK_URL" = 'http://127.0.0.1:54340'
           npx playwright test e2e/api/candidate-actions.spec.ts \
-            --project=api --no-deps --workers=1 --reporter=list,json,html
+            --project=api --no-deps --workers=1 --retries=0 --reporter=list,json,html
           # A green job must contain executed scenarios, never a skipped suite
           # caused by an absent edge server or missing fake-vendor variables.
           node --input-type=module <<'JS'
           import { readFileSync } from 'node:fs';
           const report = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, 'utf8'));
           const stats = report.stats;
-          if (!stats || stats.expected < 1 || stats.skipped !== 0 || stats.unexpected !== 0) {
+          if (!stats || stats.expected < 1 || stats.skipped !== 0 || stats.unexpected !== 0 || stats.flaky !== 0) {
             throw new Error(`Candidate action scenarios were not all executed successfully: ${JSON.stringify(stats)}`);
           }
           JS

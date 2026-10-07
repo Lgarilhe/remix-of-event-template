@@ -39,6 +39,7 @@ function client(tables, fail = []) {
         eq(key, value) { filters.push(r => r[key] === value); return query; },
         in(key, values) { filters.push(r => values.includes(r[key])); return query; },
         not(key, operator, value) { assert.equal(operator, 'in'); const ids = value.slice(1, -1).split(','); filters.push(r => !ids.includes(r[key])); return query; },
+        or(expression) { const match = /^effect_id\.is\.null,effect_id\.not\.in\.\(([^)]*)\)$/.exec(expression); assert.ok(match, 'filtre de reçu SQL préservant les effect_id NULL'); const ids = match[1].split(','); filters.push(r => r.effect_id == null || !ids.includes(r.effect_id)); return query; },
         is(key, value) { filters.push(r => (r[key] ?? null) === value); return query; },
         overlaps(key, values) { filters.push(r => Array.isArray(r[key]) && r[key].some(v => values.includes(v))); return query; },
         ilike(key, pattern) { const term = pattern.replaceAll('%', '').replaceAll('\\', '').toLowerCase(); filters.push(r => String(r[key] || '').toLowerCase().includes(term)); return query; },
@@ -242,6 +243,92 @@ test('la première hydratation e-mail et la collecte suivante ont une référenc
   assert.equal(next.sources.filter(s => s.reference?.id === 'provider-1').length, 1);
   assert.equal(initial.sourceStates.recordedMessages, 'partial');
   assert.equal(initial.facts.incomingSources[0].id, source.id);
+});
+
+test('un reçu concurrent créé avant le résultat de son effet conserve le contexte ; une vraie réponse reste visible', async () => {
+  const effectId = '55555555-5555-4555-8555-555555555555';
+  const planId = '66666666-6666-4666-8666-666666666666';
+  const journal = [];
+  const f = fixture({
+    candidate_action_messages: journal,
+    candidate_action_effects: [{ id: effectId, plan_id: planId, result: null, status: 'running' }],
+    candidate_action_plans: [{ id: planId, candidate_id: candidate.candidate_id, organization_id: ORG, user_id: USER, project_id: MISSION }],
+  });
+  const sent = { id: 'email-mailbox-own-provider', type: 'outbound_message', title: 'Disponibilités', author: 'recruiter@example.test', timestamp: '2026-10-07T09:00:00.000Z', summary: 'Merci pour vos disponibilités', detail: 'Merci pour vos disponibilités', service: 'gmail', projectId: MISSION, reference: { table: 'provider_emails', id: 'own-provider', version: '2026-10-07T09:00:00.000Z' } };
+  const received = { ...sent, id: 'email-mailbox-real-reply', type: 'inbound_message', author: 'candidate@example.test', summary: 'Je ne suis plus disponible', detail: 'Je ne suis plus disponible', reference: { ...sent.reference, id: 'real-reply' } };
+  globalThis.contextTestTransport.targets = async () => [{ id: 'target-email', audience: 'candidate', channel: 'email', senderAccountId: 'mailbox' }];
+  globalThis.contextTestTransport.emailSource = row => row.provider_message_id === 'own-provider' ? sent : row.provider_message_id === 'real-reply' ? received : null;
+  globalThis.contextTestTransport.email = async () => ({ messages: [], complete: true });
+  const baseline = await f.load(scope, { excludeEffectIds: [effectId] });
+  globalThis.contextTestTransport.email = async () => {
+    // The effect lookup already returned result=null. A simultaneous sender
+    // commits its own receipt while this request is reading the mailbox.
+    if (!journal.length) journal.push({ id: '77777777-7777-4777-8777-777777777777', organization_id: ORG, candidate_id: candidate.candidate_id, project_id: MISSION, owner_user_id: USER, action_plan_id: planId, effect_id: effectId, channel: 'email', audience: 'candidate', direction: 'outbound', account_id: 'mailbox', provider_message_id: 'own-provider', content: sent.detail, occurred_at: sent.timestamp });
+    return { messages: [sent], complete: true };
+  };
+  const duringSend = await f.load(scope, { excludeEffectIds: [effectId] });
+  assert.equal(duringSend.contextVersion, baseline.contextVersion);
+  assert.equal(duringSend.facts.messages.length, 0, 'le reçu propre est exclu du ledger et de sa projection provider');
+  journal.push({ ...journal[0], id: '88888888-8888-4888-8888-888888888888', effect_id: null, action_plan_id: null, direction: 'inbound', provider_message_id: 'real-reply', content: received.detail });
+  globalThis.contextTestTransport.email = async () => ({ messages: [sent, received], complete: true });
+  const afterReply = await f.load(scope, { excludeEffectIds: [effectId] });
+  assert.notEqual(afterReply.contextVersion, baseline.contextVersion);
+  assert.deepEqual(afterReply.facts.incomingSources.map(source => source.reference.id), ['real-reply']);
+  const colleagueCopy = { ...sent, id: 'email-colleague-mailbox-own-provider', author: 'colleague@example.test' };
+  journal.push({ ...journal[0], id: 'colleague-copy', owner_user_id: OTHER, effect_id: null, action_plan_id: null, account_id: 'colleague-mailbox' });
+  globalThis.contextTestTransport.emailSource = row => row.account_id === 'colleague-mailbox' ? colleagueCopy : row.provider_message_id === 'own-provider' ? sent : row.provider_message_id === 'real-reply' ? received : null;
+  const withColleague = await f.load(scope, { excludeEffectIds: [effectId] });
+  assert.ok(withColleague.sources.some(source => source.id === colleagueCopy.id), 'un provider ID identique dans un autre compte ne doit pas être masqué');
+});
+
+test('un reçu propre est exclu dès la première page avant de couper les cent échanges réels', async () => {
+  const effectId = '55555555-5555-4555-8555-555555555555';
+  const planId = '66666666-6666-4666-8666-666666666666';
+  const journal = Array.from({ length: 100 }, (_, i) => ({ id: `message-${i}`, organization_id: ORG, candidate_id: candidate.candidate_id, project_id: MISSION, direction: 'inbound', effect_id: null, action_plan_id: null, content: `Échange réel ${i}`, occurred_at: '2026-10-01T09:00:00Z', provider_message_id: `real-${i}`, channel: 'email', account_id: 'mailbox' }));
+  const f = fixture({
+    candidate_action_messages: journal,
+    candidate_action_effects: [{ id: effectId, plan_id: planId, result: null }],
+    candidate_action_plans: [{ id: planId, candidate_id: candidate.candidate_id, organization_id: ORG, user_id: USER, project_id: MISSION }],
+  });
+  const baseline = await f.load(scope, { excludeEffectIds: [effectId] });
+  journal.unshift({ ...journal[0], id: 'own-receipt', owner_user_id: USER, direction: 'outbound', effect_id: effectId, action_plan_id: planId, content: 'Mon envoi concurrent', provider_message_id: 'own-provider' });
+  // Without a connected mailbox there is no second ledger page to repair an
+  // omitted SQL filter; the first page itself must keep the 100 real records.
+  const duringSend = await f.load(scope, { excludeEffectIds: [effectId] });
+  assert.equal(duringSend.contextVersion, baseline.contextVersion);
+  assert.equal(duringSend.facts.messages.length, 100);
+  assert.ok(duringSend.facts.messages.every(source => source.type === 'inbound_message'));
+});
+
+test('des IDs d’effets d’un collègue ou d’un autre candidat ne peuvent masquer leurs échanges', async () => {
+  const ownEffect = '55555555-5555-4555-8555-555555555555';
+  const colleagueEffect = '77777777-7777-4777-8777-777777777777';
+  const otherCandidateEffect = '88888888-8888-4888-8888-888888888888';
+  const journal = [];
+  const f = fixture({
+    candidate_action_messages: journal,
+    candidate_action_plans: [
+      { id: 'own-plan', candidate_id: candidate.candidate_id, organization_id: ORG, user_id: USER, project_id: MISSION },
+      { id: 'colleague-plan', candidate_id: candidate.candidate_id, organization_id: ORG, user_id: OTHER, project_id: MISSION },
+      { id: 'other-candidate-plan', candidate_id: 'another-candidate', organization_id: ORG, user_id: USER, project_id: MISSION },
+    ],
+    candidate_action_effects: [
+      { id: ownEffect, plan_id: 'own-plan', result: null },
+      { id: colleagueEffect, plan_id: 'colleague-plan', result: null },
+      { id: otherCandidateEffect, plan_id: 'other-candidate-plan', result: null },
+    ],
+  });
+  const options = { excludeEffectIds: [ownEffect, colleagueEffect, otherCandidateEffect] };
+  const baseline = await f.load(scope, options);
+  const common = { organization_id: ORG, candidate_id: candidate.candidate_id, project_id: MISSION, channel: 'email', direction: 'outbound', audience: 'team', account_id: 'mailbox', content: 'Information reçue du manager', occurred_at: '2026-10-07T09:00:00Z' };
+  journal.push(
+    { ...common, id: 'own-receipt', owner_user_id: USER, action_plan_id: 'own-plan', effect_id: ownEffect, provider_message_id: 'own-provider' },
+    { ...common, id: 'colleague-receipt', owner_user_id: OTHER, action_plan_id: 'colleague-plan', effect_id: colleagueEffect, provider_message_id: 'colleague-provider' },
+    { ...common, id: 'outside-plan-receipt', owner_user_id: USER, action_plan_id: 'other-candidate-plan', effect_id: otherCandidateEffect, provider_message_id: 'outside-plan-provider' },
+  );
+  const updated = await f.load(scope, options);
+  assert.notEqual(updated.contextVersion, baseline.contextVersion);
+  assert.deepEqual(updated.facts.messages.map(source => source.reference.id), ['colleague-receipt', 'outside-plan-receipt']);
 });
 
 test('un ID d’effet d’un autre auteur ne peut masquer sa nouvelle note', async () => {

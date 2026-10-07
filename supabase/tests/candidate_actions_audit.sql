@@ -189,6 +189,18 @@ BEGIN
   IF NOT denied THEN RAISE EXCEPTION 'Browser forged successful effect'; END IF;
   checks:=checks+1;
   RESET ROLE;
+  -- An external recruiter may read the mission through its existing RLS, but
+  -- that invitation does not grant access to another organization's candidates.
+  INSERT INTO public.mission_team(project_id,user_id,role) VALUES(pa,ub,'freelance');
+  PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',ub,'role','authenticated')::text,true);
+  PERFORM set_config('request.jwt.claim.sub',ub::text,true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM public.sourcing_projects WHERE id=pa;
+  IF n<>1 THEN RAISE EXCEPTION 'External invitation fixture does not have its intended mission access'; END IF;
+  SELECT count(*) INTO n FROM public.candidate_action_messages WHERE organization_id=oa;
+  IF n<>0 THEN RAISE EXCEPTION 'External mission invitation exposed another organization candidate journal'; END IF;
+  checks:=checks+1;
+  RESET ROLE;
   SET LOCAL ROLE service_role;
   result:=public.candidate_actions_purge(oa,ARRAY['ACTION-AUDIT-CAND'],NULL,NULL);
   SELECT count(*) INTO n FROM public.candidate_action_plans WHERE organization_id=oa AND candidate_id='ACTION-AUDIT-CAND';
