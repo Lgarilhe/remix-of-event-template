@@ -158,7 +158,7 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
         <ul className="mb-4 space-y-1.5">
           {LINKEDIN_BENEFITS.map((benefit) => (
             <li key={benefit} className="flex items-start gap-2 text-sm text-foreground-secondary">
-              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
               {benefit}
             </li>
           ))}
@@ -168,7 +168,7 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
           <Button
             onClick={handleConnect}
             loading={connecting}
-            className="h-11 w-full border-transparent bg-linkedin font-semibold text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white md:h-10"
+            className="h-11 w-full border-transparent bg-linkedin font-semibold text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent aria-busy:bg-linkedin aria-busy:text-white md:h-10"
           >
             {!connecting && <ExternalLink aria-hidden="true" />}
             Connecter LinkedIn
@@ -178,12 +178,12 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
 
       <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Connexion sécurisée
+          <Lock className="h-3.5 w-3.5 text-foreground" aria-hidden="true" /> Connexion sécurisée
         </span>
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Unplug className="h-3.5 w-3.5" aria-hidden="true" /> Déconnectable à tout moment
+          <Unplug className="h-3.5 w-3.5 text-foreground" aria-hidden="true" /> Déconnectable à tout moment
         </span>
-        <Button variant="ghost" size="xs" onClick={handleRefresh} disabled={refreshing} className="text-muted-foreground min-h-11 md:min-h-0">
+        <Button variant="ghost" size="xs" onClick={handleRefresh} disabled={refreshing} className="min-h-11 md:min-h-0">
           <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
           Vérifier la connexion
         </Button>

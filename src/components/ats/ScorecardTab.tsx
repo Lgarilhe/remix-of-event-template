@@ -1214,14 +1214,15 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
                 const r = activeEval.ratings[c.id];
                 const current = idx === criterionIdx;
                 return (
+                  // Une puce grise par critère, le critère en cours en contour d'encre : six à huit contours côte à côte alourdiraient la rangée.
                   <Button
                     key={c.id}
-                    variant="outline"
+                    variant="ghost"
                     size="xs"
                     aria-current={current ? 'step' : undefined}
                     aria-label={`Critère ${idx + 1}\u00a0: ${c.label}, ${r != null ? `noté ${r} sur 5` : 'pas encore noté'}`}
                     onClick={() => setCurrentCriterionIdx(idx)}
-                    className={cn('shrink-0 tabular-nums', touch, current && 'border-foreground bg-accent font-semibold')}
+                    className={cn('shrink-0 bg-muted tabular-nums hover:bg-accent', touch, current && 'border border-foreground bg-card font-semibold dark:border-foreground/70')}
                   >
                     {idx + 1}
                     {r != null && <Check aria-hidden="true" />}
@@ -1297,7 +1298,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
                         aria-expanded={showFullRubric}
                         aria-controls={ids.rubric}
                         onClick={() => setShowFullRubric((v) => !v)}
-                        className={cn('-ml-2 text-muted-foreground hover:text-foreground', touch)}
+                        className={cn('-ml-2', touch)}
                       >
                         <ChevronDown aria-hidden="true" className={cn('transition-transform duration-150', showFullRubric && 'rotate-180')} />
                         {showFullRubric ? "Masquer l'échelle complète" : "Voir l'échelle complète"}
@@ -1426,7 +1427,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
             </ToggleGroup>
             {recommendationFromReport && (
               <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
                 Proposée par le compte rendu de l'entretien&nbsp;: vérifiez-la avant de conclure.
               </p>
             )}

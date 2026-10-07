@@ -79,7 +79,7 @@ export function TeamSection() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                <UserPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <UserPlus className="h-4 w-4" aria-hidden="true" />
                 Invitations
               </CardTitle>
             </CardHeader>

@@ -217,7 +217,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           Design simplifié : « Membres », la rubrique s'appelle déjà « Équipe ». */}
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Users className="h-4 w-4" aria-hidden="true" />
           Membres
         </CardTitle>
         {!isLoading && (
@@ -303,7 +303,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         </span>
                       </span>
                       <ChevronDown
-                        className={cn('text-muted-foreground transition-transform', isExpanded && 'rotate-180')}
+                        className={cn('transition-transform', isExpanded && 'rotate-180')}
                         aria-hidden="true"
                       />
                     </Button>
@@ -438,7 +438,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                       {/* Quotas */}
                       <SectionRow
-                        icon={<Sliders className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />}
+                        icon={<Sliders className="h-3.5 w-3.5" aria-hidden="true" />}
                         label="Quota journalier"
                         trailing={!isEditingQ && !quotasError && quotasReady && (
                           <Button
@@ -473,7 +473,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                               <div key={key}>
                                 <div className="mb-1 flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-1.5">
-                                    <Icon className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                                    <Icon className="h-3 w-3" aria-hidden="true" />
                                     <label htmlFor={isEditingQ ? quotaInputId : undefined} className="text-xs text-muted-foreground">{label}</label>
                                   </div>
                                   {isEditingQ ? (

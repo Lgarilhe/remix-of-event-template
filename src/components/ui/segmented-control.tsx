@@ -25,9 +25,9 @@ interface SegmentedControlProps<T extends string> {
   "aria-label": string;
   size?: "sm" | "default";
   /**
-   * « quiet » (design simplifié) : sans ombre ni filet, l'option choisie en gras
-   * sur fond clair, comme la bascule d'affichage de la page mission. Par défaut,
-   * le rendu d'avant.
+   * « quiet » (design simplifié) : sans ombre ni filet, l'option choisie en gras,
+   * carte blanche sur rail gris en clair, creusée au fond de page en sombre, comme
+   * la bascule d'affichage de la page mission. Par défaut, le rendu d'avant.
    */
   variant?: "default" | "quiet";
   /** Sur téléphone, les icônes seules en carrés de 44 px ; le libellé reste lu. */
@@ -52,7 +52,7 @@ export function SegmentedControl<T extends string>({
       aria-label={props["aria-label"]}
       className={cn(
         quiet
-          ? "inline-flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5"
+          ? "inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5"
           : "inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5",
         !quiet && (size === "sm" ? "h-8" : "h-9"),
         "max-md:h-auto",
@@ -75,7 +75,7 @@ export function SegmentedControl<T extends string>({
                 : "inline-flex h-full items-center justify-center gap-1.5 max-md:h-11 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-3.5 [&_svg]:shrink-0",
               active
                 ? quiet
-                  ? "bg-background font-semibold text-foreground"
+                  ? "bg-card font-semibold text-foreground dark:bg-background"
                   : "bg-background text-foreground shadow-sm ring-1 ring-border-strong"
                 : "text-muted-foreground hover:text-foreground",
               iconsOnlyOnPhone && Icon && "max-sm:min-w-11 max-sm:px-0",

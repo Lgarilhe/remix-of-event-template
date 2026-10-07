@@ -217,7 +217,7 @@ function renderSendTimeVariables(text: string): React.ReactNode {
   return segments.flatMap((segment, i) => (i === 0 ? [segment] : [
     <span
       key={`agenda-${i}`}
-      className="inline-flex items-center gap-1 rounded-full border border-info/25 bg-info-muted px-1.5 py-px align-baseline text-2xs font-medium text-info"
+      className="inline-flex items-center gap-1 rounded-full border border-info/25 bg-info-muted px-1.5 py-px align-baseline text-2xs font-medium text-foreground [&>svg]:text-info"
     >
       <CalendarClock className="h-3 w-3" aria-hidden="true" />
       Lien d'agenda, ajouté à l'envoi
@@ -1957,7 +1957,7 @@ function CandidatePreviewsBar({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs tabular-nums text-muted-foreground">{creditsLabel(missingAi * creditsPerMessage)}</span>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onGenerate}
             loading={isGenerating}
@@ -2039,7 +2039,7 @@ function MessageStepCard({
                     size="icon-xs"
                     aria-label={isWrittenStep ? 'Revenir au modèle' : `Régénérer ce message (${cost})`}
                     onClick={handleRegenerateClick}
-                    className="text-muted-foreground max-md:h-11 max-md:w-11"
+                    className="max-md:h-11 max-md:w-11"
                   >
                     {isWrittenStep ? <Undo2 aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
                   </Button>
@@ -2052,7 +2052,7 @@ function MessageStepCard({
               size="xs"
               aria-label={isEditing ? 'Voir le message' : 'Modifier le message'}
               onClick={onToggleEdit}
-              className={cn('max-md:h-11', isEditing ? 'bg-accent text-foreground' : 'text-muted-foreground')}
+              className={cn('max-md:h-11', isEditing && 'bg-accent')}
             >
               <Pencil aria-hidden="true" />
               {isEditing ? 'Voir' : 'Modifier'}
@@ -2168,7 +2168,7 @@ function MessageStepCard({
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-5 text-center">
             <p className="text-sm text-muted-foreground">Aperçu pas encore généré pour ce candidat.</p>
             {/* Lot 5d-1 : seule une étape rédigée par l'IA arrive ici, une étape écrite est rendue d'office. */}
-            <Button variant="outline" size="sm" onClick={onGenerate} className="max-md:h-11">
+            <Button variant="ghost" size="sm" onClick={onGenerate} className="max-md:h-11">
               Générer l'aperçu de ce message
             </Button>
             {/* Coût annoncé seulement pour une étape personnalisée par l'IA. */}
@@ -2251,7 +2251,7 @@ function SummaryMode({
 
       {firstAction && (
         <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground">
-          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{firstAction}</span>
         </p>
       )}
@@ -2348,7 +2348,7 @@ function SummaryMode({
 
       {hasAiSteps && (
         <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground-secondary">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           <span>
             Coût estimé de la personnalisation par l'IA :{' '}
             <strong className="font-semibold tabular-nums text-foreground">{creditsLabel(estimatedCredits)}</strong>
@@ -2403,7 +2403,7 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
           outcome === 'success' ? 'bg-success-muted text-success'
             : outcome === 'partial' ? 'bg-warning-muted text-warning'
             : outcome === 'failure' ? 'bg-danger-muted text-danger'
-            : 'bg-muted text-muted-foreground',
+            : 'bg-muted text-foreground',
         )}
         aria-hidden="true"
       >
@@ -2438,19 +2438,19 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
         <ul className="space-y-2 text-left text-sm">
           {results.skipped > 0 && (
             <li className="flex items-start gap-2 text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
               <span>{alreadyInSequenceLabel(results.skipped)}</span>
             </li>
           )}
           {results.alreadyPassed > 0 && (
             <li className="flex items-start gap-2 text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
               <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
             </li>
           )}
           {results.samePerson.length > 0 && (
             <li className="flex items-start gap-2 text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
               <span className="min-w-0">
                 <span className="block">{samePersonRefusedLabel(results.samePerson.length)}</span>
                 <span className="block text-xs">{refusedCandidatesLabel(results.samePerson)}</span>

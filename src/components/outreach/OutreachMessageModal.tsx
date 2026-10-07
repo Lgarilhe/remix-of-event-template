@@ -475,7 +475,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
               {personalizationPoints.length > 0 && (
                 <div className="rounded-lg border border-border bg-muted p-3">
                   <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
+                    <Lightbulb className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                     Points de personnalisation
                   </p>
                   <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground-secondary">
@@ -529,7 +529,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                       onClick={generateMessage}
                       disabled={loading}
                       aria-label="Régénérer le message"
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
+                      className="shrink-0"
                     >
                       <RefreshCw className={loading ? 'animate-spin' : undefined} aria-hidden="true" />
                     </Button>

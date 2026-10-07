@@ -166,7 +166,7 @@ export const ProxyConfigPanel = ({
     <div className="space-y-3 border-t border-border pt-3">
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {summary}
         </span>
         {state && (

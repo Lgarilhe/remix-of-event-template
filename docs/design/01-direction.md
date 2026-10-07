@@ -30,17 +30,19 @@ Teinte 40°, saturation 3 %. Le thème sombre est le thème par défaut, le clai
 
 | Jeton | Rôle | Sombre | Clair |
 |---|---|---|---|
-| `--background` | fond de page | `40 3% 11%` | `40 12% 97%` |
+| `--background` | fond de page | `40 3% 11%` | `40 12% 96%` |
 | `--card` | cartes, panneaux | `40 3% 16%` | `0 0% 100%` |
 | `--popover` | menus, dialogues | `40 3% 18%` | `0 0% 100%` |
-| `--muted` / `--secondary` | zones en retrait, contrôles pleins | `40 3% 20%` | `40 8% 95%` |
+| `--muted` / `--secondary` | zones en retrait, contrôles pleins, puces de filtre | `40 3% 20%` | `40 8% 92%` |
 | `--accent` | survol d'une ligne ou d'un item | `40 3% 22%` | `40 8% 93%` |
 | `--sidebar-background` | barre latérale | `40 3% 8%` | `40 8% 96%` |
 | `--border` | filet | blanc 10 % | `40 8% 90%` |
-| `--border-strong` | filet appuyé | blanc 18 % | `40 8% 80%` |
-| `--input` | bord de champ, de case à cocher, piste d'interrupteur éteint | blanc 40 % | `40 3% 53%` |
+| `--border-strong` | bord de contrôle : anneau de l'onglet actif, survol d'une puce, toggle | blanc 42 % | `40 3% 48%` |
+| `--input` | bord de champ, de case à cocher, de radio, piste d'interrupteur éteint | blanc 42 % | `40 3% 48%` |
 
-`--input` atteint 3:1 sur toutes les surfaces (3,3:1 au pire sur `accent` en sombre, 2,8:1 sur `accent` en clair, où le champ garde son libellé) : un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`.
+En clair (décision du propriétaire du 06/10/2026, façon Qonto) : fond à 96 %, zones grises à 92 %, cartes blanches. La carte se détache du fond à 1,09:1, la zone grise à 1,09:1 du fond et à 1,19:1 de la carte ; les zones grises se voient enfin sur une carte blanche.
+
+`--border-strong` et `--input` sont un seul bord de contrôle : 3:1 au moins sur toutes les surfaces (3,37:1 au pire en clair, sur la ligne active, 3,6:1 sur le survol ; 3,44:1 au pire en sombre, sur le survol). Un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`, avec un anneau plein (§ 10). Les filets décoratifs restent `--border`.
 
 Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gris de survol, pas la couleur de marque. La couleur de marque s'appelle `brand`. Pour ne pas laisser d'anciens usages invisibles, `text-accent` et `border-accent` rendent `brand` ; le nouveau code écrit `text-brand`.
 
@@ -50,9 +52,9 @@ Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gr
 |---|---|---|---|
 | `--foreground` | texte principal | `0 0% 98%` | `40 6% 12%` |
 | `--foreground-secondary` | texte secondaire, descriptions | `40 4% 74%` | `40 5% 34%` |
-| `--muted-foreground` | métadonnées, libellés discrets | `40 3% 64%` | `40 4% 42%` |
+| `--muted-foreground` | métadonnées, gestes de retrait | `40 3% 67%` | `40 4% 38%` |
 
-Contraste vérifié : `muted-foreground` dépasse 4,5:1 sur le fond, la carte, le menu et `muted`, dans les deux thèmes (5,0:1 au pire en sombre, 4,7:1 en clair), et reste à 4,7:1 sur le survol en sombre. L'ancienne valeur sombre (56 %) tombait à 4,2:1 sur `muted`, l'ancienne valeur claire (46 %) à 4,3:1 sur le fond.
+Contraste vérifié (`tests/ux/contraste-jetons.test.mjs`) : `muted-foreground` tient 4,5:1 sur toutes les surfaces, ligne active, survol et barre latérale compris (4,90:1 au pire en clair, sur la ligne active ; 5,08:1 au pire en sombre, sur le survol). L'ancienne valeur claire (42 %) tombait à 4,3:1 sur la ligne active. Le gris secondaire ne dit plus que deux choses : « métadonnée » et « retrait » ; une action, une icône ou le texte d'un badge sont à l'encre (§ 6 et § 10). Le texte indicatif des champs (`placeholder`, `--k-text-placeholder`) prend ce gris plein, sans opacité.
 
 Pas d'opacité sur un jeton de texte (`text-muted-foreground/60`, `text-foreground/70`) : elle fait tomber le texte sous 4,5:1. Choisir l'un des trois niveaux ci-dessus.
 
@@ -67,25 +69,25 @@ Un seul accent, bleu-vert désaturé (choisi le 28/09/2026 à la place de l'indi
 | `--brand-hover` / `--brand-press` | survol et appui | `179 36% 70%` / `179 30% 56%` | `181 34% 28%` / `181 34% 24%` |
 | `--brand-solid` | aplat qui porte du texte blanc | `181 34% 29%` (#316263) | `181 34% 29%` |
 
-Contrastes vérifiés : `brand` dépasse 5,9:1 sur toutes les surfaces sombres (fond, carte, menu, `muted`, survol, barre latérale) et 4,8:1 sur toutes les surfaces claires ; le texte sur aplat `brand` atteint 7,9:1 en sombre et 5,7:1 en clair ; le blanc sur `brand-solid` 6,9:1. L'anneau de focus est `brand` plein.
+Contrastes vérifiés : `brand` tient 5,45:1 au moins sur toutes les surfaces sombres (au pire sur le survol) et 4,55:1 sur toutes les surfaces claires (au pire sur la ligne active) ; le texte sur aplat `brand` atteint 7,9:1 en sombre et 5,6:1 en clair ; le blanc sur `brand-solid` 6,9:1. L'anneau de focus est `brand` plein.
 
 L'ancienne classe `brand-purple` (palette Skalr) est rabattue sur `brand` : ses usages restants prennent le bleu-vert.
 
 ### Les statuts
 
-Chaque statut a une valeur par thème, lisible en texte sur le fond, la carte et sa propre teinte.
+Chaque statut a une valeur par thème, lisible en texte (4,5:1) sur toutes les surfaces, ligne active et survol compris (4,66:1 au pire en clair, 4,89:1 en sombre), et sur sa propre teinte.
 
 | Statut | Sombre | Clair | Emploi |
 |---|---|---|---|
-| `success` | `145 55% 50%` | `145 63% 30%` | réussite, candidat retenu, compte connecté |
-| `warning` | `38 92% 58%` | `32 95% 34%` | attention requise, quota proche |
-| `info` | `215 90% 68%` | `215 75% 42%` | information neutre, en cours |
-| `danger` | `0 84% 71%` | `0 72% 45%` | erreur d'état, échec, alerte |
+| `success` | `145 55% 50%` | `145 63% 28%` | réussite, candidat retenu, compte connecté |
+| `warning` | `38 92% 58%` | `32 95% 31%` | attention requise, quota proche |
+| `info` | `215 90% 72%` | `215 75% 42%` | information neutre, en cours |
+| `danger` | `0 84% 75%` | `0 72% 45%` | erreur d'état, échec, alerte |
 | `destructive` | `0 70% 48%` | `0 72% 45%` | aplat d'une action irréversible, texte blanc |
 
 `danger` et `destructive` sont distincts : le premier signale une erreur, le second qualifie une action qui détruit. En sombre, aucune couleur ne peut servir aux deux (un rouge lisible sur fond sombre est trop clair pour porter du texte blanc). La classe `text-destructive` rend donc la couleur `danger`, `bg-destructive` rend l'aplat.
 
-Forme par défaut d'un badge de statut : fond teinté à 12-14 % et texte de la couleur du statut. L'aplat plein avec texte blanc est réservé aux boutons destructifs.
+Forme d'un badge de statut, à la Qonto (décision du propriétaire du 06/10/2026) : fond teinté pâle, texte à l'encre et pastille ronde de 6 px de la couleur du statut avant le libellé. Une icône posée dans le badge prend la couleur du statut et remplace la pastille. La couleur ne porte jamais le texte d'un badge : le mot dit le statut, la pastille l'appuie (texte de 11,8 à 14,9:1 sur sa teinte, pastille de 5,1 à 6,6:1). Le badge neutre (`muted`) est à l'encre sur le gris, sans pastille. L'aplat plein avec texte blanc est réservé aux boutons destructifs. Bandeaux, messages d'alerte, tuiles d'icône et statuts écrits en ligne (« En retard ») ne sont pas des badges : leur texte ou leur icône garde la couleur du statut.
 
 ### Couleurs interdites
 
@@ -101,7 +103,7 @@ Un seul barème, celui du moteur de scoring : fort à partir de 65 (`success`), 
 
 ### Les canaux
 
-LinkedIn et WhatsApp se reconnaissent à leur logo officiel, l'e-mail et l'appel à leur icône en gris (`ChannelIcon`, table `src/lib/channels.ts`). La couleur d'un canal reste dans son logo : une étape de séquence, un statut, un ton ou un bouton ne prennent jamais la couleur d'un canal.
+LinkedIn et WhatsApp se reconnaissent à leur logo officiel, l'e-mail et l'appel à leur icône à l'encre (`ChannelIcon`, table `src/lib/channels.ts`). La couleur d'un canal reste dans son logo : une étape de séquence, un statut, un ton ou un bouton ne prennent jamais la couleur d'un canal.
 
 ## 3. Typographie
 
@@ -136,7 +138,9 @@ Trois rayons principaux, dérivés de `--radius` (8 px) :
 
 Deux cas dérivés : `rounded-md` (6 px) pour un élément imbriqué dans une surface ou un contrôle (item de menu, segment d'un contrôle segmenté), et `rounded-sm` (4 px) sous 20 px de haut (case à cocher, barre de squelette). `rounded-none`, `rounded-2xl`, `rounded-3xl` et les valeurs arbitraires sont proscrits.
 
-Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` 11 < `card` 16 < `popover` 18 < `muted` 20 < `accent` 22) et un filet. Une carte se détache du fond de 5 points, sans dépendre de son filet. En clair, la carte est blanche sur un fond à 97 % et porte une ombre légère (`shadow-sm`, dans `Card`). Les ombres marquées servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
+Élévation : en sombre, les surfaces se distinguent par leur luminosité (`background` 11 < `card` 16 < `popover` 18 < `muted` 20 < `accent` 22) et un filet. Une carte se détache du fond de 5 points, sans dépendre de son filet. En clair, la carte est blanche sur un fond à 96 % et porte une ombre légère (`shadow-sm`, dans `Card`). Les ombres marquées servent aux éléments qui flottent : menus, dialogues, toasts (`shadow-lg`, `shadow-xl`).
+
+Kanban (page mission et /pipeline, décision du 06/10/2026) : en clair, la colonne est une zone grise (`muted`) et la carte de candidat est blanche (`card`) avec une ombre légère, comme une carte posée dans un bac ; en sombre, rien ne change (colonne `card`, carte `muted` sans ombre, la carte reste la plus claire). La carte qu'on glisse garde son ombre marquée dans les deux thèmes.
 
 Relief (demande du propriétaire du 05/10/2026, « l'application est encore un peu plate », référence Qonto) : on regroupe sur une carte ce qui demande une décision (liste « À faire », tableau des missions), on colore le fond de ce qui bloque le travail (bandeau de la panne LinkedIn : carte texturée chaude, voir § 7), et on laisse nu le reste de la page. Une carte contient des lignes séparées par des filets, jamais une autre carte.
 
@@ -155,20 +159,30 @@ Relief (demande du propriétaire du 05/10/2026, « l'application est encore un p
 
 Toujours passer par les primitives de `src/components/ui/` : `Button` plutôt qu'un `<button>` stylé à la main, `Input` et `Select` plutôt que les champs natifs, `Card` plutôt que `rounded-xl border bg-card` recopié.
 
-Boutons :
+Boutons (décision du propriétaire du 06/10/2026, « plus marqué, façon Qonto ») : trois styles, du plus fort au plus discret, plus le gris des retraits.
 
-Tous les boutons sont des pilules (`rounded-full`). Les champs, eux, gardent le coin de contrôle à 8 px.
+Tous les boutons sont des pilules (`rounded-full`). Les champs, eux, gardent le coin de contrôle à 8 px. Une tuile de choix ou une ligne de liste faite avec `Button` (texte sur plusieurs lignes : packs de crédits, départs de « Nouvelle séquence », réponses proposées, candidat choisi) n'est pas un bouton : `ghost`, rayon de carte (`rounded-xl`, `rounded-lg` pour une ligne), filet décoratif `border-border` et `hover:border-foreground` ; jamais l'ovale cerclé d'encre.
 
-- `primary` : action principale, monochrome (texte `background` sur fond `foreground`). Un seul par zone : l'en-tête de page, un bandeau d'alerte, une carte de décision.
-- `secondary` : action suivante, ou action propre à une ligne (« Lire », « Répondre »). Fond `foreground/10`, qui se lit sur toutes les surfaces.
-- `default` / `outline` : option, filet appuyé (`border-strong`) et fond transparent.
-- `ghost` : action tertiaire, sans contour.
+- `primary` : plein d'encre (noir en clair, blanc en sombre), jamais la couleur de marque. L'action de la zone, une seule par zone : l'en-tête de page, un bandeau d'alerte, une carte de décision.
+- `secondary`, `outline` et `default` : contour d'encre, mêmes classes (filet `foreground` de 1 px, blanc à 70 % en sombre pour qu'il ne scintille pas ; 13,3:1 au pire en clair, 6,3:1 en sombre), fond transparent, survol `accent`. Une action qui fait avancer : l'action d'une ligne (« Lire », « Relancer »), l'action suivante, l'option qui ouvre une barre (« Aujourd'hui »).
+- `ghost` et `link` : discrets à l'encre, sans contour. Action tertiaire ou d'entretien (« Toutes les tâches », « Ajouter un critère », « Actualiser »).
+- Gris secondaire, seulement pour un geste de retrait (Supprimer, Retirer, Dissocier, Effacer, Révoquer, Déconnecter, Écarter, Ignorer, Mettre en pause, Arrêter, Sauter, Ne pas envoyer) : `ghost` avec `text-muted-foreground`, et `hover:text-danger` s'il détruit ou écarte un candidat. « Écarter » est gris au repos et rouge au survol sur tous les écrans (fiche, en-tête du panneau, barre de sélection, lignes du Sourcing). Un onglet, un segment ou une bascule non choisis restent gris aussi : le gris y dit « non choisi ».
 - `destructive` : action irréversible, toujours derrière une `AlertDialog`.
-- `link` : lien dans un texte.
+
+Désactivé : jamais d'opacité. Libellé `muted-foreground`, aplat `muted` pour un bouton plein, filet décoratif `border` pour un contour. En chargement (`loading`), le bouton reste `disabled` (pas de double envoi au clavier) et porte `aria-busy` ; un aplat garde alors sa couleur, avec la roue.
+
+Jamais plus chargé : quand des contours d'encre s'empilent dans une zone,
+
+1. le contour reste aux actions qui font avancer (relancer, reprendre, voir la conversation, connecter, réessayer, inscrire, l'option qui ouvre une barre) ;
+2. les gestes d'entretien passent en discret à l'encre (`ghost`) : actualiser, flèches de période, réinitialiser, rétablir les valeurs par défaut, effacer la recherche, afficher la suite, vues enregistrées ;
+3. les retraits d'envoi passent en discret gris : mettre en pause, arrêter, sauter, ne pas envoyer ;
+4. au-delà, si une zone garde trois contours ou plus côte à côte, le troisième et les suivants passent en discret.
 
 Un bouton icône a toujours un `aria-label` et une infobulle.
 
-Badges : variantes `success`, `warning`, `info`, `danger`, `brand`, `muted`, `outline`, toutes en fond teinté. Un statut se peint de la même façon sur tous les écrans.
+Badges : variantes `success`, `warning`, `info`, `danger`, `brand` (texte à l'encre et pastille de la couleur du statut, § 2), `muted` (encre sur le gris), `outline`. Un statut se peint de la même façon sur tous les écrans ; un badge fait main reprend la primitive, ou ses classes si sa forme diffère.
+
+Contrôles : une puce de filtre (`FilterPill`) est grise et sans filet au repos, avec un contour d'encre quand le filtre est actif ; la bascule discrète (`SegmentedControl` `quiet`) pose l'option choisie en carte blanche sur son rail gris en clair, creusée au fond de page en sombre ; un toggle allumé porte un anneau de contrôle (`border-strong`) ; un radio a le bord de champ (`input`).
 
 Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne API `useToast` passe par lui. L'action d'un toast (« Annuler ») reste cliquable quand un dialogue est ouvert, et ce clic ne ferme pas le dialogue.
 
@@ -177,7 +191,7 @@ Visages et pastilles (design simplifié, `06-simplicite.md`) :
 - Une ligne montre de qui ou de quoi elle parle : le visage d'une personne, le logo d'une mission (`MissionCompanyLogo`).
 - `PersonAvatar` (`src/components/ui/person-avatar.tsx`) : la photo LinkedIn du candidat, ou sa copie Konekt ; sinon ses initiales, y compris quand le lien a expiré ou que l'image ne charge pas. Décoratif quand le nom est écrit à côté. `CandidateAvatar` (tableau de bord, et forme par taille nommée) passe par lui.
 - `AvatarStack` (même fichier) : quelques visages qui se chevauchent, puis « +N », avec la liste des noms en nom accessible.
-- `IconTile` (`src/components/ui/IconTile.tsx`) : pastille d'icône sur fond teinté en tête d'une chose à faire. Le ton dit l'urgence : `brand` par défaut, `warning` quand quelque chose attend, `destructive` quand c'est en retard.
+- `IconTile` (`src/components/ui/IconTile.tsx`) : pastille d'icône sur fond teinté en tête d'une chose à faire. Le ton dit l'urgence : `brand` par défaut, `warning` quand quelque chose attend, `destructive` quand c'est en retard. Le ton neutre (`default`) pose l'icône à l'encre sur le gris.
 
 ## 7. Mouvement
 
@@ -224,9 +238,11 @@ Icônes qui attendent (design simplifié, demande du propriétaire du 04/10/2026
 Chaque écran qui charge des données prévoit quatre états :
 
 - Chargement : squelette pour une liste ou un tableau, indicateur circulaire pour une action ponctuelle, jamais les deux.
-- Vide : une phrase qui dit pourquoi c'est vide, et l'action qui le remplit.
+- Vide : une phrase qui dit pourquoi c'est vide, et l'action qui le remplit (bouton plein si c'est la seule action de la zone, sinon contour d'encre). La pastille d'icône d'un état vide est à l'encre sur le gris, sans aplat noir qui concurrencerait le bouton plein ; son cadre en tirets reste un décor.
 - Erreur : ce qui a échoué en mots simples, et un bouton « Réessayer ». Une erreur ne s'affiche jamais comme un état vide.
 - Succès : un toast qui dit ce qui a été fait, avec le nombre exact d'éléments traités.
+
+Une ligne faite (tâche cochée, rappel fait, envoi parti, entretien passé) se lit encore : son titre passe au gris secondaire, barré pour une tâche ou un rappel, et la case cochée ou le mot « envoyé » le disent. Jamais d'opacité sur la ligne : elle voilerait aussi le visage, l'heure et la case.
 
 ### Illustrations
 
@@ -234,6 +250,7 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 
 - Une illustration par écran au plus, à la place de l'icône d'un état vide, d'une panne ou d'une issue (invitation, lien, page introuvable). Jamais dans une liste, une carte serrée, un bouton, un toast ni la barre latérale (présente sur chaque écran) ; une panne compacte garde son icône.
 - Décorative : le titre dit ce qui se passe, l'image n'a pas de texte alternatif.
+- Posée sur une tuile de surface carte (option `tile` d'`Illustration`, vraie par défaut, décision du 06/10/2026) : blanche en clair, où le papier crème se lit (1,22:1 au lieu de 1,15 à nu sur le fond), à la surface carte en sombre, sans vignette claire qui éblouirait. Jamais à nu sur le fond, jamais inversée ni filtrée ; `tile={false}` seulement quand le dessin est déjà posé sur une carte, où la tuile aurait la couleur de la carte (panne d'`ErrorState`, carte d'invitation, issue publique, compte LinkedIn des Paramètres), ou dans une fenêtre (surface `popover`), où la tuile, plus sombre que la fenêtre en sombre (1,07:1), ferait un creux (analyse du poste de « Nouvelle mission »).
 - En mouvement, à la demande du propriétaire (29/09/2026) : une fois les calques chargés, le fond reste fixe et les pièces mobiles rejouent leur geste en boucle. Un tour dure 2,5 à 4,5 s : entrée sur le premier cinquième, pièce à sa place jusqu'aux quatre cinquièmes, puis sortie. Avec le mouvement réduit, le dessin est fixe dans son état final.
 - Écart connu : une animation de plus de cinq secondes sans commande de pause s'écarte du critère 2.2.2 des WCAG. Le réglage « réduire les animations » du système l'arrête ; un arrêt après quelques tours rendrait l'écran conforme sans ce réglage.
 - Une situation, un dessin :
@@ -267,8 +284,9 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 
 ## 10. Accessibilité
 
-- Focus visible sur tout élément interactif : `focus-visible`, anneau `brand` de 2 px, décalé de 2 px.
-- Contraste AA : 4,5:1 pour le texte, 3:1 pour les icônes, filets de champ et anneaux.
+- Focus visible sur tout élément interactif : `focus-visible`, anneau `brand` de 2 px, décalé de 2 px (4,55:1 au pire en clair, 5,45:1 en sombre). Un champ prend au focus un bord `brand` et un anneau plein de 1 px, 2 px en tout, jamais un halo transparent. Le contour d'encre d'un bouton ne remplace jamais l'anneau.
+- Contraste AA : 4,5:1 pour le texte, 3:1 pour les icônes, les bords de bouton et de champ, les anneaux et les pastilles de badge. Chaque paire de jetons est recalculée par `tests/ux/contraste-jetons.test.mjs`, sur la surface la plus défavorable.
+- Icônes (décision du 06/10/2026) : toute icône est à l'encre, celle d'un contrôle comme celle qui accompagne une métadonnée grise, et jamais d'opacité sur une icône visible. Gardent la couleur de leur rôle : l'icône posée dans un champ (gris secondaire, comme le texte indicatif), celle d'un geste de retrait, d'un onglet ou d'une bascule non choisis, d'un statut, de l'accent ou d'un logo, d'un élément désactivé, d'un indicateur d'état neutre écrit en gris (roue de « Chargement… », « Enregistré »), les légendes des graphiques, et la barre latérale : onglets du haut inchangés, rangée basse et têtes de ligne à `sidebar-foreground` (6,98:1 au pire en clair). L'ancienne page mission ne change pas ; ce qu'elle partage sans drapeau suit la règle : la fenêtre « Nouvelle mission » (`CreateMissionV2`, `JobOffersPicker`, `BriefAnalysisPanel`, rangés sous `missions/v2`) et la fiche en tiroir (`ProfileDetailSheet`, `PhoneCallHistoryPanel`).
 - Un champ a un libellé associé, son aide et son erreur sont reliées par `aria-describedby`.
 - Pas de `div` cliquable : `button` ou `a`.
 - Une information ne passe jamais par la couleur seule : un statut a aussi un mot ou une icône.
@@ -278,3 +296,4 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 - `npm run audit:design` compte la dette visuelle de `src/` : couleurs brutes et ancienne palette de marque, tailles arbitraires, effets décoratifs, rayons hors système, texte atténué par opacité, variables CSS lues sans être déclarées, emoji, tirets longs, noms de fournisseurs, boutons et champs faits main.
 - Le job CI « Design (ratchet) » refuse une PR qui fait monter un de ces compteurs par rapport à `main`.
 - Le banc visuel (`docs/design/05-banc-visuel.md`) capture chaque écran en clair, en sombre, sur ordinateur et sur téléphone, avant et après un lot.
+- `tests/ux/contraste-jetons.test.mjs` recalcule les 44 paires à seuil de chaque thème depuis `src/index.css` et échoue sous la cible ; `tests/ux/contraste-primitives.test.mjs` garde les classes des boutons, des badges, des puces de filtre, des champs et de la tuile des illustrations ; `tests/ux/contraste-ecrans.test.mjs` garde le kanban, les lignes faites, les champs et bascules faits main, la barre latérale, les rétrogradations, les badges faits main et le bord en sombre des boutons à contour dont l'appel change la couleur du bord ; `tests/ux/contraste-icones.test.mjs` refuse dans `src/components` et `src/pages` une icône grise ou voilée, un parent qui grise ses svg et un bouton discret gris qui n'est pas un retrait, hors d'une liste blanche commentée qui ne fait que décroître (primitives, pages publiques, portails et ancienne page mission exclus).

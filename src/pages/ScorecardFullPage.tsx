@@ -607,7 +607,7 @@ export default function ScorecardFullPage() {
                           {edu.logo ? (
                             <img src={edu.logo} alt="" className="h-5 w-5 rounded-sm object-contain" />
                           ) : (
-                            <GraduationCap className="h-3.5 w-3.5 text-foreground-secondary" aria-hidden="true" />
+                            <GraduationCap className="h-3.5 w-3.5" aria-hidden="true" />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -747,7 +747,7 @@ function SidebarSection({
     <section aria-labelledby={headingId} className="w-full min-w-0 overflow-hidden rounded-xl border border-border bg-card p-3">
       <div className="mb-2 flex min-w-0 items-center gap-2">
         <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted">
-          <Icon className="h-3.5 w-3.5 text-foreground-secondary" aria-hidden="true" />
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <h3 id={headingId} className="truncate text-xs font-semibold text-foreground">{title}</h3>
@@ -786,7 +786,7 @@ function CompactExperienceItem({
             onError={() => setLogoErrors((prev) => new Set(prev).add(logoKey))}
           />
         ) : (
-          <Building2 className="h-3.5 w-3.5 text-foreground-secondary" aria-hidden="true" />
+          <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
         )}
       </div>
       <div className="min-w-0 flex-1">

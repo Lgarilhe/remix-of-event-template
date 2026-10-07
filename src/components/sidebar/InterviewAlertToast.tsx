@@ -26,7 +26,7 @@ export function InterviewAlertToast({ person, sub, links, joinUrl, onOpen, onClo
       className="flex w-[356px] max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl"
     >
       <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-4 [&>svg]:w-4">
           <CalendarClock aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">

@@ -203,7 +203,9 @@ test('téléphone : titre entier, chiffres sans coupure, visages alignés sur le
   // Cibles tactiles d'au moins 44 px sur téléphone (01-direction.md, § 5).
   assert.match(row, /<a class="[^"]*\bmin-h-11 min-w-11\b[^"]*\bmd:min-h-0 md:min-w-0\b[^"]*" href="\/inbox">Répondre<\/a>/);
   assert.match(missions, /<a class="[^"]*\bmin-h-11\b[^"]*\bmd:min-h-0\b[^"]*" href="\/missions">Toutes les missions<\/a>/);
-  assert.match(read('src/pages/Dashboard.tsx'), /className="min-h-11 px-0 text-muted-foreground md:min-h-0">\s*<Link to="\/tasks">Toutes les tâches<\/Link>/);
+  // Liens d'action discrets à l'encre (contraste, décision 1 du 06/10) : plus de gris secondaire.
+  assert.match(read('src/pages/Dashboard.tsx'), /className="min-h-11 px-0 md:min-h-0">\s*<Link to="\/tasks">Toutes les tâches<\/Link>/);
+  assert.doesNotMatch(missions.match(/<a class="([^"]*)" href="\/missions">Toutes les missions<\/a>/)[1], /(?:^|\s)text-muted-foreground\b/);
   const today = read('src/components/dashboard/DashboardTodayPanel.tsx');
   assert.match(today, /aria-label="Ajouter une tâche"\s*className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"/);
   assert.match(today, /className="min-h-11 md:min-h-0">\s*<Link to="\/calendar">/);

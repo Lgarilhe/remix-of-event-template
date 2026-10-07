@@ -84,7 +84,7 @@ export function BulkActionBar({
       role="toolbar"
       data-bulk-bar=""
       aria-label="Actions sur la sélection"
-      className="sticky bottom-6 z-20 flex w-fit max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-border-strong bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in-0 motion-safe:duration-200"
+      className="sticky bottom-6 z-20 flex w-fit max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-border bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in-0 motion-safe:duration-200"
     >
       {/* Annoncé par la zone permanente de PipelineScreen. */}
       <span className="mr-1.5 text-sm font-semibold text-foreground">{selectionText(count)}</span>
@@ -103,7 +103,8 @@ export function BulkActionBar({
         <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Étape suivante
       </Button>
-      <Button variant="outline" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)} className="text-danger hover:text-danger">
+      {/* Écarter : retrait gris, rouge au survol, comme dans la fiche ; le contour d'encre reste aux actions qui font avancer. */}
+      <Button variant="ghost" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)} className="text-muted-foreground hover:bg-danger-muted hover:text-danger">
         <UserX className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Écarter
       </Button>
@@ -120,10 +121,10 @@ export function BulkActionBar({
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={disabled}>
+          <Button variant="ghost" size="sm" disabled={disabled}>
             <ArrowRightLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Déplacer vers
-            <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+            <ChevronDown className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">

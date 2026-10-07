@@ -147,7 +147,7 @@ export const AICreditsSettings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Wallet className="h-4 w-4" aria-hidden="true" />
             Crédits IA
           </CardTitle>
         </CardHeader>
@@ -182,12 +182,12 @@ export const AICreditsSettings = () => {
           {/* Plan vs Topup breakdown */}
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <Coins className="h-3 w-3" aria-hidden="true" />
+              <Coins className="h-3 w-3 text-foreground" aria-hidden="true" />
               <span>Plan : <strong className="text-foreground">{planCredits.toLocaleString('fr-FR')}</strong></span>
             </div>
             {topupCredits > 0 && (
               <div className="flex items-center gap-1.5">
-                <PlusCircle className="h-3 w-3" aria-hidden="true" />
+                <PlusCircle className="h-3 w-3 text-foreground" aria-hidden="true" />
                 <span>Recharges : <strong className="text-foreground">{topupCredits.toLocaleString('fr-FR')}</strong></span>
               </div>
             )}
@@ -197,7 +197,7 @@ export const AICreditsSettings = () => {
             <span>{usagePercent !== null ? `${usagePercent}\u00a0% utilisé ce mois` : ''}</span>
             {periodEnd && (
               <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" aria-hidden="true" />
+                <Clock className="h-3 w-3 text-foreground" aria-hidden="true" />
                 Crédits plan réinitialisés le {format(new Date(periodEnd), 'dd MMM', { locale: fr })}
               </span>
             )}
@@ -219,7 +219,7 @@ export const AICreditsSettings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <ShoppingCart className="h-4 w-4" aria-hidden="true" />
             Recharger des crédits
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
@@ -233,18 +233,15 @@ export const AICreditsSettings = () => {
               <Button
                 key={pack.id}
                 type="button"
-                variant="outline"
+                variant="ghost"
                 onClick={() => handleBuyPack(pack.id)}
                 disabled={!!buyingPack}
-                className={cn(
-                  'relative h-auto flex-col gap-0 whitespace-normal p-4 text-center font-normal',
-                  pack.badge && 'border-border-strong',
-                )}
+                className="relative h-auto flex-col gap-0 whitespace-normal rounded-xl border border-border p-4 text-center font-normal hover:border-foreground"
               >
                 <span className="sr-only">Acheter </span>
                 {/* Design simplifié : la mention du pack en texte neutre, posée sur le filet, sans pastille de couleur. */}
                 {pack.badge && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-background px-1.5 text-xs font-medium text-foreground-secondary">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-card px-1.5 text-xs font-medium text-foreground-secondary">
                     {pack.badge}
                   </span>
                 )}
@@ -279,7 +276,7 @@ export const AICreditsSettings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <TrendingDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <TrendingDown className="h-4 w-4" aria-hidden="true" />
             Coût par action
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">

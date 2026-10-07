@@ -81,7 +81,7 @@ export const UserContextCard: React.FC = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <UserIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <UserIcon className="h-4 w-4" aria-hidden="true" />
           Vos consignes de rédaction
         </CardTitle>
       </CardHeader>
@@ -116,7 +116,7 @@ export const OrgContextCard: React.FC = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Building2 className="h-4 w-4" aria-hidden="true" />
           Consignes de l’organisation
         </CardTitle>
       </CardHeader>

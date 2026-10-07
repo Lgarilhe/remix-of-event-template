@@ -32,7 +32,7 @@ function DelayPill({ text }: { text: string }) {
   return (
     <div className="flex justify-center">
       <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-muted-foreground">
-        <Clock className="h-3 w-3" aria-hidden="true" />
+        <Clock className="h-3 w-3 text-foreground" aria-hidden="true" />
         {text}
       </span>
     </div>
@@ -48,7 +48,7 @@ function StepCard({ node }: { node: Extract<FlowNode, { kind: 'step' | 'fork' }>
         <span className="grid h-6 min-w-6 place-items-center rounded-md bg-muted px-1 text-xs tabular-nums text-muted-foreground" aria-hidden="true">
           {node.number}
         </span>
-        <SequenceActionIcon type={node.actionType} className="h-4 w-4 text-muted-foreground" />
+        <SequenceActionIcon type={node.actionType} className="h-4 w-4 text-foreground" />
         <h3 className="min-w-0 text-sm font-semibold text-foreground">
           <span className="sr-only">Étape {node.number} : </span>
           {node.title}
@@ -78,13 +78,13 @@ function FlowList({ nodes, label }: { nodes: FlowNode[]; label?: string }) {
             {node.kind === 'end' ? (
               <div className="flex justify-center">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                  <Flag className="h-3 w-3" aria-hidden="true" />
+                  <Flag className="h-3 w-3 text-foreground" aria-hidden="true" />
                   Fin de la séquence
                 </span>
               </div>
             ) : node.kind === 'join' ? (
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <CornerDownRight className="h-3.5 w-3.5" aria-hidden="true" />
+                <CornerDownRight className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                 Rejoint l’étape {node.number} : {node.title}
               </p>
             ) : (
@@ -101,7 +101,7 @@ function FlowList({ nodes, label }: { nodes: FlowNode[]; label?: string }) {
                     {node.branches.map((branch, b) => (
                       <section key={branch.label} aria-label={`Branche : ${branch.label}`} className="min-w-0">
                         <p className={cn('mb-2 flex items-center justify-center gap-1.5 text-xs font-medium', b === 0 ? 'text-foreground' : 'text-foreground-secondary')}>
-                          {b === 0 ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <X className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {b === 0 ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <X className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />}
                           {branch.label}
                         </p>
                         <FlowList nodes={branch.nodes} />

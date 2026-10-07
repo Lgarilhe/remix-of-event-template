@@ -1021,9 +1021,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   )}
                 </p>
                 <Button
+                  variant="primary"
                   onClick={onLoadMore}
                   disabled={loadingMore}
-                  className="gap-2 bg-foreground text-background hover:bg-foreground/90"
+                  aria-busy={loadingMore || undefined}
+                  className="gap-2"
                 >
                   {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
                   Charger le lot suivant
@@ -1051,9 +1053,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 </p>
                 {selectedJob && (
                   <Button
+                    variant="primary"
                     onClick={() => onRefineSearch('expand')}
                     disabled={refineLoading}
-                    className="gap-2 bg-foreground text-background hover:bg-foreground/90"
+                    aria-busy={refineLoading || undefined}
+                    className="gap-2"
                   >
                     {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
                     Élargir les filtres avec l'IA
@@ -1358,8 +1362,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         Lot actuel traité !
                       </div>
                       <Button
+                        variant="primary"
                         onClick={onLoadMore}
-                        className="gap-2 bg-foreground text-background hover:bg-foreground/90"
+                        className="gap-2"
                         size="default"
                       >
                         Lot suivant

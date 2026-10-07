@@ -53,7 +53,7 @@ export const PedigreePresetsSettings: React.FC = () => {
       {/* Revue design (F-01) : titre en casse de phrase, action dans l'emplacement de droite (plus dans le titre). */}
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Bookmark className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Bookmark className="h-4 w-4" aria-hidden="true" />
           ICP par société
         </CardTitle>
         <Button
@@ -162,7 +162,7 @@ const PresetCard: React.FC<{
           <h4 className="truncate text-sm font-semibold">{preset.name}</h4>
           {preset.client_company_name && (
             <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-              <Building2 className="h-3 w-3" aria-hidden="true" />
+              <Building2 className="h-3 w-3 text-foreground" aria-hidden="true" />
               {preset.client_company_name}
               {preset.is_default_for_client && (
                 <Badge variant="outline" className="ml-1 py-0">
@@ -179,7 +179,7 @@ const PresetCard: React.FC<{
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                className="max-md:h-11 max-md:w-11"
                 onClick={onEdit}
                 aria-label={`Modifier l'ICP ${preset.name}`}
               >

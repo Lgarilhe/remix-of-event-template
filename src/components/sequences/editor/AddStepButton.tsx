@@ -27,7 +27,7 @@ export function AddStepButton({ steps, position, branchLabel, onAdd }: AddStepBu
             variant="ghost"
             size="sm"
             aria-label={branchLabel ? `Ajouter une étape dans la branche ${branchLabel}` : 'Ajouter une étape'}
-            className="text-muted-foreground hover:text-foreground max-md:h-11"
+            className="max-md:h-11"
           >
             <Plus aria-hidden="true" />
             Ajouter une étape

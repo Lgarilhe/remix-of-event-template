@@ -208,7 +208,6 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
           size="sm"
           onClick={onBack}
           disabled={isFirst}
-          className="text-muted-foreground"
         >
           ← Précédent
         </Button>
@@ -216,7 +215,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
           size="sm"
           onClick={onNext}
           disabled={!canProceed}
-          className="bg-success hover:bg-success/90 text-white"
+          variant="primary"
         >
           {isLast ? 'Générer les filtres ✨' : 'Suivant →'}
         </Button>

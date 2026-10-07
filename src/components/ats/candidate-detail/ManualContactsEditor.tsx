@@ -120,7 +120,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           className={cn('shrink-0 max-sm:min-h-11', HEADER_ACTION_CLASS)}
           title="Ajouter ou modifier l'e-mail et le téléphone à la main"
@@ -145,12 +145,12 @@ export const ManualContactsEditor: React.FC<Props> = ({
             </p>
             {existingEmails.map(e => (
               <p key={e} className="flex items-center gap-1.5 text-sm text-foreground-secondary">
-                <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {e}
+                <Mail className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" /> {e}
               </p>
             ))}
             {existingPhones.map(p => (
               <p key={p} className="flex items-center gap-1.5 text-sm text-foreground-secondary">
-                <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {p}
+                <Phone className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" /> {p}
               </p>
             ))}
           </div>
@@ -165,7 +165,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
           <div className="space-y-2.5">
             <div>
               <Label htmlFor="manual-email" className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                <Mail className="w-3 h-3" /> E-mail
+                <Mail className="w-3 h-3 text-foreground" /> E-mail
               </Label>
               <Input
                 id="manual-email"
@@ -178,7 +178,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
             </div>
             <div>
               <Label htmlFor="manual-phone" className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                <Phone className="w-3 h-3" /> Téléphone
+                <Phone className="w-3 h-3 text-foreground" /> Téléphone
               </Label>
               <Input
                 id="manual-phone"

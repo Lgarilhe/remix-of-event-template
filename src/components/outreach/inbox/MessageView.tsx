@@ -73,12 +73,12 @@ import { jobDataToBrief } from '@/lib/jobBriefForCta';
 import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
 // Boutons icône de l'en-tête : 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
-const HEADER_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground md:h-8 md:w-8';
+const HEADER_ICON = 'h-11 w-11 md:h-8 md:w-8';
 // Cibles de 44 px au doigt dans les menus
 const MENU_ITEM = 'min-h-11 md:min-h-0';
 // Action d'un message : visible au doigt, révélée au survol ou au focus à la souris (D-12)
 const MESSAGE_ACTION = cn(
-  'h-11 w-11 shrink-0 self-center text-muted-foreground hover:text-foreground md:h-7 md:w-7',
+  'h-11 w-11 shrink-0 self-center md:h-7 md:w-7',
   '[@media(hover:hover)]:opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 data-[state=open]:opacity-100',
 );
 
@@ -720,7 +720,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   if (jobInfo?.job_title) {
     contextItems.push(
       <span key="title" className="inline-flex min-w-0 items-center gap-1 text-foreground-secondary">
-        <Briefcase className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Briefcase className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
         <span className="truncate">{jobInfo.job_title}</span>
       </span>,
     );
@@ -831,7 +831,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <h2 className="min-w-0 truncate text-md font-semibold text-foreground">{displayName}</h2>
               {enrollmentStatus && (
                 <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                  <GitBranch className="h-3 w-3 self-center" aria-hidden="true" />
+                  <GitBranch className="h-3 w-3 self-center text-foreground" aria-hidden="true" />
                   <span className="sr-only">Séquence : </span>
                   <EnrollmentStatusBadge
                     status={enrollmentStatus}
@@ -858,7 +858,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 className="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
                 title="Déduite des messages échangés : aucune inscription en séquence ne la confirme."
               >
-                <Briefcase className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <Briefcase className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                 <span className="truncate">
                   Mission probable : {inferredMission.job_title || inferredMission.name}
                 </span>
@@ -956,7 +956,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         {summary && summaryOpen && (
           <section aria-labelledby="conversation-summary-title" className="border-t border-border bg-muted px-3 py-3 md:px-5">
             <div className="flex items-start gap-3">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-foreground-secondary">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-foreground">
                 <FileText className="h-4 w-4" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
@@ -978,7 +978,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 )}
                 {summary.next_action && (
                   <p className="mt-2 inline-flex items-start gap-1.5 rounded-md bg-background px-2 py-1 text-xs text-foreground-secondary">
-                    <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
                     <span>
                       <span className="font-medium text-foreground">Prochaine étape : </span>
                       {summary.next_action}
@@ -1133,7 +1133,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                             size="icon-xs"
                             onClick={() => setDeleteMsgConfirm(msg.id)}
                             aria-label="Supprimer ce message"
-                            className={MESSAGE_ACTION}
+                            className={cn(MESSAGE_ACTION, 'text-muted-foreground hover:text-danger')}
                           >
                             <Trash2 aria-hidden="true" />
                           </Button>
@@ -1197,7 +1197,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                           <span className="tabular-nums">{formatMessageTime(msg.timestamp)}</span>
                           {isSender && (msg.read || msg.seen === 1 ? (
                             <span title="Lu" className="inline-flex">
-                              <CheckCheck className="h-3 w-3 text-foreground-secondary" aria-hidden="true" />
+                              <CheckCheck className="h-3 w-3 text-foreground" aria-hidden="true" />
                               <span className="sr-only">Lu</span>
                             </span>
                           ) : msg.delivered ? (

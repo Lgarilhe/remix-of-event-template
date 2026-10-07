@@ -42,7 +42,7 @@ export function WritingStyleCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <PenLine className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <PenLine className="h-4 w-4" aria-hidden="true" />
           Votre style
         </CardTitle>
       </CardHeader>

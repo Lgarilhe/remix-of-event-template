@@ -278,11 +278,11 @@ function StepTypeOption({ value, label, description, onPick }: { value: string; 
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="ghost"
       onClick={() => onPick(value)}
-      className="h-auto justify-start gap-3 whitespace-normal p-3 text-left font-normal"
+      className="h-auto justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
     >
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
         <SequenceActionIcon type={value} className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
@@ -897,8 +897,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                       aria-controls={isExpanded ? panelId : undefined}
                       className="group h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal rounded-xl p-3 text-left font-normal hover:bg-accent/40"
                     >
-                      <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90" aria-hidden="true" />
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
+                      <ChevronRight className="h-4 w-4 transition-transform duration-150 group-data-[state=open]:rotate-90" aria-hidden="true" />
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
                         <SequenceActionIcon type={step.actionType} className="h-4 w-4" />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -937,11 +937,11 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                         {(delayLabel || usesAi || (stepIsTrigger && step.timeoutDays)) && (
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                             {delayLabel && (
-                              <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />Après {delayLabel}</span>
+                              <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3 text-foreground" aria-hidden="true" />Après {delayLabel}</span>
                             )}
                             {usesAi && <span>Rédigé par l'IA</span>}
                             {stepIsTrigger && step.timeoutDays ? (
-                              <span className="inline-flex items-center gap-1"><Hourglass className="h-3 w-3" aria-hidden="true" />Au plus {step.timeoutDays} j</span>
+                              <span className="inline-flex items-center gap-1"><Hourglass className="h-3 w-3 text-foreground" aria-hidden="true" />Au plus {step.timeoutDays} j</span>
                             ) : null}
                           </span>
                         )}
@@ -967,7 +967,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => addVariant(step)}
-                          className="shrink-0 text-muted-foreground max-md:h-11 max-md:w-11"
+                          className="shrink-0 max-md:h-11 max-md:w-11"
                           aria-label={`Créer un test A/B sur l'étape ${stepNumber}`}
                         >
                           <FlaskConical aria-hidden="true" />
@@ -1088,7 +1088,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     {/* Fenêtre d'envoi */}
                     <Collapsible>
                       <CollapsibleTrigger asChild>
-                        <Button type="button" variant="ghost" size="xs" className="group -ml-2 gap-1 text-muted-foreground hover:text-foreground max-md:h-11">
+                        <Button type="button" variant="ghost" size="xs" className="group -ml-2 gap-1 max-md:h-11">
                           <ChevronRight className="transition-transform duration-150 group-data-[state=open]:rotate-90" aria-hidden="true" />
                           Fenêtre d'envoi
                         </Button>
@@ -1112,7 +1112,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     {isTrigger(step.actionType) && step.actionType !== 'check_connection' && (
                       <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3">
                         <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                          <Hourglass className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <Hourglass className="h-4 w-4" aria-hidden="true" />
                           Réglages de l'attente
                         </p>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1177,7 +1177,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     {step.actionType === 'check_connection' && (
                       <div className="space-y-4 rounded-lg border border-border bg-muted/40 p-3">
                         <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                          <GitBranch className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                          <GitBranch className="h-4 w-4" aria-hidden="true" />
                           Selon la connexion
                         </p>
                         <div>
@@ -1220,7 +1220,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                           <div className="overflow-hidden rounded-lg border border-border">
                             <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
                               <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                                <FlaskConical className="h-3.5 w-3.5" aria-hidden="true" />
                                 Test A/B
                               </p>
                               {variants.length < 3 && (
@@ -1331,7 +1331,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                   {/* Aperçu : mêmes variables que le moteur ; une variable qu'il ne connaît pas apparaît vide. */}
                                   {(step.messageTemplate || '').includes('{{') && (
                                     <details className="group mt-2">
-                                      <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11 [&::-webkit-details-marker]:hidden">
+                                      <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1 rounded-sm text-xs text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11 [&::-webkit-details-marker]:hidden">
                                         <ChevronRight className="h-3 w-3 transition-transform duration-150 group-open:rotate-90" aria-hidden="true" />
                                         <Eye className="h-3 w-3" aria-hidden="true" />
                                         Aperçu avec un exemple ({PREVIEW_EXAMPLE_LABEL})
@@ -1350,7 +1350,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <div className="space-y-3 border-t border-border pt-3">
                                 <Collapsible>
                                   <CollapsibleTrigger asChild>
-                                    <Button type="button" variant="ghost" size="xs" className="group -ml-2 gap-1 text-muted-foreground hover:text-foreground max-md:h-11">
+                                    <Button type="button" variant="ghost" size="xs" className="group -ml-2 gap-1 max-md:h-11">
                                       <ChevronRight className="transition-transform duration-150 group-data-[state=open]:rotate-90" aria-hidden="true" />
                                       Copies (Cc, Cci)
                                     </Button>
@@ -1631,7 +1631,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     .slice(0, 30)
                     .map(step => (
                       <li key={step.id} className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-muted text-foreground">
                           <SequenceActionIcon type={step.actionType} className="h-3 w-3" />
                         </span>
                         <span className="tabular-nums text-muted-foreground">Étape {step.order + 1}</span>
@@ -1701,7 +1701,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                   size="sm"
                   onClick={requestClose}
                   aria-label="Retour à la liste"
-                  className="shrink-0 gap-1.5 px-2 text-muted-foreground hover:text-foreground max-md:h-11 max-sm:w-11 max-sm:px-0"
+                  className="shrink-0 gap-1.5 px-2 max-md:h-11 max-sm:w-11 max-sm:px-0"
                 >
                   <ArrowLeft aria-hidden="true" />
                   <span className="max-sm:hidden">Retour</span>
@@ -1817,7 +1817,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                     {sequence.steps.length === 0 && !isEditing && (
                       <div className="flex flex-wrap items-center gap-4 rounded-xl border border-dashed border-border bg-muted/20 p-5">
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                           <Workflow className="h-5 w-5" aria-hidden="true" />
                         </span>
                         <div className="min-w-0 flex-1">
@@ -1845,7 +1845,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                   size="sm"
                   onClick={goPrevWizardStep}
                   disabled={wizardStep === 'info'}
-                  className="text-muted-foreground max-md:h-11"
+                  className="max-md:h-11"
                 >
                   <ArrowLeft aria-hidden="true" />
                   Précédent

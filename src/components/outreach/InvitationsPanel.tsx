@@ -205,11 +205,11 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
               </Select>
             )}
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon"
               onClick={handleRefresh}
               disabled={loading}
-              className="h-8 w-8 border-border bg-background"
+              className="h-8 w-8"
             >
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
@@ -265,7 +265,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                 size="sm"
                 disabled={selectedCount === 0 || isProcessing}
                 onClick={() => setBulkConfirm('accept')}
-                className="rounded-lg border border-border h-7 px-2 sm:px-3 text-xs"
+                className="rounded-lg h-7 px-2 sm:px-3 text-xs"
               >
                 {isProcessing && bulkConfirm === 'accept' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                 <span className="hidden sm:inline ml-1">Accepter</span>
@@ -305,8 +305,8 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
         ) : invitations.length === 0 ? (
           <div className="flex min-h-[280px] items-center justify-center p-6">
             <div className="max-w-xs text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center border border-border bg-muted/30 text-muted-foreground">
-                <UserPlus className="h-7 w-7 opacity-50" />
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center border border-border bg-muted/30 text-foreground">
+                <UserPlus className="h-7 w-7" />
               </div>
               <h3 className="mb-1.5 text-sm font-bold text-foreground">
                 Aucune invitation
@@ -383,7 +383,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                                     className="inline-flex items-center gap-1 text-sm font-semibold text-foreground hover:underline truncate"
                                   >
                                     <span className="truncate">{invitation.inviter_name}</span>
-                                    <ExternalLink className="h-3 w-3 shrink-0 opacity-40" />
+                                    <ExternalLink className="h-3 w-3 shrink-0" />
                                   </a>
                                 ) : (
                                   <span className="text-sm font-semibold text-foreground truncate">
@@ -408,17 +408,17 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                                 size="sm"
                                 onClick={() => handleAccept(invitation)}
                                 disabled={isItemProcessing || isProcessing}
-                                className="rounded-lg border border-border h-7 px-1.5 sm:px-2.5 text-xs"
+                                className="rounded-lg h-7 px-1.5 sm:px-2.5 text-xs"
                               >
                                 {isItemProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                                 <span className="ml-1 hidden sm:inline">OK</span>
                               </Button>
                               <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => handleDecline(invitation)}
                                 disabled={isItemProcessing || isProcessing}
-                                className="rounded-lg border border-border h-7 px-1.5 sm:px-2.5 text-xs text-muted-foreground"
+                                className="rounded-lg h-7 px-1.5 sm:px-2.5 text-xs text-muted-foreground"
                               >
                                 <X className="h-3 w-3" />
                               </Button>
@@ -444,10 +444,10 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
             {cursor && (
               <div className="pt-3">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleLoadMore}
                   disabled={loading}
-                  className="h-9 w-full border-border text-xs"
+                  className="h-9 w-full text-xs"
                 >
                   {loading ? (
                     <>

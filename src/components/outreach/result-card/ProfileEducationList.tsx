@@ -94,7 +94,7 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
   return (
     <section className="mt-2 border-t border-border/50 pt-2">
       <header className="mb-1 flex items-center gap-1.5">
-        <GraduationCap className="w-2.5 h-2.5 text-muted-foreground" aria-hidden="true" />
+        <GraduationCap className="w-2.5 h-2.5 text-foreground" aria-hidden="true" />
         <h4 className="text-xs font-medium text-muted-foreground">
           Formation
         </h4>
@@ -129,7 +129,7 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
                 />
               ) : (
                 <div className="w-[18px] h-[18px] rounded-sm bg-muted border border-border/30 flex items-center justify-center shrink-0">
-                  <GraduationCap className="w-2.5 h-2.5 text-muted-foreground/60" aria-hidden="true" />
+                  <GraduationCap className="w-2.5 h-2.5 text-foreground" aria-hidden="true" />
                 </div>
               )}
 

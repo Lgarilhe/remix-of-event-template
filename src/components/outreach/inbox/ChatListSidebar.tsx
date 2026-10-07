@@ -97,7 +97,7 @@ const HeaderIconButton: React.FC<{
         onClick={onClick}
         disabled={disabled}
         aria-label={label}
-        className={cn('h-11 w-11 text-muted-foreground hover:text-foreground md:h-8 md:w-8', className)}
+        className={cn('h-11 w-11 md:h-8 md:w-8', className)}
       >
         {children}
       </Button>

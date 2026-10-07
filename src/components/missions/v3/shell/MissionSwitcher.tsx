@@ -61,7 +61,7 @@ export function MissionSwitcher() {
           size={24}
         />
         <span className="truncate">{project.name}</span>
-        <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72 max-w-[calc(100vw-2rem)]">
         {pinsReady && missions.pinned.length > 0 && (
@@ -93,7 +93,7 @@ export function MissionSwitcher() {
             className="flex flex-col items-start gap-0.5 max-sm:min-h-11"
           >
             <span className="text-sm text-foreground">Impossible de charger vos missions.</span>
-            <span className="text-xs text-muted-foreground">Réessayer</span>
+            <span className="text-xs font-medium text-foreground">Réessayer</span>
           </DropdownMenuItem>
         )}
         {missions.status === 'offline' && (

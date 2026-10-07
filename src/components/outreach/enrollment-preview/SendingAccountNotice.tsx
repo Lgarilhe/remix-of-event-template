@@ -32,7 +32,7 @@ export function SendingAccountNotice({ state, className }: { state: SendingAccou
     >
       {blockReason
         ? <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-danger" aria-hidden="true" />
-        : <Send className="w-3.5 h-3.5 mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        : <Send className="w-3.5 h-3.5 mt-0.5 shrink-0 text-foreground" aria-hidden="true" />}
       <div className="min-w-0 flex-1 space-y-0.5">
         <p className="text-foreground">
           {name

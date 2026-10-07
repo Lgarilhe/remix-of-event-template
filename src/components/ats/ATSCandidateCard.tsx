@@ -127,7 +127,7 @@ const STRETCHED_BUTTON =
 
 /** La mission : un bouton du kit rendu comme un texte discret, cible élargie au doigt. */
 const JOB_LINK =
-  'flex h-auto w-fit max-w-full justify-start p-0 text-left text-sm font-normal text-foreground-secondary hover:text-foreground after:absolute after:-inset-y-1 after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3';
+  'flex h-auto w-fit max-w-full justify-start p-0 text-left text-sm font-normal after:absolute after:-inset-y-1 after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3';
 
 /** État d'une inscription en séquence, en mots (« En cours », « En pause »…). */
 const sequenceStatusText = (status: string) => (status === 'paused' ? pausedLabel(null) : enrollmentStatusLabel(status));
@@ -175,7 +175,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
     >
       {signal.kind === 'sequence' ? (
         <>
-          <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <GitBranch className="h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
           <span className="sr-only">
             {candidate.sequenceName ? `Séquence « ${candidate.sequenceName} » :` : 'Séquence :'}
           </span>
@@ -194,7 +194,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
   if (overlay) {
     return (
-      <div className="w-[256px] cursor-grabbing rounded-lg border border-border bg-muted p-2.5 shadow-lg">
+      <div className="w-[256px] cursor-grabbing rounded-lg border border-border bg-card p-2.5 shadow-lg dark:bg-muted">
         <div className="flex items-center gap-2">
           <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} className="bg-background" />
           <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{candidate.name}</p>
@@ -216,7 +216,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       onPointerDown={drag ? handlePointerDown : undefined}
       onKeyDown={drag ? handleKeyDown : undefined}
       className={cn(
-        'group relative rounded-lg border bg-muted p-2.5 transition-colors duration-150',
+        'group relative rounded-lg border bg-card p-2.5 shadow-sm transition-colors duration-150 dark:bg-muted dark:shadow-none',
         selected ? 'border-brand ring-1 ring-brand' : 'border-border hover:border-border-strong',
         isDragging && 'opacity-30',
       )}
@@ -236,7 +236,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         />
       )}
       <div className="flex items-center gap-2">
-        {/* Fond de la page : la pastille ne se confond pas avec la carte (même ton que bg-muted). */}
+        {/* Fond de la page : la pastille ne se confond pas avec la carte (blanche en clair, bg-muted en sombre). */}
         <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={28} className="bg-background" />
         <h3 className="min-w-0 flex-1 text-sm font-medium text-foreground">
           <Button
@@ -252,7 +252,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           </Button>
         </h3>
         {candidate.hasReminder && (
-          <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
+          <Bell className="h-3.5 w-3.5 shrink-0" role="img" aria-label="Rappel en attente" />
         )}
         <ScoreRing score={candidate.score} />
       </div>
@@ -287,7 +287,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
                       variant="ghost"
                       size="icon-xs"
                       aria-label={`Déplacer ${candidate.name} vers une autre étape`}
-                      className={cn(CONTROL, 'shrink-0 text-muted-foreground after:absolute after:-inset-2', REVEAL)}
+                      className={cn(CONTROL, 'shrink-0 after:absolute after:-inset-2', REVEAL)}
                     >
                       <ArrowRightLeft aria-hidden="true" />
                     </Button>

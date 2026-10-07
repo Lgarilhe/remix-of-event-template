@@ -1,7 +1,8 @@
 /**
  * Boutons secondaires de la fiche du candidat (Portail, Séquence, Coordonnées,
- * Ajouter contacts, Ajouter un rappel) : contour des champs et fond teinté de
- * la couleur du texte (clair en sombre, sombre en clair), pour se lire à côté
- * du menu Étape sans passer au bouton plein.
+ * Ajouter contacts, Ajouter un rappel). Depuis le contraste façon Qonto, le
+ * contour d'encre du bouton outline suffit à les lire à côté du menu Étape : plus
+ * de bord de champ ni de fond teinté (le bord de champ, sans équivalent sombre,
+ * laissait un contour plus faible en clair qu'en sombre). Gardé vide pour les appels.
  */
-export const HEADER_ACTION_CLASS = 'border-input bg-foreground/20 hover:bg-foreground/30';
+export const HEADER_ACTION_CLASS = '';

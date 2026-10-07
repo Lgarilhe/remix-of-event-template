@@ -42,6 +42,7 @@ function MissionStatusMenu() {
   const enabled = canEditBrief && !control.saving;
 
   // Sans cadre, fond ni couleur : le mot, en texte discret (la couleur est réservée à ce qui attend quelqu'un).
+  // Lecture seule : gris de métadonnée ; menu modifiable : bouton discret à l'encre.
   const baseClass =
     'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground outline-none ' +
     'transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11';
@@ -84,7 +85,7 @@ function MissionStatusMenu() {
           disabled={!enabled}
           aria-busy={control.saving}
           aria-label={`Statut : ${missionStatusLabel(project.status)}, changer le statut`}
-          className={cn(baseClass, 'hover:bg-accent hover:text-foreground disabled:opacity-60')}
+          className={cn(baseClass, 'text-foreground hover:bg-accent disabled:text-muted-foreground')}
         >
           <span className="truncate">{missionStatusLabel(project.status)}</span>
           <ChevronDown aria-hidden="true" className="h-3 w-3 shrink-0" />
@@ -119,11 +120,11 @@ export function MissionHeader() {
         {/* Entre lg et xl (barre latérale ouverte), la place revient au nom : « Missions » reste dans le menu du nom et la barre. */}
         <Link
           to="/missions"
-          className="hidden shrink-0 rounded-md py-1 text-muted-foreground outline-none transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex lg:hidden xl:inline-flex"
+          className="hidden shrink-0 rounded-md py-1 text-foreground underline-offset-4 outline-none transition-colors duration-150 ease-out hover:underline focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex lg:hidden xl:inline-flex"
         >
           Missions
         </Link>
-        <ChevronRight aria-hidden="true" className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block lg:hidden xl:block" />
+        <ChevronRight aria-hidden="true" className="hidden h-3.5 w-3.5 shrink-0 sm:block lg:hidden xl:block" />
         <h1 className="flex min-w-0 items-center">
           <MissionSwitcher />
         </h1>

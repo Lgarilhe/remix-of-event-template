@@ -104,7 +104,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
     <section aria-labelledby={titleId} className="space-y-4 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2">
         <h4 id={titleId} className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Info className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
           Configuration audio
         </h4>
         {onDismiss && (
@@ -145,7 +145,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
             </>
           ) : (
             <>
-              <Monitor className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <Monitor className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
               Micro intégré détecté&nbsp;: en visio, un casque avec micro améliore nettement la transcription de votre voix.
             </>
           )}
@@ -221,7 +221,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
       )}
 
       {!scenario && onReady && (
-        <Button variant="ghost" size="sm" onClick={onReady} className="w-full text-muted-foreground max-md:min-h-11">
+        <Button variant="ghost" size="sm" onClick={onReady} className="w-full max-md:min-h-11">
           Passer le guide
         </Button>
       )}

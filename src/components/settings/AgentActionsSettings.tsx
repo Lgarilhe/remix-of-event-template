@@ -661,8 +661,8 @@ export const AgentActionsSettings = () => {
                       </p>
                     )}
                     {pendingDialog.row.dry_run_result?.warning && (
-                      <p className="flex items-start gap-1 text-xs text-warning">
-                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                      <p className="flex items-start gap-1 text-xs text-foreground">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-warning" aria-hidden="true" />
                         {pendingDialog.row.dry_run_result.warning}
                       </p>
                     )}
@@ -773,8 +773,8 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
           {writingLine && <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{writingLine}</p>}
 
           {warning && action.status === 'proposed' && (
-            <p className="mt-1 flex items-start gap-1 text-xs text-warning">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+            <p className="mt-1 flex items-start gap-1 text-xs text-foreground">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-warning" aria-hidden="true" />
               <span>{warning}</span>
             </p>
           )}
@@ -792,7 +792,7 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
 
           {isQueued && scheduledLabel && (
             <p className="mt-1 flex items-start gap-1 text-xs text-foreground-secondary">
-              <Clock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              <Clock className="mt-0.5 h-3 w-3 shrink-0 text-foreground" aria-hidden="true" />
               <span>Envoi prévu : <strong className="font-medium text-foreground">{scheduledLabel}</strong></span>
             </p>
           )}
@@ -826,11 +826,11 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
                   </Button>
                   <Button
                     size="xs"
-                    variant="outline"
+                    variant="ghost"
                     loading={loadingAction === 'reject'}
                     disabled={loadingAction != null}
                     onClick={() => onAction(action, 'reject')}
-                    className="max-md:h-11"
+                    className="text-muted-foreground max-md:h-11"
                   >
                     {loadingAction !== 'reject' && <X aria-hidden="true" />}
                     Rejeter
@@ -853,11 +853,11 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, canO
               {isQueued && (
                 <Button
                   size="xs"
-                  variant="outline"
+                  variant="ghost"
                   loading={loadingAction === 'cancel'}
                   disabled={loadingAction != null}
                   onClick={() => onAction(action, 'cancel')}
-                  className="max-md:h-11"
+                  className="text-muted-foreground max-md:h-11"
                 >
                   {loadingAction !== 'cancel' && <Ban aria-hidden="true" />}
                   Annuler la programmation

@@ -82,7 +82,7 @@ export const ModelPicker = ({
         >
           <ModelLogo modelId={resolvedModelId} size={14} />
           {!compact && (
-            <span className="truncate text-muted-foreground">
+            <span className="truncate">
               {isAutoRouted ? 'Automatique' : resolvedModel?.name ?? 'Équilibré'}
             </span>
           )}

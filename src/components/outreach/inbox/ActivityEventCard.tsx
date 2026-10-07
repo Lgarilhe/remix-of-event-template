@@ -76,7 +76,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     if (event.callDuration != null && event.callDuration > 0) details.push(formatDuration(event.callDuration));
     if (event.callUserName) details.push(event.callUserName);
   } else if (isBooking) {
-    icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
+    icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />;
     label = event.qualificationSessionId ? (
       <Link
         to={`/qualification/${event.qualificationSessionId}`}
@@ -89,7 +89,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     );
     if (event.eventName) details.push(event.eventName);
   } else {
-    icon = <SequenceActionIcon type={event.actionType} className="text-muted-foreground" />;
+    icon = <SequenceActionIcon type={event.actionType} className="text-foreground" />;
     // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
     // jamais présentée comme envoyée.
     label = sequenceStepTitle(event.actionType, event.status);

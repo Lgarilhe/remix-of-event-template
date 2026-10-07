@@ -1165,7 +1165,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   {currentMessage?.personalizationPoints && currentMessage.personalizationPoints.length > 0 && (
                     <div className="border-t border-border pt-3">
                       <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                        <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Lightbulb className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
                         Points de personnalisation
                       </p>
                       <ul className="flex flex-wrap gap-1.5">
@@ -1289,10 +1289,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 {pendingCount > 0 && (
                   <div className="mt-3 flex justify-end">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => setConfirmCancel(true)}
-                      className="text-danger hover:text-danger max-md:h-11"
+                      className="text-muted-foreground hover:text-danger max-md:h-11"
                     >
                       Annuler les envois en attente
                     </Button>

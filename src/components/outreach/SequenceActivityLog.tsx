@@ -697,7 +697,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           className="shrink-0 max-md:h-11 max-md:w-11"
           onClick={fetchExecutions}
@@ -830,7 +830,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
               title="Aucune étape ne correspond à ces filtres"
               description="Élargissez la période ou le statut, ou effacez la recherche."
               action={
-                <Button variant="outline" size="sm" onClick={resetFilters}>
+                <Button variant="ghost" size="sm" onClick={resetFilters}>
                   Réinitialiser les filtres
                 </Button>
               }
@@ -884,7 +884,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                             className={paginated ? undefined : 'rounded-xl border border-border bg-card'}
                           >
                             <CollapsibleTrigger className={cn('flex w-full items-start gap-3 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', paginated ? 'rounded-lg px-2 py-2.5' : 'rounded-xl p-3')}>
-                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                                 <SequenceActionIcon type={exec.step?.action_type} className="h-4 w-4" />
                               </span>
                               <div className="min-w-0 flex-1">
@@ -926,7 +926,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 )}
                               </div>
                               <ChevronRight
-                                className={cn('mt-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                className={cn('mt-2 h-4 w-4 shrink-0 transition-transform duration-150', isExpanded && 'rotate-90')}
                                 aria-hidden="true"
                               />
                             </CollapsibleTrigger>
@@ -1012,9 +1012,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     )}
                                     {canSkip && (
                                       <Button
-                                        variant="outline"
+                                        variant="ghost"
                                         size="xs"
-                                        className="text-danger hover:text-danger max-md:h-11"
+                                        className="text-muted-foreground hover:text-danger max-md:h-11"
                                         onClick={() => setSkipConfirm({ id: exec.id, candidateName })}
                                         loading={skippingId === exec.id}
                                       >
@@ -1047,7 +1047,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           {/* Journal d'une séquence : page suivante après la dernière ligne. */}
           {paginated && cursor && (
             <div className="flex justify-center pt-1">
-              <Button variant="outline" size="sm" onClick={() => { void loadMore(); }} loading={loadingMore} className="max-md:h-11">
+              <Button variant="ghost" size="sm" onClick={() => { void loadMore(); }} loading={loadingMore} className="max-md:h-11">
                 Afficher la suite
               </Button>
             </div>

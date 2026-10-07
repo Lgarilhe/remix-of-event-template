@@ -189,7 +189,7 @@ export const BillingSettings = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <CreditCard className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <CreditCard className="h-4 w-4" aria-hidden="true" />
               Abonnement
             </CardTitle>
           </CardHeader>
@@ -203,7 +203,7 @@ export const BillingSettings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <CreditCard className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <CreditCard className="h-4 w-4" aria-hidden="true" />
             Abonnement
           </CardTitle>
         </CardHeader>
@@ -265,7 +265,7 @@ export const BillingSettings = () => {
           {state && (
             <div className="space-y-2 pt-2 border-t border-border text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <Users className="h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                 <span>
                   {state.has_stripe_subscription
                     ? `${plural(state.seats, 'siège facturé', 'sièges facturés')}, ${plural(state.seat_count, 'membre', 'membres')}`
@@ -275,14 +275,14 @@ export const BillingSettings = () => {
 
               {isTrialing && state.trial_ends_at && (
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <Calendar className="h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                   <span>Fin de l'essai le {formatDate(state.trial_ends_at)}</span>
                 </div>
               )}
 
               {(!isTrialing || isTrialPaid) && state.current_period_end && (
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <Calendar className="h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                   <span>
                     {state.cancel_at_period_end ? "Accès jusqu'au" : 'Prochaine échéance le'}{' '}
                     {formatDate(state.current_period_end)}
@@ -314,7 +314,7 @@ export const BillingSettings = () => {
         <Card>
           <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Gauge className="h-4 w-4" aria-hidden="true" />
             Limites du plan
           </CardTitle>
           </CardHeader>
@@ -338,7 +338,7 @@ export const BillingSettings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Download className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Download className="h-4 w-4" aria-hidden="true" />
             Export des données (RGPD)
           </CardTitle>
         </CardHeader>

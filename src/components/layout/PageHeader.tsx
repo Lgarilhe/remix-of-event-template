@@ -44,7 +44,7 @@ export const PageHeader: React.FC<PageHeaderProps> = React.memo(({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2.5">
           {Icon && (
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
               <Icon className="h-4 w-4" aria-hidden={true} />
             </span>
           )}

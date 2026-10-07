@@ -334,7 +334,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
               >
                 <span className="col-span-2 flex min-w-0 items-center gap-1.5 text-sm text-foreground sm:col-span-1">
                   <span className="truncate">{step.from}</span>
-                  <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
                   <span className="sr-only">vers</span>
                   <span className="truncate">{step.to}</span>
                 </span>

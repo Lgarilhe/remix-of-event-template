@@ -134,7 +134,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
                 disabled={isDisabled}
                 loading={ctaReplyLoading}
                 aria-label="Proposer une suite"
-                className="h-11 w-11 px-0 text-muted-foreground hover:text-foreground sm:h-7 sm:w-auto sm:px-2"
+                className="h-11 w-11 px-0 sm:h-7 sm:w-auto sm:px-2"
               >
                 {!ctaReplyLoading && <MessageSquareReply aria-hidden="true" />}
                 <span className="hidden sm:inline">Proposer une suite</span>
@@ -153,7 +153,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
                 onSelect={() => void handlePick(opt.value)}
                 className="min-h-11 items-start gap-2 md:min-h-0"
               >
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm text-foreground">{opt.label}</span>
                   <span className="block text-xs text-muted-foreground">{opt.description}</span>

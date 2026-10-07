@@ -604,7 +604,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                           </span>
                           {field.briefSource && (
                             <span className="text-2xs text-muted-foreground flex items-center gap-1">
-                              <Sparkle className="w-2.5 h-2.5" />
+                              <Sparkle className="w-2.5 h-2.5 text-foreground" />
                               {field.briefSource}
                             </span>
                           )}
@@ -637,7 +637,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                                     onClick={() => removeChip(field.id, i)}
                                   >
                                     <span>{chip}</span>
-                                    <X className="w-2.5 h-2.5 text-foreground/30" />
+                                    <X className="w-2.5 h-2.5 text-muted-foreground" />
                                   </span>
                                 ))
                               )}
@@ -647,7 +647,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                             {field.suggestions.length > 0 && (
                               <div className="pt-1.5 border-t border-border">
                                 <p className="text-2xs uppercase tracking-wider font-bold text-muted-foreground mb-1.5 flex items-center gap-1">
-                                  <Sparkle className="w-2.5 h-2.5" />
+                                  <Sparkle className="w-2.5 h-2.5 text-foreground" />
                                   Suggestions
                                 </p>
                                 <div className="flex flex-wrap gap-1.5">
@@ -730,7 +730,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
               )}
               <button
                 onClick={() => onOpenChange(false)}
-                className="h-9 px-3 text-2xs uppercase tracking-wider font-bold text-muted-foreground hover:text-foreground transition-colors"
+                className="h-9 px-3 text-2xs uppercase tracking-wider font-bold text-foreground transition-colors"
               >
                 Passer
               </button>

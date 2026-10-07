@@ -344,7 +344,10 @@ test('design simplifié : paliers nommés, pas de titre en capitales, pas de car
     const body = code(read(rel));
     assert.doesNotMatch(body, /text-\[\d/, `${rel} : taille de texte écrite à la main`);
     assert.doesNotMatch(body, /\buppercase\b/, `${rel} : texte en capitales`);
-    assert.doesNotMatch(body, /\bbg-card\b|rounded-xl border|border border-border bg-/, `${rel} : carte à bordure`);
+    // L'option choisie d'une bascule faite main (rendu quiet du contraste) n'est pas une carte : seules ses deux formes
+    // écrites sont retirées avant la recherche (« Qui recrute » par data-[state=checked], importance d'un critère par ternaire).
+    const quietChoice = /data-\[state=checked\]:bg-card|'bg-card font-semibold text-foreground dark:bg-background'/g;
+    assert.doesNotMatch(body.replace(quietChoice, ''), /\bbg-card\b|rounded-xl border|border border-border bg-/, `${rel} : carte à bordure`);
     primary += (body.match(/variant="primary"/g) || []).length;
   }
   assert.ok(primary <= 1, `un seul bouton plein par écran au plus (trouvé : ${primary})`);

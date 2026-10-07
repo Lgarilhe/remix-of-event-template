@@ -147,7 +147,7 @@ export function AgentPoliciesSettings() {
       <CardContent className="p-4 space-y-4">
         <div>
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
             Politiques d'autonomie
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
@@ -174,7 +174,7 @@ export function AgentPoliciesSettings() {
         {/* Résumé du matin (agent proactif) */}
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
-            <Sunrise className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+            <Sunrise className="h-4 w-4 shrink-0" aria-hidden="true" />
             <div className="min-w-0">
               <label htmlFor="policy-daily-digest" className="text-sm font-medium text-foreground">Résumé du matin</label>
               <p id="policy-daily-digest-help" className="text-xs text-muted-foreground">
@@ -207,7 +207,7 @@ export function AgentPoliciesSettings() {
                 <div className="min-w-0">
                   <div className="text-sm font-medium flex items-center gap-1.5">
                     {tool.label}
-                    {!tool.autoEligible && <Lock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />}
+                    {!tool.autoEligible && <Lock className="h-3 w-3" aria-hidden="true" />}
                   </div>
                   {tool.description && (
                     <div className="text-xs text-muted-foreground">{tool.description}</div>

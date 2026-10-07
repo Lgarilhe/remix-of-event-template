@@ -33,7 +33,7 @@ const formatDate = (dateStr: string | null) => {
 
 const statusIcon = (call: PhoneCall) => {
   if (call.outcome === 'missed') return <PhoneMissed className="w-3.5 h-3.5 text-destructive" />;
-  if (call.direction === 'inbound') return <PhoneIncoming className="w-3.5 h-3.5 text-emerald-600" />;
+  if (call.direction === 'inbound') return <PhoneIncoming className="w-3.5 h-3.5 text-foreground" />;
   return <PhoneOutgoing className="w-3.5 h-3.5 text-primary" />;
 };
 
@@ -69,13 +69,13 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
       {/* Stats header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Phone className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          <Phone className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold text-foreground">Historique des appels</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>{totalCalls} appel{totalCalls > 1 ? 's' : ''}</span>
           <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3" />
+            <Clock className="w-3 h-3 text-foreground" />
             {formatDuration(totalTalkSeconds)} total
           </span>
         </div>
@@ -98,7 +98,7 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                 </Badge>
                 {call.talkSeconds > 0 && (
                   <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                    <Clock className="w-2.5 h-2.5" />
+                    <Clock className="w-2.5 h-2.5 text-foreground" />
                     {formatDuration(call.talkSeconds)}
                   </span>
                 )}
@@ -115,7 +115,7 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
               {/* Notes */}
               {call.notes && (
                 <div className="flex items-start gap-1 mt-1">
-                  <MessageSquareText className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                  <MessageSquareText className="w-3 h-3 text-foreground mt-0.5 shrink-0" />
                   <p className="text-xs text-foreground/70 line-clamp-2">{call.notes}</p>
                 </div>
               )}
@@ -143,7 +143,7 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
               {/* Tags */}
               {call.tags.length > 0 && (
                 <div className="flex items-center gap-1 flex-wrap mt-1">
-                  <Tag className="w-2.5 h-2.5 text-muted-foreground" />
+                  <Tag className="w-2.5 h-2.5 text-foreground" />
                   {call.tags.map(tag => (
                     <Badge key={tag} variant="secondary" className="text-xs px-1 py-0 h-4">
                       {tag}
@@ -163,7 +163,7 @@ export const PhoneCallHistoryPanel: React.FC<PhoneCallHistoryPanelProps> = ({
                   </Button>
                 )}
                 {call.voicemailUrl && (
-                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-xs text-amber-600 gap-1">
+                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-xs gap-1">
                     <a href={call.voicemailUrl} target="_blank" rel="noopener noreferrer">
                       <Mic className="w-2.5 h-2.5" />
                       Messagerie vocale

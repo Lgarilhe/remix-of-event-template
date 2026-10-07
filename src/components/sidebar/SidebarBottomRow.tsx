@@ -39,7 +39,7 @@ interface BottomLink {
 }
 
 const TARGET_BASE =
-  'relative inline-flex items-center justify-center rounded-md text-muted-foreground outline-none transition-colors ' +
+  'relative inline-flex items-center justify-center rounded-md text-sidebar-foreground outline-none transition-colors ' +
   'hover:bg-sidebar-accent/60 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring';
 
 export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onOpenTutorial }: SidebarBottomRowProps) {
@@ -89,7 +89,7 @@ export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onO
                   TARGET_BASE,
                   targetClass,
                   isTasks && !collapsed && overdue !== null && (tight ? 'md:gap-1 md:px-2' : 'gap-1 px-2'),
-                  active && 'bg-sidebar-accent text-sidebar-foreground',
+                  active && 'bg-sidebar-accent text-sidebar-accent-foreground',
                 )}
               >
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />

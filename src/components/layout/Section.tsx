@@ -41,7 +41,7 @@ export const Section: React.FC<SectionProps> = ({
     <Component aria-labelledby={headingId} className={cn('rounded-xl border border-border bg-card', className)}>
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden={true} />}
+          {Icon && <Icon className="h-4 w-4 shrink-0 text-foreground" aria-hidden={true} />}
           <Heading id={headingId} className="truncate text-sm font-semibold text-foreground">
             {title}
           </Heading>

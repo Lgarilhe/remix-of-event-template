@@ -57,7 +57,7 @@ function StartCard({ done, title, text, action, icon: Icon, onAction }: StartCar
         <span
           className={cn(
             'grid h-7 w-7 shrink-0 place-items-center rounded-full border',
-            done ? 'border-brand bg-brand text-brand-foreground' : 'border-border text-muted-foreground',
+            done ? 'border-brand bg-brand text-brand-foreground' : 'border-border text-foreground',
           )}
           aria-hidden="true"
         >

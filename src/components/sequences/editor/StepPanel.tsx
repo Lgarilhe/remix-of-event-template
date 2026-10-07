@@ -282,7 +282,7 @@ export function StepPanel({
         )}
 
         {notes && toWrite && (
-          <div role="note" className="space-y-1 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-sm text-foreground">
+          <div role="note" className="space-y-1 rounded-lg border border-danger/25 bg-danger-muted px-3 py-2 text-sm text-foreground">
             <p className="font-medium">À rédiger</p>
             <ul className="space-y-0.5 text-foreground-secondary">
               {notes.toWrite.map((text) => <li key={text}>{text}</li>)}
@@ -343,7 +343,7 @@ export function StepPanel({
             {usesAi && <p className="text-sm text-foreground-secondary">{AI_STEP_STYLE_NOTICE}</p>}
             {type === 'smart_message' && (
               <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <Info className="mt-px h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
                 {SMART_MESSAGE_INMAIL_HELP}
               </p>
             )}
@@ -626,7 +626,7 @@ export function StepPanel({
         </Collapsible>
 
         <div className="border-t border-border pt-4">
-          <Button type="button" variant="ghost" size="sm" disabled={removing} onClick={() => onRemove(primary.id)} className="text-danger hover:text-danger max-md:h-11">
+          <Button type="button" variant="ghost" size="sm" disabled={removing} onClick={() => onRemove(primary.id)} className="text-muted-foreground hover:text-danger max-md:h-11">
             <Trash2 aria-hidden="true" />
             Supprimer l’étape {number}
           </Button>

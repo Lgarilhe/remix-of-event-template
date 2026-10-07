@@ -143,7 +143,7 @@ export function ClientPicker({ id, value, onChange, disabled, placeholder, class
                 onMouseEnter={() => setActive(suggestions.length)}
                 className={cn('flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm', active === suggestions.length && 'bg-accent')}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground-secondary">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1 truncate text-foreground">Nouvelle société « {name.trim()} »</span>

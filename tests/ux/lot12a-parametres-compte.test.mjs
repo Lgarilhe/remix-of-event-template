@@ -351,7 +351,8 @@ test('Illustrations — « connexion » à la place d’une icône quand aucun c
   assert.doesNotMatch(withAccounts, /<Illustration/);
   assert.match(withAccounts, /Comptes disponibles/);
   const noAccount = between(notLinked, ') : (', 'Connecter mon LinkedIn');
-  assert.match(noAccount, /<Illustration name="connexion" size="md" \/>/);
+  // Posé sur la carte des Paramètres : sans tuile de surface carte (contraste v2, 01-direction.md § 8).
+  assert.match(noAccount, /<Illustration name="connexion" size="md" tile=\{false\} \/>/);
   assert.match(notLinked, /Connectez votre compte LinkedIn pour pouvoir effectuer des recherches et envoyer des messages\./);
   for (const key of Object.keys(FILES)) {
     if (key === 'linkedin') continue;

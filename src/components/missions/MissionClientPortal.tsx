@@ -187,7 +187,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               variant="ghost"
               size="sm"
               onClick={() => { setShowForm(false); setClientName(''); setClientEmail(''); }}
-              className="text-muted-foreground hover:text-foreground max-sm:min-h-11"
+              className="text-foreground max-sm:min-h-11"
             >
               Annuler
             </Button>
@@ -259,7 +259,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                 onClick={() => handleCopy(t.token)}
                 disabled={expired}
                 className={embedded
-                  ? 'h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0 disabled:opacity-40 disabled:pointer-events-none max-sm:h-11 max-sm:w-11'
+                  ? 'h-8 w-8 grid place-items-center rounded-md text-foreground hover:bg-accent transition-colors flex-shrink-0 disabled:text-muted-foreground disabled:pointer-events-none max-sm:h-11 max-sm:w-11'
                   : 'h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0 disabled:opacity-40 disabled:pointer-events-none'}
                 title={expired ? 'Lien expiré' : 'Copier le lien'}
                 aria-label={embedded ? (expired ? 'Lien expiré' : `Copier le lien de ${t.client_name}`) : undefined}
@@ -276,7 +276,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                   target="_blank"
                   rel="noopener noreferrer"
                   className={embedded
-                    ? 'h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0 max-sm:h-11 max-sm:w-11'
+                    ? 'h-8 w-8 grid place-items-center rounded-md text-foreground hover:bg-accent transition-colors flex-shrink-0 max-sm:h-11 max-sm:w-11'
                     : 'h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0'}
                   title="Ouvrir le portail"
                   aria-label={embedded ? `Ouvrir le portail de ${t.client_name}` : undefined}

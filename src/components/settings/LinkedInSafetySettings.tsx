@@ -166,7 +166,7 @@ export const LinkedInSafetySettings = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-          <Shield className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Shield className="h-4 w-4" aria-hidden="true" />
           Plages horaires et limites
         </CardTitle>
       </CardHeader>
@@ -190,7 +190,7 @@ export const LinkedInSafetySettings = () => {
             <ul className="mt-2 space-y-1.5">
               {PROTECTION_MECHANISMS.map((mechanism) => (
                 <li key={mechanism} className="flex items-start gap-2 text-xs leading-relaxed text-foreground-secondary">
-                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
                   <span>{mechanism}</span>
                 </li>
               ))}
@@ -279,7 +279,7 @@ export const LinkedInSafetySettings = () => {
             <div className="space-y-1.5">
               <Label htmlFor="max-actions" className="flex items-center gap-1.5 text-xs font-medium">
                 Plafond d'actions visibles par jour
-                {!isAdmin && <Lock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />}
+                {!isAdmin && <Lock className="h-3 w-3" aria-hidden="true" />}
               </Label>
               <Input
                 id="max-actions"
@@ -325,7 +325,7 @@ export const LinkedInSafetySettings = () => {
                 Enregistrer
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={handleReset}
                 disabled={isSaving}
