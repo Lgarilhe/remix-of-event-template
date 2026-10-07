@@ -20,6 +20,7 @@ export interface DemoCandidateAction {
   successLabel: string;
   effects: DemoActionEffect[];
   sources: DemoActionSource[];
+  followUp?: { title: string; waitingFor: string; description: string };
 }
 
 export type DemoActionEffect = {
@@ -31,6 +32,7 @@ export type DemoActionEffect = {
 } | {
   id: string;
   kind: 'message';
+  audience: 'candidate' | 'team';
   label: string;
   service: MessagingService;
   recipient: string;
@@ -68,11 +70,13 @@ export function createDemoCandidateActions(conversations: DemoConversation[]): R
     'demo-alex': [{
       id: 'demo-coordinate-alex', title: 'Répondre à Alex et coordonner le suivi',
       reason: 'Alex attend des précisions que Guillaume a déjà demandées au manager.',
-      prepareLabel: 'Préparer la réponse', applyLabel: 'Envoyer et enregistrer', successLabel: 'Email envoyé · Commentaire publié',
+      prepareLabel: 'Préparer la réponse', applyLabel: 'Envoyer et enregistrer', successLabel: '2 emails envoyés · Commentaire publié',
       effects: [
-        { id: 'alex-comment', kind: 'document', label: 'Commentaire d’équipe', destination: 'Fiche candidat · Commentaires d’équipe', content: '@Guillaume Alex demande la taille de l’équipe et la durée du cycle de vente. Ces précisions sont déjà attendues du manager. Merci de partager son retour ici pour que nous puissions compléter la réponse, sans relance en double.' },
-        { id: 'alex-response', kind: 'message', label: 'Réponse à Alex', service: 'outlook', recipient: 'alex.martin@example.test', subject: 'Suite à vos questions sur le poste', content: 'Bonjour Alex,\n\nMerci pour vos questions et vos disponibilités. Nous attendons encore les précisions du manager sur la taille de l’équipe et la durée du cycle de vente. Je vous les partagerai dès que nous les aurons.\n\nÀ bientôt,\nLaurent' },
+        { id: 'alex-response', kind: 'message', audience: 'candidate', label: 'Réponse à Alex', service: 'outlook', recipient: 'alex.martin@example.test', subject: 'Suite à vos questions sur le poste', content: 'Bonjour Alex,\n\nMerci pour vos questions et vos disponibilités. Nous attendons encore les précisions du manager sur la taille de l’équipe et la durée du cycle de vente. Je vous les partagerai dès que nous les aurons.\n\nÀ bientôt,\nLaurent' },
+        { id: 'alex-team-request', kind: 'message', audience: 'team', label: 'Demande à Guillaume', service: 'outlook', recipient: 'guillaume@example.test', subject: 'Alex Martin : précisions attendues du manager', content: 'Bonjour Guillaume,\n\nAlex demande la taille de l’équipe et la durée du cycle de vente. Tu as déjà sollicité le manager sur ces deux points. Peux-tu partager son retour dans la fiche d’Alex dès réception ? Nous pourrons alors lui apporter une réponse complète.\n\nMerci,\nLaurent' },
+        { id: 'alex-comment', kind: 'document', label: 'Commentaire d’équipe', destination: 'Fiche candidat · Commentaires d’équipe', content: '@Guillaume centralise le retour du manager sur la taille de l’équipe et la durée du cycle de vente. Alex a reçu une réponse d’attente. Compléter sa réponse après réception des précisions, en conservant Guillaume comme interlocuteur pour ce suivi.' },
       ],
+      followUp: { title: 'Compléter la réponse à Alex', waitingFor: 'Retour de Guillaume avec les précisions du manager', description: 'Préparer une réponse complète avec les précisions reçues, puis la relire avant envoi.' },
       sources: [
         { id: alexReply.id, title: 'Questions d’Alex', author: 'Alex', timestamp: alexReply.timestamp, summary: 'Alex demande la taille de l’équipe et la durée du cycle de vente.', detail: alexReply.finalMessage!, service: 'outlook' },
         { id: 'demo-guillaume-alex', title: 'Suivi de Guillaume', author: 'Guillaume', timestamp: after(alexReply.timestamp, 1), summary: 'Guillaume attend déjà la réponse du manager. Coordonnez-vous avant de répondre à Alex.', detail: '« J’ai demandé au manager la taille de l’équipe et le cycle de vente. Je vous partage son retour dès réception. » Une tâche est déjà portée par Guillaume : obtenir ces précisions.', service: 'outlook' },
@@ -84,7 +88,7 @@ export function createDemoCandidateActions(conversations: DemoConversation[]): R
       prepareLabel: 'Préparer', applyLabel: 'Envoyer et enregistrer', successLabel: 'Email envoyé · Questions enregistrées',
       effects: [
         { id: 'maya-questions', kind: 'document', label: 'Questions de scorecard', destination: 'Fiche candidat · Scorecard · Points à approfondir', content: 'Critère : expérience sur un produit B2B (non évalué).\n\n1. Sur quel produit B2B avez-vous travaillé et quels utilisateurs avez-vous rencontrés ?\n2. Quel était votre rôle, quelles décisions avez-vous prises et quels résultats avez-vous observés ?\n\nLe critère reste non évalué jusqu’à l’échange et au retour de l’évaluateur.' },
-        { id: 'maya-message', kind: 'message', label: 'Email à Maya', service: 'gmail', recipient: 'maya.bernard@example.test', subject: 'Un point à préciser pour notre prochain échange', content: 'Bonjour Maya,\n\nPour compléter notre échange, pourriez-vous préciser si l’un des projets de votre portfolio concerne un produit B2B ? Un exemple avec les utilisateurs concernés, votre rôle et les décisions que vous avez prises nous aiderait à préparer la suite.\n\nMerci et à bientôt,\nLaurent' },
+        { id: 'maya-message', kind: 'message', audience: 'candidate', label: 'Email à Maya', service: 'gmail', recipient: 'maya.bernard@example.test', subject: 'Un point à préciser pour notre prochain échange', content: 'Bonjour Maya,\n\nPour compléter notre échange, pourriez-vous préciser si l’un des projets de votre portfolio concerne un produit B2B ? Un exemple avec les utilisateurs concernés, votre rôle et les décisions que vous avez prises nous aiderait à préparer la suite.\n\nMerci et à bientôt,\nLaurent' },
       ],
       sources: [
         { id: 'demo-maya-scorecard', title: 'Scorecard de pré-qualification', author: 'Laurent', timestamp: after(call.timestamp, 1), summary: 'L’expérience sur un produit B2B est encore à confirmer.', detail: 'Recherche utilisateur : 4/5. Design system : 3/5. Expérience sur un produit B2B : non évaluée. Le score ne constitue pas une décision du manager.' },

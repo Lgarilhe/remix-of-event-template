@@ -7,7 +7,7 @@ La messagerie et les fiches candidat doivent proposer du travail concret déjà 
 La démo `/inbox?demo=1` illustre trois ensembles d’effets :
 
 - **Camille : préparer l’entretien confirmé.** Enregistrer un brief et des questions à partir du profil, des échanges et d’une publication LinkedIn fictive. Le rendez-vous existe déjà : aucune nouvelle réservation n’est créée.
-- **Alex : coordonner sa réponse avec Guillaume.** Préparer un commentaire d’équipe avec `@Guillaume` et une réponse Outlook. Le commentaire est enregistré et l’email relu est envoyé dans la simulation ; les informations encore attendues du manager ne sont pas inventées.
+- **Alex : coordonner sa réponse avec Guillaume.** Préparer une réponse Outlook à Alex, une demande Outlook à Guillaume et un commentaire d’équipe avec `@Guillaume`. Guillaume ayant déjà sollicité le manager, la demande lui propose de partager le retour. Les deux emails relus et le commentaire sont appliqués dans la simulation ; les précisions manquantes ne sont pas inventées. Une suite distincte reste en attente : compléter la réponse à Alex après réception des informations.
 - **Maya : clarifier son expérience B2B.** Enregistrer des questions pour la scorecard et envoyer un email Gmail ciblé dans la simulation. Le critère reste non évalué : préparer une question ne lui attribue pas une note.
 
 Le chat s’ouvre sur les échanges récents. Une seule « Prochaine action » suit l’historique, avec un titre et un motif court. Le parcours est **Préparer → aperçu éditable de tous les effets → validation explicite**, avec un bouton qui nomme le résultat, par exemple « Enregistrer et envoyer ». « Pourquoi ? » donne accès aux sources datées avec leurs logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil du candidat.
@@ -15,6 +15,14 @@ Le chat s’ouvre sur les échanges récents. Une seule « Prochaine action » s
 L’aperçu présente d’abord les textes complets, les destinataires et les emplacements d’enregistrement, avec un récapitulatif des effets. « Modifier » ouvre uniquement le champ choisi ; le clavier ne s’ouvre pas à l’arrivée dans l’aperçu. « Annuler » conserve la proposition et les brouillons ; « Ignorer la suggestion » reste dans le détail des sources. Après validation, un statut confirme les résultats dans le chat et la fiche, et « Voir le résultat » permet de relire les contenus appliqués.
 
 Les propositions et sources complémentaires sont fictives, écrites pour cet aperçu, sans génération IA ni appel serveur. Les documents préparés, les commentaires et les résultats sont visibles dans l’onglet Actions de la fiche fictive ; les messages simulés rejoignent le même fil d’interactions. La messagerie et la fiche partagent les brouillons et l’état des effets par candidat. Fermer ou annuler l’aperçu ne produit aucun effet ; une validation n’exécute chaque effet qu’une fois. Les essais restent en mémoire et quitter la démo les efface.
+
+Les envois au candidat et ceux à l’équipe portent un périmètre explicite. Les messages d’équipe simulés apparaissent dans « Coordination avec l’équipe », partagé entre le chat et l’onglet Interactions de la fiche. Ils restent hors des événements du candidat utilisés pour ses coordonnées et ses bulles. La suite conditionnelle est annoncée mais n’est pas exécutée : cette démo ne simule pas la réception du retour ni le déclenchement d’un nouveau plan.
+
+## Actions liées et suites selon les réponses
+
+Une proposition peut associer plusieurs effets immédiats : informer le candidat, demander une précision à un manager ou à un collègue identifié, puis consigner le suivi dans la fiche. L’aperçu distingue chaque destinataire, le contenu qui lui est destiné, le canal et les modifications dans l’app. Une demande déjà portée par un collègue passe par lui pour éviter une seconde sollicitation du manager.
+
+Les actions qui dépendent d’une réponse restent en attente d’un événement précis. Par exemple, après réception des précisions du manager, proposer une réponse complète au candidat ; si le retour ouvre une question, préparer une nouvelle demande ciblée ; si un rendez-vous est confirmé, préparer son brief. La réception seule ne vaut pas décision : le moteur réel devra rapprocher le retour de la bonne demande et mission, relire les événements intervenus depuis, écarter les doublons et proposer un nouvel aperçu à valider. Les commentaires et échanges d’équipe conservent leur visibilité et ne deviennent pas automatiquement du contenu pour le candidat.
 
 Le moteur réel reste à brancher. Cette proposition reprend les procédures Notion actuelles ; les intégrations décrites pour Notion et n8n ne prouvent pas leur disponibilité dans l’app.
 

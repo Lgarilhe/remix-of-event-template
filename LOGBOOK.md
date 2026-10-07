@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Réponse candidat et demande d’équipe liées
+
+**Fait** : la proposition d’Alex prépare trois effets relus ensemble : une réponse Outlook au candidat, une demande Outlook à Guillaume, puis un commentaire dans la fiche. Guillaume ayant déjà sollicité le manager, la demande lui propose de partager les précisions attendues. Une suite distincte reste en attente : compléter la réponse à Alex après réception du retour.
+**Décision** : chaque effet message porte un périmètre explicite candidat/équipe. Les messages aux collègues se lisent dans « Coordination avec l’équipe », partagé entre chat et fiche Interactions. Ils restent hors des événements du candidat utilisés pour ses coordonnées et ses bulles. La suite est une proposition conditionnelle, sans retour reçu supposé ni exécution automatique dans cette démo.
+**Validation** : sept parcours Chromium réussis de 320 à 1920 px, clair/sombre et hauteur de 500 px : destinataires distincts, modification des deux emails, champ d’équipe vide bloquant la validation, annulation conservant les brouillons, double clic produisant un message unique par destinataire, adresse d’Alex conservée, coordination identique dans la fiche et suite en attente. Six régressions profil/interactions et quatre fichiers UX réussis. Build réussi, lint ciblé propre, dette design inchangée ; les 11 diagnostics TypeScript hérités restent identiques. Aucune écriture serveur ni invocation distante dans les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Répondre au candidat et demander au collègue le retour manager en une validation des trois effets | PASS |
+| Claire | Identifier destinataires Candidat/Équipe, service Outlook et suite dépendant d’un retour avant d’appliquer | PASS |
+| Théo | Double clic, annulation, contenus relus, email interne hors coordonnées du candidat et aucun effet différé exécuté | PASS |
+| Sophie | Préparer, modifier les emails, annuler et valider sur 320/390 px, contenu défilant et cibles de 44 px | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Composants réels avec services simulés ; aucun compte recruteur réel ni appareil iOS physique. Réception du retour, nouveau plan et envois réels restent à brancher.
+
 ## 2026-10-07 — REFACTOR — Lire les actions préparées avant de les modifier
 
 **Fait** : l’aperçu affiche les contenus complets en lecture, avec destinataires, destinations et nombre d’effets. « Modifier » ouvre seulement le champ choisi ; le focus initial reste sur le titre. « Annuler » ferme sans retirer la suggestion ni perdre les brouillons. « Ignorer la suggestion » reste dans le détail des sources. Un contenu vide affiche une explication et bloque la validation. Les résultats appliqués se relisent sans champ de saisie.

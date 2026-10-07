@@ -82,6 +82,7 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
           <p className="text-xs text-muted-foreground">{applied ? 'Action réalisée dans la démo' : 'Prochaine action'}</p>
           <h4 className="break-words text-sm font-semibold text-foreground">{action.title}</h4>
           {applied ? <p className="flex flex-wrap items-center gap-1.5 text-xs text-foreground" role="status"><Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{action.successLabel}</p> : <p className="break-words text-xs leading-relaxed text-foreground-secondary">{action.reason}</p>}
+          {applied && action.followUp && <p className="text-xs text-foreground-secondary">Suite en attente : {action.followUp.title}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button ref={node => { primaryButtonRefs.current[action.id] = node; }} variant="outline" size="sm" className="min-h-11 md:min-h-8" onClick={event => openDialog(action.id, applied ? 'result' : 'prepare', event.currentTarget)}>{applied ? 'Voir le résultat' : action.prepareLabel}</Button>
@@ -133,6 +134,7 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
                     {!reviewingResult && <Button variant="ghost" size="sm" className="min-h-11 shrink-0 md:min-h-8" aria-label={`${editing ? 'Terminer la modification' : 'Modifier'} : ${effect.label}`} onClick={() => setEditingEffectId(editing ? null : effect.id)}>{editing ? 'Terminer' : 'Modifier'}</Button>}
                   </div>
                   {effect.kind === 'message' ? <dl className="space-y-1 text-xs">
+                    <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">Destinataire</dt><dd className="text-foreground">{effect.audience === 'team' ? 'Équipe' : 'Candidat'}</dd></div>
                     <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">Via</dt><dd className="text-foreground">{SERVICE_LABELS[effect.service]}</dd></div>
                     <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">À</dt><dd className="min-w-0 break-words text-foreground [overflow-wrap:anywhere]">{effect.recipient}</dd></div>
                     {effect.subject && <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">Objet</dt><dd className="min-w-0 break-words text-foreground">{effect.subject}</dd></div>}
@@ -142,6 +144,12 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
                 {empty && <p id={`${fieldId}-error`} className="text-xs text-destructive" role="status">Ajoutez un contenu pour pouvoir valider cette action.</p>}
               </section>;
             })}</div>
+            {detail.followUp && <section className="space-y-2 border-t border-border pt-4" aria-label="Suite en attente">
+              <p className="text-xs font-medium text-foreground">{reviewingResult ? 'Suite en attente' : 'À proposer après réception'}</p>
+              <h5 className="text-sm font-semibold text-foreground">{detail.followUp.title}</h5>
+              <p className="text-xs text-muted-foreground">Retour attendu : {detail.followUp.waitingFor}</p>
+              <p className="text-sm leading-relaxed text-foreground-secondary">{detail.followUp.description}</p>
+            </section>}
             <Collapsible>
               <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-2 px-0 md:min-h-8">Pourquoi cette action ?<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger>
               <CollapsibleContent><section aria-label="Contexte de la suggestion"><ActionSources sources={detail.sources} /></section></CollapsibleContent>

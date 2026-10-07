@@ -3,6 +3,7 @@ import { ChevronLeft, PanelRight, Send } from 'lucide-react';
 import { CandidateInteractionTimeline } from './CandidateInteractionTimeline';
 import { CandidateProfileContent } from './CandidateProfileContent';
 import { DemoCandidateActions } from './DemoCandidateActions';
+import { DemoTeamCoordination } from './DemoTeamCoordination';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConversationContext } from './ConversationContext';
@@ -42,7 +43,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
     const appliedMessages: ActivityEvent[] = suggestedActions[selected.id].flatMap(action => {
       const result = actionResults[action.id];
       if (!result) return [];
-      return action.effects.filter(effect => effect.kind === 'message').map(effect => ({
+      return action.effects.filter(effect => effect.kind === 'message').filter(effect => effect.audience === 'candidate').map(effect => ({
         id: `demo-action-${action.id}-${effect.id}`, type: 'message', timestamp: result.appliedAt,
         actionType: effect.service === 'whatsapp' ? 'whatsapp_message' : effect.service === 'linkedin' ? 'message' : 'email',
         channel: effect.service === 'gmail' || effect.service === 'outlook' ? 'email' : effect.service,
@@ -68,6 +69,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
   const actions = selected && <DemoCandidateActions key={selected.id} actions={suggestedActions[selected.id]} results={actionResults} dismissed={dismissedActions} drafts={actionDrafts}
     onDraftChange={(id, effectId, value) => setActionDrafts(previous => ({ ...previous, [id]: { ...previous[id], [effectId]: value } }))}
     onApply={applyAction} onDismiss={(id, dismissed) => setDismissedActions(previous => ({ ...previous, [id]: dismissed }))} />;
+  const teamCoordination = selected && <DemoTeamCoordination actions={suggestedActions[selected.id]} results={actionResults} />;
   const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} readOnly onEnroll={noop} onAddToPipeline={noop} />;
 
   function send() {
@@ -122,6 +124,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
             <div className="mx-auto max-w-5xl">
               <CandidateInteractionTimeline events={events} name={selected.name} />
               <div className="mt-5 border-t border-border pt-4" data-component="demo-next-action">{actions}</div>
+              {teamCoordination}
               <div ref={endRef} />
             </div>
           </div>
@@ -138,7 +141,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
             <Tabs defaultValue="profile" className="flex min-h-0 flex-1 flex-col">
               <TabsList className="mx-5 grid h-auto shrink-0 grid-cols-3"><TabsTrigger value="profile" className="min-h-11">Profil</TabsTrigger><TabsTrigger value="interactions" className="min-h-11">Interactions</TabsTrigger><TabsTrigger value="actions" className="min-h-11">Actions</TabsTrigger></TabsList>
               <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateProfileContent profile={selected.profile} /></TabsContent>
-              <TabsContent value="interactions" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateInteractionTimeline events={events} name={selected.name} /></TabsContent>
+              <TabsContent value="interactions" className="min-h-0 flex-1 overflow-y-auto p-5"><CandidateInteractionTimeline events={events} name={selected.name} />{teamCoordination}</TabsContent>
               <TabsContent value="actions" className="min-h-0 flex-1 overflow-y-auto p-5">
                 {actions}
                 {suggestedActions[selected.id].some(action => actionResults[action.id]) && <section className="mt-6 space-y-4 border-t border-border pt-4" aria-label="Contenus enregistrés dans la fiche" data-component="demo-saved-documents">
