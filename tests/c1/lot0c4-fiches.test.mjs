@@ -71,14 +71,21 @@ test('0c-4 : generate-scorecard lit les étapes d\'entretien que la fiche envoie
 test('0c-4 : le plein écran garde la mission de la fiche (?mission=)', () => {
   const tab = code('src/components/ats/ScorecardTab.tsx');
   // Même repli que buildJobContext : une fiche sans projectId garde sa mission par le job_id.
-  assert.match(tab, /const missionKey = candidate\.projectId \?\? missionIdOfJob\(candidate\.jobId\);\s*if \(missionKey\) params\.set\('mission', missionKey\)/);
-  assert.match(tab, /\[activeKey, flush, navigate, candidate\.candidateId, candidate\.projectId, candidate\.jobId\]/);
+  assert.match(tab, /const missionKey = candidate\.projectId \?\? missionIdOfJob\(candidate\.jobId\) \?\? null;\s*if \(missionKey\) params\.set\('mission', missionKey\)/);
+  assert.match(tab, /if \(qualificationSessionId\) params\.set\('session', qualificationSessionId\)/);
+  assert.match(tab, /\[activeKey, flush, navigate, candidate\.candidateId, candidate\.projectId, candidate\.jobId, qualificationSessionId\]/);
   const page = code('src/pages/ScorecardFullPage.tsx');
   assert.match(page, /missionIdOfJob\(searchParams\.get\('mission'\)\)/);
   assert.match(page, /\.eq\('project_id', mission\)/);
-  // Une ancienne mission n'a pas de project_id : repli sans la mission.
-  assert.match(page, /readRow\(null\)/);
-  assert.match(page, /\[candidateId, missionParam, reloadTick\]/);
+  // Le repli ancien ne peut sélectionner que le job externe de cette mission,
+  // jamais la dernière candidature du même profil dans une autre mission.
+  assert.doesNotMatch(page, /readRow\(null\)/);
+  assert.match(page, /\.select\('job_id'\)\.eq\('id', requestedMission\)/);
+  assert.match(page, /\.eq\('job_id', mission\.job_id\)\s*\.is\('project_id', null\)/);
+  // Le calendrier rattache l'entretien par son ID vérifié et le candidat exact.
+  assert.match(page, /\.from\('qualification_sessions'\)[\s\S]*?\.eq\('id', sessionParam\)[\s\S]*?\.eq\('candidate_profile_id', candidateId\)/);
+  assert.match(page, /missionParam && event\.project_id !== missionParam/);
+  assert.match(page, /\[candidateId, missionParam, sessionParam, reloadTick\]/);
 });
 
 test('0c-4 : CandidateDetailModal ne lit plus de notes de mission que rien n\'affiche', () => {
@@ -86,7 +93,7 @@ test('0c-4 : CandidateDetailModal ne lit plus de notes de mission que rien n\'af
   assert.doesNotMatch(src, /\.eq\('job_id', candidate\.jobId\)/);
   assert.doesNotMatch(src, /projectNotes|setProjectNotes/, 'état écrit et jamais lu');
   assert.doesNotMatch(src, /from\('sourcing_projects'\)/, 'lecture inutile qui retardait la liste des notes');
-  assert.match(src, /\[candidate\.candidateId\]\);/);
+  assert.match(src, /\[candidate\.candidateId, interactionReload\]\);/);
   assert.match(src, /let cancelled = false/);
   assert.doesNotMatch(src, /recharge la page/i, 'vouvoiement');
 });

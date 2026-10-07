@@ -723,6 +723,42 @@ export async function recordGdprErasure(
     if (error) return fail('lecture des coordonnées', error);
     collectErased(data);
   }
+  // Email-only erasures may have no sequence enrollment or LinkedIn slug.
+  // Keep the same durable organization marker for those exact saved contacts,
+  // so retained pipeline/contact identities cannot be imported again later.
+  const contactKeys = [...erasedCandidates.values()];
+  for (let i = 0; i < contactKeys.length; i += 100) {
+    const batch = contactKeys.slice(i, i + 100);
+    let photosQuery = supabase.from('candidate_photos').select('organization_id,candidate_id,storage_path')
+      .in('candidate_id', [...new Set(batch.map((row) => row.candidate_id))]);
+    if (orgId) photosQuery = photosQuery.eq('organization_id', orgId);
+    const { data: photos, error: photosError } = await photosQuery;
+    if (photosError) return fail('lecture des photos des coordonnées', photosError);
+    const keys = new Set(batch.map((row) => `${row.organization_id}|${row.candidate_id}`));
+    const paths = ((photos ?? []) as Array<{ organization_id: string; candidate_id: string; storage_path: string | null }>)
+      .filter((row) => keys.has(`${row.organization_id}|${row.candidate_id}`))
+      .map((row) => row.storage_path).filter((path): path is string => !!path);
+    if (paths.length > 0) {
+      const { error } = await supabase.storage.from('candidate-photos').remove(paths);
+      if (error) return fail('suppression des photos des coordonnées', error);
+    }
+    const { error } = await supabase.from('candidate_photos').upsert(
+      batch.map((row) => ({ ...row, status: 'erased', storage_path: null, captured_at: null, last_error: null, checked_at: nowIso })),
+      { onConflict: 'organization_id,candidate_id' },
+    );
+    if (error) return fail('marquage des coordonnées effacées', error);
+  }
+  // Contextual plans hold reviewed drafts, source excerpts and email/WhatsApp
+  // bodies. Purge them atomically with their produced notes/comments, including
+  // candidates found only by exact saved contacts (not a sequence enrollment).
+  const actionCandidateIds = [...new Set([...knownIds, ...[...erasedCandidates.values()].map((c) => c.candidate_id)])];
+  const { error: actionsEraseError } = await supabase.rpc('candidate_actions_purge', {
+    p_organization_id: orgId,
+    p_candidate_ids: actionCandidateIds,
+    p_linkedin_url: urlNorm,
+    p_email: emailNorm,
+  });
+  if (actionsEraseError) return fail('suppression des actions et échanges', actionsEraseError);
   if (erasedCandidates.size > 0) {
     const orgIds = [...new Set([...erasedCandidates.values()].map((c) => c.organization_id))];
     const contacts: ContactNumberRow[] = [];
@@ -832,10 +868,10 @@ function textArrayLiteral(values: string[]): string {
  *   - une inscription de l'organisation qui le désigne (profile_id,
  *     provider_id ou resolved_profile_id parmi `linkedinIds`, ou même slug
  *     d'URL de profil) porte le marqueur tracking_data.gdpr_erased_at, ou une
- *     exécution annulée par l'effacement. C'est la seule trace d'un
- *     effacement limité à l'organisation (SEQ-055 : aucune ligne au registre) ;
- *   - ou une URL de profil du candidat (donnée, relevée sur ces inscriptions
- *     ou sur sa fiche du pipeline) figure au registre global gdpr_erasures.
+ *     exécution annulée par l'effacement, ou une photo « erased » de ce candidat
+ *     porte le marqueur durable propre à l'organisation ;
+ *   - ou son URL de profil / son adresse exacte, résolue depuis les coordonnées
+ *     enregistrées côté serveur, figure au registre global gdpr_erasures.
  * Lève une erreur si une lecture échoue : l'appelant refuse (échec fermé,
  * comme isGdprBlocked, décision 13).
  */
@@ -845,6 +881,8 @@ export async function isCandidateErasedForOrg(
     organizationId: string;
     linkedinIds?: Array<string | null | undefined>;
     linkedinUrl?: string | null;
+    /** Only exact addresses resolved by the server/provider, never guessed identities. */
+    emails?: Array<string | null | undefined>;
   },
 ): Promise<boolean> {
   const ids = [...new Set(
@@ -856,10 +894,54 @@ export async function isCandidateErasedForOrg(
   const givenUrl = normalizeLinkedInUrl(input.linkedinUrl);
   const slug = linkedInProfileSlug(givenUrl);
   const urls = new Set<string>(givenUrl ? [givenUrl] : []);
+  const emails = new Set((input.emails ?? []).map(normalizeEmail).filter((email): email is string => !!email));
+
+  // Resolve aliases from exact stored pipeline identities before checking the
+  // organization marker. A URL lookup is filtered again by its complete slug.
+  type PipelineRow = { candidate_id: string; linkedin_profile_url: string | null };
+  const collectPipeline = (rows: PipelineRow[]) => {
+    for (const row of rows) {
+      if (row.candidate_id) idSet.add(row.candidate_id);
+      const url = normalizeLinkedInUrl(row.linkedin_profile_url);
+      if (url) urls.add(url);
+    }
+  };
+  if (ids.length > 0) {
+    const { data, error } = await supabase.from('job_candidate_status')
+      .select('candidate_id,linkedin_profile_url').eq('organization_id', input.organizationId)
+      .in('candidate_id', ids).limit(1000);
+    if (error) throw new Error(`lecture du pipeline : ${error.message}`);
+    if ((data ?? []).length >= 1000) throw new Error('lecture du pipeline : contexte trop volumineux');
+    collectPipeline((data ?? []) as PipelineRow[]);
+  }
+  for (const pipelineSlug of new Set([...urls].map(linkedInProfileSlug).filter((value): value is string => !!value))) {
+    const { data, error } = await supabase.from('job_candidate_status')
+      .select('candidate_id,linkedin_profile_url').eq('organization_id', input.organizationId)
+      .ilike('linkedin_profile_url', `%linkedin.com/in/${escapeLikePattern(pipelineSlug)}%`).limit(1000);
+    if (error) throw new Error(`lecture des identifiants du pipeline : ${error.message}`);
+    if ((data ?? []).length >= 1000) throw new Error('lecture des identifiants du pipeline : contexte trop volumineux');
+    collectPipeline(((data ?? []) as PipelineRow[]).filter((row) => linkedInProfileSlug(row.linkedin_profile_url) === pipelineSlug));
+  }
+  const resolvedIds = [...idSet];
+  if (resolvedIds.length > 0) {
+    const { data: photos, error: photosError } = await supabase.from('candidate_photos')
+      .select('candidate_id').eq('organization_id', input.organizationId)
+      .in('candidate_id', resolvedIds).eq('status', 'erased').limit(1);
+    if (photosError) throw new Error(`lecture des effacements de l'organisation : ${photosError.message}`);
+    if ((photos ?? []).length > 0) return true;
+    const { data: contacts, error: contactsError } = await supabase.from('candidate_contacts')
+      .select('email').eq('organization_id', input.organizationId).in('candidate_id', resolvedIds).limit(1000);
+    if (contactsError) throw new Error(`lecture des coordonnées pour effacement : ${contactsError.message}`);
+    if ((contacts ?? []).length >= 1000) throw new Error('lecture des coordonnées pour effacement : contexte trop volumineux');
+    for (const row of (contacts ?? []) as Array<{ email: string | null }>) {
+      const email = normalizeEmail(row.email);
+      if (email) emails.add(email);
+    }
+  }
 
   // 1. Inscriptions de l'organisation qui désignent ce candidat (tous statuts).
-  const quoted = ids.map((v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
-  const filters = ids.length
+  const quoted = resolvedIds.map((v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
+  const filters = resolvedIds.length
     ? [`profile_id.in.(${quoted})`, `provider_id.in.(${quoted})`, `resolved_profile_id.in.(${quoted})`]
     : [];
   if (slug && /^[a-z0-9\-_.%~]+$/i.test(slug)) filters.push(`profile_url.ilike.*/in/${slug}*`);
@@ -871,6 +953,7 @@ export async function isCandidateErasedForOrg(
       .or(filters.join(','))
       .limit(200);
     if (error) throw new Error(`lecture des inscriptions : ${error.message}`);
+    if ((data ?? []).length >= 200) throw new Error('lecture des inscriptions : contexte trop volumineux');
     type Row = {
       id: string;
       tracking_data: unknown;
@@ -904,23 +987,14 @@ export async function isCandidateErasedForOrg(
     }
   }
 
-  // 2. Fiche du pipeline : URL de profil connue pour ces identifiants
-  //    (un effacement ne supprime pas job_candidate_status).
-  if (ids.length > 0) {
-    const { data: rows, error } = await supabase
-      .from('job_candidate_status')
-      .select('linkedin_profile_url')
-      .eq('organization_id', input.organizationId)
-      .in('candidate_id', ids)
-      .limit(50);
-    if (error) throw new Error(`lecture du pipeline : ${error.message}`);
-    for (const row of (rows ?? []) as Array<{ linkedin_profile_url: string | null }>) {
-      const url = normalizeLinkedInUrl(row.linkedin_profile_url);
-      if (url) urls.add(url);
-    }
+  // Registre global des effacements : URL et email sont deux identités exactes
+  // indépendantes. An email-only erasure must block mail/WhatsApp reimports too.
+  if (emails.size > 0) {
+    const hashes = await Promise.all([...emails].map((email) => sha256Hex(email)));
+    const { data: hits, error } = await supabase.from('gdpr_erasures').select('id').in('email_hash', hashes).limit(1);
+    if (error) throw new Error(`lecture du registre des adresses effacées : ${error.message}`);
+    if ((hits ?? []).length > 0) return true;
   }
-
-  // 3. Registre global des effacements.
   if (urls.size > 0) {
     const hashes = await Promise.all([...urls].map((url) => sha256Hex(url)));
     const { data: hits, error } = await supabase

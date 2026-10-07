@@ -133,7 +133,7 @@ export default function Inbox() {
 
   return (
     <>
-      <SEOHead title="Messagerie | Konekt" description="Vos conversations LinkedIn avec les candidats" />
+      <SEOHead title="Messagerie | Konekt" description="Vos échanges LinkedIn, e-mail et WhatsApp avec les candidats" />
       <div ref={frameRef} className="min-h-0 overflow-hidden bg-background" style={height ? { height } : undefined}>
         {demo ? <InboxDemo onExit={() => setDemo(false)} /> : <div className="flex h-full min-h-0 flex-col">
         <div className="flex shrink-0 justify-end border-b border-border px-3 py-1"><Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDemo(true)}>Voir la démo</Button></div>

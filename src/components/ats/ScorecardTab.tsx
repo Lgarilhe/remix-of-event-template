@@ -80,6 +80,8 @@ interface ScorecardTabProps {
   onActiveEvaluationChange?: (summary: ScorecardSummary | null) => void;
   /** L'assistant d'entretien enregistre, ou s'arrête. */
   onRecordingChange?: (recording: boolean) => void;
+  /** Événement vérifié de l'entretien, fourni par le calendrier. */
+  qualificationSessionId?: string | null;
 }
 
 interface Criterion {
@@ -111,8 +113,10 @@ interface EvaluationData {
   summary?: string;
   followUpNotes?: string;
   interviewStage?: InterviewStage;
+  projectId?: string | null;
+  processStepId?: string | null;
   /** Rattachement d'une grille pas encore écrite : le candidat et le poste au moment de sa création. */
-  origin?: { candidateId: string; jobId: string | null; jobTitle: string | null; organizationId: string | null };
+  origin?: { candidateId: string; jobId: string | null; jobTitle: string | null; organizationId: string | null; projectId: string | null; processStepId: string | null };
 }
 
 /** Champs du brief de mission lus pour situer la génération. */
@@ -191,6 +195,8 @@ function rowToEvaluation(d: Tables<'candidate_evaluations'>): EvaluationData {
     summary: d.summary || undefined,
     followUpNotes: d.follow_up_notes || undefined,
     interviewStage: (d.interview_stage as InterviewStage) || undefined,
+    projectId: d.project_id,
+    processStepId: d.process_step_id,
   };
 }
 
@@ -283,7 +289,7 @@ function IconAction({
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   candidate, enrichedProfile, onOpenProfile, autoStartCoaching, autoGenerate, autoOpenFirst,
-  onActiveEvaluationChange, onRecordingChange,
+  onActiveEvaluationChange, onRecordingChange, qualificationSessionId,
 }) => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
@@ -377,6 +383,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           job_title: ev.origin.jobTitle,
           created_by: user.id,
           organization_id: ev.origin.organizationId,
+          project_id: ev.origin.projectId,
+          process_step_id: ev.origin.processStepId,
         })
         .select('id, updated_at')
         .single();
@@ -498,12 +506,15 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         setLoadState('error');
         return;
       }
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidate_evaluations')
         .select('*')
         .eq('candidate_id', candidate.candidateId)
-        .eq('created_by', user.id)
-        .order('created_at', { ascending: false });
+        .eq('created_by', user.id);
+      if (organizationId) query = query.eq('organization_id', organizationId);
+      const projectId = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
+      query = projectId ? query.eq('project_id', projectId) : query.is('project_id', null);
+      const { data, error } = await query.order('created_at', { ascending: false });
       if (cancelled) return;
       if (error) {
         console.error('[ScorecardTab] lecture impossible :', error);
@@ -532,7 +543,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     };
     // persist, commit, isDirty et openEvaluation sont stables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidate.candidateId, autoOpenFirst, autoStartCoaching, reloadTick]);
+  }, [candidate.candidateId, candidate.projectId, candidate.jobId, organizationId, autoOpenFirst, autoStartCoaching, reloadTick]);
 
   // Assistant d'entretien demandé par l'adresse (plein écran, ?coaching=1) : il s'ouvre avec la grille,
   // pas à chaque saisie (on peut le fermer).
@@ -560,7 +571,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     // Mission par son id (lot 0c-4 : une mission V2 n'a pas de job_id) ; le job_id
     // d'une ancienne mission reste lu par la même requête, comme ScorecardFullPage.
     let projectId: string | null = null;
-    const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId);
+    const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
     if (missionKey || candidate.jobId) {
       const projectQuery = supabase
         .from('sourcing_projects')
@@ -678,16 +689,20 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
       comments: {},
       overallScore: null,
       jobTitle: candidate.jobTitle || undefined,
+      projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null,
+      processStepId: candidate.processStepId ?? null,
       origin: {
         candidateId: candidate.candidateId,
         jobId: candidate.jobId,
         jobTitle: candidate.jobTitle,
         organizationId: organizationId || null,
+        projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null,
+        processStepId: candidate.processStepId ?? null,
       },
     };
     commit([draft, ...evaluationsRef.current]);
     return key;
-  }, [candidate.candidateId, candidate.jobId, candidate.jobTitle, organizationId, commit]);
+  }, [candidate.candidateId, candidate.jobId, candidate.jobTitle, candidate.projectId, candidate.processStepId, organizationId, commit]);
 
   /** Génère les critères d'une nouvelle grille et l'enregistre aussitôt (elle survit au changement d'onglet). */
   const generateInto = useCallback(async (key: string) => {
@@ -715,7 +730,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
             comments: {},
             overallScore: null,
             jobTitle: candidate.jobTitle || undefined,
-            origin: { candidateId: candidate.candidateId, jobId: candidate.jobId, jobTitle: candidate.jobTitle, organizationId: organizationId || null },
+            projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null,
+            processStepId: candidate.processStepId ?? null,
+            origin: { candidateId: candidate.candidateId, jobId: candidate.jobId, jobTitle: candidate.jobTitle, organizationId: organizationId || null, projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null, processStepId: candidate.processStepId ?? null },
           }),
           ...evaluationsRef.current,
         ]);
@@ -849,12 +866,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     // garde, en plein écran, le poste et les étapes de la grille ouverte.
     const params = new URLSearchParams();
     // Même repli que buildJobContext : une fiche sans projectId garde sa mission par le job_id.
-    const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId);
+    const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
     if (missionKey) params.set('mission', missionKey);
+    if (qualificationSessionId) params.set('session', qualificationSessionId);
     if (coaching) params.set('coaching', '1');
     const query = params.toString();
     navigate(`/ats/scorecard/${candidate.candidateId}${query ? `?${query}` : ''}`);
-  }, [activeKey, flush, navigate, candidate.candidateId, candidate.projectId, candidate.jobId]);
+  }, [activeKey, flush, navigate, candidate.candidateId, candidate.projectId, candidate.jobId, qualificationSessionId]);
 
   const openCoaching = useCallback(() => {
     // Déjà en plein écran : l'assistant s'ouvre sur place.
@@ -1075,7 +1093,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           })()}
           candidateEmail={candidate.email}
           candidateLinkedinUrl={candidate.linkedin}
-          projectId={candidate.projectId}
+          projectId={activeEval.projectId}
+          processStepId={activeEval.processStepId}
+          qualificationSessionId={qualificationSessionId}
           jobId={candidate.jobId || ''}
           jobTitle={candidate.jobTitle || ''}
           jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}

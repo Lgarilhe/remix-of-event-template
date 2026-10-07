@@ -32,6 +32,25 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — SPEC — Actions candidat branchées sur les comptes réels
+
+**Contexte** : les propositions de la messagerie existaient uniquement dans la démonstration. Le propriétaire demande leur utilisation sur les vrais candidats et les comptes connectés.
+**Fait** : préparation IA à la demande depuis la messagerie et les fiches candidat, avec le modèle, le style et les crédits de l’organisation. Le contexte assemble profil, mission exacte, échanges, séquences, notes, interventions d’équipe, rendez-vous et comptes rendus correctement rattachés. Une proposition relue peut envoyer un message LinkedIn, Gmail/Outlook ou WhatsApp personnel, contacter un collègue de l’organisation, enregistrer une préparation d’entretien ou des questions en note, et publier un commentaire d’équipe avec mentions. Les destinataires et comptes sont vérifiés avant validation et avant exécution. Les autres mutations du catalogue restent hors de ce périmètre.
+**Décision** : plans privés et résultats durables par effet ; validation explicite, reprise limitée aux échecs certains et aucun renvoi automatique si le résultat d’un envoi est inconnu. La déduplication protège aussi deux recruteurs préparant la même action. L’historique personnel importé reste privé ; seuls les envois d’actions confirmés dans une mission sont partagés. Le retour d’un collègue peut alimenter une nouvelle préparation, sans envoi différé automatique. Les emails et WhatsApp reçus hors séquence sont conservés et apparaissent dans la messagerie même sans compte LinkedIn. Les connexions WhatsApp passent par une autorisation personnelle signée dans les paramètres.
+**Validation** : onze scénarios API sur Auth, PostgREST, RPC et fonctions serveur réels locaux, prestataires et modèle simulés, sans retry ; scénario concurrent répété cinq fois sans retry ; audit SQL de 39 contrôles et audit des connexions personnelles, incluant le refus REST des associations e-mail forgées et le callback signé ; tests ciblés de contexte, transport, génération, RGPD et comptes personnels. Parcours Chromium des composants réels en clair/sombre de 320 à 1920 px, dont quatre variantes d’actions et deux variantes de boîte multicanale avec reprise après panne. Build production et cliquets de dette contrôlés avant intégration ; les onze diagnostics TypeScript hérités sont conservés sans ajout.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparer, modifier, confirmer, retrouver les effets persistants ; réponse candidat et coordination distinctes | PASS |
+| Claire | Lire destinataire, service, contenu et nombre d’effets avant une validation explicite | PASS |
+| Théo | Double exécution, deux recruteurs, organisation incorrecte, contexte périmé, compte déconnecté, envoi incertain, confidentialité et effacement | PASS |
+| Sophie | Lire, éditer et confirmer à 390 px et 320 × 500 px ; boîte multicanale et reprise sans débordement horizontal | PASS |
+
+**Limites** : aucun candidat réel contacté pour les essais, aucun appareil iOS physique. Les anciens emails sont importés de manière bornée à l’ouverture du contexte, sans import global des boîtes. Les appels sans identité candidat fiable et les anciens comptes rendus sans mission explicite ne justifient pas une action. Un brief d’entretien exige un rendez-vous futur confirmé. Une préparation consomme les crédits affichés ; les lectures et reprises ne relancent pas le modèle.
+**Impact** : messagerie, fiches candidat, connexions personnelles, scorecards et rattachements d’entretien, fonctions d’actions et webhooks, export/effacement, deux migrations avec RLS et RPC réservées au serveur, scénarios API et CI dédiée.
+**Refs** : branche `codex/candidate-actions-live` ; `docs/candidate-contextual-actions.md` ; migrations `20261007222116` et `20261007222159`.
+
+
 ## 2026-10-07 — REFACTOR — Mémoires appliquées à la recherche et à l’évaluation
 
 **Contexte** : les mémoires confirmées guidaient l’assistant, mais leurs effets Recherche et Évaluation n’étaient pas reliés à la génération des filtres ni aux notes des candidats.

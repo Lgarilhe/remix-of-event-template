@@ -64,6 +64,13 @@ const enrollmentBundle = await build({
 });
 const { fetchInboxEnrollmentRows, indexInboxEnrollments, getChatJobInfo, getChatThreadState } = await import(`data:text/javascript;base64,${Buffer.from(enrollmentBundle.outputFiles[0].text).toString('base64')}`);
 
+const multichannelBundle = await build({
+  entryPoints: [new URL('../../src/lib/multichannelInbox.ts', import.meta.url).pathname],
+  bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent',
+  alias: { '@': new URL('../../src', import.meta.url).pathname },
+});
+const { groupMultichannelConversations } = await import(`data:text/javascript;base64,${Buffer.from(multichannelBundle.outputFiles[0].text).toString('base64')}`);
+
 // Heures locales de Paris (le fuseau est fixé plus haut).
 const at = (y, m, d, h = 10, min = 0) => new Date(y, m - 1, d, h, min, 0);
 const iso = (date) => date.toISOString();
@@ -298,9 +305,38 @@ test('?onglet= : lu au montage, réécrit sans empiler l’historique, lien de c
   assert.match(page, /new URLSearchParams\(prev\)/, 'les autres paramètres (chatId) sont gardés');
   assert.match(inbox, /initialResponseFilter: initialTab/);
   assert.match(inbox, /onTabChange\?\.\(tab\)/);
-  assert.match(inbox, /threadCounts=\{inbox\.threadCounts\}/);
+  assert.match(inbox, /threadCounts=\{threadCounts\}/, 'la liste reçoit les compteurs de tous les canaux');
   // Le montage ne dépend pas de l'onglet : changer d'onglet ne remonte pas la messagerie.
   assert.match(page, /key=\{initialChatId \?\? 'inbox'\}/);
+});
+
+test('Les compteurs de l’inbox réelle ajoutent e-mail et WhatsApp aux conversations LinkedIn, sans doublon de fournisseur', () => {
+  const now = at(2026, 10, 7, 10);
+  const record = (id, channel, direction, date) => ({
+    id, organization_id: 'org-a', candidate_id: id, project_id: 'mission-a',
+    owner_user_id: 'user-a', account_id: 'account-a', audience: 'candidate',
+    provider_message_id: id, provider_thread_id: `${id}-thread`, channel,
+    service: channel === 'email' ? 'gmail' : 'whatsapp', direction,
+    counterpart: 'candidat@example.test', sender: 'candidat@example.test',
+    recipient: 'recruteur@example.test', content: 'Message enregistré', occurred_at: iso(date),
+  });
+  const received = record('received', 'email', 'inbound', now);
+  const conversations = groupMultichannelConversations([
+    received, { ...received, id: 'provider-retry' },
+    record('old-send', 'whatsapp', 'outbound', at(2026, 10, 1, 10)),
+    record('recent-send', 'email', 'outbound', now),
+  ], [], [], now);
+  // Jouer le calcul effectivement branché entre les deux lectures et la liste.
+  const start = inbox.indexOf('const externalCounts =');
+  const end = inbox.indexOf('const { addReaction', start);
+  assert.ok(start >= 0 && end > start, 'calcul des compteurs réels introuvable');
+  const compute = new Function('inbox', 'multichannel', `${inbox.slice(start, end)} return threadCounts;`);
+  const linkedIn = { threadCounts: countThreadStates(['to_reply', 'waiting', 'none']) };
+  assert.deepEqual(compute(linkedIn, { conversations }), { to_reply: 2, to_follow_up: 1, waiting: 2 });
+  assert.deepEqual(compute(linkedIn, { conversations: [] }), linkedIn.threadCounts, 'LinkedIn seul garde ses compteurs');
+  assert.deepEqual(compute({ threadCounts: countThreadStates([]) }, { conversations }), { to_reply: 1, to_follow_up: 1, waiting: 1 }, 'les compteurs existent aussi sans compte LinkedIn');
+  assert.match(sidebar, /conversation\.state !== RESPONSE_FILTER_STATE\[responseFilter\]/, 'les filtres externes suivent les mêmes états');
+  assert.match(inbox, /replyCount=\{threadCounts\.to_reply\} followUpCount=\{threadCounts\.to_follow_up\}/, 'les cartes de l’accueil et les onglets reçoivent le même total');
 });
 
 test('Ligne « À faire » : montée une fois au-dessus du composeur, seulement pour À répondre et À relancer', () => {

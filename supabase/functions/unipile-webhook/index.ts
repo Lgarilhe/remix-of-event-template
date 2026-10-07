@@ -19,6 +19,8 @@ import {
 } from "../_shared/candidate-reply-closure.ts";
 import { candidateRef, recordInbound, recordOwnMessage, type CandidateRef } from "../_shared/candidate-stage-events.ts";
 import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
+import { captureCandidateActionIncoming } from "../_shared/candidate-actions/incoming.ts";
+import { candidateActionPhone } from "../_shared/candidate-actions/transport.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -341,6 +343,12 @@ async function resolveCredsForAccount(accountId: string, supabase: SupabaseClien
       organizationId = emailAccount?.organization_id as string | undefined;
     }
 
+    if (!organizationId) {
+      const { data: whatsappAccount } = await supabase.from('member_whatsapp_accounts')
+        .select('organization_id').eq('whatsapp_account_id', accountId).maybeSingle();
+      organizationId = whatsappAccount?.organization_id as string | undefined;
+    }
+
     if (!organizationId) return fallback;
 
     const creds = await resolveUnipileCredentials(organizationId, supabase);
@@ -469,7 +477,7 @@ async function resolveConnectedAccountMetadata(
   if (typeof payloadData.name === 'string') displayName = payloadData.name;
   if (typeof payloadData.identifier === 'string') emailAddress = payloadData.identifier;
 
-  if (accountType && (displayName || !EMAIL_ACCOUNT_TYPES.has(accountType))) {
+  if (accountType !== 'WHATSAPP' && accountType && (displayName || !EMAIL_ACCOUNT_TYPES.has(accountType))) {
     return { accountType, emailAddress, displayName };
   }
 
@@ -488,13 +496,16 @@ async function resolveConnectedAccountMetadata(
       identifier?: unknown;
       connection_params?: {
         mail?: { imap_user?: unknown; smtp_user?: unknown };
+        im?: { phone_number?: unknown };
       };
     };
     accountType = String(account.type || account.account_type || accountType).trim().toUpperCase();
     displayName = typeof account.name === 'string' ? account.name : displayName;
     const mail = account.connection_params?.mail;
-    const resolvedAddress = mail?.imap_user || mail?.smtp_user || account.identifier;
-    emailAddress = typeof resolvedAddress === 'string' ? resolvedAddress : emailAddress || displayName;
+    const resolvedAddress = accountType === 'WHATSAPP'
+      ? account.connection_params?.im?.phone_number
+      : mail?.imap_user || mail?.smtp_user || account.identifier;
+    emailAddress = typeof resolvedAddress === 'string' ? resolvedAddress : accountType === 'WHATSAPP' ? null : emailAddress || displayName;
   } catch (error) {
     console.warn('[unipile-webhook] Could not resolve connected account metadata:', error);
   }
@@ -732,17 +743,20 @@ Deno.serve(async (req) => {
 
       case 'new_message':
       case 'message_received': {
-        // A new message was received
-        await handleNewMessage(supabase, payload, uCreds, eventKey);
+        const captured = await captureCandidateActionIncoming(supabase, payload as unknown as Record<string, unknown>, rawPayload);
+        // WhatsApp has a personal binding and its own history. It must never
+        // pass through the LinkedIn enrollment/stage handler.
+        if (captured.channel !== 'whatsapp') await handleNewMessage(supabase, payload, uCreds, eventKey);
         break;
       }
 
       case 'mail_received':
       case 'mail.received':
       case 'new_email': {
+        const captured = await captureCandidateActionIncoming(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // Un email a été reçu sur un compte connecté → vérifier si c'est une
         // réponse à une étape de séquence email pour stopper les suivantes.
-        await handleNewMail(supabase, payload, eventKey);
+        if (captured.audience !== 'team') await handleNewMail(supabase, payload, eventKey);
         break;
       }
       
@@ -792,6 +806,23 @@ Deno.serve(async (req) => {
                 if (error) throw error;
                 console.log('[unipile-webhook] Mapped email account via hosted_auth for current user');
               }
+            } else if (metadata.accountType === 'WHATSAPP') {
+              const { data: existing, error: existingError } = await supabase.from('member_whatsapp_accounts')
+                .select('id,organization_id,user_id,account_status').eq('whatsapp_account_id', payload.account_id).maybeSingle();
+              if (existingError) throw existingError;
+              if (existing && (existing.organization_id !== hostedState.organizationId || existing.user_id !== hostedState.userId)) {
+                throw Object.assign(new Error('WhatsApp account already linked to another member'), { code: '23505' });
+              }
+              if (existing?.account_status === 'DELETED') throw Object.assign(new Error('WhatsApp account binding has been revoked'), { code: '42501' });
+              const whatsappRow = {
+                organization_id: hostedState.organizationId, user_id: hostedState.userId,
+                whatsapp_account_id: payload.account_id, phone_number: candidateActionPhone(metadata.emailAddress) || null,
+                name: metadata.displayName, account_status: 'OK', updated_at: new Date().toISOString(),
+              };
+              const result = existing
+                ? await supabase.from('member_whatsapp_accounts').update(whatsappRow).eq('id', existing.id)
+                : await supabase.from('member_whatsapp_accounts').insert(whatsappRow);
+              if (result.error) throw result.error;
             } else {
               // Nouveau compte à la place du compte relié de ce membre (SEQ-041) :
               // l'ancien compte cesse d'envoyer AVANT que la liaison ne soit
@@ -859,20 +890,22 @@ Deno.serve(async (req) => {
             console.error('[unipile-webhook] Upsert via hosted_auth failed:', e);
             // L'utilisateur qui a lancé la connexion attend le rattachement : on le prévient.
             const code = (e as { code?: string })?.code;
+            const channelLabel = hostedState.providers.includes('WHATSAPP') ? 'WhatsApp'
+              : hostedState.providers.some(provider => EMAIL_ACCOUNT_TYPES.has(provider)) ? 'e-mail' : 'LinkedIn';
             const body = code === '42501'
-              ? 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail.'
+              ? `Ce compte ${channelLabel} est déjà rattaché à un autre espace de travail.`
               : code === '23505'
-                ? 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation.'
-                : "Le compte LinkedIn est connecté mais n'a pas pu être rattaché. Réessayez depuis Paramètres > Mon compte.";
+                ? `Ce compte ${channelLabel} est déjà rattaché à un autre membre de votre organisation.`
+                : `Le compte ${channelLabel} est connecté mais n'a pas pu être rattaché. Réessayez depuis Paramètres > Mon compte.`;
             try {
               await supabase.from('notifications').insert({
                 user_id: hostedState.userId,
                 organization_id: hostedState.organizationId,
                 type: 'error',
-                title: 'Compte LinkedIn non rattaché',
+                title: `Compte ${channelLabel} non rattaché`,
                 body,
-                link: '/settings?tab=account',
-                metadata: { linkedin_account_id: payload.account_id },
+                link: '/settings/account/connections',
+                metadata: { account_id: payload.account_id },
               });
             } catch (notifErr) {
               console.warn('[unipile-webhook] Notification insert failed:', notifErr);
@@ -921,7 +954,12 @@ Deno.serve(async (req) => {
               : newStatus;
           if (accId) {
             const accountType = normalizeAccountType(payload);
-            if (EMAIL_ACCOUNT_TYPES.has(accountType)) {
+            if (accountType === 'WHATSAPP') {
+              const { error } = await supabase.from('member_whatsapp_accounts')
+                .update({ account_status: normalizedStatus, updated_at: new Date().toISOString() })
+                .eq('whatsapp_account_id', accId).neq('account_status', 'DELETED');
+              if (error) throw error;
+            } else if (EMAIL_ACCOUNT_TYPES.has(accountType)) {
               await supabase
                 .from('member_email_accounts')
                 .update({ account_status: normalizedStatus })
@@ -999,6 +1037,10 @@ Deno.serve(async (req) => {
             .from('member_email_accounts')
             .update({ account_status: reason === 'disconnected' ? 'CREDENTIALS' : 'ERROR' })
             .eq('email_account_id', payload.account_id);
+          const { error: whatsappError } = await supabase.from('member_whatsapp_accounts')
+            .update({ account_status: reason === 'disconnected' ? 'DISCONNECTED' : 'ERROR', updated_at: new Date().toISOString() })
+            .eq('whatsapp_account_id', payload.account_id).neq('account_status', 'DELETED');
+          if (whatsappError) throw whatsappError;
         } catch (e) {
           console.warn('[unipile-webhook] Could not update account status:', e);
         }
@@ -1044,14 +1086,19 @@ Deno.serve(async (req) => {
             .from('member_email_accounts')
             .update({ account_status: locking ? 'LOCKED' : 'OK' })
             .eq('email_account_id', accId);
+          const whatsappUpdate = supabase.from('member_whatsapp_accounts')
+            .update({ account_status: locking ? 'LOCKED' : 'OK', updated_at: new Date().toISOString() })
+            .eq('whatsapp_account_id', accId);
           const results = locking
             ? await Promise.all([
                 linkedinUpdate.or('account_status.is.null,account_status.eq.OK'),
                 emailUpdate.or('account_status.is.null,account_status.eq.OK'),
+                whatsappUpdate.or('account_status.is.null,account_status.eq.OK'),
               ])
             : await Promise.all([
                 linkedinUpdate.eq('account_status', 'LOCKED'),
                 emailUpdate.eq('account_status', 'LOCKED'),
+                whatsappUpdate.eq('account_status', 'LOCKED'),
               ]);
           for (const { error } of results) {
             if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, error.message);

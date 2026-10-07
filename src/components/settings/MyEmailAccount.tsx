@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -70,30 +69,37 @@ export const MyEmailAccount = () => {
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [listError, setListError] = useState(false);
   const {
-    mappings,
     isLoading: mappingsLoading,
     isError: mappingsError,
     refetch: refetchMappings,
-    linkAccount,
     unlinkAccount,
+    isUnlinking,
     getMappingForUser,
-    getMappingForAccount,
   } = useMemberEmailAccounts();
-  const { organization } = useOrganization();
+  const { organization, organizationId } = useOrganization();
   // Utilisateur de la session partagée : prêt ou non, jamais un faux « non relié » en attendant.
   const { user, isReady: authReady } = useAuthReady();
   const currentUserId = user?.id ?? null;
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousCountRef = useRef<number>(0);
+  const scopeKey = `${authReady}:${organizationId ?? ''}:${currentUserId ?? ''}`;
+  const scopeRef = useRef({ key: scopeKey });
+  if (scopeRef.current.key !== scopeKey) scopeRef.current = { key: scopeKey };
+  const scope = scopeRef.current;
+  // Object identity also rejects late responses after an A → B → A switch.
+  const isCurrentScope = useCallback(() => scopeRef.current === scope, [scope]);
 
   // Fetch email accounts from Unipile. background : relecture de la détection
   // automatique, dont un échec passager ne remplace pas l'écran par une erreur.
   const loadEmailAccounts = useCallback(async (options?: { background?: boolean }) => {
+    if (!authReady || !organizationId || !currentUserId || !isCurrentScope()) return null;
     setLoadingAccounts(true);
     try {
       const { data, error } = await invokeEdgeFunction<{ accounts?: EmailAccount[] }>('unipile-accounts', {
         action: 'list_email',
+        organization_id: organizationId,
       });
+      if (!isCurrentScope()) return null;
       if (!error && data?.success && data.accounts) {
         setEmailAccounts(data.accounts);
         setAccountsLoaded(true);
@@ -102,19 +108,32 @@ export const MyEmailAccount = () => {
       }
       if (!options?.background) setListError(true);
     } catch (err) {
+      if (!isCurrentScope()) return null;
       console.warn('Failed to load email accounts:', err);
       if (!options?.background) setListError(true);
     } finally {
-      setLoadingAccounts(false);
+      if (isCurrentScope()) setLoadingAccounts(false);
     }
     return null;
-  }, []);
+  }, [authReady, organizationId, currentUserId, isCurrentScope]);
 
   useEffect(() => {
+    setEmailAccounts([]);
+    setAccountsLoaded(false);
+    setListError(false);
+    setGenerating(null);
+    setRefreshing(false);
+    setLoadingAccounts(true);
+    previousCountRef.current = 0;
+    if (!authReady || !organizationId || !currentUserId) return;
     loadEmailAccounts().then(accounts => {
       if (accounts) previousCountRef.current = accounts.length;
     });
-  }, [loadEmailAccounts]);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    };
+  }, [authReady, organizationId, currentUserId, loadEmailAccounts]);
 
   // Stop polling on unmount
   useEffect(() => {
@@ -130,10 +149,12 @@ export const MyEmailAccount = () => {
 
   // Start polling after hosted auth window opens — detect new account
   const startPolling = useCallback(() => {
+    if (!isCurrentScope()) return;
     if (pollingRef.current) clearInterval(pollingRef.current);
     let attempts = 0;
     const maxAttempts = 30; // ~5 minutes (every 10s)
     pollingRef.current = setInterval(async () => {
+      if (!isCurrentScope()) return;
       attempts++;
       if (attempts > maxAttempts) {
         if (pollingRef.current) clearInterval(pollingRef.current);
@@ -142,29 +163,35 @@ export const MyEmailAccount = () => {
       }
       try {
         const accounts = await loadEmailAccounts({ background: true });
+        if (!isCurrentScope()) return;
+        if (accounts) await refetchMappings();
+        if (!isCurrentScope()) return;
         if (accounts && accounts.length > previousCountRef.current) {
           previousCountRef.current = accounts.length;
           if (pollingRef.current) clearInterval(pollingRef.current);
           pollingRef.current = null;
-          toast.success('Nouveau compte e-mail détecté : sélectionnez-le ci-dessous.');
+          toast.success('Votre compte e-mail est connecté.');
         }
       } catch {
         // ignore polling errors
       }
     }, 10000);
-  }, [loadEmailAccounts]);
+  }, [loadEmailAccounts, refetchMappings, isCurrentScope]);
 
   const handleConnect = async (provider: Provider) => {
+    if (!isCurrentScope()) return;
     setGenerating(provider);
     try {
       const currentUrl = window.location.href;
       const { data } = await invokeEdgeFunction<{ url?: string }>('unipile-accounts', {
         action: 'hosted_auth_link',
+        organization_id: organizationId,
         providers: [provider],
         success_redirect_url: currentUrl,
         failure_redirect_url: currentUrl,
         org_name: organization?.name || undefined,
       });
+      if (!isCurrentScope()) return;
 
       if (data?.success && data.url) {
         window.open(data.url, '_blank', 'noopener,noreferrer');
@@ -176,39 +203,29 @@ export const MyEmailAccount = () => {
         throw new Error(data?.error || 'Erreur lors de la génération du lien');
       }
     } catch (e) {
-      toast.error(e instanceof Error && e.message ? e.message : 'Erreur lors de la connexion');
+      if (isCurrentScope()) toast.error(e instanceof Error && e.message ? e.message : 'Erreur lors de la connexion');
     } finally {
-      setGenerating(null);
+      if (isCurrentScope()) setGenerating(null);
     }
   };
 
   const handleRefresh = async () => {
+    if (!isCurrentScope()) return;
     setRefreshing(true);
     try {
       const accounts = await loadEmailAccounts();
+      if (!isCurrentScope()) return;
       if (accounts) previousCountRef.current = accounts.length;
+      await refetchMappings();
       await new Promise(r => setTimeout(r, 500));
     } finally {
-      setRefreshing(false);
+      if (isCurrentScope()) setRefreshing(false);
     }
-  };
-
-  const unlinkedAccounts = emailAccounts.filter(acc => !getMappingForAccount(acc.id));
-
-  const handleLinkAccount = (accountId: string) => {
-    if (!currentUserId) return;
-    const account = emailAccounts.find(a => a.id === accountId);
-    linkAccount({
-      userId: currentUserId,
-      emailAccountId: accountId,
-      emailAddress: account?.identifier || account?.name || undefined,
-      provider: account?.type || undefined,
-    });
   };
 
   const handleUnlink = () => {
     if (myMapping) {
-      unlinkAccount(myMapping.id);
+      unlinkAccount({ mappingId: myMapping.id, expectedAccountId: myMapping.email_account_id });
     }
   };
 
@@ -234,7 +251,7 @@ export const MyEmailAccount = () => {
   const unlinkButton = (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-danger hover:text-danger max-sm:flex-1 max-md:h-11">
+        <Button variant="ghost" size="sm" disabled={isUnlinking} className="text-danger hover:text-danger max-sm:flex-1 max-md:h-11">
           <Unlink aria-hidden="true" />
           Dissocier
         </Button>
@@ -249,7 +266,7 @@ export const MyEmailAccount = () => {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction onClick={handleUnlink} className="bg-destructive">
+          <AlertDialogAction onClick={handleUnlink} className="bg-destructive" disabled={isUnlinking}>
             Dissocier
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -375,41 +392,12 @@ export const MyEmailAccount = () => {
               Connectez votre compte e-mail pour envoyer des e-mails de prospection depuis vos séquences.
             </p>
 
-            {unlinkedAccounts.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-foreground">
-                  {unlinkedAccounts.length > 1 ? 'Comptes disponibles' : 'Compte disponible'}
-                </p>
-                <ul className="space-y-2">
-                  {unlinkedAccounts.map(acc => (
-                    <li key={acc.id} className="flex flex-col gap-2 rounded-lg bg-muted p-2.5 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <ChannelIcon channel="email" size="sm" decorative />
-                        <span className="truncate text-sm text-foreground">{acc.identifier || acc.name || acc.id}</span>
-                        {classifyLinkedInStatus(acc.status) === 'connected' && (
-                          <Badge variant="muted" className="shrink-0">Actif</Badge>
-                        )}
-                        {providerLabel(acc.type) && (
-                          <Badge variant="outline" className="shrink-0">{providerLabel(acc.type)}</Badge>
-                        )}
-                      </div>
-                      <Button size="sm" variant="outline" onClick={() => handleLinkAccount(acc.id)} className="shrink-0 max-md:h-11">
-                        C'est mon compte
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             {connectButtons}
 
-            {unlinkedAccounts.length === 0 && (
-              <Button variant="ghost" size="sm" className="max-md:h-11" onClick={handleRefresh} disabled={busy}>
-                <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
-                Rafraîchir les comptes
-              </Button>
-            )}
+            <Button variant="ghost" size="sm" className="max-md:h-11" onClick={handleRefresh} disabled={busy}>
+              <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
+              Rafraîchir les comptes
+            </Button>
           </div>
         )}
       </CardContent>

@@ -414,12 +414,13 @@ export function interviewLinks(row: {
   if (!candidateId) return { qualification, candidate: null, scorecard: null, coaching: null };
   const id = encodeURIComponent(candidateId);
   const mission = row.project_id ? `mission=${encodeURIComponent(row.project_id)}` : '';
-  const scorecard = `/pipeline/scorecard/${id}${mission ? `?${mission}` : ''}`;
+  const params = [mission, `session=${encodeURIComponent(row.id)}`].filter(Boolean).join('&');
+  const scorecard = `/pipeline/scorecard/${id}?${params}`;
   return {
     qualification,
     candidate: `/pipeline?candidate=${id}`,
     scorecard,
-    coaching: `${scorecard}${mission ? '&' : '?'}coaching=1`,
+    coaching: `${scorecard}&coaching=1`,
   };
 }
 

@@ -64,8 +64,9 @@ export function ConversationContext({ name, profileUrl, mission, missionUrl, pro
         {sequence && <><p className="mt-2 break-words text-sm text-foreground-secondary">{sequence.sequenceName}</p><p className="mt-1 text-xs text-muted-foreground">Dernière activité : étape {sequence.stepOrder + 1}</p></>}
       </section>}
       {contacts.length > 0 && <section>
-        <h4 className="mb-2 text-xs font-semibold text-foreground">Contacts utilisés dans les séquences</h4>
+        <h4 className="mb-2 text-xs font-semibold text-foreground">Canaux et contacts</h4>
         <div className="space-y-2">{contacts.map(event => <p key={activityChannel(event)} className="flex items-start gap-2 text-xs text-foreground-secondary"><ServiceLogo service={activityService(event)} decorative /><span className="break-all">{event.recipient}</span></p>)}</div>
+        {!readOnly && contacts.some(event => activityChannel(event) === 'whatsapp') && <Button asChild variant="ghost" size="sm" className="mt-2 min-h-11"><Link to="/settings/account/connections#whatsapp"><ServiceLogo service="whatsapp" decorative />Paramétrer WhatsApp</Link></Button>}
       </section>}
       {!readOnly && <div className="space-y-2 border-t border-border pt-4">
         <Button variant="outline" size="sm" className="w-full justify-start max-md:min-h-11" onClick={onEnroll}><ListPlus aria-hidden="true" />Inscrire dans une séquence</Button>

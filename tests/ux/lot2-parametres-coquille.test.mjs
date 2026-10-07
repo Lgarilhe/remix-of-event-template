@@ -398,11 +398,11 @@ test('L2-17 — ancre, registre et redirection', () => {
   assert.match(anchor, /empty:hidden/);
 
   const connections = componentBlock(sections, 'ConnectionsSection');
-  const order = ['<MyLinkedInAccount', '<MyEmailAccount', '<AssistantConnectorsCard', '<ExtensionTokens'].map((t) => connections.indexOf(t));
+  const order = ['<MyLinkedInAccount', '<MyEmailAccount', '<MyWhatsAppAccount', '<AssistantConnectorsCard', '<ExtensionTokens'].map((t) => connections.indexOf(t));
   assert.ok(order.every((i) => i >= 0), 'une carte de Connexions manque');
-  assert.deepEqual([...order].sort((a, b) => a - b), order, 'ordre : LinkedIn, e-mail, applications, extension');
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'ordre : LinkedIn, e-mail, WhatsApp, applications, extension');
 
-  for (const id of ['linkedin', 'email', 'applications', 'extension', 'style', 'modeles', 'signatures', 'formule', 'credits', 'consignes', 'resume', 'icp', 'connecteurs']) {
+  for (const id of ['linkedin', 'email', 'whatsapp', 'applications', 'extension', 'style', 'modeles', 'signatures', 'formule', 'credits', 'consignes', 'resume', 'icp', 'connecteurs']) {
     assert.ok(sections.includes(`id="${id}"`), `ancre #${id} absente de sections.tsx`);
   }
 
@@ -504,7 +504,7 @@ test('L2-18 — aucun nom de fournisseur dans les textes des fichiers de la coqu
 // ---------------------------------------------------------------- 19. Ancres
 /** Rubrique de chaque ancre (§1). */
 const ANCHOR_SECTION = {
-  linkedin: 'connections', email: 'connections', applications: 'connections', extension: 'connections',
+  linkedin: 'connections', email: 'connections', whatsapp: 'connections', applications: 'connections', extension: 'connections',
   style: 'writing', modeles: 'writing', signatures: 'writing',
   outils: 'general',
   formule: 'billing', credits: 'billing',

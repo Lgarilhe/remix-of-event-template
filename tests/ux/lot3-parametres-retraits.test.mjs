@@ -2,7 +2,8 @@
  * Paramètres, lot 3 — retraits.
  *
  * Invariants épinglés, par inspection de source (sans navigateur ni base) :
- *   - les huit fichiers retirés n'existent plus et plus rien ne les importe ;
+ *   - les sept fichiers encore retirés n'existent plus et plus rien ne les importe ;
+ *     WhatsApp revient comme connexion personnelle serveur, autorisée le 07/10/2026 ;
  *     le hook des variables personnalisées, encore lu par la messagerie, reste ;
  *   - modèle IA par défaut : plus d'écran, plus de lecture, copie locale effacée
  *     au démarrage ;
@@ -48,7 +49,6 @@ const REMOVED = {
   ConnectorSettings: 'src/components/settings/ConnectorSettings.tsx',
   AgencySettings: 'src/components/settings/AgencySettings.tsx',
   MarketplaceActivation: 'src/components/settings/MarketplaceActivation.tsx',
-  MyWhatsAppAccount: 'src/components/settings/MyWhatsAppAccount.tsx',
   CustomVariablesSettings: 'src/components/settings/CustomVariablesSettings.tsx',
   useModelPreference: 'src/hooks/useModelPreference.ts',
   useJobAssignments: 'src/hooks/useJobAssignments.ts',
@@ -56,9 +56,26 @@ const REMOVED = {
 };
 
 // ---------------------------------------------------------------- 1-2. Fichiers retirés
-test('L3-1 — les huit fichiers retirés n’existent plus ; le hook des variables reste', () => {
+test('L3-1 — les sept fichiers encore retirés n’existent plus ; le hook des variables reste', () => {
+  assert.equal(Object.keys(REMOVED).length, 7);
   for (const rel of Object.values(REMOVED)) assert.equal(existsSync(join(ROOT, rel)), false, `${rel} existe encore`);
   assert.ok(existsSync(join(ROOT, 'src/hooks/useUserTemplateVariables.ts')), 'lu par MessageView et templatePlaceholders');
+});
+
+test('L3-1b — WhatsApp revient dans Connexions, avec une liaison personnelle contrôlée par le serveur', () => {
+  const account = read('src/components/settings/MyWhatsAppAccount.tsx');
+  const hook = read('src/hooks/useMemberWhatsAppAccounts.ts');
+  const sections = read('src/components/settings/shell/sections.tsx');
+  assert.match(sections, /<SettingsAnchor id="whatsapp"><MyWhatsAppAccount \/><\/SettingsAnchor>/);
+  assert.match(account, /<ServiceLogo service="whatsapp"/);
+  assert.match(account, /providers: \['WHATSAPP'\]/);
+  assert.match(account, /action: 'hosted_auth_link'/);
+  assert.match(account, /Le service de connexion peut recevoir les conversations de ce compte personnel/);
+  assert.match(hook, /\['member-whatsapp-accounts', organizationId, user\?\.id\]/);
+  assert.match(hook, /action: 'list_whatsapp', organization_id: organizationId/);
+  assert.match(hook, /action: 'disconnect_whatsapp', organization_id: organizationId, account_id: accountId/);
+  assert.doesNotMatch(hook, /\.from\(|\.(?:insert|upsert|update|delete)\(/, 'le navigateur ne peut pas revendiquer ou réattribuer un compte');
+  assert.doesNotMatch(account, /C'est mon compte|include_org_accounts|linkAccount\(/, 'aucune sélection de compte partagé ou orphelin');
 });
 
 test('L3-2 — aucun import dans src/ ne cite un module retiré', () => {

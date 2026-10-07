@@ -25,6 +25,9 @@ import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { ConversationContext } from './ConversationContext';
+import { CandidateActions, CandidateActionHistory } from './CandidateActions';
+import { useCandidateActions } from '@/hooks/useCandidateActions';
+import { mergeCandidateActionEvents } from '@/lib/candidateActions';
 import { conversationTimeline } from '@/lib/inboxTimeline';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
@@ -253,9 +256,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const profileName = selectedChat ? getChatDisplayName(selectedChat) : null;
   const profileAliases = [selectedChat?.attendees?.[0]?.provider_id, selectedChat?.attendees?.[0]?.attendee_provider_id, selectedChat?.attendee_provider_id].filter((id): id is string => !!id);
   const { events: activityEvents, loading: loadingActivity, error: activityError, retry: retryActivity } = useProfileActivity(profileId, profileUrl, profileName, profileAliases);
-  const timeline = useMemo(() => conversationTimeline(
-    messages.filter(message => hasDisplayableContent(message) || !!message.reactions?.length), activityEvents, new Date(currentTime),
-  ), [messages, activityEvents, currentTime]);
 
   // ─── Défilement automatique ─────────────────────────────────────────
   // En bas seulement à l'ouverture de la conversation, ou quand un nouveau
@@ -276,38 +276,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, [selectedChat?.id]);
-
-  // Défilement conditionnel
-  useEffect(() => {
-    if (loadingMessages || !timeline.some(item => item.kind !== 'date')) return;
-    const container = messagesScrollRef.current;
-    if (!container) return;
-
-    const chatChanged = lastChatIdForScrollRef.current !== selectedChat?.id;
-    const newMessagesCount = messages.length + activityEvents.length;
-    const hasNewMessage = newMessagesCount > lastMessageCountRef.current;
-
-    lastChatIdForScrollRef.current = selectedChat?.id || null;
-    lastMessageCountRef.current = newMessagesCount;
-
-    const shouldScroll = chatChanged || (hasNewMessage && isNearBottomRef.current);
-    if (!shouldScroll) return;
-
-    const t = setTimeout(() => {
-      requestAnimationFrame(() => {
-        try {
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: chatChanged ? 'auto' : 'smooth',
-          });
-          isNearBottomRef.current = true;
-        } catch {
-          container.scrollTop = container.scrollHeight;
-        }
-      });
-    }, 80);
-    return () => clearTimeout(t);
-  }, [messages, timeline, activityEvents.length, loadingMessages, selectedChat?.id]);
 
   // ─── Synchronisation silencieuse d'une conversation vide ────────────
   // Une conversation qui s'ouvre sans message lance une synchronisation de
@@ -661,6 +629,43 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return cached.action;
   }, [cachedSuggestion.data, nextStep?.lastAt]);
 
+  const actionMission = activeMissions.find(mission => mission.id === jobInfo?.job_id || mission.job_id === jobInfo?.job_id);
+  const candidateActions = useCandidateActions(profileId ? {
+    candidate_id: profileId,
+    linkedin_url: profileUrl,
+    project_id: actionMission?.id,
+    account_id: selectedChat?.account_id,
+    chat_id: selectedChat?.id,
+  } : null, () => { retryActivity(); void onRefetchMessages?.(); });
+  const candidateActivityEvents = useMemo(() => mergeCandidateActionEvents(activityEvents, candidateActions.plans, messages, candidateActions.messages, selectedChat?.account_id, memberName), [activityEvents, candidateActions.plans, messages, candidateActions.messages, selectedChat?.account_id, memberName]);
+  const timeline = useMemo(() => conversationTimeline(
+    messages.filter(message => hasDisplayableContent(message) || !!message.reactions?.length), candidateActivityEvents, new Date(currentTime),
+  ), [messages, candidateActivityEvents, currentTime]);
+
+  // Défilement conditionnel : les résultats réels suivent la même règle que les messages.
+  useEffect(() => {
+    if (loadingMessages || !timeline.some(item => item.kind !== 'date')) return;
+    const container = messagesScrollRef.current;
+    if (!container) return;
+    const chatChanged = lastChatIdForScrollRef.current !== selectedChat?.id;
+    const newMessagesCount = messages.length + candidateActivityEvents.length;
+    const hasNewMessage = newMessagesCount > lastMessageCountRef.current;
+    lastChatIdForScrollRef.current = selectedChat?.id || null;
+    lastMessageCountRef.current = newMessagesCount;
+    if (!chatChanged && !(hasNewMessage && isNearBottomRef.current)) return;
+    const timer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        try {
+          container.scrollTo({ top: container.scrollHeight, behavior: chatChanged ? 'auto' : 'smooth' });
+          isNearBottomRef.current = true;
+        } catch {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [messages, timeline, candidateActivityEvents.length, loadingMessages, selectedChat?.id]);
+
   // Aucune conversation ouverte (ordinateur)
   if (!selectedChat) {
     if (overview) return <>{overview}</>;
@@ -774,7 +779,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   const linkedMission = activeMissions.find(mission => mission.id === jobInfo?.job_id || mission.job_id === jobInfo?.job_id);
   const contextProps = {
-    name: displayName, profileUrl, events: activityEvents, now: currentTime,
+    name: displayName, profileUrl, events: candidateActivityEvents, now: currentTime,
     profileId, profileAliases,
     mission: jobInfo?.job_title || inferredMission?.job_title || inferredMission?.name || null,
     missionUrl: linkedMission ? `/missions/${linkedMission.id}` : inferredMission ? `/missions/${inferredMission.id}` : undefined,
@@ -1089,7 +1094,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 }
 
                 if (item.kind === 'event') {
-                  return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
+                  const author = 'authorName' in item.data && typeof item.data.authorName === 'string' ? item.data.authorName : null;
+                  return <div key={`evt-${item.data.id}`}>{author && <p className="mt-4 text-center text-xs text-foreground-secondary">Envoyé par {author}</p>}{'missionUnidentified' in item.data && item.data.missionUnidentified === true && <p className="mt-2 text-center text-xs text-muted-foreground">Mission non identifiée</p>}<ActivityEventCard event={item.data} /></div>;
                 }
                 const msg = item.data;
                 const isSender = !!msg.is_sender;
@@ -1275,12 +1281,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <div ref={messagesEndRef} />
             </div>
           )}
+          <CandidateActionHistory plans={candidateActions.plans} messages={candidateActions.messages} />
+          <CandidateActions controller={candidateActions} />
         </div>
       </div>
 
       {/* RANGÉE 3 : ligne « À faire », suggestions, panneau IA et composeur */}
       <div className="group/compose">
-        {nextStep && (
+        {nextStep && !candidateActions.hasActions && (
           <ThreadNextStep
             key={selectedChat.id}
             state={nextStep.state}

@@ -107,9 +107,9 @@ test('v2 — verrouillage puis déverrouillage rend exactement le statut d\'avan
   const block = webhook.slice(start, webhook.indexOf('\n      default:', start));
   assert.match(block, /case 'account_unlocked':/);
   const lockFilters = [...block.matchAll(/Update\.or\('([^']+)'\)/g)].map((m) => m[1]);
-  assert.equal(lockFilters.length, 2, 'garde sur les deux tables');
-  assert.equal(new Set(lockFilters).size, 1, 'même garde sur les deux tables');
-  assert.equal((block.match(/Update\.eq\('account_status', 'LOCKED'\)/g) || []).length, 2, 'déverrouillage limité à LOCKED');
+  assert.equal(lockFilters.length, 3, 'garde sur LinkedIn, e-mail et WhatsApp');
+  assert.equal(new Set(lockFilters).size, 1, 'même garde sur les trois canaux');
+  assert.equal((block.match(/Update\.eq\('account_status', 'LOCKED'\)/g) || []).length, 3, 'déverrouillage limité à LOCKED');
 
   const lock = (status) => (matchesOr(lockFilters[0], status) ? 'LOCKED' : status);
   const unlock = (status) => (status === 'LOCKED' ? 'OK' : status);

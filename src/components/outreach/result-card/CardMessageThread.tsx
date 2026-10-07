@@ -7,11 +7,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CandidateInteractionTimeline } from '@/components/outreach/inbox/CandidateInteractionTimeline';
+import { CandidateActions, CandidateActionHistory } from '@/components/outreach/inbox/CandidateActions';
+import { useCandidateActions } from '@/hooks/useCandidateActions';
+import { mergeCandidateActionEvents } from '@/lib/candidateActions';
 import { useProfileActivity } from '@/hooks/useProfileActivity';
 import { useCandidateMessages, type CandidateMessages } from '@/hooks/useCandidateMessages';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMyLinkedInAccountId } from '@/hooks/useMyLinkedInAccountId';
+import { useMemberName } from '@/hooks/useTeamMembers';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
@@ -48,6 +52,9 @@ function InteractionThread({ profileId, profileName, profileUrl, profileAliases 
   const messages = query.data?.messages ?? [];
   const chats = query.data?.chats ?? [];
   const chatId = chats.some(chat => chat.id === replyChatId) ? replyChatId : chats[0]?.id;
+  const candidateActions = useCandidateActions({ candidate_id: profileId, linkedin_url: profileUrl, project_id: projectId, account_id: query.accountId, chat_id: chatId }, () => { activity.retry(); if (query.accountId) void query.refetch(); onMessageSent?.(); });
+  const memberName = useMemberName();
+  const events = mergeCandidateActionEvents(activity.events, candidateActions.plans, messages, candidateActions.messages, query.accountId, memberName);
 
   async function handleSendReply() {
     if (!query.accountId || !query.organizationId || !chatId || !replyText.trim() || sending.current) return;
@@ -70,13 +77,15 @@ function InteractionThread({ profileId, profileName, profileUrl, profileAliases 
   }
 
   return <div className="space-y-4">
-    <div className="flex items-center justify-between gap-2 border-b border-border pb-2"><p className="text-xs text-muted-foreground">Tous les échanges et événements disponibles</p><Button variant="ghost" size="sm" className="min-h-11" disabled={query.isFetching || activity.loading} onClick={() => { activity.retry(); if (query.accountId) void query.refetch(); }}>Actualiser</Button></div>
+    <div className="flex items-center justify-between gap-2 border-b border-border pb-2"><p className="text-xs text-muted-foreground">Tous les échanges et événements disponibles</p><Button variant="ghost" size="sm" className="min-h-11" disabled={query.isFetching || activity.loading || candidateActions.fetching} onClick={() => { activity.retry(); if (query.accountId) void query.refetch(); void candidateActions.refresh(); }}>Actualiser</Button></div>
     {(activity.loading || query.isLoading) && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Chargement des interactions…</p>}
     {activity.error && <div role="status" className="space-y-2"><p className="text-sm text-muted-foreground">Certaines interactions sont temporairement indisponibles.</p><Button variant="outline" size="sm" className="min-h-11" onClick={activity.retry}>Réessayer les événements</Button></div>}
     {query.isError && <div role="status" className="space-y-2"><p className="text-sm text-muted-foreground">Les messages LinkedIn sont temporairement indisponibles.</p><Button variant="outline" size="sm" className="min-h-11" onClick={() => void query.refetch()}>Réessayer les messages</Button></div>}
     {!query.accountId && <div className="space-y-2"><p className="text-sm text-muted-foreground">Connectez votre compte LinkedIn pour retrouver aussi vos conversations.</p><Button asChild variant="outline" size="sm" className="min-h-11"><Link to="/settings/account/connections">Ouvrir mes connexions</Link></Button></div>}
-    {!activity.loading && !query.isLoading && !activity.error && !query.isError && !messages.length && !activity.events.length && <p className="py-6 text-sm text-muted-foreground">Aucune interaction enregistrée avec ce candidat.</p>}
-    <CandidateInteractionTimeline messages={messages} events={activity.events} name={profileName} />
+    {!activity.loading && !query.isLoading && !candidateActions.loading && !activity.error && !query.isError && !messages.length && !events.length && !candidateActions.messages.length && !candidateActions.plans.some(plan => plan.effects.some(effect => effect.status === 'succeeded')) && <p className="py-6 text-sm text-muted-foreground">Aucune interaction enregistrée avec ce candidat.</p>}
+    <CandidateInteractionTimeline messages={messages} events={events} name={profileName} />
+    <CandidateActionHistory plans={candidateActions.plans} messages={candidateActions.messages} />
+    <CandidateActions controller={candidateActions} />
     {!!chatId && !query.isError && <div className="space-y-2 border-t border-border pt-3">
       <p className="flex items-center gap-2 text-xs text-muted-foreground"><ServiceLogo service="linkedin" decorative />Réponse via votre compte LinkedIn</p>
       {chats.length > 1 && <div className="space-y-1"><p className="text-xs text-muted-foreground">Conversation de la réponse</p><Select value={chatId} onValueChange={setReplyChatId} disabled={isSending}><SelectTrigger className="min-h-11" aria-label="Conversation de la réponse"><SelectValue /></SelectTrigger><SelectContent>{chats.map((chat, index) => <SelectItem key={chat.id} value={chat.id} className="min-h-11">{chat.label} {index + 1}</SelectItem>)}</SelectContent></Select></div>}

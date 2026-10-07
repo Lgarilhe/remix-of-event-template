@@ -21,8 +21,12 @@ import { useMessageActions } from '@/hooks/useMessageActions';
 import { useEdgeFunctionWarmup } from '@/hooks/useEdgeFunctionWarmup';
 import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
 import { useChatDrafts } from '@/hooks/useChatDraft';
+import { useMultichannelInbox } from '@/hooks/useMultichannelInbox';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { useOrganization } from '@/hooks/useOrganization';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
+import { MultichannelConversation } from './inbox/MultichannelConversation';
 import { InboxOverview } from './inbox/InboxOverview';
 import { AddToPipelineModal } from './AddToPipelineModal';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
@@ -68,35 +72,16 @@ interface MessagesInboxProps {
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
   const { selectedAccount, loading } = props;
-
-  // Compte en cours de chargement, ou aucun compte LinkedIn relié
-  if (!selectedAccount) {
-    return (
-      <div className="grid h-full place-items-center bg-background p-4">
-        {loading ? (
-          <Spinner label="Chargement de votre compte LinkedIn" size="lg" />
-        ) : (
-          <EmptyState
-            illustration="connexion"
-            title="Aucun compte LinkedIn relié"
-            description="Reliez votre compte LinkedIn pour lire vos conversations et répondre aux candidats depuis Konekt."
-            action={
-              <Button variant="primary" size="sm" asChild>
-                <Link to="/settings/account/connections">Relier votre compte LinkedIn</Link>
-              </Button>
-            }
-            className="w-full max-w-md"
-          />
-        )}
-      </div>
-    );
-  }
-
-  return <MessagesInboxInner {...props} selectedAccount={selectedAccount} />;
+  const { user } = useAuthReady();
+  const { organizationId } = useOrganization();
+  const multichannel = useMultichannelInbox();
+  if (!selectedAccount && loading && multichannel.isLoading) return <div className="grid h-full place-items-center bg-background p-4"><Spinner label="Chargement de vos conversations" size="lg" /></div>;
+  return <MessagesInboxInner key={JSON.stringify([user?.id, organizationId, selectedAccount])} {...props} multichannel={multichannel} />;
 };
 
-const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: string }> = ({
+const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnType<typeof useMultichannelInbox> }> = ({
   selectedAccount,
+  multichannel,
   onUnreadCountChange,
   initialChatId,
   onChatChange,
@@ -104,7 +89,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   onTabChange,
 }) => {
   // Warm-up des edge functions IA pour éviter les cold starts
-  useEdgeFunctionWarmup(true);
+  useEdgeFunctionWarmup(!!selectedAccount);
 
   const inbox = useMessagesInbox({
     selectedAccount,
@@ -116,7 +101,15 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
 
   // Pré-chargement en background des analyses IA pour les chats récents.
   // Comme ça quand l'user ouvre un chat, l'analyse est déjà en cache → instantané.
-  useAutoPrefetchAnalyses({ chats: inbox.chats, enabled: true });
+  useAutoPrefetchAnalyses({ chats: inbox.chats, enabled: !!selectedAccount });
+  const [externalKey, setExternalKey] = useState<string | null>(null);
+  const externalConversation = multichannel.conversations.find(conversation => conversation.key === externalKey);
+  const selectLinkedInChat = (chat: import('@/hooks/useMessagesInbox').Chat) => { setExternalKey(null); inbox.setSelectedChat(chat); };
+  const externalCounts = multichannel.conversations.reduce((counts, conversation) => {
+    if (conversation.state !== 'none') counts[conversation.state]++;
+    return counts;
+  }, { to_reply: 0, to_follow_up: 0, waiting: 0 });
+  const threadCounts = { to_reply: inbox.threadCounts.to_reply + externalCounts.to_reply, to_follow_up: inbox.threadCounts.to_follow_up + externalCounts.to_follow_up, waiting: inbox.threadCounts.waiting + externalCounts.waiting };
 
   const { addReaction, deleteMessage, deleteChat, isReacting, isDeleting } = useMessageActions(
     inbox.organizationId ?? null,
@@ -227,14 +220,18 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           chats={inbox.chats}
           filteredChats={inbox.filteredChats}
           selectedChat={inbox.selectedChat}
-          loadingChats={inbox.loadingChats}
+          loadingChats={inbox.loadingChats || multichannel.isLoading}
           chatsError={inbox.chatsError}
           searchQuery={inbox.searchQuery}
           showUnreadOnly={inbox.showUnreadOnly}
           sourceFilter={inbox.sourceFilter}
           categoryFilter={inbox.chatCategories.categoryFilter}
           responseFilter={inbox.responseFilter}
-          threadCounts={inbox.threadCounts}
+          threadCounts={threadCounts}
+          additionalConversations={multichannel.conversations}
+          selectedAdditionalKey={externalConversation?.key}
+          additionalError={multichannel.isError ? 'Les conversations e-mail et WhatsApp n’ont pas pu être actualisées.' : multichannel.incompleteLabels ? 'Certains noms de candidats ou de missions sont temporairement indisponibles.' : null}
+          onAdditionalSelect={conversation => { inbox.setSelectedChat(null); setExternalKey(conversation.key); }}
           statusFilter={inbox.chatStatus.statusFilter}
           onStatusFilterChange={inbox.chatStatus.setStatusFilter}
           enrollmentsMap={inbox.enrollmentsMap}
@@ -249,8 +246,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onTabChange?.(tab);
           }}
           onSetCategory={inbox.chatCategories.setCategory}
-          onChatSelect={inbox.setSelectedChat}
-          onRefresh={() => inbox.fetchChats(true)}
+          onChatSelect={selectLinkedInChat}
+          onRefresh={() => { if (selectedAccount) void inbox.fetchChats(true); void multichannel.refetch(); }}
           hasMoreChats={inbox.hasMoreChats}
           loadingMoreChats={inbox.loadingMoreChats}
           loadingAllChats={inbox.loadingAllChats}
@@ -265,13 +262,13 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
         <div
           className={cn(
             'h-full min-w-0 overflow-hidden bg-background',
-            inbox.selectedChat
+            inbox.selectedChat || externalConversation
               ? 'fixed inset-0 z-sticky md:static md:z-auto md:flex-1'
               : 'hidden md:block md:flex-1',
           )}
         >
-          <MessageView
-            overview={<InboxOverview chats={inbox.chats} replyCount={inbox.threadCounts.to_reply} followUpCount={inbox.threadCounts.to_follow_up} onSelect={inbox.setSelectedChat} onFilter={(tab) => { inbox.setResponseFilter(tab); onTabChange?.(tab); }} />}
+          {externalConversation ? <MultichannelConversation key={externalConversation.key} conversation={externalConversation} onBack={() => setExternalKey(null)} onChanged={() => void multichannel.refetch()} /> : <MessageView
+            overview={<InboxOverview chats={inbox.chats} replyCount={threadCounts.to_reply} followUpCount={threadCounts.to_follow_up} onSelect={selectLinkedInChat} onFilter={(tab) => { inbox.setResponseFilter(tab); onTabChange?.(tab); }} />}
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
             loadingMessages={inbox.loadingMessages}
@@ -316,7 +313,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}
-          />
+          />}
         </div>
       </div>
 
