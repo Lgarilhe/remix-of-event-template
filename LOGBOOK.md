@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — BUG — Messagerie : identités LinkedIn, échéances et catégories
+
+**Fait** : rapprochement des trois identifiants LinkedIn, priorité aux séquences actives avec pagination ; états, compteurs et filtres relus toutes les 30 secondes ; catégories automatiques écrites dans l’organisation vérifiée du compte. Conflit avec main résolu en conservant son contraste.
+**Validation** : build réussi ; TypeScript 11 erreurs héritées, lint et dette design sans augmentation. Régressions UX, C1 et agent vérifiées. Navigateur Chromium avec réponses simulées, sans accès aux comptes réels.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Alias Recruiter/Classic, active ancienne au-delà de 500 inscriptions | PASS |
+| Claire | Réponse du candidat prioritaire, état et compteur cohérents | PASS |
+| Théo | Seuil de relance franchi sans nouveau message ; écriture bornée à l’organisation | PASS |
+| Sophie | Ligne À faire masquée au focus sur 390 px ; insertion conservant le brouillon | PASS |
+
+**Reste à faire** : validation en environnement connecté après fusion ; la fonction serveur est déployée par le workflow de main.
+**Refs** : PR #308.
+
 ## 2026-10-07 — BUG — Onboarding : reprises, classement et changement de client
 
 **Fait** : recherche et scoring partagés par le cache du parcours pendant les retours arrière ; tri des dix profils avant l’affichage des six meilleurs ; brief invalidé quand le client change, y compris après rechargement. Conflits avec main résolus et contrastes des nouvelles scènes alignés.
