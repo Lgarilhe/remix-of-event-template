@@ -198,7 +198,8 @@ test('SEQ-045 — l’aperçu d’inscription exclut les incompatibles de l’in
   assert.match(active, /if \(!includeIncompatible && incompatibleIds\.has\(p\.id\)\) return false;/);
   // Revue design : la clé de session des aperçus gardés (D-46) complète l'appel ;
   // lot 5d-1 : le rendu des étapes écrites (preview_values) aussi.
-  assert.match(previewModal, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi \}\)/);
+  // Lot 5e-2 : style et niveau des messages rédigés par l'IA aussi.
+  assert.match(previewModal, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi, writing, onWritingRefused: refreshWritingPreferences \}\)/);
   assert.match(previewModal, /Inclure quand même \(\{compat\.blockers\.length\}\)/);
   // Le hook génère et estime sur les candidats visés, pas sur toute la sélection.
   assert.match(previewHook, /const queue = \[\.\.\.targets\];/);

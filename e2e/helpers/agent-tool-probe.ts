@@ -10,7 +10,8 @@
 //
 //   deno run -A --no-check --import-map=e2e/local-stack/import_map.json e2e/helpers/agent-tool-probe.ts
 //
-// Entrée (stdin, JSON) : { tool, params, userId, organizationId, userBearer? }
+// Entrée (stdin, JSON) : { tool, params, userId, organizationId, userBearer?, modelId? }
+// modelId : modèle de la conversation, posé par le chat à la proposition (lot 5e-2).
 // Sortie (stdout) : une ligne « __PROBE__{...} », le résultat de handleProposedToolCall.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { handleProposedToolCall, type ToolContext } from '../../supabase/functions/_shared/agent-tools.ts';
@@ -34,6 +35,7 @@ const input = JSON.parse(await new Response(Deno.stdin.readable).text()) as {
   userId: string;
   organizationId: string;
   userBearer?: string | null;
+  modelId?: string | null;
 };
 
 const adminClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -49,5 +51,6 @@ const result = await handleProposedToolCall(input.tool, input.params, {
   // Même client que le chat ; seule la version importée diffère.
   adminClient: adminClient as unknown as ToolContext['adminClient'],
   userBearer: input.userBearer ?? null,
+  modelId: input.modelId ?? null,
 });
 console.log(`__PROBE__${JSON.stringify(result)}`);

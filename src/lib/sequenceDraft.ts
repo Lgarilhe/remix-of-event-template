@@ -12,7 +12,20 @@
 //
 // Module pur, sans appel ni stockage : testé directement par les tests Node.
 import type { SequenceStep } from '@/types/sequence';
-import { estimateCredits, resolveModel } from '@/types/aiCredits';
+import {
+  AI_LEVEL_LABELS,
+  DEFAULT_AI_LEVEL,
+  DEFAULT_AI_LEVEL_MAX,
+  DEFAULT_WRITING_STYLE,
+  clampLevel,
+  isAiLevel,
+  levelChoices,
+  levelCredits,
+  readStyle,
+  type AiLevel,
+  type LevelChoice,
+  type WritingStyle,
+} from '@/lib/writingStyle';
 
 // ─── Textes imposés (spec-cible, sections 2.6 et 4 ; plan 5e) ───────────────
 
@@ -27,6 +40,8 @@ export const AI_DRAFT_ERRORS = {
   unavailable: 'La rédaction est indisponible pour l’instant. Vos réglages sont gardés.',
 } as const;
 export const ASK_AI_UNAVAILABLE = 'Proposition indisponible pour l’instant. Votre texte n’a pas changé.';
+/** Refus de niveau sans phrase du serveur (lot 5e-2). */
+export const LEVEL_REFUSED_FALLBACK = 'Ce niveau d’IA n’est pas autorisé par votre organisation. Choisissez un autre niveau.';
 export const ASK_AI_NO_CREDITS = 'Crédits insuffisants';
 
 export const DRAFT_MIN_RELANCES = 1;
@@ -37,15 +52,19 @@ export const EXTRA_ARGUMENT_MAX_LENGTH = 160;
 export const creditsLabel = (n: number): string => `${n} crédit${n > 1 ? 's' : ''}`;
 export const aboutCreditsLabel = (n: number): string => `environ ${creditsLabel(n)}`;
 
-/** Coût annoncé d'une proposition de « Demander à l'IA » (text-action, action rewrite_text). */
-export function askAiCostEstimate(): number {
-  return estimateCredits('rewrite_text', resolveModel('fast', null, null, 'rewrite_text'));
+/**
+ * Coût annoncé d'une proposition de « Demander à l'IA » (text-action, action
+ * rewrite_text) au niveau choisi (lot 5e-2) ; sans niveau, au niveau par défaut.
+ */
+export function askAiCostEstimate(level: AiLevel = DEFAULT_AI_LEVEL): number {
+  return levelCredits('rewrite_text', level);
 }
 
-/** Coût annoncé d'une rédaction depuis le poste quand prepare n'a pas encore répondu. */
-export function draftCostEstimate(): number {
-  return estimateCredits('sequence_draft', resolveModel('default', null, null, 'sequence_draft'));
+/** Coût annoncé d'une rédaction depuis le poste au niveau choisi (prepare donne aussi ce coût). */
+export function draftCostEstimate(level: AiLevel = DEFAULT_AI_LEVEL): number {
+  return levelCredits('sequence_draft', level);
 }
+
 
 // ─── Petits outils ──────────────────────────────────────────────────────────
 
@@ -72,6 +91,19 @@ export interface DraftAngle {
   recommended: boolean;
 }
 
+/** Réglages de rédaction rendus par prepare (lot 5e-2). */
+export interface DraftWriting {
+  /** Style par défaut de la personne. */
+  style: WritingStyle;
+  /** Niveau par défaut de l'organisation (sous le plafond). */
+  level: AiLevel;
+  maxLevel: AiLevel;
+  /** Les trois niveaux, avec le coût d'une rédaction et leur permission. */
+  levels: LevelChoice[];
+  /** La mission a un lien d'agenda : sinon « Lien d'agenda » se replie sur un court échange. */
+  hasCalendlyLink: boolean;
+}
+
 export interface DraftPrepare {
   missionTitle: string;
   facts: DraftFact[];
@@ -79,7 +111,38 @@ export interface DraftPrepare {
   messages: string[];
   angles: DraftAngle[];
   defaults: { angle: DraftAngleId; relances: number; firstContact: FirstContact; profileVisit: boolean };
-  cost: { estimated: number; sufficient: boolean | null };
+  /** Coût au niveau par défaut, et solde lu (null s'il est illisible). */
+  cost: { estimated: number; sufficient: boolean | null; remaining: number | null };
+  writing: DraftWriting;
+}
+
+/** Niveaux de prepare, lus sans confiance ; à défaut, ceux du catalogue du navigateur. */
+function readLevels(raw: unknown, maxLevel: AiLevel): LevelChoice[] {
+  const fallback = levelChoices('sequence_draft', { maxLevel });
+  if (!Array.isArray(raw)) return fallback;
+  return fallback.map((choice) => {
+    const found = raw.filter(isRecord).find((l) => l.id === choice.id);
+    if (!found) return choice;
+    return {
+      id: choice.id,
+      label: AI_LEVEL_LABELS[choice.id],
+      credits: asCount(found.credits, choice.credits) || choice.credits,
+      allowed: typeof found.allowed === 'boolean' ? found.allowed : choice.allowed,
+    };
+  });
+}
+
+/** Réglages de rédaction de prepare ; un serveur antérieur au lot 5e-2 donne les défauts. */
+export function readDraftWriting(raw: Record<string, unknown>): DraftWriting {
+  const maxLevel = isAiLevel(raw.max_level) ? raw.max_level : DEFAULT_AI_LEVEL_MAX;
+  const level = clampLevel(isAiLevel(raw.level) ? raw.level : DEFAULT_AI_LEVEL, { defaultLevel: DEFAULT_AI_LEVEL, maxLevel });
+  return {
+    style: readStyle(raw.style) ?? { ...DEFAULT_WRITING_STYLE },
+    level,
+    maxLevel,
+    levels: readLevels(raw.levels, maxLevel),
+    hasCalendlyLink: raw.has_calendly_link === true,
+  };
 }
 
 const ANGLE_IDS: readonly DraftAngleId[] = ['role', 'environnement', 'trajectoire'];
@@ -121,8 +184,22 @@ export function readPrepare(raw: unknown): DraftPrepare | null {
     cost: {
       estimated: asCount(cost.estimated, draftCostEstimate()) || draftCostEstimate(),
       sufficient: typeof cost.sufficient === 'boolean' ? cost.sufficient : null,
+      remaining: typeof cost.remaining === 'number' && Number.isFinite(cost.remaining) ? cost.remaining : null,
     },
+    writing: readDraftWriting(raw),
   };
+}
+
+/** Coût d'une rédaction au niveau choisi, d'après prepare (sinon le catalogue du navigateur). */
+export function draftCostFor(prepare: DraftPrepare, level: AiLevel | null): number {
+  const chosen = level ?? prepare.writing.level;
+  return prepare.writing.levels.find((l) => l.id === chosen)?.credits ?? draftCostEstimate(chosen);
+}
+
+/** Le solde couvre-t-il une rédaction à ce niveau ? null quand le solde est illisible. */
+export function draftCreditsSufficient(prepare: DraftPrepare, level: AiLevel | null): boolean | null {
+  if (prepare.cost.remaining === null) return level === null || level === prepare.writing.level ? prepare.cost.sufficient : null;
+  return prepare.cost.remaining >= draftCostFor(prepare, level);
 }
 
 // ─── Réglages de l'assistant de rédaction ───────────────────────────────────
@@ -135,6 +212,13 @@ export interface DraftSettings {
   relances: number;
   firstContact: FirstContact;
   angle: DraftAngleId;
+  /**
+   * Style de cette rédaction (lot 5e-2) : celui de la personne, modifiable pour
+   * cette rédaction seulement. null dans un brouillon antérieur au lot 5e-2.
+   */
+  style: WritingStyle | null;
+  /** Niveau de l'IA de cette rédaction, sous le plafond de l'organisation ; null dans un brouillon ancien. */
+  level: AiLevel | null;
 }
 
 export function defaultDraftSettings(prepare: DraftPrepare): DraftSettings {
@@ -144,6 +228,8 @@ export function defaultDraftSettings(prepare: DraftPrepare): DraftSettings {
     relances: prepare.defaults.relances,
     firstContact: prepare.defaults.firstContact,
     angle: prepare.defaults.angle,
+    style: { ...prepare.writing.style },
+    level: prepare.writing.level,
   };
 }
 
@@ -157,10 +243,17 @@ export function settingsForPrepare(prepare: DraftPrepare, kept: DraftSettings | 
     relances: Math.min(DRAFT_MAX_RELANCES, Math.max(DRAFT_MIN_RELANCES, kept.relances)),
     firstContact: kept.firstContact,
     angle: prepare.angles.some((a) => a.id === kept.angle) ? kept.angle : prepare.defaults.angle,
+    // Style gardé ; niveau gardé s'il reste permis, sinon ramené sous le plafond relu.
+    style: kept.style ? { ...kept.style } : { ...prepare.writing.style },
+    level: clampLevel(kept.level ?? prepare.writing.level, { defaultLevel: prepare.writing.level, maxLevel: prepare.writing.maxLevel }),
   };
 }
 
-/** Réglages gardés dans le brouillon local de l'éditeur : relus sans confiance. */
+/**
+ * Réglages gardés dans le brouillon local de l'éditeur : relus sans confiance.
+ * Un brouillon antérieur au lot 5e-2 n'a ni style ni niveau : ils sont pris
+ * dans la prochaine réponse de prepare (settingsForPrepare).
+ */
 export function readStoredSettings(raw: unknown): DraftSettings | null {
   if (!isRecord(raw) || !isAngleId(raw.angle)) return null;
   return {
@@ -169,6 +262,8 @@ export function readStoredSettings(raw: unknown): DraftSettings | null {
     relances: Math.min(DRAFT_MAX_RELANCES, Math.max(DRAFT_MIN_RELANCES, asCount(raw.relances, 2))),
     firstContact: raw.firstContact === 'inmail' ? 'inmail' : 'invitation',
     angle: raw.angle,
+    style: readStyle(raw.style),
+    level: isAiLevel(raw.level) ? raw.level : null,
   };
 }
 
@@ -191,12 +286,15 @@ export function draftRequestBody(organizationId: string, missionId: string, prep
     relances: settings.relances,
     profile_visit: prepare.defaults.profileVisit,
     first_contact: settings.firstContact,
+    // Lot 5e-2 : le niveau et le style affichés ; le serveur refuse un niveau au-dessus du plafond.
+    ai_level: settings.level,
+    style: settings.style,
   };
 }
 
 // ─── Erreurs de la rédaction ────────────────────────────────────────────────
 
-export type DraftErrorKind = 'credits' | 'thin' | 'argument' | 'unavailable';
+export type DraftErrorKind = 'credits' | 'thin' | 'argument' | 'level' | 'unavailable';
 
 export interface DraftError {
   kind: DraftErrorKind;
@@ -213,6 +311,11 @@ export function draftErrorOf(error: { status?: number; code?: string } | null, d
     return { kind: 'credits', message: AI_DRAFT_ERRORS.credits };
   }
   if (code === 'DRAFT_JOB_TOO_THIN') return { kind: 'thin', message: AI_DRAFT_ERRORS.thin };
+  // Niveau au-dessus du plafond de l'organisation (lot 5e-2) : phrase du serveur, qui nomme les niveaux permis.
+  if (code === 'AI_LEVEL_NOT_ALLOWED' || code === 'AI_LEVEL_INVALID' || code === 'STYLE_INVALID') {
+    const message = asText(body.error).trim();
+    return { kind: 'level', message: message || LEVEL_REFUSED_FALLBACK };
+  }
   if (code === 'DRAFT_ARGUMENT_REFUSED') {
     const message = asText(body.error).trim();
     return {
@@ -463,7 +566,7 @@ export function stepSlot(steps: readonly SequenceStep[], stepId: string): StepSl
  * contient cet emplacement (premier contact de l'étape, assez de relances),
  * sans visite, angle et arguments choisis par le serveur.
  */
-export function briefDraftRequestBody(organizationId: string, missionId: string, slot: StepSlot): Record<string, unknown> {
+export function briefDraftRequestBody(organizationId: string, missionId: string, slot: StepSlot, writing?: AskAiWriting | null): Record<string, unknown> {
   return {
     action: 'draft',
     organization_id: organizationId,
@@ -471,6 +574,7 @@ export function briefDraftRequestBody(organizationId: string, missionId: string,
     first_contact: slot.firstContact,
     relances: slot.relances,
     profile_visit: false,
+    ...writingFields(writing),
   };
 }
 
@@ -494,21 +598,32 @@ export function draftTextForSlot(result: AiDraftResult, slot: DraftSlot): { body
 
 // ─── « Demander à l'IA » ────────────────────────────────────────────────────
 
-export type AskAiAction = 'shorten' | 'direct' | 'warm' | 'hook' | 'proofread' | 'brief';
+export type AskAiAction = 'shorten' | 'direct' | 'warm' | 'hook' | 'restyle' | 'proofread' | 'brief';
 
 export const ASK_AI_ACTIONS: ReadonlyArray<{ id: AskAiAction; label: string }> = [
   { id: 'shorten', label: 'Raccourcir' },
   { id: 'direct', label: 'Plus direct' },
   { id: 'warm', label: 'Plus chaleureux' },
   { id: 'hook', label: 'Ajouter une accroche sur le parcours' },
+  // Lot 5e-2 : longueur, ton, spontanéité, accroche et appel à l'action du style affiché.
+  { id: 'restyle', label: 'Réécrire dans votre style' },
   { id: 'proofread', label: 'Corriger l’orthographe' },
   { id: 'brief', label: 'Rédiger à partir du poste' },
 ];
 
+/** Niveau et style d'une demande à l'IA (lot 5e-2), ceux affichés dans le menu. */
+export interface AskAiWriting {
+  level: AiLevel;
+  style: WritingStyle;
+}
+
+const writingFields = (writing: AskAiWriting | null | undefined): Record<string, unknown> =>
+  writing ? { ai_level: writing.level, style: writing.style } : {};
+
 /** Corps de text-action en contexte séquence (vouvoiement imposé, sortie contrôlée par le serveur). */
 export function textActionBody(
   action: Exclude<AskAiAction, 'brief'>,
-  input: { organizationId: string; missionId: string | null; text: string; actionType: string; isFirstMessage: boolean },
+  input: { organizationId: string; missionId: string | null; text: string; actionType: string; isFirstMessage: boolean; writing?: AskAiWriting | null },
 ): Record<string, unknown> {
   const base = action === 'direct' ? { action: 'rewrite', tone: 'direct' }
     : action === 'warm' ? { action: 'rewrite', tone: 'empathetic' }
@@ -520,10 +635,11 @@ export function textActionBody(
     text: input.text,
     step: { action_type: input.actionType, is_first_message: input.isFirstMessage },
     ...(input.missionId ? { mission_id: input.missionId } : {}),
+    ...writingFields(input.writing),
   };
 }
 
-export type AskAiErrorKind = 'credits' | 'refused' | 'unavailable';
+export type AskAiErrorKind = 'credits' | 'refused' | 'level' | 'unavailable';
 
 /** Refus de text-action : crédits, proposition retirée par les contrôles (phrase du serveur), indisponible. */
 export function askAiErrorOf(error: { status?: number; code?: string } | null, data: unknown): { kind: AskAiErrorKind; message: string } {
@@ -535,6 +651,10 @@ export function askAiErrorOf(error: { status?: number; code?: string } | null, d
   if (code === 'PROPOSAL_NOT_COMPLIANT') {
     const message = asText(body.error).trim();
     if (message.startsWith('Proposition retirée')) return { kind: 'refused', message };
+  }
+  // Niveau au-dessus du plafond de l'organisation (lot 5e-2) : phrase du serveur.
+  if (code === 'AI_LEVEL_NOT_ALLOWED' || code === 'AI_LEVEL_INVALID' || code === 'STYLE_INVALID') {
+    return { kind: 'level', message: asText(body.error).trim() || LEVEL_REFUSED_FALLBACK };
   }
   return { kind: 'unavailable', message: ASK_AI_UNAVAILABLE };
 }

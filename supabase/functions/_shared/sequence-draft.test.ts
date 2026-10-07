@@ -25,9 +25,11 @@ import {
   checkDraftTexts,
   checkExtraArgument,
   deriveAngles,
+  draftAgenda,
   draftCheckContextFor,
   draftRefusalReason,
   draftStepToSaveRow,
+  draftStyleRules,
   factsByStrength,
   fillSkeleton,
   findRemuneration,
@@ -41,6 +43,7 @@ import {
   renderedLengthUpperBound,
   parseSkeletonOptions,
   reviewTextProposal,
+  skeletonWritingSlots,
   slotTextsFromFields,
   stepTextSlot,
   type DraftCheckContext,
@@ -420,6 +423,13 @@ Deno.test("contrôles : rémunération refusée (montant, package, salaire)", ()
     "jusqu'à 70k brut annuel",
     "un TJM confortable",
     "des primes sur objectifs",
+    // Attentes salariales sans le mot « salaire » (appel à l'action « question ouverte »).
+    "quelles sont vos attentes salariales pour votre prochain poste ?",
+    "quelles sont vos prétentions salariales ?",
+    "quelle évolution de revenus visez-vous ?",
+    "vos revenus actuels comptent pour nous",
+    "un niveau salarial à discuter",
+    "des attentes financières à préciser",
   ]) {
     assert(codes([relance(`Bonjour {{prenom}}, ${text}. {{mon_prenom}}`)]).includes("refuse:remuneration"), text);
   }
@@ -434,6 +444,11 @@ Deno.test("contrôles : un nombre qui n'est pas une rémunération passe (« 500
     "une équipe de 14 personnes et 2 jours de télétravail par semaine",
     "deux acquisitions dans les 18 mois",
     "un parc de 1 200 clients en France",
+    // « salarié » et les revenus d'une entreprise ne sont pas une rémunération.
+    "une société de 300 salariés",
+    "ses revenus récurrents ont triplé",
+    "une croissance de revenus de 40 % en un an",
+    "une équipe simple et sans prétention",
   ]) {
     assertEquals(codes([relance(`Bonjour {{prenom}}, ${text}. {{mon_prenom}}`)]), [], text);
     assertEquals(findRemuneration(text), null, text);
@@ -467,7 +482,7 @@ Deno.test("contrôles : les textes de secours des variables sont contrôlés com
   assert(codes([relance('Bonjour {{prenom}}, votre rôle de {{poste_actuel | fallback:"voir https://evil.example.com"}} m\'intéresse. {{mon_prenom}}')]).includes("refuse:link"));
   assert(codes([relance('Bonjour {{prenom}}, je vous écris de {{ma_societe | fallback:"Konekt"}}. {{mon_prenom}}')]).includes("refuse:konekt"));
   assert(codes([relance('Bonjour {{prenom}}, chez {{entreprise_actuelle | fallback:"Unipile"}} vous avez avancé. {{mon_prenom}}')]).includes("refuse:vendor"));
-  assert(codes([relance('Bonjour {{prenom}}, {{poste_actuel | fallback:"ton poste"}} m\'intéresse. {{mon_prenom}}')]).includes("warn:tutoiement"));
+  assert(codes([relance('Bonjour {{prenom}}, {{poste_actuel | fallback:"ton poste"}} m\'intéresse. {{mon_prenom}}')]).includes("refuse:tutoiement"));
   // Les deux secours prescrits passent.
   assertEquals(codes([relance('Bonjour {{prenom}}, votre rôle de {{poste_actuel | fallback:"votre poste actuel"}} chez {{entreprise_actuelle | fallback:"votre entreprise"}} m\'intéresse. {{mon_prenom}}')]), []);
 });
@@ -571,14 +586,47 @@ Deno.test("contrôles : premier message qui suppose une invitation acceptée sig
   assertEquals(codes([relance("Bonjour {{prenom}}, comme je vous le disais, le poste reste ouvert. {{mon_prenom}}")]), []);
 });
 
-Deno.test("contrôles : tutoiement signalé, mots qui le contiennent non", () => {
-  assert(codes([relance("Bonjour {{prenom}}, tu cherches un nouveau poste ? {{mon_prenom}}")]).includes("warn:tutoiement"));
-  assert(codes([relance("Bonjour {{prenom}}, je te propose un échange. {{mon_prenom}}")]).includes("warn:tutoiement"));
+Deno.test("contrôles : tutoiement refusé (lot 5e-2), mots et noms propres qui le contiennent non", () => {
+  assert(codes([relance("Bonjour {{prenom}}, tu cherches un nouveau poste ? {{mon_prenom}}")]).includes("refuse:tutoiement"));
+  assert(codes([relance("Bonjour {{prenom}}, je te propose un échange. {{mon_prenom}}")]).includes("refuse:tutoiement"));
   for (const text of ["ton profil m'a frappé", "ta carrière avance vite", "tes compétences en IFRS"]) {
-    assert(codes([relance(`Bonjour {{prenom}}, ${text}. {{mon_prenom}}`)]).includes("warn:tutoiement"), text);
+    assert(codes([relance(`Bonjour {{prenom}}, ${text}. {{mon_prenom}}`)]).includes("refuse:tutoiement"), text);
   }
   assertEquals(codes([relance("Bonjour {{prenom}}, le statut du poste à Toulouse est ouvert. {{mon_prenom}}")]), []);
   assertEquals(codes([relance("Bonjour {{prenom}}, le ton du projet est direct et les équipes sont soudées. {{mon_prenom}}")]), []);
+  // Noms propres connus (organisation, entreprise du poste) : pas du tutoiement.
+  assertEquals(codes([relance("Bonjour {{prenom}}, chez Te Whare Digital, l'équipe grandit. {{mon_prenom}}")], ctx({ knownNames: ["Te Whare Digital"] })), []);
+  assertEquals(codes([relance("Bonjour {{prenom}}, la TU Munich recrute. {{mon_prenom}}")], ctx({ organizationName: "TU Munich" })), []);
+  assert(codes([relance("Bonjour {{prenom}}, chez Te Whare Digital, l'équipe grandit. {{mon_prenom}}")]).includes("refuse:tutoiement"));
+});
+
+Deno.test("consignes : la longueur, le ton et l'appel à l'action viennent du style demandé (lot 5e-2)", () => {
+  const f = facts(fullJobDetails());
+  const base = { facts: f, keptFactIds: null, extraArguments: [], angle: "role" as const, organizationName: "Cabinet Horizon" };
+  const sk = buildDraftSkeleton({ firstContact: "invitation", relances: 2, profileVisit: true });
+  const standard = buildDraftPrompt({ ...base, skeleton: sk }).system;
+  // Sans style : le défaut, soit les longueurs du lot 5e.
+  assert(standard.includes("Note d'invitation : environ 200 caractères (de 150 à 220), 300 au plus variables comprises."), standard);
+  assert(standard.includes("Premier message : de 200 à 400 caractères.") && standard.includes("Relances : de 200 à 350 caractères."), standard);
+  assert(standard.includes("Vouvoiement obligatoire dans chaque texte"), "la règle du lot 5e reste écrite");
+  const detailed = buildDraftPrompt({
+    ...base,
+    skeleton: sk,
+    style: { length: "detaille", tone: "direct", spontaneity: "spontane", hook: "poste", cta: "agenda" },
+  }).system;
+  assert(detailed.includes("Premier message : de 400 à 650 caractères."), detailed);
+  assert(detailed.includes("Registre direct") && detailed.includes("Style spontané"), detailed);
+  assert(detailed.includes("Accroche : ouvrez la note et le premier message sur le poste"), detailed);
+  // Sans lien de rendez-vous sur la mission : repli annoncé, jamais {{lien_calendly}}.
+  assert(detailed.includes("Appel à l'action des relances : la mission n'a pas de lien d'agenda ; proposez") && !detailed.includes("{{lien_calendly}}, écrit"), detailed);
+  const withLink = buildDraftPrompt({
+    ...base,
+    facts: facts(fullJobDetails(), { calendlyLink: "https://calendly.com/x" }),
+    skeleton: sk,
+    style: { length: "standard", tone: "formel", spontaneity: "naturel", hook: "parcours", cta: "agenda" },
+  }).system;
+  assert(withLink.includes("Appel à l'action des relances : terminez en proposant de choisir un créneau avec {{lien_calendly}}"), withLink);
+  assert(withLink.includes("Appel à l'action de la note et du premier message : pas de lien d'agenda dans la note ni dans le premier message ; proposez"), withLink);
 });
 
 // ─── Passe de correction et revue finale ────────────────────────────────────
@@ -658,6 +706,59 @@ Deno.test("requête draft : bornes et valeurs par défaut", () => {
   }
 });
 
+Deno.test("requête draft : niveau et style (lot 5e-2), _ai_model jamais lu", () => {
+  const base = { organization_id: "00000000-0000-4000-8000-000000000001", mission_id: "00000000-0000-4000-8000-000000000002" };
+  const none = parseDraftRequest(base);
+  assert(none.ok);
+  if (none.ok) assertEquals([none.request.ai_level, none.request.style], [null, {}]);
+  for (const level of ["rapide", "equilibre", "avance"]) {
+    const parsed = parseDraftRequest({ ...base, ai_level: level });
+    assert(parsed.ok && parsed.request.ai_level === level, level);
+  }
+  // Chaîne vide : rien de demandé (défaut de l'organisation).
+  const empty = parseDraftRequest({ ...base, ai_level: "" });
+  assert(empty.ok && empty.request.ai_level === null);
+  for (const bad of ["Avancé", "expert", 3, "claude-opus-5-5"]) {
+    const parsed = parseDraftRequest({ ...base, ai_level: bad });
+    assert(!parsed.ok && parsed.status === 400 && parsed.code === "AI_LEVEL_INVALID", String(bad));
+  }
+  for (const bad of [{ length: "long" }, { tone: "tutoiement" }, "court", []]) {
+    const parsed = parseDraftRequest({ ...base, style: bad });
+    assert(!parsed.ok && parsed.status === 400 && parsed.code === "STYLE_INVALID", JSON.stringify(bad));
+  }
+  const styled = parseDraftRequest({ ...base, ai_level: "rapide", style: { length: "court", cta: "agenda", futur: "x" }, _ai_model: "claude-opus-5-5" });
+  assert(styled.ok);
+  if (styled.ok) {
+    assertEquals(styled.request.style, { length: "court", cta: "agenda" });
+    assertEquals(styled.request.ai_level, "rapide");
+    assertEquals("_ai_model" in styled.request, false);
+  }
+});
+
+Deno.test("consignes de style par forme : emplacements du squelette, lien d'agenda de la mission", () => {
+  assertEquals(skeletonWritingSlots({ firstContact: "invitation", relances: 2 }), [
+    { kind: "invitation_note", followUp: false },
+    { kind: "first_message", followUp: false },
+    { kind: "relance", followUp: true },
+  ]);
+  assertEquals(skeletonWritingSlots({ firstContact: "inmail", relances: 1 }), [
+    { kind: "inmail", followUp: false },
+    { kind: "inmail", followUp: true },
+  ]);
+  assertEquals(draftAgenda({ hasCalendlyLink: true }), "variable");
+  assertEquals(draftAgenda({ hasCalendlyLink: false }), "none");
+  const style = { length: "court", tone: "direct", spontaneity: "ecrit", hook: "entreprise", cta: "agenda" } as const;
+  const invitation = draftStyleRules(style, { firstContact: "invitation", relances: 2 }, { hasCalendlyLink: true });
+  assert(invitation.startsWith("- Vouvoyez le candidat"), invitation);
+  assert(invitation.includes("Note d'invitation : de 100 à 150 caractères, 300 au plus variables comprises."), invitation);
+  assert(invitation.includes("Premier message : de 120 à 200 caractères.") && invitation.includes("Relances : de 80 à 160 caractères."), invitation);
+  assert(!invitation.includes("InMail :"), invitation);
+  assert(invitation.includes("{{lien_calendly}}"), "relances : agenda permis, la mission a un lien");
+  const inmail = draftStyleRules(style, { firstContact: "inmail", relances: 1 }, { hasCalendlyLink: false });
+  assert(inmail.includes("InMail : corps de 120 à 220 caractères, objet de 40 caractères au plus.") && !inmail.includes("Note d'invitation"), inmail);
+  assert(!inmail.includes("{{lien_calendly}}") && inmail.includes("Appel à l'action des relances : la mission n'a pas de lien d'agenda ; proposez"), inmail);
+});
+
 // ─── Outil create_sequence de l'assistant ───────────────────────────────────
 
 Deno.test("create_sequence : forme demandée avec les défauts de la rédaction, bornes refusées", () => {
@@ -704,8 +805,9 @@ Deno.test("create_sequence : raison du refus rendue au modèle avec le champ à 
   assert(reason.includes("- first_message_subject : Objet absent de la proposition."), reason);
   assert(reason.includes("- relance_1 : Texte absent de la proposition."), reason);
   assertEquals(draftRefusalReason(checkDraftTexts([relance(GOOD_RELANCE)], ctx())), null);
-  // Une formulation à relire ne refuse pas la séquence.
-  assertEquals(draftRefusalReason(checkDraftTexts([relance(`${GOOD_RELANCE} Tu es disponible ?`)], ctx())), null);
+  // Une formulation à relire ne refuse pas la séquence ; le tutoiement, si (lot 5e-2).
+  assertEquals(draftRefusalReason(checkDraftTexts([relance(`${GOOD_RELANCE} Notre équipe jeune vous attend.`)], ctx())), null);
+  assert((draftRefusalReason(checkDraftTexts([relance(`${GOOD_RELANCE} Tu es disponible ?`)], ctx())) ?? "").includes("- relance_1 : le texte tutoie le candidat"));
 });
 
 Deno.test("contexte des contrôles : poste de la mission, ou aucun lien ni client sans mission", () => {
@@ -728,6 +830,7 @@ Deno.test("contexte des contrôles : poste de la mission, ou aucun lien ni clien
     hiddenClientNames: [],
     jobTitleRevealsClient: false,
     allowedText: "",
+    knownNames: [],
   });
 });
 

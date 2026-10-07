@@ -45,6 +45,7 @@ import {
   draftSequenceDescription,
   draftSequenceName,
   draftStepToSaveRow,
+  draftStyleRules,
   isJobTooThin,
   outreachSummary,
   parseSkeletonOptions,
@@ -57,6 +58,24 @@ import {
   type DraftOptions,
   type DraftStep,
 } from './sequence-draft.ts';
+import { loadWritingSettings } from './writing-settings.ts';
+import {
+  AI_LEVEL_LABELS,
+  STYLE_VALUES,
+  buildStyleInstructions,
+  isAiLevel,
+  levelCredits,
+  levelOfModel,
+  levelRank,
+  mergeStyle,
+  modelForLevel,
+  parseStyleOverrides,
+  slotFor,
+  styleFromLegacyTone,
+  styleSummary,
+  type AiLevel,
+  type WritingStyle,
+} from './writing-style.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -1490,22 +1509,68 @@ const enrollInSequence: AgentTool = {
 };
 
 // ─── Tool 5 — draft_outreach_message ────────────────────────────────────────
-/** Modèle du brouillon (rapide), estimé par le garde des crédits et appelé. */
-const DRAFT_MESSAGE_MODEL = 'claude-haiku-4-5';
+
+/** Style demandé à l'assistant (« plus court », « plus direct »…) : cinq valeurs fermées, toutes facultatives. */
+const STYLE_INPUT_SCHEMA = {
+  type: 'object',
+  description:
+    "Optional writing style for this draft, on top of the person's own defaults. Only set what the user asked for " +
+    "(e.g. 'plus court' → length court). The message always addresses the candidate with 'vous', whatever the style.",
+  properties: {
+    length: { type: 'string', enum: [...STYLE_VALUES.length] },
+    tone: { type: 'string', enum: [...STYLE_VALUES.tone] },
+    spontaneity: { type: 'string', enum: [...STYLE_VALUES.spontaneity] },
+    hook: { type: 'string', enum: [...STYLE_VALUES.hook] },
+    cta: { type: 'string', enum: [...STYLE_VALUES.cta] },
+  },
+} as const;
+
+/** Jetons de sortie du brouillon selon la longueur demandée. */
+const DRAFT_MESSAGE_MAX_TOKENS: Readonly<Record<WritingStyle['length'], number>> = { court: 500, standard: 600, detaille: 900 };
+
+type DraftMessageSettings = { ok: true; level: AiLevel; maxLevel: AiLevel; style: WritingStyle } | { ok: false; reason: string };
+
+/** Niveau de la carte approuvée devenu interdit (plafond abaissé entre la proposition et l'approbation). */
+const DRAFT_LEVEL_CHANGED_MESSAGE = 'Le niveau de rédaction a changé, demandez une nouvelle proposition.';
 
 /**
- * Tons du brouillon, tous au vouvoiement (correctif 3, lot 5e). casual et
- * enthusiastic, qui signifient le tutoiement pour le moteur
- * (AI_TONE_INSTRUCTIONS), ne sont plus proposés ; une valeur déjà enregistrée
- * est ramenée à un ton vouvoyé.
+ * Niveau et style du brouillon (lot 5e-2). Niveau : toujours le niveau par
+ * défaut de l'organisation (au plus son plafond) ; le modèle de la conversation
+ * ne le choisit pas. Style : celui de la personne, l'ancien `tone`
+ * (`concise` → court et direct, jamais de tutoiement), puis `style` demandé.
+ * Relu à verifyAccess, dryRun et execute : « Modifier » ne peut rien forcer.
  */
-const DRAFT_MESSAGE_TONES: Readonly<Record<string, { label: string; instruction: string }>> = {
-  professional: { label: 'professionnel', instruction: 'direct, sobre et respectueux' },
-  concise: { label: 'concis', instruction: 'bref et précis, une idée par phrase' },
-  casual: { label: 'chaleureux', instruction: 'chaleureux et simple, sans familiarité' },
-  enthusiastic: { label: 'dynamique', instruction: 'dynamique mais mesuré' },
-};
-const draftMessageTone = (tone: unknown) => DRAFT_MESSAGE_TONES[String(tone ?? '')] ?? DRAFT_MESSAGE_TONES.professional;
+async function draftMessageSettings(params: Record<string, unknown>, ctx: ToolContext): Promise<DraftMessageSettings> {
+  const overrides = parseStyleOverrides(params.style);
+  if (!overrides.ok) return { ok: false, reason: `style : ${overrides.error}` };
+  const settings = await loadWritingSettings(ctx.adminClient, { organizationId: ctx.organizationId, userId: ctx.userId });
+  if (!settings.ok) return { ok: false, reason: "Les réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant." };
+  const tone = String(params.tone ?? 'professional');
+  const legacy = tone === 'professional' ? {} : styleFromLegacyTone(tone);
+  return {
+    ok: true,
+    level: settings.defaultLevel,
+    maxLevel: settings.maxLevel,
+    style: mergeStyle(mergeStyle(settings.style, legacy), overrides.overrides),
+  };
+}
+
+/** Noms propres connus d'un candidat, retirés avant le test du tutoiement (« Minh Tu », « TU Munich »). */
+function candidateKnownNames(name: string | null, headline: string | null, profile: Record<string, unknown>): string[] {
+  const names = [name ?? '', (name ?? '').trim().split(/\s+/)[0] ?? '', headline ?? ''];
+  for (const key of ['work_experience', 'experience', 'education']) {
+    const list = profile[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list.slice(0, 10)) {
+      if (!item || typeof item !== 'object') continue;
+      const rec = item as Record<string, unknown>;
+      for (const field of ['company', 'company_name', 'school', 'school_name']) {
+        if (typeof rec[field] === 'string') names.push(rec[field] as string);
+      }
+    }
+  }
+  return names;
+}
 
 // Génère un draft de message LinkedIn/email pour un candidat (via Claude).
 // Le message est sauvegardé dans dry_run_result.draft. À l'approbation,
@@ -1557,6 +1622,8 @@ const draftOutreachMessage: AgentTool = {
     "Use when the user says 'écris un message pour X', 'rédige une approche pour Y', 'prépare un DM personnalisé'.",
   category: 'mutation_safe',
   requiresApproval: true,
+  // Lot 5e-2 : l'exécution relit le niveau et le coût de la carte approuvée.
+  approvedDetailsOnConfirm: true,
   inputSchema: {
     type: 'object',
     properties: {
@@ -1576,24 +1643,34 @@ const draftOutreachMessage: AgentTool = {
         type: 'string',
         description: 'Optional specific angle (e.g. "mention his recent open-source contribution").',
       },
+      style: STYLE_INPUT_SCHEMA,
     },
     required: ['candidate_id', 'job_id'],
   },
 
   // Pas de new_stage ici : contrôle d'un candidat et d'une mission de
-  // l'organisation, comme add_to_shortlist.
-  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
+  // l'organisation, comme add_to_shortlist ; puis style et réglages lisibles
+  // (lot 5e-2).
+  async verifyAccess(params, ctx) {
+    const access = await verifySingleCandidate(params, ctx);
+    if (!access.allowed) return access;
+    const settings = await draftMessageSettings(params, ctx);
+    return settings.ok ? { allowed: true } : { allowed: false, reason: settings.reason };
+  },
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
     const { row, project } = await draftContext(ctx, params);
+    const settings = await draftMessageSettings(params, ctx);
+    if (!settings.ok) throw new Error(settings.reason);
 
     const tone = String(params.tone ?? 'professional');
     const channel = String(params.channel ?? 'linkedin_dm');
     const candidateName = row?.candidate_name ?? candidateId;
+    const credits = levelCredits('outreach_message', settings.level);
 
     return {
-      summary: `Rédiger un ${channel === 'email' ? 'email' : channel === 'linkedin_inmail' ? 'InMail LinkedIn' : 'DM LinkedIn'} en ton ${quoteFr(draftMessageTone(tone).label)} à ${candidateName} pour ${project?.job_title ?? 'cette mission'}`,
+      summary: `Rédiger un ${channel === 'email' ? 'email' : channel === 'linkedin_inmail' ? 'InMail LinkedIn' : 'DM LinkedIn'} à ${candidateName} pour ${project?.job_title ?? 'cette mission'} (niveau ${AI_LEVEL_LABELS[settings.level]}, environ ${credits} crédit${credits > 1 ? 's' : ''})`,
       details: {
         candidate: candidateName,
         candidate_headline: row?.candidate_headline ?? null,
@@ -1602,6 +1679,11 @@ const draftOutreachMessage: AgentTool = {
         tone,
         channel,
         angle: params.angle ?? null,
+        style: settings.style,
+        style_summary: styleSummary(settings.style),
+        ai_level: settings.level,
+        ai_level_label: AI_LEVEL_LABELS[settings.level],
+        estimated_credits: credits,
         // Note : la génération du message n'a pas lieu en dry-run. Elle se fait
         // dans execute() pour économiser les tokens si l'user reject.
       },
@@ -1620,14 +1702,33 @@ const draftOutreachMessage: AgentTool = {
       return { success: false, error: 'Candidat ou mission introuvable' };
     }
 
+    // Lot 5e-2 : style de la personne relu ici (la carte a pu être modifiée
+    // entre-temps). Niveau : celui que la carte approuvée annonçait, avec son
+    // coût, s'il reste permis par le plafond relu ; sinon refus, jamais un
+    // autre niveau que celui montré. Carte sans niveau (proposée avant le lot
+    // 5e-2) : niveau par défaut de l'organisation.
+    const settings = await draftMessageSettings(params, ctx);
+    if (!settings.ok) return { success: false, error: settings.reason };
+    const { style } = settings;
+    const approvedLevel = ctx.approvedDetails?.ai_level;
+    let level: AiLevel = settings.level;
+    if (approvedLevel !== undefined && approvedLevel !== null) {
+      if (!isAiLevel(approvedLevel) || levelRank(approvedLevel) > levelRank(settings.maxLevel)) {
+        return { success: false, error: DRAFT_LEVEL_CHANGED_MESSAGE };
+      }
+      level = approvedLevel;
+    }
+    const modelId = modelForLevel(level);
+
     // Correctif 3 (lot 5e) : crédits contrôlés avant l'appel, comme les
-    // autres rédactions ; un solde insuffisant n'appelle pas le modèle.
+    // autres rédactions ; un solde insuffisant n'appelle pas le modèle. Au
+    // prix du modèle du niveau.
     const { assertCredits } = await import('./credit-guard.ts');
     const gate = await assertCredits({
       userId: ctx.userId,
       organizationId: ctx.organizationId,
       aiAction: 'outreach_message',
-      modelId: DRAFT_MESSAGE_MODEL,
+      modelId,
       adminClient: ctx.adminClient,
     });
     if (!gate.ok) {
@@ -1648,20 +1749,16 @@ const draftOutreachMessage: AgentTool = {
     });
     const { data: orgRow } = await ctx.adminClient.from('organizations').select('name').eq('id', ctx.organizationId).maybeSingle();
     const organizationName = String((orgRow as { name?: string | null } | null)?.name ?? '').trim();
-    const toneSpec = draftMessageTone(tone);
 
-    const lengthHint =
-      channel === 'linkedin_dm'
-        ? '300 caractères max (LinkedIn DM = ultra court)'
-        : channel === 'linkedin_inmail'
-        ? '600 caractères max avec sujet (InMail)'
-        : '120-150 mots avec sujet (email)';
+    // Consigne de style (lot 5e-2) : DM = premier message, InMail et e-mail = InMail (objet et corps).
+    const slot = slotFor(channel === 'linkedin_dm' ? 'message' : 'inmail', true);
+    const styleRules = buildStyleInstructions(style, { slots: [slot], audience: 'candidate', agenda: 'none' });
 
-    const systemPrompt = `Tu es un recruteur expert qui rédige des messages d'approche très personnalisés. Ton : ${toneSpec.instruction}. Le message vouvoie toujours le candidat, quel que soit le ton. Tu réponds UNIQUEMENT en JSON valide: {"subject": "...", "body": "..."}. Pour LinkedIn DM, "subject" peut être null.`;
+    const systemPrompt = `Tu es un recruteur expert qui rédige des messages d'approche très personnalisés. Le message vouvoie toujours le candidat, quel que soit le ton. Tu réponds UNIQUEMENT en JSON valide: {"subject": "...", "body": "..."}. Pour LinkedIn DM, "subject" peut être null.`;
     const company = facts.company.name
       ? ` chez ${facts.company.name}`
       : facts.company.anonymized ? ' (entreprise cliente à ne jamais nommer)' : '';
-    const userPrompt = `Rédige un message ${channel} au ton ${toneSpec.label} pour:
+    const userPrompt = `Rédige un message ${channel} pour:
 
 CANDIDAT: ${row.candidate_name}
 HEADLINE: ${row.candidate_headline ?? 'non spécifiée'}
@@ -1673,23 +1770,25 @@ ${facts.facts.map((f) => `- ${f.text}`).join('\n') || '- non précisés'}
 
 ${angle ? `ANGLE D'ATTAQUE: ${angle}` : ''}
 
+STYLE DEMANDÉ:
+${styleRules}
+
 CONTRAINTES:
-- ${lengthHint}
 - Personnaliser via 1 élément précis du profil (pas du blabla générique)
 - Pas de "j'espère que vous allez bien", pas de copywriting cringe
 - Vouvoiement obligatoire, jamais de tutoiement
 - Aucune rémunération : ni salaire, ni montant, ni fourchette, ni avantage chiffré
-- CTA clair en fin de message`;
+- Un seul appel à l'action, celui du style demandé`;
 
     try {
       const { getAnthropicModelId } = await import('./ai-config.ts');
       const result = await callClaudeCompat({
-        model: getAnthropicModelId(DRAFT_MESSAGE_MODEL),
+        model: getAnthropicModelId(modelId),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 600,
+        max_tokens: DRAFT_MESSAGE_MAX_TOKENS[style.length],
         temperature: 0.6,
         response_format: { type: 'json_object' },
         timeoutMs: 30000,
@@ -1714,9 +1813,11 @@ CONTRAINTES:
       // signature « Recruteur », liens) et vouvoiement imposé. Un brouillon
       // refusé n'est pas rendu, les jetons consommés restent débités.
       const firstContact = channel === 'linkedin_dm' ? 'invitation' : 'inmail';
+      // Tutoiement refusé (lot 5e-2), noms propres du candidat mis à part.
+      const knownNames = candidateKnownNames(row.candidate_name, row.candidate_headline, profile);
       const issues = checkDraftTexts(
         [{ slot: 'first_message', subject: typeof parsed.subject === 'string' ? parsed.subject : '', body: typeof parsed.body === 'string' ? parsed.body : '' }],
-        draftCheckContextFor(facts, { organizationName, firstContact, forbidden: briefForbiddenValues(project.job_details) }),
+        draftCheckContextFor(facts, { organizationName, firstContact, forbidden: briefForbiddenValues(project.job_details), knownNames }),
       ).filter((i) => i.code !== 'missing' || i.field === 'body');
       const refusals = issues.filter((i) => i.severity === 'refuse' || i.code === 'tutoiement');
       if (refusals.length > 0) {
@@ -1731,6 +1832,11 @@ CONTRAINTES:
           subject: parsed.subject ?? null,
           body: parsed.body ?? '',
           candidate_name: row.candidate_name,
+          level,
+          level_label: AI_LEVEL_LABELS[level],
+          estimated_credits: levelCredits('outreach_message', level),
+          style,
+          style_summary: styleSummary(style),
           // Note pour l'UI : ce draft est à copier-coller manuellement.
           // L'envoi automatisé via Unipile/Resend viendra en v3.
           action_required: 'copy_to_clipboard',
@@ -5128,6 +5234,22 @@ async function planCreateSequence(params: Record<string, unknown>, ctx: ToolCont
 }
 
 /**
+ * Refus d'une rédaction par la conversation quand son modèle dépasse le niveau
+ * maximal de l'organisation (lot 5e-2). Réglages illisibles : refus (un
+ * plafond illisible ne s'ouvre pas). Modèle inconnu du catalogue : rien à
+ * comparer, la conversation n'a pas pu l'appeler.
+ */
+async function conversationLevelRefusal(modelId: string, ctx: ToolContext): Promise<string | null> {
+  const level = levelOfModel(modelId);
+  if (!level) return null;
+  const settings = await loadWritingSettings(ctx.adminClient, { organizationId: ctx.organizationId, userId: ctx.userId });
+  if (!settings.ok) return "Les réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant.";
+  if (levelRank(level) <= levelRank(settings.maxLevel)) return null;
+  return `Le niveau de l'IA de cette conversation (${AI_LEVEL_LABELS[level]}) dépasse le niveau maximal de votre organisation ` +
+    `pour rédiger des messages (${AI_LEVEL_LABELS[settings.maxLevel]}). Choisissez un modèle d'un niveau autorisé, puis redemandez la séquence.`;
+}
+
+/**
  * Lecture de l'assistant avant create_sequence : les seuls faits du poste
  * permis pour rédiger (liste fermée de pickBriefFacts, alias d'un client
  * anonymisé), « Vos messages » du Cadrage et les variables permises. Le brief
@@ -5148,6 +5270,7 @@ const getSequenceDraftFacts: AgentTool = {
     type: 'object',
     properties: {
       mission_id: { type: 'string', description: 'Mission UUID (sourcing_projects), resolved with get_my_missions.' },
+      style: STYLE_INPUT_SCHEMA,
     },
     required: ['mission_id'],
   },
@@ -5157,6 +5280,8 @@ const getSequenceDraftFacts: AgentTool = {
     if (!MISSION_UUID_RE.test(normalizeMissionId(params.mission_id))) {
       return { allowed: false, reason: 'mission_id requis : identifiant de la mission (get_my_missions).' };
     }
+    const style = parseStyleOverrides(params.style);
+    if (!style.ok) return { allowed: false, reason: `style : ${style.error}` };
     return { allowed: true };
   },
 
@@ -5168,9 +5293,22 @@ const getSequenceDraftFacts: AgentTool = {
     const loaded = await loadSequenceMission(params.mission_id, ctx);
     if (!loaded.ok) return { success: false, error: loaded.reason };
     const { facts } = loaded;
+    // Style de la personne (lot 5e-2), avec ce qu'elle a demandé dans la
+    // conversation ; une consigne par forme de séquence.
+    const overrides = parseStyleOverrides(params.style);
+    if (!overrides.ok) return { success: false, error: `style : ${overrides.error}` };
+    const settings = await loadWritingSettings(ctx.adminClient, { organizationId: ctx.organizationId, userId: ctx.userId });
+    if (!settings.ok) return { success: false, error: "Les réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant." };
+    const style = mergeStyle(settings.style, overrides.overrides);
     return {
       success: true,
       data: {
+        style,
+        style_summary: styleSummary(style),
+        style_rules: {
+          invitation: draftStyleRules(style, { firstContact: 'invitation', relances: DRAFT_DEFAULT_RELANCES }, facts),
+          inmail: draftStyleRules(style, { firstContact: 'inmail', relances: DRAFT_DEFAULT_RELANCES }, facts),
+        },
         mission_id: loaded.missionId,
         job_title: facts.title,
         company: facts.company.name,
@@ -5198,16 +5336,19 @@ const createSequence: AgentTool = {
     `then a first message and ${DRAFT_MIN_RELANCES} to ${DRAFT_MAX_RELANCES} follow-ups sent only if connected, ` +
     `${INVITATION_RELANCE_DELAYS.join(' then ')} days apart) or by InMail (first InMail, then follow-ups by InMail ` +
     `${INMAIL_RELANCE_DELAYS.join(' then ')} days apart). You only write the texts, in French, always addressing the ` +
-    "candidate with 'vous' (vouvoiement), never 'tu'. " +
+    "candidate with 'vous' (vouvoiement), never 'tu': a text that uses 'tu' is refused. " +
     "Write the texts ONLY from the facts returned by get_sequence_draft_facts (call it first), never from " +
     "get_mission_brief: texts that quote the salary, an evaluation criterion, a contact, a target company or an anonymized " +
     "client's real name are refused. " +
     "Creating a sequence sends NOTHING. Never propose to enroll candidates (enroll_in_sequence) or to activate or resume " +
     "the sequence after creating it: the person reviews every text, then enrolls candidates from the screen. " +
-    `Text fields: invitation_note (invitation only, about 200 characters, ${INVITE_NOTE_MAX} max once variables are filled), ` +
-    "first_message (200 to 400 characters; it must read on its own: a candidate already connected receives no invitation, " +
-    "so never thank them for accepting), relance_1 to relance_N (200 to 350 characters, N = relances), and for InMail " +
+    `Text fields: invitation_note (invitation only, ${INVITE_NOTE_MAX} characters max once variables are filled), ` +
+    "first_message (it must read on its own: a candidate already connected receives no invitation, " +
+    "so never thank them for accepting), relance_1 to relance_N (N = relances), and for InMail " +
     `first_message_subject and relance_N_subject (${INMAIL_SUBJECT_SOFT_MAX} characters max). ` +
+    "Lengths, tone, hook and call to action: follow style_rules returned by get_sequence_draft_facts for the chosen " +
+    "first contact (the person's own writing style; pass style to get_sequence_draft_facts when the user asks for a change, " +
+    "e.g. shorter). " +
     "Allowed variables, written exactly: {{prenom}} followed by a comma or a period, {{poste_recherche}}, " +
     '{{poste_actuel | fallback:"votre poste actuel"}}, {{entreprise_actuelle | fallback:"votre entreprise"}}, ' +
     "{{mon_prenom}} as the signature, {{lien_calendly}} only in a follow-up and only if the mission has a booking link. " +
@@ -5246,6 +5387,13 @@ const createSequence: AgentTool = {
 
   async verifyAccess(params, ctx) {
     if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    // Lot 5e-2 : les textes sont écrits par le modèle de la conversation. À la
+    // proposition (modelId connu), un modèle au-dessus du niveau maximal de
+    // l'organisation est refusé ; à l'approbation, les textes sont déjà écrits.
+    if (ctx.modelId) {
+      const refusal = await conversationLevelRefusal(ctx.modelId, ctx);
+      if (refusal) return { allowed: false, reason: refusal };
+    }
     const planned = await planCreateSequence(params, ctx);
     return planned.ok ? { allowed: true } : { allowed: false, reason: planned.reason };
   },
@@ -5257,9 +5405,15 @@ const createSequence: AgentTool = {
     const planned = await planCreateSequence(params, ctx);
     if (!planned.ok) throw new Error(planned.reason);
     const { plan } = planned;
+    // Style de la personne, montré tel quel : aucun style déclaré par le modèle n'est affiché comme vérifié.
+    const settings = await loadWritingSettings(ctx.adminClient, { organizationId: ctx.organizationId, userId: ctx.userId });
+    const conversationLevel = ctx.modelId ? levelOfModel(ctx.modelId) : null;
     return {
       summary: `Créer la séquence ${quoteFr(plan.name)} (${plan.steps.length} étapes) pour la mission ${quoteFr(plan.missionName)}`,
       details: {
+        style_summary: settings.ok ? styleSummary(settings.style) : null,
+        ai_level: conversationLevel,
+        ai_level_label: conversationLevel ? AI_LEVEL_LABELS[conversationLevel] : null,
         name: plan.name,
         description: draftSequenceDescription(new Date()),
         mission_id: plan.missionId,

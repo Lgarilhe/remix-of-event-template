@@ -151,16 +151,7 @@ export function executionStatusMeta(status: string | null | undefined): StatusMe
 
 // ─── Tons ────────────────────────────────────────────────────────────────
 
-/**
- * Tons de rédaction des messages générés pour les séquences et les InMails :
- * les mêmes mots partout, sans emoji ni abréviation (« Pro », « Cool »,
- * « Wow » : revue design D-62). Les réponses de la messagerie ont leurs
- * propres tons, envoyés à une autre fonction.
- */
-export const MESSAGE_TONES = [
-  { value: 'professional', label: 'Professionnel' },
-  { value: 'casual', label: 'Décontracté' },
-  { value: 'enthusiastic', label: 'Enthousiaste' },
-] as const;
-
-export type MessageTone = (typeof MESSAGE_TONES)[number]['value'];
+// Lot 5e-2 : plus de liste de tons pour les messages rédigés par l'IA. Le style
+// (longueur, ton, spontanéité, accroche, appel à l'action, toujours au
+// vouvoiement) se règle dans « Votre style » et à chaque rédaction :
+// src/lib/writingStyle.ts.

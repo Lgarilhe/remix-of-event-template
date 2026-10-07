@@ -37,17 +37,17 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
   },
   "claude-sonnet-4-5": {
     id: "claude-sonnet-4-5",
-    name: "Standard",
+    name: "Équilibré (précédent)",
     provider: "anthropic",
     tier: "balanced",
     multiplier: 1.0,
     contextWindow: 1_000_000,
     supportsThinking: true,
-    description: "Polyvalent, version précédente du modèle Avancé",
+    description: "Polyvalent, version précédente du modèle Équilibré",
   },
   "claude-sonnet-4-6": {
     id: "claude-sonnet-4-6",
-    name: "Avancé",
+    name: "Équilibré",
     provider: "anthropic",
     tier: "balanced",
     multiplier: 1.0,
@@ -57,19 +57,21 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
   },
   "claude-opus-4-6": {
     id: "claude-opus-4-6",
-    name: "Expert",
+    name: "Avancé (précédent)",
     provider: "anthropic",
     tier: "premium",
     multiplier: 1.8,
     contextWindow: 1_000_000,
     supportsThinking: true,
-    description: "Le plus avancé, pour les raisonnements complexes",
+    description: "Le plus avancé, version précédente, pour les raisonnements complexes",
   },
-  // Nouvelle génération : même rôle que Avancé et Expert, moins chers et plus
+  // Nouvelle génération : même rôle que Équilibré et Avancé, moins chers et plus
   // capables (miroir du multiplicateur serveur, _shared/ai-config.ts).
+  // Lot 5e-2 : libellés alignés sur les niveaux de l'IA qui rédige (Rapide,
+  // Équilibré, Avancé), pour qu'un même mot désigne le même modèle partout.
   "claude-sonnet-5-5": {
     id: "claude-sonnet-5-5",
-    name: "Avancé (nouveau)",
+    name: "Équilibré (nouveau)",
     provider: "anthropic",
     tier: "balanced",
     multiplier: 0.7,
@@ -79,7 +81,7 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
   },
   "claude-opus-5-5": {
     id: "claude-opus-5-5",
-    name: "Expert (nouveau)",
+    name: "Avancé",
     provider: "anthropic",
     tier: "premium",
     multiplier: 1.5,
@@ -202,6 +204,19 @@ const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
 export function getDefaultModel(routingTier: RoutingTier): string {
   return ROUTING_DEFAULTS[routingTier];
 }
+
+/**
+ * Niveau de l'IA qui rédige les messages d'approche → modèle appelé (lot 5e-2).
+ * Miroir exact de WRITING_LEVEL_MODELS (_shared/ai-config.ts) : sert à annoncer
+ * le coût de chaque niveau et à préautoriser au bon prix (modelOverride de
+ * invokeWithCredits). Le serveur choisit le modèle d'après le niveau, jamais
+ * d'après ce que le navigateur envoie.
+ */
+export const WRITING_LEVEL_MODELS = {
+  rapide: "claude-haiku-4-5",
+  equilibre: "claude-sonnet-4-6",
+  avance: "claude-opus-5-5",
+} as const;
 
 /**
  * Resolve model: userOverride > orgDefault > action.autoDefault > tier default.

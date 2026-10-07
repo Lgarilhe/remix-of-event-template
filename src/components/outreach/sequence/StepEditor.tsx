@@ -9,7 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AlertTriangle, ChevronRight, GitBranch, Hourglass, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { sequenceActionLabel, MESSAGE_TONES } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { AI_STEP_STYLE_NOTICE } from '@/lib/writingStyle';
 import { SequenceActionIcon } from '@/components/outreach/SequenceBadges';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
@@ -384,11 +385,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
           {usesAi ? (
             <div>
-              <Label htmlFor={`${id}-tone`} className="text-2xs font-normal text-muted-foreground">Ton</Label>
-              <Select value={step.aiTone || 'professional'} onValueChange={(value) => onUpdate({ aiTone: value as SequenceStep['aiTone'] })}>
-                <SelectTrigger id={`${id}-tone`} className="mt-1 h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{MESSAGE_TONES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-              </Select>
+              {/* Lot 5e-2 : plus de ton par étape ; aiTone reste dans la charge enregistrée. */}
+              <p className="text-2xs text-muted-foreground">{AI_STEP_STYLE_NOTICE}</p>
               <p className="mt-1.5 text-2xs text-muted-foreground">L'IA rédige un message pour chaque candidat, à partir de son profil et du brief.</p>
             </div>
           ) : (

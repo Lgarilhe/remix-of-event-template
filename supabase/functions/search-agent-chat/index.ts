@@ -1139,7 +1139,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `(invitation ou InMail, 1 à 3 relances, visite du profil) : tu choisis ces ` +
         `réglages et tu n'écris que les textes, en vouvoyant TOUJOURS le candidat, ` +
         `jamais de tutoiement, quel que soit ton ton avec l'utilisateur. Appelle ` +
-        `d'abord get_sequence_draft_facts (mission_id) et rédige à partir de ses ` +
+        `d'abord get_sequence_draft_facts (mission_id) et suis ses style_rules (le style de ` +
+        `l'utilisateur : longueurs, ton, accroche, appel à l'action ; une demande comme « plus ` +
+        `court » se passe en style à get_sequence_draft_facts). Rédige à partir de ses ` +
         `SEULS faits : jamais à partir de get_mission_brief ni de get_mission_overview, ` +
         `qui contiennent la rémunération, les critères d'évaluation, les contacts, ` +
         `les entreprises ciblées et le vrai nom d'un client anonymisé, jamais à écrire ` +
@@ -1148,6 +1150,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `propose JAMAIS d'y inscrire des candidats (enroll_in_sequence) ni de ` +
         `l'activer ou de la reprendre (resume_sequence) : l'utilisateur relit les ` +
         `messages, puis inscrit lui-même ses candidats depuis l'écran. ` +
+        `Tout message d'approche à un candidat passe par draft_outreach_message (un candidat) ` +
+        `ou create_sequence (une séquence) : n'écris jamais de message d'approche en texte libre ` +
+        `dans ta réponse. ` +
         `\n\n**🚫 RÈGLE ANTI-FABRICATION (CRITIQUE) :** ` +
         `Tu ne dois JAMAIS prétendre avoir appelé un outil que tu n'as pas RÉELLEMENT ` +
         `appelé. Phrases INTERDITES tant qu'aucun tool_use n'a été émis dans CE tour : ` +
@@ -1717,6 +1722,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       messageId: userMessageId,
                       adminClient: supabase,
                       userBearer: authHeader.replace(/^Bearer\s+/i, "") || null,
+                      // Lot 5e-2 : modèle de cette conversation, pour que create_sequence
+                      // refuse des textes écrits au-dessus du niveau maximal de l'organisation.
+                      modelId: normalizeModelId(resolvedModel),
                     };
                     const handled = await handleProposedToolCall(tc.name, tc.input, ctx);
                     if (handled.outcome === 'awaiting_approval') awaitingApprovalCount++;

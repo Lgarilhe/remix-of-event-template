@@ -79,7 +79,8 @@ const TONE_LABEL: Record<NonNullable<AiContext["tone"]>, string> = {
   formal: "formel / soutenu",
 };
 
-function formatScope(scope: "agence" | "expéditeur", ctx: AiContext): string {
+function formatScope(scope: "agence" | "expéditeur", ctx: AiContext, omitTone = false): string {
+  if (omitTone) ctx = { ...ctx, tone: null };
   if (isEmpty(ctx)) return "";
   const lines: string[] = [];
   lines.push(scope === "agence" ? "Voix de marque de l'agence :" : "Style perso de l'expéditeur :");
@@ -104,6 +105,12 @@ export interface LoadAiContextOpts {
   userId?: string | null;
   /** Bypass cache (debug uniquement) */
   noCache?: boolean;
+  /**
+   * Sans la ligne « Ton imposé » (lot 5e-2) : les rédacteurs de prise de
+   * contact vouvoient toujours et suivent le style de la rédaction ; la
+   * messagerie et l'assistant gardent le ton des consignes.
+   */
+  omitTone?: boolean;
 }
 
 /**
@@ -116,7 +123,8 @@ export async function loadAndBuildAiContext(
   opts: LoadAiContextOpts
 ): Promise<string> {
   const { orgId, userId } = opts;
-  const cacheKey = `${orgId || "-"}|${userId || "-"}`;
+  const omitTone = opts.omitTone === true;
+  const cacheKey = `${orgId || "-"}|${userId || "-"}${omitTone ? "|sans-ton" : ""}`;
 
   if (!opts.noCache) {
     const cached = CACHE.get(cacheKey);
@@ -152,8 +160,8 @@ export async function loadAndBuildAiContext(
     }
   }
 
-  const orgBlock = formatScope("agence", orgCtx);
-  const userBlock = formatScope("expéditeur", userCtx);
+  const orgBlock = formatScope("agence", orgCtx, omitTone);
+  const userBlock = formatScope("expéditeur", userCtx, omitTone);
 
   let result: string;
   if (!orgBlock && !userBlock) {

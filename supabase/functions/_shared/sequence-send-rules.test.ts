@@ -109,6 +109,14 @@ Deno.test("SEQ-091 : salaire, signature « Recruteur » et formulations cabinet 
   assertEquals(blocking(false, "Je suis recruteur chez Acme et on cherche une lead backend.").length, 0);
   assertEquals(blocking(true, "J'accompagne mon client sur ce poste").length, 2);
   assertEquals(blocking(false, "Tu serais disponible pour en parler ?").length, 0, "CTA corrigé mais non bloquant");
+  // Attentes salariales sans « salaire » ni montant (lot 5e-2).
+  for (const m of [
+    "Quelles sont vos attentes salariales pour votre prochain poste ?",
+    "Quelles sont vos prétentions salariales ?",
+    "Quelle évolution de revenus visez-vous ?",
+  ]) assertEquals(blocking(false, m).length, 1, m);
+  assertEquals(blocking(false, "Une équipe de 300 salariés, des revenus récurrents en hausse.").length, 0);
+  assertEquals(blocking(false, "Une croissance de revenus de 40 % en un an, une équipe simple et sans prétention.").length, 0);
 });
 
 Deno.test("SEQ-098 : salutation selon le canal et le ton", () => {
