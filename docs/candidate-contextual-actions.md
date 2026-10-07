@@ -12,6 +12,8 @@ La démo `/inbox?demo=1` illustre trois ensembles d’effets :
 
 Le chat s’ouvre sur les échanges récents. Une seule « Prochaine action » suit l’historique, avec un titre et un motif court. Le parcours est **Préparer → aperçu éditable de tous les effets → validation explicite**, avec un bouton qui nomme le résultat, par exemple « Enregistrer et envoyer ». « Pourquoi ? » donne accès aux sources datées avec leurs logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil du candidat.
 
+L’aperçu présente d’abord les textes complets, les destinataires et les emplacements d’enregistrement, avec un récapitulatif des effets. « Modifier » ouvre uniquement le champ choisi ; le clavier ne s’ouvre pas à l’arrivée dans l’aperçu. « Annuler » conserve la proposition et les brouillons ; « Ignorer la suggestion » reste dans le détail des sources. Après validation, un statut confirme les résultats dans le chat et la fiche, et « Voir le résultat » permet de relire les contenus appliqués.
+
 Les propositions et sources complémentaires sont fictives, écrites pour cet aperçu, sans génération IA ni appel serveur. Les documents préparés, les commentaires et les résultats sont visibles dans l’onglet Actions de la fiche fictive ; les messages simulés rejoignent le même fil d’interactions. La messagerie et la fiche partagent les brouillons et l’état des effets par candidat. Fermer ou annuler l’aperçu ne produit aucun effet ; une validation n’exécute chaque effet qu’une fois. Les essais restent en mémoire et quitter la démo les efface.
 
 Le moteur réel reste à brancher. Cette proposition reprend les procédures Notion actuelles ; les intégrations décrites pour Notion et n8n ne prouvent pas leur disponibilité dans l’app.

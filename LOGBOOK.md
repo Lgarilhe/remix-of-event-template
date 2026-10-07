@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-07 — REFACTOR — Lire les actions préparées avant de les modifier
+
+**Fait** : l’aperçu affiche les contenus complets en lecture, avec destinataires, destinations et nombre d’effets. « Modifier » ouvre seulement le champ choisi ; le focus initial reste sur le titre. « Annuler » ferme sans retirer la suggestion ni perdre les brouillons. « Ignorer la suggestion » reste dans le détail des sources. Un contenu vide affiche une explication et bloque la validation. Les résultats appliqués se relisent sans champ de saisie.
+**Raison** : les grands champs ouverts d’emblée coupaient les textes et focalisaient la saisie avant la lecture ; le bouton de rejet servait de recul ambigu. Le parcours sans retouche conserve deux clics, préparer puis valider.
+**Validation** : sept parcours Chromium réussis, de 320 à 1920 px, clair/sombre et hauteur de 500 px : lecture sans saisie, édition à la demande, annulation conservant le brouillon, partage chat/fiche, validation unique, résultat non éditable, rejet réversible, focus et cibles mobiles de 44 px. Six régressions profil/interactions et quatre fichiers UX réussis. Build réussi, lint ciblé propre, compteurs design inchangés ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans la démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lire puis appliquer deux effets, retrouver les documents dans la fiche et les messages dans les interactions | PASS |
+| Claire | Comprendre les effets et leurs destinations, lire les textes complets avant une édition facultative | PASS |
+| Théo | Champ vide, annulation sans effet, brouillon partagé, double clic unique et isolation des candidats | PASS |
+| Sophie | Lecture sans saisie initiale, modification et annulation à 320/390 px, focus restauré et validation visible | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Composants réels avec services simulés ; aucun compte recruteur réel ni appareil iOS physique. Le moteur et les envois restent fictifs.
+
 ## 2026-10-07 — SPEC — Préparer et appliquer des actions concrètes depuis le chat
 
 **Fait** : la démo propose des contenus préparés et des modifications concrètes : brief et questions d’entretien ; commentaire d’équipe avec mention et réponse Outlook ; questions de scorecard et email Gmail ciblé. Le parcours « Préparer », aperçu modifiable, puis « Enregistrer la préparation » ou « Envoyer et enregistrer » applique les deux effets en mémoire. Les documents et commentaires sont visibles dans l’onglet Actions de la fiche fictive, les emails simulés dans le même fil d’interactions. Le résultat s’ouvre en lecture seule. Les brouillons relus et résultats sont partagés entre chat et fiche ; fermer l’aperçu ne les applique pas, une validation double ne les duplique pas, quitter la démo les efface.

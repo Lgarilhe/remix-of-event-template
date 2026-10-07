@@ -40,6 +40,8 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
 }) {
   const fieldPrefix = useId();
   const [dialog, setDialog] = useState<{ actionId: string; view: 'sources' | 'prepare' | 'result' } | null>(null);
+  const [editingEffectId, setEditingEffectId] = useState<string | null>(null);
+  const dialogTitleRef = useRef<HTMLHeadingElement>(null);
   const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
   const primaryButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const lastActionIdRef = useRef<string | null>(null);
@@ -48,12 +50,15 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
   const result = detail ? results[detail.id] : undefined;
   const reviewingResult = !!result;
   const showingSources = dialog?.view === 'sources';
+  const messageCount = detail?.effects.filter(effect => effect.kind === 'message').length ?? 0;
+  const documentCount = detail?.effects.filter(effect => effect.kind === 'document').length ?? 0;
   const visible = actions.filter(action => !dismissed[action.id] || results[action.id]);
   const canApply = !!detail && !result && detail.effects.length > 0 && detail.effects.every(effect => (drafts[detail.id]?.[effect.id] ?? effect.content).trim().length > 0);
 
   function openDialog(actionId: string, view: 'sources' | 'prepare' | 'result', trigger: HTMLButtonElement) {
     detailTriggerRef.current = trigger;
     lastActionIdRef.current = actionId;
+    setEditingEffectId(null);
     setDialog({ actionId, view });
   }
 
@@ -92,13 +97,16 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
       }}>Revoir la suggestion</Button>
     </div>}
     <Dialog open={!!detail} onOpenChange={open => { if (!open) setDialog(null); }}>
-      {detail && <DialogContent className="flex max-h-[90dvh] max-w-xl flex-col gap-0 overflow-hidden p-0 [&>button]:h-11 [&>button]:w-11" onCloseAutoFocus={event => {
+      {detail && <DialogContent className="flex max-h-[90dvh] max-w-xl flex-col gap-0 overflow-hidden p-0 [&>button]:h-11 [&>button]:w-11" onOpenAutoFocus={event => {
+        event.preventDefault();
+        dialogTitleRef.current?.focus();
+      }} onCloseAutoFocus={event => {
         const target = detailTriggerRef.current?.isConnected ? detailTriggerRef.current : restoreRef.current ?? primaryButtonRefs.current[lastActionIdRef.current ?? ''];
         if (target?.isConnected) { event.preventDefault(); target.focus(); }
       }}>
         <DialogHeader className="shrink-0 px-5 pb-3 pt-5 pr-14 text-left">
           <p className="text-xs text-muted-foreground">{reviewingResult && !showingSources ? 'Résultat dans la démo' : 'Proposition de l’assistant'}</p>
-          <DialogTitle>{detail.title}</DialogTitle>
+          <DialogTitle ref={dialogTitleRef} tabIndex={-1}>{detail.title}</DialogTitle>
           <DialogDescription>{reviewingResult && !showingSources ? detail.successLabel : detail.reason}</DialogDescription>
         </DialogHeader>
         <div className="min-h-0 space-y-5 overflow-y-auto px-5 pb-4">
@@ -106,22 +114,32 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
             <h5 className="text-xs font-semibold text-foreground">Ce qui motive cette action</h5>
             <ActionSources sources={detail.sources} />
           </section> : <>
+            {!reviewingResult && <p className="text-xs text-foreground-secondary">{[
+              messageCount > 0 && `${messageCount} message${messageCount > 1 ? 's' : ''} à envoyer`,
+              documentCount > 0 && `${documentCount} contenu${documentCount > 1 ? 's' : ''} à enregistrer dans la fiche`,
+            ].filter(Boolean).join(' · ')}</p>}
             <div className="divide-y divide-border">{detail.effects.map(effect => {
               const fieldId = `${fieldPrefix}-${effect.id}`;
               const value = result ? result.contents[effect.id] ?? effect.content : drafts[detail.id]?.[effect.id] ?? effect.content;
+              const editing = !reviewingResult && editingEffectId === effect.id;
+              const empty = !reviewingResult && !value.trim();
               return <section key={effect.id} className="space-y-3 py-4 first:pt-0" aria-label={effect.label}>
                 <div className="space-y-2">
-                  <Label htmlFor={fieldId} className="flex items-start gap-2 leading-snug">
-                    {effect.kind === 'message' ? <ServiceLogo service={effect.service} decorative /> : <FileText className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />}
-                    {effect.label}
-                  </Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor={editing ? fieldId : undefined} className="flex items-start gap-2 leading-snug">
+                      {effect.kind === 'message' ? <ServiceLogo service={effect.service} decorative /> : <FileText className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />}
+                      {effect.label}
+                    </Label>
+                    {!reviewingResult && <Button variant="ghost" size="sm" className="min-h-11 shrink-0 md:min-h-8" aria-label={`${editing ? 'Terminer la modification' : 'Modifier'} : ${effect.label}`} onClick={() => setEditingEffectId(editing ? null : effect.id)}>{editing ? 'Terminer' : 'Modifier'}</Button>}
+                  </div>
                   {effect.kind === 'message' ? <dl className="space-y-1 text-xs">
                     <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">Via</dt><dd className="text-foreground">{SERVICE_LABELS[effect.service]}</dd></div>
                     <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">À</dt><dd className="min-w-0 break-words text-foreground [overflow-wrap:anywhere]">{effect.recipient}</dd></div>
                     {effect.subject && <div className="flex gap-2"><dt className="shrink-0 text-muted-foreground">Objet</dt><dd className="min-w-0 break-words text-foreground">{effect.subject}</dd></div>}
                   </dl> : <p className="text-xs text-muted-foreground">{reviewingResult ? 'Enregistré dans' : 'Sera enregistré dans'} : <span className="text-foreground">{effect.destination}</span></p>}
                 </div>
-                <Textarea id={fieldId} aria-label={effect.label} value={value} rows={6} readOnly={reviewingResult} onChange={event => { if (!reviewingResult) onDraftChange(detail.id, effect.id, event.target.value); }} />
+                {editing ? <Textarea id={fieldId} aria-label={effect.label} aria-invalid={empty} aria-describedby={empty ? `${fieldId}-error` : undefined} value={value} rows={8} autoFocus onChange={event => onDraftChange(detail.id, effect.id, event.target.value)} /> : <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">{value}</p>}
+                {empty && <p id={`${fieldId}-error`} className="text-xs text-destructive" role="status">Ajoutez un contenu pour pouvoir valider cette action.</p>}
               </section>;
             })}</div>
             <Collapsible>
@@ -135,7 +153,7 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
           <p className="text-xs text-muted-foreground">Démonstration : aucun envoi réel.</p>
           <div className="flex flex-wrap justify-end gap-2">
             {reviewingResult ? <Button variant="outline" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDialog(null)}>{showingSources ? 'Fermer le détail' : 'Fermer le résultat'}</Button> : <>
-              <Button variant="ghost" size="sm" className="min-h-11 text-muted-foreground md:min-h-8" onClick={dismissAction}>Ignorer la suggestion</Button>
+              {showingSources ? <Button variant="ghost" size="sm" className="min-h-11 text-muted-foreground md:min-h-8" onClick={dismissAction}>Ignorer la suggestion</Button> : <Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDialog(null)}>Annuler</Button>}
               {showingSources ? <Button variant="primary" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDialog({ actionId: detail.id, view: 'prepare' })}>{detail.prepareLabel}</Button> : <Button variant="primary" size="sm" className="min-h-11 md:min-h-8" disabled={!canApply} onClick={applyAction}>{detail.applyLabel}</Button>}
             </>}
           </div>
