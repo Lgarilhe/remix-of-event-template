@@ -17,6 +17,7 @@ import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { LegacySettingsRedirect } from "@/components/settings/shell/LegacySettingsRedirect";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
 import { SequencesGate } from "@/components/sequences/SequencesGate";
+import { onlySequencesBetaParam } from "@/lib/sequencesBeta";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { clearOnboardingProgress } from "@/components/onboarding/onboardingStorage";
@@ -181,14 +182,15 @@ const AppContent = () => {
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><OrganizationGuard><AppLayout><CalendarPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><OrganizationGuard><AppLayout><TasksPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-            {/* Séquences (lot 5c-2) : interrupteur éteint, SequencesGate renvoie vers /missions */}
+            {/* Séquences (lot 5c-2, ouvertes à tous au lot 5h) : interrupteur éteint (secours ?sequences-v2=0), SequencesGate renvoie vers /missions */}
             <Route path="/sequences" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequencesPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
             {/* Nouvelle séquence (lot 5d-2) : avant /sequences/:id, même garde ; rien n'est écrit avant « Enregistrer » */}
             <Route path="/sequences/nouvelle" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage creating /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
             <Route path="/sequences/:id" element={<ProtectedRoute><OrganizationGuard><SequencesGate><AppLayout><SequenceDetailPage /></AppLayout></SequencesGate></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calls" element={<ProtectedRoute><OrganizationGuard><AppLayout><CallsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Legacy redirects */}
-            <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
+            {/* Lot 5h : /outreach mène à l'écran Séquences ; secours (?sequences-v2=0, gardé par la redirection, ou clé à '0'), SequencesGate renvoie vers /missions */}
+            <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/sequences', onlySequencesBetaParam(location.search))} replace />} />
             <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
           <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><AppLayout><Dashboard /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><Qualification /></AppLayout></OrganizationGuard></ProtectedRoute>} />

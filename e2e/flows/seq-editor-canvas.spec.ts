@@ -13,7 +13,7 @@
  */
 import { test as base, expect } from '../fixtures';
 import type { Page } from '@playwright/test';
-import { E2E, authStorageKey } from '../helpers/env';
+import { E2E, authStorageKey, pinLegacySequences } from '../helpers/env';
 import { admin, seedMission, seedSequence, signIn } from '../helpers/supabase-admin';
 
 interface Space { orgId: string; missionId: string; sequenceName: string }
@@ -59,6 +59,11 @@ async function openVisualEditor(page: Page, space: Space) {
   await page.getByRole('tab', { name: 'Visuel' }).click();
   await expect(canvasNode(page, 3)).toBeVisible();
 }
+
+// Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+test.beforeEach(async ({ context }) => {
+  await pinLegacySequences(context);
+});
 
 test.describe('Éditeur, vue Visuel : panneau de réglages', () => {
   test('Entrée ou Espace sur une étape focalisée affiche ses réglages, et le panneau reste sur elle', async ({ page, mockVendors, space }) => {

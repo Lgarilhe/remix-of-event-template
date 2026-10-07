@@ -1,3 +1,5 @@
+import type { BrowserContext, Page } from '@playwright/test';
+
 /**
  * Résolution centralisée de la config e2e depuis l'environnement.
  * Tout est requis sauf BASE_URL (défaut localhost). On échoue tôt et clairement
@@ -51,4 +53,19 @@ export type MissionPageChoice = 'legacy' | 'default' | 'v3';
 export function missionPageEntries(choice: MissionPageChoice = 'legacy'): Array<{ name: string; value: string }> {
   if (choice === 'default') return [];
   return [{ name: MISSION_V3_STORAGE_KEY, value: choice === 'v3' ? '1' : '0' }];
+}
+
+/**
+ * Interrupteur des pages Séquences (src/lib/sequencesBeta.ts) : allumé par
+ * défaut depuis le lot 5h. Les specs écrites contre l'ancienne interface
+ * (liste des séquences seule, ancien éditeur) s'épinglent sur le secours :
+ * clé à « 0 » posée avant chaque chargement, jusqu'au lot 5j qui les porte
+ * sur les nouveaux écrans. Les specs du nouveau parcours (seq-v2-*) gardent
+ * leur réglage (?sequences-v2=1) ou la valeur par défaut.
+ */
+export const SEQUENCES_V2_STORAGE_KEY = 'konekt.sequences-v2';
+export async function pinLegacySequences(target: Pick<BrowserContext, 'addInitScript'> | Pick<Page, 'addInitScript'>): Promise<void> {
+  await target.addInitScript((key: string) => {
+    try { localStorage.setItem(key, '0'); } catch { /* sans stockage */ }
+  }, SEQUENCES_V2_STORAGE_KEY);
 }

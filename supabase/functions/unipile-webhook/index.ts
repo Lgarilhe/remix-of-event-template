@@ -171,7 +171,10 @@ async function alertSiblingStopFailure(
         type: 'action',
         title: 'Relances non arrêtées après une réponse',
         body: `${alert.candidateName || 'Le candidat'} a répondu, mais ses autres séquences ou InMails programmés n'ont pas pu être arrêtés. Un nouvel essai automatique est en cours : vérifiez ses inscriptions pour qu'aucune relance ne parte.`,
-        link: projectId ? `/missions/${projectId}?tab=outreach` : '/missions',
+        // Lot 5h : sans mission, la page de la séquence (ou l'écran Séquences) au lieu de /missions.
+        link: projectId
+          ? `/missions/${projectId}?tab=outreach`
+          : alert.sequenceId ? `/sequences/${alert.sequenceId}` : '/sequences',
         metadata: {
           source: SIBLING_STOP_FAILED_SOURCE,
           event_key: eventKey,
@@ -2131,7 +2134,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           type: 'new_message',
           title: `Nouveau message de ${candidateName}`,
           body: chatId ? `Vous avez reçu un nouveau message LinkedIn` : null,
-          // /outreach est une route legacy (redirigée vers /missions, query perdue).
+          // /outreach est une route legacy (redirigée vers /sequences depuis le lot 5h, query perdue).
           link: chatId ? `/inbox?chatId=${encodeURIComponent(chatId)}` : '/inbox',
           metadata,
         });
@@ -2613,7 +2616,8 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
           type: 'new_message',
           title: `Nouveau message de ${candidateName}`,
           body: 'Réponse reçue par e-mail : la séquence est arrêtée pour ce candidat, aucune relance ne partira.',
-          link: projectId ? `/missions/${projectId}?tab=outreach` : '/missions',
+          // Lot 5h : sans mission, la page de la séquence au lieu de /missions.
+          link: projectId ? `/missions/${projectId}?tab=outreach` : `/sequences/${primary.sequence_id}`,
           metadata: {
             is_candidate: true,
             channel: 'email',
@@ -2791,7 +2795,8 @@ async function handleBounce(supabase: SupabaseClient, accountId: string, payload
             type: 'action',
             title: 'Adresse e-mail invalide, séquence arrêtée',
             body: `L'adresse ${e.address} ${who}est invalide : la séquence est arrêtée et plus aucun e-mail ne lui sera envoyé.`,
-            link: projectId ? `/missions/${projectId}?tab=outreach` : '/missions',
+            // Lot 5h : sans mission, la page de la séquence au lieu de /missions.
+            link: projectId ? `/missions/${projectId}?tab=outreach` : `/sequences/${e.sequence_id}`,
             metadata: {
               source: 'email_bounce',
               enrollment_id: e.id,

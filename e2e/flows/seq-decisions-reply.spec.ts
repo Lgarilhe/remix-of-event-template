@@ -30,7 +30,7 @@ import {
   type TestOrg,
   type TestUser,
 } from '../helpers/supabase-admin';
-import { E2E } from '../helpers/env';
+import { E2E, pinLegacySequences } from '../helpers/env';
 
 const WEBHOOK_SECRET = process.env.E2E_UNIPILE_WEBHOOK_SECRET ?? '';
 const EDGE_DEPLOYED = process.env.E2E_EDGE_FUNCTIONS === '1' && !!WEBHOOK_SECRET;
@@ -63,6 +63,8 @@ test.afterEach(async () => {
 /** Page connectée (fuseau de Paris) ; seule l'action `list` de unipile-accounts est simulée. */
 async function openAs(browser: Browser, user: TestUser, accountIds: string[]): Promise<Page> {
   const context = await browser.newContext({ storageState: await storageStateForUser(user), timezoneId: TIMEZONE, locale: 'fr-FR' });
+  // Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+  await pinLegacySequences(context);
   contexts.push(context);
   await context.route('**/functions/v1/unipile-accounts', async (route) => {
     let action: string | undefined;

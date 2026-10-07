@@ -49,7 +49,7 @@
  * - Séquence recommandée (17 étapes, deux fourches imbriquées) lisible à
  *   1 280 et 360 px : cartes dans la fenêtre, sans chevauchement, aucune hors
  *   du parcours, captures jointes ;
- * - drapeau éteint (@smoke) : « Modifier » ouvre l'ancien éditeur (sélecteur
+ * - drapeau éteint (@smoke, secours ?sequences-v2=0 depuis le lot 5h) : « Modifier » ouvre l'ancien éditeur (sélecteur
  *   de mode), « Créer une séquence » l'ancien choix de départ.
  *
  * Seule la liste des comptes LinkedIn du prestataire est simulée dans le
@@ -1075,9 +1075,10 @@ test.describe('Séquences v2 — éditeur unique, corrections de relecture (lot 
   });
 });
 
-// Drapeau éteint (défaut) : rien de visible ne change ; l'ancien éditeur reste le seul chemin.
-// Aucune fonction serveur appelée : ce bloc tourne aussi sur la CI de PR (@smoke), sans E2E_EDGE_FUNCTIONS.
-test.describe('Séquences v2 — éditeur unique, drapeau éteint (lot 5d-2)', () => {
+// Drapeau éteint (secours ?sequences-v2=0 depuis le lot 5h, jusqu'au lot 5j) : rien de visible ne
+// change ; l'ancien éditeur reste le seul chemin. Aucune fonction serveur appelée : ce bloc tourne
+// aussi sur la CI de PR (@smoke), sans E2E_EDGE_FUNCTIONS.
+test.describe('Séquences v2 — éditeur unique, drapeau éteint (lot 5d-2, secours du lot 5h)', () => {
   test('@smoke drapeau éteint : /sequences/nouvelle renvoie vers les missions sans rien écrire ; « Modifier » et « Créer une séquence » du panneau ouvrent l’ancien éditeur', async ({ browser, org }) => {
     const owner = org.owner;
     await setOrgPlan(org.orgId);
@@ -1085,8 +1086,10 @@ test.describe('Séquences v2 — éditeur unique, drapeau éteint (lot 5d-2)', (
     const missionId = await seedMission(org.orgId, owner.userId, { name: 'Responsable paie' });
     const seeded = await seedBranchedSequence(org.orgId, owner.userId, missionId, account);
 
-    const page = await openAt(browser, owner, account, `/sequences/nouvelle?mission=${missionId}&depart=modele:invitation-message`);
+    // ?sequences-v2=0 : la garde éteint dès ce rendu (rien n'est monté) et garde le choix pour la suite.
+    const page = await openAt(browser, owner, account, `/sequences/nouvelle?mission=${missionId}&depart=modele:invitation-message&sequences-v2=0`);
     await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
+    expect(await page.evaluate(() => window.localStorage.getItem('konekt.sequences-v2'))).toBe('0');
     expect((await admin().from('outreach_sequences').select('id').eq('organization_id', org.orgId)).data ?? []).toHaveLength(1);
 
     await page.goto(`/missions/${missionId}?tab=outreach`, { waitUntil: 'domcontentloaded' });

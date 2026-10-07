@@ -12,13 +12,13 @@
  * | Écrivain                                          | type                  | Titre                                | Lien                      | metadata.source       | Classe  |
  * |---------------------------------------------------|-----------------------|--------------------------------------|---------------------------|-----------------------|---------|
  * | unipile-webhook (message reçu)                    | new_message           | Nouveau message de …                 | /inbox?chatId=… ou /inbox | —                     | message |
- * | unipile-webhook (réponse par e-mail, sans chat_id)| new_message           | Nouveau message de …                 | /missions/…?tab=outreach  | —                     | message |
- * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach | email_bounce     | action  |
- * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach ou /missions | reply_sibling_stop_failed | action |
+ * | unipile-webhook (réponse par e-mail, sans chat_id)| new_message           | Nouveau message de …                 | /missions/…?tab=outreach ou /sequences/… | —      | message |
+ * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach ou /sequences/… | email_bounce | action |
+ * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach, /sequences/… ou /sequences | reply_sibling_stop_failed | action |
  * | calendly-webhook (RDV pris)                       | action                | RDV pris, séquence arrêtée           | /qualification/… ou /missions | calendly          | action  |
  * | unipile-webhook (compte déconnecté ou en erreur)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
  * | unipile-webhook (rattachement du compte échoué)   | error                 | Compte LinkedIn non rattaché         | /settings?tab=account     | —                     | action  |
- * | process-sequences (auto-pause, trop d'échecs)     | error                 | Séquence mise en pause automatiquement | /missions/…?tab=outreach ou /missions | sequence_auto_pause | action |
+ * | process-sequences (auto-pause, trop d'échecs)     | error                 | Séquence mise en pause automatiquement | /missions/…?tab=outreach ou /sequences/… | sequence_auto_pause | action |
  * | CandidateCommentsTab (mention)                    | mention               | … vous a mentionné                   | /pipeline?candidate=…     | —                     | action  |
  * | process-agent-tasks (fin de tâche)                | success               | Scoring terminé — …                  | /missions/…?tab=pipeline  | agent_background_task | action  |
  * | process-agent-tasks (abandon de tâche)            | error                 | Tâche de fond interrompue — …        | /missions/…?tab=pipeline  | agent_background_task | action  |
@@ -36,6 +36,12 @@
  *
  * Écrivains : supabase/functions (from('notifications').insert), src/ (même
  * appel) et supabase/migrations (INSERT INTO public.notifications).
+ *
+ * Séquence sans mission (lot 5h) : le lien mène à sa page (/sequences/<id>),
+ * ou à l'écran Séquences (/sequences) quand l'écrivain n'a pas la séquence ;
+ * avant, à /missions. Avec le secours ?sequences-v2=0, ces adresses renvoient
+ * à /missions. Une séquence d'une mission garde /missions/…?tab=outreach
+ * (panneau Prise de contact).
  *
  * Compte déconnecté : écrit sur account_disconnected / account_error, et sur
  * account_status_updated au passage de OK vers CREDENTIALS, ERROR ou

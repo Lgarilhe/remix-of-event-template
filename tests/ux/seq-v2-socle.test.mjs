@@ -158,20 +158,21 @@ const SCREEN_FILES = [
   ...filesUnder('src/components/sequences'),
 ];
 
-test('5c-2 — interrupteur konekt.sequences-v2 éteint par défaut, lectures protégées', async (t) => {
+test('5c-2 — interrupteur konekt.sequences-v2 (allumé par défaut depuis le lot 5h), lectures protégées', async (t) => {
   const beta = await loadTs(t, 'src/lib/sequencesBeta.ts');
   if (!beta) return;
   assert.equal(beta.SEQUENCES_BETA_STORAGE_KEY, 'konekt.sequences-v2');
   assert.equal(beta.SEQUENCES_BETA_PARAM, 'sequences-v2');
-  assert.equal(beta.SEQUENCES_BETA_DEFAULT, false);
+  // Lot 5h : allumé par défaut ; '0' (clé ou ?sequences-v2=0) rend l'ancien parcours.
+  assert.equal(beta.SEQUENCES_BETA_DEFAULT, true);
   const store = (value) => ({ getItem: () => value, setItem: () => {} });
-  assert.equal(beta.readSequencesBeta(store(null)), false, 'jamais choisi : éteint');
+  assert.equal(beta.readSequencesBeta(store(null)), true, 'jamais choisi : allumé (lot 5h)');
   assert.equal(beta.readSequencesBeta(store('1')), true);
   assert.equal(beta.readSequencesBeta(store('0')), false);
-  assert.equal(beta.readSequencesBeta(store('oui')), false);
-  assert.equal(beta.readSequencesBeta(null), false, 'stockage absent');
+  assert.equal(beta.readSequencesBeta(store('oui')), true, 'valeur inconnue : défaut');
+  assert.equal(beta.readSequencesBeta(null), true, 'stockage absent : défaut');
   const throwing = { getItem: () => { throw new Error('bloqué'); }, setItem: () => { throw new Error('bloqué'); } };
-  assert.equal(beta.readSequencesBeta(throwing), false, 'lecture qui lève : éteint, sans erreur');
+  assert.equal(beta.readSequencesBeta(throwing), true, 'lecture qui lève : défaut, sans erreur');
   assert.equal(beta.writeSequencesBeta(true, throwing), false, 'écriture qui lève : false, sans erreur');
   const written = [];
   assert.equal(beta.writeSequencesBeta(true, { getItem: () => null, setItem: (k, v) => written.push([k, v]) }), true);
@@ -183,14 +184,17 @@ test('5c-2 — interrupteur konekt.sequences-v2 éteint par défaut, lectures pr
   assert.equal(beta.sequencesBetaParam(''), null);
   assert.equal(beta.withoutSequencesBetaParam('?a=b&sequences-v2=1&c=d'), '?a=b&c=d');
   assert.equal(beta.withoutSequencesBetaParam('?sequences-v2=1'), '');
-  // Magasin : défaut éteint, abonnés prévenus.
+  // Magasin : abonnés prévenus à chaque changement.
   beta.resetSequencesBetaForTests();
   let calls = 0;
   const off = beta.subscribeSequencesBeta(() => { calls += 1; });
+  beta.setSequencesBeta(false);
+  assert.equal(beta.getSequencesBeta(), false);
+  beta.setSequencesBeta(false);
+  assert.equal(calls, 1, 'même valeur : aucun rappel');
   beta.setSequencesBeta(true);
   assert.equal(beta.getSequencesBeta(), true);
-  beta.setSequencesBeta(true);
-  assert.equal(calls, 1, 'même valeur : aucun rappel');
+  assert.equal(calls, 2);
   off();
   beta.resetSequencesBetaForTests();
   // Adresses.
@@ -981,9 +985,12 @@ test('5c-2 — corrections d’écran : statistiques à plat, file « À venir �
   assert.match(orgPage, /copyName: \(name\) => `Copie de \$\{name\}`,/);
   assert.doesNotMatch(orgPage, /Votre offre ne permet pas/);
 
-  // Barre : six cibles de 44 px sur téléphone seulement drapeau allumé ; éteint, classes d'avant.
+  // Barre : six cibles de 44 px sur téléphone sans espace fixe ; la disposition
+  // suit le nombre de cibles (lot 5h : Séquences et Appels peuvent s'ajouter
+  // ensemble), jamais le drapeau seul. Sept cibles : voir tests/ux/lot5h-bascule.test.mjs.
   const bottom = read('src/components/sidebar/SidebarBottomRow.tsx');
-  assert.match(bottom, /const tight = showSequences && !collapsed;/);
+  assert.match(bottom, /const targetCount = links\.length \+ 1;/);
+  assert.match(bottom, /const tight = !collapsed && targetCount >= 6;/);
   assert.match(bottom, /tight \? 'md:gap-0\.5' : 'gap-0\.5'/);
-  assert.match(bottom, /isTasks && !collapsed && overdue !== null && \(tight \? 'md:gap-1 md:px-2' : 'gap-1 px-2'\)/);
+  assert.match(bottom, /isTasks && !collapsed && overdue !== null && !dense && \(tight \? 'md:gap-1 md:px-2' : 'gap-1 px-2'\)/);
 });

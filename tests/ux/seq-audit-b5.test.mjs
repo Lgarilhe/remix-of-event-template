@@ -356,7 +356,8 @@ test('SEQ-107 / SEQ-115 — rebond : exécution e-mail marquée, recruteur prév
   assert.match(bounce, /await markLastEmailExecutionBounced\(supabase, enr\.id\);/);
   assert.match(bounce, /title: 'Adresse e-mail invalide, séquence arrêtée'/);
   assert.match(newMail, /type: 'new_message',/);
-  assert.match(newMail, /link: projectId \? `\/missions\/\$\{projectId\}\?tab=outreach` : '\/missions'/);
+  // Lot 5h : séquence sans mission, sa page (/sequences/<id>) au lieu de /missions.
+  assert.match(newMail, /link: projectId \? `\/missions\/\$\{projectId\}\?tab=outreach` : `\/sequences\/\$\{primary\.sequence_id\}`/);
   assert.match(calendly, /title: 'RDV pris, séquence arrêtée'/);
 });
 

@@ -154,8 +154,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const planNoticeId = useId();
-  // Lot 5c-2 : interrupteur konekt.sequences-v2 allumé, chaque séquence mène à
-  // sa page et la liste à l'écran Séquences de l'organisation. Éteint, rien ne change.
+  // Lot 5c-2 : interrupteur konekt.sequences-v2 allumé (par défaut depuis le
+  // lot 5h), chaque séquence mène à sa page et la liste à l'écran Séquences de
+  // l'organisation ; « Créer », « Modifier » et « Dupliquer » mènent aux pages.
+  // Éteint (secours ?sequences-v2=0) : l'ancien parcours, sans changement.
   const sequencesBeta = useSequencesBeta();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
   // plan gratuit. Décision 32 : tant que l'état d'abonnement n'est pas lu
@@ -398,6 +400,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     missionSequenceIds, setNudging, setNudgeConfirmOpen,
     setActivateConfirm, setDeleteConfirmId, duplicatingRef, setDuplicatingId,
     editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
+    // Lot 5h : drapeau allumé, la copie s'ouvre sur sa page (étapes comprises).
+    onDuplicated: sequencesBeta ? (copy) => navigate(sequencePath(copy.id, projectId)) : undefined,
   });
 
   // Drapeau konekt.sequences-v2 allumé (lot 5d-2) : la modification et la

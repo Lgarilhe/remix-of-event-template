@@ -159,12 +159,15 @@ Notion n'apparaît dans l'application que comme connecteur de l'assistant : une 
                            (lot 5d-2) : l'onglet Étapes est le seul éditeur sous l'interrupteur (src/components/sequences/editor/ :
                            fil en liste, palette jugée par isStepAllowedAt, panneau d'étape, variables de
                            src/lib/sequenceVariables.ts, aperçu réel par preview_values, validateSequence seule règle,
-                           enregistrement explicite par useSequenceSave, brouillon local) ; « Modifier » et « Créer une
-                           séquence » du panneau de mission y mènent (NewSequenceDialog) ; interrupteur éteint,
-                           SequenceBuilder reste le seul éditeur. Derrière
-                           l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts : clé locale, ?sequences-v2=1|0,
-                           éteint par défaut jusqu'au lot 5h) ; éteint, SequencesGate renvoie vers /missions et aucun lien
-                           n'y mène.
+                           enregistrement explicite par useSequenceSave, brouillon local) ; « Modifier », « Créer une
+                           séquence » et « Dupliquer » (copie puis sa page, lot 5h) du panneau de mission y mènent
+                           (NewSequenceDialog) ; interrupteur éteint, SequenceBuilder reste le seul éditeur. Interrupteur
+                           konekt.sequences-v2 (src/lib/sequencesBeta.ts : clé locale, ?sequences-v2=1|0), allumé par
+                           défaut depuis le lot 5h (bascule du 07/10/2026, demande du propriétaire, avant 5f et 5g) ;
+                           secours ?sequences-v2=0 ou clé à '0' jusqu'au lot 5j : l'ancien parcours, SequencesGate renvoie
+                           vers /missions et aucun lien n'y mène. /outreach mène à /sequences (secours : /missions ;
+                           ?sequences-v2= suit la redirection, onlySequencesBetaParam).
+                           Notifications d'une séquence sans mission : /sequences/<id> (ou /sequences), plus /missions.
 /marketplace             → Marketplace
 /settings                → Settings, coquille à deux portes (src/pages/Settings.tsx, registre src/components/settings/shell/sections.tsx).
   Mon compte : /settings/account/connections | writing | journal (provisoire, part dans /agents au lot 9).
@@ -174,7 +177,7 @@ Notion n'apparaît dans l'application que comme connecteur de l'assistant : une 
 Public (no AppLayout): / (landing), /auth, /onboarding (protected, no org guard), /portal/:token (CandidatePortal),
   /client/:token (ClientPortalV2), /r/:slug (RecruiterPublicProfile), /unsubscribe, /privacy, /privacy-extension,
   /pricing (page tarifs publique, lisible sans session : SELECT anon sur subscription_plans)
-Legacy: /outreach → /missions, /ats → /pipeline, /index → /
+Legacy: /outreach → /sequences (lot 5h ; secours : /missions), /ats → /pipeline, /index → /
 ```
 
 ### Mission Flow
@@ -467,7 +470,7 @@ OutreachSearchContext       — legacy global search (mostly replaced by useLink
 ```
 
 ### Barre latérale (lots 5 et 6, 2026-09)
-`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Séquences si l'interrupteur konekt.sequences-v2 est allumé (décision 8 du 05/10, lot 5c-2), Marketplace, Paramètres, Aide), menu de l'avatar. Même interrupteur pour l'entrée « Séquences » de la palette Ctrl J, le raccourci « G puis S » (`GoShortcuts`, ligne de `KeyboardShortcutsDialog`) et les liens de `SequencesList` (page de chaque séquence, « Toutes les séquences de l'organisation »). Plus de cloche. La bulle ronde de l'assistant est revenue le 2026-10-05 (`src/components/agent/AssistantLauncher.tsx`, montée par `AppLayout`, masquée sur /agents et /inbox, `openAgent()`) ; Ctrl K reste.
+`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Séquences (décision 8 du 05/10, lot 5c-2 ; pour tous depuis le lot 5h, absente seulement avec le secours ?sequences-v2=0), Appels (dès un premier appel), Marketplace, Paramètres, Aide ; disposition selon le nombre de cibles : à sept, deux lignes de quatre colonnes de 44 px sur téléphone et cibles de 32 px de large sur ordinateur, garde `e2e/flows/sidebar.spec.ts`), menu de l'avatar. Même interrupteur pour l'entrée « Séquences » de la palette Ctrl J, le raccourci « G puis S » (`GoShortcuts`, ligne de `KeyboardShortcutsDialog`) et les liens de `SequencesList` (page de chaque séquence, « Toutes les séquences de l'organisation »). Plus de cloche. La bulle ronde de l'assistant est revenue le 2026-10-05 (`src/components/agent/AssistantLauncher.tsx`, montée par `AppLayout`, masquée sur /agents et /inbox, `openAgent()`) ; Ctrl K reste.
 - Composants dans `src/components/sidebar/**`, hooks dans `src/hooks/sidebar/**`, clés React Query sous `['sidebar', …]`, un seul canal temps réel (`useSidebarRealtime`).
 - Un seul chiffre coloré : À traiter = panne LinkedIn + réponses de candidats non lues (3 jours ouvrés) + mes validations + notifications « action » non lues (`src/lib/sidebarSignals.ts`, `todoCount` : `null` si une source n'a rien renvoyé, jamais 0 inventé).
 - La messagerie ne marque lues que les notifications de la conversation ouverte (`metadata->>chat_id`, `Inbox.tsx`).
