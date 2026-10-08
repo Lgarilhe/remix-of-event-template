@@ -152,7 +152,7 @@ export function GuidedActionReview({
       <p className="text-xs font-medium text-foreground-secondary">{recap ? canConfirm && !blocked ? 'Tout est prêt' : 'Récapitulatif' : 'Préparons la suite'}</p>
       <DialogTitle ref={titleRef} tabIndex={-1} className="break-words text-lg">{title}</DialogTitle>
       <DialogDescription className="sr-only">{reason} Relisez les contenus un par un, puis confirmez les envois et les enregistrements.</DialogDescription>
-      <div className="flex items-center gap-3" aria-label={`Étape ${stepNumber} sur ${effects.length + 1}`}>
+      <div role="group" className="flex items-center gap-3" aria-label={`Étape ${stepNumber} sur ${effects.length + 1}`}>
         <div className="flex min-w-0 flex-1 gap-1" aria-hidden="true">{Array.from({ length: effects.length + 1 }, (_, index) => <span key={index} className={cn('h-1.5 flex-1 rounded-full', index === step || (index < effects.length && guidedReviewAcknowledged(effects[index], reviewed)) ? 'bg-brand' : 'bg-muted')} />)}</div>
         <span className="shrink-0 text-xs text-foreground-secondary">{stepNumber}/{effects.length + 1}</span>
       </div>
