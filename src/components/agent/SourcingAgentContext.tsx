@@ -29,9 +29,9 @@ export function SourcingAgentContext({ projectId, projectName, agent, orgType, v
   const memories = [...new Map(rows.filter(row => typeof row.id === 'string' && typeof row.content === 'string').map(row => [string(row.id), row])).values()];
   const organizationLabel = orgType === 'agency' ? 'Cabinet' : orgType === 'enterprise' ? 'Entreprise' : 'Votre activité';
   const organizationPhrase = orgType === 'agency' ? 'du cabinet' : orgType === 'enterprise' ? 'de l’entreprise' : 'de votre activité';
-  return <Card className="space-y-5 p-4 sm:p-5">
+  return <Card className="min-w-0 space-y-5 p-4 sm:p-5">
     <div className="space-y-1"><h3 className="text-base font-semibold">Le cap de votre agent</h3><p className="text-sm text-muted-foreground">{agent ? verified ? 'Le contexte de son dernier calibrage.' : 'Le contexte enregistré reste à vérifier avant de reprendre.' : 'Il partira du cadrage et des règles de votre mission.'}</p></div>
-    <dl className="grid gap-4 sm:grid-cols-2">
+    <dl className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1"><dt className="flex items-center gap-2 text-xs text-muted-foreground"><BookOpen aria-hidden="true" className="h-4 w-4 text-foreground" />{orgType === 'enterprise' ? 'Poste' : 'Mission'}</dt><dd className="text-sm font-medium break-words">{string(brief.title) || projectName || 'Mission en cours'}</dd></div>
       <div className="space-y-1"><dt className="flex items-center gap-2 text-xs text-muted-foreground"><Database aria-hidden="true" className="h-4 w-4 text-foreground" />Source de recherche</dt><dd className="text-sm font-medium">{source}</dd></div>
     </dl>
@@ -40,6 +40,6 @@ export function SourcingAgentContext({ projectId, projectName, agent, orgType, v
       <p className="text-xs text-muted-foreground">Les règles confirmées {organizationPhrase} encadrent {orgType === 'enterprise' ? 'le poste' : 'la mission'}. Vos avis sur les profils ne créent aucune règle automatiquement.</p>
       {memories.length > 0 ? <Collapsible><CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm" className="max-sm:min-h-11">Lire les {memories.length} mémoire{memories.length > 1 ? 's' : ''} du calibrage</Button></CollapsibleTrigger><CollapsibleContent><ul className="mt-3 divide-y divide-border">{memories.map(memory => <li key={string(memory.id)} className="space-y-1 py-3"><p className="text-xs font-medium">{memory.scope === 'organization' ? organizationLabel : orgType === 'enterprise' ? 'Poste' : 'Mission'} · {kindLabel(memory.kind)}</p><p className="text-sm whitespace-pre-wrap break-words">{string(memory.content)}</p></li>)}</ul></CollapsibleContent></Collapsible> : <p className="text-xs text-muted-foreground">{agent ? 'Aucune mémoire de recherche ou de scoring enregistrée dans ce calibrage.' : 'Les mémoires applicables seront vérifiées lors de la préparation.'}</p>}
     </div>
-    <Button type="button" variant="ghost" size="sm" className="max-sm:min-h-11" asChild><Link to={`/missions/${projectId}/sourcing`}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" />Revoir le cadrage et les filtres de la mission</Link></Button>
+    <Button type="button" variant="ghost" size="sm" className="h-auto min-h-11 max-w-full justify-start whitespace-normal rounded-lg py-2 text-left" asChild><Link to={`/missions/${projectId}/sourcing`}><SlidersHorizontal aria-hidden="true" className="h-4 w-4 shrink-0" />Revoir le cadrage et les filtres de la mission</Link></Button>
   </Card>;
 }

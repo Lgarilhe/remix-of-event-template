@@ -215,8 +215,8 @@ export function SourcingAgentWorkspace({ projectId, projectName, missionStatus, 
         <Tabs value={tab} onValueChange={setTab} className="space-y-5">
           <TabsList aria-label="Espace de travail de l’agent" className="h-11 w-full justify-start sm:w-auto"><TabsTrigger ref={(element) => { tabRefs.current.pilotage = element; }} value="pilotage" className="flex-1 max-sm:min-h-11 sm:flex-none">Pilotage</TabsTrigger><TabsTrigger ref={(element) => { tabRefs.current.profils = element; }} value="profils" className="flex-1 max-sm:min-h-11 sm:flex-none">Profils{candidates.filter(candidate => !candidate.decision).length > 0 && ` (${candidates.filter(candidate => !candidate.decision).length})`}</TabsTrigger><TabsTrigger ref={(element) => { tabRefs.current.reglages = element; }} value="reglages" className="flex-1 max-sm:min-h-11 sm:flex-none">Réglages</TabsTrigger></TabsList>
           <TabsContent value="pilotage" forceMount className="space-y-5 data-[state=inactive]:hidden">
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-              <div className="space-y-5">
+            <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-5">
                 <Card className="space-y-4 p-4 sm:p-5">
                   <p className="text-xs font-medium text-muted-foreground">Prochaine étape</p>
                   {!verified ? <><h3 className="text-lg font-semibold">Vérifier le contexte actuel</h3><p className="text-sm text-muted-foreground">Nous relisons le cadrage, les mémoires et les connexions avant toute nouvelle recherche.</p><Button type="button" variant="outline" className={control} disabled={query.isFetching} onClick={() => void query.refetch()}>Actualiser l’agent</Button></>
