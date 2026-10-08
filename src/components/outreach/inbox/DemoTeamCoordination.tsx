@@ -26,7 +26,7 @@ export function DemoTeamCoordination({ actions, results }: {
         <span className="text-xs text-muted-foreground">{SERVICE_LABELS[effect.service]}</span>
       </div>
       <p className="break-words text-xs text-foreground-secondary [overflow-wrap:anywhere]">À : {effect.recipient}</p>
-      {effect.subject && <p className="break-words text-sm font-medium text-foreground">{effect.subject}</p>}
+      {(result.subjects?.[effect.id] ?? effect.subject) && <p className="break-words text-sm font-medium text-foreground">{result.subjects?.[effect.id] ?? effect.subject}</p>}
       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground-secondary [overflow-wrap:anywhere]">{result.contents[effect.id]}</p>
       <p className="text-xs text-muted-foreground">Envoyé dans la démo le <time dateTime={result.appliedAt}>{new Date(result.appliedAt).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time>.</p>
     </article>)}</div>

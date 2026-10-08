@@ -35,6 +35,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
   const [actionResults, setActionResults] = useState<Record<string, DemoActionResult>>({});
   const [dismissedActions, setDismissedActions] = useState<Record<string, boolean>>({});
   const [actionDrafts, setActionDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [actionSubjectDrafts, setActionSubjectDrafts] = useState<Record<string, Record<string, string>>>({});
   const suggestedActions = useMemo(() => createDemoCandidateActions(conversations), [conversations]);
   const endRef = useRef<HTMLDivElement>(null);
   const selected = conversations.find(conversation => conversation.id === selectedId) ?? null;
@@ -48,7 +49,7 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
         actionType: effect.service === 'whatsapp' ? 'whatsapp_message' : effect.service === 'linkedin' ? 'message' : 'email',
         channel: effect.service === 'gmail' || effect.service === 'outlook' ? 'email' : effect.service,
         service: effect.service, direction: 'outbound', recipient: effect.recipient,
-        finalMessage: result.contents[effect.id], finalSubject: effect.subject, stepOrder: 0, status: 'sent',
+        finalMessage: result.contents[effect.id], finalSubject: result.subjects?.[effect.id] ?? effect.subject, stepOrder: 0, status: 'sent',
       }));
     });
     return [...selected.events, ...(replies[selected.id] ?? []), ...appliedMessages].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
@@ -62,12 +63,16 @@ export function InboxDemo({ onExit }: { onExit: () => void }) {
     const action = selected && suggestedActions[selected.id].find(item => item.id === id);
     if (!action || actionResults[id] || dismissedActions[id]) return;
     const contents = Object.fromEntries(action.effects.map(effect => [effect.id, (actionDrafts[id]?.[effect.id] ?? effect.content).trim()]));
-    if (Object.values(contents).some(value => !value)) return;
-    const result = { appliedAt: new Date().toISOString(), contents };
+    const subjects = Object.fromEntries(action.effects.flatMap(effect => effect.kind === 'message' && effect.subject
+      ? [[effect.id, (actionSubjectDrafts[id]?.[effect.id] ?? effect.subject).trim()]]
+      : []));
+    if (Object.values(contents).some(value => !value) || Object.values(subjects).some(value => !value)) return;
+    const result = { appliedAt: new Date().toISOString(), contents, subjects };
     setActionResults(previous => previous[id] ? previous : { ...previous, [id]: result });
   }
-  const actions = selected && <DemoCandidateActions key={selected.id} actions={suggestedActions[selected.id]} results={actionResults} dismissed={dismissedActions} drafts={actionDrafts}
+  const actions = selected && <DemoCandidateActions key={selected.id} actions={suggestedActions[selected.id]} results={actionResults} dismissed={dismissedActions} drafts={actionDrafts} subjectDrafts={actionSubjectDrafts}
     onDraftChange={(id, effectId, value) => setActionDrafts(previous => ({ ...previous, [id]: { ...previous[id], [effectId]: value } }))}
+    onSubjectDraftChange={(id, effectId, value) => setActionSubjectDrafts(previous => ({ ...previous, [id]: { ...previous[id], [effectId]: value } }))}
     onApply={applyAction} onDismiss={(id, dismissed) => setDismissedActions(previous => ({ ...previous, [id]: dismissed }))} />;
   const teamCoordination = selected && <DemoTeamCoordination actions={suggestedActions[selected.id]} results={actionResults} />;
   const context = selected && <ConversationContext name={selected.name} profile={selected.profile} profileUrl={null} mission={selected.mission} events={events} now={Date.now()} readOnly onEnroll={noop} onAddToPipeline={noop} />;
