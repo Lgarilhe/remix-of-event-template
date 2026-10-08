@@ -32,6 +32,17 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — SPEC — Espace Agents et pilotage du sourcing
+
+**Fait** : espace personnel `/agents/sourcing`, accessible dans Missions, Assistant et la palette. Un agent par mission, sélection de mission avant configuration et ouverture en pleine page. Pilotage, profils et réglages partagent le contexte, les mémoires et le calibrage existants ; activation et actions payantes restent explicites. Sphères décoratives texturées, animation unique de quatre secondes et mouvement réduit respecté, composants natifs du design system.
+**Données** : pagination des agents et missions personnelles ; noms des missions partagées accessibles résolus uniquement pour les agents concernés. Compteurs agrégés en SQL par lots de 100, sans télécharger les profils historiques ; RPC invoker authentifiée avec RLS existantes, portée organisation/auteur. Compteurs du contexte enregistré et évaluations incertaines de tous contextes distingués. Les réponses tardives d’un autre espace sont refusées et une erreur d’actualisation conserve le dernier état connu.
+**Validation** : hook hub 15/15, workspace 73/73, build et lint ciblé réussis, onze diagnostics TypeScript hérités sans ajout. Audit SQL isolé avec rollback : privilèges, deux organisations, rôles, mission partagée, compteurs exacts, limite 100 IDs, confidentialité et absence de mutation. Les quatre personas Chromium passent en clair/sombre à 320/390 px, clavier, animations et erreurs ; contrôles axe sans violation. Cibles mobiles et débordement de grille à 320 px corrigés ; largeur contrôlée sur body, root et main. Le refus anonyme est vérifié par HTTP en CI, conformément au contournement documenté du crash de l’image locale PostgreSQL sur SET ROLE anon + refus EXECUTE.
+**Limites** : API navigateur simulées et prestataires non sollicités ; la QA ne mesure pas la qualité d’un sourcing réel. Aucun agent lancé ni contact candidat effectué pour les essais. Aucun nouveau connecteur ATS externe.
+**Livraison** : contrôles PR et publication en cours ; aucun statut SHIP anticipé.
+**Refs** : branche `codex/agents-workspace-experience-20261008` ; migration `20261008135554_sourcing_agent_hub_counts.sql`.
+
+---
+
 ## 2026-10-08 — REFACTOR — Relecture guidée des actions candidat
 
 **Contexte** : la revue de toutes les actions dans une seule fenêtre demandait trop de lecture. La messagerie et les fiches candidat proposent désormais un contenu par écran, modifiable, avec progression et retour en arrière.

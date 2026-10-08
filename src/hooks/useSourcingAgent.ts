@@ -119,6 +119,7 @@ export function useSourcingAgent(projectId: string, { enabled = true, pollWhileO
       });
       if (!current()) throw new SourcingAgentRequestError('STALE_CONTEXT', 'Le contexte a changé. Rouvrez l’agent pour vérifier le résultat.');
       queryClient.setQueryData(queryKey, snapshot);
+      void queryClient.invalidateQueries({ queryKey: ['sourcing-agents-hub', organizationId, user?.id], exact: true });
       // These management actions can return before account and live-memory
       // reads so they remain available during an outage. Verify their full
       // prerequisites immediately before offering any subsequent paid action.

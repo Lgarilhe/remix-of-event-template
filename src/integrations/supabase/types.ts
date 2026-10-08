@@ -6699,6 +6699,167 @@ export type Database = {
           },
         ]
       }
+      sourcing_agent_candidates: {
+        Row: {
+          agent_id: string
+          candidate_id: string
+          context_key: string
+          created_at: string
+          created_by: string
+          credits_reserved: number
+          credits_used: number
+          decision: string | null
+          id: string
+          organization_id: string
+          person_key: string
+          profile: Json
+          project_id: string
+          provenance: Json
+          reason: string | null
+          result: Json
+          score: number | null
+          source_aliases: Json
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          candidate_id: string
+          context_key: string
+          created_at?: string
+          created_by: string
+          credits_reserved?: number
+          credits_used?: number
+          decision?: string | null
+          id?: string
+          organization_id: string
+          person_key: string
+          profile?: Json
+          project_id: string
+          provenance?: Json
+          reason?: string | null
+          result?: Json
+          score?: number | null
+          source_aliases?: Json
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          candidate_id?: string
+          context_key?: string
+          created_at?: string
+          created_by?: string
+          credits_reserved?: number
+          credits_used?: number
+          decision?: string | null
+          id?: string
+          organization_id?: string
+          person_key?: string
+          profile?: Json
+          project_id?: string
+          provenance?: Json
+          reason?: string | null
+          result?: Json
+          score?: number | null
+          source_aliases?: Json
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "sourcing_agent_candidates_agent_id_organization_id_project_fkey"; columns: ["agent_id", "organization_id", "project_id", "created_by"]; isOneToOne: false; referencedRelation: "sourcing_agents"; referencedColumns: ["id", "organization_id", "project_id", "created_by"] },
+        ]
+      }
+      sourcing_agents: {
+        Row: {
+          account_id: string | null
+          api: string | null
+          approved_context_key: string | null
+          checkpoint: Json
+          context_snapshot: Json
+          created_at: string
+          created_by: string
+          credits_reserved: number
+          credits_used: number
+          daily_date: string
+          id: string
+          last_error: string | null
+          last_reason: string | null
+          last_run_at: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_run_at: string
+          organization_id: string
+          profiles_used: number
+          project_id: string
+          revision: number
+          search_filters_snapshot: Json
+          settings: Json
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          api?: string | null
+          approved_context_key?: string | null
+          checkpoint?: Json
+          context_snapshot?: Json
+          created_at?: string
+          created_by: string
+          credits_reserved?: number
+          credits_used?: number
+          daily_date?: string
+          id?: string
+          last_error?: string | null
+          last_reason?: string | null
+          last_run_at?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_run_at?: string
+          organization_id: string
+          profiles_used?: number
+          project_id: string
+          revision?: number
+          search_filters_snapshot?: Json
+          settings?: Json
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          api?: string | null
+          approved_context_key?: string | null
+          checkpoint?: Json
+          context_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          credits_reserved?: number
+          credits_used?: number
+          daily_date?: string
+          id?: string
+          last_error?: string | null
+          last_reason?: string | null
+          last_run_at?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_run_at?: string
+          organization_id?: string
+          profiles_used?: number
+          project_id?: string
+          revision?: number
+          search_filters_snapshot?: Json
+          settings?: Json
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "sourcing_agents_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "sourcing_agents_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "sourcing_projects"; referencedColumns: ["id"] },
+        ]
+      }
       sourcing_projects: {
         Row: {
           calendly_link: string | null
@@ -7206,6 +7367,23 @@ export type Database = {
       }
     }
     Functions: {
+      sourcing_agent_hub_counts: {
+        Args: { p_organization_id: string; p_agent_ids: string[] }
+        Returns: {
+          agent_id: string
+          context_key: string | null
+          total: number
+          discovered: number
+          evaluated: number
+          proposed: number
+          reviewed: number
+          fit: number
+          rejected: number
+          skipped: number
+          uncertain: number
+          last_activity_at: string | null
+        }[]
+      }
       get_agent_memory_automation: {
         Args: { p_organization_id: string }
         Returns: Json

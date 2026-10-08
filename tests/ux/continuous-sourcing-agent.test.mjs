@@ -601,7 +601,10 @@ for (const action of ['pause', 'stop', 'skip_uncertain']) {
     assert.equal(h.view().data.requires_refresh, true);
     assert.equal(helpers.sourcingCanResume(h.view().data), false);
     assert.equal(helpers.sourcingCalibration(h.view().data).reviewed, 0, 'old decisions cannot be presented as approved for an unverified live context');
-    assert.deepEqual(h.invalidations, [{ queryKey: ['sourcing-agent', 'org-a', 'user-a', 'mission-a'], exact: true }]);
+    assert.deepEqual(h.invalidations, [
+      { queryKey: ['sourcing-agents-hub', 'org-a', 'user-a'], exact: true },
+      { queryKey: ['sourcing-agent', 'org-a', 'user-a', 'mission-a'], exact: true },
+    ]);
     assert.deepEqual(h.requests.map(request => request.body.action), [action], 'the management command never starts a paid operation');
     h.responses.push(reply(snapshot({ agent: fast.agent, candidates: resolvedRows })));
     await h.read();
@@ -743,7 +746,11 @@ test('approving calibration refreshes the mission only after a verified successf
   h.seed(snapshot());
   h.responses.push(reply(snapshot()));
   await h.view().mutate({ action: 'approve_calibration', save_calibration_profiles: true });
-  assert.deepEqual(h.invalidations, [{ queryKey: ['mission-jobs', 'org-a'] }, { queryKey: ['project', 'mission-a'] }]);
+  assert.deepEqual(h.invalidations, [
+    { queryKey: ['sourcing-agents-hub', 'org-a', 'user-a'], exact: true },
+    { queryKey: ['mission-jobs', 'org-a'] },
+    { queryKey: ['project', 'mission-a'] },
+  ]);
   const invalid = harness();
   invalid.seed(snapshot());
   invalid.responses.push(reply(snapshot({ agent: { ...snapshot().agent, project_id: 'foreign' } })));
