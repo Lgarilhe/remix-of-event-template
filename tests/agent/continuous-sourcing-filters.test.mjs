@@ -83,6 +83,63 @@ test('manual snapshots drop the same legacy generated XP and suggestions as the 
   assert.equal((await providerBody(request)).tenure, undefined);
 });
 
+test('Recruiter keeps long reviewed Boolean queries intact through the provider boundary', async () => {
+  for (const length of [201, 330, 900]) {
+    const prefix = '("Solution Engineer" OR "Sales Engineer") AND ("';
+    const suffix = '" OR Kubernetes)';
+    const phrase = 'cloud infrastructure architecture '.repeat(40).slice(0, length - prefix.length - suffix.length);
+    const keywords = prefix + phrase + suffix;
+    assert.equal(keywords.length, length);
+    const saved = { ...base, keywords };
+    const before = structuredClone(saved);
+    const request = build(saved);
+    assert.equal(request.keywords, keywords);
+    assert.equal((await providerBody(request)).keywords, keywords, 'no last-AND trimming or hard cut');
+    assert.deepEqual(saved, before, 'the approved snapshot is immutable');
+    assert.deepEqual(await providerBody(request), await providerBody(ui({ ...saved, api: 'recruiter' })));
+  }
+});
+
+test('Recruiter keyword facets preserve long roles, companies and skills too', async () => {
+  const keywords = Array.from({ length: 20 }, (_, i) => `"Cloud expertise ${i}"`).join(' OR ');
+  const saved = { ...base,
+    role: [{ keywords, priority: 'MUST_HAVE', scope: 'CURRENT' }],
+    company_keywords: [{ keywords, priority: 'DOESNT_HAVE', scope: 'PAST' }],
+    skills: [{ keywords, priority: 'CAN_HAVE' }],
+  };
+  const body = await providerBody(build(saved));
+  assert.equal(body.role[0].keywords, keywords);
+  assert.equal(body.company[0].keywords, keywords);
+  assert.equal(body.skills[0].keywords, keywords);
+});
+
+test('manual metadata cannot activate an orphan radius or old sector suggestions', async () => {
+  const saved = { ...base, api: 'recruiter', last_manual_edit: '2026-10-08',
+    location: [], location_within_area: 25, location_keywords: ['Old suggested city'],
+    industry: [], industry_keywords: ['Cloud Computing', 'Software Development'],
+    role: [{ keywords: 'Solution Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }],
+    company_keywords: [{ keywords: 'Consulting', priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' }],
+    activity_messages: 'without_message', activity_messages_days: 90,
+  };
+  const before = structuredClone(saved);
+  const request = build(saved);
+  const { location_keywords, last_manual_edit, ...loaded } = saved;
+  assert.deepEqual(await providerBody(request), await providerBody(ui(loaded)));
+  assert.equal(request.location_within_area, undefined);
+  assert.equal(request.industry, undefined);
+  assert.deepEqual(saved, before);
+
+  const selected = { ...saved, location: [{ id: '106383538', priority: 'MUST_HAVE', scope: 'CURRENT' }],
+    industry: [{ id: '96', priority: 'MUST_HAVE' }] };
+  const body = await providerBody(build(selected));
+  assert.equal(body.location_within_area, 25);
+  assert.deepEqual(body.industry, { include: ['96'] });
+  assert.deepEqual(body.location, [{ id: '106383538', priority: 'MUST_HAVE', scope: 'CURRENT' }]);
+  rejects({ ...selected, location_within_area: 17 }, 'recruiter', 'filters_invalid', /rayon/i);
+  rejects({ ...base, location_within_area: 25 }, 'recruiter', 'filters_unresolved', /lieu/);
+  rejects({ ...base, industry_keywords: saved.industry_keywords }, 'recruiter', 'filters_unresolved', /secteurs/);
+});
+
 test('explicit native XP, employer tenure and role tenure retain distinct ranges', async () => {
   const saved = { ...base, years_of_experience_min: 0, years_of_experience_max: 8,
     tenure_at_company_min: 1, tenure_at_company_max: 5, tenure_at_role_min: 0, tenure_at_role_max: 2 };
@@ -209,8 +266,11 @@ test('unresolved suggestions cannot be silently lost behind unrelated resolved f
 });
 
 test('provider query repair and truncation cannot change an approved unattended query', () => {
-  for (const keywords of ['x'.repeat(201), '(Python OR SQL', 'Python AND', '"Python']) {
-    rejects({ ...base, keywords }, 'recruiter', 'filters_invalid', /requête|guillemets|parenthèses/);
+  for (const api of ['classic', 'sales_navigator', 'recruiter']) {
+    for (const keywords of [' ', '(Python OR SQL', 'Python AND', '"Python']) {
+      rejects({ ...base, keywords }, api, 'filters_invalid', /requête|guillemets|parenthèses/);
+    }
+    if (api !== 'recruiter') rejects({ ...base, keywords: 'x'.repeat(201) }, api, 'filters_invalid', /201.*200/);
   }
   rejects({ ...base, spotlight: 'UNKNOWN' }, 'recruiter', 'filters_invalid', /Signaux/);
   rejects({ ...base, company_headcount: ['UNKNOWN'] }, 'recruiter', 'filters_invalid', /Taille/);
