@@ -236,12 +236,13 @@ BEGIN
      AND t.tgname COLLATE "C" < 'update_job_candidate_status_updated_at' COLLATE "C";
   failures := failures || pg_temp.csm_eq('S4 déclencheur de transition', n, 1);
 
-  -- S5. Les 10 déclencheurs attendus : garde du lot 0b et nettoyage des
-  -- actions après suppression, sans retour de l'ancien déclencheur par ligne.
+  -- S5. Les 11 déclencheurs attendus : garde du lot 0b, nettoyage des
+  -- actions après suppression et purge des copies de score dépendant d'une
+  -- référence effacée, sans retour de l'ancien déclencheur par ligne.
   SELECT string_agg(tgname, ',' ORDER BY tgname) INTO got FROM pg_trigger
    WHERE tgrelid = 'public.job_candidate_status'::regclass AND NOT tgisinternal;
   failures := failures || pg_temp.csm_eq('S5 déclencheurs', got,
-    'candidate_actions_remove_mission_candidate,resolve_project_id_ins,resolve_project_id_upd,stage_sync_from_legacy,stage_write_guard,sync_mission_stats_del,'
+    'candidate_actions_remove_mission_candidate,resolve_project_id_ins,resolve_project_id_upd,sourcing_agent_score_privacy_guard,stage_sync_from_legacy,stage_write_guard,sync_mission_stats_del,'
     'sync_mission_stats_ins,sync_mission_stats_upd,trg_auto_ingest_job_candidate_status,'
     'update_job_candidate_status_updated_at');
   IF to_regprocedure('public.refresh_project_shortlist_stats()') IS NOT NULL THEN
