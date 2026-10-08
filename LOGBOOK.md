@@ -32,6 +32,25 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — REFACTOR — Relecture guidée des actions candidat
+
+**Contexte** : la revue de toutes les actions dans une seule fenêtre demandait trop de lecture. La messagerie et les fiches candidat proposent désormais un contenu par écran, modifiable, avec progression et retour en arrière.
+**Fait** : une préparation réussie ouvre le parcours partagé avec l’aperçu fictif. Chaque validation sauvegarde seulement le brouillon courant ; le récapitulatif nomme les destinataires, services, comptes et effets avant la confirmation finale. Les sources et la suite sont dépliables. Le récapitulatif reste affiché pendant les envois ; une réussite ferme la fenêtre avec un bilan exact. Les résultats partiels ou incertains conservent le suivi et les règles de reprise existants.
+**Contrôles** : une relecture porte sur le texte, l’objet, le compte et la destination. La réponse canonique de sauvegarde permet d’avancer sans dépendre du délai de mise à jour du cache ; une modification ultérieure invalide la confirmation. Doubles clics, brouillons vides et résultats tardifs d’un autre candidat protégés. Aucun changement serveur ni de droits.
+**Validation** : quatorze scénarios navigateur sur les composants et le hook réels avec API simulées ; aucun appel modèle ni envoi réel pour les essais. Audits axe de la première étape et du récapitulatif sans violation automatique détectée. Helpers de relecture et onze fichiers de tests ciblés réussis ; build production et lint ciblé réussis, cliquet design inchangé, onze diagnostics TypeScript hérités identiques à main.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Modifier trois contenus, revenir, sauvegarder, confirmer une seule fois et retrouver le bilan | PASS |
+| Claire | Un contenu à la fois, logos et destinations visibles, sources repliées, récapitulatif avant envoi | PASS |
+| Théo | Doubles clics, champs vides, destination modifiée, conflit, changement de candidat, reprise partielle et résultat incertain | PASS |
+| Sophie | Clair/sombre à 390 px et 320 × 500 px, commandes de 44 px, pied de fenêtre visible, mouvement réduit, aucun débordement horizontal | PASS |
+
+**Limites** : Chromium mobile émulé, pas d’appareil iOS physique ni mesure réseau de production. Les validations intermédiaires ne déclenchent pas d’action externe ; la confirmation globale reste nécessaire.
+**Refs** : branche `codex/candidate-actions-guided-review` ; `docs/candidate-contextual-actions.md`.
+
+---
+
 ## 2026-10-08 — SHIP — Agent de sourcing continu en production
 
 **Fait** : PR #316 intégrée sur `main` (`6793909400429b7a4f5fc42f9e563b3d58e47fff`). Vercel confirme la publication de ce commit. Migration `20261008113014` appliquée par le workflow du dépôt après deux erreurs de session du connecteur ; les 298 versions locales et distantes correspondent exactement. Déploiement automatique terminé : 81 fonctions publiées, zéro échec. Les sources relues des quatre fonctions concernées correspondent toutes aux fichiers committés, avec authentification applicative conservée : API et worker v1, scoring v75, recherche LinkedIn v51.

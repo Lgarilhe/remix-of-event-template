@@ -1,12 +1,11 @@
-import { useId, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, ChevronDown, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { texturedCard } from '@/components/layout/texturedCard';
+import { GuidedActionReview, type GuidedReviewEffect } from './GuidedActionReview';
 import { cn } from '@/lib/utils';
 import type { DemoActionResult, DemoActionSource, DemoCandidateAction } from '@/lib/inboxDemoActions';
 import { SERVICE_LABELS } from '@/lib/messagingServices';
@@ -25,25 +24,25 @@ function ActionSources({ sources }: { sources: DemoActionSource[] }) {
         </div>
       </div>
       <p className="mt-2 text-sm leading-relaxed text-foreground-secondary">{source.summary}</p>
-      <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="mt-1 min-h-11 gap-1 md:min-h-8">Lire l’extrait<ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></Button></CollapsibleTrigger>
+      <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="mt-1 min-h-11 gap-1">Lire l’extrait<ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></Button></CollapsibleTrigger>
       <CollapsibleContent><p className="mt-2 whitespace-pre-line break-words border-l-2 border-border-strong pl-3 text-sm leading-relaxed text-foreground">{source.detail}</p></CollapsibleContent>
     </div>
   </Collapsible>)}</div>;
 }
 
 /** Préparation, validation et résultats restent dans l’aperçu, sans appel externe. */
-export function DemoCandidateActions({ actions, results, dismissed, drafts, onDraftChange, onApply, onDismiss }: {
+export function DemoCandidateActions({ actions, results, dismissed, drafts, subjectDrafts, onDraftChange, onSubjectDraftChange, onApply, onDismiss }: {
   actions: DemoCandidateAction[];
   results: Record<string, DemoActionResult>;
   dismissed: Record<string, boolean>;
   drafts: Record<string, Record<string, string>>;
+  subjectDrafts: Record<string, Record<string, string>>;
   onDraftChange: (actionId: string, effectId: string, value: string) => void;
+  onSubjectDraftChange: (actionId: string, effectId: string, value: string) => void;
   onApply: (actionId: string) => void;
   onDismiss: (actionId: string, dismissed: boolean) => void;
 }) {
-  const fieldPrefix = useId();
   const [dialog, setDialog] = useState<{ actionId: string; view: 'sources' | 'prepare' | 'result' } | null>(null);
-  const [editingEffectId, setEditingEffectId] = useState<string | null>(null);
   const dialogTitleRef = useRef<HTMLHeadingElement>(null);
   const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
   const primaryButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -53,15 +52,27 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
   const result = detail ? results[detail.id] : undefined;
   const reviewingResult = !!result;
   const showingSources = dialog?.view === 'sources';
-  const messageCount = detail?.effects.filter(effect => effect.kind === 'message').length ?? 0;
-  const documentCount = detail?.effects.filter(effect => effect.kind === 'document').length ?? 0;
   const visible = actions.filter(action => !dismissed[action.id] || results[action.id]);
-  const canApply = !!detail && !result && detail.effects.length > 0 && detail.effects.every(effect => (drafts[detail.id]?.[effect.id] ?? effect.content).trim().length > 0);
+  const canApply = !!detail && !result && detail.effects.length > 0 && detail.effects.every(effect =>
+    (drafts[detail.id]?.[effect.id] ?? effect.content).trim().length > 0
+    && (effect.kind !== 'message' || !effect.subject || (subjectDrafts[detail.id]?.[effect.id] ?? effect.subject).trim().length > 0));
+  const reviewEffects: GuidedReviewEffect[] = detail?.effects.map(effect => ({
+    ...effect,
+    content: drafts[detail.id]?.[effect.id] ?? effect.content,
+    ...(effect.kind === 'message' ? {
+      subject: subjectDrafts[detail.id]?.[effect.id] ?? effect.subject,
+      requiresSubject: !!effect.subject,
+    } : {}),
+  })) ?? [];
+
+  function restoreDialogFocus(event: Event) {
+    const target = detailTriggerRef.current?.isConnected ? detailTriggerRef.current : restoreRef.current ?? primaryButtonRefs.current[lastActionIdRef.current ?? ''];
+    if (target?.isConnected) { event.preventDefault(); target.focus(); }
+  }
 
   function openDialog(actionId: string, view: 'sources' | 'prepare' | 'result', trigger: HTMLButtonElement) {
     detailTriggerRef.current = trigger;
     lastActionIdRef.current = actionId;
-    setEditingEffectId(null);
     setDialog({ actionId, view });
   }
 
@@ -101,13 +112,27 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
       }}>Revoir la suggestion</Button>
     </div>}
     <Dialog open={!!detail} onOpenChange={open => { if (!open) setDialog(null); }}>
-      {detail && <DialogContent className="flex max-h-[90dvh] w-[calc(100%_-_1rem)] max-w-2xl flex-col gap-0 overflow-hidden border-border-strong p-0 [&>button]:h-11 [&>button]:w-11" onOpenAutoFocus={event => {
+      {detail && dialog?.view === 'prepare' && !result ? <GuidedActionReview
+        key={detail.id}
+        title={detail.title}
+        reason={detail.reason}
+        effects={reviewEffects}
+        sources={<ActionSources sources={detail.sources} />}
+        followUp={detail.followUp}
+        confirmationNote="Démonstration : aucun envoi réel."
+        confirmLabel={detail.applyLabel}
+        onClose={() => setDialog(null)}
+        onConfirm={applyAction}
+        onChange={(effectId, field, value) => {
+          if (field === 'subject') onSubjectDraftChange(detail.id, effectId, value);
+          else onDraftChange(detail.id, effectId, value);
+        }}
+        onReviewStep={effectId => reviewEffects.find(effect => effect.id === effectId) ?? null}
+        onCloseAutoFocus={restoreDialogFocus}
+      /> : detail && <DialogContent className="flex max-h-[90dvh] w-[calc(100%_-_1rem)] max-w-2xl flex-col gap-0 overflow-hidden border-border-strong p-0 [&>button]:h-11 [&>button]:w-11" onOpenAutoFocus={event => {
         event.preventDefault();
         dialogTitleRef.current?.focus();
-      }} onCloseAutoFocus={event => {
-        const target = detailTriggerRef.current?.isConnected ? detailTriggerRef.current : restoreRef.current ?? primaryButtonRefs.current[lastActionIdRef.current ?? ''];
-        if (target?.isConnected) { event.preventDefault(); target.focus(); }
-      }}>
+      }} onCloseAutoFocus={restoreDialogFocus}>
         <DialogHeader className="shrink-0 border-b border-border-strong bg-card px-4 py-4 pr-14 text-left md:px-5 md:pr-14">
           <p className="text-xs font-medium text-foreground-secondary">{reviewingResult && !showingSources ? 'Résultat dans la démo' : 'Proposition de l’assistant'}</p>
           <DialogTitle ref={dialogTitleRef} tabIndex={-1} className="text-lg">{detail.title}</DialogTitle>
@@ -118,34 +143,26 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
             <h5 className="text-sm font-semibold text-foreground">Ce qui motive cette action</h5>
             <ActionSources sources={detail.sources} />
           </section> : <>
-            {!reviewingResult && <p className="text-sm font-medium leading-relaxed text-foreground">{[
-              messageCount > 0 && `${messageCount} message${messageCount > 1 ? 's' : ''} à envoyer`,
-              documentCount > 0 && `${documentCount} contenu${documentCount > 1 ? 's' : ''} à enregistrer dans la fiche`,
-            ].filter(Boolean).join(' · ')}</p>}
             <div className="space-y-4">{detail.effects.map(effect => {
-              const fieldId = `${fieldPrefix}-${effect.id}`;
               const value = result ? result.contents[effect.id] ?? effect.content : drafts[detail.id]?.[effect.id] ?? effect.content;
-              const editing = !reviewingResult && editingEffectId === effect.id;
-              const empty = !reviewingResult && !value.trim();
+              const subject = effect.kind === 'message' ? result?.subjects?.[effect.id] ?? effect.subject : undefined;
               return <section key={effect.id} className="overflow-hidden rounded-xl border border-border-strong bg-card" aria-label={effect.label}>
                 <div className="space-y-3 border-b border-border-strong bg-muted p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Label htmlFor={editing ? fieldId : undefined} className="flex items-start gap-2 leading-snug">
+                    <h5 className="flex items-start gap-2 text-sm font-medium leading-snug">
                       {effect.kind === 'message' ? <ServiceLogo service={effect.service} decorative /> : <FileText className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />}
                       {effect.label}
-                    </Label>
-                    {!reviewingResult && <Button variant="outline" size="sm" className="min-h-11 shrink-0 bg-card" aria-label={`${editing ? 'Terminer la modification' : 'Modifier'} : ${effect.label}`} onClick={() => setEditingEffectId(editing ? null : effect.id)}>{editing ? 'Terminer' : 'Modifier'}</Button>}
+                    </h5>
                   </div>
                   {effect.kind === 'message' ? <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1.5 text-sm">
                     <dt className="text-xs text-foreground-secondary">Destinataire</dt><dd className="font-medium text-foreground">{effect.audience === 'team' ? 'Équipe' : 'Candidat'}</dd>
                     <dt className="text-xs text-foreground-secondary">Via</dt><dd className="text-foreground">{SERVICE_LABELS[effect.service]}</dd>
                     <dt className="text-xs text-foreground-secondary">À</dt><dd className="break-words text-foreground [overflow-wrap:anywhere]">{effect.recipient}</dd>
-                    {effect.subject && <><dt className="text-xs text-foreground-secondary">Objet</dt><dd className="break-words font-medium text-foreground">{effect.subject}</dd></>}
+                    {subject && <><dt className="text-xs text-foreground-secondary">Objet</dt><dd className="break-words font-medium text-foreground">{subject}</dd></>}
                   </dl> : <p className="text-xs leading-relaxed text-foreground-secondary">{reviewingResult ? 'Enregistré dans' : 'Sera enregistré dans'} : <span className="text-sm font-medium text-foreground">{effect.destination}</span></p>}
                 </div>
                 <div className="space-y-3 p-4">
-                  {editing ? <Textarea id={fieldId} className="border-border-strong bg-background leading-relaxed" aria-label={effect.label} aria-invalid={empty} aria-describedby={empty ? `${fieldId}-error` : undefined} value={value} rows={8} autoFocus onChange={event => onDraftChange(detail.id, effect.id, event.target.value)} /> : <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">{value}</p>}
-                  {empty && <p id={`${fieldId}-error`} className="text-xs text-destructive" role="status">Ajoutez un contenu pour pouvoir valider cette action.</p>}
+                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">{value}</p>
                 </div>
               </section>;
             })}</div>
@@ -167,7 +184,7 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, onDr
           <div className="flex flex-wrap justify-end gap-2">
             {reviewingResult ? <Button variant="outline" size="sm" className="min-h-11" onClick={() => setDialog(null)}>{showingSources ? 'Fermer le détail' : 'Fermer le résultat'}</Button> : <>
               {showingSources ? <Button variant="ghost" size="sm" className="min-h-11 text-foreground-secondary" onClick={dismissAction}>Ignorer la suggestion</Button> : <Button variant="ghost" size="sm" className="min-h-11" onClick={() => setDialog(null)}>Annuler</Button>}
-              {showingSources ? <Button variant="primary" size="sm" className="min-h-11" onClick={() => setDialog({ actionId: detail.id, view: 'prepare' })}>{detail.prepareLabel}</Button> : <Button variant="primary" size="sm" className="min-h-11" disabled={!canApply} onClick={applyAction}>{detail.applyLabel}</Button>}
+              <Button variant="primary" size="sm" className="min-h-11" onClick={() => setDialog({ actionId: detail.id, view: 'prepare' })}>{detail.prepareLabel}</Button>
             </>}
           </div>
         </div>

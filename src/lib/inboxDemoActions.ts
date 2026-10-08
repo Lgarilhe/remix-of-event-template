@@ -43,6 +43,7 @@ export type DemoActionEffect = {
 export interface DemoActionResult {
   appliedAt: string;
   contents: Record<string, string>;
+  subjects?: Record<string, string>;
 }
 
 /** Scénarios écrits pour la démo, sans génération IA ni accès à un compte. */
