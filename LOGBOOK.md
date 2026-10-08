@@ -53,6 +53,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — REFACTOR — Messagerie et aides à la rédaction allégées
+
+**Contexte** : la proposition de l’assistant, ses explications, les comptes, la régénération et plusieurs aides à la rédaction occupaient simultanément le bas de la conversation.
+**Fait** : une seule proposition principale compacte affiche le titre, le nombre de contenus et les logos des services. « Voir les actions » ouvre la relecture guidée ; les explications restent dans ce parcours. Autres propositions, actualisation, comptes, réglages, historique et suggestions ignorées sont repliés. Les résultats incertains ou incomplets restent prioritaires et le coût reste visible avant une nouvelle préparation. La démo utilise le même résumé compact.
+**Rédaction** : « Aide à la rédaction » déplie les suggestions déjà préparées et les outils. Consulter ou insérer ces suggestions ne monte pas le panneau d’analyse et ne relance pas l’IA. Les outils restent montés pendant leur préparation ; ouverture, fermeture et insertion gèrent le focus clavier. Les raccourcis et la confirmation d’envoi restent actifs. Le panneau d’analyse dispose de commandes mobiles de 44 px.
+**Préflight** : build production réussi, douze fichiers de tests ciblés réussis, onze diagnostics TypeScript et cinq diagnostics lint ciblés hérités identiques à la base. Les quinze compteurs du cliquet design n’augmentent pas. Deux gardes statiques existantes sont adaptées aux références de focus et au libellé mobile de l’aide.
+**QA** : onze scénarios navigateur réussis sur les composants réels à 1920/1440/390/320 px, en clair et sombre. La revue couvre la relecture, l’édition, la confirmation finale, les erreurs, les résultats incertains, les coûts, les raccourcis et le retour du focus. Les seize états audités avec axe, puis le menu et l’aperçu de réponse à 320 px, n’ont aucune violation détectée ; les contrastes restants ont été vérifiés manuellement. Le menu « Proposer une suite » est borné à la hauteur disponible et défile sur petit écran.
+
+| Persona | Vérification ciblée | Verdict |
+|---|---|---|
+| Guillaume | Carte principale unique, trois contenus relus et modifiés, confirmation finale ; outils et raccourcis conservés | PASS |
+| Claire | Clair à 1440 px, détails repliés, logos et coût visibles au bon moment, suggestions existantes sans nouveau débit | PASS |
+| Théo | Erreurs de lecture et de préparation, reprise volontaire, résultat incertain sans répétition d’envoi | PASS |
+| Sophie | Clair/sombre à 390 px et 320 × 500 px, clavier et focus, cibles tactiles, menu défilable, fermeture sans envoi | PASS |
+
+**Limites** : données et appels simulés uniquement, sans message réel ni appel modèle de production. Chromium mobile émulé, sans appareil iOS physique. Publication après contrôles CI.
+**Refs** : branche `codex/inbox-calm-actions` ; `src/components/outreach/inbox/CandidateActionSummary.tsx`.
+
+---
+
 ## 2026-10-08 — BUG — Objet e-mail dans une préparation LinkedIn ou WhatsApp
 
 **Contexte** : la préparation pouvait échouer avant la relecture guidée avec « Ce canal ne prend pas en charge cet objet. ». Le schéma commun autorisait un objet facultatif, mais le parseur refusait toute présence de ce champ sur les chats, même vide ou null. Les deux cas sont reproduits sur le commit précédent.

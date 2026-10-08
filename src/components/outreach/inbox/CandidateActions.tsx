@@ -12,6 +12,7 @@ import { useMemberName } from '@/hooks/useTeamMembers';
 import { SERVICE_LABELS } from '@/lib/messagingServices';
 import type { CandidateActionsController } from '@/hooks/useCandidateActions';
 import { GuidedActionReview } from './GuidedActionReview';
+import { CandidateActionSummary } from './CandidateActionSummary';
 import type { GuidedReviewEffect } from '@/lib/guidedActionReview';
 import { toast } from 'sonner';
 
@@ -64,7 +65,9 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
   const sendingReview = dialog?.view === 'prepare' && controller.operation?.type === 'execute';
   const uncertain = detail ? candidateActionNeedsReview(detail) || detail.status === 'needs_review' || controller.unverifiedPlanIds.includes(detail.id) : false;
   const sourcesView = dialog?.view === 'sources';
-  const next = controller.plans.filter(plan => plan.status !== 'dismissed' && !candidateActionCompleted(plan)).slice(0, 3);
+  const next = controller.plans.filter(plan => plan.status !== 'dismissed' && !candidateActionCompleted(plan));
+  const primaryPlan = next.find(plan => candidateActionNeedsReview(plan) || plan.status === 'needs_review' || controller.unverifiedPlanIds.includes(plan.id)) ?? next.find(plan => plan.status !== 'draft') ?? next[0];
+  const otherPlans = next.filter(plan => plan.id !== primaryPlan?.id);
   const results = controller.plans.filter(candidateActionCompleted).slice(0, 3);
   const dismissed = controller.plans.filter(plan => plan.status === 'dismissed');
   const contents = detail ? edits[detail.id] ?? {} : {};
@@ -125,35 +128,43 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
     const fresh = result?.plans.find(plan => plan.status === 'draft');
     if (fresh) setDialog({ planId: fresh.id, view: 'prepare' });
   }
+  function planCard(plan: CandidateActionPlan, secondary = false) {
+    const needsReview = candidateActionNeedsReview(plan) || plan.status === 'needs_review' || controller.unverifiedPlanIds.includes(plan.id);
+    const draft = plan.status === 'draft';
+    return <article key={plan.id} className={draft && !needsReview && !secondary ? texturedCard('teal', 'flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between') : 'flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between'} aria-label={plan.title}>
+      <div className="min-w-0 space-y-1.5">
+        <h5 className="line-clamp-2 break-words text-sm font-semibold text-foreground" title={plan.title}>{plan.title}</h5>
+        <CandidateActionSummary effects={plan.effects} />
+        {(!draft || needsReview) && <p className="text-xs text-foreground-secondary" role="status">{needsReview ? 'Résultat à vérifier' : 'Action à terminer'} · {plan.effects.filter(effect => effect.status === 'succeeded' || effect.status === 'skipped').length}/{plan.effects.length} actions traitées</p>}
+      </div>
+      <Button ref={node => { planButtons.current[plan.id] = node; }} variant={draft && !needsReview && !secondary ? 'primary' : 'outline'} size="sm" className="min-h-11 shrink-0 self-start sm:self-center" disabled={busy} onClick={event => open(plan, draft && !needsReview ? 'prepare' : 'result', event.currentTarget)}>{needsReview ? 'Vérifier le résultat' : draft ? 'Voir les actions' : 'Reprendre les actions'}</Button>
+    </article>;
+  }
   if (!controller.enabled) return null;
 
-  return <section className="mt-5 space-y-3" aria-label="Prochaines actions" data-component="candidate-actions">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h4 className="text-sm font-semibold text-foreground">Prochaines actions</h4>
-      <Button ref={refreshButton} variant="ghost" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Actualiser</Button>
-    </div>
+  return <section className="mt-4 space-y-2" aria-label="Prochaines actions" data-component="candidate-actions">
     {controller.loading && <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Chargement des actions enregistrées…</p>}
     {controller.readError && <div className="space-y-2 rounded-xl border border-border-strong bg-muted p-4 text-sm leading-relaxed text-foreground" role="alert"><p>{controller.readError}</p>{controller.contextLoaded && <p className="text-xs text-foreground-secondary">Les derniers contenus chargés restent disponibles.</p>}<Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.fetching} onClick={() => void controller.refresh()}>Réessayer la lecture</Button></div>}
     {controller.operationError && <div className="space-y-2 rounded-xl border border-border-strong bg-muted p-4 text-sm leading-relaxed text-foreground" role="alert"><p>{controller.operationError.message}</p>{controller.operationError.type === 'generate' ? <><Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.loading || controller.fetching || !controller.contextLoaded} loading={controller.operation?.type === 'generate'} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>Réessayer la préparation</Button>{controller.generation && <p className="text-xs text-foreground-secondary">Environ {controller.generation.estimated} crédits IA</p>}</> : <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier l’état enregistré</Button>}</div>}
-    {controller.warnings.length > 0 && <Collapsible className="rounded-xl border border-border-strong bg-muted px-4 py-2"><ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs leading-relaxed text-foreground-secondary" aria-label="Informations du contexte à vérifier">{candidateActionWarningLabels(controller.warnings).map(label => <li key={label}>{label}</li>)}</ul><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-2">Voir les précisions<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2 pb-2 text-xs leading-relaxed text-foreground-secondary">{controller.warnings.map(warning => <p key={warning}>{warning}</p>)}</CollapsibleContent></Collapsible>}
-    {next.map(plan => <article key={plan.id} className={plan.status === 'draft' ? texturedCard('teal', 'flex flex-col gap-3 rounded-xl p-4 md:p-5 xl:flex-row xl:items-center xl:justify-between') : 'flex flex-col gap-3 rounded-xl border border-border-strong bg-muted p-4 md:p-5 xl:flex-row xl:items-center xl:justify-between'} aria-label={plan.title}>
-      <div className="min-w-0 space-y-1">
-        <p className="text-xs text-foreground">{plan.status === 'draft' ? 'Proposition de l’assistant' : candidateActionNeedsReview(plan) || plan.status === 'needs_review' ? 'Résultat à vérifier' : 'Action à terminer'}</p>
-        <h5 className="break-words text-sm font-semibold text-foreground">{plan.title}</h5>
-        <p className="break-words text-xs leading-relaxed text-foreground">{plan.reason}</p>
-        {plan.status !== 'draft' && <p className="text-xs text-foreground-secondary" role="status">{plan.effects.filter(effect => effect.status === 'succeeded').length} sur {plan.effects.length} effets réalisés.</p>}
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-1">
-        <Button ref={node => { planButtons.current[plan.id] = node; }} variant={plan.status === 'draft' ? 'primary' : 'outline'} size="sm" className="min-h-11" disabled={busy} onClick={event => open(plan, plan.status === 'draft' ? 'prepare' : 'result', event.currentTarget)}>{plan.status === 'draft' ? 'Préparer' : 'Voir le résultat'}</Button>
-        <Button variant="ghost" size="sm" className="min-h-11" disabled={busy} onClick={event => open(plan, 'sources', event.currentTarget)}>Pourquoi ?</Button>
-      </div>
-    </article>)}
-    {!controller.loading && controller.contextLoaded && next.length === 0 && !controller.operationError && <p className="text-sm text-muted-foreground">{results.length ? 'Les dernières actions sont terminées. Préparez la suite avec le contexte actuel.' : 'Préparez des messages et des contenus à partir des échanges, du profil et des évaluations disponibles.'}</p>}
-    {controller.operationError?.type !== 'generate' && <div className="space-y-2">
+    {controller.warnings.length > 0 && <Collapsible className="space-y-1"><div className="flex flex-wrap items-center gap-x-2 text-xs text-foreground-secondary"><ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Informations du contexte à vérifier">{candidateActionWarningLabels(controller.warnings).map(label => <li key={label}>{label}</li>)}</ul><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-1 px-0">Voir les précisions<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger></div><CollapsibleContent className="space-y-2 rounded-lg bg-muted p-3 text-xs leading-relaxed text-foreground-secondary">{controller.warnings.map(warning => <p key={warning}>{warning}</p>)}</CollapsibleContent></Collapsible>}
+    {primaryPlan && planCard(primaryPlan)}
+    {otherPlans.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-2">Autres propositions ({otherPlans.length})<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2">{otherPlans.map(plan => planCard(plan, true))}</CollapsibleContent></Collapsible>}
+    {!controller.loading && controller.contextLoaded && next.length === 0 && controller.operationError?.type !== 'generate' && <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <Button variant="outline" size="sm" className="min-h-11" loading={controller.operation?.type === 'generate'} disabled={busy || controller.loading || controller.fetching || !controller.contextLoaded} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>{next.length ? 'Préparer une nouvelle proposition' : 'Préparer les prochaines actions'}</Button>
-      {controller.generation && <p className="text-xs text-muted-foreground">Environ {controller.generation.estimated} crédits IA · {controller.generation.styleSummary}</p>}
+      {controller.generation && <p className="text-xs text-muted-foreground">Environ {controller.generation.estimated} crédits IA</p>}
     </div>}
-    {controller.channels.length > 0 ? <p className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-foreground-secondary">{controller.channels.map(channel => <span key={`${channel.service}-${channel.address}`} className="inline-flex min-w-0 items-center gap-1.5"><ServiceLogo service={channel.service} decorative />{SERVICE_LABELS[channel.service]}<span className="break-all">{channel.address}</span></span>)}</p> : !controller.loading && controller.contextLoaded && !controller.readError && <p className="text-xs leading-relaxed text-muted-foreground">Aucun canal d’envoi disponible. Vous pouvez préparer les contenus à enregistrer dans la fiche. <Link className="inline-block min-h-11 py-3 text-foreground underline underline-offset-4" to="/settings/account/connections">Ouvrir mes connexions</Link></p>}
+    <Collapsible>
+      <CollapsibleTrigger asChild><Button ref={refreshButton} variant="ghost" size="sm" className="min-h-11 gap-2 px-0">Détails et réglages<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 rounded-lg bg-muted p-3">
+        <div className="flex flex-wrap items-center gap-2"><Button variant="ghost" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.fetching} onClick={() => void controller.refresh()}>Actualiser les actions</Button>
+          {next.length > 0 && controller.operationError?.type !== 'generate' && <div className="space-y-1"><Button variant="outline" size="sm" className="min-h-11" loading={controller.operation?.type === 'generate'} disabled={busy || controller.loading || controller.fetching || !controller.contextLoaded} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>Préparer une nouvelle proposition</Button>{controller.generation && <p className="text-xs text-muted-foreground">Environ {controller.generation.estimated} crédits IA</p>}</div>}
+        </div>
+        {next.filter(plan => plan.status === 'draft' && !controller.unverifiedPlanIds.includes(plan.id)).map(plan => <div key={plan.id} className="flex items-center justify-between gap-3"><p className="min-w-0 line-clamp-2 break-words text-sm text-foreground">{plan.title}</p><Button variant="ghost" size="sm" className="min-h-11 shrink-0 text-muted-foreground" aria-label={`Ignorer la proposition : ${plan.title}`} disabled={busy} onClick={async () => {
+          if (await controller.setDismissed(plan, true)) requestAnimationFrame(() => refreshButton.current?.focus());
+        }}>Ignorer</Button></div>)}
+        {controller.generation && <p className="text-xs text-foreground-secondary">Rédaction : {controller.generation.styleSummary}</p>}
+        {controller.channels.length > 0 ? <p className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-foreground-secondary">{controller.channels.map(channel => <span key={`${channel.service}-${channel.address}`} className="inline-flex min-w-0 items-center gap-1.5"><ServiceLogo service={channel.service} decorative />{SERVICE_LABELS[channel.service]}<span className="break-all">{channel.address}</span></span>)}</p> : !controller.loading && controller.contextLoaded && !controller.readError && <p className="text-xs leading-relaxed text-muted-foreground">Aucun canal d’envoi disponible. Les contenus peuvent être enregistrés dans la fiche.</p>}
+        <Link className="inline-block min-h-11 py-3 text-sm text-foreground underline underline-offset-4" to="/settings/account/connections">Gérer mes connexions</Link>
     {results.length > 0 && <Collapsible>
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-2">Derniers résultats<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-2">{results.map(plan => <div key={plan.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border-strong bg-card p-3"><p className="flex min-w-0 items-center gap-2 text-sm text-foreground"><Check className="h-4 w-4 shrink-0" aria-hidden="true" />{plan.title}</p><Button variant="outline" size="sm" className="min-h-11" onClick={event => open(plan, 'result', event.currentTarget)}>Voir le résultat</Button></div>)}</CollapsibleContent>
@@ -162,8 +173,10 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11">Suggestions ignorées</Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-2">{dismissed.map(plan => <div key={plan.id} className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted-foreground">{plan.title}</p><Button variant="outline" size="sm" className="min-h-11" disabled={busy} onClick={() => void controller.setDismissed(plan, false)}>Revoir la suggestion</Button></div>)}</CollapsibleContent>
     </Collapsible>}
+      </CollapsibleContent>
+    </Collapsible>
     <Dialog open={!!detail} onOpenChange={opened => { if (!opened && !busy) setDialog(null); }}>
-      {detail && ((editable || sendingReview) && !sourcesView ? <GuidedActionReview
+      {detail && (((editable && dialog?.view === 'prepare') || sendingReview) && !sourcesView ? <GuidedActionReview
         key={detail.id}
         title={detail.title}
         reason={detail.reason}
@@ -235,10 +248,11 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
         </div>
         <div className="shrink-0 space-y-2 border-t border-border-strong bg-card px-4 py-3 md:px-5">
           <p className="text-xs text-foreground-secondary" role="status">{busy ? controller.operation?.type === 'execute' ? 'Exécution en cours. Chaque résultat est enregistré séparément.' : 'Enregistrement du brouillon en cours…' : uncertain ? 'Actualisez le journal pour vérifier le résultat. Aucun nouvel envoi ne sera déclenché.' : completed ? 'Tous les résultats sont disponibles dans cette fiche.' : 'Votre validation déclenche les envois réels et enregistre les contenus indiqués.'}</p>
+          {detail.status === 'needs_review' && !candidateActionNeedsReview(detail) && !controller.unverifiedPlanIds.includes(detail.id) && controller.generation && <p className="text-xs text-foreground-secondary">Nouvelle préparation : environ {controller.generation.estimated} crédits IA</p>}
           <div className="flex flex-wrap justify-end gap-2">
             {sourcesView && editable ? <><Button variant="ghost" size="sm" className="min-h-11" disabled={busy} onClick={async () => { if (await controller.setDismissed(detail, true)) setDialog(null); }}>Ignorer la suggestion</Button><Button variant="primary" size="sm" className="min-h-11" disabled={busy} onClick={() => setDialog({ planId: detail.id, view: 'prepare' })}>Préparer</Button></> : <>
               <Button variant="ghost" size="sm" className="min-h-11" disabled={busy} onClick={() => setDialog(null)}>{completed ? 'Fermer le résultat' : !editable ? 'Fermer le suivi' : 'Annuler'}</Button>
-              {detail.status === 'needs_review' && !candidateActionNeedsReview(detail) && !controller.unverifiedPlanIds.includes(detail.id) ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.operation?.type === 'generate'} onClick={() => void prepareAgain()}>Préparer à nouveau</Button> : uncertain ? <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier le résultat</Button> : !completed && (editable || candidateActionCanResume(detail)) && <Button variant="primary" size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" disabled={!valid || busy || staleEdits} loading={controller.operation?.type === 'execute'} onClick={() => void confirm()}>{candidateActionConfirmLabel(detail)}</Button>}
+              {detail.status === 'needs_review' && !candidateActionNeedsReview(detail) && !controller.unverifiedPlanIds.includes(detail.id) ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.operation?.type === 'generate'} onClick={() => void prepareAgain()}>Préparer à nouveau</Button> : uncertain ? <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier le résultat</Button> : editable ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || staleEdits} onClick={() => setDialog({ planId: detail.id, view: 'prepare' })}>Voir les actions</Button> : !completed && candidateActionCanResume(detail) && <Button variant="primary" size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" disabled={!valid || busy || staleEdits} loading={controller.operation?.type === 'execute'} onClick={() => void confirm()}>{candidateActionConfirmLabel(detail)}</Button>}
             </>}
           </div>
         </div>

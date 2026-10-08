@@ -351,7 +351,7 @@ test('Ligne « À faire » : montée une fois au-dessus du composeur, seulement 
   assert.match(view, /new Date\(nextStep\.lastAt\) > new Date\(cached\.analyzedAt\)/);
   // Téléphone : la ligne s'efface quand le champ de saisie a le focus. Clavier ouvert, elle laissait 117 px
   // de fil (moins d'un message) ; effacée, il en reste 226 (mesuré sur 390 x 470).
-  assert.match(view, /<div className="group\/compose">/, 'la rangée réunit la ligne et le composeur');
+  assert.match(view, /<div\b[^>]*className="group\/compose"[^>]*>/, 'la rangée réunit la ligne et le composeur');
   assert.match(step, /group-has-\[textarea:focus\]\/compose:max-md:hidden/, 'effacée au focus, sur téléphone seulement');
   // Les hooks restent avant le retour anticipé de la conversation vide.
   assert.ok(view.indexOf('const nextStep = useMemo') < view.indexOf('if (!selectedChat) {'));

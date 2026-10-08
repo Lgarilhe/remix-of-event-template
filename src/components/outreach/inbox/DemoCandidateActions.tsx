@@ -6,12 +6,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { texturedCard } from '@/components/layout/texturedCard';
 import { GuidedActionReview, type GuidedReviewEffect } from './GuidedActionReview';
+import { CandidateActionSummary } from './CandidateActionSummary';
 import { cn } from '@/lib/utils';
 import type { DemoActionResult, DemoActionSource, DemoCandidateAction } from '@/lib/inboxDemoActions';
 import { SERVICE_LABELS } from '@/lib/messagingServices';
 
 const dateLabel = (value: string) => new Date(value).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const ACTION_CARD = 'flex flex-col gap-3 rounded-xl p-4 md:p-5 xl:flex-row xl:items-center xl:justify-between';
+const ACTION_CARD = 'flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between';
 
 function ActionSources({ sources }: { sources: DemoActionSource[] }) {
   return <div className="space-y-3">{sources.map(source => <Collapsible key={source.id}>
@@ -48,11 +49,14 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, subj
   const primaryButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const lastActionIdRef = useRef<string | null>(null);
   const restoreRef = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
   const detail = actions.find(action => action.id === dialog?.actionId);
   const result = detail ? results[detail.id] : undefined;
   const reviewingResult = !!result;
   const showingSources = dialog?.view === 'sources';
   const visible = actions.filter(action => !dismissed[action.id] || results[action.id]);
+  const primaryAction = visible.find(action => !results[action.id]) ?? visible[0];
+  const otherActions = visible.filter(action => action.id !== primaryAction?.id);
   const canApply = !!detail && !result && detail.effects.length > 0 && detail.effects.every(effect =>
     (drafts[detail.id]?.[effect.id] ?? effect.content).trim().length > 0
     && (effect.kind !== 'message' || !effect.subject || (subjectDrafts[detail.id]?.[effect.id] ?? effect.subject).trim().length > 0));
@@ -67,7 +71,8 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, subj
 
   function restoreDialogFocus(event: Event) {
     const target = detailTriggerRef.current?.isConnected ? detailTriggerRef.current : restoreRef.current ?? primaryButtonRefs.current[lastActionIdRef.current ?? ''];
-    if (target?.isConnected) { event.preventDefault(); target.focus(); }
+    const fallback = target?.isConnected ? target : optionsRef.current;
+    if (fallback?.isConnected) { event.preventDefault(); fallback.focus(); }
   }
 
   function openDialog(actionId: string, view: 'sources' | 'prepare' | 'result', trigger: HTMLButtonElement) {
@@ -87,23 +92,28 @@ export function DemoCandidateActions({ actions, results, dismissed, drafts, subj
     onDismiss(detail.id, true);
     setDialog(null);
   }
+  function actionCard(action: DemoCandidateAction, secondary = false) {
+    const applied = results[action.id];
+    return <article key={action.id} className={applied || secondary ? cn(ACTION_CARD, 'border border-border bg-card') : texturedCard('teal', ACTION_CARD)} aria-label={action.title}>
+      <div className="min-w-0 space-y-1.5">
+        <h4 className="line-clamp-2 break-words text-sm font-semibold text-foreground" title={action.title}>{action.title}</h4>
+        <CandidateActionSummary effects={action.effects} />
+        {applied && <p className="flex items-center gap-1.5 text-xs text-foreground" role="status"><Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Actions réalisées dans la démo</p>}
+      </div>
+      <Button ref={node => { primaryButtonRefs.current[action.id] = node; }} variant={applied || secondary ? 'outline' : 'primary'} size="sm" className="min-h-11 shrink-0 self-start sm:self-center" onClick={event => openDialog(action.id, applied ? 'result' : 'prepare', event.currentTarget)}>{applied ? 'Voir le résultat' : 'Voir les actions'}</Button>
+    </article>;
+  }
 
-  return <section aria-label="Prochaine action" data-component="demo-candidate-actions">
-    {visible.map(action => {
-      const applied = results[action.id];
-      return <article key={action.id} className={applied ? cn(ACTION_CARD, 'border border-border bg-muted') : texturedCard('teal', ACTION_CARD)} aria-label={action.title}>
-        <div className="min-w-0 space-y-1">
-          <p className={cn('text-xs', applied ? 'text-muted-foreground' : 'text-foreground')}>{applied ? 'Action réalisée dans la démo' : 'Prochaine action'}</p>
-          <h4 className="break-words text-sm font-semibold text-foreground">{action.title}</h4>
-          {applied ? <p className="flex flex-wrap items-center gap-1.5 text-xs text-foreground" role="status"><Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{action.successLabel}</p> : <p className="break-words text-xs leading-relaxed text-foreground">{action.reason}</p>}
-          {applied && action.followUp && <p className="text-xs text-foreground-secondary">Suite en attente : {action.followUp.title}</p>}
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1">
-          <Button ref={node => { primaryButtonRefs.current[action.id] = node; }} variant={applied ? 'outline' : 'primary'} size="sm" className="min-h-11 md:min-h-8" onClick={event => openDialog(action.id, applied ? 'result' : 'prepare', event.currentTarget)}>{applied ? 'Voir le résultat' : action.prepareLabel}</Button>
-          <Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={event => openDialog(action.id, 'sources', event.currentTarget)}>Pourquoi ?</Button>
-        </div>
-      </article>;
-    })}
+  return <section className="space-y-2" aria-label="Prochaine action" data-component="demo-candidate-actions">
+    {primaryAction && actionCard(primaryAction)}
+    {otherActions.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-2">Autres propositions ({otherActions.length})<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2">{otherActions.map(action => actionCard(action, true))}</CollapsibleContent></Collapsible>}
+    {visible.some(action => !results[action.id]) && <Collapsible><CollapsibleTrigger asChild><Button ref={optionsRef} variant="ghost" size="sm" className="min-h-11 gap-2 px-0">Détails et réglages<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-1">{visible.filter(action => !results[action.id]).map(action => <div key={action.id} className="flex items-center justify-between gap-3"><p className="min-w-0 line-clamp-2 break-words text-sm text-foreground">{action.title}</p><Button variant="ghost" size="sm" className="min-h-11 shrink-0 text-muted-foreground" aria-label={`Ignorer la proposition : ${action.title}`} onClick={() => {
+      onDismiss(action.id, true);
+      requestAnimationFrame(() => {
+        const target = restoreRef.current ?? optionsRef.current ?? primaryButtonRefs.current[visible.find(item => item.id !== action.id)?.id ?? ''];
+        target?.focus();
+      });
+    }}>Ignorer</Button></div>)}</CollapsibleContent></Collapsible>}
     {visible.length === 0 && <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-muted-foreground" role="status">Vous avez ignoré cette suggestion.</p>
       <Button ref={restoreRef} variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={() => {
