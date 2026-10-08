@@ -32,3 +32,16 @@ const rows = await sandbox.exports.listContinuousAgentCandidates(admin, {
 assert.equal(rows.length, 0);
 assert.equal(requests, 2, 'Recent history and unresolved evaluations both reach PostgREST');
 console.log('Continuous sourcing: real SDK/PostgREST listing and uncertainty filters PASS');
+
+// The new aggregate stays behind browser authentication as well as invoker RLS.
+// Verify the real HTTP boundary without creating an agent or paid operation.
+assert.ok(process.env.E2E_SUPABASE_ANON_KEY, 'Local anonymous key required');
+const anonymous = createClient(url, process.env.E2E_SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+const denied = await anonymous.rpc('sourcing_agent_hub_counts', {
+  p_organization_id: randomUUID(), p_agent_ids: [],
+});
+assert.equal(denied.error?.code, '42501', 'Anonymous hub RPC must be forbidden');
+assert.equal(denied.data, null);
+console.log('Sourcing agent hub: real SDK/PostgREST anonymous refusal PASS');

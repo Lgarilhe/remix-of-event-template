@@ -52,6 +52,8 @@ const PrivacyPage = lazy(() => import("./pages/Privacy"));
 const PrivacyExtensionPage = lazy(() => import("./pages/PrivacyExtension"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 const AgentsPage = lazy(() => import("./pages/Agents"));
+const SourcingAgentsHub = lazy(() => import("./pages/SourcingAgentsHub"));
+const SourcingAgentDetail = lazy(() => import("./pages/SourcingAgentDetail"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
 // Séquences de l'organisation (lot 5c-2) : derrière l'interrupteur konekt.sequences-v2 (src/lib/sequencesBeta.ts).
@@ -177,6 +179,8 @@ const AppContent = () => {
           <Route path="/sourcing" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearches /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/sourcing/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearchPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/agents" element={<ProtectedRoute><OrganizationGuard><AppLayout><AgentsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/agents/sourcing" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingAgentsHub /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/agents/sourcing/:projectId" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingAgentDetail /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><AppLayout><ATS /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><OrganizationGuard><AppLayout><CalendarPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />

@@ -23,6 +23,7 @@ import { SidebarSection } from '@/components/sidebar/SidebarSection';
 import { SidebarRow } from '@/components/sidebar/SidebarRow';
 import { MissionNavRow } from './MissionNavRow';
 import { NewMissionButton } from './NewMissionButton';
+import { AgentOrb } from '@/components/agent/AgentOrb';
 
 export function MissionsPanel() {
   const { pathname, search } = useLocation();
@@ -113,6 +114,7 @@ export function MissionsPanel() {
       )}
 
       <SidebarSection id="global-views" title="Vues globales" state="ok" isEmpty={false}>
+        <SidebarRow leading={<AgentOrb size="sm" />} title="Agents" sub="Recherches continues" to="/agents/sourcing" />
         <SidebarRow leading={<Columns3 />} title="Pipeline" sub="Candidats de toutes les missions" to="/pipeline" />
         <SidebarRow leading={<Search />} title="Recherche" sub="Hors mission" to="/sourcing" />
       </SidebarSection>
