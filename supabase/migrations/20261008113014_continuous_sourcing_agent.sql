@@ -710,7 +710,18 @@ REVOKE ALL ON FUNCTION public.sourcing_agent_score_privacy_erased(uuid,jsonb) FR
 GRANT EXECUTE ON FUNCTION public.sourcing_agent_score_privacy_erased(uuid,jsonb) TO authenticated,service_role;
 CREATE FUNCTION public.sourcing_agent_score_privacy_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $$
+DECLARE score_copy jsonb; inputs jsonb;
 BEGIN
+  IF TG_TABLE_NAME='match_scores' THEN score_copy:=NEW.scoring_result;
+  ELSIF TG_TABLE_NAME='job_candidate_status' THEN score_copy:=NEW.scoring_details;
+  ELSE score_copy:=NEW.result; END IF;
+  -- Non-scoring writes keep the existing stage/authorization guards, including
+  -- their refusal hints. The scoped read boundary is needed only for a real
+  -- persisted calibration reference copy, not absent or malformed metadata.
+  BEGIN inputs:=(score_copy->'scoringContext'->>'inputVersionKey')::jsonb;
+  EXCEPTION WHEN invalid_text_representation THEN RETURN NEW; END;
+  IF jsonb_typeof(inputs->'job'->'calibrationProfiles') IS DISTINCT FROM 'array' THEN RETURN NEW; END IF;
+  IF jsonb_array_length(inputs->'job'->'calibrationProfiles')=0 THEN RETURN NEW; END IF;
   IF TG_TABLE_NAME='match_scores' THEN
     IF public.sourcing_agent_score_privacy_erased(NEW.organization_id,NEW.scoring_result) THEN RETURN NULL; END IF;
   ELSIF TG_TABLE_NAME='job_candidate_status' THEN
