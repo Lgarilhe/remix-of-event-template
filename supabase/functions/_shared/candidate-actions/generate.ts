@@ -32,7 +32,8 @@ const PREPARATION_TOOL: OpenAITool = {
                   properties: {
                     kind: { type: 'string', enum: ['message', 'document', 'comment'] },
                     label: { type: 'string' }, content: { type: 'string' },
-                    targetId: { type: 'string' }, subject: { type: 'string' },
+                    targetId: { type: 'string' },
+                    subject: { type: 'string', description: 'Objet non vide de 200 caractères maximum, obligatoire uniquement pour une cible e-mail. Omettre ce champ pour LinkedIn et WhatsApp : leur message complet va dans content.' },
                     documentType: { type: 'string', enum: [...DOCUMENT_TYPES] }, evaluationId: { type: 'string' },
                     mentions: { type: 'array', items: { type: 'string' } },
                   },
@@ -64,8 +65,8 @@ function fields(value: Record<string, unknown>, allowed: readonly string[]): voi
   if (Object.keys(value).some((key) => !allowed.includes(key))) throw new CandidateActionValidationError('La proposition contient une action non prise en charge. Préparez-la à nouveau.');
 }
 
-function text(value: unknown, maximum: number): string {
-  if (typeof value !== 'string' || !value.trim() || value.trim().length > maximum || [...value].some((character) => {
+function text(value: unknown, maximum: number, allowEmpty = false): string {
+  if (typeof value !== 'string' || (!allowEmpty && !value.trim()) || value.trim().length > maximum || [...value].some((character) => {
     const code = character.charCodeAt(0);
     return code < 32 && ![9, 10, 13].includes(code);
   })) {
@@ -150,7 +151,10 @@ export async function parseCandidateActionPlans(
         if (target.channel === 'linkedin' && base.content.length > 1_500) throw new CandidateActionValidationError('Le message LinkedIn proposé est trop long.');
         if (target.audience === 'candidate' && hasTutoiement(base.content, [context.candidateName])) throw new CandidateActionValidationError('Le message proposé ne respecte pas vos règles de rédaction. Préparez-le à nouveau.');
         const subject = target.channel === 'email' ? text(effect.subject, 200) : undefined;
-        if (target.channel !== 'email' && effect.subject !== undefined) throw new CandidateActionValidationError('Ce canal ne prend pas en charge cet objet.');
+        // Le schéma du modèle est commun aux canaux. Un objet généré pour un
+        // chat est une métadonnée sans effet : le valider puis l'omettre du
+        // brouillon, sans modifier le message, la cible ou le compte d'envoi.
+        if (target.channel !== 'email' && effect.subject != null) text(effect.subject, 200, true);
         parsed = { ...base, kind, targetId, audience: target.audience, channel: target.channel, service: target.service, recipient: target.recipient,
           senderAccountId: target.senderAccountId, senderAddress: target.senderAddress,
           ...(subject ? { subject } : {}), ...(target.chatId ? { chatId: target.chatId } : {}),
@@ -214,7 +218,7 @@ Privilégiez une réponse attendue ou un engagement daté, un entretien confirm�
 Les commentaires/rapports internes ne sont pas des textes à envoyer au candidat. N'incluez pas de verbatim, score, point d'alerte ni coordonnée privée de l'équipe dans un message candidat. Ne promettez pas un rendez-vous, une décision ni un document transmis sans preuve. Respectez toute anonymisation du client indiquée dans le poste. Aucune décision ou note d'évaluation n'est modifiable : scorecard_questions ajoute seulement des questions dans une note, les critères non évalués restent non évalués.
 Forme exacte d'une proposition : {intent:"reply|coordinate|prepare_interview|follow_up|clarify_evaluation",title,reason,sourceIds:[id],effects:[...],followUp?:{title,waitingFor,description}}. Une suite conditionnelle décrit seulement un futur besoin, jamais un envoi automatique ni une réponse reçue.
 Effets fermés :
-- {kind:"message",label,content,targetId,subject?} : targetId exactement parmi les cibles autorisées, objet requis seulement pour un e-mail. Aucun compte ni destinataire libre. Au plus un message par cible dans toute la réponse ; LinkedIn 1500 caractères, e-mail 5000.
+- {kind:"message",label,content,targetId,subject?} : targetId exactement parmi les cibles autorisées. Pour un e-mail (supportsSubject:true), subject est obligatoire, non vide et limité à 200 caractères. Pour LinkedIn ou WhatsApp (supportsSubject:false), omettez entièrement subject : tout le message doit être dans content. Aucun compte ni destinataire libre. Au plus un message par cible dans toute la réponse ; LinkedIn 1500 caractères, e-mail 5000.
 - {kind:"document",label,content,documentType:"interview_brief|scorecard_questions|follow_up",evaluationId?} : note de fiche de 4000 caractères max ; brief uniquement pour un entretien futur réellement confirmé ; evaluationId uniquement parmi ownEvaluationIds.
 - {kind:"comment",label,content,mentions:[memberId]} : 4000 caractères max, membres exacts fournis, mission obligatoire.
 Ne fournissez aucun autre champ, aucun outil générique, aucune tâche vague, aucun markdown JSON ni texte autour. [] est un résultat valable.
@@ -225,7 +229,7 @@ ${buildStyleInstructions(style, { slots: [{ kind: 'relance', followUp: true }], 
     { role: 'user', content: JSON.stringify({ scope: context.scope, candidate: context.candidateName, requestedFocus: intent?.trim().slice(0, 500) ?? null,
       facts: boundedFacts(context.facts), sourceStates: context.sourceStates, sourceWindowLimited: sources.length < context.sources.length,
       sources: sources.map((source) => ({ id: source.id, type: source.type, title: source.title, author: source.author, timestamp: source.timestamp, summary: source.summary.slice(0, 240), detail: source.detail.slice(0, 900), projectId: source.projectId })),
-      targets: context.targets.map(({ id, audience, channel, service, label }) => ({ id, audience, channel, service, label })), members: context.members, ownEvaluationIds: context.ownEvaluationIds,
+      targets: context.targets.map(({ id, audience, channel, service, label }) => ({ id, audience, channel, service, label, supportsSubject: channel === 'email' })), members: context.members, ownEvaluationIds: context.ownEvaluationIds,
     }) },
   ];
 }

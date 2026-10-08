@@ -43,6 +43,24 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — BUG — Objet e-mail dans une préparation LinkedIn ou WhatsApp
+
+**Contexte** : la préparation pouvait échouer avant la relecture guidée avec « Ce canal ne prend pas en charge cet objet. ». Le schéma commun autorisait un objet facultatif, mais le parseur refusait toute présence de ce champ sur les chats, même vide ou null. Les deux cas sont reproduits sur le commit précédent.
+**Fait** : les cibles indiquent explicitement au modèle si elles acceptent un objet. Un objet superflu valide est omis des brouillons LinkedIn et WhatsApp, sans modifier le corps, la cible ni le compte. Les e-mails conservent un objet obligatoire non vide de 200 caractères maximum ; les types invalides, caractères de contrôle et champs inconnus restent refusés. Aucun changement de transport, de droits ni de validation finale.
+**Validation** : 34 tests de génération, 14 scénarios API sans saut ni reprise et 11 fichiers de tests ciblés réussis ; contrôle Deno du module, lint ciblé et build production réussis. Les onze diagnostics TypeScript hérités sont identiques à la baseline. La vérification API couvre les propositions mixtes, la persistance, le coût unique et l’absence d’envoi avant confirmation. Elle reprend l’ordre d’exécution du client : LinkedIn en dernier, car cet envoi peut déplacer le candidat dans le pipeline.
+
+| Persona | Vérification ciblée | Résultat |
+|---|---|---|
+| Guillaume | Préparation multicanal avec objet superflu ; corps, comptes et destinataires conservés | Tests génération réussis |
+| Claire | Brouillons sans objet pour les chats, objet conservé pour les e-mails ; confirmation requise | Contrat API vérifié ; interface identique à la QA de la relecture guidée |
+| Théo | Types invalides, contrôle des identités, absence d’envoi avant confirmation et un seul règlement | Tests génération réussis ; aucune variable globale de credentials ajoutée |
+| Sophie | Réponse serveur compatible avec le même parcours mobile guidé | Interface inchangée ; QA mobile de la relecture guidée réutilisée, sans nouveau test sur appareil physique |
+
+**Limites** : modèles et fournisseurs simulés localement, aucun message réel ni appel modèle de production. La capture ne permet pas de connaître la valeur exacte du champ renvoyé lors de l’échec ; les formes absente, null, vide et titre valide sont couvertes. Publication après contrôles CI et vérification du code serveur déployé.
+**Refs** : branche `codex/candidate-action-channel-subject` ; `tests/c1/candidate-actions-generation.test.mjs` ; `e2e/api/candidate-actions.spec.ts`.
+
+---
+
 ## 2026-10-08 — REFACTOR — Relecture guidée des actions candidat
 
 **Contexte** : la revue de toutes les actions dans une seule fenêtre demandait trop de lecture. La messagerie et les fiches candidat proposent désormais un contenu par écran, modifiable, avec progression et retour en arrière.
