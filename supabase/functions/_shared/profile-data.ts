@@ -303,6 +303,8 @@ export function buildJobFromBrief(jd: Any, base: Record<string, Any>): Record<st
   }
   if (jd.calibration_profiles?.length) {
     job.calibrationProfiles = jd.calibration_profiles.slice(0, 5).map((p: Any) => ({
+      ...(typeof p.sourcing_agent_candidate_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.sourcing_agent_candidate_id)
+        ? { sourcing_agent_candidate_id: p.sourcing_agent_candidate_id } : {}),
       name: p.name,
       headline: p.headline,
       linkedinUrl: p.linkedin_url,

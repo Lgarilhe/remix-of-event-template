@@ -32,6 +32,17 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — SPEC — Agent de sourcing continu par mission
+
+**Fait** : agent activé explicitement depuis le menu de la mission. Recherche sur le compte LinkedIn personnel choisi et sa licence réelle, ou parmi les candidats déjà enregistrés par le recruteur. Premier échantillon de cinq profils, au moins trois avis motivés dont un positif, puis approbation explicite des références ajoutées au cadrage. Pause, reprise, arrêt et résolution d’une évaluation interrompue. Aucun contact ni passage automatique en « Retenu ».
+**Contrôles** : contexte brief/filtres/mémoires vérifié avant les opérations externes, lease invalidé à la pause, déduplication durable, plafond de profils, quotas et horaires LinkedIn. Les références et résultats dépendants sont purgés lors d’un effacement. Une évaluation incertaine ne se relance pas automatiquement.
+**Validation** : tests comportementaux du moteur, des handlers et du hook ; audit SQL et courses réelles sur base locale isolée ; QA des quatre personas à 320/390 px avec API simulées et audits axe. Aucun appel LinkedIn/IA réel pendant les vérifications. TypeScript app conserve ses onze diagnostics hérités ; contrôles Deno comparés au socle sans nouveau diagnostic.
+**Limites** : budget IA présenté comme cible, car le coût réel peut dépasser une estimation ; un agent et une phase bornée par tick cron ; le vivier porte sur les candidats personnels enregistrés, sans synchronisation d’un ATS externe.
+**Reste à faire** : publication après les vérifications finales et la CI.
+**Refs** : branche `codex/continuous-sourcing-agent-20261008`, migration `20261008113014_continuous_sourcing_agent.sql`.
+
+---
+
 ## 2026-10-08 — BUG — Préparations candidat lisibles et erreurs distinguées
 
 **Contexte** : la messagerie réelle affichait « La préparation n’a pas pu être lue » après une génération. Le wrapper IA ne garantissait pas le JSON et ses consignes globales de guillemets contredisaient ce format ; une réponse outil sans texte ou un bloc JSON complet étaient également refusés. Des sources volontairement non lues étaient présentées comme des pannes.

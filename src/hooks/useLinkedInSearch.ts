@@ -450,6 +450,8 @@ export function useLinkedInSearch({
       }
       if (jd.calibration_profiles?.length) {
         (job as any).calibrationProfiles = jd.calibration_profiles.slice(0, 5).map((p: any) => ({
+          ...(typeof p.sourcing_agent_candidate_id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.sourcing_agent_candidate_id)
+            ? { sourcing_agent_candidate_id: p.sourcing_agent_candidate_id } : {}),
           name: p.name,
           headline: p.headline,
           linkedinUrl: p.linkedin_url,
