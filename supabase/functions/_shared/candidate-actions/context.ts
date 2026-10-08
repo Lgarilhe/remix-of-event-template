@@ -329,10 +329,24 @@ export async function loadCandidateActionContext(
   states.phoneCallInsights = 'unavailable';
   for (const post of posts) add('stored_linkedin_posts', { ...post, created_at: post.date ?? post.published_at, created_by: '' }, 'post', 'Publication LinkedIn', json({ text: post.text, url: post.url ?? post.share_url }), null, 'linkedin');
   const sourceLabels: Record<string, string> = { contacts: 'Coordonnées', notes: 'Notes internes', comments: 'Commentaires de l’équipe', evaluations: 'Évaluations', reports: 'Comptes rendus', interviews: 'Entretiens', sequences: 'Séquences', sequenceEvents: 'Envois de séquence', process: 'Process de la mission', members: 'Membres de l’équipe', recordedMessages: 'Historique des échanges', linkedinMessages: 'Messages LinkedIn', emailMessages: 'E-mails', phoneCallInsights: 'Analyses des appels téléphoniques' };
-  for (const [key, state] of Object.entries(states)) if (state !== 'available' && key !== 'posts') warnings.push(`${sourceLabels[key] || 'Contexte candidat'} : ${state === 'partial' ? 'historique partiel' : 'lecture indisponible'}. Les actions qui nécessitent ces informations attendront leur vérification.`);
+  // These sources remain unknown to the model, but deliberately not reading
+  // them is not a service outage. Keep the reason without a misleading alert.
+  const unreadSourceReasons: Record<string, string> = { phoneCallInsights: 'no_verified_candidate_call_link' };
+  if (!posts.length) unreadSourceReasons.posts = 'no_stored_posts';
+  if (recordedMessagesRead.state === 'available') unreadSourceReasons.recordedMessages = 'authorized_history_subset';
+  if (!readableChannels[0] && messageReads[0].status === 'fulfilled') unreadSourceReasons.linkedinMessages = 'no_verified_conversation';
+  if (!readableChannels[1] && messageReads[1].status === 'fulfilled') unreadSourceReasons.emailMessages = contacts.some(contact => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text(contact.email))) ? 'no_verified_email_target' : 'no_known_candidate_email';
+  const limitedSources: string[] = [];
+  for (const [key, state] of Object.entries(states)) {
+    if (state === 'available' || unreadSourceReasons[key]) continue;
+    const label = sourceLabels[key] || 'Contexte candidat';
+    if (state === 'partial') limitedSources.push(label);
+    else warnings.push(`${label} : ces informations n’ont pas pu être chargées. Réessayez pour compléter le contexte.`);
+  }
+  if (limitedSources.length) warnings.push(`Historique limité aux informations chargées (${limitedSources.join(', ')}).`);
   const ownEvaluationIds = evaluations.filter(r => r.created_by === userId && r.candidate_id === candidateId).map(r => text(r.id));
   const facts = {
-    identityAliases: ids, profile, mission, candidacy: candidate,
+    identityAliases: ids, profile, mission, candidacy: candidate, unreadSourceReasons,
     interviews, evaluations, reports, notes, comments, sequenceEvents: executionRead.data,
     sequenceEnrollments: enrollments, teamInterventions: conversations, processSteps: processRead.data,
     messages, posts, incomingSources: messages.filter(s => s.type === 'inbound_message'), ambiguousMessages: messages.filter(s => s.type === 'ambiguous_message'),

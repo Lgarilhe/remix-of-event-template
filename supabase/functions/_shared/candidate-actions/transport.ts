@@ -146,7 +146,8 @@ export async function loadCandidateActionTargets(admin: ActionClient, userClient
     if (!chatId && /^(ACo|ACw|urn:li:)/.test(scope.candidate_id)) {
       const creds = await candidateActionProviderCredentials(admin, scope.organization_id);
       const response = await candidateActionProviderFetch(creds, `/chat_attendees/${safeId(scope.candidate_id)}/chats?account_id=${safeId(accountId)}&limit=10`);
-      if (response.ok) chatId = token(items(await response.json()).find(chat => token(chat.account_id) === accountId && Number(chat.type) === 0)?.id);
+      if (!response.ok) fail('CHAT_DISCOVERY_UNAVAILABLE', 'Les conversations LinkedIn ne peuvent pas être vérifiées. Réessayez.');
+      chatId = token(items(await response.json()).find(chat => token(chat.account_id) === accountId && Number(chat.type) === 0)?.id);
     }
     if (chatId) {
       const resolved = await validateCandidateActionChat(admin, userId, { ...scope, account_id: accountId, chat_id: chatId });

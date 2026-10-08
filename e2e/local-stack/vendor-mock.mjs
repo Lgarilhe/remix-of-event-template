@@ -61,6 +61,20 @@ function actionRecipe(body, recipe) {
     reason: 'Une information réelle attend une réponse.', sourceIds: [source.id], effects }] });
 }
 
+// Match the Anthropic protocol: a structured preparation can contain a tool
+// block and thinking without any text block for the wrapper to concatenate.
+function candidateActionReply(body, recipe, serial) {
+  const preparation = actionRecipe(body, recipe);
+  if (recipe.responseMode === 'tool_use') return {
+    content: [
+      { type: 'thinking', thinking: 'Préparation structurée du faux prestataire.' },
+      { type: 'tool_use', id: `toolu_actions_${serial}`, name: 'prepare_candidate_actions', input: JSON.parse(preparation) },
+    ],
+    stop_reason: 'tool_use',
+  };
+  return { content: [{ type: 'text', text: preparation }], stop_reason: 'end_turn' };
+}
+
 http.createServer((req, res) => {
   let raw = '';
   req.on('data', (c) => (raw += c));
@@ -110,10 +124,11 @@ http.createServer((req, res) => {
         .find(([marker]) => marker && raw.includes(marker));
       const recipe = Object.values(modes).flatMap((m) => Object.entries(m?.action_recipes ?? {}))
         .find(([marker]) => marker && raw.includes(marker));
+      const reply = !marked && recipe ? candidateActionReply(body, recipe[1], n)
+        : { content: [{ type: 'text', text: marked ? marked[1] : mode.ai_text ?? 'Bonjour, votre parcours m’intéresse. Seriez-vous ouvert à un échange ?' }], stop_reason: 'end_turn' };
       return send(res, 200, {
         id: `msg_ai_${n}`, type: 'message', role: 'assistant', model: body?.model ?? 'mock',
-        content: [{ type: 'text', text: marked ? marked[1] : recipe ? actionRecipe(body, recipe[1]) : mode.ai_text ?? 'Bonjour, votre parcours m’intéresse. Seriez-vous ouvert à un échange ?' }],
-        stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 10 },
+        ...reply, usage: { input_tokens: 10, output_tokens: 10 },
       });
     }
     // LinkedIn

@@ -22,7 +22,7 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
   const changed = useRef(onChanged);
   changed.current = onChanged;
   const [operation, setOperation] = useState<{ scope: string; type: Operation; planId?: string } | null>(null);
-  const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ scope: string; type: Operation; message: string } | null>(null);
   const [unverified, setUnverified] = useState<Record<string, string[]>>({});
   const inFlight = useRef(new Set<string>());
   const enabled = isReady && !!user && !!fullScope?.candidate_id;
@@ -34,7 +34,7 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
     retry: false,
     queryFn: async (): Promise<ActionsPayload> => {
       const response = await invokeEdgeFunction<ActionsPayload>('candidate-actions', { action: 'list', ...fullScope });
-      if (response.error || !response.data?.success) throw response.error || new Error('Les prochaines actions sont temporairement indisponibles.');
+      if (response.error || !response.data?.success) throw response.error || new Error(response.data?.error || 'Les actions enregistrées n’ont pas pu être chargées. Réessayez leur lecture.');
       return response.data;
     },
   });
@@ -60,7 +60,7 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
       if (type !== 'execute' && /CONTEXT_CHANGED|REVISION|TARGET_CHANGED|EVALUATION_CHANGED|MEMBER_CHANGED/.test(code)) {
         try { queryClient.setQueryData(queryKey, await request('list')); } catch { /* Le texte local reste disponible. */ }
       }
-      if (currentScope.current === scopeKey) setFailure({ scope: scopeKey, message: error instanceof Error ? error.message : 'L’action n’a pas pu être terminée. Votre contenu est conservé.' });
+      if (currentScope.current === scopeKey) setFailure({ scope: scopeKey, type, message: error instanceof Error ? error.message : 'L’action n’a pas pu être terminée. Votre contenu est conservé.' });
       return null;
     } finally {
       inFlight.current.delete(scopeKey);
@@ -68,12 +68,17 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
     }
   };
 
-  const generate = () => run('generate', undefined, async () => {
-    const response = await invokeWithCredits<ActionsPayload>('candidate-actions', 'candidate_actions', { action: 'generate', ...fullScope }, { modelOverride: query.data?.generation?.model, description: 'Préparer les prochaines actions du candidat' });
-    if (response.error || !response.data?.success) throw response.error || new Error(response.data?.error || 'Les prochaines actions n’ont pas pu être préparées.');
-    queryClient.setQueryData(queryKey, response.data);
-    return response.data;
-  });
+  const generate = () => {
+    // Sans première lecture confirmée, ni contexte ni coût ne sont connus.
+    // Cette garde protège aussi les appels autres que le bouton de l'interface.
+    if (!query.data?.success) return Promise.resolve(null);
+    return run('generate', undefined, async () => {
+      const response = await invokeWithCredits<ActionsPayload>('candidate-actions', 'candidate_actions', { action: 'generate', ...fullScope }, { modelOverride: query.data?.generation?.model, description: 'Préparer les prochaines actions du candidat' });
+      if (response.error || !response.data?.success) throw response.error || new Error(response.data?.error || 'Les prochaines actions n’ont pas pu être préparées.');
+      queryClient.setQueryData(queryKey, response.data);
+      return response.data;
+    });
+  };
   const save = (plan: CandidateActionPlan, edits: CandidateActionEdits) => run('save', plan.id, async () => {
     const response = await request('save', { plan_id: plan.id, revision: plan.revision, edits });
     if (!response.plan) throw new Error('Le brouillon n’a pas pu être confirmé. Actualisez les actions.');
@@ -137,7 +142,12 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
     return result;
   };
   const plans = query.data?.plans ?? [];
-  return { scopeKey, enabled, plans, messages: query.data?.messages ?? [], unverifiedPlanIds: unverified[scopeKey] ?? [], warnings: query.data?.warnings ?? [], channels: query.data?.channels ?? [], generation: query.data?.generation, loading: query.isLoading && enabled, fetching: query.isFetching, error: failure?.scope === scopeKey ? failure.message : query.isError ? 'Les prochaines actions sont temporairement indisponibles. Vous pouvez continuer la conversation.' : null, operation: operation?.scope === scopeKey ? operation : null, hasActions: plans.some(plan => plan.status !== 'dismissed' && !candidateActionCompleted(plan)), generate, save, execute, setDismissed, refresh };
+  const readError = query.isError ? query.error instanceof Error ? query.error.message : 'Les actions enregistrées n’ont pas pu être chargées. Réessayez leur lecture.' : null;
+  const operationError = failure?.scope === scopeKey ? { type: failure.type, message: failure.message } : null;
+  // Une relecture en panne conserve les préparations connues ; une première
+  // lecture non confirmée ne prouve ni l'absence de canal ni le coût de l'IA.
+  const contextLoaded = !!query.data?.success;
+  return { scopeKey, enabled, plans, messages: query.data?.messages ?? [], unverifiedPlanIds: unverified[scopeKey] ?? [], warnings: query.data?.warnings ?? [], channels: query.data?.channels ?? [], generation: query.data?.generation, contextLoaded, readError, operationError, loading: query.isLoading && enabled, fetching: query.isFetching, error: operationError?.message || readError, operation: operation?.scope === scopeKey ? operation : null, hasActions: plans.some(plan => plan.status !== 'dismissed' && !candidateActionCompleted(plan)), generate, save, execute, setDismissed, refresh };
 }
 
 export type CandidateActionsController = ReturnType<typeof useCandidateActions>;

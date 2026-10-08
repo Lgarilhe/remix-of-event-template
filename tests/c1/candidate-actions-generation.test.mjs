@@ -5,6 +5,7 @@ import { buildSync } from 'esbuild';
 const bundle = buildSync({ entryPoints: ['supabase/functions/_shared/candidate-actions/generate.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
 const generation = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 const { normalizeWritingStyle } = await import(`data:text/javascript;base64,${Buffer.from(buildSync({ entryPoints: ['supabase/functions/_shared/writing-style.ts'], bundle: true, platform: 'node', format: 'esm', write: false }).outputFiles[0].text).toString('base64')}`);
+const { callClaudeCompat } = await import(`data:text/javascript;base64,${Buffer.from(buildSync({ entryPoints: ['supabase/functions/_shared/call-claude.ts'], bundle: true, platform: 'node', format: 'esm', write: false }).outputFiles[0].text).toString('base64')}`);
 
 const NOW = Date.parse('2026-10-07T10:00:00Z');
 const context = {
@@ -138,3 +139,106 @@ test('an empty sourced recommendation is valid and does not fabricate fallback a
   });
   assert.deepEqual(plans, []);
 });
+
+test('a named preparation tool supplies validated drafts without interpreting surrounding prose', async () => {
+  let settlements = 0;
+  const [plan] = await generation.generateCandidateActionPlans(context, 'user-a', { model: 'claude-sonnet-4-6', style: normalizeWritingStyle({}), now: NOW }, {
+    callModel: async () => ({ content: 'Texte hors structure à ignorer.', toolCall: { name: 'prepare_candidate_actions', input: proposal() },
+      usage: { input_tokens: 20, output_tokens: 10 }, model: 'claude-sonnet-4-6', stop_reason: 'tool_use' }),
+    settle: async () => { settlements += 1; },
+  });
+  assert.equal(settlements, 1);
+  assert.equal(plan.status, 'draft');
+  assert.ok(plan.effects.every(effect => effect.status === 'prepared'));
+  assert.equal(plan.effects[0].recipient, context.targets[0].recipient);
+});
+
+test('tool arguments still require real references; another tool cannot use text as a fallback', async () => {
+  const missingSource = proposal();
+  missingSource.plans[0].sourceIds = ['invented-source'];
+  for (const toolCall of [{ name: 'prepare_candidate_actions', input: missingSource }, { name: 'send_message', input: proposal() }]) {
+    let settlements = 0;
+    await assert.rejects(generation.generateCandidateActionPlans(context, 'user-a', { model: 'claude-sonnet-4-6', style: normalizeWritingStyle({}), now: NOW }, {
+      callModel: async () => ({ content: JSON.stringify(proposal()), toolCall, usage: { input_tokens: 20, output_tokens: 10 }, model: 'claude-sonnet-4-6', stop_reason: 'tool_use' }),
+      settle: async () => { settlements += 1; },
+    }), generation.CandidateActionValidationError);
+    assert.equal(settlements, 1);
+  }
+});
+
+test('one complete legacy JSON fence is readable and still cannot invent a recipient', async () => {
+  const generateFenced = (value) => generation.generateCandidateActionPlans(context, 'user-a', { model: 'claude-sonnet-4-6', style: normalizeWritingStyle({}), now: NOW }, {
+    callModel: async () => ({ content: `\n\`\`\`json\r\n${JSON.stringify(value)}\r\n\`\`\`\n`, toolCall: null, usage: { input_tokens: 20, output_tokens: 10 }, model: 'claude-sonnet-4-6', stop_reason: 'end_turn' }),
+    settle: async () => {},
+  });
+  const [plan] = await generateFenced(proposal());
+  assert.equal(plan.status, 'draft');
+  const inventedRecipient = proposal();
+  inventedRecipient.plans[0].effects[0].targetId = 'outsider@example.test';
+  await assert.rejects(generateFenced(inventedRecipient), generation.CandidateActionValidationError);
+});
+
+test('legacy fallback refuses prose, several JSON blocks, and malformed quotes without repair or retries', async () => {
+  for (const content of ['Voici la proposition : {"plans":[]}', '```json\n{"plans":[]}\n```\n```json\n{"plans":[]}\n```', '{«plans»:[]}', '```json\n{"plans":[]}\n```\nTerminé.']) {
+    let calls = 0;
+    let settlements = 0;
+    await assert.rejects(generation.generateCandidateActionPlans(context, 'user-a', { model: 'claude-sonnet-4-6', style: normalizeWritingStyle({}), now: NOW }, {
+      callModel: async () => { calls += 1; return { content, toolCall: null, usage: { input_tokens: 20, output_tokens: 10 }, model: 'claude-sonnet-4-6', stop_reason: 'end_turn' }; },
+      settle: async () => { settlements += 1; },
+    }), generation.CandidateActionValidationError);
+    assert.equal(calls, 1);
+    assert.equal(settlements, 1);
+  }
+});
+
+test('a truncated tool result is charged once and never becomes a draft', async () => {
+  let settlements = 0;
+  await assert.rejects(generation.generateCandidateActionPlans(context, 'user-a', { model: 'claude-sonnet-5-5', style: normalizeWritingStyle({}), now: NOW }, {
+    callModel: async () => ({ content: '', toolCall: { name: 'prepare_candidate_actions', input: proposal() }, usage: { input_tokens: 20, output_tokens: 10 }, model: 'claude-sonnet-5-5', stop_reason: 'max_tokens' }),
+    settle: async () => { settlements += 1; },
+  }), /préparation est incomplète/);
+  assert.equal(settlements, 1);
+});
+
+for (const model of ['claude-haiku-4-5', 'claude-sonnet-5-5']) {
+  test(`real Claude compatibility wrapper prepares ${model} through a closed data tool and scoped message style`, async () => {
+    const previousFetch = globalThis.fetch;
+    const previousDeno = globalThis.Deno;
+    globalThis.Deno = { env: { get: key => key === 'ANTHROPIC_API_KEY' ? 'mock-only-key' : undefined } };
+    const calls = [];
+    let request;
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, 'https://api.anthropic.com/v1/messages');
+      request = JSON.parse(options.body);
+      calls.push('provider');
+      return new Response(JSON.stringify({ model, content: [{ type: 'thinking', thinking: '' },
+        { type: 'tool_use', id: 'toolu_preparation_test', name: 'prepare_candidate_actions', input: proposal() }],
+      usage: { input_tokens: 31, output_tokens: 17 }, stop_reason: 'tool_use' }), { status: 200 });
+    };
+    try {
+      const [plan] = await generation.generateCandidateActionPlans(context, 'user-a', { model, style: normalizeWritingStyle({}), now: NOW }, {
+        callModel: callClaudeCompat,
+        settle: async result => { calls.push('settle'); assert.deepEqual(result.usage, { input_tokens: 31, output_tokens: 17 }); },
+      });
+      assert.deepEqual(calls, ['provider', 'settle']);
+      assert.equal(plan.status, 'draft');
+      assert.equal(plan.effects[0].recipient, context.targets[0].recipient);
+      assert.equal(request.tools.length, 1);
+      assert.equal(request.tools[0].name, 'prepare_candidate_actions');
+      assert.deepEqual(request.tools[0].input_schema.required, ['plans']);
+      assert.equal(request.tools[0].input_schema.additionalProperties, false);
+      if (model === 'claude-sonnet-5-5') {
+        assert.equal(request.tools[0].strict, true, 'actual wrapper accepts the schema in its strict subset');
+        assert.deepEqual(request.tool_choice, { type: 'auto' });
+      } else assert.deepEqual(request.tool_choice, { type: 'tool', name: 'prepare_candidate_actions' });
+      assert.ok(request.system.startsWith('Vous préparez des actions concrètes'));
+      assert.ok(request.system.indexOf('uniquement aux valeurs content') < request.system.indexOf('STYLE OBLIGATOIRE'));
+      assert.match(request.system, /Les guillemets droits requis par JSON restent obligatoires/);
+      assert.match(request.system, /Le vouvoiement ci-dessous prime/);
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousDeno === undefined) delete globalThis.Deno;
+      else globalThis.Deno = previousDeno;
+    }
+  });
+}

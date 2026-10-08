@@ -96,7 +96,7 @@ test('deux missions exigent un choix explicite ; la mission inaccessible est ref
   await assert.rejects(f.load({ ...scope, project_id: OTHER }), e => e.code === 'MISSION_ACCESS_DENIED');
 });
 
-test('un canal non connecté et un ledger privé ne constituent jamais une preuve d’absence d’échanges', async () => {
+test('un canal non applicable et un ledger privé restent inconnus sans produire de fausse alerte de panne', async () => {
   const f = fixture();
   globalThis.contextTestTransport.chat = async () => ({ messages: [], complete: true });
   globalThis.contextTestTransport.email = async () => ({ messages: [], complete: true });
@@ -105,7 +105,67 @@ test('un canal non connecté et un ledger privé ne constituent jamais une preuv
   assert.equal(result.sourceStates.linkedinMessages, 'unavailable');
   assert.equal(result.sourceStates.emailMessages, 'unavailable');
   assert.equal(result.sourceStates.recordedMessages, 'partial');
-  assert.ok(result.warnings.some(warning => warning.includes('E-mails : lecture indisponible')));
+  assert.equal(result.sourceStates.phoneCallInsights, 'unavailable');
+  assert.equal(result.facts.unreadSourceReasons.emailMessages, 'no_known_candidate_email');
+  assert.equal(result.facts.unreadSourceReasons.linkedinMessages, 'no_verified_conversation');
+  assert.equal(result.facts.unreadSourceReasons.recordedMessages, 'authorized_history_subset');
+  assert.equal(result.facts.unreadSourceReasons.phoneCallInsights, 'no_verified_candidate_call_link');
+  assert.deepEqual(result.warnings, []);
+});
+
+test('une conversation hors pipeline peut être complète sur LinkedIn sans destinataire e-mail connu ni alerte d’appel', async () => {
+  const f = fixture({ job_candidate_status: [] });
+  const inbound = { id: 'linkedin-own-account-reply', type: 'inbound_message', title: 'Message du candidat', author: 'Camille', timestamp: '2026-10-08T09:00:00Z', summary: 'Je souhaite en savoir plus', detail: 'Je souhaite en savoir plus', service: 'linkedin', reference: { table: 'provider_messages', id: 'reply', version: '2026-10-08T09:00:00Z' } };
+  globalThis.contextTestTransport.targets = async (_admin, _jwt, _user, _scope, contacts) => {
+    assert.deepEqual(contacts, []);
+    return [{ id: 'linkedin-target', audience: 'candidate', channel: 'linkedin', senderAccountId: 'own-account', chatId: 'own-chat' }];
+  };
+  globalThis.contextTestTransport.chat = async () => ({ messages: [inbound], complete: true });
+  globalThis.contextTestTransport.email = async (_admin, _user, _scope, targets) => {
+    assert.ok(!targets.some(target => target.channel === 'email' && target.audience === 'candidate'));
+    return { messages: [], complete: true };
+  };
+  const result = await f.load({ ...scope, project_id: null, chat_id: 'own-chat', account_id: 'own-account' });
+  assert.equal(result.scope.project_id, null);
+  assert.equal(result.sourceStates.linkedinMessages, 'available');
+  assert.equal(result.sourceStates.emailMessages, 'unavailable');
+  assert.equal(result.facts.unreadSourceReasons.emailMessages, 'no_known_candidate_email');
+  assert.equal(result.facts.incomingSources[0].id, inbound.id);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('un e-mail connu sans cible vérifiée ne prouve ni une panne ni l’absence d’échanges', async () => {
+  const f = fixture({ candidate_contacts: [{ candidate_id: candidate.candidate_id, organization_id: ORG, email: 'camille@example.test' }] });
+  const result = await f.load();
+  assert.equal(result.sourceStates.emailMessages, 'unavailable');
+  assert.equal(result.facts.unreadSourceReasons.emailMessages, 'no_verified_email_target');
+  assert.ok(!result.warnings.some(w => w.startsWith('E-mails')));
+});
+
+test('une vraie panne SQL reste visible même quand aucun canal e-mail n’est applicable', async () => {
+  const result = await fixture({}, ['candidate_action_messages', 'candidate_contacts']).load();
+  assert.equal(result.sourceStates.recordedMessages, 'unavailable');
+  assert.equal(result.sourceStates.contacts, 'unavailable');
+  assert.equal(result.facts.unreadSourceReasons.recordedMessages, undefined);
+  assert.ok(result.warnings.some(w => w.startsWith('Historique des échanges :') && w.includes('n’ont pas pu être chargées')));
+  assert.ok(result.warnings.some(w => w.startsWith('Coordonnées :') && w.includes('n’ont pas pu être chargées')));
+});
+
+test('une vraie panne provider sur des canaux vérifiés affiche les sources concernées', async () => {
+  const f = fixture();
+  globalThis.contextTestTransport.targets = async () => [
+    { id: 'linkedin-target', audience: 'candidate', channel: 'linkedin', senderAccountId: 'own-account', chatId: 'own-chat' },
+    { id: 'email-target', audience: 'candidate', channel: 'email', senderAccountId: 'mailbox' },
+  ];
+  globalThis.contextTestTransport.chat = async () => { throw new Error('Provider LinkedIn indisponible'); };
+  globalThis.contextTestTransport.email = async () => { throw new Error('Provider Outlook indisponible'); };
+  const result = await f.load();
+  assert.equal(result.sourceStates.linkedinMessages, 'unavailable');
+  assert.equal(result.sourceStates.emailMessages, 'unavailable');
+  assert.equal(result.facts.unreadSourceReasons.linkedinMessages, undefined);
+  assert.equal(result.facts.unreadSourceReasons.emailMessages, undefined);
+  assert.ok(result.warnings.some(w => w.startsWith('Messages LinkedIn :') && w.includes('n’ont pas pu être chargées')));
+  assert.ok(result.warnings.some(w => w.startsWith('E-mails :') && w.includes('n’ont pas pu être chargées')));
 });
 
 test('un rendez-vous ou une grille d’une autre mission ne deviennent pas un contexte de la mission ouverte', async () => {
@@ -127,9 +187,16 @@ test('un rendez-vous ou une grille d’une autre mission ne deviennent pas un co
 test('une erreur de lecture ou une collecte plafonnée n’est pas une preuve d’absence', async () => {
   const failed = await fixture({}, ['qualification_sessions']).load();
   assert.equal(failed.sourceStates.interviews, 'unavailable');
-  const partial = await fixture({ candidate_notes: Array.from({ length: 101 }, (_, i) => ({ id: `note-${i}`, organization_id: ORG, candidate_id: candidate.candidate_id, content: 'Note' })) }).load();
+  assert.ok(failed.warnings.some(w => w.startsWith('Entretiens :') && w.includes('n’ont pas pu être chargées')));
+  const partial = await fixture({
+    candidate_notes: Array.from({ length: 101 }, (_, i) => ({ id: `note-${i}`, organization_id: ORG, candidate_id: candidate.candidate_id, content: 'Note' })),
+    candidate_action_messages: Array.from({ length: 101 }, (_, i) => ({ id: `message-${i}`, organization_id: ORG, candidate_id: candidate.candidate_id, project_id: MISSION, content: 'Message', direction: 'inbound' })),
+  }).load();
   assert.equal(partial.sourceStates.notes, 'partial');
-  assert.ok(partial.warnings.some(w => w.includes('partiel')));
+  assert.equal(partial.sourceStates.recordedMessages, 'partial');
+  assert.equal(partial.facts.unreadSourceReasons.recordedMessages, undefined);
+  assert.deepEqual(partial.warnings, ['Historique limité aux informations chargées (Notes internes, Historique des échanges).']);
+  assert.ok(!partial.warnings.some(w => w.includes('attendront')));
 });
 
 test('un candidat hors pipeline exige un participant validé du compte personnel', async () => {
