@@ -2,9 +2,10 @@
 import { test, expect } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { E2E } from '../helpers/env';
-import { admin, addMember, createOrg, deleteOrg, seedCandidateRow, seedMission, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
+import { admin, addMember, createOrg, deleteOrg, seedCandidateRow, seedLinkedInAccount, seedMission, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
 import { callFunction, engineAvailable, ENGINE_SKIP_REASON, mockCalls, postJson, rand, setMockMode, setPaidPlan, webhook, WEBHOOK_SECRET } from '../helpers/sequence-engine';
 import type { CandidateActionPlan, CandidateActionScope } from '../../supabase/functions/_shared/candidate-actions/types';
+import { candidateActionExecutionOrder } from '../../src/lib/candidateActions';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
 test.setTimeout(90_000);
@@ -112,6 +113,85 @@ test('@critical préparation via tool_use sans texte : proposition persistée, u
   expect(balance.error).toBeNull();
   expect(balance.data).toEqual({ plan_credits: 58, topup_credits: 0, credits_total: 58 });
 });
+
+for (const variant of [
+  { label: 'titre LinkedIn et objet WhatsApp null', linkedinSubject: 'Suite à notre échange', whatsappSubject: null, execute: true },
+  { label: 'objet LinkedIn blanc et titre WhatsApp', linkedinSubject: ' \t\n ', whatsappSubject: 'Précisions demandées', execute: false },
+]) {
+  test(`@critical préparation multicanal native : ${variant.label}, seul l’e-mail conserve son objet`, async () => {
+    const f = await setup();
+    const linkedinId = await seedLinkedInAccount(f.org.orgId, f.org.owner.userId);
+    const whatsappId = `wa_subject_${rand()}`;
+    const chatId = `li_subject_${rand()}`;
+    mockKeys.push(linkedinId, whatsappId);
+    const { error } = await admin().from('member_whatsapp_accounts').insert({ organization_id: f.org.orgId, user_id: f.org.owner.userId,
+      whatsapp_account_id: whatsappId, phone_number: '+33687654321', name: 'Mon WhatsApp', account_status: 'OK' });
+    if (error) throw new Error(error.message);
+    f.scope = { ...f.scope, account_id: linkedinId, chat_id: chatId };
+    await setMockMode(linkedinId, { routes: [
+      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${chatId}$`, body: { id: chatId, account_id: linkedinId, type: 0 } },
+      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${chatId}/attendees$`, body: { items: [
+        { is_self: 1, provider_id: 'ACoAAMOCKME' }, { is_self: 0, provider_id: f.candidateId, name: 'Candidat test' },
+      ] } },
+    ] });
+    const linkedinContent = 'Bonjour, merci pour votre retour. Je vérifie les précisions demandées.';
+    const whatsappContent = 'Bonjour, je vous confirme la réception de vos disponibilités.';
+    const emailSubject = '  Précisions sur le poste  ';
+    await setMockMode(f.accountId, { action_recipes: { [f.marker]: { responseMode: 'tool_use', effects: [
+      { kind: 'message', channel: 'linkedin', label: 'Répondre sur LinkedIn', content: linkedinContent, subject: variant.linkedinSubject },
+      { kind: 'message', channel: 'whatsapp', label: 'Répondre sur WhatsApp', content: whatsappContent, subject: variant.whatsappSubject },
+      { kind: 'message', channel: 'email', label: 'Envoyer les précisions', content: 'Bonjour, voici les précisions que vous avez demandées.', subject: emailSubject },
+    ] } }, routes: [{ method: 'POST', path: '^/api/v1/emails$', status: 201, body: { id: `mail_subject_${rand()}` } }] });
+
+    let plan = await generate(f);
+    expect(plan.effects).toEqual([
+      expect.objectContaining({ kind: 'message', channel: 'linkedin', content: linkedinContent, recipient: f.candidateId, senderAccountId: linkedinId, chatId }),
+      expect.objectContaining({ kind: 'message', channel: 'whatsapp', content: whatsappContent, recipient: '+33612345678', senderAccountId: whatsappId }),
+      expect.objectContaining({ kind: 'message', channel: 'email', subject: emailSubject.trim(), recipient: f.email, senderAccountId: f.accountId }),
+    ]);
+    for (const effect of plan.effects.slice(0, 2)) expect(effect).not.toHaveProperty('subject');
+    const listed = await action(f.token, f.scope, { action: 'list' });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect((listed.body.plans as CandidateActionPlan[]).find(item => item.id === plan.id)?.effects).toEqual(plan.effects);
+    expect((await generate(f)).id).toBe(plan.id);
+
+    const accounts = [linkedinId, whatsappId, f.accountId];
+    const outbound = () => mockCalls().then(calls => calls.filter(call => call.method === 'POST' && accounts.includes(call.account_id ?? '')
+      && (call.path === '/api/v1/emails' || call.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(call.path))));
+    expect(await outbound()).toHaveLength(0);
+    const premature = await action(f.token, f.scope, { action: 'execute_effect', plan_id: plan.id, effect_id: plan.effects[0].id });
+    expect(premature.status).toBeGreaterThanOrEqual(400);
+    expect(await outbound()).toHaveLength(0);
+    const modelCalls = (await mockCalls()).filter(call => call.path === '/v1/messages' && JSON.stringify(call.body).includes(f.marker));
+    expect(modelCalls).toHaveLength(1);
+    expect(modelCalls[0].body).toMatchObject({ tool_choice: { type: 'tool', name: 'prepare_candidate_actions' } });
+    const transactions = await admin().from('ai_credit_transactions').select('amount,credits_used,tokens_input,tokens_output')
+      .eq('organization_id', f.org.orgId).eq('action', 'candidate_actions');
+    expect(transactions.error).toBeNull();
+    expect(transactions.data).toEqual([{ amount: -2, credits_used: 2, tokens_input: 10, tokens_output: 10 }]);
+
+    if (variant.execute) {
+      plan = await approve(f, plan);
+      expect(await outbound()).toHaveLength(0);
+      // Match the real client: LinkedIn runs last because its confirmed send
+      // can move the candidate into the contacted stage of the pipeline.
+      for (const effect of candidateActionExecutionOrder(plan.effects)) plan = await execute(f, plan, effect.id);
+      expect(plan.status).toBe('completed');
+      const calls = await outbound();
+      expect(calls).toHaveLength(3);
+      expect(calls.map(call => call.account_id)).toEqual([whatsappId, f.accountId, linkedinId]);
+      const linkedinSend = calls.find(call => call.account_id === linkedinId)!;
+      expect(linkedinSend.path).toBe(`/api/v1/chats/${chatId}/messages`);
+      expect(linkedinSend.body).toMatchObject({ account_id: linkedinId, text: linkedinContent });
+      expect(linkedinSend.body).not.toHaveProperty('subject');
+      const whatsappSend = calls.find(call => call.account_id === whatsappId)!;
+      expect(whatsappSend.path).toBe('/api/v1/chats');
+      expect(whatsappSend.body).toMatchObject({ account_id: whatsappId, text: whatsappContent, attendees_ids: '+33612345678' });
+      expect(whatsappSend.body).not.toHaveProperty('subject');
+      expect(calls.find(call => call.account_id === f.accountId)?.body).toMatchObject({ subject: emailSubject.trim() });
+    }
+  });
+}
 
 test('@critical liaison e-mail attestée : revendication REST refusée, callback signé et dissociation exacte', async () => {
   const f = await setup();

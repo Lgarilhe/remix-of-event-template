@@ -153,6 +153,89 @@ test('a named preparation tool supplies validated drafts without interpreting su
   assert.equal(plan.effects[0].recipient, context.targets[0].recipient);
 });
 
+for (const channel of ['linkedin', 'whatsapp']) {
+  const chatContext = { ...context, targets: context.targets.map(target => target.id === 'target-candidate'
+    ? { ...target, channel, service: channel, recipient: 'candidate-provider-a', senderAccountId: `${channel}-account-a`, chatId: `${channel}-chat-a` }
+    : target) };
+
+  test(`${channel} tool drafts omit a generated subject while preserving the verified conversation and body`, async () => {
+    for (const subject of [undefined, null, '', ' \t\r\n ', 'Votre question sur l’équipe', 'x'.repeat(200)]) {
+      const value = proposal();
+      if (subject === undefined) delete value.plans[0].effects[0].subject;
+      else value.plans[0].effects[0].subject = subject;
+      const original = structuredClone(value);
+      let calls = 0;
+      let settlements = 0;
+      const [plan] = await generation.generateCandidateActionPlans(chatContext, 'user-a', { model: 'claude-sonnet-4-6', style: normalizeWritingStyle({}), now: NOW }, {
+        callModel: async () => {
+          calls += 1;
+          return { content: '', toolCall: { name: 'prepare_candidate_actions', input: value }, usage: { input_tokens: 20, output_tokens: 10 }, model: 'claude-sonnet-4-6', stop_reason: 'tool_use' };
+        },
+        settle: async () => { settlements += 1; },
+      });
+      const effect = plan.effects[0];
+      assert.equal(calls, 1);
+      assert.equal(settlements, 1);
+      assert.equal(plan.status, 'draft');
+      assert.equal(effect.status, 'prepared');
+      assert.equal(Object.hasOwn(effect, 'subject'), false);
+      assert.equal(effect.content, original.plans[0].effects[0].content);
+      assert.equal(effect.targetId, 'target-candidate');
+      assert.equal(effect.channel, channel);
+      assert.equal(effect.service, channel);
+      assert.equal(effect.recipient, 'candidate-provider-a');
+      assert.equal(effect.senderAccountId, `${channel}-account-a`);
+      assert.equal(effect.chatId, `${channel}-chat-a`);
+      assert.equal(plan.effects[1].subject, original.plans[0].effects[1].subject, 'the team email keeps its required subject');
+      assert.deepEqual(value, original, 'normalization does not modify the model response');
+    }
+  });
+
+  test(`${channel} subject normalization cannot admit malformed fields or invented conversation identities`, async () => {
+    for (const subject of [42, false, {}, [], 'x'.repeat(201), '\u0000', '\u000b', 'Objet\u001f']) {
+      const value = proposal();
+      value.plans[0].effects[0].subject = subject;
+      await assert.rejects(generation.parseCandidateActionPlans(value, chatContext, 'user-a', NOW), generation.CandidateActionValidationError);
+    }
+    for (const change of [
+      effect => { effect.targetId = 'unknown-target'; },
+      effect => { effect.recipient = 'outsider@example.test'; },
+      effect => { effect.senderAccountId = 'foreign-account'; },
+      effect => { effect.chatId = 'foreign-chat'; },
+      effect => { effect.unrecognizedField = null; },
+    ]) {
+      const value = proposal();
+      value.plans[0].effects[0].subject = null;
+      change(value.plans[0].effects[0]);
+      await assert.rejects(generation.parseCandidateActionPlans(value, chatContext, 'user-a', NOW), generation.CandidateActionValidationError);
+    }
+  });
+}
+
+test('email preparation still requires a bounded nonempty subject', async () => {
+  for (const subject of [undefined, null, '', ' \t\r\n ', 42, false, {}, [], 'x'.repeat(201), '\u000b', 'Objet\u001f']) {
+    const value = proposal();
+    value.plans[0].effects[0].subject = subject;
+    await assert.rejects(generation.parseCandidateActionPlans(value, context, 'user-a', NOW), generation.CandidateActionValidationError);
+  }
+  const value = proposal();
+  value.plans[0].effects[0].subject = '  Votre question sur l’équipe  ';
+  const [plan] = await generation.parseCandidateActionPlans(value, context, 'user-a', NOW);
+  assert.equal(plan.effects[0].subject, 'Votre question sur l’équipe');
+});
+
+test('preparation identifies channel subject support from verified targets', () => {
+  const mixed = { ...context, targets: [...context.targets,
+    { ...context.targets[0], id: 'target-linkedin', channel: 'linkedin', service: 'linkedin' },
+    { ...context.targets[0], id: 'target-whatsapp', channel: 'whatsapp', service: 'whatsapp' },
+  ] };
+  const data = JSON.parse(generation.candidateActionPrompt(mixed, normalizeWritingStyle({}))[1].content);
+  assert.deepEqual(data.targets.map(target => [target.id, target.supportsSubject]), [
+    ['target-candidate', true], ['target-team', true], ['target-linkedin', false], ['target-whatsapp', false],
+  ]);
+  assert.ok(data.targets.every(target => target.recipient === undefined && target.senderAccountId === undefined));
+});
+
 test('tool arguments still require real references; another tool cannot use text as a fallback', async () => {
   const missingSource = proposal();
   missingSource.plans[0].sourceIds = ['invented-source'];
@@ -207,6 +290,9 @@ for (const model of ['claude-haiku-4-5', 'claude-sonnet-5-5']) {
     globalThis.Deno = { env: { get: key => key === 'ANTHROPIC_API_KEY' ? 'mock-only-key' : undefined } };
     const calls = [];
     let request;
+    const chatContext = { ...context, targets: context.targets.map(target => target.id === 'target-candidate'
+      ? { ...target, channel: 'linkedin', service: 'linkedin', chatId: 'linkedin-chat-a' }
+      : target) };
     globalThis.fetch = async (url, options) => {
       assert.equal(url, 'https://api.anthropic.com/v1/messages');
       request = JSON.parse(options.body);
@@ -216,17 +302,21 @@ for (const model of ['claude-haiku-4-5', 'claude-sonnet-5-5']) {
       usage: { input_tokens: 31, output_tokens: 17 }, stop_reason: 'tool_use' }), { status: 200 });
     };
     try {
-      const [plan] = await generation.generateCandidateActionPlans(context, 'user-a', { model, style: normalizeWritingStyle({}), now: NOW }, {
+      const [plan] = await generation.generateCandidateActionPlans(chatContext, 'user-a', { model, style: normalizeWritingStyle({}), now: NOW }, {
         callModel: callClaudeCompat,
         settle: async result => { calls.push('settle'); assert.deepEqual(result.usage, { input_tokens: 31, output_tokens: 17 }); },
       });
       assert.deepEqual(calls, ['provider', 'settle']);
       assert.equal(plan.status, 'draft');
       assert.equal(plan.effects[0].recipient, context.targets[0].recipient);
+      assert.equal(plan.effects[0].channel, 'linkedin');
+      assert.equal(Object.hasOwn(plan.effects[0], 'subject'), false, 'an unnecessary generated chat subject does not block the native tool result');
+      assert.equal(plan.effects[1].subject, proposal().plans[0].effects[1].subject);
       assert.equal(request.tools.length, 1);
       assert.equal(request.tools[0].name, 'prepare_candidate_actions');
       assert.deepEqual(request.tools[0].input_schema.required, ['plans']);
       assert.equal(request.tools[0].input_schema.additionalProperties, false);
+      assert.deepEqual(request.tools[0].input_schema.properties.plans.items.properties.effects.items.required, ['kind', 'label', 'content'], 'the wrapper keeps subject optional');
       if (model === 'claude-sonnet-5-5') {
         assert.equal(request.tools[0].strict, true, 'actual wrapper accepts the schema in its strict subset');
         assert.deepEqual(request.tool_choice, { type: 'auto' });
