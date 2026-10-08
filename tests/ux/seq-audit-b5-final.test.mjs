@@ -174,7 +174,7 @@ test('D5 — RGPD : marqueur durable sur toutes les inscriptions trouvées, fusi
 
 // ------------------------------------------------------- points 9 et 11
 test('unipile-accounts : arrêt des envois et dissociation jamais bloqués par l’absence d’identifiants', () => {
-  assert.match(accounts, /const DATABASE_ONLY_ACTIONS = new Set\(\['unlink_linkedin_account', 'stop_member_linkedin'\]\);/);
+  assert.match(accounts, /const DATABASE_ONLY_ACTIONS = new Set\(\['unlink_linkedin_account', 'stop_member_linkedin', 'unlink_email_account'\]\);/);
   assert.match(accounts, /if \(!credentials && !DATABASE_ONLY_ACTIONS\.has\(action\)\) \{[\s\S]*?LinkedIn non configuré pour cette organisation/);
   assert.doesNotMatch(accounts, /if \(!credentials\) \{\s*return new Response/);
   // Ces actions n'appellent pas le prestataire (identifiants vides admis).

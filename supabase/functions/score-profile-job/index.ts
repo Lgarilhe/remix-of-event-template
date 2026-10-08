@@ -6,6 +6,7 @@ import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 import { createSourcingMemoryContext, loadSourcingMemoryContext, type SourcingMemoryContext } from "../_shared/sourcing-memory.ts";
 import { createScoringContextMetadata, parseScoringMemoryConflicts, type ScoringContextMetadata, type ScoringMemoryConflict } from "../_shared/scoring-context.ts";
+import { assertContinuousOperationContext } from "../_shared/continuous-sourcing.ts";
 
 
 const corsHeaders = {
@@ -2067,6 +2068,7 @@ async function callLLM(
   customScoringInstructions?: string,
   modelOverride?: string,
   memoryContext?: SourcingMemoryContext,
+  beforePaidCall?: () => Promise<void>,
 ): Promise<LLMResult> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -2089,6 +2091,7 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
       console.log(`[llm] Retry ${attempt} for ${profile.name} after ${backoffMs}ms`);
     }
 
+    if (beforePaidCall) await beforePaidCall();
     const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -2201,6 +2204,7 @@ async function callLLMBatch(
   customScoringInstructions?: string,
   modelOverride?: string,
   memoryContext?: SourcingMemoryContext,
+  beforePaidCall?: () => Promise<void>,
 ): Promise<Map<string, LLMResult>> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -2234,6 +2238,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
       console.log(`[llm-batch] Retry ${attempt} after ${backoffMs}ms`);
     }
 
+    if (beforePaidCall) await beforePaidCall();
     const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -3164,6 +3169,11 @@ Deno.serve(async (req) => {
     // c'est le userId du JWT qui fait foi (anti-usurpation). Sert à l'imputation
     // des crédits, au contexte org (cache enrichment) et rien d'autre.
     const isServiceRole = auth.method === "service_role";
+    // Continuous sourcing stores proposals through a fenced lease of its own.
+    // It must not enqueue visits on another account, sync pipeline notes, or
+    // publish a result after the recruiter pauses the agent. Browser callers
+    // cannot enable this internal, read-only scoring mode.
+    const isContinuousSourcing = isServiceRole && body.continuous_agent_run === true;
     const requestedOrgId = typeof body.organization_id === "string" ? body.organization_id : null;
     const trustedOrgId = (isServiceRole && typeof (body as any).organization_id === "string")
       ? (body as any).organization_id as string
@@ -3257,6 +3267,33 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const assertContinuousLease = async (): Promise<void> => {
+      if (!isContinuousSourcing) return;
+      const { data, error } = await supabase.rpc('sourcing_agent_assert_lease', {
+        p_agent_id: body.continuous_agent_id,
+        p_lease_token: body.continuous_lease_token,
+      });
+      const agent = Array.isArray(data) ? data[0] : data;
+      if (error || !agent || !body.continuous_context_key
+        || agent.context_snapshot?.context_key !== body.continuous_context_key
+        || agent.organization_id !== trustedOrgId || agent.created_by !== effectiveUserId
+        || agent.project_id !== body.project_id) {
+        throw new Error('AGENT_LEASE_CHANGED');
+      }
+      await assertContinuousOperationContext(supabase, agent);
+      // A pause can commit while the live brief and memory reads are pending.
+      // Keep the lease RPC as the last awaited guard before the provider call.
+      const latest = await supabase.rpc('sourcing_agent_assert_lease', {
+        p_agent_id: body.continuous_agent_id,
+        p_lease_token: body.continuous_lease_token,
+      });
+      const currentAgent = Array.isArray(latest.data) ? latest.data[0] : latest.data;
+      if (latest.error || !currentAgent || currentAgent.context_snapshot?.context_key !== body.continuous_context_key) {
+        throw new Error('AGENT_LEASE_CHANGED');
+      }
+    };
+    await assertContinuousLease();
 
     // ─── Enrichment Context Setup ──────────────────────────────────────────────
     // Enrichment happens AFTER hard filter pass (inside the preScored loop).
@@ -3397,7 +3434,7 @@ Deno.serve(async (req) => {
 
     let enrichmentCtx: EnrichmentContext | null = null;
 
-    if (accountId && resolvedUnipile) {
+    if (!isContinuousSourcing && accountId && resolvedUnipile) {
       const today = new Date().toISOString().split("T")[0];
       const countKey = `enrichment_count_${today}`;
       const { data: countRow } = await supabase
@@ -3537,6 +3574,12 @@ Deno.serve(async (req) => {
         adminClient: supabase,
       });
 
+      if (isContinuousSourcing && gate.remaining === null) {
+        return new Response(JSON.stringify({ error: 'Le solde de crédits n’a pas pu être vérifié.', error_code: 'CREDITS_UNAVAILABLE' }), {
+          status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       if (!gate.ok) {
         // Refus : 200 avec ce que l'étape A a produit, pas 402. Un 402
         // perdrait aussi les profils servis par le cache et ceux éliminés par
@@ -3544,7 +3587,7 @@ Deno.serve(async (req) => {
         // l'arrêt et le nombre de profils restés sans note.
         const servedResults: ScoringResult[] = [];
         let servedHardFiltered = 0;
-        for (const ps of stageA) {
+        for (const ps of isContinuousSourcing ? [] : stageA) {
           if (ps.cached) {
             servedResults.push({ ...ps.cached, profile_id: ps.profile.id });
           } else if (ps.hardFilterResult?.result) {
@@ -3654,7 +3697,7 @@ Deno.serve(async (req) => {
       for (let i = 0; i < batchInputs.length; i += LLM_BATCH_SIZE) {
         const subBatch = batchInputs.slice(i, i + LLM_BATCH_SIZE);
         try {
-          const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, CLAUDE_MODEL, memoryContext);
+          const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, CLAUDE_MODEL, memoryContext, assertContinuousLease);
           for (const [k, v] of subMap) {
             llmResultMap.set(k, v);
             firstPassTokensInput += v.tokensUsed.input;
@@ -3679,7 +3722,7 @@ Deno.serve(async (req) => {
         if (!llmResultMap.has(input.profile.id)) {
           try {
             console.log(`[scoring] Fallback individual LLM for ${input.profile.name}`);
-            const result = await callLLM(input.profile, job, input.preComputedData, customScoringInstructions, CLAUDE_MODEL, memoryContext);
+            const result = await callLLM(input.profile, job, input.preComputedData, customScoringInstructions, CLAUDE_MODEL, memoryContext, assertContinuousLease);
             llmResultMap.set(input.profile.id, result);
             firstPassTokensInput += result.tokensUsed.input;
             firstPassTokensOutput += result.tokensUsed.output;
@@ -3722,7 +3765,7 @@ Deno.serve(async (req) => {
           for (let i = 0; i < toEscalate.length; i += ESC_BATCH_SIZE) {
             const subBatch = toEscalate.slice(i, i + ESC_BATCH_SIZE);
             try {
-              const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, ESCALATION_MODEL, memoryContext);
+              const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, ESCALATION_MODEL, memoryContext, assertContinuousLease);
               for (const [k, v] of subMap) {
                 // Conserve la SOMME des tokens (1ère passe + escalation) dans
                 // le scoring_result du candidat (vérité métier sur le coût total
@@ -3754,11 +3797,13 @@ Deno.serve(async (req) => {
 
     // Recheck every result path, including cache-only and privacy/hard-filter
     // notes, before any cache or candidate-status write. No model retry or charge.
+    let continuousLeaseChanged = false;
+    try { await assertContinuousLease(); } catch { continuousLeaseChanged = true; }
     const memoryContextChanged = !await isScoringMemoryCurrent();
     const memoryReviewIncomplete = memoryContext.memories.length > 0 && batchInputs.some(input =>
       !llmResultMap.get(input.profile.id)?.memoryReview?.valid);
     const memoryConflicts = [...llmResultMap.values()].flatMap(result => result.memoryReview?.conflicts ?? []);
-    const memoryReviewBlocked = memoryContextChanged || memoryReviewIncomplete || memoryConflicts.length > 0;
+    const memoryReviewBlocked = continuousLeaseChanged || memoryContextChanged || memoryReviewIncomplete || memoryConflicts.length > 0;
 
     // Phase 3: Combine and build final results (always include profile_id for safe matching)
     // Note: les tokens facturables sont DEJA accumulés en phase 2 dans
@@ -3774,13 +3819,13 @@ Deno.serve(async (req) => {
       // boucle sur ces profils.
       if (ps.cached) {
         results.push({ ...ps.cached, profile_id: ps.profile.id });
-        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
+        if (!isContinuousSourcing) await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
         continue;
       }
 
       // Hard-filtered results
       if (ps.hardFilterResult?.result) {
-        await setCachedScore(supabase, ps.profile.id, job.id, ps.hardFilterResult.result, resolvedOrgId);
+        if (!isContinuousSourcing) await setCachedScore(supabase, ps.profile.id, job.id, ps.hardFilterResult.result, resolvedOrgId);
         results.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
         hardFilteredCount++;
         llmSkippedCount++;
@@ -3823,7 +3868,7 @@ Deno.serve(async (req) => {
             tokensUsed: llmResult.tokensUsed,
             skipReason: llmResult.mustHaveDetails,
           };
-          await setCachedScore(supabase, ps.profile.id, job.id, koResult, resolvedOrgId);
+          if (!isContinuousSourcing) await setCachedScore(supabase, ps.profile.id, job.id, koResult, resolvedOrgId);
           results.push(koResult);
           hardFilteredCount++;
           continue;
@@ -3991,7 +4036,7 @@ Deno.serve(async (req) => {
         tokensUsed: llmResult?.tokensUsed ?? null,
       };
 
-      await setCachedScore(supabase, ps.profile.id, job.id, result, resolvedOrgId);
+      if (!isContinuousSourcing) await setCachedScore(supabase, ps.profile.id, job.id, result, resolvedOrgId);
       results.push(result);
     }
 
@@ -4073,14 +4118,16 @@ Deno.serve(async (req) => {
 
     if (memoryReviewBlocked) {
       return new Response(JSON.stringify({ success: false,
-        error: memoryContextChanged
+        error: continuousLeaseChanged
+          ? 'L’agent a été interrompu pendant l’évaluation. Aucune proposition n’a été enregistrée.'
+          : memoryContextChanged
           ? "Les règles de mémoire ont changé pendant l’évaluation. Rechargez la recherche avant de réévaluer."
           : memoryReviewIncomplete
           ? "La revue des règles de mémoire est incomplète. Aucune nouvelle note n’a été enregistrée."
           : "Une règle de mémoire est en conflit avec le brief. Clarifiez-la avant de réévaluer.",
-        error_code: memoryContextChanged ? 'MEMORY_CONTEXT_CHANGED' : memoryReviewIncomplete ? 'MEMORY_REVIEW_INCOMPLETE' : 'MEMORY_CONFLICT',
+        error_code: continuousLeaseChanged ? 'AGENT_LEASE_CHANGED' : memoryContextChanged ? 'MEMORY_CONTEXT_CHANGED' : memoryReviewIncomplete ? 'MEMORY_REVIEW_INCOMPLETE' : 'MEMORY_CONFLICT',
         memory_conflicts: memoryConflicts, scoringContext,
-      }), { status: !memoryContextChanged && memoryReviewIncomplete ? 502 : 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }), { status: !continuousLeaseChanged && !memoryContextChanged && memoryReviewIncomplete ? 502 : 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     return new Response(JSON.stringify({ success: true, ...responseData }), {
@@ -4093,11 +4140,19 @@ Deno.serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     const isRateLimited = message.includes("RATE_LIMITED");
     const isCreditsExhausted = message.includes("CREDITS_EXHAUSTED");
-    const status = isRateLimited ? 429 : isCreditsExhausted ? 402 : 500;
+    const isLeaseChanged = message === 'AGENT_LEASE_CHANGED';
+    const isContextChanged = error && typeof error === 'object' && 'code' in error
+      && (error.code === 'CONTEXT_CHANGED' || error.code === 'MISSION_INACTIVE');
+    const status = isLeaseChanged || isContextChanged ? 409 : isRateLimited ? 429 : isCreditsExhausted ? 402 : 500;
 
     return new Response(
       JSON.stringify({
-        error: isRateLimited
+        ...(isLeaseChanged || isContextChanged ? { error_code: isContextChanged ? 'CONTEXT_CHANGED' : 'AGENT_LEASE_CHANGED' } : {}),
+        error: isContextChanged
+          ? 'Les critères de la mission ont changé. Aucune nouvelle évaluation n’a été lancée.'
+          : isLeaseChanged
+          ? 'L’agent a été interrompu. Aucune nouvelle évaluation n’a été lancée.'
+          : isRateLimited
           ? "Rate limited, please retry later"
           : isCreditsExhausted
             ? "API credits exhausted"

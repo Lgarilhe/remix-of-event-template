@@ -264,3 +264,10 @@ verify_jwt = false
 
 [functions.extension-quick-add]
 verify_jwt = false
+
+# Auth checked in the handlers: user JWT for configuration, service role for cron.
+[functions.sourcing-agent]
+verify_jwt = false
+
+[functions.process-sourcing-agents]
+verify_jwt = false

@@ -9,8 +9,8 @@ import ts from 'typescript';
 const root = new URL('../../', import.meta.url);
 const plain = value => JSON.parse(JSON.stringify(value));
 const compiledSources = new Map();
-function compile(path, { prelude = '', suffix = '', globals = {} } = {}) {
-  const source = readFileSync(new URL(path, root), 'utf8')
+function compile(path, { prelude = '', suffix = '', globals = {}, transform = source => source } = {}) {
+  const source = transform(readFileSync(new URL(path, root), 'utf8'))
     .replace(/^import[\s\S]*?;\r?\n/gm, '')
     .replace(/await import\((["'])(\.\.\/_shared\/[^"']+)\1\)/g,
       (_match, _quote, path) => '__dynamic[' + JSON.stringify(path) + ']');
@@ -380,14 +380,23 @@ test('legacy, stale-context, expired and degraded server notes all miss the cach
 function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null, memoryError = null, authMethod = 'jwt',
   cache = null, modelResult = { overallScore: 84, summary: 'Expérience à vérifier', memory_conflicts: [] },
   creditAllowed = true, allowedOrganization = true, missingProject = false, projectOrganizationId = organizationId,
-  modelId = 'claude-sonnet-4-6', autoRouted = false } = {}) {
+  modelId = 'claude-sonnet-4-6', autoRouted = false, creditRemaining = 100, leaseFailsAt = Infinity,
+  leaseFailsAfterModel = false, pauseDuringContextAt = Infinity, liveContextFailsAt = Infinity } = {}) {
   let handler;
+  let leaseCalls = 0;
+  let liveContextCalls = 0;
+  let pausedDuringContext = false;
   const events = [], requests = [], memoryRequests = [], creditCalls = [], modelCalls = [], writes = [], settlements = [];
   const authenticatedUser = authMethod === 'service_role' ? null : 'recruiter-a';
   const jwtHeader = authMethod === 'service_role' ? 'Bearer service-key' : 'Bearer recruiter-jwt';
   const dependencies = {
     createScoringContextMetadata: context.createScoringContextMetadata,
     parseScoringMemoryConflicts: context.parseScoringMemoryConflicts,
+    assertContinuousOperationContext: async () => {
+      events.push('live-context'); liveContextCalls++;
+      if (liveContextCalls >= pauseDuringContextAt) pausedDuringContext = true;
+      if (liveContextCalls >= liveContextFailsAt) throw Object.assign(new Error('Brief changed'), { code: 'CONTEXT_CHANGED' });
+    },
     requireAuth: async () => ({ userId: authenticatedUser, method: authMethod }),
     verifyOrgMembership: async (_client, userId, orgId) => {
       assert.equal(userId, authenticatedUser ?? 'worker-owner');
@@ -406,7 +415,7 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
     },
     assertCredits: async params => {
       events.push('credits'); creditCalls.push(params);
-      return { ok: creditAllowed, organizationId, remaining: 100, estimated: 1, body: { message: 'Crédits insuffisants' } };
+      return { ok: creditAllowed, organizationId, remaining: creditRemaining, estimated: 1, body: { message: 'Crédits insuffisants' } };
     },
     creditGateResponse: (_gate, headers) => new Response(JSON.stringify({ error: 'Crédits insuffisants' }), { status: 402, headers }),
     recordUsageSignal: async () => { throw new Error('No LinkedIn usage in scoring tests'); },
@@ -416,6 +425,15 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
         rpc(name, params) {
           events.push(name);
           if (name === 'check_rate_limit') return Promise.resolve({ data: true, error: null });
+          if (name === 'sourcing_agent_assert_lease') {
+            leaseCalls++;
+            assert.equal(params.p_agent_id, 'agent-test');
+            assert.equal(params.p_lease_token, 'lease-test');
+            return Promise.resolve(leaseCalls >= leaseFailsAt || pausedDuringContext || (leaseFailsAfterModel && modelCalls.length > 0)
+              ? { data: null, error: { code: '40001' } }
+              : { data: { organization_id: organizationId, created_by: 'worker-owner', project_id: projectId,
+                context_snapshot: { context_key: 'context-test' } }, error: null });
+          }
           assert.equal(name, 'cosine_similarity_match');
           return Promise.resolve({ data: null, error: null });
         },
@@ -823,3 +841,178 @@ for (const path of ['cache', 'hard-filter']) {
     assert.equal(h.settlements.length, 0);
   });
 }
+
+const continuousRequest = {
+  continuous_agent_run: true, continuous_agent_id: 'agent-test',
+  continuous_lease_token: 'lease-test', continuous_context_key: 'context-test',
+};
+
+test('a JWT caller cannot opt out of pipeline persistence with the internal continuous flag', async () => {
+  const h = handlerHarness();
+  assert.equal((await h.invoke(continuousRequest)).status, 200);
+  assert.ok(h.writes.some(write => write.table === 'match_scores'));
+  assert.equal(h.events.filter(event => event === 'sourcing_agent_assert_lease').length, 0);
+});
+
+for (const branch of ['fresh', 'cache', 'hard-filter', 'must-have']) {
+  test('continuous service scoring returns a ' + branch + ' evaluation without publishing cache or pipeline writes', async () => {
+    const memory = branch === 'hard-filter' ? emptyMemoryContext : memoryContext;
+    const metadata = await context.createScoringContextMetadata(job, undefined, 'claude-sonnet-4-6', memory, metadataOptions);
+    const h = handlerHarness({ authMethod: 'service_role', loadedMemory: memory,
+      cache: branch === 'cache' ? { finalScore: 84, hardFilterPassed: true, skippedLLM: false, scoringContext: plain(metadata) } : null,
+      modelResult: { overallScore: 84, summary: 'Expérience SaaS pertinente', memory_conflicts: [],
+        mustHavePassed: branch === 'must-have' ? 'failed' : 'passed', mustHaveDetails: 'La certification demandée est absente' },
+    });
+    const response = await h.invoke({ ...continuousRequest,
+      ...(branch === 'hard-filter' ? { profile: { id: 'candidate-a', name: 'Camille', yearsOfExperience: 2 } } : {}),
+      ...(branch === 'must-have' ? { job: { ...job, mustHave: 'Certification Salesforce' } } : {}),
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.success, true);
+    assert.equal(h.writes.length, 0);
+    assert.ok(h.events.filter(event => event === 'sourcing_agent_assert_lease').length >= 2);
+    if (branch === 'fresh' || branch === 'must-have') {
+      assert.equal(h.modelCalls.length, 1);
+      assert.equal(h.settlements.length, 1);
+    } else {
+      assert.equal(h.modelCalls.length, 0);
+      assert.equal(h.settlements.length, 0);
+    }
+    if (branch === 'must-have') assert.equal(data.result.finalScore, 0);
+  });
+}
+
+test('an expired continuous lease prevents a paid call', async () => {
+  const h = handlerHarness({ authMethod: 'service_role', leaseFailsAt: 2 });
+  const response = await h.invoke(continuousRequest);
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error_code, 'AGENT_LEASE_CHANGED');
+  assert.equal(h.modelCalls.length, 0);
+  assert.equal(h.writes.length, 0);
+});
+
+test('pause during a paid continuous evaluation suppresses its result but still settles consumed tokens', async () => {
+  const h = handlerHarness({ authMethod: 'service_role', leaseFailsAfterModel: true });
+  const response = await h.invoke(continuousRequest);
+  const data = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(data.error_code, 'AGENT_LEASE_CHANGED');
+  assert.equal(data.result, undefined);
+  assert.equal(h.modelCalls.length, 1);
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.settlements.length, 1);
+  assert.equal(h.settlements[0].tokensInput, 100);
+});
+
+test('a pause confirmed during live context reads prevents the following paid call', async () => {
+  for (const pauseDuringContextAt of [1, 2]) {
+    const h = handlerHarness({ authMethod: 'service_role', pauseDuringContextAt });
+    const response = await h.invoke(continuousRequest);
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error_code, 'AGENT_LEASE_CHANGED');
+    assert.equal(h.modelCalls.length, 0);
+    assert.equal(h.writes.length, 0);
+    assert.equal(h.settlements.length, 0);
+  }
+});
+
+test('an unreadable credit balance stops continuous scoring before any paid operation', async () => {
+  const h = handlerHarness({ authMethod: 'service_role', creditRemaining: null });
+  const response = await h.invoke(continuousRequest);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error_code, 'CREDITS_UNAVAILABLE');
+  assert.equal(h.modelCalls.length, 0);
+  assert.equal(h.writes.length, 0);
+});
+
+test('a brief changed after preprocessing prevents the continuous model call even with a valid lease', async () => {
+  const h = handlerHarness({ authMethod: 'service_role', liveContextFailsAt: 2 });
+  const response = await h.invoke(continuousRequest);
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error_code, 'CONTEXT_CHANGED');
+  assert.equal(h.modelCalls.length, 0);
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.settlements.length, 0);
+});
+
+// Execute each production mapper, including the closure inside the React hook.
+// AST extraction preserves its actual body; React and HTTP are not involved.
+const briefMapper = compile('supabase/functions/_shared/profile-data.ts').buildJobFromBrief;
+const missionMapper = compile('src/hooks/useMissionJobs.ts', { suffix: '\nexports.__missionToJob = missionToJob;\n' }).__missionToJob;
+const searchMapper = compile('src/hooks/useLinkedInSearch.ts', {
+  transform(source) {
+    const file = ts.createSourceFile('useLinkedInSearch.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const matches = [];
+    function visit(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'buildJobFromBrief') matches.push(node);
+      ts.forEachChild(node, visit);
+    }
+    visit(file);
+    assert.equal(matches.length, 1, 'extract the actual nested mapper, not a copied fixture');
+    assert.ok(ts.isArrowFunction(matches[0].initializer));
+    return 'export function mapSearchBrief(jd: any, base: Record<string, any>) {\nconst enabledCompetitors = [];\nconst buildJobFromBrief = '
+      + matches[0].initializer.getText(file) + ';\nreturn buildJobFromBrief(base);\n}';
+  },
+}).mapSearchBrief;
+const lineageId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const alternateLineageId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const calibrationReference = { name: 'Camille', headline: 'Lead Backend Engineer', linkedin_url: 'https://www.linkedin.com/in/camille',
+  why_good_fit: ['Expérience SaaS et pratique approfondie de Go.'], areas_of_improvement: 'Valider la mobilité.', sourcing_agent_candidate_id: lineageId };
+function mappedCalibrationJobs(reference = calibrationReference) {
+  const jd = { title: 'Lead Backend Engineer', skills_must_have: ['Go'], calibration_profiles: [reference] };
+  const base = { id: 'project:' + projectId, title: jd.title, description: '' };
+  return [briefMapper(jd, base), missionMapper({ id: projectId, name: jd.title, description: '', client_name: null, job_details: jd }), searchMapper(jd, base)];
+}
+function calibrationInputKey(mapped) {
+  return client.buildScoringInputVersionKey(mapped, undefined, { ...metadataOptions, memoryVersionKey: memoryContext.versionKey });
+}
+
+test('all three actual brief mappers preserve calibration lineage in the same frontend/server canonical scoring input', async () => {
+  const mapped = mappedCalibrationJobs();
+  const expected = calibrationInputKey(mapped[0]);
+  for (const job of mapped) {
+    assert.equal(job.calibrationProfiles[0].sourcing_agent_candidate_id, lineageId);
+    const clientKey = calibrationInputKey(job);
+    const serverKey = context.buildScoringInputVersionKey(job, undefined, { ...metadataOptions, memoryVersionKey: memoryContext.versionKey });
+    assert.equal(clientKey, serverKey);
+    assert.equal(clientKey, expected, 'search, mission selector and background worker use the same calibration snapshot');
+    assert.ok(clientKey.includes(lineageId));
+    const metadata = await context.createScoringContextMetadata(job, undefined, 'claude-sonnet-4-6', memoryContext, metadataOptions);
+    assert.equal(metadata.inputVersionKey, clientKey);
+  }
+});
+
+test('all actual brief mappers omit malformed calibration lineage instead of persisting an invented identity', () => {
+  const absent = { ...calibrationReference };
+  delete absent.sourcing_agent_candidate_id;
+  const withoutLineage = calibrationInputKey(mappedCalibrationJobs(absent)[0]);
+  for (const invalid of [undefined, null, '', 'candidate-provider-id', lineageId + 'x', 123]) {
+    for (const mapped of mappedCalibrationJobs({ ...calibrationReference, sourcing_agent_candidate_id: invalid })) {
+      assert.equal(Object.hasOwn(mapped.calibrationProfiles[0], 'sourcing_agent_candidate_id'), false);
+      assert.equal(calibrationInputKey(mapped), withoutLineage);
+    }
+  }
+});
+
+test('replacing a linked calibration suggestion invalidates the input version even when its display text is unchanged', () => {
+  for (let index = 0; index < 3; index++) {
+    const initial = mappedCalibrationJobs()[index];
+    const replaced = mappedCalibrationJobs({ ...calibrationReference, sourcing_agent_candidate_id: alternateLineageId })[index];
+    assert.notEqual(calibrationInputKey(initial), calibrationInputKey(replaced));
+    const reordered = { ...initial, calibrationProfiles: [{ ...initial.calibrationProfiles[0], sourcing_agent_candidate_id: lineageId }] };
+    assert.equal(calibrationInputKey(initial), calibrationInputKey(reordered));
+  }
+});
+
+test('calibration linkage remains internal and is absent from the real model job prompt', () => {
+  const helpers = scoringHelpers();
+  for (const mapped of mappedCalibrationJobs()) {
+    const prompt = helpers.buildJobContext(mapped);
+    assert.match(prompt, /Camille/);
+    assert.match(prompt, /Expérience SaaS/);
+    assert.match(prompt, /Valider la mobilité/);
+    assert.equal(prompt.includes(lineageId), false);
+    assert.equal(prompt.includes('sourcing_agent_candidate_id'), false);
+  }
+});

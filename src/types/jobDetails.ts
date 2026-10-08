@@ -65,6 +65,8 @@ export interface JobDetails {
 
   // ── Calibration candidates ──
   calibration_profiles?: Array<{
+    /** Lineage for removing dependent scores when this reference is erased. */
+    sourcing_agent_candidate_id?: string;
     name: string;
     headline: string;
     linkedin_url: string;

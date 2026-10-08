@@ -114,6 +114,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
 import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
 import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
+import { assertContinuousOperationContext } from '../_shared/continuous-sourcing.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -159,7 +160,7 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
 /** Erreur d'entrée client → réponse 4xx (jamais 500). */
 class UnipileInputError extends Error {
   status: number;
-  constructor(message: string, status = 400) {
+  constructor(message: string, status = 400, public code?: string) {
     super(message);
     this.status = status;
   }
@@ -377,6 +378,38 @@ Deno.serve(async (req) => {
       }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // The cron worker has already reserved the automatic quota. Fence again
+    // immediately before the actual provider call, including retry delays.
+    let continuousGuard: (() => Promise<void>) | undefined;
+    if (isInternal && params.continuous_agent_run === true) {
+      if (!['search', 'get_profile'].includes(action)) {
+        throw new UnipileInputError('Cette action n’est pas disponible pour l’agent de sourcing.', 403);
+      }
+      const agentClient = createClient(supabaseUrl, _serviceKey!);
+      continuousGuard = async () => {
+        const { data, error } = await agentClient.rpc('sourcing_agent_assert_lease', {
+          p_agent_id: params.continuous_agent_id, p_lease_token: params.continuous_lease_token,
+        });
+        const agent = Array.isArray(data) ? data[0] : data;
+        if (error || !agent || !params.continuous_context_key
+          || agent.organization_id !== organization_id || agent.created_by !== params.user_id
+          || agent.account_id !== accountIdRaw || agent.api !== params.api
+          || agent.context_snapshot?.context_key !== params.continuous_context_key) {
+          throw new UnipileInputError('L’agent a été interrompu. Aucune nouvelle consultation LinkedIn n’a été lancée.', 409, 'AGENT_LEASE_CHANGED');
+        }
+        try { await assertContinuousOperationContext(agentClient, agent); }
+        catch { throw new UnipileInputError('Les critères de la mission ont changé. Revoyez-les avant de reprendre.', 409, 'CONTEXT_CHANGED'); }
+        // Context reads may outlive a confirmed pause. Fence once more after them.
+        const latest = await agentClient.rpc('sourcing_agent_assert_lease', {
+          p_agent_id: params.continuous_agent_id, p_lease_token: params.continuous_lease_token,
+        });
+        const currentAgent = Array.isArray(latest.data) ? latest.data[0] : latest.data;
+        if (latest.error || !currentAgent || currentAgent.context_snapshot?.context_key !== params.continuous_context_key) {
+          throw new UnipileInputError('L’agent a été interrompu. Aucune nouvelle consultation LinkedIn n’a été lancée.', 409, 'AGENT_LEASE_CHANGED');
+        }
+      };
+    }
+
     // Actions sur une conversation : le compte propriétaire du chat doit lui
     // aussi appartenir à l'organisation. C'est ce compte qui porte le quota.
     const chatScopedActions = new Set(['get_messages', 'send_message', 'mark_as_read', 'sync_chat_history']);
@@ -424,7 +457,7 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'search': {
-        return await handleSearch(baseUrl, apiKey, account_id, params);
+        return await handleSearch(baseUrl, apiKey, account_id, params, continuousGuard, continuousGuard ? 1 : 3);
       }
 
       case 'get_parameters': {
@@ -432,7 +465,7 @@ Deno.serve(async (req) => {
       }
 
       case 'get_profile': {
-        return await handleGetProfile(baseUrl, apiKey, account_id, params);
+        return await handleGetProfile(baseUrl, apiKey, account_id, params, continuousGuard);
       }
 
       case 'get_chats': {
@@ -477,7 +510,7 @@ Deno.serve(async (req) => {
     console.error('Error:', error);
     if (error instanceof UnipileInputError) {
       return new Response(
-        JSON.stringify({ success: false, error: error.message }),
+        JSON.stringify({ success: false, error: error.message, ...(error.code ? { error_code: error.code } : {}) }),
         { status: error.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -496,7 +529,9 @@ async function handleSearch(
   baseUrl: string,
   apiKey: string,
   accountId: string,
-  params: SearchParams
+  params: SearchParams,
+  beforeProvider?: () => Promise<void>,
+  maxAttempts = 3,
 ): Promise<Response> {
   const {
     api = 'recruiter',
@@ -1171,7 +1206,7 @@ async function handleSearch(
   console.log('Search body:', JSON.stringify(searchBody));
 
   // Retry logic for multiple_sessions errors (server-side)
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = maxAttempts;
   const RETRY_DELAYS = [0, 6000, 15000]; // ms: immediate, 6s, 15s
   let response: globalThis.Response | null = null;
   let data: Record<string, unknown> = {};
@@ -1183,6 +1218,7 @@ async function handleSearch(
       await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
     }
 
+    if (beforeProvider) await beforeProvider();
     response = await fetchWithTimeout(searchUrl, {
       method: 'POST',
       headers: {
@@ -1380,7 +1416,8 @@ async function handleGetProfile(
   baseUrl: string,
   apiKey: string,
   accountId: string,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  beforeProvider?: () => Promise<void>,
 ): Promise<Response> {
   let { profile_id, profile_url } = params as { profile_id?: string; profile_url?: string };
 
@@ -1399,6 +1436,7 @@ async function handleGetProfile(
     );
   }
 
+  if (beforeProvider) await beforeProvider();
   const response = await fetchWithTimeout(`${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`, {
     headers: {
       'X-API-KEY': apiKey,

@@ -195,7 +195,7 @@ test('C-6 : en-tête allégé (design simplifié, 04/10/2026) : logo du client, 
   for (const [name, src] of [['MissionHeader', header], ['MissionSwitcher', switcher], ['MissionMoreMenu', more], ['MissionStateBanner', banner], ['ArchivedNotice', notice]]) {
     assert.match(src, /max-sm:min-h-11/, `${name} : cible de 44 px sur téléphone`);
   }
-  assert.equal((more.match(/max-sm:min-h-11/g) ?? []).length, 4, 'chaque entrée du menu « ... », mémoire comprise');
+  assert.equal((more.match(/max-sm:min-h-11/g) ?? []).length, 5, 'chaque entrée du menu « ... », mémoire et agent compris');
   assert.match(more, /aria-label="Plus d'actions"/);
   assert.match(more, /Revenir à l'ancienne page/);
 });
