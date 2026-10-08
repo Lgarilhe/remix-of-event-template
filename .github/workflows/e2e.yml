@@ -176,6 +176,7 @@ jobs:
             -c 'BEGIN;' -f supabase/tests/agent_sourcing_memory_audit.sql -c 'ROLLBACK;'
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/continuous_sourcing_agent_audit.sql -c 'ROLLBACK;'
+          node e2e/local-stack/assert-continuous-sourcing-rest.mjs
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/client_portal_audit.sql -c 'ROLLBACK;'
           # Appel anonyme réel de la lecture du portail, par l'API avec la clé
