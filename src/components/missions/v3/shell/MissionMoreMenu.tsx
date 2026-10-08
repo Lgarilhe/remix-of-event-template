@@ -3,7 +3,8 @@
 // Pas de « Dupliquer » (aucune fonction de duplication n'existe) ni de
 // « Confier à des cabinets » (une seule porte, dans Cadrage).
 import { useRef, useState } from 'react';
-import { ArchiveRestore, Archive, Bot, Brain, MoreHorizontal, Undo2 } from 'lucide-react';
+import { ArchiveRestore, Archive, Brain, MoreHorizontal, Undo2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -16,14 +17,14 @@ import { useMissionV3 } from '../MissionV3Context';
 import { ArchiveMissionDialog } from './ArchiveMissionDialog';
 import { useMissionStatusControl } from './missionStatus';
 import { AgentMemoryDialog } from '@/components/agent/AgentMemoryDialog';
-import { SourcingAgentDialog } from '@/components/agent/SourcingAgentDialog';
+import { AgentOrb } from '@/components/agent/AgentOrb';
 
 export function MissionMoreMenu() {
   const { project, isOwnMission, isArchived, leaveBeta } = useMissionV3();
   const status = useMissionStatusControl();
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(false);
+  const navigate = useNavigate();
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -42,8 +43,8 @@ export function MissionMoreMenu() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
-          {isOwnMission && <DropdownMenuItem onSelect={() => setAgentOpen(true)} className="max-sm:min-h-11">
-            <Bot aria-hidden="true" className="mr-2 h-4 w-4" />
+          {isOwnMission && <DropdownMenuItem onSelect={() => navigate(`/agents/sourcing/${project.id}`)} className="max-sm:min-h-11">
+            <AgentOrb size="sm" className="mr-2" />
             Agent de sourcing
           </DropdownMenuItem>}
           {isOwnMission && <DropdownMenuItem onSelect={() => setMemoryOpen(true)} className="max-sm:min-h-11">
@@ -74,7 +75,6 @@ export function MissionMoreMenu() {
         </DropdownMenuContent>
       </DropdownMenu>
       {isOwnMission && <AgentMemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} projectId={project.id} projectTitle={project.name} />}
-      {isOwnMission && <SourcingAgentDialog open={agentOpen} onOpenChange={setAgentOpen} projectId={project.id} projectName={project.name} missionStatus={project.status} returnFocusRef={triggerRef} />}
       <ArchiveMissionDialog
         projectId={project.id}
         open={archiveOpen}

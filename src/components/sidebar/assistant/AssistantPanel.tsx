@@ -21,6 +21,7 @@ import { ApprovalsSection } from '../todo/ApprovalsSection';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
 import { SIDEBAR_FOCUS_CLASS } from '../sidebarButtonClass';
+import { AgentOrb } from '@/components/agent/AgentOrb';
 
 /** Récentes affichées au plus. */
 const RECENT_LIMIT = 8;
@@ -78,6 +79,7 @@ export function AssistantPanel() {
 
   return (
     <div className="flex flex-col gap-1">
+      <ul className="mb-2 flex flex-col"><SidebarRow leading={<AgentOrb size="sm" />} title="Agents" sub="Recherches continues" to="/agents/sourcing" /></ul>
       <div className="pb-1">
         <Button
           type="button"

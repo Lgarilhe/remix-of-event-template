@@ -197,7 +197,7 @@ jobs:
           TZ: Europe/Paris
         run: node --test tests/ux/messagerie-onglets.test.mjs
       - name: Agent de sourcing, contrôles et changements de contexte
-        run: node --test tests/ux/continuous-sourcing-agent.test.mjs
+        run: node --test tests/ux/continuous-sourcing-agent.test.mjs tests/ux/sourcing-agents-hub.test.mjs tests/ux/contraste-ecrans.test.mjs tests/ux/contraste-icones.test.mjs
       - name: Vite production build
         run: npx vite build
 
