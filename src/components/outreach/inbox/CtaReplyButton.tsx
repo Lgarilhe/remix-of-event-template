@@ -166,7 +166,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
             </TooltipTrigger>
             <TooltipContent side="top">Rédiger une réponse qui propose la suite de l'échange</TooltipContent>
           </Tooltip>
-          <DropdownMenuContent side="top" align="start" className="w-80">
+          <DropdownMenuContent side="top" align="start" className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto">
             <DropdownMenuLabel>Choisissez la suite à proposer</DropdownMenuLabel>
             {CTA_OPTIONS.map((opt) => {
               const Icon = opt.icon;

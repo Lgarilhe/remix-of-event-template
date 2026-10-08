@@ -32,7 +32,6 @@ import { conversationTimeline } from '@/lib/inboxTimeline';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
 import { MessageComposer } from './MessageComposer';
-import { SmartReplies } from './SmartReplies';
 import { ThreadNextStep } from './ThreadNextStep';
 import type { CtaReplyButtonProps } from './CtaReplyButton';
 import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
@@ -205,6 +204,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const aiPanelRef = useRef<HTMLDivElement>(null);
+  const composerAreaRef = useRef<HTMLDivElement>(null);
+  const previousAIPanelOpen = useRef(false);
+  useEffect(() => {
+    if (aiPanelOpen) aiPanelRef.current?.focus();
+    else if (previousAIPanelOpen.current) composerAreaRef.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+    previousAIPanelOpen.current = aiPanelOpen;
+  }, [aiPanelOpen]);
   const [contextOpen, setContextOpen] = useState(false);
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
@@ -1286,9 +1293,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* RANGÉE 3 : ligne « À faire », suggestions, panneau IA et composeur */}
-      <div className="group/compose">
-        {nextStep && !candidateActions.hasActions && (
+      {/* RANGÉE 3 : aide à la demande et composeur */}
+      <div ref={composerAreaRef} className="group/compose">
+        {nextStep && !candidateActions.enabled && (
           <ThreadNextStep
             key={selectedChat.id}
             state={nextStep.state}
@@ -1306,7 +1313,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           />
         )}
         {aiPanelOpen && (
-          <div className="max-h-[40vh] overflow-y-auto border-t border-border">
+          <div ref={aiPanelRef} tabIndex={-1} role="region" aria-label="Suggestions de rédaction" className="max-h-[40vh] overflow-y-auto border-t border-border">
             <InlineAIPanel
               open={aiPanelOpen}
               onClose={() => setAiPanelOpen(false)}
@@ -1318,14 +1325,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
             />
           </div>
         )}
-        {/* Suggestions rapides, tant que le panneau IA est fermé */}
-        {!aiPanelOpen && replySuggestions.length > 0 && (
-          <SmartReplies
-            suggestions={replySuggestions}
-            onPick={(text) => onSuggestionClick(text)}
-            onSeeMore={() => setAiPanelOpen(true)}
-          />
-        )}
         <MessageComposer
           value={newMessage}
           onChange={onNewMessageChange}
@@ -1335,6 +1334,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
           aiPanelOpen={aiPanelOpen}
           hasAISuggestions={replySuggestions.length > 0}
           aiSuggestionsCount={replySuggestions.length}
+          replySuggestions={replySuggestions}
+          onSuggestionPick={onSuggestionClick}
           onScheduleCall={onScheduleCall}
           hasCalendlyLink={!!calendlyLink}
           channel={channelLabel(channel)}

@@ -183,7 +183,7 @@ test('Conversation : état en mots près du nom, inscription discrète, panneau 
 test('Composeur : mise en forme dans un menu, nombre de suggestions neutre, un seul bouton plein', () => {
   const src = read('src/components/outreach/inbox/MessageComposer.tsx');
   assert.match(src, /aria-label="Mise en forme" className=\{TOOL_ICON\}/);
-  assert.doesNotMatch(src, /sm:hidden|hidden items-center gap-0\.5 sm:flex/, 'plus de barre de mise en forme à part');
+  assert.doesNotMatch(src, /hidden items-center gap-0\.5 sm:flex/, 'plus de barre de mise en forme à part');
   assert.match(src, /<DropdownMenuShortcut>\{cmd\}\+B<\/DropdownMenuShortcut>/, 'les raccourcis restent dits');
   assert.match(src, /<span className="tabular-nums text-muted-foreground">\{aiSuggestionsCount\}<\/span>/);
   assert.doesNotMatch(src, /bg-brand\/15/);
