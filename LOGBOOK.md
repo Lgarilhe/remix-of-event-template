@@ -32,13 +32,23 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — SHIP — Agent de sourcing continu en production
+
+**Fait** : PR #316 intégrée sur `main` (`6793909400429b7a4f5fc42f9e563b3d58e47fff`). Vercel confirme la publication de ce commit. Migration `20261008113014` appliquée par le workflow du dépôt après deux erreurs de session du connecteur ; les 298 versions locales et distantes correspondent exactement. Déploiement automatique terminé : 81 fonctions publiées, zéro échec. Les sources relues des quatre fonctions concernées correspondent toutes aux fichiers committés, avec authentification applicative conservée : API et worker v1, scoring v75, recherche LinkedIn v51.
+**Validation** : neuf contrôles PR réussis, dont E2E et actions candidat sur API locale réelle. Audit production en lecture seule : onze vérifications réussies, trois tables RLS, 23 corps SQL identiques, contraintes et droits conformes, cron minute actif. Aucun agent, candidat, réservation ou appel fournisseur créé pour tester en production.
+**Advisors** : les deux nouvelles alertes de sécurité correspondent aux choix vérifiés : [table privée sans politique navigateur](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) et [helper booléen privilégié à portée contrôlée](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable). Aucun autre compteur sécurité ne change. Deux FK non indexées supplémentaires sont corrigées par la migration de complément `20261008131500`, à publier. Les index inutilisés sont attendus avant le premier opt-in.
+**Limites** : la QA a utilisé des API simulées, sans recherche LinkedIn ni scoring réel ; elle ne certifie pas la qualité des propositions sur une mission réelle. Budget IA cible et vivier personnel sans synchronisation ATS externe.
+**Refs** : https://github.com/Lgarilhe/remix-of-event-template/pull/316 ; CI `37780719461` ; E2E `37780719462` ; migrations `37782634483` ; fonctions `37782634414` ; https://konekt-app-navy.vercel.app.
+
+---
+
 ## 2026-10-08 — SPEC — Agent de sourcing continu par mission
 
 **Fait** : agent activé explicitement depuis le menu de la mission. Recherche sur le compte LinkedIn personnel choisi et sa licence réelle, ou parmi les candidats déjà enregistrés par le recruteur. Premier échantillon de cinq profils, au moins trois avis motivés dont un positif, puis approbation explicite des références ajoutées au cadrage. Pause, reprise, arrêt et résolution d’une évaluation interrompue. Aucun contact ni passage automatique en « Retenu ».
 **Contrôles** : contexte brief/filtres/mémoires vérifié avant les opérations externes, lease invalidé à la pause, déduplication durable, plafond de profils, quotas et horaires LinkedIn. Les références et résultats dépendants sont purgés lors d’un effacement. Une évaluation incertaine ne se relance pas automatiquement.
 **Validation** : tests comportementaux du moteur, des handlers et du hook ; audit SQL et courses réelles sur base locale isolée ; QA des quatre personas à 320/390 px avec API simulées et audits axe. Aucun appel LinkedIn/IA réel pendant les vérifications. TypeScript app conserve ses onze diagnostics hérités ; contrôles Deno comparés au socle sans nouveau diagnostic.
 **Limites** : budget IA présenté comme cible, car le coût réel peut dépasser une estimation ; un agent et une phase bornée par tick cron ; le vivier porte sur les candidats personnels enregistrés, sans synchronisation d’un ATS externe.
-**Reste à faire** : publication après les vérifications finales et la CI.
+**Livraison** : publiée par la PR #316 ; voir l’entrée SHIP ci-dessus.
 **Refs** : branche `codex/continuous-sourcing-agent-20261008`, migration `20261008113014_continuous_sourcing_agent.sql`.
 
 ---
