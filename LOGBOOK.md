@@ -32,6 +32,23 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — BUG — Préparations candidat lisibles et erreurs distinguées
+
+**Contexte** : la messagerie réelle affichait « La préparation n’a pas pu être lue » après une génération. Le wrapper IA ne garantissait pas le JSON et ses consignes globales de guillemets contredisaient ce format ; une réponse outil sans texte ou un bloc JSON complet étaient également refusés. Des sources volontairement non lues étaient présentées comme des pannes.
+**Fait** : réponse structurée par l’outil fermé `prepare_candidate_actions`, sans exécution ; consignes de rédaction limitées aux textes candidat. JSON brut ou bloc unique accepté après validation, sans réparation de réponse invalide. Première lecture confirmée exigée avant une préparation payante. Lecture et génération ont des erreurs et boutons de reprise distincts ; les propositions connues restent disponibles après une relecture échouée. Sources non applicables expliquées au modèle sans fausse alerte ; véritables limites, échecs de lecture et ambiguïtés restent visibles. Une découverte LinkedIn HTTP en erreur échoue explicitement, au lieu de devenir une absence de conversation.
+**Validation** : 28 tests génération, 23 contexte, 8 helpers UI, 3 hook et 3 découverte transport ; douze scénarios API sur Auth/REST/RPC/fonctions réels locaux, sans retry ni skip, dont réponse `tool_use` sans texte, brouillon persistant, débit unique exact et aucun envoi avant confirmation. Build final réussi ; lint ciblé propre ; les onze diagnostics TypeScript hérités sont identiques à main.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparation persistée, reprise volontaire avec coût, proposition conservée après panne de relecture | PASS |
+| Claire | Erreurs de lecture et de préparation distinctes, détails des sources dépliables, aperçu conservé | PASS |
+| Théo | Première lecture échouée sans appel payant, double clic sans doublon, réponses invalides refusées, vrais échecs de découverte visibles | PASS |
+| Sophie | Clair/sombre à 390 px et 320 × 500 px, commandes de 44 px, reprise au clavier, aucun débordement horizontal | PASS |
+
+**Limites** : prestataires et modèle simulés, aucune interaction avec un candidat réel ni écriture de test en production. Chromium mobile émulé ; pas d’appareil iOS physique ni mesure réseau de production. La panne de découverte LinkedIn bloque la lecture globale, comme les erreurs réseau déjà existantes, et propose une relecture sans appel IA.
+**Impact** : protocole de préparation, alertes de contexte, découverte LinkedIn, hook et affichage des actions, tests de régression et documentation. Aucun changement de schéma ni de droits.
+**Refs** : branche `codex/candidate-actions-generation-fix` ; `docs/candidate-contextual-actions.md`.
+
 ## 2026-10-07 — SPEC — Actions candidat branchées sur les comptes réels
 
 **Contexte** : les propositions de la messagerie existaient uniquement dans la démonstration. Le propriétaire demande leur utilisation sur les vrais candidats et les comptes connectés.

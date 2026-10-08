@@ -4,6 +4,22 @@ import { activityMessageText } from '@/lib/inboxTimeline';
 
 export type { CandidateActionScope, CandidateActionSource, CandidateActionTarget, CandidateActionEffect, CandidateActionPlan, CandidateActionEdits, CandidateActionsResponse, CandidateActionMessageRecord } from '../../supabase/functions/_shared/candidate-actions/types';
 
+/** Les sources restent visibles ; leurs explications complètes restent dépliables. */
+export function candidateActionWarningLabels(warnings: string[]): string[] {
+  return [...new Set(warnings.map(warning => {
+    const partial = warning.match(/^Historique (?:partiel|limité aux informations chargées)\s*\([^)]*\)/u);
+    if (partial) return partial[0];
+    const unavailable = warning.match(/^([^:]+) : (?:ces informations n’ont pas pu être chargées|lecture indisponible)/u);
+    if (unavailable) return `${unavailable[1]} : informations indisponibles`;
+    const legacyPartial = warning.match(/^([^:]+) : historique partiel/u);
+    if (legacyPartial) return legacyPartial[0];
+    if (warning.startsWith('Certains anciens entretiens ou évaluations n’ont pas de mission identifiée')) return 'Anciens entretiens et évaluations : mission non identifiée';
+    if (warning.startsWith('Certains échanges ne sont pas rattachés à une mission')) return 'Échanges : mission non identifiée';
+    // Une nouvelle alerte métier n'est jamais tronquée ou supposée inoffensive.
+    return warning;
+  }))];
+}
+
 export const candidateActionCompleted = (plan: CandidateActionPlan) => plan.effects.length > 0 && plan.effects.every(effect => effect.status === 'succeeded' || effect.status === 'skipped');
 export const candidateActionNeedsReview = (plan: CandidateActionPlan) => plan.effects.some(effect => effect.status === 'unknown' || effect.status === 'running');
 export const candidateActionCanResume = (plan: CandidateActionPlan) => ['approved', 'running', 'partial'].includes(plan.status) && !candidateActionNeedsReview(plan) && plan.effects.some(effect => effect.status === 'prepared' || effect.status === 'failed');

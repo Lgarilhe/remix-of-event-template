@@ -70,6 +70,49 @@ async function execute(f: Awaited<ReturnType<typeof setup>>, plan: CandidateActi
 }
 async function sends(accountId: string) { return (await mockCalls(accountId)).filter(c => c.method === 'POST' && c.path === '/api/v1/emails'); }
 
+test('@critical préparation via tool_use sans texte : proposition persistée, un seul débit et aucun envoi avant validation', async () => {
+  const f = await setup();
+  await setMockMode(f.accountId, { action_recipes: { [f.marker]: { responseMode: 'tool_use', effects: [
+    { kind: 'document', label: 'Conserver le suivi', content: 'Attendre les précisions du manager.', documentType: 'follow_up' },
+    { kind: 'message', label: 'Répondre au candidat', content: 'Bonjour, merci. Je vous confirme la réception de vos disponibilités.', subject: 'Disponibilités reçues' },
+  ] } } });
+  const plan = await generate(f);
+  expect(plan.status).toBe('draft');
+  expect(plan.effects.map(effect => effect.status)).toEqual(['prepared', 'prepared']);
+  expect(await sends(f.accountId)).toHaveLength(0);
+
+  const modelCalls = (await mockCalls()).filter(call => call.path === '/v1/messages' && JSON.stringify(call.body).includes(f.marker));
+  expect(modelCalls).toHaveLength(1);
+  const modelRequest = modelCalls[0].body as Record<string, unknown>;
+  expect(modelRequest.tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'prepare_candidate_actions', input_schema: expect.objectContaining({ type: 'object' }) })]));
+  expect(modelRequest.tool_choice).toMatchObject({ type: 'tool', name: 'prepare_candidate_actions' });
+
+  const persisted = await admin().from('candidate_action_plans').select('id,status,user_id,candidate_id')
+    .eq('organization_id', f.org.orgId).eq('candidate_id', f.candidateId);
+  expect(persisted.error).toBeNull();
+  expect(persisted.data).toEqual([{ id: plan.id, status: 'draft', user_id: f.org.owner.userId, candidate_id: f.candidateId }]);
+  const noInternalWrite = await admin().from('candidate_notes').select('id').eq('id', plan.effects[0].id);
+  expect(noInternalWrite.error).toBeNull();
+  expect(noInternalWrite.data).toEqual([]);
+
+  // Reopening the same preparation uses its receipt and does not call or bill
+  // the provider again. Approval is still required before any outbound effect.
+  const repeated = await generate(f);
+  expect(repeated.id).toBe(plan.id);
+  const beforeApproval = await action(f.token, f.scope, { action: 'execute_effect', plan_id: plan.id, effect_id: plan.effects[1].id });
+  expect(beforeApproval.status).toBeGreaterThanOrEqual(400);
+  expect(await sends(f.accountId)).toHaveLength(0);
+  expect((await mockCalls()).filter(call => call.path === '/v1/messages' && JSON.stringify(call.body).includes(f.marker))).toHaveLength(1);
+
+  const transactions = await admin().from('ai_credit_transactions').select('user_id,amount,credits_used,tokens_input,tokens_output')
+    .eq('organization_id', f.org.orgId).eq('action', 'candidate_actions');
+  expect(transactions.error).toBeNull();
+  expect(transactions.data).toEqual([{ user_id: f.org.owner.userId, amount: -2, credits_used: 2, tokens_input: 10, tokens_output: 10 }]);
+  const balance = await admin().from('ai_credit_balances').select('plan_credits,topup_credits,credits_total').eq('organization_id', f.org.orgId).single();
+  expect(balance.error).toBeNull();
+  expect(balance.data).toEqual({ plan_credits: 58, topup_credits: 0, credits_total: 58 });
+});
+
 test('@critical liaison e-mail attestée : revendication REST refusée, callback signé et dissociation exacte', async () => {
   const f = await setup();
   const browserHeaders = { apikey: E2E.anonKey, Authorization: `Bearer ${f.token}`, 'Content-Type': 'application/json' };

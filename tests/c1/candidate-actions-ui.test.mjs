@@ -56,3 +56,13 @@ test('stage-changing candidate LinkedIn sends run after internal writes and othe
   assert.deepEqual(ui.candidateActionExecutionOrder(effects).map(effect => effect.id), ['note', 'email', 'team', 'linkedin']);
   assert.equal(effects[0].id, 'linkedin');
 });
+
+test('compact source warnings retain unavailable sources, actual limits and unknown business risks', () => {
+  const limited = 'Historique limité aux informations chargées (Notes internes, Historique des échanges).';
+  const unavailable = 'E-mails : ces informations n’ont pas pu être chargées. Réessayez pour compléter le contexte.';
+  const unknown = 'Deux missions actives correspondent à ce candidat : vérifiez la mission avant de continuer.';
+  assert.deepEqual(ui.candidateActionWarningLabels([limited, unavailable, unavailable, unknown]), [
+    'Historique limité aux informations chargées (Notes internes, Historique des échanges)',
+    'E-mails : informations indisponibles', unknown,
+  ]);
+});
