@@ -69,9 +69,15 @@ function range(min: unknown, max: unknown, upper = 100): Obj | null {
 const COUNTRY_IDS = new Set(['105015875', '101165590', '101174742', '102713980', '103644278', '106155005', '103350119', '100565514', '103883259', '102890719', '100364837', '104738515', '101620260', '102478259', '104305776', '105646813']);
 
 
-function booleanQuery(value: unknown, label: string): string {
+function booleanQuery(value: unknown, label: string, api: ContinuousSearchApi): string {
   const query = text(value);
-  if (!query || query.length > 200) fail('filters_invalid', 'Validez une requête de 1 à 200 caractères pour « ' + label + ' ».');
+  if (!query) fail('filters_invalid', 'Renseignez la requête « ' + label + ' » dans les filtres.');
+  // The legacy Classic/Sales transport can truncate at 200 characters.
+  // Recruiter preserves the full Boolean query and must not inherit that cap.
+  if (api !== 'recruiter' && query.length > 200) {
+    fail('filters_invalid', 'La requête « ' + label + ' » contient ' + query.length
+      + ' caractères. L’agent accepte actuellement jusqu’à 200 caractères pour cette licence. Revoyez les filtres.');
+  }
   let depth = 0, quoted = false;
   for (const ch of query) {
     if (ch === '"') quoted = !quoted;
@@ -126,7 +132,7 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
   const manual = Boolean(saved.last_manual_edit);
   const aiFormat = !manual && (Array.isArray(saved.skills_keywords) || Array.isArray(saved.location_keywords) || Boolean(entries(saved.role)[0]?.keywords));
   const out: Obj = { action: 'search', api, category: 'people' };
-  const keywords = present(saved.keywords) ? booleanQuery(saved.keywords, 'Mots-clés') : '';
+  const keywords = present(saved.keywords) ? booleanQuery(saved.keywords, 'Mots-clés', api) : '';
   if (keywords) out.keywords = keywords;
 
   const locations = facets(saved.location).map(v => ({ ...v, scope: scope(v.scope, api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT', LOCATION_SCOPES, 'Localisation') }));
@@ -135,7 +141,9 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
     if (api !== 'recruiter' && locations.some(v => v.priority === 'DOESNT_HAVE' || v.scope !== 'CURRENT')) fail('filters_unsupported', 'Cette licence ne conserve pas les exclusions ou la mobilité géographique. Revoyez les lieux et leur périmètre.');
     out.location = api === 'recruiter' ? locations : locations.map(v => v.id);
   }
-  if (present(saved.location_within_area) && !locations.some(v => COUNTRY_IDS.has(v.id))) {
+  // After a manual edit, a radius without a selected location is inactive in
+  // the sourcing UI and omitted by buildSearchParams. Keep the saved metadata.
+  if (present(saved.location_within_area) && !(manual && !locations.length) && !locations.some(v => COUNTRY_IDS.has(v.id))) {
     if (!locations.length) fail('filters_unresolved', 'Sélectionnez un lieu avant de définir un rayon de recherche.');
     recruiterOnly(api, 'Rayon géographique');
     if (![10, 25, 35, 50, 75, 100].includes(saved.location_within_area as number)) fail('filters_invalid', 'Choisissez un rayon proposé dans les filtres de recherche.');
@@ -169,11 +177,13 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
     if ((api === 'classic' || key === 'school' || (key === 'function' && api === 'recruiter')) && exclude.length) fail('filters_unsupported', 'Cette licence ne conserve pas l’exclusion « ' + key + ' ». Revoyez les filtres.');
     out[key] = key === 'school' || api === 'classic' || (key === 'function' && api === 'recruiter') ? include : { ...(include.length ? { include } : {}), ...(exclude.length ? { exclude } : {}) };
   }
-  if (!present(out.industry) && present(saved.industry_keywords)) fail('filters_unresolved', 'Sélectionnez les secteurs suggérés dans les filtres avant de démarrer l’agent.');
+  // Manual snapshots retain old AI industry suggestions, but the interactive
+  // provider request only applies selected industry IDs, never these labels.
+  if (!manual && !present(out.industry) && present(saved.industry_keywords)) fail('filters_unresolved', 'Sélectionnez les secteurs suggérés dans les filtres avant de démarrer l’agent.');
 
-  const roles = entries(saved.role).map(v => ({ keywords: booleanQuery(v.keywords, 'Rôle'), priority: priority(v.priority), scope: scope(v.scope, aiFormat ? 'CURRENT' : 'CURRENT_OR_PAST', ROLE_SCOPES, 'Rôle') }));
+  const roles = entries(saved.role).map(v => ({ keywords: booleanQuery(v.keywords, 'Rôle', api), priority: priority(v.priority), scope: scope(v.scope, aiFormat ? 'CURRENT' : 'CURRENT_OR_PAST', ROLE_SCOPES, 'Rôle') }));
   if (roles.length) { recruiterOnly(api, 'Rôle et sa période'); out.role = roles; }
-  const companies = entries(saved.company_keywords).map(v => ({ keywords: booleanQuery(v.keywords, 'Entreprise'), priority: priority(v.priority ?? (aiFormat ? 'DOESNT_HAVE' : 'MUST_HAVE')), scope: scope(v.scope, 'CURRENT_OR_PAST', COMPANY_SCOPES, 'Entreprise') }));
+  const companies = entries(saved.company_keywords).map(v => ({ keywords: booleanQuery(v.keywords, 'Entreprise', api), priority: priority(v.priority ?? (aiFormat ? 'DOESNT_HAVE' : 'MUST_HAVE')), scope: scope(v.scope, 'CURRENT_OR_PAST', COMPANY_SCOPES, 'Entreprise') }));
   if (companies.length) {
     recruiterOnly(api, 'Entreprises par mots-clés');
     // Separate company_keywords overwrites IDs in the existing handler.
@@ -184,7 +194,7 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
     const id = typeof v.id === 'number' ? String(v.id) : text(v.id);
     const keyword = text(v.keywords) || text(v.name) || id;
     if (!keyword) fail('filters_invalid', 'Revoyez les compétences dans les filtres.');
-    return /^\d+$/.test(id) && Number(id) > 0 ? { id, priority: priority(v.priority) } : { keywords: booleanQuery(keyword, 'Compétences'), priority: priority(v.priority) };
+    return /^\d+$/.test(id) && Number(id) > 0 ? { id, priority: priority(v.priority) } : { keywords: booleanQuery(keyword, 'Compétences', api), priority: priority(v.priority) };
   });
   if (skills.length) { recruiterOnly(api, 'Compétences'); out.skills = skills; }
   if (!manual && list(saved.skills_keywords).map(text).some(v => v && !keywords.toLowerCase().includes(v.toLowerCase()))) {
@@ -291,7 +301,7 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
   if (Object.keys(advanced).length) {
     if (api !== 'classic') fail('filters_unsupported', 'Les mots-clés avancés nécessitent LinkedIn Classic. Revoyez ce filtre.');
     if (Object.keys(advanced).some(k => !['first_name', 'last_name', 'title', 'company', 'school'].includes(k))) fail('filters_invalid', 'Revoyez les mots-clés avancés.');
-    out.advanced_keywords = Object.fromEntries(Object.entries(advanced).map(([key, value]) => [key, booleanQuery(value, 'Mots-clés avancés')]));
+    out.advanced_keywords = Object.fromEntries(Object.entries(advanced).map(([key, value]) => [key, booleanQuery(value, 'Mots-clés avancés', api)]));
   }
 
   // These fields are stripped by the current handler, override the request,

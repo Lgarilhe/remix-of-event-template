@@ -32,6 +32,16 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-08 — BUG — Calibrage bloqué malgré les mots-clés Recruiter
+
+**Contexte** : une requête Recruiter enregistrée de 330 caractères était refusée par le plafond commun de 200 caractères. La recherche interactive tronquait également cette requête. Un rayon sans lieu sélectionné et des suggestions de secteurs résiduelles bloquaient ensuite les filtres modifiés manuellement.
+**Correction** : conservation intégrale des requêtes Recruiter dans la validation et le transport ; comportement Classic/Sales inchangé, avec message de longueur explicite. Les résidus inactifs des filtres manuels suivent la sélection effective de la recherche interactive ; les suggestions non validées restent bloquantes dans les filtres générés. Aucun critère enregistré modifié.
+**Validation** : 19 tests de filtres, régressions worker/workspace et build réussis ; module partagé contrôlé par Deno et lint sans diagnostic ; onze diagnostics TypeScript applicatifs hérités. Rejeu local du snapshot original : 330 caractères conservés, requêtes fournisseur identiques, snapshot inchangé. Quatre personas navigateur : 10 parcours, 14 captures, axe sans violation, mobile 320 px clair/390 px sombre sans débordement ; passage au calibrage simulé uniquement après clic.
+**Limites** : fournisseurs simulés, aucun sourcing payant ni contact candidat. L'identité vérifiée concerne les requêtes fournisseur ; le post-filtrage navigateur préexistant de l'expérience calculée n'est pas exécuté par le worker et reste hors de ce correctif. Publication après contrôles CI et vérification des trois fonctions concernées.
+**Refs** : branche `codex/fix-agent-recruiter-keywords-20261008` ; `tests/agent/continuous-sourcing-filters.test.mjs`.
+
+---
+
 ## 2026-10-08 — SPEC — Espace Agents et pilotage du sourcing
 
 **Fait** : espace personnel `/agents/sourcing`, accessible dans Missions, Assistant et la palette. Un agent par mission, sélection de mission avant configuration et ouverture en pleine page. Pilotage, profils et réglages partagent le contexte, les mémoires et le calibrage existants ; activation et actions payantes restent explicites. Sphères décoratives texturées, animation unique de quatre secondes et mouvement réduit respecté, composants natifs du design system.

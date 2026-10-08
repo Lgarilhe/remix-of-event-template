@@ -651,10 +651,10 @@ async function handleSearch(
     }
   }
 
-  // Keywords (all APIs) - truncate if too long to avoid content_too_large errors
+  // Recruiter must receive the full query, including every Boolean group.
+  // Keep the legacy length handling for Classic and Sales Navigator only.
   if (keywords) {
-    // LinkedIn Classic API has strict payload limits; cap keywords to ~200 chars
-    if (keywords.length > 200) {
+    if (api !== 'recruiter' && keywords.length > 200) {
       // Try to keep complete boolean groups by trimming the last AND group
       let truncated = keywords;
       while (truncated.length > 200) {
