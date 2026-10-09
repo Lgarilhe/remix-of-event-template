@@ -236,7 +236,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         id: item.id,
         name: item.title,
         priority: 'MUST_HAVE',
-        scope: 'CURRENT_OR_OPEN_TO_RELOCATE'
+        scope: filters.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT'
       };
       onChange({ ...filters, location: [...current, newLocation] });
     }
@@ -494,12 +494,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
         >
           {/* Calculated Experience */}
           <FilterGroup
-            title="Expérience calculée (depuis diplôme)"
+            title="Expérience professionnelle"
             badge={(filters.calculated_experience_min !== null || filters.calculated_experience_max !== null) ? 1 : 0}
           >
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                ✨ Filtre plus fiable basé sur l'année de fin d'études
+                Calculée à partir des périodes travaillées renseignées sur le profil. Les parcours incomplets restent à vérifier.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -513,6 +513,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         calculated_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                        years_of_experience_min: null,
+                        years_of_experience_max: null,
                       })
                     }
                     placeholder="0"
@@ -530,6 +532,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         calculated_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                        years_of_experience_min: null,
+                        years_of_experience_max: null,
                       })
                     }
                     placeholder="50"
@@ -562,6 +566,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         years_of_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                        calculated_experience_min: null,
+                        calculated_experience_max: null,
                       })
                     }
                     placeholder="0"
@@ -580,6 +586,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         years_of_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                        calculated_experience_min: null,
+                        calculated_experience_max: null,
                       })
                     }
                     placeholder="50"
@@ -859,6 +867,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           >
             <PriorityBadges
               items={filters.past_job_title}
+              supportsAll={filters.api === 'recruiter'}
               onRemove={(id) => handleRemovePriorityFilter('past_job_title', id)}
               onUpdatePriority={(id, priority) => handleUpdatePriority('past_job_title', id, priority)}
             />

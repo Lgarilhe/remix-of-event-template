@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { X, Plus, Pencil } from 'lucide-react';
 import { AutocompleteInput, ParameterOption } from './FilterComponents';
+import { PRIORITY_OPTIONS, SEARCH_FILTER_LOGIC_HELP } from './types';
 
 // Company filter types
 export type CompanyPriority = 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
@@ -15,6 +16,8 @@ export type CompanyScope = 'CURRENT_OR_PAST' | 'CURRENT' | 'PAST' | 'PAST_NOT_CU
 export interface CompanyIdFilter {
   id: string;
   name: string;
+  priority?: CompanyPriority;
+  scope?: CompanyScope;
 }
 
 export interface CompanyKeywordFilter {
@@ -24,11 +27,7 @@ export interface CompanyKeywordFilter {
 }
 
 // Options for priority (fond teinté, texte à l'encre : la couleur ne porte pas le texte)
-export const COMPANY_PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-foreground', icon: '✓' },
-  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-foreground', icon: '○' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-foreground', icon: '✕' },
-];
+export const COMPANY_PRIORITY_OPTIONS = PRIORITY_OPTIONS;
 
 // Options for scope
 export const COMPANY_SCOPE_OPTIONS = [
@@ -185,7 +184,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   <button
                     type="button"
                     onClick={() => openEditDialog(index)}
-                    className="text-xs font-medium text-foreground flex-1 min-w-0 pr-2 text-left hover:text-linkedin transition-colors group flex items-start gap-1"
+                    className="text-xs font-medium text-foreground flex-1 min-w-0 pr-2 text-left hover:text-linkedin transition-colors group flex items-start gap-1 max-sm:min-h-11"
                   >
                     <span className="min-w-0 whitespace-normal break-words leading-snug">{company.keywords}</span>
                     <Pencil className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -193,7 +192,8 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   <button 
                     type="button" 
                     onClick={() => onRemoveKeywordCompany(index)} 
-                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full p-0.5 transition-colors"
+                    aria-label={`Retirer ${company.keywords}`}
+                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full p-0.5 transition-colors max-sm:h-11 max-sm:w-11 max-sm:grid max-sm:place-items-center shrink-0"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -204,12 +204,12 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                     value={company.priority}
                     onValueChange={(val) => onUpdateKeywordCompany(index, { priority: val as CompanyPriority })}
                   >
-                    <SelectTrigger className={`h-6 flex-1 text-xs border-0 shadow-sm ${priorityConfig?.color}`}>
+                    <SelectTrigger aria-label={`Logique de recherche pour ${company.keywords}`} className={`h-7 max-sm:min-h-11 flex-1 text-xs border-0 shadow-sm ${priorityConfig?.color}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-card">
                       {COMPANY_PRIORITY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                           <span className="flex items-center gap-1">
                             <span>{opt.icon}</span>
                             <span>{opt.label}</span>
@@ -217,10 +217,14 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                         </SelectItem>
                       ))}
                     </SelectContent>
-                    
+                  </Select>
+                  <Select value={company.scope} onValueChange={(val) => onUpdateKeywordCompany(index, { scope: val as CompanyScope })}>
+                    <SelectTrigger aria-label={`Période pour ${company.keywords}`} className="h-7 max-sm:min-h-11 flex-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent className="bg-card">
                       {COMPANY_SCOPE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                           {opt.label}
                         </SelectItem>
                       ))}
@@ -239,7 +243,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           value={newKeywords}
           onChange={(e) => setNewKeywords(e.target.value)}
           placeholder="Ex: Google, Meta, Amazon..."
-          className="text-xs h-7"
+          className="text-xs h-7 max-sm:min-h-11"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -248,14 +252,14 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           }}
         />
         
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Select value={newPriority} onValueChange={(v) => setNewPriority(v as CompanyPriority)}>
-            <SelectTrigger className="h-6 flex-1 text-xs">
+            <SelectTrigger aria-label="Logique du filtre entreprise" className="h-7 max-sm:min-h-11 max-sm:min-w-full flex-1 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-card">
               {COMPANY_PRIORITY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                   <span className="flex items-center gap-1">
                     <span>{opt.icon}</span>
                     <span>{opt.label}</span>
@@ -266,12 +270,12 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           </Select>
           
           <Select value={newScope} onValueChange={(v) => setNewScope(v as CompanyScope)}>
-            <SelectTrigger className="h-6 flex-1 text-xs">
+            <SelectTrigger aria-label="Période du filtre entreprise" className="h-7 max-sm:min-h-11 flex-1 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-card">
               {COMPANY_SCOPE_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                   {opt.label}
                 </SelectItem>
               ))}
@@ -283,7 +287,8 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             size="sm"
             onClick={handleAddKeyword}
             disabled={!newKeywords.trim()}
-            className="h-6 px-2 border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
+            aria-label="Ajouter le filtre entreprise"
+            className="h-7 max-sm:h-11 max-sm:w-11 px-2 border-transparent bg-linkedin text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white disabled:bg-muted dark:border-transparent dark:hover:border-transparent"
           >
             <Plus className="w-3 h-3" />
           </Button>
@@ -292,7 +297,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             size="sm"
             variant="outline"
             onClick={openBooleanDialog}
-            className="h-6 px-2"
+            className="h-7 max-sm:h-11 max-sm:w-11 px-2"
             title="Éditeur Boolean avancé"
           >
             <Pencil className="w-3 h-3" />
@@ -300,7 +305,10 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
         </div>
         
         <p className="text-xs text-muted-foreground">
-          Utilisez AND, NOT pour affiner ou <button type="button" onClick={openBooleanDialog} className="underline hover:text-foreground">ouvrez l'éditeur Boolean</button>
+          {SEARCH_FILTER_LOGIC_HELP}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Utilisez OR pour les alternatives, AND pour combiner, NOT pour exclure, ou <button type="button" onClick={openBooleanDialog} className="underline hover:text-foreground max-sm:min-h-11">ouvrez l'éditeur de requête</button>
         </p>
       </div>
 
@@ -320,12 +328,12 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           />
           <div className="flex items-center gap-2 mt-1">
             <Select value={dialogPriority} onValueChange={(v) => setDialogPriority(v as CompanyPriority)}>
-              <SelectTrigger className="h-8 flex-1 text-xs">
+              <SelectTrigger aria-label="Logique du filtre entreprise" className="h-8 max-sm:min-h-11 flex-1 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-card">
                 {COMPANY_PRIORITY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                     <span className="flex items-center gap-1">
                       <span>{opt.icon}</span>
                       <span>{opt.label}</span>
@@ -335,12 +343,12 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
               </SelectContent>
             </Select>
             <Select value={dialogScope} onValueChange={(v) => setDialogScope(v as CompanyScope)}>
-              <SelectTrigger className="h-8 flex-1 text-xs">
+              <SelectTrigger aria-label="Période du filtre entreprise" className="h-8 max-sm:min-h-11 flex-1 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-card">
                 {COMPANY_SCOPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                     {opt.label}
                   </SelectItem>
                 ))}
@@ -355,7 +363,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
               <li><strong>AND</strong> pour combiner : <code className="text-xs bg-muted px-1 rounded">"Big Four" AND consulting</code></li>
               <li><strong>NOT</strong> pour exclure : <code className="text-xs bg-muted px-1 rounded">NOT freelance NOT startup</code></li>
             </ul>
-            <p className="text-xs mt-1 text-muted-foreground/70">⚠️ Limite ~200 caractères. Utilisez des guillemets pour les noms avec espaces.</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">Utilisez des guillemets pour les noms avec espaces.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>

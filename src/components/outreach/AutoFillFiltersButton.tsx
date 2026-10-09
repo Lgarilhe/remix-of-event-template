@@ -9,7 +9,7 @@ import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { invokeUnipile } from '@/lib/invokeUnipile';
-import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
+import { LinkedInFiltersState, LinkedInApiType, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
 import { Job } from '@/types/jobs';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -21,6 +21,7 @@ interface AutoFillFiltersButtonProps {
   selectedJob: Job | null;
   accountId: string | null;
   currentLocation?: LocationFilterItem[];
+  api?: LinkedInApiType;
   onApplyFilters: (filters: Partial<LinkedInFiltersState>) => void;
   onSuggestionsGenerated?: (suggestions: {
     alt_skills?: string[];
@@ -118,6 +119,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   selectedJob,
   accountId,
   currentLocation,
+  api = 'recruiter',
   onApplyFilters,
   onSuggestionsGenerated,
   disabled,
@@ -137,7 +139,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   const [showOutput, setShowOutput] = useState(true);
   const [missingFields, setMissingFields] = useState<{ critical: string[], optional: string[] }>({ critical: [], optional: [] });
   const generationRef = useRef(0);
-  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource]);
+  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource, api]);
   const contextRef = useRef(contextKey);
   contextRef.current = contextKey;
   useEffect(() => {
@@ -242,18 +244,17 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         update.seniority = generated.seniority;
       }
 
-      // Experience - update BOTH calculated and LinkedIn API fields
+      // Generated XP has the same calculated meaning as the first-search mapper.
       // Use typeof check to handle 0 correctly (0 is a valid value!)
       const hasXpMin = typeof generated.years_of_experience_min === 'number';
       const hasXpMax = typeof generated.years_of_experience_max === 'number';
       
       if (hasXpMin || hasXpMax) {
-        // Calculated experience (from diploma - primary filter for Recruiter)
         update.calculated_experience_min = hasXpMin ? generated.years_of_experience_min : null;
         update.calculated_experience_max = hasXpMax ? generated.years_of_experience_max : null;
-        // LinkedIn API experience (backup filter)
-        update.years_of_experience_min = hasXpMin ? generated.years_of_experience_min : null;
-        update.years_of_experience_max = hasXpMax ? generated.years_of_experience_max : null;
+        // Native ranges are a separate, explicit user choice.
+        update.years_of_experience_min = null;
+        update.years_of_experience_max = null;
         
         console.log('[AutoFill] Experience set:', { 
           min: update.calculated_experience_min, 
@@ -263,7 +264,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       // Location radius
       if (generated.location_within_area !== undefined) {
-        update.location_within_area = generated.location_within_area;
+        update.location_within_area = api === 'recruiter' ? generated.location_within_area : null;
       }
 
       // Location: try to resolve a keyword (e.g. "Courbevoie") to a valid LinkedIn location ID.
@@ -274,7 +275,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       if (!hasValidExistingLocation && locationKeywords.length > 0 && accountId) {
         // Try each location keyword in sequence until one resolves
-        const resolvedLocations: Array<{ id: string; name: string; priority: 'MUST_HAVE'; scope: 'CURRENT_OR_OPEN_TO_RELOCATE' }> = [];
+        const resolvedLocations: LocationFilterItem[] = [];
 
         for (const keyword of locationKeywords.slice(0, 3)) { // Max 3 attempts
           try {
@@ -284,7 +285,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                 account_id: accountId,
                 type: 'LOCATION',
                 keywords: keyword,
-                service: 'RECRUITER',
+                service: api === 'sales_navigator' ? 'SALES_NAVIGATOR' : api === 'classic' ? 'CLASSIC' : 'RECRUITER',
               },
             });
 
@@ -303,7 +304,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                     id: String(best.id),
                     name: String(best.title),
                     priority: 'MUST_HAVE',
-                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
+                    scope: api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT',
                   });
                 }
                 break; // Found one valid location, stop (OR logic — one is enough)
@@ -401,7 +402,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }, [selectedJob, accountId, currentLocation, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel, organizationId, projectId, contextKey, onMemoryContextGenerated]);
+  }, [selectedJob, accountId, currentLocation, api, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel, organizationId, projectId, contextKey, onMemoryContextGenerated]);
 
   const isDisabled = disabled || !selectedJob || !accountId || loading;
 

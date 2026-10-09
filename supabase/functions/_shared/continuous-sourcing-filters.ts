@@ -1,5 +1,6 @@
 /** Build a people search from the mission's saved filters. No generated query,
  * account fallback, or silently discarded mandatory filter is allowed here. */
+import { searchBooleanIssue } from './search-boolean.ts';
 export type ContinuousSearchApi = 'classic' | 'recruiter' | 'sales_navigator';
 type Obj = Record<string, unknown>;
 type Priority = 'MUST_HAVE' | 'CAN_HAVE' | 'DOESNT_HAVE';
@@ -72,19 +73,13 @@ const COUNTRY_IDS = new Set(['105015875', '101165590', '101174742', '102713980',
 function booleanQuery(value: unknown, label: string, api: ContinuousSearchApi): string {
   const query = text(value);
   if (!query) fail('filters_invalid', 'Renseignez la requête « ' + label + ' » dans les filtres.');
-  // The legacy Classic/Sales transport can truncate at 200 characters.
-  // Recruiter preserves the full Boolean query and must not inherit that cap.
+  // Classic/Sales reject queries above the app's supported limit; Recruiter
+  // preserves its full query. Eligibility and transport use the same syntax.
   if (api !== 'recruiter' && query.length > 200) {
     fail('filters_invalid', 'La requête « ' + label + ' » contient ' + query.length
       + ' caractères. L’agent accepte actuellement jusqu’à 200 caractères pour cette licence. Revoyez les filtres.');
   }
-  let depth = 0, quoted = false;
-  for (const ch of query) {
-    if (ch === '"') quoted = !quoted;
-    if (!quoted && ch === '(') depth++;
-    if (!quoted && ch === ')' && --depth < 0) fail('filters_invalid', 'Fermez les parenthèses de la requête « ' + label + ' ».');
-  }
-  if (quoted || depth !== 0 || /\s+(AND|OR|NOT)\s*$/i.test(query)) {
+  if (searchBooleanIssue(query)) {
     fail('filters_invalid', 'Validez les guillemets et les opérateurs de la requête « ' + label + ' ».');
   }
   return query;
@@ -99,13 +94,13 @@ function scope(value: unknown, fallback: string, allowed: readonly string[], lab
   if (!allowed.includes(s)) fail('filters_invalid', 'Revoyez la période du filtre « ' + label + ' ».');
   return s;
 }
-function facets(value: unknown, fallback: Priority = 'MUST_HAVE'): Array<{ id: string; priority: Priority; scope?: unknown }> {
+function facets(value: unknown, fallback: Priority = 'MUST_HAVE', includePriority: Priority = 'MUST_HAVE'): Array<{ id: string; priority: Priority; scope?: unknown }> {
   if (!present(value)) return [];
   if (Array.isArray(value)) return entries(value).map(v => ({ id: facetId(v.id), priority: priority(v.priority ?? fallback), scope: v.scope }));
   const groups = obj(value);
   if (!Object.keys(groups).length || Object.keys(groups).some(k => !['include', 'exclude'].includes(k))) fail('filters_invalid', 'Revoyez les filtres à inclure et à exclure.');
   return [
-    ...list(groups.include).map(id => ({ id: facetId(id), priority: 'MUST_HAVE' as const })),
+    ...list(groups.include).map(id => ({ id: facetId(id), priority: includePriority })),
     ...list(groups.exclude).map(id => ({ id: facetId(id), priority: 'DOESNT_HAVE' as const })),
   ];
 }
@@ -120,6 +115,26 @@ const SENIORITY_LABELS: Record<string, string> = { '1': 'entry', '2': 'associate
 const RECRUITER_SENIORITY: Record<string, string> = { entry: 'entry', associate: 'entry', mid: 'senior', senior: 'senior', manager: 'manager', director: 'director', vp: 'vp', cxo: 'cxo', partner: 'partner', owner: 'owner', training: 'training', unpaid: 'unpaid' };
 const SALES_SENIORITY: Record<string, string> = { entry: 'entry_level', associate: 'entry_level', mid: 'senior', senior: 'senior', manager: 'experienced_manager', director: 'director', vp: 'vice_president', cxo: 'cxo', partner: 'owner/partner', owner: 'owner/partner', entry_level: 'entry_level', in_training: 'in_training', experienced_manager: 'experienced_manager', entry_level_manager: 'entry_level_manager', strategic: 'strategic', vice_president: 'vice_president', 'owner/partner': 'owner/partner' };
 
+function isAiSnapshot(saved: Obj): boolean {
+  return !saved.last_manual_edit && (Array.isArray(saved.skills_keywords) || Array.isArray(saved.location_keywords) || Boolean(entries(saved.role)[0]?.keywords));
+}
+
+/** Match the UI loader: generated XP is a local calculated range, never native tenure. */
+export function continuousCalculatedExperienceRange(snapshot: unknown, api: ContinuousSearchApi = 'recruiter'): { min: number | null; max: number | null } {
+  const saved = obj(snapshot);
+  // A newly reviewed native range takes precedence, as in the interactive UI.
+  // Older manual snapshots can contain stale generated aliases; keep ignoring them.
+  if (!isAiSnapshot(saved) && (!saved.last_manual_edit || saved.native_experience_reviewed === true)
+    && api !== 'classic' && range(saved.years_of_experience_min, saved.years_of_experience_max)) {
+    return { min: null, max: null };
+  }
+  const calculated = isAiSnapshot(saved)
+    ? range(saved.years_of_experience_min, saved.years_of_experience_max)
+    : range(saved.calculated_experience_min, saved.calculated_experience_max);
+  return { min: typeof calculated?.min === 'number' ? calculated.min : null,
+    max: typeof calculated?.max === 'number' ? calculated.max : null };
+}
+
 export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousSearchApi): Obj {
   if (!['classic', 'recruiter', 'sales_navigator'].includes(api)) fail('filters_unsupported', 'Choisissez une licence disponible sur votre compte LinkedIn.');
   const saved = obj(snapshot);
@@ -130,7 +145,7 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
   // Mirror the loader: AI XP is calculated XP; manual snapshots discard
   // legacy generated XP and keyword suggestions, not native request fields.
   const manual = Boolean(saved.last_manual_edit);
-  const aiFormat = !manual && (Array.isArray(saved.skills_keywords) || Array.isArray(saved.location_keywords) || Boolean(entries(saved.role)[0]?.keywords));
+  const aiFormat = isAiSnapshot(saved);
   const out: Obj = { action: 'search', api, category: 'people' };
   const keywords = present(saved.keywords) ? booleanQuery(saved.keywords, 'Mots-clés', api) : '';
   if (keywords) out.keywords = keywords;
@@ -151,13 +166,15 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
   }
 
   for (const key of ['company', 'industry', 'school', 'function', 'past_company', 'company_location']) {
-    const values = facets(saved[key], key === 'school' && aiFormat ? 'CAN_HAVE' : 'MUST_HAVE');
+    const companyFacet = key === 'company' || key === 'past_company';
+    const values = facets(saved[key], companyFacet || (key === 'school' && aiFormat) ? 'CAN_HAVE' : 'MUST_HAVE', companyFacet ? 'CAN_HAVE' : 'MUST_HAVE');
     if (!values.length) continue;
     if (key === 'company' && api === 'recruiter') {
       out.company = values.map(v => ({ ...v, scope: scope(v.scope, 'CURRENT_OR_PAST', COMPANY_SCOPES, 'Entreprise') }));
       continue;
     }
-    if (values.some(v => present(v.scope) && !(key === 'past_company' && v.scope === 'PAST'))) fail('filters_unsupported', 'La période du filtre « ' + key + ' » n’est pas prise en charge. Revoyez ce filtre.');
+    if (values.some(v => present(v.scope) && !(key === 'past_company' && v.scope === 'PAST')
+      && !(key === 'company' && v.scope === 'CURRENT'))) fail('filters_unsupported', 'La période du filtre « ' + key + ' » n’est pas prise en charge. Revoyez ce filtre.');
     if (key === 'school' && api === 'recruiter') {
       // CAN_HAVE school is scoring context in the sourcing UI. Required
       // schools use the provider's inclusive school selection.
@@ -171,7 +188,10 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
       out.past_company = values.map(v => ({ id: v.id, priority: v.priority }));
       continue;
     }
-    if (key !== 'school' && values.some(v => v.priority === 'CAN_HAVE')) fail('filters_unsupported', 'Cette licence ne distingue pas le filtre souhaité « ' + key + ' ». Revoyez sa priorité.');
+    if (companyFacet && values.filter(v => v.priority !== 'DOESNT_HAVE').length > 1 && values.some(v => v.priority === 'MUST_HAVE')) {
+      fail('filters_unsupported', 'Cette licence recherche au moins une des entreprises sélectionnées. Choisissez « Au moins un » ou utilisez Recruiter pour les exiger toutes.');
+    }
+    if (key !== 'school' && !companyFacet && values.some(v => v.priority === 'CAN_HAVE')) fail('filters_unsupported', 'Cette licence ne conserve pas la priorité du filtre « ' + key + ' ». Revoyez sa priorité.');
     const include = values.filter(v => v.priority !== 'DOESNT_HAVE').map(v => v.id);
     const exclude = values.filter(v => v.priority === 'DOESNT_HAVE').map(v => v.id);
     if ((api === 'classic' || key === 'school' || (key === 'function' && api === 'recruiter')) && exclude.length) fail('filters_unsupported', 'Cette licence ne conserve pas l’exclusion « ' + key + ' ». Revoyez les filtres.');
@@ -186,8 +206,7 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
   const companies = entries(saved.company_keywords).map(v => ({ keywords: booleanQuery(v.keywords, 'Entreprise', api), priority: priority(v.priority ?? (aiFormat ? 'DOESNT_HAVE' : 'MUST_HAVE')), scope: scope(v.scope, 'CURRENT_OR_PAST', COMPANY_SCOPES, 'Entreprise') }));
   if (companies.length) {
     recruiterOnly(api, 'Entreprises par mots-clés');
-    // Separate company_keywords overwrites IDs in the existing handler.
-    // Its company array path safely keeps both forms and their periods.
+    // One normalized array preserves selected IDs, keyword clauses and scopes.
     out.company = [...(Array.isArray(out.company) ? out.company : []), ...companies];
   }
   const skills = entries(saved.skills).map(v => {
@@ -226,8 +245,8 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
     if (normalized.some(v => !v)) fail('filters_invalid', 'Choisissez les niveaux de séniorité proposés dans les filtres.');
     out.seniority = [...new Set(normalized)];
   }
-  range(saved.calculated_experience_min, saved.calculated_experience_max);
-  const experience = !aiFormat && !manual ? range(saved.years_of_experience_min, saved.years_of_experience_max) : null;
+  continuousCalculatedExperienceRange(saved, api);
+  const experience = !aiFormat && (!manual || saved.native_experience_reviewed === true) ? range(saved.years_of_experience_min, saved.years_of_experience_max) : null;
   if (experience) {
     if (api === 'classic') fail('filters_unsupported', 'Cette licence ne filtre pas l’expérience totale. Revoyez ce filtre.');
     if (api === 'recruiter') out.years_of_experience = experience;

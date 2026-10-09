@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import ts from 'typescript';
 
 const ROOT = process.env.C1_ROOT || fileURLToPath(new URL('../../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
@@ -74,14 +76,35 @@ test('0b-3 : useLinkedInScoring n\'archive plus après notation', () => {
   assert.match(src, /skipReason: result\.summary \|\| 'Score insuffisant'/);
 });
 
-test('0b-3 : les résultats factices d\'un 429 ne sont pas enregistrés', () => {
+test('0b-3 : un 429 laisse les profils sans note, préserve les vraies notes et permet leur reprise', () => {
   const src = read(SCORING_HOOK);
-  const placeholder = src.indexOf("summary: 'Rate limited - réessayez plus tard'");
-  assert.ok(placeholder > 0, 'résultat factice introuvable');
-  assert.match(src.slice(placeholder, placeholder + 600), /rateLimitedPlaceholder: true/);
-  const skip = src.indexOf('if (rawResult?.rateLimitedPlaceholder) return;');
-  const push = src.indexOf('lowScoreProfiles.push(');
-  assert.ok(skip > 0 && skip < push, 'le résultat factice sort avant les listes à enregistrer');
+  assert.doesNotMatch(src, /rateLimitedPlaceholder|summary: 'Rate limited - réessayez plus tard'/, 'aucune fausse note ne représente le refus');
+  const file = ts.createSourceFile(SCORING_HOOK, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let branch;
+  function visit(node) {
+    if (ts.isIfStatement(node) && /errMsg\.includes\('429'\)/.test(node.expression.getText(file))) branch = node.thenStatement;
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  assert.ok(branch, 'branche réelle du refus 429 présente');
+  const identity = ts.transpileModule(read('src/lib/scoringResultIdentity.ts'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  for (const previous of [[], [{ profile_id: 'candidate-b', finalScore: 88 }]]) {
+    const original = JSON.parse(JSON.stringify(previous));
+    const context = { exports: {}, allResults: previous, rateLimited: false, waveBatches: [[{ id: 'candidate-a' }]], j: 0 };
+    vm.runInNewContext(identity, context);
+    vm.runInNewContext('for (const attempt of [1]) ' + branch.getText(file), context);
+    assert.equal(context.rateLimited, true);
+    assert.deepEqual(context.allResults, original, 'le refus ne crée aucune note zéro ni résultat sans identité');
+    const profiles = [{ id: 'candidate-a' }, { id: 'candidate-b' }];
+    const verified = context.exports.matchScoringResultsById(profiles, context.allResults);
+    assert.deepEqual(verified.map(({ profile }) => profile.id), original.map(result => result.profile_id));
+    assert.ok(!verified.some(({ profile }) => profile.id === 'candidate-a'), 'le profil refusé reste sans note et peut être repris');
+  }
+  assert.match(src, /const matchedResults = matchScoringResultsById\(profilesToScore, allResults\)/);
+  assert.match(src, /matchedResults\.forEach\(\(\{ profile, result: rawResult \}\) =>/);
+  assert.match(src, /batchSaveScores\(realScoredProfiles\)/, 'seules les notes réelles vérifiées sont enregistrées');
 });
 
 test('0b-3 : une note n\'écrit plus le statut dans l\'upsert (N10, N11)', () => {

@@ -5,7 +5,7 @@
  *   2. SearchPlan      — comprendre : plan d'étapes réel + filtres extraits qui
  *                        apparaissent un à un (remplace le spinner)
  *   3. FilterChipBar   — piloter : pilules 3-segments (champ | opérateur | valeurs)
- *                        au-dessus des résultats, poids Indispensable/Souhaité/
+ *                        au-dessus des résultats, logique Tous/Au moins un/
  *                        Exclure, « Relancer » qui ne s'allume que si modifié
  *
  * Patterns : Juicebox (interprétation éditable), Perplexity (progress-as-plan),
@@ -26,6 +26,7 @@ import {
   LinkedInFiltersState, SENIORITY_LEVELS, PROFILE_LANGUAGES,
   COMPANY_HEADCOUNT_OPTIONS, LOCATION_RADIUS_OPTIONS,
   FilterPriority, FilterScope, CompanyScope, LocationScope,
+  SEARCH_FILTER_LOGIC_HELP,
 } from '@/components/outreach/types';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
 
@@ -168,10 +169,10 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             variant={(armed || onLaunchWithBriefFilters) ? 'primary' : 'ghost'}
             disabled={disabled}
             onClick={() => { if (!armed && onLaunchWithBriefFilters) onLaunchWithBriefFilters(); else onLaunch(value.trim()); }}
-            className="ml-auto max-sm:min-h-11"
+            className="ml-auto max-w-full max-sm:w-full max-sm:min-w-0 max-sm:h-auto max-sm:min-h-11 max-sm:whitespace-normal max-sm:py-2"
           >
             <svg viewBox="0 0 24 24" {...svgProps} strokeWidth={1.6} className="w-3.5 h-3.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
-            {!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : 'Générer les filtres et chercher'}
+            <span className="min-w-0">{!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : 'Générer les filtres et chercher'}</span>
           </Button>
           ) : (
           <button
@@ -418,6 +419,16 @@ const COMPANY_CATEGORY_LABELS: Record<string, string> = {
 
 const tokState = (p?: string): Weight => p === 'MUST_HAVE' ? 'must' : p === 'DOESNT_HAVE' ? 'exclude' : 'should';
 
+// Summarize the actual search logic, without presenting alternatives as score
+// preferences or claiming OR when several values are required together.
+function logicOp(tokens: ChipToken[]): string {
+  if (tokens.every(t => t.state === 'exclude')) return 'exclut';
+  if (tokens.some(t => t.state === 'exclude')) return 'selon règles';
+  if (tokens.every(t => t.state === 'must')) return tokens.length > 1 ? 'tous' : 'requis';
+  if (tokens.some(t => t.state === 'must')) return 'selon règles';
+  return tokens.length > 1 ? 'au moins un' : 'inclut';
+}
+
 function buildChips(f: LinkedInFiltersState): FacetChip[] {
   const chips: FacetChip[] = [];
   // Le tri-état par token n'est offert QUE là où le payload honore réellement
@@ -430,20 +441,20 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
   const ecoleMutable = isRecruiter || f.api === 'database';
 
   const roleTokens: ChipToken[] = [
-    ...f.role.map(r => ({ label: r.keywords, state: tokState(r.priority), mutable: posteMutable })),
-    ...f.job_title.map(j => ({ label: j.name, state: tokState(j.priority), mutable: posteMutable })),
+    ...f.role.map(r => ({ label: r.keywords, state: isRecruiter || r.priority === 'DOESNT_HAVE' ? tokState(r.priority) : 'plain' as const, mutable: posteMutable })),
+    ...f.job_title.map(j => ({ label: j.name, state: isRecruiter || j.priority === 'DOESNT_HAVE' ? tokState(j.priority) : 'plain' as const, mutable: posteMutable })),
   ];
   if (roleTokens.length) chips.push({
-    key: 'poste', field: 'Poste', op: roleTokens.length > 1 ? "l'un de" : 'est', tokens: roleTokens,
+    key: 'poste', field: 'Poste', op: logicOp(roleTokens), tokens: roleTokens,
     weight: roleTokens.some(t => t.state === 'must') ? 'must' : 'should',
-    canCycle: true,
-    scopeLabel: f.role.length ? (ROLE_SCOPE_LABELS[f.role[0].scope] ?? 'act. ou passé') : undefined,
+    canCycle: isRecruiter,
+    scopeLabel: isRecruiter && f.role.length ? (ROLE_SCOPE_LABELS[f.role[0].scope] ?? 'act. ou passé') : undefined,
   });
 
   if (f.location.length) chips.push({
-    key: 'lieu', field: 'Lieu', op: f.location.length > 1 ? "l'un de" : 'est',
-    tokens: f.location.map(l => ({ label: l.name, state: tokState(l.priority), mutable: lieuMutable })),
-    weight: f.location.some(l => l.priority === 'MUST_HAVE') ? 'must' : 'should', canCycle: true,
+    key: 'lieu', field: 'Lieu', op: logicOp(f.location.map(l => ({ label: l.name, state: isRecruiter ? tokState(l.priority) : 'plain' as const, mutable: lieuMutable }))),
+    tokens: f.location.map(l => ({ label: l.name, state: isRecruiter ? tokState(l.priority) : 'plain' as const, mutable: lieuMutable })),
+    weight: isRecruiter && f.location.some(l => l.priority === 'MUST_HAVE') ? 'must' : 'should', canCycle: isRecruiter,
   });
 
   if (f.calculated_experience_min != null || f.calculated_experience_max != null) chips.push({
@@ -463,21 +474,21 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
     ...(f.skills_keywords || []).map(s => ({ label: s, state: 'plain' as const, mutable: false })),
   ];
   if (skillTokens.length) chips.push({
-    key: 'skills', field: 'Skills', op: 'contient', tokens: skillTokens,
+    key: 'skills', field: 'Skills', op: logicOp(skillTokens), tokens: skillTokens,
     weight: f.skills.some(s => s.priority === 'MUST_HAVE') ? 'must' : 'should', canCycle: false,
   });
 
   const boiteTokens: ChipToken[] = [
-    ...f.company.map(c => ({ label: c.name, state: 'plain' as const, mutable: false })),
-    ...f.company_keywords.map(c => ({ label: c.keywords, state: tokState(c.priority), mutable: true })),
+    ...f.company.map(c => ({ label: c.name, state: isRecruiter || c.priority === 'DOESNT_HAVE' ? tokState(c.priority ?? 'CAN_HAVE') : 'plain' as const, mutable: isRecruiter })),
+    ...f.company_keywords.map(c => ({ label: c.keywords, state: tokState(c.priority), mutable: isRecruiter })),
     ...(f.exclude_consulting ? [{ label: 'ESN / Conseil', state: 'exclude' as const, mutable: false }] : []),
   ];
   if (boiteTokens.length) {
     const exclOnly = boiteTokens.every(t => t.state === 'exclude');
     chips.push({
-      key: 'boite', field: 'Boîte', op: exclOnly ? 'exclut' : 'contient', tokens: boiteTokens,
+      key: 'boite', field: 'Boîte', op: logicOp(boiteTokens), tokens: boiteTokens,
       weight: exclOnly ? 'exclude' : boiteTokens.some(t => t.state === 'must') ? 'must' : 'should', canCycle: false,
-      scopeLabel: f.company_keywords.length ? (COMPANY_SCOPE_LABELS[f.company_keywords[0].scope] ?? 'actuelle') : undefined,
+      scopeLabel: isRecruiter && (f.company_keywords.length || f.company.length) ? (COMPANY_SCOPE_LABELS[f.company_keywords[0]?.scope ?? f.company[0]?.scope ?? 'CURRENT_OR_PAST']) : undefined,
     });
   }
 
@@ -500,7 +511,9 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
   });
 
   if (f.school.length) chips.push({
-    key: 'ecole', field: 'École', op: 'parmi',
+    key: 'ecole', field: 'École', op: f.school.every(s => s.priority === 'CAN_HAVE') ? 'à examiner'
+      : f.school.every(s => s.priority === 'DOESNT_HAVE') ? 'exclut'
+        : f.school.some(s => s.priority !== 'MUST_HAVE') ? 'selon règles' : 'parmi',
     tokens: f.school.map(s => ({ label: s.name, state: s.priority === 'DOESNT_HAVE' ? 'exclude' as const : 'plain' as const, mutable: ecoleMutable })),
     weight: f.school.every(s => s.priority === 'DOESNT_HAVE') ? 'exclude' : 'should', canCycle: false,
   });
@@ -596,11 +609,11 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
   }, [openKey]);
 
-  /* ── Poids : bascule Indispensable ↔ Souhaité (Poste, Lieu) ── */
+  /* ── Recherche Recruiter : bascule Tous (ET) ↔ Au moins un (OU). ── */
   const cycleWeight = useCallback((key: FacetChip['key']) => {
     onFiltersEdit(f => {
       if (key === 'poste') {
-        const toMust = !f.role.some(r => r.priority === 'MUST_HAVE');
+        const toMust = ![...f.role, ...f.job_title].some(r => r.priority === 'MUST_HAVE');
         return {
           ...f,
           role: f.role.map(r => r.priority === 'DOESNT_HAVE' ? r : { ...r, priority: toMust ? 'MUST_HAVE' as const : 'CAN_HAVE' as const }),
@@ -668,7 +681,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
     });
   }, [onFiltersEdit]);
 
-  /* ── Tri-état par token : Indispensable / Souhaité / Exclure (pattern
+  /* ── Logique par valeur : Tous / Au moins un / Exclure (pattern
    *    LinkedIn Recruiter — l'exclusion vit au niveau de la valeur). ── */
   const setTokenPriority = useCallback((key: FacetChip['key'], label: string, prio: FilterPriority) => {
     onFiltersEdit(f => {
@@ -680,7 +693,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         };
         case 'lieu': return { ...f, location: f.location.map(l => l.name === label ? { ...l, priority: prio } : l) };
         case 'skills': return { ...f, skills: f.skills.map(s => s.name === label ? { ...s, priority: prio } : s) };
-        case 'boite': return { ...f, company_keywords: f.company_keywords.map(c => c.keywords === label ? { ...c, priority: prio } : c) };
+        case 'boite': return { ...f, company: f.company.map(c => c.name === label ? { ...c, priority: prio } : c), company_keywords: f.company_keywords.map(c => c.keywords === label ? { ...c, priority: prio } : c) };
         case 'ecole': return { ...f, school: f.school.map(s => s.name === label ? { ...s, priority: prio } : s) };
         default: return f;
       }
@@ -691,22 +704,27 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   const setFacetScope = useCallback((key: 'poste' | 'boite', scope: string) => {
     onFiltersEdit(f => key === 'poste'
       ? { ...f, role: f.role.map(r => ({ ...r, scope: scope as FilterScope })) }
-      : { ...f, company_keywords: f.company_keywords.map(c => ({ ...c, scope: scope as CompanyScope })) });
+      : { ...f, company: f.company.map(c => ({ ...c, scope: scope as CompanyScope })), company_keywords: f.company_keywords.map(c => ({ ...c, scope: scope as CompanyScope })) });
   }, [onFiltersEdit]);
 
   /** Résolution autocomplete LinkedIn (lieu, secteur, école) → {id, name}. */
   const resolveParam = useCallback(async (type: 'LOCATION' | 'INDUSTRY' | 'SCHOOL', v: string): Promise<{ id: string; name: string } | null> => {
-    const { data } = await invokeUnipile({ body: { action: 'get_parameters', account_id: accountId, type, keywords: v, service: 'RECRUITER' } });
+    const { data } = await invokeUnipile({ body: { action: 'get_parameters', account_id: accountId, type, keywords: v, service: filters.api === 'classic' ? 'CLASSIC' : filters.api === 'sales_navigator' ? 'SALES_NAVIGATOR' : 'RECRUITER' } });
     const items = Array.isArray(data?.items) ? (data.items as any[]) : [];
     const norm = v.toLowerCase();
     const best = items.find((it: any) => String(it.title || '').toLowerCase() === norm)
       || items.find((it: any) => String(it.title || '').toLowerCase().includes(norm)) || items[0];
     return best?.id && best?.title ? { id: String(best.id), name: String(best.title) } : null;
-  }, [accountId]);
+  }, [accountId, filters.api]);
 
   const addValue = useCallback(async (key: FacetChip['key'], value: string) => {
     const v = value.trim();
     if (!v) return;
+    if (searchSource === 'linkedin' && filters.api !== 'recruiter' && (key === 'poste' || key === 'boite')) {
+      setOpenKey(null);
+      onOpenAdvanced();
+      return;
+    }
 
     // Facettes à IDs LinkedIn : résolution autocomplete, fallback texte (Base Konekt)
     if (key === 'lieu' || key === 'secteur' || key === 'ecole') {
@@ -726,7 +744,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
       const it = item;
       onFiltersEdit(f => {
         if (key === 'lieu') return f.location.some(l => l.id === it.id) ? f
-          : { ...f, location: [...f.location, { ...it, priority: 'MUST_HAVE' as const, scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const }] };
+          : { ...f, location: [...f.location, { ...it, priority: 'MUST_HAVE' as const, scope: f.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' as const : 'CURRENT' as const }] };
         if (key === 'secteur') return f.industry.some(i => i.id === it.id) ? f
           : { ...f, industry: [...f.industry, it] };
         return f.school.some(s => s.id === it.id) ? f
@@ -743,7 +761,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         default: return f;
       }
     });
-  }, [onFiltersEdit, accountId, searchSource, resolveParam]);
+  }, [onFiltersEdit, accountId, searchSource, resolveParam, filters.api, onOpenAdvanced]);
 
   const toggleOption = useCallback((key: 'seniorite' | 'langue' | 'taille', value: string) => {
     onFiltersEdit(f => {
@@ -767,12 +785,12 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
     } finally { setFuLoading(false); }
   }, [fuValue, fuLoading, onFollowUp]);
 
-  const weightLabel: Record<Weight, string> = { must: 'Indispensable', should: 'Souhaité', exclude: 'Exclure' };
+  const weightLabel: Record<Weight, string> = { must: 'Tous (ET)', should: 'Au moins un (OU)', exclude: 'Exclure' };
 
   return (
     <div className={isV3 ? undefined : 'mb-2'}>
       {/* Barre unique : phrase d'affinage repliée + pilules + ajout + compteur */}
-      <div ref={barRef} className="relative flex flex-wrap items-center gap-1.5">
+      <div ref={barRef} className="relative flex flex-wrap items-center gap-1.5 min-w-0">
         {fuOpen && (
           <span className="order-first basis-full inline-flex items-center gap-2 rounded-lg border border-[var(--k-hairline-focus)] bg-[var(--k-surface)] px-2.5 py-1.5 mb-0.5">
             <AiBurst className="w-3.5 h-3.5 shrink-0 text-[var(--k-accent)]" />
@@ -796,7 +814,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
           const displayVals = chip.tokens.map(t => t.state === 'exclude' ? `⌀ ${t.label}` : t.label);
           return (
           <span key={chip.key} className={cn(
-            'relative inline-flex items-stretch overflow-visible font-medium transition-colors',
+            'relative inline-flex max-w-full max-sm:w-full max-sm:flex-wrap items-stretch overflow-visible font-medium transition-colors',
             isV3
               // Nouvelle page : pilule sans cadre, sur fond neutre ; texte de 14 px.
               ? 'rounded-lg bg-muted/60 text-sm'
@@ -810,8 +828,9 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               data-chip-seg
               onClick={() => chip.canCycle && cycleWeight(chip.key)}
               title={chip.canCycle ? `${weightLabel[chip.weight]}, cliquez pour basculer` : chip.field}
+              aria-label={chip.canCycle ? `${chip.field} : ${weightLabel[chip.weight]}. Choisir ${chip.weight === 'must' ? 'au moins un (OU)' : 'tous (ET)'}` : chip.field}
               className={cn(
-                'inline-flex items-center gap-1.5 px-2 py-1',
+                'inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 px-2 py-1 max-sm:min-h-11 max-sm:min-w-11',
                 isV3 && 'rounded-l-lg py-1.5 max-sm:min-h-11',
                 !isV3 && chip.op && 'border-r border-[var(--k-hairline)]',
                 isV3
@@ -827,7 +846,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             {/* « booléen » est du jargon : sur la nouvelle page, « Mots-clés » se lit seul. */}
             {chip.op && !(isV3 && chip.op === 'booléen') && (
               <span className={cn(
-                'inline-flex items-center px-1.5 py-1 font-normal text-[var(--k-text-muted)]',
+                'inline-flex shrink-0 whitespace-nowrap items-center px-1.5 py-1 font-normal text-[var(--k-text-muted)]',
                 isV3 ? 'text-sm' : 'text-2xs border-r border-[var(--k-hairline)]',
               )}>{chip.op}</span>
             )}
@@ -836,7 +855,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               data-chip-seg
               onClick={() => setOpenKey(openKey === chip.key ? null : chip.key)}
               className={cn(
-                'inline-flex items-center gap-1 px-2 py-1 text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] max-w-[220px]',
+                'inline-flex min-w-0 max-sm:flex-1 items-center gap-1 px-2 py-1 text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] max-w-[220px] max-sm:min-h-11 max-sm:min-w-11',
                 isV3 && 'py-1.5 max-sm:min-h-11',
               )}
             >
@@ -853,7 +872,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 onClick={() => setOpenKey(openKey === `${chip.key}@scope` ? null : `${chip.key}@scope`)}
                 title="Portée : poste ou entreprise actuel(le), passé(e)…"
                 className={cn(
-                  'inline-flex items-center gap-0.5 px-1.5 py-1 font-normal text-foreground hover:bg-[var(--k-surface-2)]',
+                  'inline-flex shrink-0 whitespace-nowrap items-center gap-0.5 px-1.5 py-1 font-normal text-foreground hover:bg-[var(--k-surface-2)]',
                   isV3 ? 'text-sm py-1.5 max-sm:min-h-11' : 'border-l border-[var(--k-hairline)] text-2xs',
                 )}
               >
@@ -866,7 +885,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               onClick={() => removeFacet(chip.key)}
               aria-label={`Retirer ${chip.field}`}
               className={cn(
-                'inline-flex items-center px-1.5 py-1 text-[var(--k-text-muted)] hover:text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
+                'inline-flex shrink-0 items-center px-1.5 py-1 text-[var(--k-text-muted)] hover:text-[var(--k-text)] hover:bg-[var(--k-surface-2)] max-sm:min-h-11 max-sm:min-w-11 max-sm:justify-center',
                 isV3 ? 'rounded-r-lg px-2 max-sm:min-h-11 max-sm:min-w-11 max-sm:justify-center' : 'border-l border-[var(--k-hairline)]',
               )}
             >
@@ -878,13 +897,13 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               <div data-chip-pop className={`absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border ${chipPop} bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150`}>
                 <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Portée</div>
                 {(chip.key === 'poste' ? ROLE_SCOPE_OPTIONS : COMPANY_SCOPE_OPTIONS).map(opt => {
-                  const current = chip.key === 'poste' ? filters.role[0]?.scope : filters.company_keywords[0]?.scope;
+                  const current = chip.key === 'poste' ? filters.role[0]?.scope : filters.company_keywords[0]?.scope ?? filters.company[0]?.scope ?? 'CURRENT_OR_PAST';
                   return (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => { setFacetScope(chip.key as 'poste' | 'boite', opt.value); setOpenKey(null); }}
-                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 max-sm:min-h-11 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                     >
                       <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                       {current === opt.value && <span className="text-[var(--k-accent)]"><Check /></span>}
@@ -896,28 +915,28 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
 
             {/* Popover valeurs */}
             {openKey === chip.key && (
-              <div data-chip-pop className={`absolute z-40 top-full left-0 mt-1.5 min-w-[240px] max-w-[310px] rounded-[10px] border ${chipPop} bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150`}>
+              <div data-chip-pop className={`absolute z-40 top-full left-0 mt-1.5 min-w-[240px] max-w-[310px] max-sm:max-w-[calc(100vw-32px)] rounded-[10px] border ${chipPop} bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150`}>
                 <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">{chip.field} : valeurs</div>
                 {chip.key === 'exp' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={50} value={filters.calculated_experience_min ?? ''} placeholder="min"
-                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
-                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: null, years_of_experience_max: null })); }}
+                      className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     →
                     <input type="number" min={0} max={50} value={filters.calculated_experience_max ?? ''} placeholder="max"
-                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
-                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_min: null, years_of_experience_max: null })); }}
+                      className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     ans
                   </div>
                 ) : chip.key === 'anciennete' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={40} value={filters.tenure_at_role_min ?? ''} placeholder="min"
                       onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_min: v })); }}
-                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                      className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     →
                     <input type="number" min={0} max={40} value={filters.tenure_at_role_max ?? ''} placeholder="max"
                       onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_max: v })); }}
-                      className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                      className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     ans dans le poste
                   </div>
                 ) : chip.key === 'contact' ? (
@@ -928,7 +947,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                     ]).map(opt => (
                       <button key={opt.v} type="button"
                         onClick={() => onFiltersEdit(f => ({ ...f, activity_messages: opt.v }))}
-                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
+                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 max-sm:min-h-11 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
                         <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                         {filters.activity_messages === opt.v && <span className="text-[var(--k-accent)]"><Check /></span>}
                       </button>
@@ -939,7 +958,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         <select
                           value={filters.activity_messages_days ?? ''}
                           onChange={e => { const v = e.target.value === '' ? null : Number(e.target.value); onFiltersEdit(f => ({ ...f, activity_messages_days: v })); }}
-                          className={`h-7 rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
+                          className={`h-7 max-sm:min-h-11 rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
                         >
                           {CONTACT_TIMESPANS.map(o => <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>)}
                         </select>
@@ -949,7 +968,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                   </>
                 ) : chip.key === 'keywords' ? (
                   <button type="button" onClick={() => { setOpenKey(null); onOpenAdvanced(); }}
-                    className="w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
+                    className="w-full text-left rounded-md px-2 py-1.5 max-sm:min-h-11 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
                     Éditer la requête booléenne dans le panneau avancé →
                   </button>
                 ) : (chip.key === 'seniorite' || chip.key === 'langue' || chip.key === 'taille') ? (
@@ -967,7 +986,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           role="checkbox"
                           aria-checked={checked}
                           onClick={() => toggleOption(chip.key as 'seniorite' | 'langue' | 'taille', opt.value)}
-                          className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                          className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 max-sm:min-h-11 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                         >
                           <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                           {checked && <span className="text-[var(--k-accent)]"><Check /></span>}
@@ -981,12 +1000,13 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                       <div key={t.label} className="group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)]">
                         {t.state === 'must' && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" />}
                         <span className={cn('flex-1 min-w-0 truncate', t.state === 'exclude' && 'line-through text-[var(--k-bad,#e06666)]')}>{t.label}</span>
-                        {t.mutable && t.state !== 'plain' && chip.key !== 'ecole' && (
+                        {filters.api === 'recruiter' && t.mutable && t.state !== 'plain' && chip.key !== 'ecole' && (
                           <button
                             type="button"
                             onClick={() => setTokenPriority(chip.key, t.label, t.state === 'must' ? 'CAN_HAVE' : 'MUST_HAVE')}
-                            title={t.state === 'must' ? 'Repasser en souhaité' : 'Rendre indispensable'}
-                            className={cn('shrink-0 transition-opacity', t.state === 'must' ? 'text-[var(--k-accent)]' : 'opacity-0 group-hover:opacity-100 text-[var(--k-text-muted)] hover:text-[var(--k-accent)]')}
+                            title={t.state === 'must' ? 'Choisir au moins un (OU)' : 'Exiger toutes les valeurs (ET)'}
+                            aria-label={`${t.state === 'must' ? 'Au moins un (OU)' : 'Tous (ET)'} pour ${t.label}`}
+                            className={cn('shrink-0 transition-opacity max-sm:h-11 max-sm:w-11 max-sm:grid max-sm:place-items-center max-sm:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded', t.state === 'must' ? 'text-[var(--k-accent)]' : 'opacity-0 group-hover:opacity-100 text-[var(--k-text-muted)] hover:text-[var(--k-accent)]')}
                           >
                             <svg viewBox="0 0 24 24" className="w-3 h-3"><circle cx="12" cy="12" r="4.5" fill="currentColor" /></svg>
                           </button>
@@ -996,20 +1016,30 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                             type="button"
                             onClick={() => setTokenPriority(chip.key, t.label, t.state === 'exclude' ? (chip.key === 'ecole' ? 'MUST_HAVE' : 'CAN_HAVE') : 'DOESNT_HAVE')}
                             title={t.state === 'exclude' ? 'Ne plus exclure' : 'Exclure cette valeur'}
-                            className={cn('shrink-0 transition-opacity', t.state === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'opacity-0 group-hover:opacity-100 text-[var(--k-text-muted)] hover:text-[var(--k-bad,#e06666)]')}
+                            aria-label={`${t.state === 'exclude' ? 'Ne plus exclure' : 'Exclure'} ${t.label}`}
+                            className={cn('shrink-0 transition-opacity max-sm:h-11 max-sm:w-11 max-sm:grid max-sm:place-items-center max-sm:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded', t.state === 'exclude' ? 'text-[var(--k-bad,#e06666)]' : 'opacity-0 group-hover:opacity-100 text-[var(--k-text-muted)] hover:text-[var(--k-bad,#e06666)]')}
                           >
                             <svg viewBox="0 0 24 24" {...svgProps} className="w-3 h-3"><circle cx="12" cy="12" r="7.5" /><path d="M6.9 6.9 17.1 17.1" /></svg>
                           </button>
                         )}
                         {chip.tokens.length > 1 && (
                           <button type="button" onClick={() => removeValue(chip.key, t.label)} aria-label={`Retirer ${t.label}`}
-                            className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--k-text-muted)] hover:text-[var(--k-text)]">
+                            className="shrink-0 opacity-0 group-hover:opacity-100 max-sm:opacity-100 max-sm:h-11 max-sm:w-11 max-sm:grid max-sm:place-items-center focus:opacity-100 text-[var(--k-text-muted)] hover:text-[var(--k-text)]">
                             <XIcon className="w-2.5 h-2.5" />
                           </button>
                         )}
                       </div>
                     ))}
-                    <input
+                    {chip.key === 'ecole' ? (
+                      <p className="px-2 py-1.5 text-xs text-muted-foreground">Les écoles à examiner ne limitent pas la recherche. Pour les prendre en compte dans la notation, ajoutez-les aux critères du cadrage. Revoyez leurs règles dans les filtres avancés.</p>
+                    ) : filters.api === 'recruiter' && ['poste', 'lieu', 'skills', 'boite'].includes(chip.key) && (
+                      <p className="px-2 py-1.5 text-xs text-muted-foreground">{SEARCH_FILTER_LOGIC_HELP}</p>
+                    )}
+                    {searchSource === 'linkedin' && filters.api !== 'recruiter' && (chip.key === 'poste' || chip.key === 'boite') ? (
+                      <Button type="button" variant="ghost" onClick={() => { setOpenKey(null); onOpenAdvanced(); }} className="h-auto w-full justify-start whitespace-normal rounded-md px-2 py-1.5 max-sm:min-h-11 text-left text-sm font-normal hover:bg-accent">
+                        {chip.key === 'boite' ? 'Choisir une entreprise dans les filtres avancés' : filters.api === 'classic' ? 'Chercher les intitulés dans les mots-clés' : 'Choisir un intitulé dans les filtres avancés'}
+                      </Button>
+                    ) : <input
                       autoFocus
                       placeholder={resolving ? 'Résolution…' : 'Ajouter puis Entrée'}
                       disabled={resolving}
@@ -1020,9 +1050,9 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           addValue(chip.key, v);
                         }
                       }}
-                      className={`w-[calc(100%-8px)] m-1 h-7 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none`}
-                    />
-                    {chip.key === 'lieu' && (
+                      className={`w-[calc(100%-8px)] m-1 h-7 max-sm:min-h-11 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none`}
+                    />}
+                    {chip.key === 'lieu' && filters.api === 'recruiter' && (
                       <div className="border-t border-[var(--k-hairline)] mt-1 pt-1.5 px-2 pb-1 flex flex-col gap-1.5">
                         {searchSource === 'linkedin' && (
                           <label className="flex items-center justify-between gap-2 text-xs text-[var(--k-text-muted)]">
@@ -1030,7 +1060,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                             <select
                               value={filters.location_within_area ?? ''}
                               onChange={e => { const v = e.target.value === '' ? null : Number(e.target.value); onFiltersEdit(f => ({ ...f, location_within_area: v })); }}
-                              className={`h-7 max-w-[160px] rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
+                              className={`h-7 max-sm:min-h-11 max-w-[160px] rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
                             >
                               {LOCATION_RADIUS_OPTIONS.map(o => <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>)}
                             </select>
@@ -1041,7 +1071,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                           <select
                             value={filters.location[0]?.scope ?? 'CURRENT_OR_OPEN_TO_RELOCATE'}
                             onChange={e => { const v = e.target.value as LocationScope; onFiltersEdit(f => ({ ...f, location: f.location.map(l => ({ ...l, scope: v })) })); }}
-                            className={`h-7 max-w-[160px] rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
+                            className={`h-7 max-sm:min-h-11 max-w-[160px] rounded-md border ${chipField} bg-[var(--k-surface)] px-1.5 text-xs text-[var(--k-text-2)] outline-none`}
                           >
                             {LOCATION_SCOPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
@@ -1087,6 +1117,11 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                       type="button"
                       onClick={() => {
                         if (fd.key === 'advanced') { setOpenKey(null); onOpenAdvanced(); return; }
+                        if (searchSource === 'linkedin' && filters.api !== 'recruiter' && (fd.key === 'poste' || fd.key === 'boite')) {
+                          setOpenKey(null);
+                          onOpenAdvanced();
+                          return;
+                        }
                         if (fd.key === 'contact') {
                           // Applique le défaut le plus courant, réglable ensuite dans la chip
                           onFiltersEdit(f => ({ ...f, activity_messages: f.activity_messages ?? 'without_message', activity_messages_days: f.activity_messages_days ?? 90 }));
@@ -1095,7 +1130,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         }
                         setAddField(fd.key as FacetKey);
                       }}
-                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 max-sm:min-h-11 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                     >
                       <span className="flex-1">{fd.label}</span>
                       {fd.hint && <span className="font-mono text-2xs text-[var(--k-text-muted)]">{fd.hint}</span>}
@@ -1106,22 +1141,22 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[var(--k-text-muted)]">
                   <input type="number" min={0} max={40} autoFocus placeholder="min"
                     onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_min: v })); }}
-                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                    className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   →
                   <input type="number" min={0} max={40} placeholder="max"
                     onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(40, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, tenure_at_role_max: v })); }}
-                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                    className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   ans dans le poste
                 </div>
               ) : addField === 'exp' ? (
                 <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[var(--k-text-muted)]">
                   <input type="number" min={0} max={50} autoFocus placeholder="min"
-                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
-                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: null, years_of_experience_max: null })); }}
+                    className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   →
                   <input type="number" min={0} max={50} placeholder="max"
-                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
-                    className={`h-7 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
+                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_min: null, years_of_experience_max: null })); }}
+                    className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   ans
                 </div>
               ) : (addField === 'seniorite' || addField === 'langue' || addField === 'taille') ? (
@@ -1142,7 +1177,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         role="checkbox"
                         aria-checked={checked}
                         onClick={() => toggleOption(addField as 'seniorite' | 'langue' | 'taille', opt.value)}
-                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 max-sm:min-h-11 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
                       >
                         <span className="flex-1 min-w-0 truncate">{opt.label}</span>
                         {checked && <span className="text-[var(--k-accent)]"><Check /></span>}
@@ -1166,7 +1201,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                         if (addField) addValue(addField as FacetChip['key'], v);
                       }
                     }}
-                    className={`w-[calc(100%-8px)] m-1 h-7 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none`}
+                    className={`w-[calc(100%-8px)] m-1 h-7 max-sm:min-h-11 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none`}
                   />
                 </>
               )}

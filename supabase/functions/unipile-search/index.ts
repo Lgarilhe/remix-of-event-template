@@ -26,7 +26,7 @@ interface SearchParams {
   // ID-based filters
   location?: string[];
   location_within_area?: number; // Search radius in miles (Recruiter only)
-  company?: { include?: string[]; exclude?: string[] } | string[];
+  company?: { include?: string[]; exclude?: string[] } | Array<string | { id?: string; keywords?: string; priority?: string; scope?: string }>;
   company_keywords?: Array<{ keywords: string; priority: string; scope: string }>; // Keywords-based (Recruiter only)
   industry?: { include?: string[]; exclude?: string[] } | string[];
   school?: string[] | Array<{ id: string; priority: string }>;
@@ -115,6 +115,7 @@ import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInA
 import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
 import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
 import { assertContinuousOperationContext } from '../_shared/continuous-sourcing.ts';
+import { searchBooleanIssue } from '../_shared/search-boolean.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -174,34 +175,22 @@ class UnipileInputError extends Error {
  * puis ré-encodés à l'identique.
  */
 /**
- * LinkedIn répond 422 « unable to process » à une requête booléenne dont les
- * parenthèses ou les guillemets ne sont pas fermés (génération IA, troncature
- * à 200 caractères). On rééquilibre avant l'envoi : guillemet orphelin retiré,
- * « ) » sans « ( » retirée, « ( » restées ouvertes refermées en fin de chaîne.
+ * Reject incomplete Boolean input before consulting LinkedIn. A repair can
+ * change an exclusion or a required group, so valid queries stay byte-for-byte
+ * unchanged. Quoted phrases may contain parentheses and operator words.
  */
-function balanceBooleanKeywords(input: string): string {
-  let s = input;
-  if ((s.match(/"/g) ?? []).length % 2 === 1) {
-    const i = s.lastIndexOf('"');
-    s = s.slice(0, i) + s.slice(i + 1);
+function validateBooleanKeywords(input: string, label = 'Mots-clés'): string {
+  const issue = searchBooleanIssue(input);
+  if (issue === 'empty') {
+    throw new UnipileInputError(`Renseignez la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
   }
-  let out = '';
-  let depth = 0;
-  let inQuote = false;
-  for (const ch of s) {
-    if (ch === '"') inQuote = !inQuote;
-    if (!inQuote) {
-      if (ch === '(') depth++;
-      else if (ch === ')') {
-        if (depth === 0) continue;
-        depth--;
-      }
-    }
-    out += ch;
+  if (issue === 'quotes' || issue === 'parentheses') {
+    throw new UnipileInputError(`Fermez les guillemets et les parenthèses de la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
   }
-  // Retire un opérateur resté pendant avant de refermer (« … AND » / « … OR »)
-  out = out.replace(/\s+(AND|OR|NOT)\s*$/i, '');
-  return out + ')'.repeat(depth);
+  if (issue === 'operators') {
+    throw new UnipileInputError(`Complétez les opérateurs de la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
+  }
+  return input;
 }
 
 function unipileId(value: unknown, label: string): string {
@@ -651,27 +640,13 @@ async function handleSearch(
     }
   }
 
-  // Recruiter must receive the full query, including every Boolean group.
-  // Keep the legacy length handling for Classic and Sales Navigator only.
+  // Preserve every Boolean group. The app's Classic/Sales limit is explicit;
+  // Recruiter does not inherit it and provider limits are reported unchanged.
   if (keywords) {
     if (api !== 'recruiter' && keywords.length > 200) {
-      // Try to keep complete boolean groups by trimming the last AND group
-      let truncated = keywords;
-      while (truncated.length > 200) {
-        const lastAnd = truncated.lastIndexOf(' AND ');
-        if (lastAnd > 0) {
-          truncated = truncated.substring(0, lastAnd);
-        } else {
-          // No more AND groups, just hard truncate
-          truncated = truncated.substring(0, 200);
-          break;
-        }
-      }
-      console.log(`[search] Keywords truncated: ${keywords.length} → ${truncated.length} chars`);
-      searchBody.keywords = balanceBooleanKeywords(truncated);
-    } else {
-      searchBody.keywords = balanceBooleanKeywords(keywords);
+      throw new UnipileInputError(`La requête « Mots-clés » contient ${keywords.length} caractères. Cette recherche accepte actuellement jusqu’à 200 caractères pour cette licence. Raccourcissez-la ou utilisez Recruiter.`, 400, 'KEYWORDS_TOO_LONG');
     }
+    searchBody.keywords = validateBooleanKeywords(keywords);
   }
 
   // Advanced keywords (Classic only)
@@ -740,8 +715,15 @@ async function handleSearch(
         if (api === 'recruiter') {
           // Recruiter expects array of objects with id, priority, scope
           searchBody.company = company.map((c: string | { id?: string; keywords?: string; priority?: string; scope?: string }) => {
-            if (typeof c === 'object') return c;
-            return { id: c, priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' };
+            if (typeof c === 'object') {
+              return {
+                ...c,
+                ...(c.keywords !== undefined ? { keywords: validateBooleanKeywords(c.keywords, 'Entreprise') } : {}),
+                priority: c.priority || 'CAN_HAVE',
+                scope: c.scope || 'CURRENT_OR_PAST',
+              };
+            }
+            return { id: c, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' };
           });
         } else if (api === 'sales_navigator') {
           searchBody.company = { include: company };
@@ -753,7 +735,7 @@ async function handleSearch(
       if (api === 'recruiter') {
         // Recruiter doesn't use { include, exclude } - convert to array of objects
         const items = [
-          ...(company.include || []).map((id: string) => ({ id, priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' })),
+          ...(company.include || []).map((id: string) => ({ id, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' })),
           ...(company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' })),
         ];
         if (items.length > 0) searchBody.company = items;
@@ -765,25 +747,14 @@ async function handleSearch(
 
   // Company keywords filter (Recruiter only) - keywords-based with priority and scope
   if (api === 'recruiter' && company_keywords?.length) {
-    // If we already have ID-based company filter, we need to merge or prioritize
-    // According to the API doc, company can be an array of objects with keywords, priority, scope
-    // So we can add keyword-based companies to the company array
+    // Recruiter accepts IDs and keywords in the same array. Append the clauses
+    // without losing targets, exclusions, priorities or scopes already set.
     const keywordCompanies = company_keywords.map(c => ({
-      keywords: balanceBooleanKeywords(c.keywords),
+      keywords: validateBooleanKeywords(c.keywords, 'Entreprise'),
       priority: c.priority,
       scope: c.scope,
     }));
-    
-    // If company is already set as an object with include, we need to handle this differently
-    // The API allows mixing ID-based and keyword-based in the company array
-    if (searchBody.company && typeof searchBody.company === 'object' && 'include' in searchBody.company) {
-      // According to API docs, company for recruiter can be an array mixing ID objects and keyword objects
-      // Transform to array format: [{ id: "..." }, { keywords: "...", priority: "...", scope: "..." }]
-      const idCompanies = ((searchBody.company as { include?: string[] }).include || []).map(id => ({ id }));
-      searchBody.company = [...idCompanies, ...keywordCompanies];
-    } else {
-      searchBody.company = keywordCompanies;
-    }
+    searchBody.company = [...(Array.isArray(searchBody.company) ? searchBody.company : []), ...keywordCompanies];
   }
 
   // Industry - with include structure for Recruiter/SalesNav
@@ -834,7 +805,7 @@ async function handleSearch(
       // Recruiter uses `role` (not current_job_title)
       searchBody.role = job_title.map((t: { id?: string; keywords?: string; priority?: string; scope?: string; is_selection?: boolean }) => {
         if (t.keywords) {
-          return { keywords: t.keywords, priority: t.priority || 'MUST_HAVE', scope: t.scope || 'CURRENT_OR_PAST' };
+          return { keywords: validateBooleanKeywords(t.keywords, 'Poste'), priority: t.priority || 'MUST_HAVE', scope: t.scope || 'CURRENT_OR_PAST' };
         }
         return {
           id: t.id,
@@ -859,7 +830,7 @@ async function handleSearch(
   if (skills?.length && api === 'recruiter') {
     searchBody.skills = skills.map((s: Record<string, unknown>) => {
       if (s.keywords) {
-        return { keywords: s.keywords, priority: s.priority };
+        return { keywords: validateBooleanKeywords(s.keywords as string, 'Compétence'), priority: s.priority };
       }
       return { id: s.id, priority: s.priority };
     });
@@ -869,7 +840,7 @@ async function handleSearch(
   // Note: if job_title already set `role`, append keyword-based roles
   if (role?.length && api === 'recruiter') {
     const keywordRoles = role.map(r => ({
-      keywords: balanceBooleanKeywords(r.keywords),
+      keywords: validateBooleanKeywords(r.keywords, 'Poste'),
       priority: r.priority || 'MUST_HAVE',
       scope: r.scope || 'CURRENT_OR_PAST',
     }));
@@ -1151,7 +1122,7 @@ async function handleSearch(
         if (api === 'recruiter') {
           searchBody.past_company = past_company.map((c: string | { id: string; priority?: string }) => {
             if (typeof c === 'object') return c;
-            return { id: c, priority: 'MUST_HAVE' };
+            return { id: c, priority: 'CAN_HAVE' };
           });
         } else if (api === 'sales_navigator') {
           searchBody.past_company = { include: past_company };
@@ -1163,7 +1134,7 @@ async function handleSearch(
       if (api === 'recruiter') {
         // Convert include/exclude to array of objects
         const items = [
-          ...(past_company.include || []).map((id: string) => ({ id, priority: 'MUST_HAVE' })),
+          ...(past_company.include || []).map((id: string) => ({ id, priority: 'CAN_HAVE' })),
           ...(past_company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE' })),
         ];
         if (items.length > 0) searchBody.past_company = items;

@@ -24,7 +24,9 @@ function snippet(path, names) {
   assert.equal(statements.length, names.length, 'all requested production declarations were found');
   return statements.map(node => node.getText(ast)).join('\n');
 }
-const filters = compile(readFileSync(new URL('supabase/functions/_shared/continuous-sourcing-filters.ts', root), 'utf8'));
+const boolean = compile(readFileSync(new URL('supabase/functions/_shared/search-boolean.ts', root), 'utf8'));
+const filters = compile(readFileSync(new URL('supabase/functions/_shared/continuous-sourcing-filters.ts', root), 'utf8')
+  .replace(/^import[\s\S]*?;\r?\n/gm, ''), boolean);
 const plain = value => JSON.parse(JSON.stringify(value));
 const base = { keywords: 'Python', activity_messages: null };
 const build = (snapshot, api = 'recruiter') => plain(filters.buildContinuousSearchRequest(snapshot, api));
@@ -32,11 +34,12 @@ function rejects(snapshot, api, code, reason) {
   assert.throws(() => build(snapshot, api), error => error instanceof filters.ContinuousSearchFilterError
     && error.code === code && reason.test(error.message));
 }
-const providerSource = snippet('supabase/functions/unipile-search/index.ts', ['handleSearch', 'balanceBooleanKeywords'])
+const providerSource = snippet('supabase/functions/unipile-search/index.ts', ['handleSearch', 'validateBooleanKeywords'])
   + '\nexports.handleSearch = handleSearch;';
 async function providerBody(request) {
   let body;
   const provider = compile(providerSource, {
+    ...boolean,
     corsHeaders: {},
     fetchWithTimeout: async (_url, options) => {
       body = JSON.parse(options.body);

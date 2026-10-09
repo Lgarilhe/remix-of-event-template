@@ -5,7 +5,9 @@ import { invokeWithCredits, CREDITS_TOAST_ID, resolveActionModel } from '@/lib/i
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { ACTION_COSTS } from '@/types/aiCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { getYear, parseDate } from '@/components/outreach/dateUtils';
+import { getYear } from '@/components/outreach/dateUtils';
+import { assessProfileExperience, getWorkExperienceDurationMonths } from '../../supabase/functions/_shared/profile-experience.ts';
+import { matchScoringResultsById } from '@/lib/scoringResultIdentity';
 import { Job } from '@/types/jobs';
 import { JobMatchResult, BatchScoringStats, isDegradedScore } from '@/components/outreach/JobScoreDisplay';
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
@@ -287,65 +289,8 @@ export function buildProfileData(profile: LinkedInProfile) {
   const pastJobs = workExperience.filter(exp => exp.end && !exp.current).slice(0, 5);
   const education = profile.education || [];
 
-  // Calculate years of experience from diploma, with work experience fallback
-  const calculateYearsFromDiploma = () => {
-    const relevantDegreeKeywords = [
-      'bachelor', 'licence', 'bac+3',
-      'master', 'msc', 'bac+5', 'maîtrise',
-      'mba', 'ingénieur', 'engineer', 'engineering',
-      'phd', 'doctorat', 'bac+8',
-      'diplôme', 'degree', 'graduate', 'grande école'
-    ];
+  const experienceAssessment = assessProfileExperience(profile);
 
-    const relevantEdu = education
-      .filter((edu: any) => {
-        if (!getYear(edu.end)) return false;
-        const combined = `${edu.degree || ''} ${edu.school || ''} ${edu.field_of_study || ''}`.toLowerCase();
-        return relevantDegreeKeywords.some(kw => combined.includes(kw));
-      })
-      .sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0));
-
-    const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => getYear(edu.end)).sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0))[0];
-
-    if (diplomaToUse) {
-      const endYear = getYear(diplomaToUse.end);
-      if (endYear) {
-        const years = new Date().getFullYear() - endYear;
-        if (years > 0) return years;
-      }
-    }
-
-    // Fallback: use earliest work experience start date
-    let earliestYear: number | null = null;
-    for (const exp of workExperience) {
-      const startYear = getYear(exp.start);
-      if (startYear && startYear > 1970) {
-        if (!earliestYear || startYear < earliestYear) {
-          earliestYear = startYear;
-        }
-      }
-    }
-    if (earliestYear) {
-      const years = new Date().getFullYear() - earliestYear;
-      return years > 0 ? years : null;
-    }
-
-    return null;
-  };
-
-  // Calculate duration in months
-  const calculateDurationMonths = (startRaw?: any, endRaw?: any): number => {
-    const start = parseDate(startRaw);
-    const end = parseDate(endRaw);
-    if (!start?.year) return 0;
-    const endYear = end?.year || new Date().getFullYear();
-    const endMonth = end?.month || new Date().getMonth() + 1;
-    const startYear = start.year;
-    const startMonth = start.month || 1;
-    return (endYear - startYear) * 12 + (endMonth - startMonth);
-  };
-
-  // Format duration string
   const formatDuration = (totalMonths: number): string => {
     const years = Math.floor(totalMonths / 12);
     const months = totalMonths % 12;
@@ -356,21 +301,18 @@ export function buildProfileData(profile: LinkedInProfile) {
 
   // Calculate average tenure
   const calculateAverageTenure = (): number | null => {
-    const positionsWithDates = workExperience.filter(exp => getYear(exp.start));
-    if (positionsWithDates.length === 0) return null;
-
-    const tenures = positionsWithDates.map(exp => calculateDurationMonths(exp.start, exp.end));
-    const totalMonths = tenures.reduce((sum, t) => sum + t, 0);
-    return Math.round(totalMonths / positionsWithDates.length);
+    const tenures = workExperience.map(exp => getWorkExperienceDurationMonths(exp))
+      .filter((months): months is number => months !== null);
+    if (tenures.length === 0) return null;
+    return Math.round(tenures.reduce((sum, months) => sum + months, 0) / tenures.length);
   };
 
-  // Build enriched work experience — send ALL positions for accurate scoring
   const enrichedWorkExperience = workExperience.map(exp => {
-    const durationMonths = calculateDurationMonths(exp.start, exp.end);
+    const durationMonths = getWorkExperienceDurationMonths(exp) ?? undefined;
     return {
       role: exp.role || exp.position || '',
       company: exp.company || '',
-      duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
+      duration: durationMonths !== undefined && durationMonths > 0 ? formatDuration(durationMonths) : undefined,
       durationMonths,
       description: exp.description?.slice(0, 500) || undefined,
       skills: exp.skills?.slice(0, 8).map(s => s.name || String(s)) || undefined,
@@ -411,7 +353,8 @@ export function buildProfileData(profile: LinkedInProfile) {
       const year = endYear ? ` (${endYear})` : '';
       return [school, degree, field].filter(Boolean).join(' - ') + year;
     }).filter((s: string) => s.trim().length > 0) || [],
-    yearsOfExperience: calculateYearsFromDiploma(),
+    yearsOfExperience: experienceAssessment.source === 'work' && experienceAssessment.complete ? experienceAssessment.years : null,
+    experienceAssessment,
     averageTenureMonths: calculateAverageTenure(),
     openToWork: isOpenToWork,
     openProfile: isOpenProfile,
@@ -819,6 +762,10 @@ export function useLinkedInScoring({
       if (!isCurrentRequest()) return;
       if (error) throw error;
       if (data?.result) {
+        if (typeof data.result !== 'object' || data.result === null || !('profile_id' in data.result) || data.result.profile_id !== profileData.id) {
+          toast.error('La note reçue ne correspond pas à ce profil. Réessayez la notation.');
+          return;
+        }
         const mapped = mapScoringResult(data.result);
         if (!isCurrentScoringContext(mapped.scoringContext, requestContextKey, memoryVersionKey)) {
           toast.info('Les règles ont changé. Rechargez la recherche avant de réévaluer.');
@@ -1005,7 +952,7 @@ export function useLinkedInScoring({
       const profilesData = hydratedProfiles.map(buildProfileData);
       const jobPayload = buildScoringJobPayload(selectedJob);
 
-      const allResults: JobMatchResult[] = [];
+      const allResults: Array<JobMatchResult & { profile_id?: string }> = [];
       let rateLimited = false;
       /**
        * Refus de crédits sur un lot. Les vagues suivantes se feraient refuser
@@ -1075,20 +1022,6 @@ export function useLinkedInScoring({
             }
             if (errMsg.includes('RATE_LIMITED') || errMsg.includes('429')) {
               rateLimited = true;
-              waveBatches[j].forEach(() => allResults.push({
-                match_score: 0,
-                matching_skills: [],
-                missing_skills: [],
-                experience_match: 'incertain',
-                location_match: false,
-                summary: 'Rate limited - réessayez plus tard',
-                recommendation: 'maybe',
-                // Marque le placeholder comme dégradé : badge "Analyse IA
-                // incomplète" + re-scorable (sinon le guard batch le figeait).
-                skippedLLM: true,
-                // Lot 0b : affiché seulement, jamais enregistré (pas une note).
-                rateLimitedPlaceholder: true,
-              } as any));
               break;
             }
             if (error.status === 409 || error.code === 'MEMORY_CONFLICT' || error.code === 'MEMORY_CONTEXT_CHANGED') {
@@ -1119,7 +1052,7 @@ export function useLinkedInScoring({
               toast.info('Les règles ont changé. Rechargez la recherche avant de réévaluer.');
               return;
             }
-            allResults.push(...matchingResults);
+            allResults.push(...matchScoringResultsById(waveBatches[j], matchingResults).map(({ result }) => result));
           }
           if ((data as any)?.stats) {
             const stats = (data as any).stats;
@@ -1138,7 +1071,8 @@ export function useLinkedInScoring({
       }
 
       if (!isCurrentRequest()) return;
-      if (allResults.length > 0) {
+      const matchedResults = matchScoringResultsById(profilesToScore, allResults);
+      if (matchedResults.length > 0) {
         const newScores: Record<string, JobMatchResult> = {};
         const lowScoreProfiles: Array<{
           id: string;
@@ -1162,17 +1096,10 @@ export function useLinkedInScoring({
           linkedinProfileData?: any;
         }> = [];
 
-        allResults.forEach((rawResult: any, index: number) => {
-          // Match by profile_id when available (batch scoring), fallback to index
-          const profile = rawResult.profile_id
-            ? profilesToScore.find(p => p.id === rawResult.profile_id)
-            : profilesToScore[index];
-          if (!profile) return;
+        matchedResults.forEach(({ profile, result: rawResult }) => {
           const result = mapScoringResult(rawResult);
           result.clientContextKey = requestContextKey;
           newScores[profile.id] = result;
-          // Résultat factice d'un lot refusé (429) : affiché, jamais enregistré.
-          if (rawResult?.rateLimitedPlaceholder) return;
           const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
           const profileUrl = profile.public_profile_url || profile.profile_url;
           const linkedinProfileData = serializeProfileForStorage(profile);
@@ -1208,7 +1135,7 @@ export function useLinkedInScoring({
         setSortByScore(true);
 
         // Generate embeddings for scored candidates (fire-and-forget)
-        profilesToScore.forEach(profile => {
+        matchedResults.forEach(({ profile }) => {
           generateCandidateEmbedding(profile).catch(err =>
             console.error('Batch embedding error:', err)
           );
@@ -1245,6 +1172,9 @@ export function useLinkedInScoring({
           );
         } else if (rateLimited) {
           toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
+        } else if (scoredCount < profilesToScore.length) {
+          const remaining = profilesToScore.length - scoredCount;
+          toast.warning(`${scoredCount} profils notés sur ${profilesToScore.length}. ${remaining} sans résultat vérifié : relancez la notation pour les reprendre.`);
         } else if (lowScoreProfiles.length > 0) {
           toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}, à confirmer`);
         } else {
@@ -1283,11 +1213,7 @@ export function useLinkedInScoring({
         setBatchDurationMs(Date.now() - batchStartTime);
 
         // Build detailed per-profile report
-        const reportEntries: BatchReportEntry[] = allResults.map((rawResult: any, index: number) => {
-          const profile = rawResult.profile_id
-            ? profilesToScore.find(p => p.id === rawResult.profile_id)
-            : profilesToScore[index];
-          if (!profile) return null;
+        const reportEntries: BatchReportEntry[] = matchedResults.map(({ profile, result: rawResult }) => {
           const result = mapScoringResult(rawResult);
           const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
           const profileUrl = profile.public_profile_url || profile.profile_url;
@@ -1315,6 +1241,10 @@ export function useLinkedInScoring({
           durationMs: Date.now() - batchStartTime,
           contextKey: requestContextKey,
         });
+      } else if (!creditStop) {
+        toast.warning(rateLimited
+          ? 'Notation interrompue. Les profils restent à noter : réessayez plus tard.'
+          : 'Aucune note vérifiée reçue. Les profils restent à noter : relancez la notation.');
       }
     } catch (err) {
       console.error('Batch score error:', err);

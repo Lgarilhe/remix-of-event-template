@@ -25,13 +25,16 @@ function compile(path, globals = {}) {
   vm.runInNewContext(output, context, { filename: path });
   return context.exports;
 }
-const filter = compile('supabase/functions/_shared/continuous-sourcing-filters.ts');
-const profileData = compile('supabase/functions/_shared/profile-data.ts');
+const boolean = compile('supabase/functions/_shared/search-boolean.ts');
+const filter = compile('supabase/functions/_shared/continuous-sourcing-filters.ts', boolean);
+const scoring = compile('supabase/functions/_shared/scoring-context.ts');
+const experience = compile('supabase/functions/_shared/profile-experience.ts');
+const profileData = compile('supabase/functions/_shared/profile-data.ts', experience);
 const models = compile('supabase/functions/_shared/ai-config.ts');
 const stableKey = value => JSON.stringify(value, (_key, next) => next && typeof next === 'object' && !Array.isArray(next)
   ? Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b))) : next);
 const slug = value => { try { return new URL(value).pathname.match(/\/in\/([^/]+)/)?.[1]?.toLowerCase() ?? null; } catch { return null; } };
-const imports = { ...filter, ...profileData, ...models, stableScoringContextKey: stableKey, linkedInProfileSlug: slug };
+const imports = { ...filter, ...profileData, ...models, ...experience, SOURCING_SCORING_ENGINE_VERSION: scoring.SOURCING_SCORING_ENGINE_VERSION, stableScoringContextKey: stableKey, linkedInProfileSlug: slug };
 const shared = compile('supabase/functions/_shared/continuous-sourcing.ts', imports);
 const now = Date.parse('2026-10-08T20:00:00.000Z');
 const organizationId = '11111111-1111-4111-8111-111111111111';
@@ -288,7 +291,7 @@ async function adapterHarness(options = {}) {
         sources: [{ status: 'OK' }], connection_params: { im: { premiumFeatures: options.features || ['recruiter'] } } }));
       const body = JSON.parse(init.body); calls.requests.push({ url, body });
       if (url.endsWith('/unipile-search')) return new Response(JSON.stringify({ success: true,
-        profile: profile(options.returnedPerson || 'ready'), results: [profile('new')], cursor: null }));
+        profile: profile(options.returnedPerson || 'ready'), results: options.searchProfiles || [profile('new')], cursor: options.searchCursor ?? null }));
       if (url.endsWith('/score-profile-job')) return new Response(JSON.stringify({ success: true,
         results: [{ finalScore: 84, scoringContext: { fingerprint: 'score-key' } }], stats: { totalTokens: 4000, escalated: 0 } }));
       throw new Error('Unexpected provider: ' + url);
@@ -325,6 +328,58 @@ test('LinkedIn search uses only the saved source account and accounts quota in a
   assert.equal(h.calls.requests[0].body.api, 'recruiter');
   assert.equal(h.calls.requests[0].body.keywords, 'Go');
 });
+test('the worker applies calculated experience bounds while preserving incomplete profiles and the provider cursor', async () => {
+  const year = new Date().getUTCFullYear();
+  const since = count => ({ year: year - count, month: 1 });
+  const profiles = [
+    { ...profile('short'), work_experience: [{ start: since(1), current: true }] },
+    { ...profile('fit'), work_experience: [{ start: since(5), current: true }], education: [{ end: { year: year - 1 } }] },
+    { ...profile('long'), work_experience: [{ start: since(20), current: true }] },
+    { ...profile('summary'), current_positions: [{ start: since(1) }] },
+    { ...profile('education-only'), education: [{ end: { year: year - 1 } }] },
+    profile('unknown'),
+  ];
+  for (const filtersSnapshot of [
+    { keywords: 'Go', last_manual_edit: '2026-10-09', calculated_experience_min: 3, calculated_experience_max: 8 },
+    { keywords: 'Go', skills_keywords: [], years_of_experience_min: 3, years_of_experience_max: 8 },
+  ]) {
+    const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' },
+      filtersSnapshot, searchProfiles: profiles, searchCursor: 'page-two' });
+    const result = await h.deps.discover(h.current, 10);
+    assert.deepEqual(plain(result.profiles.map(profile => profile.id)), ['fit', 'summary', 'education-only', 'unknown']);
+    assert.equal(result.cursor, 'page-two');
+    assert.equal(result.exhausted, false);
+    assert.equal(h.calls.requests[0].body.years_of_experience, undefined);
+    assert.equal(h.calls.requests[0].body.calculated_experience_min, undefined);
+    assert.equal(h.calls.requests.length, 1);
+  }
+});
+
+test('a page entirely filtered by calculated experience does not exhaust a provider search with a next page', async () => {
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' },
+    filtersSnapshot: { keywords: 'Go', last_manual_edit: '2026-10-09', calculated_experience_max: 5 },
+    searchProfiles: [{ ...profile('long'), work_experience: [{ start: { year: 2000, month: 1 }, current: true }] }],
+    searchCursor: 'next-page' });
+  const result = await h.deps.discover(h.current, 5);
+  assert.equal(result.profiles.length, 0);
+  assert.equal(result.cursor, 'next-page');
+  assert.equal(result.exhausted, false);
+});
+
+test('an engine update invalidates a previous agent context before a provider operation', async () => {
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+  assert.equal(h.current.context_snapshot.scoring_engine_version, 'sourcing-v3');
+  const previousInputs = { ...h.current.context_snapshot };
+  delete previousInputs.context_key;
+  delete previousInputs.search_memory_provenance;
+  delete previousInputs.scoring_memory_provenance;
+  delete previousInputs.scoring_engine_version;
+  h.current.context_snapshot.context_key = await shared.continuousContextKey(previousInputs);
+  h.current.approved_context_key = h.current.context_snapshot.context_key;
+  await assert.rejects(h.deps.discover(h.current, 5), error => error.code === 'CONTEXT_CHANGED');
+  assert.equal(h.calls.requests.length + h.calls.quotas.length, 0);
+});
+
 test('a pause after quota reservation still prevents the outbound LinkedIn operation', async () => {
   const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'classic' },
     afterQuota: current => { current.status = 'paused'; } });
@@ -625,6 +680,7 @@ function linkedinHandlerHarness(options = {}) {
   };
   let handler;
   compile('supabase/functions/unipile-search/index.ts', {
+    ...boolean,
     createClient: () => admin,
     assertContinuousOperationContext: async () => {
       if (options.pauseDuringContext) options.leaseLost = true;

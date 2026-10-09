@@ -14,6 +14,7 @@ import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   LinkedInFiltersState,
+  LinkedInApiType,
   RoleFilter,
   PriorityFilterItem,
   CompanyKeywordFilter,
@@ -140,12 +141,13 @@ export async function generateFiltersFromJob(params: {
   job: Job;
   accountId: string | null;
   searchSource: 'linkedin' | 'database';
+  api?: LinkedInApiType;
   currentLocation?: LocationFilterItem[];
   modelOverride?: string;
   organizationId?: string | null;
   projectId?: string | null;
 }): Promise<GenerateFiltersResult> {
-  const { job, accountId, searchSource, currentLocation, modelOverride, organizationId, projectId } = params;
+  const { job, accountId, searchSource, api, currentLocation, modelOverride, organizationId, projectId } = params;
 
   const { data, error } = await invokeWithCredits<{
     filters?: GeneratedFilters;
@@ -170,7 +172,7 @@ export async function generateFiltersFromJob(params: {
       ? data.suggestions
       : null;
 
-  const { update, filterCount } = await mapGeneratedFilters(generated, { accountId, currentLocation });
+  const { update, filterCount } = await mapGeneratedFilters(generated, { accountId, currentLocation, api });
   return { update, suggestions, filterCount, memoryContext };
 }
 
@@ -183,9 +185,9 @@ export async function generateFiltersFromJob(params: {
  */
 export async function mapGeneratedFilters(
   generated: GeneratedFilters,
-  ctx: { accountId: string | null; currentLocation?: LocationFilterItem[] },
+  ctx: { accountId: string | null; currentLocation?: LocationFilterItem[]; api?: LinkedInApiType },
 ): Promise<{ update: Partial<LinkedInFiltersState>; filterCount: number }> {
-  const { accountId, currentLocation } = ctx;
+  const { accountId, currentLocation, api = 'recruiter' } = ctx;
   const update: Partial<LinkedInFiltersState> = {};
 
   if (generated.keywords) update.keywords = generated.keywords;
@@ -205,12 +207,14 @@ export async function mapGeneratedFilters(
   if (hasXpMin || hasXpMax) {
     update.calculated_experience_min = hasXpMin ? generated.years_of_experience_min : null;
     update.calculated_experience_max = hasXpMax ? generated.years_of_experience_max : null;
-    update.years_of_experience_min = hasXpMin ? generated.years_of_experience_min : null;
-    update.years_of_experience_max = hasXpMax ? generated.years_of_experience_max : null;
+    // Generated experience has the same calculated meaning on the first search
+    // and after reload. Native ranges are a separate, explicit filter choice.
+    update.years_of_experience_min = null;
+    update.years_of_experience_max = null;
   }
 
   if (generated.location_within_area !== undefined) {
-    update.location_within_area = generated.location_within_area;
+    update.location_within_area = api === 'recruiter' ? generated.location_within_area : null;
   }
 
   // Résolution de localisation : ne jamais écraser une localisation valide
@@ -223,7 +227,8 @@ export async function mapGeneratedFilters(
     for (const keyword of locationKeywords.slice(0, 3)) {
       try {
         const { data: paramData } = await invokeUnipile({
-          body: { action: 'get_parameters', account_id: accountId, type: 'LOCATION', keywords: keyword, service: 'RECRUITER' },
+          body: { action: 'get_parameters', account_id: accountId, type: 'LOCATION', keywords: keyword,
+            service: api === 'sales_navigator' ? 'SALES_NAVIGATOR' : api === 'classic' ? 'CLASSIC' : 'RECRUITER' },
         });
         const items = Array.isArray(paramData?.items) ? (paramData.items as any[]) : [];
         if (paramData?.success && items.length > 0) {
@@ -237,7 +242,7 @@ export async function mapGeneratedFilters(
               id: String(best.id),
               name: String(best.title),
               priority: 'MUST_HAVE',
-              scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
+              scope: api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT',
             });
             break;
           }

@@ -125,6 +125,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
+  const keywordsLimit = searchSource !== 'database' && (filters.api === 'classic' || filters.api === 'sales_navigator') ? 200 : null;
+  const keywordsDraftTooLong = keywordsLimit !== null && keywordsDraft.trim().length > keywordsLimit;
+  const keywordsTooLong = keywordsLimit !== null && filters.keywords.trim().length > keywordsLimit;
   // Détail complet (autocomplete LinkedIn, booléen, spotlights…) replié par
   // défaut en contexte mission : les facettes couvrent l'essentiel.
   const [advancedOpen, setAdvancedOpen] = useState(!activeProject);
@@ -233,11 +236,11 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           <QuotaDisplay accountId={selectedAccount} compact={true} />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={selectedAccount || ''} onValueChange={onAccountChange}>
-            <SelectTrigger className="h-8 text-sm flex-1">
-              <SelectValue placeholder="Sélectionner">
-                {selectedAccountData && (
+            <SelectTrigger aria-label="Compte LinkedIn" className="h-8 max-sm:min-h-11 max-sm:basis-full min-w-0 text-sm flex-1">
+              <SelectValue placeholder="Sélectionner un compte">
+                {selectedAccountData ? (
                   <div className="flex items-center gap-2">
                     {selectedAccountData.profile_picture_url && (
                       <img
@@ -246,9 +249,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                         className="w-5 h-5 rounded-lg object-cover shrink-0"
                       />
                     )}
-                    <span>{selectedAccountData.name || selectedAccountData.identifier}</span>
+                    <span>{selectedAccountData.name || selectedAccountData.identifier || 'Compte sélectionné'}</span>
                   </div>
-                )}
+                ) : <span>{selectedAccount ? 'Compte sélectionné' : 'Sélectionner un compte'}</span>}
               </SelectValue>
             </SelectTrigger>
             <SelectContent className="bg-background">
@@ -300,7 +303,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                     type="button"
                     onClick={() => isAvailable && setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
                     disabled={!isAvailable}
-                    className={`w-7 h-7 text-xs font-medium transition-all ${
+                    aria-label={option.label}
+                    className={`w-7 h-7 max-sm:h-11 max-sm:w-11 text-xs font-medium transition-all ${
                       !isAvailable
                         ? 'text-[var(--k-text-placeholder)] cursor-not-allowed'
                         : filters.api === option.value
@@ -380,6 +384,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           éditables affichés ci-dessous. */}
       {activeProject && selectedJob && !hidePromptBar && (
         <SearchPromptBar
+          api={filters.api}
           selectedJob={selectedJob}
           projectId={activeProject.id}
           accountId={selectedAccount}
@@ -399,6 +404,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         accountId={selectedAccount}
         searchSource={searchSource === 'database' || filters.api === 'database' ? 'database' : 'linkedin'}
         onClearAll={onClearFilters}
+        onOpenAdvanced={() => setAdvancedOpen(true)}
       />
 
       <div className="space-y-2 sm:space-y-3">
@@ -408,6 +414,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <div className={cn('flex-wrap items-center gap-1.5 sm:gap-2', activeProject ? 'hidden' : 'flex')}>
           <AutoFillFiltersButton
             selectedJob={selectedJob}
+            api={filters.api}
             projectId={activeProject?.id ?? null}
             accountId={selectedAccount}
             currentLocation={filters.location}
@@ -453,6 +460,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
           const handleAccept = (chip: typeof chips[0]) => {
             if (chip.key.startsWith('title:')) {
+              if (filters.api !== 'recruiter' && searchSource !== 'database') {
+                setAdvancedOpen(true);
+                return;
+              }
               setFilters(f => ({
                 ...f,
                 role: [...f.role, { keywords: chip.label, priority: 'CAN_HAVE' as const, scope: 'CURRENT_OR_PAST' as const }],
@@ -516,7 +527,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         {selectedJob && onScoringInstructionsChange && (
           <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
             <label className="text-xs text-muted-foreground mb-1 block">
-              Consignes scoring IA <span className="font-normal text-muted-foreground/60 normal-case tracking-normal">(optionnel)</span>
+              Consignes scoring IA <span className="font-normal text-muted-foreground normal-case tracking-normal">(optionnel)</span>
             </label>
             <textarea
               value={scoringInstructions}
@@ -561,12 +572,14 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       <div className={cn(!advancedOpen && 'hidden', 'space-y-2 sm:space-y-2.5')}>
       {/* Keywords preview + edit dialog — compact (label inline + bouton) */}
       <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5">
+        {filters.api === 'classic' && <p className="pb-2 text-xs text-muted-foreground">Pour chercher des intitulés avec LinkedIn standard, ajoutez-les aux mots-clés. Cette licence ne permet pas de choisir une période pour le poste.</p>}
+        {filters.api === 'sales_navigator' && <p className="pb-2 text-xs text-muted-foreground">Choisissez les intitulés dans le filtre Titre du poste et les entreprises dans leur liste de recherche.</p>}
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-xs text-muted-foreground">
             Mots-clés
           </label>
           {filters.keywords && (
-            <span className="text-3xs text-muted-foreground/60 tabular-nums">
+            <span className="text-3xs text-muted-foreground tabular-nums">
               {filters.keywords.length} car.
             </span>
           )}
@@ -574,7 +587,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <button
           type="button"
           onClick={() => { setKeywordsDraft(filters.keywords); setKeywordsDialogOpen(true); }}
-          className="w-full min-w-0 text-left flex items-start gap-2 px-2.5 py-1.5 border border-[var(--k-hairline)] bg-[var(--k-surface-2)] hover:border-[var(--k-hairline-hover)] transition-colors min-h-[34px] group rounded-[8px]"
+          className="w-full min-w-0 text-left flex items-start gap-2 px-2.5 py-1.5 border border-[var(--k-hairline)] bg-[var(--k-surface-2)] hover:border-[var(--k-hairline-hover)] transition-colors min-h-[34px] max-sm:min-h-11 group rounded-[8px]"
         >
           {filters.keywords ? (
             <span className="text-sm whitespace-normal break-words leading-snug flex-1 min-w-0">{filters.keywords}</span>
@@ -586,10 +599,11 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       </div>
 
       <Dialog open={keywordsDialogOpen} onOpenChange={setKeywordsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md [&>button]:max-sm:h-11 [&>button]:max-sm:w-11">
+          <DialogHeader className="shrink-0 border-b border-border px-6 py-4 pr-16">
             <DialogTitle>Mots-clés de recherche</DialogTitle>
           </DialogHeader>
+          <div className="min-h-0 space-y-3 overflow-y-auto px-6 py-4">
           <Textarea
             autoFocus
             value={keywordsDraft}
@@ -597,7 +611,14 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             placeholder='Ex: (Terraform OR IaC OR "Infrastructure as Code") AND (AWS OR Azure) NOT (junior OR stagiaire)'
             className="min-h-[140px] text-sm font-mono"
             rows={6}
+            aria-label="Requête de recherche"
+            aria-invalid={keywordsDraftTooLong}
+            aria-describedby="search-keywords-length"
           />
+          <p id="search-keywords-length" className={cn('text-xs', keywordsDraftTooLong ? 'text-destructive' : 'text-muted-foreground')}>
+            {keywordsDraft.trim().length} caractères{keywordsLimit !== null ? ` sur ${keywordsLimit} pris en charge dans l'app avec cette licence.` : '. Votre requête est conservée en entier.'}
+            {keywordsDraftTooLong && ' Raccourcissez la requête ou utilisez Recruiter.'}
+          </p>
           <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 p-3 border border-border">
             <p className="font-medium text-foreground/70">💡 Astuces Boolean avancées :</p>
             <ul className="space-y-1 list-disc list-inside">
@@ -605,13 +626,13 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               <li><strong>AND</strong> entre catégories : <code className="text-xs bg-muted px-1">(Java OR JEE) AND (Spring OR SpringBoot)</code></li>
               <li><strong>NOT</strong> pour exclure : <code className="text-xs bg-muted px-1">NOT (junior OR stagiaire OR freelance)</code></li>
               <li><strong>Guillemets</strong> pour expressions exactes : <code className="text-xs bg-muted px-1">"data scientist"</code></li>
-              <li><strong>Wildcard *</strong> pour variantes : <code className="text-xs bg-muted px-1">cloud*</code> → cloud, cloudops, cloudstack</li>
             </ul>
-            <p className="text-xs mt-1 text-muted-foreground/70">⚠️ Mettre les titres de poste dans le champ Rôle, pas ici. Limite ~200 caractères.</p>
+            <p className="text-xs mt-1 text-muted-foreground">Placez les intitulés dans le filtre Poste quand votre licence le permet. Utilisez OR entre variantes plutôt qu'un astérisque.</p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setKeywordsDialogOpen(false)}>Annuler</Button>
-            <Button onClick={() => { setFilters(f => ({ ...f, keywords: keywordsDraft })); setKeywordsDialogOpen(false); }}>
+          </div>
+          <DialogFooter className="shrink-0 border-t border-border px-6 py-4">
+            <Button className="max-sm:min-h-11" variant="outline" onClick={() => setKeywordsDialogOpen(false)}>Annuler</Button>
+            <Button className="max-sm:min-h-11" disabled={keywordsDraftTooLong} onClick={() => { setFilters(f => ({ ...f, keywords: keywordsDraft })); setKeywordsDialogOpen(false); }}>
               Appliquer
             </Button>
           </DialogFooter>
@@ -628,11 +649,12 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Action buttons — sticky at bottom */}
       <div className="sticky bottom-0 z-10 bg-background pt-2 pb-1 border-t border-[var(--k-hairline)] -mx-0 px-0">
+        {keywordsTooLong && <p className="pb-2 text-xs text-destructive">La requête contient {filters.keywords.trim().length} caractères. Cette licence prend en charge {keywordsLimit} caractères dans l'app. Modifiez les mots-clés ou utilisez Recruiter.</p>}
         <div className="flex gap-2">
           <Button
             onClick={onSearch}
-            disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
-            className="flex-1 bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border-0"
+            disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable || keywordsTooLong}
+            className="flex-1 max-sm:min-h-11 bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border-0"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -642,6 +664,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez une mission' : 'Rechercher'}
           </Button>
           <Button
+            className="max-sm:min-h-11"
             variant="outline"
             onClick={onClearFilters}
             disabled={loading}

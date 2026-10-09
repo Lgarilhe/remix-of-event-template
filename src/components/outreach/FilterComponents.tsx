@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { X, Loader2, Plus, ChevronRight, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
-import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, LOCATION_SCOPE_OPTIONS } from './types';
+import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, SCHOOL_PRIORITY_OPTIONS, SEARCH_FILTER_LOGIC_HELP, LOCATION_SCOPE_OPTIONS } from './types';
 
 
 // ===== Filter Section (opens as fullscreen modal on click) =====
@@ -246,31 +246,39 @@ interface PriorityBadgesProps {
   items: PriorityFilterItem[];
   onRemove: (id: string) => void;
   onUpdatePriority: (id: string, priority: FilterPriority) => void;
+  /** School CAN_HAVE is kept as context instead of filtering search. */
+  schoolContext?: boolean;
+  /** Classic/Sales Navigator and include/exclude facets combine inclusions with OR. */
+  supportsAll?: boolean;
 }
 
 export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
   items,
   onRemove,
   onUpdatePriority,
+  schoolContext = false,
+  supportsAll = true,
 }) => {
   if (items.length === 0) return null;
+  const priorityOptions = schoolContext ? SCHOOL_PRIORITY_OPTIONS : supportsAll ? PRIORITY_OPTIONS
+    : PRIORITY_OPTIONS.filter(p => p.value !== 'CAN_HAVE').map(p => p.value === 'MUST_HAVE' ? { ...p, label: 'Au moins un (OU)' } : p);
   return (
     <div className="space-y-1.5 mb-2">
       {items.map((item) => {
-        const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
+        const priorityConfig = priorityOptions.find((p) => p.value === item.priority);
         return (
-          <div key={item.id} className="flex items-center gap-2 p-2 rounded-[8px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
-            <span className="text-sm flex-1 truncate">{item.name}</span>
+          <div key={item.id} className="grid grid-cols-[1fr_44px] sm:flex items-center gap-2 p-2 rounded-[8px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
+            <span className="text-sm col-span-2 sm:flex-1 min-w-0 truncate">{item.name}</span>
             <Select
-              value={item.priority}
+              value={!schoolContext && !supportsAll && item.priority === 'CAN_HAVE' ? 'MUST_HAVE' : item.priority}
               onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
             >
-              <SelectTrigger className={`h-6 w-24 text-xs border-0 ${priorityConfig?.color}`}>
+              <SelectTrigger aria-label={`Logique de recherche pour ${item.name}`} className={`h-7 max-sm:min-h-11 w-full ${schoolContext ? 'sm:w-48' : 'sm:w-40'} text-xs border-0 ${priorityConfig?.color}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PRIORITY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                {priorityOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                     <span className="flex items-center gap-1">
                       <span>{opt.icon}</span>
                       <span>{opt.label}</span>
@@ -279,12 +287,15 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            <button type="button" onClick={() => onRemove(item.id)} className="text-[var(--k-text-muted)] hover:text-[var(--k-text)] p-0.5">
+            <button type="button" aria-label={`Retirer ${item.name}`} onClick={() => onRemove(item.id)} className="text-[var(--k-text-muted)] hover:text-[var(--k-text)] p-0.5 max-sm:h-11 max-sm:w-11 max-sm:grid max-sm:place-items-center">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         );
       })}
+      <p className="text-xs text-muted-foreground">
+        {schoolContext ? 'Les écoles à examiner ne limitent pas la recherche. Pour les prendre en compte dans la notation, ajoutez-les aux critères du cadrage. Une école requise ou exclue filtre les résultats.' : supportsAll ? SEARCH_FILTER_LOGIC_HELP : 'Au moins une valeur incluse doit correspondre. Les exclusions écartent les profils correspondants. Les préférences de notation se règlent dans le cadrage.'}
+      </p>
     </div>
   );
 };
@@ -322,24 +333,25 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
               <button 
                 type="button" 
                 onClick={() => onRemove(item.id)} 
-                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-1 transition-colors"
+                aria-label={`Retirer ${item.name}`}
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-1 transition-colors max-sm:h-11 max-sm:w-11 max-sm:grid max-sm:place-items-center shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
             
             {/* Priority and Scope selectors in a clean row */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch gap-2">
               <Select
                 value={item.priority}
                 onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
               >
-                <SelectTrigger className={`h-7 flex-1 text-xs border-0 shadow-sm ${priorityConfig?.color}`}>
+                <SelectTrigger aria-label={`Logique de recherche pour ${item.name}`} className={`h-7 max-sm:min-h-11 flex-1 text-xs border-0 shadow-sm ${priorityConfig?.color}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {PRIORITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                       <span className="flex items-center gap-1.5">
                         <span>{opt.icon}</span>
                         <span>{opt.label}</span>
@@ -353,12 +365,12 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 value={item.scope}
                 onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
               >
-                <SelectTrigger className="h-7 flex-1 text-xs border border-border bg-background">
+                <SelectTrigger aria-label={`Mobilité pour ${item.name}`} className="h-7 max-sm:min-h-11 flex-1 text-xs border border-border bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {LOCATION_SCOPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs max-sm:min-h-11">
                       {opt.label}
                     </SelectItem>
                   ))}

@@ -27,6 +27,7 @@ interface SearchPromptBarProps {
   selectedJob: Job | null;
   accountId: string | null;
   searchSource: 'linkedin' | 'database';
+  api?: LinkedInFiltersState['api'];
   currentLocation?: LocationFilterItem[];
   onApplyFilters: (update: Partial<LinkedInFiltersState>) => void;
   onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
@@ -51,6 +52,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
   selectedJob,
   accountId,
   searchSource,
+  api,
   currentLocation,
   onApplyFilters,
   onSuggestionsGenerated,
@@ -64,7 +66,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const generationRef = useRef(0);
-  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource]);
+  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource, api]);
   const contextRef = useRef(contextKey);
   contextRef.current = contextKey;
   useEffect(() => {
@@ -107,6 +109,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
         job,
         accountId,
         searchSource,
+        api,
         currentLocation,
         organizationId,
         projectId,
@@ -133,7 +136,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }, [value, selectedJob, accountId, searchSource, currentLocation, onApplyFilters, onSuggestionsGenerated, organizationId, projectId, contextKey, onMemoryContextGenerated]);
+  }, [value, selectedJob, accountId, searchSource, api, currentLocation, onApplyFilters, onSuggestionsGenerated, organizationId, projectId, contextKey, onMemoryContextGenerated]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

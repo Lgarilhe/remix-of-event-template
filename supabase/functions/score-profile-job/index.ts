@@ -6,6 +6,7 @@ import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 import { createSourcingMemoryContext, loadSourcingMemoryContext, type SourcingMemoryContext } from "../_shared/sourcing-memory.ts";
 import { createScoringContextMetadata, parseScoringMemoryConflicts, type ScoringContextMetadata, type ScoringMemoryConflict } from "../_shared/scoring-context.ts";
+import { isExperienceRangeUncertain, type ExperienceAssessment } from "../_shared/profile-experience.ts";
 import { assertContinuousOperationContext } from "../_shared/continuous-sourcing.ts";
 
 
@@ -44,6 +45,7 @@ interface ProfileData {
   pastPositions?: string[];
   education?: string[];
   yearsOfExperience?: number | null;
+  experienceAssessment?: ExperienceAssessment;
   averageTenureMonths?: number | null;
   openToWork?: boolean;
   openProfile?: boolean;
@@ -1210,7 +1212,8 @@ function getRecommendation(score: number): string {
 // ─── Layer 1: Hard Filters (cheapest first, AI last) ─────────────────────────
 
 function hasKnownExperience(profile: ProfileData): profile is ProfileData & { yearsOfExperience: number } {
-  return typeof profile.yearsOfExperience === 'number' && Number.isFinite(profile.yearsOfExperience) && profile.yearsOfExperience >= 0;
+  return typeof profile.yearsOfExperience === 'number' && Number.isFinite(profile.yearsOfExperience) && profile.yearsOfExperience >= 0
+    && (!profile.experienceAssessment || (profile.experienceAssessment.source === 'work' && profile.experienceAssessment.complete));
 }
 
 async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
@@ -1221,7 +1224,7 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
 
   // 1. Minimum experience check (FREE — no API call)
   if (job.xpMin && hasKnownExperience(profile)) {
-    if (profile.yearsOfExperience < job.xpMin * 0.75) {
+    if ((profile.experienceAssessment?.upperYears ?? profile.yearsOfExperience) < job.xpMin * 0.75) {
       return {
         passed: false,
         reason: `XP insuffisante: ${profile.yearsOfExperience}ans vs ${job.xpMin}ans min requis`,
@@ -1351,7 +1354,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const { matched, missing } = computeSkillMatch(profileSkills, allJobSkills);
 
   // --- Seniority / XP (weight: 35%) ---
-  if (hasKnownExperience(profile) && (job.xpMin || job.xpMax)) {
+  if (hasKnownExperience(profile) && !isExperienceRangeUncertain(profile.experienceAssessment, job.xpMin ?? null, job.xpMax ?? null) && (job.xpMin || job.xpMax)) {
     const xpMin = job.xpMin || 0;
     const xpMax = job.xpMax || xpMin + 5;
     const xp = profile.yearsOfExperience;
@@ -1372,6 +1375,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   } else {
     dimensions.seniority = { score: 50, weight: 35, details: "Données XP incomplètes" };
     if (!hasKnownExperience(profile)) missingDataPoints.push("candidate_xp");
+    else if (isExperienceRangeUncertain(profile.experienceAssessment, job.xpMin ?? null, job.xpMax ?? null)) missingDataPoints.push("candidate_xp_precision");
     if (!job.xpMin && !job.xpMax) missingDataPoints.push("job_xp_range");
   }
 
@@ -1641,7 +1645,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   // tout le monde → badge "XP à vérifier" / "Localisation ?" affichés à tort
   // sur 100% des profils. Bug silencieux mais visuel sur chaque card.
   let experienceMatchKind: WeightedResult["experienceMatchKind"] = "incertain";
-  if (hasKnownExperience(profile) && (job.xpMin || job.xpMax)) {
+  if (hasKnownExperience(profile) && !isExperienceRangeUncertain(profile.experienceAssessment, job.xpMin ?? null, job.xpMax ?? null) && (job.xpMin || job.xpMax)) {
     const xp = profile.yearsOfExperience;
     const xpMin = job.xpMin || 0;
     const xpMax = job.xpMax || xpMin + 5;
@@ -2043,7 +2047,7 @@ function buildProfileSection(profile: ProfileData, preComputedData: BatchLLMInpu
     `--- CANDIDAT ${idx + 1} (id: ${profile.id}) ---
 ${profile.name} — ${profile.headline || profile.currentRole || "?"}${dataWarning}
 ${profile.location ? "📍 " + profile.location : ""}
-${hasKnownExperience(profile) ? "XP: " + profile.yearsOfExperience + " ans" : "XP: à vérifier"}${profile.averageTenureMonths ? ` | Tenure moy: ${Math.round(profile.averageTenureMonths)} mois` : ''}
+${hasKnownExperience(profile) ? "XP: " + (profile.experienceAssessment?.approximate ? "environ " : "") + profile.yearsOfExperience + " ans travaillés (périodes sans double compte)" : "XP: à vérifier"}${profile.experienceAssessment?.educationYear ? ` | Formation terminée en ${profile.experienceAssessment.educationYear} : ancienneté depuis formation, durée travaillée inconnue` : ''}${profile.experienceAssessment?.source === 'work' && !profile.experienceAssessment.complete ? ' | Parcours partiellement daté : ne pas déduire une insuffisance XP' : ''}${profile.averageTenureMonths ? ` | Tenure moy: ${Math.round(profile.averageTenureMonths)} mois` : ''}
 Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
 Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
 Skills déclarés: ${skillsLine}
@@ -2224,7 +2228,7 @@ async function callLLMBatch(
 
 ${profileSections}
 
-Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre, chaque objet inclut "id". Format défini dans le system prompt.`;
+Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat, chaque objet inclut exactement son "id" fourni ci-dessus, sans omission ni doublon. Format défini dans le system prompt.`;
 
   console.log(`[llm-batch] Scoring ${inputs.length} profiles in single call`);
 
@@ -2355,10 +2359,17 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
   };
 
   const resultMap = new Map<string, LLMResult>();
+  const responseCounts = new Map<string, number>();
+  const inputCounts = new Map<string, number>();
+  for (const parsed of parsedArray) {
+    if (parsed && typeof parsed.id === 'string') responseCounts.set(parsed.id, (responseCounts.get(parsed.id) || 0) + 1);
+  }
+  for (const input of inputs) inputCounts.set(input.profile.id, (inputCounts.get(input.profile.id) || 0) + 1);
 
   for (let i = 0; i < inputs.length; i++) {
-    const parsed = parsedArray.find((p: any) => p.id === inputs[i].profile.id)
-      ?? (parsedArray[i]?.id == null ? parsedArray[i] : null);
+    const id = inputs[i].profile.id;
+    const parsed = inputCounts.get(id) === 1 && responseCounts.get(id) === 1
+      ? parsedArray.find((p: any) => p && p.id === id) : null;
     if (!parsed) {
       console.warn(`[llm-batch] Missing result for profile ${inputs[i].profile.name} (index ${i})`);
       continue;

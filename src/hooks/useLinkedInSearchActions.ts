@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -13,79 +13,22 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { calculatePreScore, PreScoreResult } from '@/hooks/linkedin/preScoring';
 import { BASE_KONEKT_QUERY_KEY } from '@/hooks/useBaseKonekt';
 import { toast } from 'sonner';
+import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
+import { sourcingSearchInputKey, type ExecutedSourcingSearch } from '@/lib/sourcingSearchLifecycle';
 
 const RESULTS_PER_BATCH = 25;
 
-// Known geo IDs → location keywords for client-side filtering
-const GEO_ID_TO_KEYWORDS: Record<string, string[]> = {
-  '105015875': ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nantes', 'bordeaux', 'lille', 'strasbourg', 'rennes', 'montpellier', 'nice', 'île-de-france', 'ile-de-france', 'idf', 'auvergne', 'rhône', 'provence', 'occitanie', 'bretagne', 'normandie', 'nouvelle-aquitaine', 'hauts-de-france', 'grand est', 'pays de la loire', 'bourgogne', 'centre-val de loire', 'corse', 'fr'],
-  '106383538': ['paris', 'île-de-france', 'ile-de-france', 'idf', 'greater paris', 'region parisienne', 'région parisienne', 'hauts-de-seine', 'seine-saint-denis', 'val-de-marne', 'essonne', 'yvelines', 'val-d\'oise', 'seine-et-marne', 'nanterre', 'boulogne', 'saint-denis', 'montreuil', 'versailles', 'creteil', 'créteil', 'evry', 'évry', 'cergy', 'melun', 'bobigny', 'la defense', 'la défense', 'neuilly', 'levallois', 'issy', 'courbevoie', 'puteaux', 'rueil', 'massy', 'saclay', 'france'],
-  '101165590': ['united kingdom', 'uk', 'london', 'manchester', 'birmingham', 'leeds', 'glasgow', 'edinburgh', 'england', 'scotland', 'wales'],
-  '101174742': ['germany', 'deutschland', 'berlin', 'munich', 'münchen', 'hamburg', 'frankfurt', 'cologne', 'köln', 'düsseldorf', 'stuttgart'],
-  '103644278': ['united states', 'usa', 'us', 'new york', 'san francisco', 'los angeles', 'chicago', 'boston', 'seattle', 'austin', 'california', 'texas'],
-  '106155005': ['spain', 'españa', 'madrid', 'barcelona', 'valencia', 'seville', 'sevilla'],
-  '103350119': ['italy', 'italia', 'rome', 'roma', 'milan', 'milano', 'turin', 'torino', 'naples', 'napoli'],
-  '100565514': ['belgium', 'belgique', 'belgi[eë]', 'brussels', 'bruxelles', 'antwerp', 'anvers', 'gent', 'liège'],
-  '103883259': ['switzerland', 'suisse', 'schweiz', 'zurich', 'zürich', 'geneva', 'genève', 'bern', 'basel', 'lausanne'],
-  '102890719': ['netherlands', 'nederland', 'amsterdam', 'rotterdam', 'the hague', 'den haag', 'utrecht'],
-  '100364837': ['portugal', 'lisbon', 'lisboa', 'porto'],
-  '104738515': ['canada', 'toronto', 'montreal', 'montréal', 'vancouver', 'ottawa', 'calgary'],
-  '101620260': ['australia', 'sydney', 'melbourne', 'brisbane', 'perth', 'adelaide'],
-  '102478259': ['singapore', 'singapour'],
-  '104305776': ['luxembourg', 'luxemburg'],
-  '105646813': ['morocco', 'maroc', 'casablanca', 'rabat', 'marrakech', 'tanger'],
-  '102713980': ['india', 'mumbai', 'bangalore', 'bengaluru', 'delhi', 'hyderabad', 'chennai', 'pune', 'kolkata'],
-};
-
-/**
- * Client-side location filter — removes profiles whose location field
- * doesn't match any of the requested location filters.
- * LinkedIn API sometimes returns profiles outside the requested location.
- */
-function filterByLocation(
-  profiles: LinkedInProfile[],
-  locationFilters: { id: string; name?: string }[],
-): LinkedInProfile[] {
-  // Build list of keywords from all active location filters
-  const keywords: string[] = [];
-  for (const loc of locationFilters) {
-    const geoKeywords = GEO_ID_TO_KEYWORDS[loc.id];
-    if (geoKeywords) {
-      keywords.push(...geoKeywords);
-    }
-    // Also use the filter's display name if available
-    if (loc.name) {
-      keywords.push(loc.name.toLowerCase());
-    }
-  }
-
-  if (keywords.length === 0) return profiles;
-
-  const filtered = profiles.filter(p => {
-    if (!p.location) return true; // Don't exclude profiles without location data
-    const loc = p.location.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normalizedKeywords = keywords.map(k =>
-      k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    );
-    return normalizedKeywords.some(kw => loc.includes(kw));
-  });
-
-  const removed = profiles.length - filtered.length;
-  if (removed > 0) {
-    console.log(`[LinkedInSearch] Location filter: removed ${removed}/${profiles.length} profiles outside requested location`);
-  }
-
-  return filtered;
-}
-
 interface SearchContext {
+  organizationId?: string | null;
+  userId?: string | null;
+  searchMemoryVersionKey?: string;
   selectedAccount: string | null;
   selectedJob: Job | null;
   filters: LinkedInFiltersState;
   filtersRef: React.MutableRefObject<LinkedInFiltersState>;
   cursor: string | null;
   results: LinkedInProfile[];
+  executedSearch: ExecutedSourcingSearch | null;
   activeProject?: SourcingProject | null;
   autoHideTreatedRef: React.MutableRefObject<boolean>;
   /** Search source: 'linkedin' (default) or 'database' (Konekt base) */
@@ -120,6 +63,7 @@ interface SearchSetters {
   setHasMoreResults: (v: boolean) => void;
   setTotal: (v: number | null) => void;
   setHasSearched: (v: boolean) => void;
+  setExecutedSearch: (v: ExecutedSourcingSearch | null) => void;
 }
 
 /** Optional augmentation : injecte des IDs LinkedIn pré-résolus (annuaire
@@ -217,11 +161,14 @@ export function buildSearchParams(
         .filter(f => f.priority !== 'DOESNT_HAVE')
         .map(f => ({ id: f.id, name: f.name }));
     } else {
-      // classic / sales_nav: bare IDs, priority not supported — drop exclusions
-      // rather than inverting them into includes.
-      baseParams.location = filters.location
-        .filter(f => f.priority !== 'DOESNT_HAVE')
-        .map(f => f.id);
+      if (filters.location.some(f => f.priority === 'DOESNT_HAVE' || (f.scope && f.scope !== 'CURRENT'))) {
+        throw new Error('Les exclusions et la mobilité géographique nécessitent LinkedIn Recruiter. Revoyez les lieux ou changez de source.');
+      }
+      const hasCountryLocation = filters.location.some(f => COUNTRY_GEO_IDS.has(f.id));
+      if (filters.location_within_area !== null && !hasCountryLocation) {
+        throw new Error('Le rayon de recherche nécessite LinkedIn Recruiter. Retirez ce filtre ou changez de source.');
+      }
+      baseParams.location = filters.location.map(f => f.id);
     }
   }
 
@@ -302,8 +249,28 @@ export function buildSearchParams(
   if (filters.company.length) {
     if (filters.api === 'database') {
       baseParams.company = filters.company.map(f => f.name || f.id).filter(n => !/^\d+$/.test(n));
+    } else if (filters.api === 'recruiter') {
+      baseParams.company = filters.company.map(f => ({
+        id: f.id,
+        priority: f.priority ?? 'CAN_HAVE',
+        scope: f.scope ?? 'CURRENT_OR_PAST',
+      }));
     } else {
-      baseParams.company = { include: filters.company.map(f => f.id) };
+      const include = filters.company.filter(f => f.priority !== 'DOESNT_HAVE');
+      const exclude = filters.company.filter(f => f.priority === 'DOESNT_HAVE');
+      if (filters.api === 'classic' && exclude.length) {
+        throw new Error('Les exclusions d’entreprise nécessitent LinkedIn Recruiter ou Sales Navigator. Retirez ce filtre ou changez de source.');
+      }
+      if (include.length > 1 && include.some(f => f.priority === 'MUST_HAVE')) {
+        throw new Error('Cette combinaison d’entreprises obligatoires nécessite LinkedIn Recruiter. Choisissez des alternatives ou changez de source.');
+      }
+      if (filters.company.some(f => f.scope && f.scope !== 'CURRENT')) {
+        throw new Error('La recherche d’entreprises passées nécessite LinkedIn Recruiter. Choisissez les entreprises actuelles ou changez de source.');
+      }
+      baseParams.company = {
+        ...(include.length ? { include: include.map(f => f.id) } : {}),
+        ...(exclude.length ? { exclude: exclude.map(f => f.id) } : {}),
+      };
     }
   }
 
@@ -745,7 +712,6 @@ export function useLinkedInSearchActions(
     cursor,
     results,
     activeProject,
-    autoHideTreatedRef,
     quota,
     candidateStatus,
     pedigreeAugmentation,
@@ -759,11 +725,48 @@ export function useLinkedInSearchActions(
     setHasMoreResults,
     setTotal,
     setHasSearched,
+    setExecutedSearch,
   } = setters;
 
   const queryClient = useQueryClient();
+  const scopeKey = stableScoringContextKey({
+    organizationId: context.organizationId ?? null,
+    userId: context.userId ?? null,
+    projectId: activeProject?.id ?? null,
+    accountId: selectedAccount,
+    source: context.searchSource ?? 'linkedin',
+    job: selectedJob,
+    brief: activeProject?.job_details,
+    description: activeProject?.description,
+    memoryVersionKey: context.searchMemoryVersionKey ?? '',
+  });
+  const inputKey = sourcingSearchInputKey(scopeKey, filters, pedigreeAugmentation);
+  const liveContextRef = useRef({ context, scopeKey });
+  liveContextRef.current = { context, scopeKey };
+  const activeRequestRef = useRef<{ inputKey: string } | null>(null);
+  const mountedRef = useRef(true);
 
-  const handleSearch = useCallback(async (appendMode = false, retryCount = 0) => {
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    // Editing the draft or leaving its context invalidates every pending round,
+    // including its finally block. A new request owns its own loading state.
+    if (activeRequestRef.current && activeRequestRef.current.inputKey !== inputKey) {
+      activeRequestRef.current = null;
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [inputKey, setLoading, setLoadingMore]);
+
+  const searchNeedsRerun = !!context.executedSearch && context.executedSearch.inputKey !== inputKey;
+
+  const handleSearch = useCallback(async (appendMode = false) => {
+    if (!mountedRef.current) return;
     const isDatabase = context.searchSource === 'database';
 
     if (!isDatabase && !selectedAccount) {
@@ -795,21 +798,54 @@ export function useLinkedInSearchActions(
       return;
     }
 
+    const requestInputKey = sourcingSearchInputKey(scopeKey, context.filtersRef.current, pedigreeAugmentation);
+    if (activeRequestRef.current?.inputKey === requestInputKey) return;
+    const previousExecution = context.executedSearch;
+    if (appendMode) {
+      if (activeRequestRef.current || !cursor || !previousExecution) return;
+      if (previousExecution.inputKey !== requestInputKey) {
+        toast.info('Les filtres ont changé. Relancez la recherche pour voir les nouveaux profils.');
+        return;
+      }
+    }
+    let execution: ExecutedSourcingSearch;
+    try {
+      execution = appendMode ? previousExecution : {
+        scopeKey,
+        inputKey: requestInputKey,
+        filters: structuredClone(context.filtersRef.current),
+        params: structuredClone(buildSearchParams(context.filtersRef.current, selectedAccount, pedigreeAugmentation || undefined)),
+      };
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Vérifiez les filtres de recherche.');
+      return;
+    }
+    const request = { inputKey: requestInputKey };
+    activeRequestRef.current = request;
+    const isCurrent = () => {
+      const live = liveContextRef.current;
+      return mountedRef.current && activeRequestRef.current === request
+        && live.scopeKey === execution.scopeKey
+        && sourcingSearchInputKey(live.scopeKey, live.context.filtersRef.current, live.context.pedigreeAugmentation) === requestInputKey;
+    };
+
     if (appendMode) {
       setLoadingMore(true);
     } else {
       setLoading(true);
+      setLoadingMore(false);
     }
 
     // Portée fonction : en cas d'échec sur un tour ultérieur, les profils déjà
     // payés au tour précédent sont affichés au lieu d'être jetés.
-    let allCollected: LinkedInProfile[] = [];
+    const allCollected: LinkedInProfile[] = [];
     let currentCursor = appendMode ? cursor : null;
+    let latestTotal: number | null = null;
+    let receivedPage = false;
+    let exhausted = false;
 
     try {
-      const currentFilters = context.filtersRef.current;
-      let latestTotal: number | null = null;
-      let exhausted = false;
+      const currentFilters = execution.filters;
       const seen = new Set<string>();
       // Dynamic limit: keep fetching until we have enough or API is exhausted
       // In append mode we allow more rounds since heavy filtering + dedup can yield few new profiles
@@ -825,10 +861,10 @@ export function useLinkedInSearchActions(
         if (round > 0) {
           await new Promise(resolve => setTimeout(resolve, 0));
         }
+        if (!isCurrent()) return;
 
-        const baseParams = buildSearchParams(currentFilters, selectedAccount, pedigreeAugmentation || undefined);
         const params: Record<string, unknown> = {
-          ...baseParams,
+          ...execution.params,
           limit: RESULTS_PER_BATCH,
           ...(currentCursor ? { cursor: currentCursor } : {}),
         };
@@ -857,6 +893,10 @@ export function useLinkedInSearchActions(
           : await invokeUnipile({ body: params });
         const data: Record<string, unknown> = result.data || {};
 
+        // A served LinkedIn page still counts toward the quota if the user left.
+        if (!isDatabase && data.success) quota.recordAction('searchResultsFetched', Array.isArray(data.results) ? data.results.length : 0);
+        if (!isCurrent()) return;
+
         if (!data?.success) {
           const apiError = new Error(data?.error as string || 'Erreur lors de la recherche');
           (apiError as Error & { errorType?: string; retryable?: boolean }).errorType = data?.errorType as string;
@@ -873,13 +913,13 @@ export function useLinkedInSearchActions(
           batch = batch.map(p => ({ ...p, open_to_work: true }));
         }
         const batchCursor: string | null = (data.cursor as string) || null;
-        const fetchedTotal: number | null = (data.total as number) || null;
+        const fetchedTotal: number | null = typeof data.total === 'number' ? data.total : null;
+        receivedPage = true;
 
         if (fetchedTotal !== null) latestTotal = fetchedTotal;
         // Le quota de recherche LinkedIn (anti-ban) ne concerne QUE LinkedIn.
         // La Base Konekt ne touche pas le compte LinkedIn → ne pas décompter,
         // sinon elle épuise le compteur et bloque sa propre pagination.
-        if (!isDatabase) quota.recordAction('searchResultsFetched', batch.length);
 
         // Filtre d'expérience côté navigateur : une estimation (fin de la
         // dernière formation, sinon premier poste) qui écarte à tort un profil
@@ -899,17 +939,12 @@ export function useLinkedInSearchActions(
             currentFilters.calculated_experience_max
           );
 
-        // Apply client-side location filter only for LinkedIn results.
-        // Base Konekt already filters location server-side, and local geo keyword
-        // matching is too lossy for some labels like "Paris et périphérie".
-        const hasRadiusSearch = currentFilters.location_within_area && currentFilters.location_within_area > 0;
-        const locationFiltered = currentFilters.location.length > 0 && !hasRadiusSearch && !isDatabase
-          ? filterByLocation(filteredBatch, currentFilters.location)
-          : filteredBatch;
+        // Native locations include exclusions and relocation eligibility. A
+        // substring comparison with a profile's current city cannot reproduce it.
 
         // Apply client-side company category filter
         const companyFiltered = currentFilters.company_category
-          ? locationFiltered.filter(p => {
+          ? filteredBatch.filter(p => {
               const classification = classifyFromProfile({
                 current_company: (p as any).current_company || (p as any).company,
                 company_headcount: (p as any).employee_count || (p as any).company_headcount,
@@ -919,7 +954,7 @@ export function useLinkedInSearchActions(
               return classification.type === currentFilters.company_category
                 || classification.type === 'other'; // Keep "other" — can't classify = don't exclude
             })
-          : locationFiltered;
+          : filteredBatch;
 
         // Dedupe
         for (const p of companyFiltered) {
@@ -959,20 +994,36 @@ export function useLinkedInSearchActions(
         console.log(`[LinkedInSearch] Round ${round + 1}: only ${allCollected.length} after filtering, fetching more...`);
       }
 
-      // Determine if there are more results
-      const totalLoaded = appendMode ? results.length + allCollected.length : allCollected.length;
-      const reachedTotal = latestTotal !== null && totalLoaded >= latestTotal;
-      
-      // Persist cursor and total for next "load more" call
-      setCursor(currentCursor);
-      if (latestTotal !== null) setTotal(latestTotal);
+      // Yield before pre-scoring to prevent freeze on large batches
+      await new Promise(resolve => setTimeout(resolve, 0));
 
-      if (exhausted || reachedTotal) {
-        setHasMoreResults(false);
+      // Calculate pre-scores in chunks to avoid blocking the main thread
+      let scoredBatch: LinkedInProfile[];
+      if (selectedJob && allCollected.length > 0) {
+        const CHUNK_SIZE = 10;
+        const scored: LinkedInProfile[] = [];
+        for (let i = 0; i < allCollected.length; i += CHUNK_SIZE) {
+          const chunk = allCollected.slice(i, i + CHUNK_SIZE);
+          scored.push(...chunk.map(profile => ({
+            ...profile,
+            _preScore: calculatePreScore(profile, selectedJob, selectedJob.skills || []),
+          })));
+          // Yield every chunk to keep UI responsive
+          if (i + CHUNK_SIZE < allCollected.length) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+        scoredBatch = scored;
       } else {
-        setHasMoreResults(true);
+        scoredBatch = allCollected;
       }
 
+      if (!isCurrent()) return;
+      const noMoreResults = exhausted || !currentCursor;
+      setExecutedSearch(execution);
+      setCursor(currentCursor);
+      if (!appendMode || latestTotal !== null) setTotal(latestTotal);
+      setHasMoreResults(!noMoreResults);
       if (quota.isNearLimit('searchResultsFetched')) {
         toast.warning('Attention: vous approchez de la limite quotidienne de résultats de recherche');
       }
@@ -1010,31 +1061,7 @@ export function useLinkedInSearchActions(
         candidateStatus.batchDiscover(profilesToDiscover).catch(console.error);
       }
 
-      // Yield before pre-scoring to prevent freeze on large batches
-      await new Promise(resolve => setTimeout(resolve, 0));
 
-      // Calculate pre-scores in chunks to avoid blocking the main thread
-      let scoredBatch: LinkedInProfile[];
-      if (selectedJob && allCollected.length > 0) {
-        const CHUNK_SIZE = 10;
-        const scored: LinkedInProfile[] = [];
-        for (let i = 0; i < allCollected.length; i += CHUNK_SIZE) {
-          const chunk = allCollected.slice(i, i + CHUNK_SIZE);
-          scored.push(...chunk.map(profile => ({
-            ...profile,
-            _preScore: calculatePreScore(profile, selectedJob, selectedJob.skills || []),
-          })));
-          // Yield every chunk to keep UI responsive
-          if (i + CHUNK_SIZE < allCollected.length) {
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-        }
-        scoredBatch = scored;
-      } else {
-        scoredBatch = allCollected;
-      }
-
-      const noMoreResults = exhausted || reachedTotal;
 
       if (appendMode) {
         if (scoredBatch.length === 0) {
@@ -1050,11 +1077,15 @@ export function useLinkedInSearchActions(
       }
 
     } catch (error: any) {
+      if (!isCurrent()) return;
       console.error('[LinkedInSearch] Search error:', error);
 
       // Une page déjà servie a été payée : on l'affiche avant le message.
-      if (allCollected.length > 0) {
+      if (receivedPage) {
+        setExecutedSearch(execution);
         setCursor(currentCursor);
+        if (!appendMode || latestTotal !== null) setTotal(latestTotal);
+        setHasMoreResults(!exhausted && !!currentCursor);
         if (appendMode) {
           setResults(prev => [...prev, ...allCollected]);
         } else {
@@ -1143,18 +1174,21 @@ export function useLinkedInSearchActions(
       } else {
         toast.error(errorMessage || "Erreur lors de la recherche", { id: "search-error" });
       }
-      // Stop infinite scroll from retrying on error
-      setHasMoreResults(false);
+      // Pagination is manual. Keep the last successful cursor so a transient
+      // error can be retried without discarding profiles or replaying page one.
     } finally {
       // Base Konekt : une page servie a entamé le forfait ou les crédits, même
       // si un tour ultérieur a échoué. Le compteur du panneau doit suivre.
       if (isDatabase) {
         queryClient.invalidateQueries({ queryKey: [BASE_KONEKT_QUERY_KEY] });
       }
-      setLoading(false);
-      setLoadingMore(false);
+      if (isCurrent()) {
+        activeRequestRef.current = null;
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, queryClient, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
+  }, [selectedAccount, selectedJob, cursor, results, quota, candidateStatus, activeProject?.kind, context, scopeKey, pedigreeAugmentation, queryClient, setExecutedSearch, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
 
   const handleLoadMore = useCallback(() => {
     if (!cursor) return;
@@ -1170,5 +1204,6 @@ export function useLinkedInSearchActions(
   return {
     handleSearch,
     handleLoadMore,
+    searchNeedsRerun,
   };
 }
