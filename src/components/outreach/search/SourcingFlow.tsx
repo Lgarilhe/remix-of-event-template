@@ -920,11 +920,11 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 {chip.key === 'exp' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={50} value={filters.calculated_experience_min ?? ''} placeholder="min"
-                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
+                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: null, years_of_experience_max: null })); }}
                       className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     →
                     <input type="number" min={0} max={50} value={filters.calculated_experience_max ?? ''} placeholder="max"
-                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
+                      onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_min: null, years_of_experience_max: null })); }}
                       className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                     ans
                   </div>
@@ -1036,9 +1036,9 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                       <p className="px-2 py-1.5 text-xs text-muted-foreground">{SEARCH_FILTER_LOGIC_HELP}</p>
                     )}
                     {searchSource === 'linkedin' && filters.api !== 'recruiter' && (chip.key === 'poste' || chip.key === 'boite') ? (
-                      <button type="button" onClick={() => { setOpenKey(null); onOpenAdvanced(); }} className="w-full rounded-md px-2 py-1.5 max-sm:min-h-11 text-left text-sm hover:bg-accent">
+                      <Button type="button" variant="ghost" onClick={() => { setOpenKey(null); onOpenAdvanced(); }} className="h-auto w-full justify-start whitespace-normal rounded-md px-2 py-1.5 max-sm:min-h-11 text-left text-sm font-normal hover:bg-accent">
                         {chip.key === 'boite' ? 'Choisir une entreprise dans les filtres avancés' : filters.api === 'classic' ? 'Chercher les intitulés dans les mots-clés' : 'Choisir un intitulé dans les filtres avancés'}
-                      </button>
+                      </Button>
                     ) : <input
                       autoFocus
                       placeholder={resolving ? 'Résolution…' : 'Ajouter puis Entrée'}
@@ -1151,11 +1151,11 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               ) : addField === 'exp' ? (
                 <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[var(--k-text-muted)]">
                   <input type="number" min={0} max={50} autoFocus placeholder="min"
-                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
+                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: null, years_of_experience_max: null })); }}
                     className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   →
                   <input type="number" min={0} max={50} placeholder="max"
-                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
+                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_min: null, years_of_experience_max: null })); }}
                     className={`h-7 max-sm:min-h-11 w-14 rounded-md border ${chipField} bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none`} />
                   ans
                 </div>

@@ -513,6 +513,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         calculated_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                        years_of_experience_min: null,
+                        years_of_experience_max: null,
                       })
                     }
                     placeholder="0"
@@ -530,6 +532,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         calculated_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                        years_of_experience_min: null,
+                        years_of_experience_max: null,
                       })
                     }
                     placeholder="50"
@@ -562,6 +566,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         years_of_experience_min: e.target.value ? parseInt(e.target.value) : null,
+                        calculated_experience_min: null,
+                        calculated_experience_max: null,
                       })
                     }
                     placeholder="0"
@@ -580,6 +586,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       onChange({
                         ...filters,
                         years_of_experience_max: e.target.value ? parseInt(e.target.value) : null,
+                        calculated_experience_min: null,
+                        calculated_experience_max: null,
                       })
                     }
                     placeholder="50"

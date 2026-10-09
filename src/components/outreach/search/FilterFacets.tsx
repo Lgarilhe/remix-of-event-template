@@ -13,6 +13,7 @@
  */
 import React, { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
@@ -64,13 +65,14 @@ const Chip: React.FC<{
     {must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" aria-hidden="true" />}
     {exclude && <span className="text-2xs text-muted-foreground">Exclure</span>}
     {onToggle ? (
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={onToggle}
         aria-label={`${must ? 'Tous (ET)' : 'Au moins un (OU)'} pour ${label}. Choisir ${must ? 'au moins un (OU)' : 'tous (ET)'}`}
         title={title ?? (must ? 'Chaque valeur est requise. Cliquez pour choisir une alternative.' : 'Une alternative suffit. Cliquez pour rendre chaque valeur requise.')}
-        className="min-w-0 max-w-[180px] truncate text-left max-sm:min-h-11 max-sm:min-w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-      >{label}</button>
+        className="h-auto min-w-0 max-w-[180px] justify-start truncate rounded p-0 text-left hover:bg-transparent max-sm:min-h-11 max-sm:min-w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      ><span className="min-w-0 truncate">{label}</span></Button>
     ) : <span title={title} className="min-w-0 max-w-[180px] truncate">{label}</span>}
     <button
       type="button"
@@ -287,7 +289,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             />
           ))}
           {filters.api === 'recruiter' || searchSource === 'database' ? <AddChip placeholder="Ex. Account Manager" onAdd={addRole} />
-            : onOpenAdvanced && <button type="button" onClick={onOpenAdvanced} className="text-xs font-medium underline max-sm:min-h-11">{filters.api === 'classic' ? 'Chercher dans les mots-clés' : 'Choisir un intitulé'}</button>}
+            : onOpenAdvanced && <Button type="button" variant="link" onClick={onOpenAdvanced} className="h-auto justify-start whitespace-normal p-0 text-left text-xs font-medium underline max-sm:min-h-11">{filters.api === 'classic' ? 'Chercher dans les mots-clés' : 'Choisir un intitulé'}</Button>}
         </FacetRow>
 
         <FacetRow icon={I.lieu} label="Lieu">
@@ -311,8 +313,8 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
               ...f,
               calculated_experience_min: min,
               calculated_experience_max: max,
-              years_of_experience_min: min,
-              years_of_experience_max: max,
+              years_of_experience_min: null,
+              years_of_experience_max: null,
             }))}
           />
         </FacetRow>
@@ -365,7 +367,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             />
           ))}
           {filters.api === 'recruiter' || searchSource === 'database' ? <AddChip placeholder="Ex. éditeur SaaS" onAdd={addCompanyKeyword} />
-            : onOpenAdvanced && <button type="button" onClick={onOpenAdvanced} className="text-xs font-medium underline max-sm:min-h-11">Choisir une entreprise</button>}
+            : onOpenAdvanced && <Button type="button" variant="link" onClick={onOpenAdvanced} className="h-auto justify-start whitespace-normal p-0 text-left text-xs font-medium underline max-sm:min-h-11">Choisir une entreprise</Button>}
         </FacetRow>
 
         {filters.seniority.length > 0 && (
