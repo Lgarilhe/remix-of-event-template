@@ -223,6 +223,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                   size="icon-xs"
                   onClick={() => { setAnalysis(null); analyze(true); }}
                   aria-label="Relancer l'analyse"
+                  className="h-11 w-11 md:h-7 md:w-7"
                 >
                   <RefreshCw aria-hidden="true" />
                 </Button>
@@ -232,7 +233,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           )}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Fermer le panneau IA">
+              <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Fermer le panneau IA" className="h-11 w-11 md:h-7 md:w-7">
                 <X aria-hidden="true" />
               </Button>
             </TooltipTrigger>
@@ -287,7 +288,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                         key={i}
                         variant="ghost"
                         size="sm"
-                        className="h-auto min-h-8 w-full justify-start whitespace-normal rounded-lg border border-border py-1.5 text-left font-normal hover:border-foreground"
+                        className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border py-1.5 text-left font-normal hover:border-foreground md:min-h-8"
                         onClick={() => insert(q)}
                       >
                         {q}

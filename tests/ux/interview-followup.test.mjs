@@ -281,5 +281,5 @@ test('panneau et onglet : le compte rendu affiche la suite, avec l’adresse, le
   assert.equal((component.match(/Programmer l'entretien suivant/g) ?? []).length, 1);
   assert.match(tab, /candidateEmail=\{candidate\.email\}/);
   assert.match(tab, /candidateLinkedinUrl=\{candidate\.linkedin\}/);
-  assert.match(tab, /projectId=\{candidate\.projectId\}/);
+  assert.match(tab, /projectId=\{activeEval\.projectId\}/);
 });

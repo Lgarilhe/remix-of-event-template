@@ -1,13 +1,10 @@
 /**
  * MessageComposer — rédaction d'un message, avec mise en forme et outils IA.
  *
- * - Barre d'outils : le menu « Mise en forme » (gras, italique, lien, listes),
- *   puis « Reformuler », « Traduire », « Proposer une suite », emoji. Chaque
- *   bouton a un nom accessible ; sous 640 px, les outils IA gardent leur icône
- *   (revue design D-13). Design simplifié (lot Suite) : la mise en forme tient
- *   dans son menu à toutes les tailles, ses raccourcis restent.
- * - Un seul bouton principal : « Envoyer ». « Suggestions » reste discret, son
- *   nombre en texte neutre (D-13, D-19, règle 7 du design simplifié).
+ * - Le champ et « Envoyer » restent visibles ; « Aide à la rédaction » déplie
+ *   les suggestions, la mise en forme, les outils IA et les emojis à la demande.
+ * - Les outils restent montés pour préserver une préparation en cours et les
+ *   raccourcis de rédaction restent actifs même lorsque la barre est repliée.
  * - Raccourcis : ⌘/Ctrl + B, I, K, et ⌘/Ctrl + Entrée pour envoyer ; « / »
  *   ouvre les modèles.
  *
@@ -34,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toggleBold, toggleItalic, toBulletList, toNumberedList, insertLink } from './textFormat';
 import { TemplatesPicker } from './TemplatesPicker';
+import { SmartReplies } from './SmartReplies';
 import { useMessageTemplates, MessageTemplate } from '@/hooks/useMessageTemplates';
 import {
   interpolatePlaceholders,
@@ -61,6 +59,8 @@ export interface MessageComposerProps {
   aiPanelOpen?: boolean;
   hasAISuggestions?: boolean;
   aiSuggestionsCount?: number;
+  replySuggestions?: Array<{ text: string; type?: string }>;
+  onSuggestionPick?: (text: string) => void;
   onScheduleCall?: () => void;
   hasCalendlyLink?: boolean;
   /** Nom du canal (« LinkedIn »), en casse normale */
@@ -97,6 +97,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   aiPanelOpen = false,
   hasAISuggestions,
   aiSuggestionsCount,
+  replySuggestions = [],
+  onSuggestionPick,
   onScheduleCall,
   hasCalendlyLink,
   channel,
@@ -114,6 +116,13 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const isSendable = value.trim().length > 0 && !sending && !disabled;
   const hasText = value.trim().length > 0;
   const templatesListId = useId();
+  const writingToolsId = useId();
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (toolsOpen) toolsRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  }, [toolsOpen]);
   const [activeTemplateId, setActiveTemplateId] = useState<string | undefined>(undefined);
 
   // Commande « / » : le texte qui suit, jusqu'au prochain espace, filtre les modèles.
@@ -329,8 +338,21 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     <TooltipProvider delayDuration={400}>
       <div className="border-t border-border bg-background px-3 py-3 md:px-4" data-component="message-composer">
         <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-          {/* Barre d'outils */}
-          <div className="flex items-center gap-0.5 border-b border-border px-1.5 py-1">
+          {/* Les outils secondaires se déplient uniquement à la demande. */}
+          <div ref={toolsRef} id={writingToolsId} role="group" aria-label="Outils de rédaction" className={cn('flex-wrap items-center gap-0.5 border-b border-border px-1.5 py-1', toolsOpen ? 'flex' : 'hidden')} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); setToolsOpen(false); helpButtonRef.current?.focus(); } }}>
+            {replySuggestions.length > 0 && onSuggestionPick && <div className="w-full min-w-0">
+              <SmartReplies suggestions={replySuggestions} onPick={text => {
+                onSuggestionPick(text);
+                setToolsOpen(false);
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }} onSeeMore={onOpenAI ? () => { setToolsOpen(false); onOpenAI(); } : undefined} />
+            </div>}
+            {onOpenAI && (
+              <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => { setToolsOpen(false); onOpenAI(); }} aria-expanded={aiPanelOpen} className="min-h-11 gap-2 px-2">
+                <Lightbulb aria-hidden="true" />{hasAISuggestions ? 'Analyser l’échange' : 'Suggestions'}
+                {hasAISuggestions && aiSuggestionsCount ? <span className="tabular-nums text-muted-foreground">{aiSuggestionsCount}</span> : null}
+              </Button>
+            )}
             {/* Mise en forme : un menu à toutes les tailles ; ses raccourcis restent actifs */}
             <DropdownMenu>
               <Tooltip>
@@ -473,6 +495,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               </PopoverContent>
             </Popover>
 
+            <span className="hidden px-2 text-xs text-muted-foreground md:inline">/ pour un modèle</span>
             <span className="ml-auto hidden px-1 text-2xs tabular-nums text-muted-foreground lg:inline">
               {value.length > 0 ? `${value.length} caractère${value.length > 1 ? 's' : ''}` : ''}
             </span>
@@ -493,7 +516,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               aria-autocomplete="list"
               aria-controls={templatesOpen ? templatesListId : undefined}
               aria-activedescendant={templatesOpen ? activeTemplateId : undefined}
-              placeholder="Écrivez votre message (« / » pour insérer un modèle)"
+              placeholder="Écrivez votre message…"
               disabled={disabled}
               rows={1}
               className="min-h-0 resize-none rounded-lg border-0 bg-transparent px-3 py-2.5 leading-relaxed hover:border-0 focus-visible:border-0 focus-visible:ring-0"
@@ -518,27 +541,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           {/* Actions */}
           <div className="flex items-center justify-between gap-2 border-t border-border px-1.5 py-1.5">
             <div className="flex items-center gap-1">
-              {onOpenAI && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={onOpenAI}
-                      aria-expanded={aiPanelOpen}
-                      className={cn('h-11 px-3 md:h-8', aiPanelOpen && 'bg-accent')}
-                    >
-                      <Lightbulb aria-hidden="true" />
-                      Suggestions
-                      {hasAISuggestions && aiSuggestionsCount ? (
-                        <span className="tabular-nums text-muted-foreground">{aiSuggestionsCount}</span>
-                      ) : null}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Réponses proposées par l'IA pour cette conversation</TooltipContent>
-                </Tooltip>
-              )}
+              <Button ref={helpButtonRef} type="button" variant="ghost" size="sm" disabled={disabled} aria-label="Aide à la rédaction" aria-expanded={toolsOpen} aria-controls={writingToolsId} onClick={() => setToolsOpen(open => !open)} className={cn('h-11 gap-2 px-2 md:h-8', toolsOpen && 'bg-accent')}>
+                <Wand2 aria-hidden="true" />
+                <span className="hidden sm:inline">Aide à la rédaction</span>
+                <span className="sm:hidden">Aide</span>
+              </Button>
               {onScheduleCall && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -549,10 +556,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                       aria-label="Insérer un lien de rendez-vous"
                       aria-disabled={!hasCalendlyLink || undefined}
                       onClick={hasCalendlyLink ? onScheduleCall : undefined}
-                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground md:h-8 md:w-auto md:px-3"
+                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground md:h-8 md:w-8"
                     >
                       <CalendarPlus aria-hidden="true" />
-                      <span className="hidden md:inline">Rendez-vous</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top">{scheduleHint}</TooltipContent>

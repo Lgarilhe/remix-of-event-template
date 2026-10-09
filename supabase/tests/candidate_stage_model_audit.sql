@@ -236,16 +236,44 @@ BEGIN
      AND t.tgname COLLATE "C" < 'update_job_candidate_status_updated_at' COLLATE "C";
   failures := failures || pg_temp.csm_eq('S4 déclencheur de transition', n, 1);
 
-  -- S5. Les 9 déclencheurs attendus (dont la garde du lot 0b), et plus l'ancien déclencheur par ligne.
+  -- S5. Les 11 déclencheurs attendus : garde du lot 0b, nettoyage des
+  -- actions après suppression et purge des copies de score dépendant d'une
+  -- référence effacée, sans retour de l'ancien déclencheur par ligne.
   SELECT string_agg(tgname, ',' ORDER BY tgname) INTO got FROM pg_trigger
    WHERE tgrelid = 'public.job_candidate_status'::regclass AND NOT tgisinternal;
   failures := failures || pg_temp.csm_eq('S5 déclencheurs', got,
-    'resolve_project_id_ins,resolve_project_id_upd,stage_sync_from_legacy,stage_write_guard,sync_mission_stats_del,'
+    'candidate_actions_remove_mission_candidate,resolve_project_id_ins,resolve_project_id_upd,sourcing_agent_score_privacy_guard,stage_sync_from_legacy,stage_write_guard,sync_mission_stats_del,'
     'sync_mission_stats_ins,sync_mission_stats_upd,trg_auto_ingest_job_candidate_status,'
     'update_job_candidate_status_updated_at');
   IF to_regprocedure('public.refresh_project_shortlist_stats()') IS NOT NULL THEN
     failures := failures || '[S5 refresh_project_shortlist_stats encore présente] ';
   END IF;
+  -- This exact cleanup is AFTER DELETE ROW only. It cannot intercept an
+  -- insertion or stage transition, and remains enabled with no condition.
+  SELECT count(*) INTO n FROM pg_trigger t
+   WHERE t.tgrelid = 'public.job_candidate_status'::regclass
+     AND t.tgname = 'candidate_actions_remove_mission_candidate' AND NOT t.tgisinternal
+     AND t.tgtype = 9 AND t.tgenabled = 'O' AND t.tgattr::text = '' AND t.tgqual IS NULL
+     AND t.tgfoid = to_regprocedure('private.candidate_actions_remove_mission_candidate()');
+  failures := failures || pg_temp.csm_eq('S5 nettoyage actions après suppression', n, 1);
+  -- Inspect every write target, not merely the trigger's name. The cleanup may
+  -- delete its ledger and generated content; it may never write candidature
+  -- rows, steps, stages or missions, or execute dynamic SQL that hides a write.
+  SELECT string_agg(w.parts[1] || ' ' || w.parts[2], ',') INTO got
+    FROM pg_proc p
+    CROSS JOIN LATERAL regexp_matches(p.prosrc,
+      '\m(INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO|TRUNCATE|ALTER)\s+([a-zA-Z0-9_."]+)', 'gi') w(parts)
+   WHERE p.oid = to_regprocedure('private.candidate_actions_remove_mission_candidate()')
+     AND (upper(regexp_replace(w.parts[1], '\s+', ' ', 'g')) <> 'DELETE FROM'
+       OR lower(w.parts[2]) NOT IN ('public.candidate_action_messages', 'public.candidate_action_plans',
+          'public.candidate_notes', 'public.candidate_comments', 'public.notifications', 'public.knowledge_chunks'));
+  failures := failures || pg_temp.csm_eq('S5 destinations écrites par le nettoyage', got, NULL::text);
+  SELECT count(*) INTO n FROM pg_proc p
+   WHERE p.oid = to_regprocedure('private.candidate_actions_remove_mission_candidate()')
+     AND p.prorettype = 'trigger'::regtype AND p.prosrc !~* '\mEXECUTE\M'
+     AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+     AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE');
+  failures := failures || pg_temp.csm_eq('S5 nettoyage statique non appelable par le navigateur', n, 1);
 
   -- S6. Défaut de status aligné sur la production.
   SELECT column_default INTO got FROM information_schema.columns

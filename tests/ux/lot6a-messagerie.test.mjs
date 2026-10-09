@@ -35,6 +35,7 @@ const FILES = {
   tone: 'src/components/outreach/inbox/ToneSelector.tsx',
   pipeline: 'src/components/outreach/AddToPipelineModal.tsx',
   hook: 'src/hooks/useMessagesInbox.ts',
+  enrollments: 'src/lib/inboxEnrollments.ts',
   helpers: 'src/hooks/useMessagesInboxHelpers.ts',
   intents: 'src/hooks/useChatIntents.ts',
   categories: 'src/hooks/useChatCategories.ts',
@@ -45,7 +46,7 @@ const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(
 // ---------------------------------------------------------------- D-01
 test('D-01 : la frise d’activité passe par les tables partagées des séquences', () => {
   assert.match(src.activity, /sequenceExecutionTitle\(actionType, status\)/, 'même titre que la fiche candidat');
-  assert.match(src.activity, /<SequenceActionIcon type=\{event\.actionType\}/);
+  assert.match(src.activity, /<ServiceLogo service=\{activityService\(event\)\}/);
   assert.match(src.activity, /<ExecutionStatusBadge/);
   assert.match(src.activity, /formatSkipReason\(event\.skipReason\)/, 'une raison d’arrêt se traduit');
   assert.match(src.activity, /formatSequenceError\(event\.errorMessage\)/, 'une erreur se traduit');
@@ -55,7 +56,7 @@ test('D-01 : la frise d’activité passe par les tables partagées des séquenc
 
 // ---------------------------------------------------------------- D-02
 test('D-02 : « Inscrire dans une séquence » depuis l’en-tête de la conversation', () => {
-  assert.match(src.view, /onClick=\{onEnrollInSequence\}[^>]*>\s*<ListPlus[^>]*\/>\s*Inscrire dans une séquence/);
+  assert.match(src.view, /className=\{MENU_ITEM\} onSelect=\{onEnrollInSequence\}/);
   assert.match(src.view, /onSelect=\{onEnrollInSequence\}/, 'aussi dans le menu « Plus d’actions » (téléphone)');
   const start = src.hook.indexOf('const handleEnrollInSequence');
   assert.ok(start !== -1, 'handleEnrollInSequence introuvable');
@@ -104,8 +105,8 @@ test('D-05, D-06 : trois rangées avant la liste, libellés visibles, état anno
 });
 
 // ---------------------------------------------------------------- D-07
-test('D-07 : « À répondre » ou « En attente » puis la mission, source neutre', () => {
-  assert.match(src.helpers, /kind: 'reply' \| 'waiting' \| null/);
+test('D-07 : « À répondre », « À relancer » ou « En attente » puis la mission, source neutre', () => {
+  assert.match(src.helpers, /kind: 'reply' \| 'follow_up' \| 'waiting' \| null/);
   assert.doesNotMatch(src.helpers, /label: 'Classic'/, 'la messagerie classique n’a pas de badge');
   assert.doesNotMatch(src.helpers, /color:/, 'la source reste en texte neutre');
   assert.doesNotMatch(src.item, /!sourceType && !categoryInfo/, 'le repère n’est plus masqué par la source');
@@ -128,7 +129,10 @@ test('D-09 : erreur avec « Réessayer », vide filtré, compte à relier', () =
   assert.match(src.hook, /setChatsError\(error instanceof Error/);
   assert.match(src.sidebar, /<ErrorState[\s\S]*?onRetry=\{onRefresh\}/);
   assert.match(src.sidebar, /Effacer les filtres/);
-  assert.match(src.inbox, /to="\/settings\/account\/connections"/);
+  assert.match(src.sidebar, /to="\/settings\/account\/connections"/, 'le lien commun permet de relier un canal sans bloquer les autres');
+  assert.match(src.sidebar, /\(chatsError \|\| additionalError\) && totalConversations === 0/, 'une panne multicanale ne devient pas un état vide');
+  assert.match(src.inbox, /const multichannel = useMultichannelInbox\(\)/);
+  assert.doesNotMatch(src.inbox, /if\s*\(!selectedAccount\)\s*return/, 'e-mail et WhatsApp restent accessibles sans compte LinkedIn');
   assert.match(src.pipeline, /<ErrorState[\s\S]*?onRetry=\{reloadMissions\}/, 'les missions aussi : une panne n’est pas une liste vide');
 });
 
@@ -205,7 +209,7 @@ test('D-18 : statut d’inscription du catalogue, une seule conversation montée
   assert.doesNotMatch(src.view, /SequenceStatusBadge|config\.active|En séquence/, 'plus de repli « En séquence »');
   assert.equal((src.inbox.match(/<MessageView\b/g) || []).length, 1, 'MessageView monté une fois');
   // Lot 5b : la raison de fin et la trace d'un arrêt manuel sont lues avec elle.
-  assert.match(src.hook, /current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'\)/, 'la raison d’une pause est lue');
+  assert.match(src.enrollments, /current_step_order, pause_reason, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop'/, 'la raison d’une pause est lue');
 });
 
 // ---------------------------------------------------------------- D-19

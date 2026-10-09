@@ -2,8 +2,8 @@
  * Résumé de facettes — la recherche entière visible d'un coup d'œil.
  *
  * Remplace la lecture par accordéons : chaque critère est une puce éditable
- * (clic = bascule obligatoire ↔ souhaité, × = retirer, + Ajouter = saisie
- * inline). La priorité est encodée par un point 5px + voile léger (jamais un
+ * (clic = bascule tous ↔ au moins un, × = retirer, + Ajouter = saisie
+ * inline). La logique est encodée par un point 5px + voile léger (jamais un
  * aplat saturé). Registre Linear/Qonto via tokens --k-*.
  *
  * Couvre les champs générés par l'IA (role, location, skills_keywords,
@@ -13,11 +13,13 @@
  */
 import React, { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   LinkedInFiltersState,
   SENIORITY_LEVELS,
+  SEARCH_FILTER_LOGIC_HELP,
 } from '@/components/outreach/types';
 
 interface FilterFacetsProps {
@@ -26,6 +28,7 @@ interface FilterFacetsProps {
   accountId: string | null;
   searchSource: 'linkedin' | 'database';
   onClearAll?: () => void;
+  onOpenAdvanced?: () => void;
 }
 
 /* ── Icônes facettes — registre géométrique 1.5px (cf. maquette) ── */
@@ -52,26 +55,29 @@ const Chip: React.FC<{
   title?: string;
 }> = ({ label, must, exclude, onToggle, onRemove, title }) => (
   <span
-    role={onToggle ? 'button' : undefined}
-    tabIndex={onToggle ? 0 : undefined}
-    onClick={onToggle}
-    onKeyDown={onToggle ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }) : undefined}
-    title={title ?? (onToggle ? 'Clic : obligatoire ↔ souhaité' : undefined)}
     className={cn(
-      'group inline-flex items-center gap-1.5 min-h-6 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium transition-colors duration-150 select-none',
-      onToggle && 'cursor-pointer',
+      'group inline-flex max-w-full items-center gap-1.5 min-h-6 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium transition-colors duration-150 select-none',
       must
         ? 'bg-[var(--k-accent-tint)] border border-transparent text-[var(--k-text)]'
         : 'bg-transparent border border-[var(--k-hairline)] text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)]'
     )}
   >
-    {must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" aria-label="Obligatoire" />}
+    {must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" aria-hidden="true" />}
     {exclude && <span className="text-2xs text-muted-foreground">Exclure</span>}
-    <span className="max-w-[180px] truncate">{label}</span>
+    {onToggle ? (
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={onToggle}
+        aria-label={`${must ? 'Tous (ET)' : 'Au moins un (OU)'} pour ${label}. Choisir ${must ? 'au moins un (OU)' : 'tous (ET)'}`}
+        title={title ?? (must ? 'Chaque valeur est requise. Cliquez pour choisir une alternative.' : 'Une alternative suffit. Cliquez pour rendre chaque valeur requise.')}
+        className="h-auto min-w-0 max-w-[180px] justify-start truncate rounded p-0 text-left hover:bg-transparent max-sm:min-h-11 max-sm:min-w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      ><span className="min-w-0 truncate">{label}</span></Button>
+    ) : <span title={title} className="min-w-0 max-w-[180px] truncate">{label}</span>}
     <button
       type="button"
       onClick={e => { e.stopPropagation(); onRemove(); }}
-      className="w-4 h-4 grid place-items-center rounded text-[var(--k-text-muted)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--k-text)] hover:bg-[var(--k-hairline-hover)] transition-opacity"
+      className="w-4 h-4 shrink-0 grid place-items-center rounded text-[var(--k-text-muted)] opacity-0 max-sm:opacity-100 max-sm:h-11 max-sm:w-11 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--k-text)] hover:bg-[var(--k-hairline-hover)] transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`Retirer ${label}`}
     >
       <XIcon />
@@ -97,7 +103,7 @@ const AddChip: React.FC<{ placeholder: string; onAdd: (v: string) => void; busy?
       <button
         type="button"
         onClick={() => { setEditing(true); requestAnimationFrame(() => ref.current?.focus()); }}
-        className="inline-flex items-center gap-1 min-h-6 rounded-full border border-dashed border-[var(--k-hairline)] px-2.5 py-0.5 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
+        className="inline-flex items-center gap-1 min-h-6 max-sm:min-h-11 rounded-full border border-dashed border-[var(--k-hairline)] px-2.5 py-0.5 text-xs font-medium text-foreground hover:border-[var(--k-hairline-hover)] transition-colors"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3 h-3"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg>
         Ajouter
@@ -116,14 +122,15 @@ const AddChip: React.FC<{ placeholder: string; onAdd: (v: string) => void; busy?
         if (e.key === 'Escape') { setVal(''); setEditing(false); }
       }}
       placeholder={placeholder}
-      className="h-6 w-40 rounded-full border border-[var(--k-hairline-focus)] bg-[var(--k-surface)] px-2.5 text-sm text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none"
+      aria-label={placeholder}
+      className="h-6 max-sm:min-h-11 w-40 rounded-full border border-[var(--k-hairline-focus)] bg-[var(--k-surface)] px-2.5 text-sm text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none"
     />
   );
 };
 
 /* ── Ligne de facette ── */
 const FacetRow: React.FC<{ icon: React.ReactNode; label: string; children: React.ReactNode }> = ({ icon, label, children }) => (
-  <div className="grid grid-cols-[72px_1fr] gap-2.5 items-start">
+  <div className="grid grid-cols-1 sm:grid-cols-[72px_1fr] gap-2.5 items-start">
     <div className="flex items-center gap-1.5 pt-[5px] text-[var(--k-text-muted)]">
       {icon}
       <span className="text-xs font-medium">{label}</span>
@@ -138,13 +145,13 @@ const ExpRange: React.FC<{
   onChange: (min: number | null, max: number | null) => void;
 }> = ({ min, max, onChange }) => {
   const parse = (v: string) => (v === '' ? null : Math.max(0, Math.min(50, parseInt(v, 10) || 0)));
-  const box = 'h-6 w-14 rounded-[7px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-[var(--k-text-2)] text-center focus:outline-none focus:border-[var(--k-hairline-focus)] placeholder:text-[var(--k-text-placeholder)]';
+  const box = 'h-6 max-sm:min-h-11 w-14 rounded-[7px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-[var(--k-text-2)] text-center focus:outline-none focus:border-[var(--k-hairline-focus)] placeholder:text-[var(--k-text-placeholder)]';
   return (
     <span className="inline-flex items-center gap-1.5 text-sm text-[var(--k-text-muted)]">
-      <input type="number" min={0} max={50} value={min ?? ''} placeholder="min" className={box}
+      <input type="number" min={0} max={50} value={min ?? ''} placeholder="min" aria-label="Expérience minimum en années" className={box}
         onChange={e => onChange(parse(e.target.value), max)} />
       <span aria-hidden="true">→</span>
-      <input type="number" min={0} max={50} value={max ?? ''} placeholder="max" className={box}
+      <input type="number" min={0} max={50} value={max ?? ''} placeholder="max" aria-label="Expérience maximum en années" className={box}
         onChange={e => onChange(min, parse(e.target.value))} />
       <span>ans</span>
     </span>
@@ -157,6 +164,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
   accountId,
   searchSource,
   onClearAll,
+  onOpenAdvanced,
 }) => {
   const [resolvingLocation, setResolvingLocation] = useState(false);
 
@@ -183,7 +191,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
       setResolvingLocation(true);
       try {
         const { data } = await invokeUnipile({
-          body: { action: 'get_parameters', account_id: accountId, type: 'LOCATION', keywords: name, service: 'RECRUITER' },
+          body: { action: 'get_parameters', account_id: accountId, type: 'LOCATION', keywords: name, service: filters.api === 'classic' ? 'CLASSIC' : filters.api === 'sales_navigator' ? 'SALES_NAVIGATOR' : 'RECRUITER' },
         });
         const items = Array.isArray(data?.items) ? (data.items as any[]) : [];
         const normalized = name.toLowerCase();
@@ -194,7 +202,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
         if (best?.id && best?.title) {
           setFilters(f => f.location.some(l => l.id === String(best.id)) ? f : ({
             ...f,
-            location: [...f.location, { id: String(best.id), name: String(best.title), priority: 'MUST_HAVE' as const, scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const }],
+            location: [...f.location, { id: String(best.id), name: String(best.title), priority: 'MUST_HAVE' as const, scope: f.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' as const : 'CURRENT' as const }],
           }));
         } else {
           toast.error(`Localisation « ${name} » introuvable sur LinkedIn`);
@@ -208,10 +216,10 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
       // Base Konekt : le nom suffit (mapping texte côté edge function)
       setFilters(f => ({
         ...f,
-        location: [...f.location, { id: name, name, priority: 'MUST_HAVE' as const, scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const }],
+        location: [...f.location, { id: name, name, priority: 'MUST_HAVE' as const, scope: f.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' as const : 'CURRENT' as const }],
       }));
     }
-  }, [accountId, searchSource, setFilters]);
+  }, [accountId, searchSource, setFilters, filters.api]);
 
   /* ── Skills (skills[] à IDs + skills_keywords[] IA) ── */
   const addSkillKeyword = useCallback((v: string) => {
@@ -252,7 +260,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
           <button
             type="button"
             onClick={onClearAll}
-            className="text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] transition-colors"
+            className="text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] transition-colors max-sm:min-h-11"
           >
             Tout effacer
           </button>
@@ -265,9 +273,9 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             <Chip
               key={`role-${i}-${r.keywords}`}
               label={r.keywords}
-              must={r.priority === 'MUST_HAVE'}
+              must={filters.api === 'recruiter' && r.priority === 'MUST_HAVE'}
               exclude={r.priority === 'DOESNT_HAVE'}
-              onToggle={r.priority !== 'DOESNT_HAVE' ? () => toggleRole(i) : undefined}
+              onToggle={filters.api === 'recruiter' && r.priority !== 'DOESNT_HAVE' ? () => toggleRole(i) : undefined}
               onRemove={() => setFilters(f => ({ ...f, role: f.role.filter((_, k) => k !== i) }))}
             />
           ))}
@@ -275,11 +283,13 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             <Chip
               key={`jt-${j.id}`}
               label={j.name}
-              must={j.priority === 'MUST_HAVE'}
+              must={filters.api === 'recruiter' && j.priority === 'MUST_HAVE'}
+              exclude={j.priority === 'DOESNT_HAVE'}
               onRemove={() => setFilters(f => ({ ...f, job_title: f.job_title.filter(x => x.id !== j.id) }))}
             />
           ))}
-          <AddChip placeholder="Ex. Account Manager" onAdd={addRole} />
+          {filters.api === 'recruiter' || searchSource === 'database' ? <AddChip placeholder="Ex. Account Manager" onAdd={addRole} />
+            : onOpenAdvanced && <Button type="button" variant="link" onClick={onOpenAdvanced} className="h-auto justify-start whitespace-normal p-0 text-left text-xs font-medium underline max-sm:min-h-11">{filters.api === 'classic' ? 'Chercher dans les mots-clés' : 'Choisir un intitulé'}</Button>}
         </FacetRow>
 
         <FacetRow icon={I.lieu} label="Lieu">
@@ -287,6 +297,8 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             <Chip
               key={`loc-${l.id}`}
               label={l.name}
+              must={filters.api === 'recruiter' && l.priority === 'MUST_HAVE'}
+              exclude={l.priority === 'DOESNT_HAVE'}
               onRemove={() => setFilters(f => ({ ...f, location: f.location.filter(x => x.id !== l.id) }))}
             />
           ))}
@@ -301,8 +313,8 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
               ...f,
               calculated_experience_min: min,
               calculated_experience_max: max,
-              years_of_experience_min: min,
-              years_of_experience_max: max,
+              years_of_experience_min: null,
+              years_of_experience_max: null,
             }))}
           />
         </FacetRow>
@@ -312,7 +324,8 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             <Chip
               key={`sk-${s.id}`}
               label={s.name}
-              must={s.priority === 'MUST_HAVE'}
+              must={filters.api === 'recruiter' && s.priority === 'MUST_HAVE'}
+              exclude={s.priority === 'DOESNT_HAVE'}
               onRemove={() => setFilters(f => ({ ...f, skills: f.skills.filter(x => x.id !== s.id) }))}
             />
           ))}
@@ -338,6 +351,8 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             <Chip
               key={`co-${c.id}`}
               label={c.name}
+              must={filters.api === 'recruiter' && c.priority === 'MUST_HAVE'}
+              exclude={c.priority === 'DOESNT_HAVE'}
               onRemove={() => setFilters(f => ({ ...f, company: f.company.filter(x => x.id !== c.id) }))}
             />
           ))}
@@ -345,13 +360,14 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
             <Chip
               key={`cok-${i}-${c.keywords}`}
               label={c.keywords}
-              must={c.priority === 'MUST_HAVE'}
+              must={filters.api === 'recruiter' && c.priority === 'MUST_HAVE'}
               exclude={c.priority === 'DOESNT_HAVE'}
-              onToggle={c.priority !== 'DOESNT_HAVE' ? () => toggleCompanyKeyword(i) : undefined}
+              onToggle={filters.api === 'recruiter' && c.priority !== 'DOESNT_HAVE' ? () => toggleCompanyKeyword(i) : undefined}
               onRemove={() => setFilters(f => ({ ...f, company_keywords: f.company_keywords.filter((_, k) => k !== i) }))}
             />
           ))}
-          <AddChip placeholder="Ex. éditeur SaaS" onAdd={addCompanyKeyword} />
+          {filters.api === 'recruiter' || searchSource === 'database' ? <AddChip placeholder="Ex. éditeur SaaS" onAdd={addCompanyKeyword} />
+            : onOpenAdvanced && <Button type="button" variant="link" onClick={onOpenAdvanced} className="h-auto justify-start whitespace-normal p-0 text-left text-xs font-medium underline max-sm:min-h-11">Choisir une entreprise</Button>}
         </FacetRow>
 
         {filters.seniority.length > 0 && (
@@ -367,13 +383,17 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
         )}
       </div>
 
-      <div className="flex gap-4 mt-3 pt-2.5 border-t border-[var(--k-hairline)] text-2xs text-[var(--k-text-muted)]">
+      <div className="flex flex-col gap-2 mt-3 pt-2.5 border-t border-[var(--k-hairline)] text-xs text-[var(--k-text-muted)]">
+        {filters.api === 'recruiter' && <div className="flex flex-wrap gap-4">
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)]" /> Obligatoire
+          <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)]" /> Tous (ET)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full border border-[var(--k-hairline)]" /> Souhaité — clic sur une puce pour basculer
+          <span className="w-2 h-2 rounded-full border border-[var(--k-hairline)]" /> Au moins un (OU)
         </span>
+        <span>Exclure</span>
+        </div>}
+        <p>{filters.api === 'recruiter' ? SEARCH_FILTER_LOGIC_HELP : 'Les valeurs sélectionnées sont des alternatives : au moins une doit correspondre. Les préférences de notation se règlent dans le cadrage.'}</p>
       </div>
     </div>
   );

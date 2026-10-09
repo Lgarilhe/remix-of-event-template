@@ -101,6 +101,7 @@ export default function ScorecardFullPage() {
   // Mission de la fiche d'où l'on vient (?mission=) : un candidat présent dans
   // deux missions garde le poste, les étapes et la grille de celle-ci.
   const missionParam = missionIdOfJob(searchParams.get('mission')) ?? null;
+  const sessionParam = missionIdOfJob(searchParams.get('session')) ?? null;
   const navigate = useNavigate();
   const location = useLocation();
   const sidebarId = useId();
@@ -115,6 +116,7 @@ export default function ScorecardFullPage() {
   // Grille ouverte, remontée par ScorecardTab à chaque modification.
   const [quickEval, setQuickEval] = useState<ScorecardSummary | null>(null);
   const [recording, setRecording] = useState(false);
+  const [qualificationSessionId, setQualificationSessionId] = useState<string | null>(null);
 
   const [jobDetails, setJobDetails] = useState<JobSidebarDetails | null>(null);
 
@@ -126,6 +128,24 @@ export default function ScorecardFullPage() {
     let cancelled = false;
     const load = async () => {
       setLoadState('loading');
+      setQualificationSessionId(null);
+      let requestedMission = missionParam;
+      if (sessionParam) {
+        // Le lien calendrier porte l'événement réel : une date ou un nom ne
+        // suffit pas à rattacher la transcription au bon entretien.
+        const { data: event, error: eventError } = await supabase
+          .from('qualification_sessions')
+          .select('id, candidate_profile_id, project_id')
+          .eq('id', sessionParam)
+          .eq('candidate_profile_id', candidateId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (eventError || !event || (missionParam && event.project_id !== missionParam)) {
+          setLoadState(eventError ? 'error' : 'not_found');
+          return;
+        }
+        requestedMission = event.project_id ?? missionParam;
+      }
       const readRow = (mission: string | null) => {
         let rowQuery = supabase
           .from('job_candidate_status')
@@ -134,10 +154,17 @@ export default function ScorecardFullPage() {
         if (mission) rowQuery = rowQuery.eq('project_id', mission);
         return rowQuery.order('updated_at', { ascending: false }).limit(1).maybeSingle();
       };
-      let { data, error } = await readRow(missionParam);
-      // Une ancienne mission porte un job_id, pas un project_id : sans ligne pour
-      // la mission demandée, repli sur la ligne la plus récente du candidat.
-      if (!error && !data && missionParam) ({ data, error } = await readRow(null));
+      let { data, error } = await readRow(requestedMission);
+      // Les anciennes lignes peuvent porter seulement le job_id externe de
+      // cette mission. Ne jamais remplacer la mission demandée par une autre.
+      if (!error && !data && requestedMission) {
+        const { data: mission, error: missionError } = await supabase.from('sourcing_projects')
+          .select('job_id').eq('id', requestedMission).maybeSingle();
+        if (missionError) error = missionError;
+        else if (mission?.job_id) ({ data, error } = await supabase.from('job_candidate_status')
+          .select('*').eq('candidate_id', candidateId).eq('job_id', mission.job_id)
+          .is('project_id', null).order('updated_at', { ascending: false }).limit(1).maybeSingle());
+      }
 
       if (cancelled) return;
       if (error) {
@@ -193,7 +220,7 @@ export default function ScorecardFullPage() {
         generalStage: isGeneralStage(src.general_stage) ? src.general_stage : null,
         processStepId: src.process_step_id,
         stageEnteredAt: src.stage_entered_at,
-        projectId: data.project_id,
+        projectId: data.project_id ?? requestedMission,
         entity: null,
         source: 'local',
         sourceId: src.id ?? data.id,
@@ -209,13 +236,13 @@ export default function ScorecardFullPage() {
       };
 
       let job: JobSidebarDetails | null = null;
-      if (data.project_id || data.job_id) {
+      if (c.projectId || data.job_id) {
         // Mission par son id, job_id en repli pour les anciennes missions.
         const projQuery = supabase
           .from('sourcing_projects')
           .select('name, job_title, client_name, description, job_details');
-        const { data: proj, error: projError } = await (data.project_id
-          ? projQuery.or(`id.eq.${data.project_id},job_id.eq.${data.project_id}`)
+        const { data: proj, error: projError } = await (c.projectId
+          ? projQuery.eq('id', c.projectId)
           : projQuery.eq('job_id', data.job_id as string))
           .limit(1)
           .maybeSingle();
@@ -240,6 +267,7 @@ export default function ScorecardFullPage() {
 
       if (cancelled) return;
       setCandidate(c);
+      setQualificationSessionId(sessionParam);
       setJobDetails(job);
       setLoadState('ready');
     };
@@ -251,7 +279,7 @@ export default function ScorecardFullPage() {
     return () => {
       cancelled = true;
     };
-  }, [candidateId, missionParam, reloadTick]);
+  }, [candidateId, missionParam, sessionParam, reloadTick]);
 
   const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
     if (!candidate?.linkedinProfileData) return null;
@@ -720,6 +748,7 @@ export default function ScorecardFullPage() {
               autoOpenFirst
               onActiveEvaluationChange={setQuickEval}
               onRecordingChange={setRecording}
+              qualificationSessionId={qualificationSessionId}
             />
           </div>
         </main>

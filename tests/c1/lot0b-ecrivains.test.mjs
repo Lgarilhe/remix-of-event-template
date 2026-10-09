@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import ts from 'typescript';
 
 const ROOT = process.env.C1_ROOT || fileURLToPath(new URL('../../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
@@ -74,14 +76,35 @@ test('0b-3 : useLinkedInScoring n\'archive plus après notation', () => {
   assert.match(src, /skipReason: result\.summary \|\| 'Score insuffisant'/);
 });
 
-test('0b-3 : les résultats factices d\'un 429 ne sont pas enregistrés', () => {
+test('0b-3 : un 429 laisse les profils sans note, préserve les vraies notes et permet leur reprise', () => {
   const src = read(SCORING_HOOK);
-  const placeholder = src.indexOf("summary: 'Rate limited - réessayez plus tard'");
-  assert.ok(placeholder > 0, 'résultat factice introuvable');
-  assert.match(src.slice(placeholder, placeholder + 600), /rateLimitedPlaceholder: true/);
-  const skip = src.indexOf('if (rawResult?.rateLimitedPlaceholder) return;');
-  const push = src.indexOf('lowScoreProfiles.push(');
-  assert.ok(skip > 0 && skip < push, 'le résultat factice sort avant les listes à enregistrer');
+  assert.doesNotMatch(src, /rateLimitedPlaceholder|summary: 'Rate limited - réessayez plus tard'/, 'aucune fausse note ne représente le refus');
+  const file = ts.createSourceFile(SCORING_HOOK, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let branch;
+  function visit(node) {
+    if (ts.isIfStatement(node) && /errMsg\.includes\('429'\)/.test(node.expression.getText(file))) branch = node.thenStatement;
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  assert.ok(branch, 'branche réelle du refus 429 présente');
+  const identity = ts.transpileModule(read('src/lib/scoringResultIdentity.ts'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  for (const previous of [[], [{ profile_id: 'candidate-b', finalScore: 88 }]]) {
+    const original = JSON.parse(JSON.stringify(previous));
+    const context = { exports: {}, allResults: previous, rateLimited: false, waveBatches: [[{ id: 'candidate-a' }]], j: 0 };
+    vm.runInNewContext(identity, context);
+    vm.runInNewContext('for (const attempt of [1]) ' + branch.getText(file), context);
+    assert.equal(context.rateLimited, true);
+    assert.deepEqual(context.allResults, original, 'le refus ne crée aucune note zéro ni résultat sans identité');
+    const profiles = [{ id: 'candidate-a' }, { id: 'candidate-b' }];
+    const verified = context.exports.matchScoringResultsById(profiles, context.allResults);
+    assert.deepEqual(verified.map(({ profile }) => profile.id), original.map(result => result.profile_id));
+    assert.ok(!verified.some(({ profile }) => profile.id === 'candidate-a'), 'le profil refusé reste sans note et peut être repris');
+  }
+  assert.match(src, /const matchedResults = matchScoringResultsById\(profilesToScore, allResults\)/);
+  assert.match(src, /matchedResults\.forEach\(\(\{ profile, result: rawResult \}\) =>/);
+  assert.match(src, /batchSaveScores\(realScoredProfiles\)/, 'seules les notes réelles vérifiées sont enregistrées');
 });
 
 test('0b-3 : une note n\'écrit plus le statut dans l\'upsert (N10, N11)', () => {
@@ -413,8 +436,8 @@ test('0b-2b : les envois du navigateur passent la mission (project_id)', () => {
   // Fil de la fiche : propriété projectId, passée au send_message.
   const thread = read('src/components/outreach/result-card/CardMessageThread.tsx');
   assert.match(thread, /projectId\?: string;/);
-  const threadSend = callbackBody(thread, 'handleSendReply');
-  assert.match(threadSend, /action: 'send_message',[\s\S]*project_id: projectId,/);
+  const threadSend = fnBody(thread, 'async function handleSendReply()');
+  assert.match(threadSend, /action: 'send_message',[\s\S]*project_id: projectId\b/);
   assert.match(read('src/components/outreach/result-card/CardExpandedContent.tsx'), /projectId=\{projectId\}/);
   const sheet = read('src/components/outreach/result-card/ProfileDetailSheet.tsx');
   assert.match(sheet, /projectId=\{missionIdOfJob\(activeProject\?\.id\)\}/);
@@ -611,6 +634,15 @@ function jcsWriteSites() {
     for (const m of code.matchAll(/(['"`])job_candidate_status\1/g)) {
       const head = code.slice(Math.max(0, m.index - 40), m.index);
       if (/\.from\(\s*$/.test(head) || /(?:Tables(?:Insert|Update)?<\s*|\[\s*['"]Tables['"]\s*\]\s*\[\s*)$/.test(head)) continue;
+      // Référence de provenance du lecteur de contexte : ce helper construit
+      // un objet source, sans requête ni écriture. Toutes ses vraies lectures
+      // `.from` restent contrôlées ci-dessus.
+      if (file === 'supabase/functions/_shared/candidate-actions/context.ts' && /if \(candidate\) add\(\s*$/.test(head)) {
+        const helper = code.slice(code.indexOf('const add = '), code.indexOf('if (candidate) add('));
+        assert.match(helper, /sources\.push\(/);
+        assert.doesNotMatch(helper, /\.(?:from|insert|update|upsert|delete)\(/);
+        continue;
+      }
       sites.push({ file, line: code.slice(0, m.index).split('\n').length, index: m.index, op: 'inconnue',
         payload: '', chain: '', keys: [], unresolved: ["nom de table hors d'un .from('…') littéral"], src: read(file) });
     }
@@ -663,6 +695,40 @@ const STAGE_WRITE_WHITELIST = [
       assert.deepEqual(s.keys, ['status'], 'N16 : aucune autre colonne de l\'étape');
       assert.match(s.payload, /status: 'untreated',/);
       assert.match(s.payload, /organization_id: /, 'N16 : organisation écrite (RLS)');
+    },
+  },
+  {
+    id: 'S6-note',
+    why: 'score-profile-job : note seule sur les statuts humains ; le résultat opaque est copié uniquement dans scoring_details, jamais au premier niveau de la mise à jour',
+    file: SCORE,
+    match: (s) => s.op === 'update' && s.payload.trim() === 'note',
+    check: (s) => {
+      assert.deepEqual(s.keys, [], 'S6-note : aucune colonne de l’étape');
+      // Le scanner descend dans scoring_details et résout le paramètre result
+      // depuis une déclaration homonyme hors de syncJobCandidateStatus. Le
+      // résultat reste une valeur JSON : seules les clés SQL de note comptent.
+      assert.deepEqual(s.unresolved, ['data.scoring_result as ScoringResult'],
+        'S6-note : seule la copie du résultat dans les détails est opaque');
+      const decl = declarationOf(s.src, 'note', s.index);
+      assert.ok(decl, 'S6-note : objet note relu');
+      const text = stripComments(decl.text).trim();
+      assert.match(text, /^\{[\s\S]*\}$/, 'S6-note : objet littéral seulement');
+      const fields = [];
+      for (let at = 1; at < text.length - 1;) {
+        const end = scanTo(text, at, ',');
+        const property = text.slice(at, end).trim();
+        if (property) {
+          const key = /^(score|recommendation|scoring_details|updated_at)(?:\s*:|\s*$)/.exec(property);
+          assert.ok(key, `S6-note : champ SQL ou décomposition non autorisé : ${property.slice(0, 60)}`);
+          fields.push(key[1]);
+        }
+        at = end + 1;
+      }
+      assert.deepEqual(fields.sort(), ['recommendation', 'score', 'scoring_details', 'updated_at'],
+        'S6-note : uniquement les quatre champs de la note');
+      assert.match(s.chain, /\.eq\('organization_id', organizationId\)/);
+      assert.match(s.chain, /\.not\('status', 'in', AI_REWRITABLE_IN\)/,
+        'S6-note : les statuts humains ne sont jamais réécrits');
     },
   },
   {

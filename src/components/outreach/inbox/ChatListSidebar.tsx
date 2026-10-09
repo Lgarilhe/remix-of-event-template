@@ -2,8 +2,10 @@
  * ChatListSidebar — colonne des conversations de la messagerie.
  *
  * Trois rangées avant la première conversation (revue design D-05, D-06) :
- * le titre, la recherche avec le bouton « Filtres », puis le tri visible
- * « Toutes / À répondre / En attente » (SegmentedControl, aria-pressed). Le
+ * le titre, la recherche avec le bouton « Filtres », puis les onglets
+ * « Toutes / À répondre / À relancer / En attente » (SegmentedControl,
+ * aria-pressed, compteurs des conversations actives, états de
+ * src/lib/inboxThreadState.ts). Le
  * statut (sommeil, archive), l'étiquette, la boîte d'origine et les non-lus
  * sont dans « Filtres », avec le nombre de filtres actifs.
  *
@@ -19,6 +21,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { ListFilter, MessageSquare, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ServiceLogo } from '@/components/ui/ServiceLogo';
+import { SERVICE_LABELS } from '@/lib/messagingServices';
+import type { MultichannelConversation } from '@/lib/multichannelInbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,9 +37,9 @@ import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
 import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
 import { useChatIntents } from '@/hooks/useChatIntents';
+import { RESPONSE_FILTER_STATE, type ResponseFilter, type ThreadCounts } from '@/lib/inboxThreadState';
 
 type StatusFilter = 'active' | 'snoozed' | 'archived' | 'all';
-type ResponseFilter = 'all' | 'waiting_candidate' | 'waiting_me';
 type SourceFilter = 'all' | 'classic' | 'recruiter';
 
 interface ChatListSidebarProps {
@@ -48,6 +54,13 @@ interface ChatListSidebarProps {
   sourceFilter: SourceFilter;
   categoryFilter: ChatCategory | 'all';
   responseFilter: ResponseFilter;
+  /** Conversations actives par état, pour les compteurs des onglets */
+  threadCounts: ThreadCounts;
+  /** Enregistrements e-mail/WhatsApp réels ; ils ne passent jamais dans les API LinkedIn. */
+  additionalConversations?: MultichannelConversation[];
+  selectedAdditionalKey?: string;
+  additionalError?: string | null;
+  onAdditionalSelect?: (conversation: MultichannelConversation) => void;
   /** Statut de mise en sommeil ou d'archive */
   statusFilter?: StatusFilter;
   onStatusFilterChange?: (filter: StatusFilter) => void;
@@ -106,6 +119,16 @@ const HeaderIconButton: React.FC<{
   </Tooltip>
 );
 
+/** Libellé d'onglet suivi de son compteur, écrit seulement s'il n'est pas nul. */
+const TabLabel: React.FC<{ text: string; count: number }> = ({ text, count }) =>
+  count > 0 ? (
+    <>
+      {text} <span className="tabular-nums text-muted-foreground">{count}</span>
+    </>
+  ) : (
+    <>{text}</>
+  );
+
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   chats,
   filteredChats,
@@ -117,6 +140,11 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   sourceFilter,
   categoryFilter,
   responseFilter,
+  threadCounts,
+  additionalConversations = [],
+  selectedAdditionalKey,
+  additionalError,
+  onAdditionalSelect,
   statusFilter = 'active',
   onStatusFilterChange,
   enrollmentsMap,
@@ -157,8 +185,6 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   const visibleAccountId = filteredChats[0]?.account_id || chats[0]?.account_id || null;
   const { data: intentsMap } = useChatIntents(filteredChats, visibleAccountId);
 
-  const waitingMeCount = chats.filter(c => c.last_message?.is_sender === false).length;
-
   // Filtres du menu « Filtres » (le tri visible et la recherche sont à part)
   const filterCount = [
     statusFilter !== 'active',
@@ -167,6 +193,13 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
     showUnreadOnly,
   ].filter(Boolean).length;
   const hasAnyFilter = filterCount > 0 || responseFilter !== 'all' || searchQuery.trim().length > 0;
+  const externalConversations = additionalConversations.filter(conversation => {
+    if (showUnreadOnly || categoryFilter !== 'all' || sourceFilter !== 'all' || !['active', 'all'].includes(statusFilter)) return false;
+    if (responseFilter !== 'all' && conversation.state !== RESPONSE_FILTER_STATE[responseFilter]) return false;
+    const text = [conversation.candidateName, conversation.projectName, conversation.latest.counterpart, conversation.latest.subject, conversation.latest.content].filter(Boolean).join(' ').toLowerCase();
+    return text.includes(searchQuery.toLowerCase().trim());
+  });
+  const totalConversations = chats.length + additionalConversations.length;
 
   const clearFilters = () => {
     onSearchChange('');
@@ -178,7 +211,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   };
 
   const renderList = () => {
-    if (loadingChats && chats.length === 0) {
+    if (loadingChats && totalConversations === 0) {
       return (
         <div className="space-y-1 p-2" role="status" aria-label="Chargement des conversations">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -196,7 +229,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       );
     }
 
-    if (chatsError && chats.length === 0) {
+    if ((chatsError || additionalError) && totalConversations === 0) {
       if (collapsed) return null;
       return (
         <div className="p-3">
@@ -211,16 +244,17 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       );
     }
 
-    if (filteredChats.length === 0) {
+    if (filteredChats.length === 0 && externalConversations.length === 0) {
       if (collapsed) return null;
-      if (chats.length === 0) {
+      if (totalConversations === 0 && !hasMoreChats) {
         return (
           <div className="p-3">
             <EmptyState
               variant="compact"
               icon={MessageSquare}
               title="Aucune conversation pour l'instant"
-              description="Les messages échangés avec vos candidats sur LinkedIn apparaîtront ici."
+              description="Les échanges LinkedIn, e-mail et WhatsApp avec vos candidats apparaîtront ici."
+              action={<Button asChild variant="outline" size="sm" className="min-h-11"><Link to="/settings/account/connections">Connecter un canal</Link></Button>}
             />
           </div>
         );
@@ -230,7 +264,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           <EmptyState
             variant="compact"
             icon={Search}
-            title={hasAnyFilter ? 'Aucune conversation ne correspond' : 'Aucune conversation active'}
+            title={hasMoreChats ? 'Aucune conversation dans la liste chargée' : hasAnyFilter ? 'Aucune conversation ne correspond' : 'Aucune conversation active'}
             description={
               hasAnyFilter
                 ? 'Modifiez la recherche ou les filtres pour élargir la liste.'
@@ -249,16 +283,16 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               )
             }
           />
-          {searchQuery && hasMoreChats && onLoadAllChats && (
+          {hasMoreChats && (searchQuery ? onLoadAllChats : onLoadMoreChats) && (
             <Button
               variant="ghost"
               size="sm"
-              className="w-full"
-              onClick={onLoadAllChats}
-              loading={loadingAllChats}
+              className="min-h-11 w-full"
+              onClick={searchQuery ? onLoadAllChats : onLoadMoreChats}
+              loading={loadingAllChats || loadingMoreChats}
             >
-              {!loadingAllChats && <Search aria-hidden="true" />}
-              {loadingAllChats ? 'Recherche en cours…' : 'Chercher dans toutes les conversations'}
+              {searchQuery && !loadingAllChats && <Search aria-hidden="true" />}
+              {loadingAllChats || loadingMoreChats ? 'Chargement…' : searchQuery ? 'Chercher dans toutes les conversations' : 'Charger plus de conversations'}
             </Button>
           )}
         </div>
@@ -267,32 +301,39 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
     return (
       <ul className="space-y-0.5 py-1" aria-label="Conversations">
-        {filteredChats.map(chat => (
-          <li key={chat.id}>
+        {[
+          ...filteredChats.map(chat => ({ kind: 'linkedin' as const, chat, time: Date.parse(chat.last_message?.timestamp || chat.timestamp || '') || 0 })),
+          ...externalConversations.map(conversation => ({ kind: 'external' as const, conversation, time: Date.parse(conversation.latest.occurred_at) || 0 })),
+        ].sort((a, b) => b.time - a.time).map(item => item.kind === 'linkedin' ? (
+          <li key={`linkedin-${item.chat.id}`}>
             <ChatListItem
-              chat={chat}
-              isSelected={selectedChat?.id === chat.id}
+              chat={item.chat}
+              isSelected={selectedChat?.id === item.chat.id}
               enrollmentsMap={enrollmentsMap}
-              category={categoriesMap.get(chat.id) || null}
+              category={categoriesMap.get(item.chat.id) || null}
               onSetCategory={onSetCategory}
-              onClick={() => onChatSelect(chat)}
+              onClick={() => onChatSelect(item.chat)}
               onDeleteChat={onDeleteChat}
               isDeletingChat={isDeletingChat}
               collapsed={collapsed}
-              intent={intentsMap?.get(chat.id)}
-              draft={drafts?.get(chat.id) ?? null}
+              intent={intentsMap?.get(item.chat.id)}
+              draft={drafts?.get(item.chat.id) ?? null}
             />
           </li>
-        ))}
+        ) : <li key={`external-${item.conversation.key}`}><Button variant="ghost" className={cn('h-auto min-h-20 w-full justify-start gap-3 whitespace-normal rounded-lg px-3 py-3 text-left', selectedAdditionalKey === item.conversation.key && 'bg-muted')} aria-label={`${item.conversation.candidateName} · ${SERVICE_LABELS[item.conversation.latest.service]} · ${item.conversation.projectName || (item.conversation.projectId ? 'Mission rattachée' : 'Mission non identifiée')} · ${item.conversation.latest.direction === 'inbound' ? item.conversation.latest.recipient : item.conversation.latest.sender}`} onClick={() => onAdditionalSelect?.(item.conversation)}>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-muted"><ServiceLogo service={item.conversation.latest.service} decorative /></span>
+          {!collapsed && <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-foreground">{item.conversation.candidateName}</span><span className="mt-1 block truncate text-xs font-normal text-foreground-secondary">{item.conversation.latest.direction === 'outbound' ? 'Envoyé : ' : ''}{item.conversation.latest.content}</span><span className="mt-1 block truncate text-xs font-normal text-muted-foreground">{SERVICE_LABELS[item.conversation.latest.service]} · {item.conversation.projectName || (item.conversation.ambiguousMission ? 'Mission à vérifier' : item.conversation.projectId ? 'Mission rattachée' : 'Mission non identifiée')}</span><span className="mt-1 block truncate text-xs font-normal text-muted-foreground">{item.conversation.latest.direction === 'inbound' ? item.conversation.latest.recipient : item.conversation.latest.sender}</span><span className="mt-1 block text-xs font-normal text-muted-foreground">{item.conversation.state === 'to_reply' ? 'À répondre' : item.conversation.state === 'to_follow_up' ? 'À relancer' : 'En attente'}</span></span>}
+        </Button></li>)}
         {!collapsed && hasMoreChats && (
           <li className="p-2">
+            <p className="px-2 pb-2 text-xs text-muted-foreground">Les compteurs portent sur les conversations chargées.</p>
             {searchQuery && onLoadAllChats ? (
-              <Button variant="ghost" size="sm" className="w-full" onClick={onLoadAllChats} loading={loadingAllChats}>
+              <Button variant="ghost" size="sm" className="min-h-11 w-full" onClick={onLoadAllChats} loading={loadingAllChats}>
                 {!loadingAllChats && <Search aria-hidden="true" />}
                 {loadingAllChats ? 'Recherche en cours…' : 'Chercher dans toutes les conversations'}
               </Button>
             ) : onLoadMoreChats ? (
-              <Button variant="outline" size="sm" className="w-full" onClick={onLoadMoreChats} loading={loadingMoreChats}>
+              <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={onLoadMoreChats} loading={loadingMoreChats}>
                 {loadingMoreChats ? 'Chargement…' : 'Charger plus de conversations'}
               </Button>
             ) : null}
@@ -307,8 +348,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       className={cn(
         'flex h-full min-h-0 flex-col overflow-hidden bg-background transition-[width] duration-200 ease-out',
         'w-full md:shrink-0 md:border-r md:border-border',
-        collapsed ? 'md:w-16' : 'md:w-[300px]',
-        selectedChat ? 'hidden md:flex' : 'flex',
+        collapsed ? 'md:w-16' : 'md:w-[320px] xl:w-[360px] 2xl:w-[380px]',
+        selectedChat || selectedAdditionalKey ? 'hidden md:flex' : 'flex',
       )}
     >
       <div className={cn('shrink-0 border-b border-border', collapsed ? 'px-2 py-3' : 'space-y-2.5 p-3')}>
@@ -411,24 +452,24 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               </FilterPill>
             </div>
 
-            {/* Tri visible : qui doit répondre */}
+            {/* Onglets : à qui est la main. Quatre options ne tiennent pas sur une ligne de 300 px : grille de deux colonnes. */}
             <SegmentedControl
               aria-label="Conversations affichées"
               variant="quiet"
+              className="grid w-full grid-cols-2"
               value={responseFilter}
               onValueChange={onResponseFilterChange}
               options={[
                 { value: 'all', label: 'Toutes' },
                 {
                   value: 'waiting_me',
-                  label: waitingMeCount > 0 ? (
-                    <>
-                      À répondre <span className="tabular-nums text-muted-foreground">{waitingMeCount}</span>
-                    </>
-                  ) : (
-                    'À répondre'
-                  ),
+                  label: <TabLabel text="À répondre" count={threadCounts.to_reply} />,
                   title: 'Le candidat a écrit le dernier message',
+                },
+                {
+                  value: 'to_follow_up',
+                  label: <TabLabel text="À relancer" count={threadCounts.to_follow_up} />,
+                  title: 'Sans réponse depuis trois jours ouvrés',
                 },
                 { value: 'waiting_candidate', label: 'En attente', title: 'Vous avez écrit le dernier message' },
               ]}
@@ -438,7 +479,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       </div>
 
       {/* Liste : un div natif défile, sans le display: table de ScrollArea */}
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">{renderList()}</div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">{additionalError && !collapsed && <div className="space-y-2 p-3" role="status"><p className="text-xs text-muted-foreground">{additionalError}</p><Button variant="outline" size="sm" className="min-h-11" disabled={loadingChats} onClick={onRefresh}>Réessayer les autres canaux</Button></div>}{chatsError && totalConversations > 0 && !collapsed && <div className="space-y-2 p-3" role="status"><p className="text-xs text-muted-foreground">Les conversations LinkedIn n’ont pas pu être actualisées.</p><Button variant="outline" size="sm" className="min-h-11" disabled={loadingChats} onClick={onRefresh}>Réessayer LinkedIn</Button></div>}{renderList()}</div>
     </div>
   );
 };

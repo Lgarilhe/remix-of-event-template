@@ -1,9 +1,13 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 type SupabaseClient = ReturnType<typeof createClient>;
-import { requireAuth } from "../_shared/require-auth.ts";
+import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
+import { createSourcingMemoryContext, loadSourcingMemoryContext, type SourcingMemoryContext } from "../_shared/sourcing-memory.ts";
+import { createScoringContextMetadata, parseScoringMemoryConflicts, type ScoringContextMetadata, type ScoringMemoryConflict } from "../_shared/scoring-context.ts";
+import { isExperienceRangeUncertain, type ExperienceAssessment } from "../_shared/profile-experience.ts";
+import { assertContinuousOperationContext } from "../_shared/continuous-sourcing.ts";
 
 
 const corsHeaders = {
@@ -40,7 +44,8 @@ interface ProfileData {
   workExperience?: WorkExperienceItem[];
   pastPositions?: string[];
   education?: string[];
-  yearsOfExperience?: number;
+  yearsOfExperience?: number | null;
+  experienceAssessment?: ExperienceAssessment;
   averageTenureMonths?: number | null;
   openToWork?: boolean;
   openProfile?: boolean;
@@ -87,6 +92,7 @@ interface JobData {
   } | null;
   skills: string[];
   requirements?: string;
+  sourcingCriteria?: string;
   description?: string;
   seniority?: string;
   location?: string;
@@ -208,6 +214,7 @@ interface DimensionScore {
 }
 
 interface ScoringResult {
+  scoringContext?: ScoringContextMetadata;
   profile_id?: string;
   name: string;
   score: number;
@@ -1204,6 +1211,11 @@ function getRecommendation(score: number): string {
 
 // ─── Layer 1: Hard Filters (cheapest first, AI last) ─────────────────────────
 
+function hasKnownExperience(profile: ProfileData): profile is ProfileData & { yearsOfExperience: number } {
+  return typeof profile.yearsOfExperience === 'number' && Number.isFinite(profile.yearsOfExperience) && profile.yearsOfExperience >= 0
+    && (!profile.experienceAssessment || (profile.experienceAssessment.source === 'work' && profile.experienceAssessment.complete));
+}
+
 async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
   // 0. RGPD: candidate opted out of AI scoring
   if (profile.noAiScoring) {
@@ -1211,8 +1223,8 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
   }
 
   // 1. Minimum experience check (FREE — no API call)
-  if (job.xpMin && profile.yearsOfExperience !== undefined) {
-    if (profile.yearsOfExperience < job.xpMin * 0.75) {
+  if (job.xpMin && hasKnownExperience(profile)) {
+    if ((profile.experienceAssessment?.upperYears ?? profile.yearsOfExperience) < job.xpMin * 0.75) {
       return {
         passed: false,
         reason: `XP insuffisante: ${profile.yearsOfExperience}ans vs ${job.xpMin}ans min requis`,
@@ -1258,7 +1270,7 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
   }
 
   // 3. Location hard filter for on-site roles (FREE)
-  if (job.location && job.remote && !["full", "full remote", "remote"].includes(job.remote.toLowerCase())) {
+  if (job.location && job.remote && !["full", "full remote", "full_remote", "remote"].includes(job.remote.toLowerCase())) {
     if (profile.location) {
       const jobLoc = job.location.toLowerCase();
       const profLoc = profile.location.toLowerCase();
@@ -1295,33 +1307,8 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
     }
   }
 
-  // 4. Must-have basic keyword check (safety net when LLM is skipped/fails)
-  // The main LLM call evaluates must-have in detail, but if LLM is unavailable,
-  // this basic check catches obvious mismatches using keyword presence.
-  if (job.mustHave && job.mustHave.trim().length > 0) {
-    const mustHaveTerms = job.mustHave.toLowerCase()
-      .split(/[,;+&]/)
-      .map(t => t.trim())
-      .filter(t => t.length >= 3);
-
-    if (mustHaveTerms.length > 0) {
-      const profileText = [
-        profile.headline || '',
-        profile.summary || '',
-        ...(profile.skills || []).map((s: any) => typeof s === 'string' ? s : s.name || ''),
-        ...(profile.workExperience || []).map((w: any) => `${w.title || ''} ${w.description || ''}`),
-      ].join(' ').toLowerCase();
-
-      // Check if at least ONE must-have term is found anywhere in the profile
-      const anyMatch = mustHaveTerms.some(term => profileText.includes(term));
-      if (!anyMatch) {
-        return {
-          passed: false,
-          reason: `Must-have non détecté dans le profil: "${job.mustHave.slice(0, 100)}" (vérification par mots-clés)`,
-        };
-      }
-    }
-  }
+  // A missing keyword is missing evidence, not a contradiction. The model
+  // assesses usage, synonyms and incomplete profiles instead of rejecting here.
 
   return { passed: true };
 }
@@ -1367,7 +1354,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const { matched, missing } = computeSkillMatch(profileSkills, allJobSkills);
 
   // --- Seniority / XP (weight: 35%) ---
-  if (profile.yearsOfExperience !== undefined && (job.xpMin || job.xpMax)) {
+  if (hasKnownExperience(profile) && !isExperienceRangeUncertain(profile.experienceAssessment, job.xpMin ?? null, job.xpMax ?? null) && (job.xpMin || job.xpMax)) {
     const xpMin = job.xpMin || 0;
     const xpMax = job.xpMax || xpMin + 5;
     const xp = profile.yearsOfExperience;
@@ -1387,7 +1374,8 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
     };
   } else {
     dimensions.seniority = { score: 50, weight: 35, details: "Données XP incomplètes" };
-    if (profile.yearsOfExperience === undefined) missingDataPoints.push("candidate_xp");
+    if (!hasKnownExperience(profile)) missingDataPoints.push("candidate_xp");
+    else if (isExperienceRangeUncertain(profile.experienceAssessment, job.xpMin ?? null, job.xpMax ?? null)) missingDataPoints.push("candidate_xp_precision");
     if (!job.xpMin && !job.xpMax) missingDataPoints.push("job_xp_range");
   }
 
@@ -1657,7 +1645,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   // tout le monde → badge "XP à vérifier" / "Localisation ?" affichés à tort
   // sur 100% des profils. Bug silencieux mais visuel sur chaque card.
   let experienceMatchKind: WeightedResult["experienceMatchKind"] = "incertain";
-  if (profile.yearsOfExperience !== undefined && (job.xpMin || job.xpMax)) {
+  if (hasKnownExperience(profile) && !isExperienceRangeUncertain(profile.experienceAssessment, job.xpMin ?? null, job.xpMax ?? null) && (job.xpMin || job.xpMax)) {
     const xp = profile.yearsOfExperience;
     const xpMin = job.xpMin || 0;
     const xpMax = job.xpMax || xpMin + 5;
@@ -1720,6 +1708,7 @@ async function getSemanticScore(supabase: ReturnType<typeof createClient>, candi
 // skills, and context natively across ALL professions and industries.
 
 interface LLMResult {
+  memoryReview?: { valid: boolean; conflicts: ScoringMemoryConflict[] };
   overallScore: number;
   techFitScore: number;
   softSkillsScore: number;
@@ -1780,7 +1769,7 @@ interface BatchLLMInput {
  * Marked with cache_control on the API → second cache breakpoint after the
  * system prompt. Reused for free across batches of the same job within 5min.
  */
-function buildJobContext(job: JobData, customScoringInstructions?: string): string {
+function buildJobContext(job: JobData, customScoringInstructions?: string, memoryContext?: SourcingMemoryContext): string {
   // ─── Critères d'évaluation structurés (Sprint D) ─────────────────────
   // Avant : envoyés en texte libre via bodyContent. Le LLM ne voyait pas la
   // structure (weight, deal_breaker, level_10/level_1) — devait inférer.
@@ -1959,7 +1948,10 @@ ${job.transversalCriteria?.context ? "Contexte client : " + job.transversalCrite
 ${job.transversalCriteria?.must ? "Critères transversaux obligatoires : " + job.transversalCriteria.must : ""}${targetCompaniesBlock}${weightsBlock}${criteriaBlock}${calibrationBlock}${pedigreeBlock}${competitorsBlock}
 ${job.bodyContent ? "\nCritères additionnels (texte libre) :\n" + job.bodyContent.substring(0, 1500) : ""}
 ${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
-${customScoringInstructions ? "\nConsignes supplémentaires : " + customScoringInstructions.slice(0, 400) : ""}`
+${customScoringInstructions ? "\nConsignes supplémentaires : " + customScoringInstructions.slice(0, 2000) : ""}
+${job.sourcingCriteria ? "\nDemande complète de sourcing : " + job.sourcingCriteria.slice(0, 10000) : ""}
+${memoryContext?.prompt || ""}
+${memoryContext?.memories.length ? `\nREVUE DE MÉMOIRE OBLIGATOIRE : chaque objet JSON doit inclure memory_conflicts: [] si aucun conflit, ou [{"memory_ids":["id connu"],"reason":"conflit précis avec le brief ou une autre mémoire"}]. Signale les contradictions AVANT de noter. Ne résous jamais en silence une contrainte de mission/organisation opposée au brief explicite. Une préférence ne devient ni une exclusion ni un must-have. Une donnée absente du profil reste à vérifier : aucune absence de mot-clé ne prouve un échec.` : ""}`
   );
 }
 
@@ -2055,7 +2047,7 @@ function buildProfileSection(profile: ProfileData, preComputedData: BatchLLMInpu
     `--- CANDIDAT ${idx + 1} (id: ${profile.id}) ---
 ${profile.name} — ${profile.headline || profile.currentRole || "?"}${dataWarning}
 ${profile.location ? "📍 " + profile.location : ""}
-${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}${profile.averageTenureMonths ? ` | Tenure moy: ${Math.round(profile.averageTenureMonths)} mois` : ''}
+${hasKnownExperience(profile) ? "XP: " + (profile.experienceAssessment?.approximate ? "environ " : "") + profile.yearsOfExperience + " ans travaillés (périodes sans double compte)" : "XP: à vérifier"}${profile.experienceAssessment?.educationYear ? ` | Formation terminée en ${profile.experienceAssessment.educationYear} : ancienneté depuis formation, durée travaillée inconnue` : ''}${profile.experienceAssessment?.source === 'work' && !profile.experienceAssessment.complete ? ' | Parcours partiellement daté : ne pas déduire une insuffisance XP' : ''}${profile.averageTenureMonths ? ` | Tenure moy: ${Math.round(profile.averageTenureMonths)} mois` : ''}
 Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
 Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
 Skills déclarés: ${skillsLine}
@@ -2079,11 +2071,13 @@ async function callLLM(
   preComputedData: BatchLLMInput["preComputedData"],
   customScoringInstructions?: string,
   modelOverride?: string,
+  memoryContext?: SourcingMemoryContext,
+  beforePaidCall?: () => Promise<void>,
 ): Promise<LLMResult> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
-  const jobContext = buildJobContext(job, customScoringInstructions);
+  const jobContext = buildJobContext(job, customScoringInstructions, memoryContext);
   const profileSection = buildProfileSection(profile, preComputedData, 0);
   const profileBlock = `=== 1 CANDIDAT À ÉVALUER ===
 
@@ -2101,6 +2095,7 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
       console.log(`[llm] Retry ${attempt} for ${profile.name} after ${backoffMs}ms`);
     }
 
+    if (beforePaidCall) await beforePaidCall();
     const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -2152,6 +2147,7 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
   const parsed = extractJsonRobust(rawContent);
 
   return {
+    memoryReview: memoryContext ? parseScoringMemoryConflicts(parsed.memory_conflicts, memoryContext) : { valid: true, conflicts: [] },
     overallScore: parsed.overallScore ?? parsed.softSkillsScore ?? 50,
     techFitScore: parsed.techFitScore ?? 50,
     softSkillsScore: parsed.softSkillsScore ?? 50,
@@ -2211,13 +2207,15 @@ async function callLLMBatch(
   job: JobData,
   customScoringInstructions?: string,
   modelOverride?: string,
+  memoryContext?: SourcingMemoryContext,
+  beforePaidCall?: () => Promise<void>,
 ): Promise<Map<string, LLMResult>> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
   if (inputs.length === 0) return new Map();
 
-  const jobContext = buildJobContext(job, customScoringInstructions);
+  const jobContext = buildJobContext(job, customScoringInstructions, memoryContext);
   const profileSections = inputs.map(({ profile, preComputedData }, idx) =>
     buildProfileSection(profile, preComputedData, idx)
   ).join("\n\n");
@@ -2230,7 +2228,7 @@ async function callLLMBatch(
 
 ${profileSections}
 
-Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre, chaque objet inclut "id". Format défini dans le system prompt.`;
+Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat, chaque objet inclut exactement son "id" fourni ci-dessus, sans omission ni doublon. Format défini dans le system prompt.`;
 
   console.log(`[llm-batch] Scoring ${inputs.length} profiles in single call`);
 
@@ -2244,6 +2242,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
       console.log(`[llm-batch] Retry ${attempt} after ${backoffMs}ms`);
     }
 
+    if (beforePaidCall) await beforePaidCall();
     const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -2360,15 +2359,24 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
   };
 
   const resultMap = new Map<string, LLMResult>();
+  const responseCounts = new Map<string, number>();
+  const inputCounts = new Map<string, number>();
+  for (const parsed of parsedArray) {
+    if (parsed && typeof parsed.id === 'string') responseCounts.set(parsed.id, (responseCounts.get(parsed.id) || 0) + 1);
+  }
+  for (const input of inputs) inputCounts.set(input.profile.id, (inputCounts.get(input.profile.id) || 0) + 1);
 
   for (let i = 0; i < inputs.length; i++) {
-    const parsed = parsedArray[i] || parsedArray.find((p: any) => p.id === inputs[i].profile.id);
+    const id = inputs[i].profile.id;
+    const parsed = inputCounts.get(id) === 1 && responseCounts.get(id) === 1
+      ? parsedArray.find((p: any) => p && p.id === id) : null;
     if (!parsed) {
       console.warn(`[llm-batch] Missing result for profile ${inputs[i].profile.name} (index ${i})`);
       continue;
     }
 
     resultMap.set(inputs[i].profile.id, {
+      memoryReview: memoryContext ? parseScoringMemoryConflicts(parsed.memory_conflicts, memoryContext) : { valid: true, conflicts: [] },
       overallScore: parsed.overallScore ?? 50,
       techFitScore: parsed.techFitScore ?? 50,
       softSkillsScore: parsed.softSkillsScore ?? 50,
@@ -2481,6 +2489,7 @@ async function getCachedScore(
   candidateId: string,
   jobId: string,
   organizationId: string | null,
+  contextFingerprint: string,
 ): Promise<ScoringResult | null> {
   if (!organizationId) return null;
   try {
@@ -2503,7 +2512,7 @@ async function getCachedScore(
     const result = data.scoring_result as ScoringResult;
     // Score dégradé (entrée héritée d'avant le fix) → cache miss pour re-tenter
     // la passe LLM au prochain scoring.
-    if (isDegradedResult(result)) return null;
+    if (isDegradedResult(result) || result.scoringContext?.fingerprint !== contextFingerprint) return null;
 
     return result;
   } catch {
@@ -2578,22 +2587,35 @@ async function syncJobCandidateStatus(
     return;
   }
   try {
+    const recommendations: Record<string, string> = {
+      STRONG_MATCH: 'go', GOOD_MATCH: 'go', POSSIBLE_MATCH: 'maybe',
+      WEAK_MATCH: 'skip', NO_MATCH: 'skip', ERROR: 'skip',
+    };
+    const recommendation = recommendations[result.recommendation] || result.recommendation;
     const note = {
       score: result.finalScore,
-      recommendation: result.recommendation,
+      recommendation,
       scoring_details: {
-        summary: result.summary,
-        strengths: result.strengths,
-        concerns: result.concerns,
-        missingSkills: result.missingSkills,
-        matchedSkills: result.matchedSkills,
-        dimensions: result.dimensions,
-        confidenceScore: result.confidenceScore,
-        llmScore: result.llmScore,
-        weightedCriteriaScore: result.weightedCriteriaScore,
-        semanticScore: result.semanticScore,
-        hardFilterPassed: result.hardFilterPassed,
-        scoringDepth: result.scoringDepth,
+        // Background scores reload through the same JobMatchResult shape as
+        // browser scores. Keep the server inputs/provenance, never invent a
+        // browser clientContextKey to make an old evaluation look current.
+        ...result,
+        profile_name: result.name,
+        match_score: result.finalScore,
+        recommendation,
+        matching_skills: result.matchedSkills || [],
+        missing_skills: result.missingSkills || [],
+        experience_match: result.experienceMatchKind || 'incertain',
+        location_match: result.locationMatchKind === 'compatible' || result.locationMatchKind === 'remote_ok',
+        scoring_details: {
+          strengths: result.strengths, concerns: result.concerns,
+          seniorityMatch: result.seniorityMatch, tenureAnalysis: result.tenureAnalysis,
+          receptivityScore: result.receptivityScore,
+          foreignDiplomaRisk: result.internationalExperienceValidation || 'none',
+          locationCompatibility: result.locationCompatibility || 'unknown',
+          candidatePreferencesConflict: result.candidatePreferencesConflict,
+          contractMismatch: result.contractMismatch, skipReason: result.skipReason,
+        },
       },
       updated_at: new Date().toISOString(),
     };
@@ -3158,6 +3180,12 @@ Deno.serve(async (req) => {
     // c'est le userId du JWT qui fait foi (anti-usurpation). Sert à l'imputation
     // des crédits, au contexte org (cache enrichment) et rien d'autre.
     const isServiceRole = auth.method === "service_role";
+    // Continuous sourcing stores proposals through a fenced lease of its own.
+    // It must not enqueue visits on another account, sync pipeline notes, or
+    // publish a result after the recruiter pauses the agent. Browser callers
+    // cannot enable this internal, read-only scoring mode.
+    const isContinuousSourcing = isServiceRole && body.continuous_agent_run === true;
+    const requestedOrgId = typeof body.organization_id === "string" ? body.organization_id : null;
     const trustedOrgId = (isServiceRole && typeof (body as any).organization_id === "string")
       ? (body as any).organization_id as string
       : null;
@@ -3251,16 +3279,43 @@ Deno.serve(async (req) => {
     const supabaseKey = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    const assertContinuousLease = async (): Promise<void> => {
+      if (!isContinuousSourcing) return;
+      const { data, error } = await supabase.rpc('sourcing_agent_assert_lease', {
+        p_agent_id: body.continuous_agent_id,
+        p_lease_token: body.continuous_lease_token,
+      });
+      const agent = Array.isArray(data) ? data[0] : data;
+      if (error || !agent || !body.continuous_context_key
+        || agent.context_snapshot?.context_key !== body.continuous_context_key
+        || agent.organization_id !== trustedOrgId || agent.created_by !== effectiveUserId
+        || agent.project_id !== body.project_id) {
+        throw new Error('AGENT_LEASE_CHANGED');
+      }
+      await assertContinuousOperationContext(supabase, agent);
+      // A pause can commit while the live brief and memory reads are pending.
+      // Keep the lease RPC as the last awaited guard before the provider call.
+      const latest = await supabase.rpc('sourcing_agent_assert_lease', {
+        p_agent_id: body.continuous_agent_id,
+        p_lease_token: body.continuous_lease_token,
+      });
+      const currentAgent = Array.isArray(latest.data) ? latest.data[0] : latest.data;
+      if (latest.error || !currentAgent || currentAgent.context_snapshot?.context_key !== body.continuous_context_key) {
+        throw new Error('AGENT_LEASE_CHANGED');
+      }
+    };
+    await assertContinuousLease();
+
     // ─── Enrichment Context Setup ──────────────────────────────────────────────
     // Enrichment happens AFTER hard filter pass (inside the preScored loop).
     // This avoids wasting get_profile calls on profiles that would be eliminated.
     const ENRICHMENT_DAILY_LIMIT = 500;
     // Resolve Unipile credentials from org_integrations with env fallback
     let resolvedUnipile: { apiKey: string; dsn: string } | null = null;
-    let resolvedOrgId: string | null = null;
+    let resolvedOrgId: string | null = trustedOrgId ?? requestedOrgId;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      resolvedOrgId = trustedOrgId ?? (effectiveUserId ? await resolveOrgIdFromUser(effectiveUserId, supabase as any) : null);
+      resolvedOrgId = resolvedOrgId ?? (effectiveUserId ? await resolveOrgIdFromUser(effectiveUserId, supabase as any) : null);
       resolvedUnipile = await resolveUnipileCredentials(resolvedOrgId, supabase as any);
     } catch (e) {
       console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
@@ -3271,6 +3326,17 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (requestedOrgId && (!effectiveUserId || !await verifyOrgMembership(supabase, effectiveUserId, requestedOrgId))) {
+      return new Response(JSON.stringify({ error: "Cet espace de recherche n’est pas accessible." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (effectiveUserId && !resolvedOrgId) {
+      return new Response(JSON.stringify({ error: "L’espace de recherche n’a pas pu être vérifié.", error_code: 'MEMORY_CONTEXT_UNAVAILABLE' }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // C1 (R8) : un poste de mission (« project:<uuid> » ou l'uuid de la
     // mission) ne se note que depuis l'organisation de la mission, ou par un
     // membre de son équipe. Sans ce contrôle, un membre d'une autre
@@ -3279,7 +3345,7 @@ Deno.serve(async (req) => {
     // restent bornés à l'organisation de l'appelant.
     const JOB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const rawJobProjectId = job.id.startsWith("project:") ? job.id.slice("project:".length) : job.id;
-    const jobProjectId = JOB_UUID_RE.test(rawJobProjectId) ? rawJobProjectId : null;
+    let jobProjectId = JOB_UUID_RE.test(rawJobProjectId) ? rawJobProjectId : null;
     if (jobProjectId) {
       const { data: jobProject, error: jobProjectError } = await supabase
         .from("sourcing_projects")
@@ -3292,6 +3358,16 @@ Deno.serve(async (req) => {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+      if (!jobProject) {
+        if (job.id.startsWith('project:')) {
+          return new Response(JSON.stringify({ error: "Cette mission n’est plus accessible." }), {
+            status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // A legacy external job can also have a UUID. It is not a mission
+        // and cannot borrow another project's memory context.
+        jobProjectId = null;
       }
       if (jobProject && jobProject.organization_id !== resolvedOrgId) {
         const { data: teamRows } = effectiveUserId
@@ -3311,9 +3387,65 @@ Deno.serve(async (req) => {
       }
     }
 
+    const requestedProjectId = typeof body.project_id === "string" ? body.project_id : null;
+    if (requestedProjectId && jobProjectId && requestedProjectId !== jobProjectId) {
+      return new Response(JSON.stringify({ error: "La mission ne correspond pas au contexte d’évaluation." }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    let memoryContext: SourcingMemoryContext;
+    let scoringMemoryClient: SupabaseClient | null = null;
+    try {
+      if (resolvedOrgId) {
+        if (!effectiveUserId) throw new Error("Missing memory actor");
+        scoringMemoryClient = isServiceRole ? supabase : createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+          global: { headers: { Authorization: req.headers.get("authorization") || "" } },
+          auth: { persistSession: false },
+        });
+        memoryContext = await loadSourcingMemoryContext(scoringMemoryClient, {
+          userId: effectiveUserId, organizationId: resolvedOrgId,
+          projectId: requestedProjectId ?? jobProjectId, effect: 'scoring', serviceRole: isServiceRole,
+        });
+      } else {
+        memoryContext = await createSourcingMemoryContext([], 'scoring');
+      }
+    } catch (error) {
+      console.error('[score-profile-job] Memory context unavailable', error);
+      const permissionDenied = Boolean(error && typeof error === 'object' && 'code' in error && error.code === '42501');
+      return new Response(JSON.stringify({ error: permissionDenied
+        ? "Vous n’avez pas accès aux règles de mémoire de cette mission dans l’espace actif."
+        : "Les règles de mémoire n’ont pas pu être vérifiées. Rechargez la recherche.", error_code: 'MEMORY_CONTEXT_UNAVAILABLE' }), {
+        status: permissionDenied ? 403 : 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (typeof body.expected_memory_version_key === 'string' && body.expected_memory_version_key !== memoryContext.versionKey) {
+      return new Response(JSON.stringify({ error: "Les règles de mémoire ont changé. Rechargez la recherche avant de réévaluer.", error_code: 'MEMORY_CONTEXT_CHANGED' }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const scoringContext = await createScoringContextMetadata(job, customScoringInstructions, CLAUDE_MODEL, memoryContext, {
+      organizationId: resolvedOrgId, projectId: requestedProjectId ?? jobProjectId, requestModel: aiParams.modelId,
+    });
+    const isScoringMemoryCurrent = async (): Promise<boolean> => {
+      if (!scoringMemoryClient || !effectiveUserId || !resolvedOrgId) return true;
+      try {
+        const latestMemory = await loadSourcingMemoryContext(scoringMemoryClient, {
+          userId: effectiveUserId, organizationId: resolvedOrgId,
+          projectId: requestedProjectId ?? jobProjectId, effect: 'scoring', serviceRole: isServiceRole,
+        });
+        return latestMemory.fingerprint === memoryContext.fingerprint;
+      } catch {
+        return false;
+      }
+    };
+    const memoryContextChangedResponse = (): Response => new Response(JSON.stringify({ success: false,
+      error: "Les règles de mémoire ont changé pendant l’évaluation. Rechargez la recherche avant de réévaluer.",
+      error_code: 'MEMORY_CONTEXT_CHANGED', memory_conflicts: [], scoringContext,
+    }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     let enrichmentCtx: EnrichmentContext | null = null;
 
-    if (accountId && resolvedUnipile) {
+    if (!isContinuousSourcing && accountId && resolvedUnipile) {
       const today = new Date().toISOString().split("T")[0];
       const countKey = `enrichment_count_${today}`;
       const { data: countRow } = await supabase
@@ -3380,15 +3512,19 @@ Deno.serve(async (req) => {
 
       // Mode deep : on ignore le cache (le but est justement de re-scorer avec
       // le profil complet fraîchement récupéré).
-      const cached = isDeepScoring ? null : await getCachedScore(supabase, candidateId, job.id, resolvedOrgId);
+      const cached = isDeepScoring || p.noAiScoring ? null : await getCachedScore(supabase, candidateId, job.id, resolvedOrgId, scoringContext.fingerprint);
       if (cached) {
         console.log(`[cache] HIT for ${p.name} → score=${cached.finalScore}`);
         return { profile: p, startTime, cached, needsLLM: false };
       }
 
-      const hardFilterResult = await applyHardFilters(p, job);
+      // With memories, evaluate the brief and decisions together before applying
+      // any criterion. Privacy opposition still prevents all model evaluation.
+      const hardFilterResult = memoryContext.memories.length && !p.noAiScoring
+        ? { passed: true } : await applyHardFilters(p, job);
       if (!hardFilterResult.passed) {
         const koResult: ScoringResult = {
+          scoringContext,
           name: p.name,
           score: 0,
           recommendation: "NO_MATCH",
@@ -3411,7 +3547,6 @@ Deno.serve(async (req) => {
           processingTimeMs: Date.now() - startTime,
           tokensUsed: null,
         };
-        await setCachedScore(supabase, candidateId, job.id, koResult, resolvedOrgId);
         return { profile: p, startTime, hardFilterResult: { passed: false, result: koResult }, needsLLM: false };
       }
 
@@ -3421,8 +3556,8 @@ Deno.serve(async (req) => {
     const passing = stageA.filter(ps => ps.needsLLM);
 
     // Garde crédits : après l'étape A, avant l'étape B.
-    // L'étape A (cache + filtres durs) ne consomme aucun token et écrit déjà
-    // ses résultats en base : la placer sous le garde ferait payer un chemin
+    // L'étape A (cache + filtres durs) ne consomme aucun token :
+    // la placer sous le garde ferait payer un chemin
     // gratuit. L'étape B pousse les profils dans profile_enrichment_queue, où
     // le worker les consommera : garder plus bas laissait ces lignes de file
     // écrites pour un lot jamais noté.
@@ -3450,6 +3585,12 @@ Deno.serve(async (req) => {
         adminClient: supabase,
       });
 
+      if (isContinuousSourcing && gate.remaining === null) {
+        return new Response(JSON.stringify({ error: 'Le solde de crédits n’a pas pu être vérifié.', error_code: 'CREDITS_UNAVAILABLE' }), {
+          status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       if (!gate.ok) {
         // Refus : 200 avec ce que l'étape A a produit, pas 402. Un 402
         // perdrait aussi les profils servis par le cache et ceux éliminés par
@@ -3457,12 +3598,9 @@ Deno.serve(async (req) => {
         // l'arrêt et le nombre de profils restés sans note.
         const servedResults: ScoringResult[] = [];
         let servedHardFiltered = 0;
-        for (const ps of stageA) {
+        for (const ps of isContinuousSourcing ? [] : stageA) {
           if (ps.cached) {
             servedResults.push({ ...ps.cached, profile_id: ps.profile.id });
-            // Même resynchronisation que le chemin nominal : la ligne du
-            // demandeur peut avoir score NULL alors que le cache est frais.
-            await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
           } else if (ps.hardFilterResult?.result) {
             servedResults.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
             servedHardFiltered++;
@@ -3474,6 +3612,14 @@ Deno.serve(async (req) => {
         // passe pas par ce garde), donc la forme « lot » ci-dessous ne répond
         // jamais à une requête qui attend { result }.
         if (servedResults.length === 0) return creditGateResponse(gate, corsHeaders);
+
+        // Cached and deterministic notes are free, but still belong to a
+        // verified memory version. Never sync/write them after that version changes.
+        if (!await isScoringMemoryCurrent()) return memoryContextChangedResponse();
+        for (const ps of stageA) {
+          if (ps.cached) await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
+          else if (ps.hardFilterResult?.result) await setCachedScore(supabase, ps.profile.id, job.id, ps.hardFilterResult.result, resolvedOrgId);
+        }
 
         const servedAvg = Math.round(
           servedResults.reduce((sum, r) => sum + r.finalScore, 0) / servedResults.length,
@@ -3562,7 +3708,7 @@ Deno.serve(async (req) => {
       for (let i = 0; i < batchInputs.length; i += LLM_BATCH_SIZE) {
         const subBatch = batchInputs.slice(i, i + LLM_BATCH_SIZE);
         try {
-          const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, CLAUDE_MODEL);
+          const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, CLAUDE_MODEL, memoryContext, assertContinuousLease);
           for (const [k, v] of subMap) {
             llmResultMap.set(k, v);
             firstPassTokensInput += v.tokensUsed.input;
@@ -3587,7 +3733,7 @@ Deno.serve(async (req) => {
         if (!llmResultMap.has(input.profile.id)) {
           try {
             console.log(`[scoring] Fallback individual LLM for ${input.profile.name}`);
-            const result = await callLLM(input.profile, job, input.preComputedData, customScoringInstructions, CLAUDE_MODEL);
+            const result = await callLLM(input.profile, job, input.preComputedData, customScoringInstructions, CLAUDE_MODEL, memoryContext, assertContinuousLease);
             llmResultMap.set(input.profile.id, result);
             firstPassTokensInput += result.tokensUsed.input;
             firstPassTokensOutput += result.tokensUsed.output;
@@ -3605,7 +3751,7 @@ Deno.serve(async (req) => {
         const toEscalate: BatchLLMInput[] = [];
         for (const input of batchInputs) {
           const r = llmResultMap.get(input.profile.id);
-          if (!r) continue;
+          if (!r || !r.memoryReview?.valid || r.memoryReview.conflicts.length) continue;
           // Critères d'escalation (étendus Sprint C) :
           // 1. Score borderline 50-75 → zone d'hésitation, le modèle plus
           //    nuancé peut trancher mieux (faux positif vs faux négatif).
@@ -3630,7 +3776,7 @@ Deno.serve(async (req) => {
           for (let i = 0; i < toEscalate.length; i += ESC_BATCH_SIZE) {
             const subBatch = toEscalate.slice(i, i + ESC_BATCH_SIZE);
             try {
-              const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, ESCALATION_MODEL);
+              const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, ESCALATION_MODEL, memoryContext, assertContinuousLease);
               for (const [k, v] of subMap) {
                 // Conserve la SOMME des tokens (1ère passe + escalation) dans
                 // le scoring_result du candidat (vérité métier sur le coût total
@@ -3660,13 +3806,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Recheck every result path, including cache-only and privacy/hard-filter
+    // notes, before any cache or candidate-status write. No model retry or charge.
+    let continuousLeaseChanged = false;
+    try { await assertContinuousLease(); } catch { continuousLeaseChanged = true; }
+    const memoryContextChanged = !await isScoringMemoryCurrent();
+    const memoryReviewIncomplete = memoryContext.memories.length > 0 && batchInputs.some(input =>
+      !llmResultMap.get(input.profile.id)?.memoryReview?.valid);
+    const memoryConflicts = [...llmResultMap.values()].flatMap(result => result.memoryReview?.conflicts ?? []);
+    const memoryReviewBlocked = continuousLeaseChanged || memoryContextChanged || memoryReviewIncomplete || memoryConflicts.length > 0;
+
     // Phase 3: Combine and build final results (always include profile_id for safe matching)
     // Note: les tokens facturables sont DEJA accumulés en phase 2 dans
     // firstPassTokensInput/Output et escalatedTokensInput/Output. On ne
     // re-compte PAS depuis llmResult.tokensUsed ici (sinon double comptage).
     // Les cached results ne consomment AUCUN token cette fois (bug fix :
     // avant on re-facturait les cache hits, ce qui faisait payer 2 fois).
-    for (const ps of preScored) {
+    for (const ps of memoryReviewBlocked ? [] : preScored) {
       // Cached results — pas de tokens facturables (déjà settled à l'origine).
       // On resynchronise quand même job_candidate_status : la ligne du
       // demandeur peut avoir score NULL alors que le cache est frais (ré-ajout
@@ -3674,12 +3830,13 @@ Deno.serve(async (req) => {
       // boucle sur ces profils.
       if (ps.cached) {
         results.push({ ...ps.cached, profile_id: ps.profile.id });
-        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
+        if (!isContinuousSourcing) await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
         continue;
       }
 
       // Hard-filtered results
       if (ps.hardFilterResult?.result) {
+        if (!isContinuousSourcing) await setCachedScore(supabase, ps.profile.id, job.id, ps.hardFilterResult.result, resolvedOrgId);
         results.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
         hardFilteredCount++;
         llmSkippedCount++;
@@ -3697,6 +3854,7 @@ Deno.serve(async (req) => {
         // Must-have KO check
         if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
           const koResult: ScoringResult = {
+            scoringContext,
             profile_id: ps.profile.id,
             name: ps.profile.name,
             score: 0,
@@ -3721,7 +3879,7 @@ Deno.serve(async (req) => {
             tokensUsed: llmResult.tokensUsed,
             skipReason: llmResult.mustHaveDetails,
           };
-          await setCachedScore(supabase, ps.profile.id, job.id, koResult, resolvedOrgId);
+          if (!isContinuousSourcing) await setCachedScore(supabase, ps.profile.id, job.id, koResult, resolvedOrgId);
           results.push(koResult);
           hardFilteredCount++;
           continue;
@@ -3822,6 +3980,7 @@ Deno.serve(async (req) => {
       }
 
       const result: ScoringResult = {
+        scoringContext,
         profile_id: ps.profile.id,
         name: ps.profile.name,
         score: finalScore,
@@ -3888,7 +4047,7 @@ Deno.serve(async (req) => {
         tokensUsed: llmResult?.tokensUsed ?? null,
       };
 
-      await setCachedScore(supabase, ps.profile.id, job.id, result, resolvedOrgId);
+      if (!isContinuousSourcing) await setCachedScore(supabase, ps.profile.id, job.id, result, resolvedOrgId);
       results.push(result);
     }
 
@@ -3968,6 +4127,20 @@ Deno.serve(async (req) => {
       } catch (e) { console.warn("[score-profile-job] settle skipped:", e); }
     }
 
+    if (memoryReviewBlocked) {
+      return new Response(JSON.stringify({ success: false,
+        error: continuousLeaseChanged
+          ? 'L’agent a été interrompu pendant l’évaluation. Aucune proposition n’a été enregistrée.'
+          : memoryContextChanged
+          ? "Les règles de mémoire ont changé pendant l’évaluation. Rechargez la recherche avant de réévaluer."
+          : memoryReviewIncomplete
+          ? "La revue des règles de mémoire est incomplète. Aucune nouvelle note n’a été enregistrée."
+          : "Une règle de mémoire est en conflit avec le brief. Clarifiez-la avant de réévaluer.",
+        error_code: continuousLeaseChanged ? 'AGENT_LEASE_CHANGED' : memoryContextChanged ? 'MEMORY_CONTEXT_CHANGED' : memoryReviewIncomplete ? 'MEMORY_REVIEW_INCOMPLETE' : 'MEMORY_CONFLICT',
+        memory_conflicts: memoryConflicts, scoringContext,
+      }), { status: !continuousLeaseChanged && !memoryContextChanged && memoryReviewIncomplete ? 502 : 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     return new Response(JSON.stringify({ success: true, ...responseData }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -3978,11 +4151,19 @@ Deno.serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     const isRateLimited = message.includes("RATE_LIMITED");
     const isCreditsExhausted = message.includes("CREDITS_EXHAUSTED");
-    const status = isRateLimited ? 429 : isCreditsExhausted ? 402 : 500;
+    const isLeaseChanged = message === 'AGENT_LEASE_CHANGED';
+    const isContextChanged = error && typeof error === 'object' && 'code' in error
+      && (error.code === 'CONTEXT_CHANGED' || error.code === 'MISSION_INACTIVE');
+    const status = isLeaseChanged || isContextChanged ? 409 : isRateLimited ? 429 : isCreditsExhausted ? 402 : 500;
 
     return new Response(
       JSON.stringify({
-        error: isRateLimited
+        ...(isLeaseChanged || isContextChanged ? { error_code: isContextChanged ? 'CONTEXT_CHANGED' : 'AGENT_LEASE_CHANGED' } : {}),
+        error: isContextChanged
+          ? 'Les critères de la mission ont changé. Aucune nouvelle évaluation n’a été lancée.'
+          : isLeaseChanged
+          ? 'L’agent a été interrompu. Aucune nouvelle évaluation n’a été lancée.'
+          : isRateLimited
           ? "Rate limited, please retry later"
           : isCreditsExhausted
             ? "API credits exhausted"

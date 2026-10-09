@@ -242,7 +242,8 @@ test('relances non arrêtées sans séquence ni mission : la fiche du candidat, 
   const webhook = code(rel);
   assert.doesNotMatch(webhook, /:\s*'\/sequences'/);
   // Identifiant : celui d'un InMail de l'organisation (son entrée au /pipeline), sinon l'expéditeur.
-  assert.match(webhook, /candidateId: \(inmailMatches \?\? \[\]\)\.find\(\(m\) => m\.organization_id === orgId\)\?\.recipient_profile_id \?\? senderId \?\? null,/);
+  assert.match(webhook, /let candidateId = \(inmailMatches \?\? \[\]\)\.find\(\(m\) => m\.organization_id === orgId\)\?\.recipient_profile_id;/);
+  assert.match(webhook, /candidateId: candidateId \?\? senderId \?\? null,/);
   // Le /pipeline ouvre la fiche par cet identifiant, celui de l'entrée d'un InMail sans ligne de mission.
   assert.match(code('src/pages/ATS.tsx'), /candidates\.find\(c => c\.candidateId === deepLinkCandidateId\)/);
   assert.match(code('src/hooks/useATSData.ts'), /candidateId: inmail\.recipient_profile_id,/);

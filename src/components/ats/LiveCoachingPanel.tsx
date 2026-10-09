@@ -101,6 +101,8 @@ interface LiveCoachingPanelProps {
   candidateLinkedinUrl?: string | null;
   /** Mission du candidat (uuid) : le brief donne le client et le manager de la présentation. */
   projectId?: string | null;
+  processStepId?: string | null;
+  qualificationSessionId?: string | null;
   jobId: string;
   jobTitle: string;
   jobContext: string;
@@ -234,6 +236,8 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   candidateEmail,
   candidateLinkedinUrl,
   projectId,
+  processStepId,
+  qualificationSessionId,
   jobId,
   jobTitle,
   jobContext,
@@ -471,6 +475,10 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           scorecard_id: scorecardId || 'new',
           created_by: user.id,
           organization_id: orgId || null,
+          project_id: projectId || null,
+          process_step_id: projectId ? processStepId || null : null,
+          evaluation_id: scorecardId || null,
+          qualification_session_id: qualificationSessionId || null,
         })
         .select('id')
         .single();
@@ -663,6 +671,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
     }
   }, [
     starting, candidateId, candidateName, candidateHeadline, candidateProfileSummary, jobId, jobTitle, scorecardId,
+    projectId, processStepId, qualificationSessionId,
     criteria, jobContext, analyzeWithCoach, meetingSupported, captureMode, onMeetingEnded, showTopic,
   ]);
 

@@ -26,7 +26,7 @@ interface SearchParams {
   // ID-based filters
   location?: string[];
   location_within_area?: number; // Search radius in miles (Recruiter only)
-  company?: { include?: string[]; exclude?: string[] } | string[];
+  company?: { include?: string[]; exclude?: string[] } | Array<string | { id?: string; keywords?: string; priority?: string; scope?: string }>;
   company_keywords?: Array<{ keywords: string; priority: string; scope: string }>; // Keywords-based (Recruiter only)
   industry?: { include?: string[]; exclude?: string[] } | string[];
   school?: string[] | Array<{ id: string; priority: string }>;
@@ -114,6 +114,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
 import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
 import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
+import { assertContinuousOperationContext } from '../_shared/continuous-sourcing.ts';
+import { searchBooleanIssue } from '../_shared/search-boolean.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -159,7 +161,7 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
 /** Erreur d'entrée client → réponse 4xx (jamais 500). */
 class UnipileInputError extends Error {
   status: number;
-  constructor(message: string, status = 400) {
+  constructor(message: string, status = 400, public code?: string) {
     super(message);
     this.status = status;
   }
@@ -173,34 +175,22 @@ class UnipileInputError extends Error {
  * puis ré-encodés à l'identique.
  */
 /**
- * LinkedIn répond 422 « unable to process » à une requête booléenne dont les
- * parenthèses ou les guillemets ne sont pas fermés (génération IA, troncature
- * à 200 caractères). On rééquilibre avant l'envoi : guillemet orphelin retiré,
- * « ) » sans « ( » retirée, « ( » restées ouvertes refermées en fin de chaîne.
+ * Reject incomplete Boolean input before consulting LinkedIn. A repair can
+ * change an exclusion or a required group, so valid queries stay byte-for-byte
+ * unchanged. Quoted phrases may contain parentheses and operator words.
  */
-function balanceBooleanKeywords(input: string): string {
-  let s = input;
-  if ((s.match(/"/g) ?? []).length % 2 === 1) {
-    const i = s.lastIndexOf('"');
-    s = s.slice(0, i) + s.slice(i + 1);
+function validateBooleanKeywords(input: string, label = 'Mots-clés'): string {
+  const issue = searchBooleanIssue(input);
+  if (issue === 'empty') {
+    throw new UnipileInputError(`Renseignez la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
   }
-  let out = '';
-  let depth = 0;
-  let inQuote = false;
-  for (const ch of s) {
-    if (ch === '"') inQuote = !inQuote;
-    if (!inQuote) {
-      if (ch === '(') depth++;
-      else if (ch === ')') {
-        if (depth === 0) continue;
-        depth--;
-      }
-    }
-    out += ch;
+  if (issue === 'quotes' || issue === 'parentheses') {
+    throw new UnipileInputError(`Fermez les guillemets et les parenthèses de la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
   }
-  // Retire un opérateur resté pendant avant de refermer (« … AND » / « … OR »)
-  out = out.replace(/\s+(AND|OR|NOT)\s*$/i, '');
-  return out + ')'.repeat(depth);
+  if (issue === 'operators') {
+    throw new UnipileInputError(`Complétez les opérateurs de la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
+  }
+  return input;
 }
 
 function unipileId(value: unknown, label: string): string {
@@ -377,6 +367,38 @@ Deno.serve(async (req) => {
       }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // The cron worker has already reserved the automatic quota. Fence again
+    // immediately before the actual provider call, including retry delays.
+    let continuousGuard: (() => Promise<void>) | undefined;
+    if (isInternal && params.continuous_agent_run === true) {
+      if (!['search', 'get_profile'].includes(action)) {
+        throw new UnipileInputError('Cette action n’est pas disponible pour l’agent de sourcing.', 403);
+      }
+      const agentClient = createClient(supabaseUrl, _serviceKey!);
+      continuousGuard = async () => {
+        const { data, error } = await agentClient.rpc('sourcing_agent_assert_lease', {
+          p_agent_id: params.continuous_agent_id, p_lease_token: params.continuous_lease_token,
+        });
+        const agent = Array.isArray(data) ? data[0] : data;
+        if (error || !agent || !params.continuous_context_key
+          || agent.organization_id !== organization_id || agent.created_by !== params.user_id
+          || agent.account_id !== accountIdRaw || agent.api !== params.api
+          || agent.context_snapshot?.context_key !== params.continuous_context_key) {
+          throw new UnipileInputError('L’agent a été interrompu. Aucune nouvelle consultation LinkedIn n’a été lancée.', 409, 'AGENT_LEASE_CHANGED');
+        }
+        try { await assertContinuousOperationContext(agentClient, agent); }
+        catch { throw new UnipileInputError('Les critères de la mission ont changé. Revoyez-les avant de reprendre.', 409, 'CONTEXT_CHANGED'); }
+        // Context reads may outlive a confirmed pause. Fence once more after them.
+        const latest = await agentClient.rpc('sourcing_agent_assert_lease', {
+          p_agent_id: params.continuous_agent_id, p_lease_token: params.continuous_lease_token,
+        });
+        const currentAgent = Array.isArray(latest.data) ? latest.data[0] : latest.data;
+        if (latest.error || !currentAgent || currentAgent.context_snapshot?.context_key !== params.continuous_context_key) {
+          throw new UnipileInputError('L’agent a été interrompu. Aucune nouvelle consultation LinkedIn n’a été lancée.', 409, 'AGENT_LEASE_CHANGED');
+        }
+      };
+    }
+
     // Actions sur une conversation : le compte propriétaire du chat doit lui
     // aussi appartenir à l'organisation. C'est ce compte qui porte le quota.
     const chatScopedActions = new Set(['get_messages', 'send_message', 'mark_as_read', 'sync_chat_history']);
@@ -424,7 +446,7 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'search': {
-        return await handleSearch(baseUrl, apiKey, account_id, params);
+        return await handleSearch(baseUrl, apiKey, account_id, params, continuousGuard, continuousGuard ? 1 : 3);
       }
 
       case 'get_parameters': {
@@ -432,7 +454,7 @@ Deno.serve(async (req) => {
       }
 
       case 'get_profile': {
-        return await handleGetProfile(baseUrl, apiKey, account_id, params);
+        return await handleGetProfile(baseUrl, apiKey, account_id, params, continuousGuard);
       }
 
       case 'get_chats': {
@@ -477,7 +499,7 @@ Deno.serve(async (req) => {
     console.error('Error:', error);
     if (error instanceof UnipileInputError) {
       return new Response(
-        JSON.stringify({ success: false, error: error.message }),
+        JSON.stringify({ success: false, error: error.message, ...(error.code ? { error_code: error.code } : {}) }),
         { status: error.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -496,7 +518,9 @@ async function handleSearch(
   baseUrl: string,
   apiKey: string,
   accountId: string,
-  params: SearchParams
+  params: SearchParams,
+  beforeProvider?: () => Promise<void>,
+  maxAttempts = 3,
 ): Promise<Response> {
   const {
     api = 'recruiter',
@@ -616,27 +640,13 @@ async function handleSearch(
     }
   }
 
-  // Keywords (all APIs) - truncate if too long to avoid content_too_large errors
+  // Preserve every Boolean group. The app's Classic/Sales limit is explicit;
+  // Recruiter does not inherit it and provider limits are reported unchanged.
   if (keywords) {
-    // LinkedIn Classic API has strict payload limits; cap keywords to ~200 chars
-    if (keywords.length > 200) {
-      // Try to keep complete boolean groups by trimming the last AND group
-      let truncated = keywords;
-      while (truncated.length > 200) {
-        const lastAnd = truncated.lastIndexOf(' AND ');
-        if (lastAnd > 0) {
-          truncated = truncated.substring(0, lastAnd);
-        } else {
-          // No more AND groups, just hard truncate
-          truncated = truncated.substring(0, 200);
-          break;
-        }
-      }
-      console.log(`[search] Keywords truncated: ${keywords.length} → ${truncated.length} chars`);
-      searchBody.keywords = balanceBooleanKeywords(truncated);
-    } else {
-      searchBody.keywords = balanceBooleanKeywords(keywords);
+    if (api !== 'recruiter' && keywords.length > 200) {
+      throw new UnipileInputError(`La requête « Mots-clés » contient ${keywords.length} caractères. Cette recherche accepte actuellement jusqu’à 200 caractères pour cette licence. Raccourcissez-la ou utilisez Recruiter.`, 400, 'KEYWORDS_TOO_LONG');
     }
+    searchBody.keywords = validateBooleanKeywords(keywords);
   }
 
   // Advanced keywords (Classic only)
@@ -705,8 +715,15 @@ async function handleSearch(
         if (api === 'recruiter') {
           // Recruiter expects array of objects with id, priority, scope
           searchBody.company = company.map((c: string | { id?: string; keywords?: string; priority?: string; scope?: string }) => {
-            if (typeof c === 'object') return c;
-            return { id: c, priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' };
+            if (typeof c === 'object') {
+              return {
+                ...c,
+                ...(c.keywords !== undefined ? { keywords: validateBooleanKeywords(c.keywords, 'Entreprise') } : {}),
+                priority: c.priority || 'CAN_HAVE',
+                scope: c.scope || 'CURRENT_OR_PAST',
+              };
+            }
+            return { id: c, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' };
           });
         } else if (api === 'sales_navigator') {
           searchBody.company = { include: company };
@@ -718,7 +735,7 @@ async function handleSearch(
       if (api === 'recruiter') {
         // Recruiter doesn't use { include, exclude } - convert to array of objects
         const items = [
-          ...(company.include || []).map((id: string) => ({ id, priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' })),
+          ...(company.include || []).map((id: string) => ({ id, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' })),
           ...(company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' })),
         ];
         if (items.length > 0) searchBody.company = items;
@@ -730,25 +747,14 @@ async function handleSearch(
 
   // Company keywords filter (Recruiter only) - keywords-based with priority and scope
   if (api === 'recruiter' && company_keywords?.length) {
-    // If we already have ID-based company filter, we need to merge or prioritize
-    // According to the API doc, company can be an array of objects with keywords, priority, scope
-    // So we can add keyword-based companies to the company array
+    // Recruiter accepts IDs and keywords in the same array. Append the clauses
+    // without losing targets, exclusions, priorities or scopes already set.
     const keywordCompanies = company_keywords.map(c => ({
-      keywords: balanceBooleanKeywords(c.keywords),
+      keywords: validateBooleanKeywords(c.keywords, 'Entreprise'),
       priority: c.priority,
       scope: c.scope,
     }));
-    
-    // If company is already set as an object with include, we need to handle this differently
-    // The API allows mixing ID-based and keyword-based in the company array
-    if (searchBody.company && typeof searchBody.company === 'object' && 'include' in searchBody.company) {
-      // According to API docs, company for recruiter can be an array mixing ID objects and keyword objects
-      // Transform to array format: [{ id: "..." }, { keywords: "...", priority: "...", scope: "..." }]
-      const idCompanies = ((searchBody.company as { include?: string[] }).include || []).map(id => ({ id }));
-      searchBody.company = [...idCompanies, ...keywordCompanies];
-    } else {
-      searchBody.company = keywordCompanies;
-    }
+    searchBody.company = [...(Array.isArray(searchBody.company) ? searchBody.company : []), ...keywordCompanies];
   }
 
   // Industry - with include structure for Recruiter/SalesNav
@@ -799,7 +805,7 @@ async function handleSearch(
       // Recruiter uses `role` (not current_job_title)
       searchBody.role = job_title.map((t: { id?: string; keywords?: string; priority?: string; scope?: string; is_selection?: boolean }) => {
         if (t.keywords) {
-          return { keywords: t.keywords, priority: t.priority || 'MUST_HAVE', scope: t.scope || 'CURRENT_OR_PAST' };
+          return { keywords: validateBooleanKeywords(t.keywords, 'Poste'), priority: t.priority || 'MUST_HAVE', scope: t.scope || 'CURRENT_OR_PAST' };
         }
         return {
           id: t.id,
@@ -824,7 +830,7 @@ async function handleSearch(
   if (skills?.length && api === 'recruiter') {
     searchBody.skills = skills.map((s: Record<string, unknown>) => {
       if (s.keywords) {
-        return { keywords: s.keywords, priority: s.priority };
+        return { keywords: validateBooleanKeywords(s.keywords as string, 'Compétence'), priority: s.priority };
       }
       return { id: s.id, priority: s.priority };
     });
@@ -834,7 +840,7 @@ async function handleSearch(
   // Note: if job_title already set `role`, append keyword-based roles
   if (role?.length && api === 'recruiter') {
     const keywordRoles = role.map(r => ({
-      keywords: balanceBooleanKeywords(r.keywords),
+      keywords: validateBooleanKeywords(r.keywords, 'Poste'),
       priority: r.priority || 'MUST_HAVE',
       scope: r.scope || 'CURRENT_OR_PAST',
     }));
@@ -1116,7 +1122,7 @@ async function handleSearch(
         if (api === 'recruiter') {
           searchBody.past_company = past_company.map((c: string | { id: string; priority?: string }) => {
             if (typeof c === 'object') return c;
-            return { id: c, priority: 'MUST_HAVE' };
+            return { id: c, priority: 'CAN_HAVE' };
           });
         } else if (api === 'sales_navigator') {
           searchBody.past_company = { include: past_company };
@@ -1128,7 +1134,7 @@ async function handleSearch(
       if (api === 'recruiter') {
         // Convert include/exclude to array of objects
         const items = [
-          ...(past_company.include || []).map((id: string) => ({ id, priority: 'MUST_HAVE' })),
+          ...(past_company.include || []).map((id: string) => ({ id, priority: 'CAN_HAVE' })),
           ...(past_company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE' })),
         ];
         if (items.length > 0) searchBody.past_company = items;
@@ -1171,7 +1177,7 @@ async function handleSearch(
   console.log('Search body:', JSON.stringify(searchBody));
 
   // Retry logic for multiple_sessions errors (server-side)
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = maxAttempts;
   const RETRY_DELAYS = [0, 6000, 15000]; // ms: immediate, 6s, 15s
   let response: globalThis.Response | null = null;
   let data: Record<string, unknown> = {};
@@ -1183,6 +1189,7 @@ async function handleSearch(
       await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
     }
 
+    if (beforeProvider) await beforeProvider();
     response = await fetchWithTimeout(searchUrl, {
       method: 'POST',
       headers: {
@@ -1380,7 +1387,8 @@ async function handleGetProfile(
   baseUrl: string,
   apiKey: string,
   accountId: string,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  beforeProvider?: () => Promise<void>,
 ): Promise<Response> {
   let { profile_id, profile_url } = params as { profile_id?: string; profile_url?: string };
 
@@ -1399,6 +1407,7 @@ async function handleGetProfile(
     );
   }
 
+  if (beforeProvider) await beforeProvider();
   const response = await fetchWithTimeout(`${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`, {
     headers: {
       'X-API-KEY': apiKey,
@@ -1458,8 +1467,19 @@ async function handleGetChats(
     
     const data = await response.json();
     if (!response.ok) {
+      // The attendee lookup returns 404 before this person has a conversation.
+      // Only this documented absence is empty: account/route errors and a
+      // disappearing attendee during pagination still report an unavailable read.
+      const detail = typeof data.detail === 'string' ? data.detail : data.message;
+      if (response.status === 404 && !cursor && typeof detail === 'string'
+        && /(?:^|\n)Attendee not found\.?\s*$/i.test(detail.trim())) {
+        return new Response(
+          JSON.stringify({ success: true, chats: [], cursor: null }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       console.warn('Chats attendee lookup failed (status', response.status, '):', data.detail || data.message);
-      // Return 200 with success:false so the frontend gracefully shows "no conversation"
+      // Preserve real lookup failures; an unavailable history is not an empty one.
       return new Response(
         JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur', chats: [] }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1492,11 +1512,11 @@ async function handleGetChats(
   
   console.log('Fetching chats from folders:', folderNames, '| Account:', accountId, '| Cursors:', JSON.stringify(folderCursors));
   
-  const fetchFromFolder = async (folderName: string): Promise<{ items: Record<string, unknown>[]; cursor: string | null }> => {
+  const fetchFromFolder = async (folderName: string): Promise<{ items: Record<string, unknown>[]; cursor: string | null; succeeded: boolean | null }> => {
     // If cursor is explicitly null (not undefined), this folder is exhausted
     if (folderCursors[folderName] === null && Object.prototype.hasOwnProperty.call(folderCursors, folderName)) {
       console.log(`Folder ${folderName}: exhausted (cursor=null), skipping`);
-      return { items: [], cursor: null };
+      return { items: [], cursor: null, succeeded: null };
     }
     
     const folderCursor = folderCursors[folderName]; // undefined on first fetch, string on subsequent
@@ -1518,15 +1538,15 @@ async function handleGetChats(
       const data = await response.json();
       if (!response.ok) {
         console.error(`Error fetching ${folderName}:`, data);
-        return { items: [], cursor: null };
+        return { items: [], cursor: null, succeeded: false };
       }
       
       const items = data.items || [];
       console.log(`Folder ${folderName}: ${items.length} chats, cursor: ${data.cursor || 'null'}`);
-      return { items, cursor: data.cursor || null };
+      return { items, cursor: data.cursor || null, succeeded: true };
     } catch (error) {
       console.error(`Exception fetching ${folderName}:`, error);
-      return { items: [], cursor: null };
+      return { items: [], cursor: null, succeeded: false };
     }
   };
   
@@ -1536,6 +1556,14 @@ async function handleGetChats(
     fetchFromFolder('INBOX_LINKEDIN_RECRUITER'),
     fetchFromFolder('INBOX'),
   ]);
+
+  const requestedFolders = [classicResult, recruiterResult, genericResult].filter(result => result.succeeded !== null);
+  if (requestedFolders.length && !requestedFolders.some(result => result.succeeded)) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Les conversations LinkedIn sont temporairement indisponibles.' }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
   
   // Build next cursors object
   const nextCursors: Record<string, string | null> = {

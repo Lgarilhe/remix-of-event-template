@@ -593,6 +593,38 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
     expect(alerts[0].metadata).not.toHaveProperty('sequence_id');
     expect(alerts[0].metadata).not.toHaveProperty('project_id');
   });
+
+  test('InMail programmé seul sous un identifiant Recruiter : l’alerte ouvre sa fiche et ne crée pas de contact envoyé', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E DR10 InMail programmé alias');
+    const colleague = await memberWithAccount(org);
+    const recruiterId = `AEMAAE2EDR${rand()}${rand()}`;
+    const senderId = newProfileId();
+    await setMockMode(accountId, {
+      routes: [{
+        method: 'GET', path: `^/api/v1/users/${senderId}$`, status: 200,
+        body: { object: 'UserProfile', provider: 'LINKEDIN', provider_id: senderId, id: recruiterId },
+      }],
+    });
+    cleanups.push(() => setMockMode(accountId, {}));
+    // Aucun InMail envoyé, aucune inscription : seule la ligne programmée porte cet alias.
+    const scheduled = await inmail(org, accountId, recruiterId);
+    failInMailCancel([scheduled]);
+    const colleagueSequence = await messageSequence(org, colleague.user.userId, ['Bonjour'], 2);
+    const colleagueEnrollment = await enroll(org, colleagueSequence.sequenceId, colleague.user.userId, colleague.accountId, {
+      profile_id: recruiterId,
+    });
+
+    const res = await rawWebhook(replyFrom(accountId, senderId).payload);
+    expect(res.status, JSON.stringify(res.body)).toBe(500);
+    expect((await inmailRow(scheduled)).status).toBe('scheduled');
+    expect((await enr(colleagueEnrollment.enrollmentId)).status, 'un InMail non envoyé ne rattache pas les contacts des autres comptes').toBe('active');
+    const alerts = await alertsOf(org.orgId);
+    expect(alerts, JSON.stringify(alerts)).toHaveLength(1);
+    expect(alerts[0].link).toBe(`/pipeline?candidate=${encodeURIComponent(recruiterId)}`);
+    expect(alerts[0].metadata).toMatchObject({ enrollment_ids: [] });
+    expect(alerts[0].metadata).not.toHaveProperty('sequence_id');
+    expect(alerts[0].metadata).not.toHaveProperty('project_id');
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════

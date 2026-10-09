@@ -95,9 +95,11 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       const result = onScoreProfile() as unknown;
       if (result && typeof (result as Promise<unknown>).then === 'function') {
         (result as Promise<unknown>).catch(() => setIsScoring(false)).finally(() => {
-          // Safety net : si le hook reject sans setJobScores, on relâche le loader.
-          // Le cas normal (succès) est géré par le useEffect au-dessus.
+          // A cancelled or obsolete evaluation can finish without a new score.
+          setIsScoring(false);
         });
+      } else {
+        setIsScoring(false);
       }
     } catch {
       setIsScoring(false);

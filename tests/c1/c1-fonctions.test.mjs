@@ -45,6 +45,15 @@ function fnBody(src, signature) {
 const FORBIDDEN_IN_UI = /Unipile|Apollo|People Data Labs|\bPDL\b|Anthropic|Claude|Notion|—/;
 
 const AUTO_ANALYZE = 'supabase/functions/auto-analyze-message/index.ts';
+
+test('Les catégories automatiques sont écrites dans l’organisation vérifiée du compte, lisible par sa RLS', () => {
+  const src = read(AUTO_ANALYZE);
+  const category = src.slice(src.indexOf('// 6. Update chat_categories'), src.indexOf('// 7. Trigger full AI analysis'));
+  assert.match(category, /if \([^\n]*&& accountOrgId\)/);
+  assert.match(category, /\.eq\('organization_id', accountOrgId\)/);
+  assert.match(category, /\.upsert\(\{[^}]*organization_id: accountOrgId,/s);
+  assert.doesNotMatch(category, /organization_id:\s*organization_id\b/);
+});
 const ADD_TO_SHORTLIST = 'supabase/functions/add-to-shortlist/index.ts';
 const SUBMIT_APP = 'supabase/functions/submit-application/index.ts';
 const SCORE = 'supabase/functions/score-profile-job/index.ts';
@@ -260,7 +269,7 @@ test('R2 : submit-application répond 410 sans rien lire ni journaliser', () => 
 test("R3 : search-agent-chat refuse la conversation d'un autre, avec ou sans organisation", () => {
   const src = read(AGENT_CHAT);
   const guard = src.indexOf('if (conv.created_by !== user.id) {');
-  const membership = src.indexOf('if (!createdConversation && conv.organization_id) {');
+  const membership = src.indexOf('if (conv.organization_id) {');
   assert.ok(guard > 0, 'contrôle de l\'auteur introuvable');
   assert.ok(membership > guard, 'le contrôle de l\'auteur précède celui de l\'appartenance');
   assert.doesNotMatch(
@@ -335,7 +344,7 @@ test('R8 : la notation ne réécrit que les lignes de son organisation, statut f
     assert.doesNotMatch(list[1], new RegExp(`'${s}'`), `${s} ne doit pas être réécrit par la notation`);
   }
   const calls = [...src.matchAll(/\b(?:setCachedScore|syncJobCandidateStatus)\(supabase,[^;]*\);/g)].map((m) => m[0]);
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 7);
   for (const c of calls) assert.match(c, /(?:resolvedOrgId|organizationId)\);$/, c);
 });
 
@@ -347,7 +356,8 @@ test('R8 : le cache de notation est lu et écrit par organisation', () => {
   const set = fnBody(src, 'async function setCachedScore(');
   assert.match(set, /organization_id: organizationId,/);
   assert.match(set, /!isDegradedResult\(result\) && organizationId/);
-  assert.match(src, /getCachedScore\(supabase, candidateId, job\.id, resolvedOrgId\)/);
+  assert.match(get, /result\.scoringContext\?\.fingerprint !== contextFingerprint/);
+  assert.match(src, /getCachedScore\(supabase,\s*candidateId,\s*job\.id,\s*resolvedOrgId,\s*scoringContext\.fingerprint\)/);
   const run = read(RUN_AGENT);
   const q = run.slice(run.indexOf('.from("match_scores")'), run.indexOf(';', run.indexOf('.from("match_scores")')));
   assert.match(q, /\.eq\("organization_id", orgId\)/);
@@ -356,13 +366,18 @@ test('R8 : le cache de notation est lu et écrit par organisation', () => {
 test("R8 : un poste de mission d'une autre organisation est refusé (403)", () => {
   const src = read(SCORE);
   const handler = src.slice(src.indexOf('Deno.serve('));
-  const check = handler.slice(handler.indexOf('const jobProjectId'), handler.indexOf('let enrichmentCtx'));
+  const guardStart = handler.search(/\b(?:const|let) jobProjectId\s*=/);
+  assert.ok(guardStart >= 0, 'identifiant de mission vérifié introuvable');
+  const check = handler.slice(guardStart, handler.indexOf('let enrichmentCtx'));
   assert.match(check, /\.from\("sourcing_projects"\)/);
+  assert.match(check, /\.eq\("id", jobProjectId\)/);
   assert.match(check, /\.from\("mission_team"\)/);
+  assert.match(check, /\.eq\("project_id", jobProjectId\)/);
+  assert.match(check, /\.eq\("user_id", effectiveUserId\)/);
   assert.match(check, /jobProject\.organization_id !== resolvedOrgId/);
-  assert.match(check, /status: 403/);
+  assert.match(check, /if \(!teamRows \|\| teamRows\.length === 0\)\s*\{\s*return new Response\([^;]*status: 403/);
   assert.ok(
-    handler.indexOf('const jobProjectId') < handler.indexOf('getCachedScore('),
+    guardStart < handler.indexOf('getCachedScore('),
     'le contrôle précède toute lecture du cache',
   );
 });

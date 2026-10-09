@@ -3,7 +3,7 @@
  * Déterministe, gratuit, transparent.
  */
 import { LinkedInProfile } from '@/components/outreach/types';
-import { getYear, parseDate } from '@/components/outreach/dateUtils';
+import { assessProfileExperience, getWorkExperienceDurationMonths, isExperienceRangeUncertain } from '../../../supabase/functions/_shared/profile-experience.ts';
 import { Job } from '@/types/jobs';
 import { extractSkillsFromTextFast, skillsMatch } from './skillSynonyms';
 
@@ -129,44 +129,9 @@ function scoreSkills(
 
 // ─── Experience (20 pts) ────────────────────────────────────────────
 
-function calculateExperienceFromProfile(profile: LinkedInProfile): number | null {
-  // Try education end date
-  const edu = profile.education || [];
-  let earliestGradYear: number | null = null;
-  for (const e of edu) {
-    const endYear = getYear(e.end);
-    if (endYear && endYear > 1970 && endYear < new Date().getFullYear() + 2) {
-      if (!earliestGradYear || endYear < earliestGradYear) {
-        earliestGradYear = endYear;
-      }
-    }
-  }
-  if (earliestGradYear) {
-    return new Date().getFullYear() - earliestGradYear;
-  }
-
-  // Try from work experience
-  const work = profile.work_experience || [];
-  if (work.length > 0) {
-    let earliestYear: number | null = null;
-    for (const w of work) {
-      const startYear = getYear(w.start);
-      if (startYear && startYear > 1970) {
-        if (!earliestYear || startYear < earliestYear) {
-          earliestYear = startYear;
-        }
-      }
-    }
-    if (earliestYear) {
-      return new Date().getFullYear() - earliestYear;
-    }
-  }
-
-  return null;
-}
-
 function scoreExperience(profile: LinkedInProfile, job: Job, flags: string[]): number {
-  const candidateXP = calculateExperienceFromProfile(profile);
+  const experience = assessProfileExperience(profile);
+  const candidateXP = experience.source === 'work' && experience.complete ? experience.years : null;
 
   if (candidateXP === null) {
     flags.push('XP non déterminée');
@@ -175,6 +140,11 @@ function scoreExperience(profile: LinkedInProfile, job: Job, flags: string[]): n
 
   const min = job.xpMin ?? 0;
   const max = job.xpMax ?? 99;
+
+  if (isExperienceRangeUncertain(experience, job.xpMin ?? null, job.xpMax ?? null)) {
+    flags.push('Dates XP approximatives : à vérifier');
+    return 10;
+  }
 
   if (candidateXP >= min && candidateXP <= max) {
     return 20;
@@ -327,19 +297,12 @@ function scoreTenure(profile: LinkedInProfile, flags: string[]): number {
   const work = profile.work_experience || [];
   if (work.length < 2) return 3; // not enough data
 
-  const now = new Date();
   let totalMonths = 0;
   let count = 0;
 
   for (const w of work) {
-    const startParsed = parseDate(w.start);
-    if (!startParsed?.year) continue;
-    const startDate = new Date(startParsed.year, (startParsed.month || 1) - 1);
-    const endParsed = parseDate(w.end);
-    const endDate = endParsed?.year
-      ? new Date(endParsed.year, (endParsed.month || 1) - 1)
-      : now;
-    const months = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+    const months = getWorkExperienceDurationMonths(w);
+    if (months === null) continue;
     totalMonths += months;
     count++;
   }

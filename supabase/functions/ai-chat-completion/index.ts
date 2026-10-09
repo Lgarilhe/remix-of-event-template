@@ -57,16 +57,23 @@ Deno.serve(async (req) => {
     }
     let aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
 
-    // Mémoire cross-session (P1.4) : les insights appris par le Copilot
-    // (style, préférences, secteur) profitent aussi à l'assistant inline
-    // (AiTextarea). Fail-soft.
+    // Mémoires confirmées : la lecture conserve le JWT de l'utilisateur
+    // pour appliquer la portée personnelle et la RLS de l'organisation.
     if (userId && orgId) {
       try {
         const { getRelevantInsights, formatInsightsForPrompt } = await import("../_shared/user-memory.ts");
-        const insights = await getRelevantInsights(svc, { userId, organizationId: orgId, limit: 5 });
+        const memoryClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+          global: { headers: { Authorization: req.headers.get('authorization')! } },
+        });
+        const insights = await getRelevantInsights(memoryClient, { userId, organizationId: orgId });
         aiContext = (aiContext || "") + formatInsightsForPrompt(insights);
       } catch (e) {
-        console.warn("[ai-chat-completion] user-memory injection skipped:", e);
+        console.error("[ai-chat-completion] memory context unavailable:", e);
+        return new Response(JSON.stringify({
+          success: false,
+          error: "La mémoire de l’assistant n’a pas pu être lue. Réessayez dans un instant.",
+          error_code: "MEMORY_CONTEXT_UNAVAILABLE",
+        }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 

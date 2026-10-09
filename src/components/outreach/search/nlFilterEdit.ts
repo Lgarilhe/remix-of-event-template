@@ -72,6 +72,11 @@ export async function nlFilterEdit(params: {
   searchSource: 'linkedin' | 'database';
 }): Promise<NlFilterEditResult> {
   const { instruction, filters, accountId, searchSource } = params;
+  const hasNativeExperience = searchSource === 'linkedin'
+    && (filters.api === 'recruiter' || filters.api === 'sales_navigator')
+    && (filters.years_of_experience_min !== null || filters.years_of_experience_max !== null);
+  const currentExperienceMin = hasNativeExperience ? filters.years_of_experience_min : filters.calculated_experience_min;
+  const currentExperienceMax = hasNativeExperience ? filters.years_of_experience_max : filters.calculated_experience_max;
 
   // Résumé compact des filtres courants — assez pour éditer, léger en tokens.
   const current_filters = {
@@ -79,8 +84,8 @@ export async function nlFilterEdit(params: {
     role: filters.role.map(r => ({ keywords: r.keywords, priority: r.priority, scope: r.scope })),
     location: filters.location.map(l => l.name),
     location_radius_miles: filters.location_within_area,
-    experience_min: filters.calculated_experience_min,
-    experience_max: filters.calculated_experience_max,
+    experience_min: currentExperienceMin,
+    experience_max: currentExperienceMax,
     tenure_at_role_min: filters.tenure_at_role_min,
     tenure_at_role_max: filters.tenure_at_role_max,
     skills: [...filters.skills.map(s => s.name), ...(filters.skills_keywords || [])],
@@ -202,11 +207,15 @@ export async function nlFilterEdit(params: {
     const added = st.profile_language.filter(l => !next.profile_language.includes(l));
     if (added.length) { next = { ...next, profile_language: [...next.profile_language, ...added] }; changed = true; }
   }
-  if (typeof st.years_of_experience_min === 'number' || typeof st.years_of_experience_max === 'number') {
-    const min = typeof st.years_of_experience_min === 'number' ? st.years_of_experience_min : next.calculated_experience_min;
-    const max = typeof st.years_of_experience_max === 'number' ? st.years_of_experience_max : next.calculated_experience_max;
-    if (min !== next.calculated_experience_min || max !== next.calculated_experience_max) {
-      next = { ...next, calculated_experience_min: min, calculated_experience_max: max, years_of_experience_min: min, years_of_experience_max: max };
+  // The edit contract defines null and absent fields as unchanged.
+  const hasExperienceMin = typeof st.years_of_experience_min === 'number';
+  const hasExperienceMax = typeof st.years_of_experience_max === 'number';
+  if (hasExperienceMin || hasExperienceMax) {
+    const min = hasExperienceMin ? st.years_of_experience_min ?? null : currentExperienceMin;
+    const max = hasExperienceMax ? st.years_of_experience_max ?? null : currentExperienceMax;
+    if (min !== next.calculated_experience_min || max !== next.calculated_experience_max
+      || next.years_of_experience_min !== null || next.years_of_experience_max !== null) {
+      next = { ...next, calculated_experience_min: min, calculated_experience_max: max, years_of_experience_min: null, years_of_experience_max: null };
       changed = true;
     }
   }
@@ -255,7 +264,8 @@ export async function nlFilterEdit(params: {
     if (searchSource === 'linkedin' && accountId) {
       try {
         const { data: paramData } = await invokeUnipile({
-          body: { action: 'get_parameters', account_id: accountId, type, keywords: kw, service: 'RECRUITER' },
+          body: { action: 'get_parameters', account_id: accountId, type, keywords: kw,
+            service: filters.api === 'sales_navigator' ? 'SALES_NAVIGATOR' : filters.api === 'classic' ? 'CLASSIC' : 'RECRUITER' },
         });
         const items = Array.isArray(paramData?.items) ? (paramData.items as any[]) : [];
         const n = norm(kw);
@@ -276,7 +286,7 @@ export async function nlFilterEdit(params: {
       if (!kw?.trim() || existingNames.has(norm(kw))) continue;
       const it = await resolveParam('LOCATION', kw);
       if (it && !next.location.some(l => l.id === it.id)) {
-        const item: LocationFilterItem = { ...it, priority: 'MUST_HAVE', scope: 'CURRENT_OR_OPEN_TO_RELOCATE' };
+        const item: LocationFilterItem = { ...it, priority: 'MUST_HAVE', scope: filters.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT' };
         next = { ...next, location: [...next.location, item] };
         changed = true;
       }

@@ -102,7 +102,7 @@ const GREY_TEXT = /(?<![\w:/-])(?:text-muted-foreground|text-foreground-secondar
 const OPACITY = /(?<![\w:/-])opacity-(?:30|40|50|60|70)(?![\w-])/;
 const OPACITY_TRANSITION = /(?:[\w-]*hover|focus[\w-]*|group-[\w/-]+|data-\[[^\]]*\]):opacity-|transition-opacity/;
 const PARENT_SVG = /\[&(?:_|>)svg\]:(?:text-muted-foreground|text-foreground-secondary|text-\[var\(--k-text-muted\)\]|opacity-\d+)/g;
-const RETRAIT_WORDS = /(?:^|[^\p{L}])(?:supprimer|retirer|dissocier|effacer|d[ée]sinscrire|r[ée]voquer|d[ée]connecter|d[ée]lier|rejeter|refuser|[ée]carter|exclure|enlever|vider|ignorer|suspendre|annuler (?:les?|la|l['’]|cette|ce)|mettre en pause|arr[êe]ter|sauter|ne pas envoyer)(?![\p{L}])/iu;
+const RETRAIT_WORDS = /(?:^|[^\p{L}])(?:supprimer|retirer|dissocier|effacer|d[ée]sinscrire|r[ée]voquer|d[ée]connecter|d[ée]lier|rejeter|refuser|[ée]carter|exclure|enlever|vider|ignorer|suspendre|d[ée]sactiver|annuler (?:les?|la|l['’]|cette|ce)|mettre en pause|arr[êe]ter|sauter|ne pas envoyer)(?![\p{L}])/iu;
 const RETRAIT_ICON = /<(?:Trash2?|Unlink2?|Unplug|UserMinus|UserX|Ban|StopCircle|XCircle|Pause)\b/;
 
 /** Retire les commentaires en gardant les fins de ligne (les numéros de ligne restent justes). */
@@ -319,7 +319,7 @@ test('cohérence entre écrans : un même geste a la même couleur, un statut ga
   assert.match(project, /isAdded \? 'text-success disabled:text-success'/, '« Shortlisté »');
   // Bouton à contour repeint d'un aplat de couleur : bord transparent et texte blanc, jamais l'encre sur le
   // bleu LinkedIn (3,25:1 en clair) ni le vert d'état en sombre (2,21:1) ; désactivé sur fond gris.
-  for (const rel of ['src/components/outreach/LinkedInAccountManager.tsx', 'src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/SceneLinkedIn.tsx']) {
+  for (const rel of ['src/components/outreach/LinkedInAccountManager.tsx', 'src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/scenes/SceneLinkedIn.tsx']) {
     for (const m of read(rel).matchAll(/className="([^"]*\bbg-linkedin\b[^"]*)"/g)) {
       if (!/<Button\b[^<]*$/.test(read(rel).slice(0, m.index))) continue;
       assert.match(m[1], /\bborder-transparent\b/, `${rel} : bord`);

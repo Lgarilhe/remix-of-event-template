@@ -7,7 +7,7 @@
 // seule). Sans compte LinkedIn utilisable : un message « Relier LinkedIn »
 // à la place de la recherche, une fois les comptes chargés (conception 5.3) ;
 // design simplifié (04/10/2026) : sans cadre, pastille d'icône, un seul bouton plein.
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconTile } from '@/components/ui/IconTile';
@@ -16,9 +16,11 @@ import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { useMissionV3 } from '../MissionV3Context';
 import { ArchivedNotice } from './ArchivedNotice';
+import { SourcingAgentStatus } from '@/components/agent/SourcingAgentStatus';
 
 export function SourcingScreen() {
-  const { project, isArchived } = useMissionV3();
+  const { project, isArchived, isOwnMission } = useMissionV3();
+  const navigate = useNavigate();
   const { accounts, accountsLoading } = useFilteredLinkedInAccounts();
   if (isArchived) {
     return (
@@ -28,8 +30,12 @@ export function SourcingScreen() {
     );
   }
   // Pendant le chargement, le Sourcing s'affiche : aucun blocage avant de savoir.
-  if (!accountsLoading && accounts.length === 0) {
-    return (
+  return (
+    <>
+      {isOwnMission && <SectionErrorBoundary fallbackTitle="L’agent de sourcing n’a pas pu être chargé">
+        <SourcingAgentStatus projectId={project.id} projectName={project.name} missionStatus={project.status} onManage={() => navigate(`/agents/sourcing/${project.id}`)} />
+      </SectionErrorBoundary>}
+      {!accountsLoading && accounts.length === 0 ? (
       <section
         aria-labelledby="sourcing-linkedin-titre"
         className="mx-auto mt-16 flex w-full max-w-[460px] flex-col items-center gap-2.5 px-4 text-center"
@@ -43,11 +49,11 @@ export function SourcingScreen() {
           <Link to="/settings/account/connections">Relier LinkedIn</Link>
         </Button>
       </section>
-    );
-  }
-  return (
+      ) : (
     <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
       <MissionSourcing project={project} layout="mission-v3" />
     </SectionErrorBoundary>
+      )}
+    </>
   );
 }

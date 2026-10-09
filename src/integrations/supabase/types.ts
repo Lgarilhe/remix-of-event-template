@@ -14,6 +14,482 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_action_plans: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          candidate_id: string
+          project_id: string | null
+          scope: Json
+          intent: string
+          context_version: string
+          revision: number
+          title: string
+          reason: string
+          sources: Json
+          follow_up: Json | null
+          status: string
+          approved_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          candidate_id: string
+          project_id?: string | null
+          scope: Json
+          intent: string
+          context_version: string
+          revision?: number
+          title: string
+          reason: string
+          sources?: Json
+          follow_up?: Json | null
+          status?: string
+          approved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          candidate_id?: string
+          project_id?: string | null
+          scope?: Json
+          intent?: string
+          context_version?: string
+          revision?: number
+          title?: string
+          reason?: string
+          sources?: Json
+          follow_up?: Json | null
+          status?: string
+          approved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "candidate_action_plans_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_plans_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "sourcing_projects"; referencedColumns: ["id"] },
+        ]
+      }
+      candidate_action_effects: {
+        Row: {
+          id: string
+          plan_id: string
+          position: number
+          kind: string
+          audience: string | null
+          payload: Json
+          dedupe_key: string
+          business_key: string
+          status: string
+          claim_token: string | null
+          claimed_at: string | null
+          attempts: number
+          master_effect_id: string | null
+          result: Json | null
+          completed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          plan_id: string
+          position: number
+          kind: string
+          audience?: string | null
+          payload: Json
+          dedupe_key: string
+          business_key: string
+          status?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          attempts?: number
+          master_effect_id?: string | null
+          result?: Json | null
+          completed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          plan_id?: string
+          position?: number
+          kind?: string
+          audience?: string | null
+          payload?: Json
+          dedupe_key?: string
+          business_key?: string
+          status?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          attempts?: number
+          master_effect_id?: string | null
+          result?: Json | null
+          completed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "candidate_action_effects_plan_id_fkey"; columns: ["plan_id"]; isOneToOne: false; referencedRelation: "candidate_action_plans"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_effects_master_effect_id_fkey"; columns: ["master_effect_id"]; isOneToOne: false; referencedRelation: "candidate_action_effects"; referencedColumns: ["id"] },
+        ]
+      }
+      member_whatsapp_accounts: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          whatsapp_account_id: string
+          phone_number: string | null
+          name: string | null
+          account_status: string
+          linked_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          whatsapp_account_id: string
+          phone_number?: string | null
+          name?: string | null
+          account_status?: string
+          linked_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          whatsapp_account_id?: string
+          phone_number?: string | null
+          name?: string | null
+          account_status?: string
+          linked_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "member_whatsapp_accounts_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+        ]
+      }
+      agent_memory_automation: {
+        Row: {
+          organization_id: string
+          user_id: string
+          mode: string
+          version: number
+          suggestion_dismissed: boolean
+          enabled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          organization_id: string
+          user_id: string
+          mode?: string
+          version?: number
+          suggestion_dismissed?: boolean
+          enabled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          organization_id?: string
+          user_id?: string
+          mode?: string
+          version?: number
+          suggestion_dismissed?: boolean
+          enabled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "agent_memory_automation_organization_id_fkey"
+          columns: ["organization_id"]
+          isOneToOne: false
+          referencedRelation: "organizations"
+          referencedColumns: ["id"]
+        }]
+      }
+      agent_memory_proposals: {
+        Row: {
+          id: string
+          organization_id: string
+          created_by: string
+          project_id: string | null
+          source_conversation_id: string | null
+          source_message_id: string | null
+          source_excerpt: string | null
+          legacy_insight_id: string | null
+          content: string
+          scope: string
+          kind: string
+          effects: string[]
+          confidence: number | null
+          status: string
+          version: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          created_by: string
+          project_id?: string | null
+          source_conversation_id?: string | null
+          source_message_id?: string | null
+          source_excerpt?: string | null
+          legacy_insight_id?: string | null
+          content: string
+          scope?: string
+          kind?: string
+          effects?: string[]
+          confidence?: number | null
+          status?: string
+          version?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          created_by?: string
+          project_id?: string | null
+          source_conversation_id?: string | null
+          source_message_id?: string | null
+          source_excerpt?: string | null
+          legacy_insight_id?: string | null
+          content?: string
+          scope?: string
+          kind?: string
+          effects?: string[]
+          confidence?: number | null
+          status?: string
+          version?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memory_proposals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "agent_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_source_message_id_fkey"
+            columns: ["source_message_id"]
+            isOneToOne: false
+            referencedRelation: "agent_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_proposals_legacy_insight_id_fkey"
+            columns: ["legacy_insight_id"]
+            isOneToOne: true
+            referencedRelation: "user_insights"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_memories: {
+        Row: {
+          activation_mode: string
+          automation_version: number | null
+          automation_key: string | null
+          automation_source_created_at: string | null
+          id: string
+          organization_id: string
+          proposal_id: string | null
+          created_by: string
+          confirmed_by: string
+          confirmed_at: string
+          scope: string
+          project_id: string | null
+          owner_user_id: string | null
+          content: string
+          kind: string
+          effects: string[]
+          status: string
+          version: number
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          activation_mode?: string
+          automation_version?: number | null
+          automation_key?: string | null
+          automation_source_created_at?: string | null
+          id?: string
+          organization_id: string
+          proposal_id?: string | null
+          created_by: string
+          confirmed_by: string
+          confirmed_at?: string
+          scope: string
+          project_id?: string | null
+          owner_user_id?: string | null
+          content: string
+          kind: string
+          effects?: string[]
+          status?: string
+          version?: number
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          activation_mode?: string
+          automation_version?: number | null
+          automation_key?: string | null
+          automation_source_created_at?: string | null
+          id?: string
+          organization_id?: string
+          proposal_id?: string | null
+          created_by?: string
+          confirmed_by?: string
+          confirmed_at?: string
+          scope?: string
+          project_id?: string | null
+          owner_user_id?: string | null
+          content?: string
+          kind?: string
+          effects?: string[]
+          status?: string
+          version?: number
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: true
+            referencedRelation: "agent_memory_proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_action_messages: {
+        Row: {
+          id: string
+          organization_id: string
+          candidate_id: string
+          project_id: string | null
+          owner_user_id: string
+          account_id: string
+          channel: string
+          service: string
+          audience: string
+          direction: string
+          provider_message_id: string
+          provider_thread_id: string | null
+          in_reply_to: string | null
+          counterpart: string
+          sender: string
+          recipient: string
+          subject: string | null
+          content: string
+          occurred_at: string
+          action_plan_id: string | null
+          effect_id: string | null
+          action_completed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          candidate_id: string
+          project_id?: string | null
+          owner_user_id: string
+          account_id: string
+          channel: string
+          service: string
+          audience: string
+          direction: string
+          provider_message_id: string
+          provider_thread_id?: string | null
+          in_reply_to?: string | null
+          counterpart: string
+          sender: string
+          recipient: string
+          subject?: string | null
+          content: string
+          occurred_at: string
+          action_plan_id?: string | null
+          effect_id?: string | null
+          action_completed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          candidate_id?: string
+          project_id?: string | null
+          owner_user_id?: string
+          account_id?: string
+          channel?: string
+          service?: string
+          audience?: string
+          direction?: string
+          provider_message_id?: string
+          provider_thread_id?: string | null
+          in_reply_to?: string | null
+          counterpart?: string
+          sender?: string
+          recipient?: string
+          subject?: string | null
+          content?: string
+          occurred_at?: string
+          action_plan_id?: string | null
+          effect_id?: string | null
+          action_completed_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "candidate_action_messages_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_messages_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "sourcing_projects"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_messages_action_plan_id_fkey"; columns: ["action_plan_id"]; isOneToOne: false; referencedRelation: "candidate_action_plans"; referencedColumns: ["id"] },
+          { foreignKeyName: "candidate_action_messages_effect_id_fkey"; columns: ["effect_id"]; isOneToOne: false; referencedRelation: "candidate_action_effects"; referencedColumns: ["id"] },
+        ]
+      }
       agent_conversations: {
         Row: {
           archived_at: string | null
@@ -1226,6 +1702,13 @@ export type Database = {
       }
       call_coaching_sessions: {
         Row: {
+          project_id: string | null
+          process_step_id: string | null
+          evaluation_id: string | null
+          qualification_session_id: string | null
+          candidate_consent_at: string | null
+          transcript_purged_at: string | null
+          transcript_expires_at: string
           alerts_log: Json | null
           candidate_id: string
           coach_feed: Json | null
@@ -1242,6 +1725,13 @@ export type Database = {
           transcript: string | null
         }
         Insert: {
+          project_id?: string | null
+          process_step_id?: string | null
+          evaluation_id?: string | null
+          qualification_session_id?: string | null
+          candidate_consent_at?: string | null
+          transcript_purged_at?: string | null
+          transcript_expires_at?: string
           alerts_log?: Json | null
           candidate_id: string
           coach_feed?: Json | null
@@ -1258,6 +1748,13 @@ export type Database = {
           transcript?: string | null
         }
         Update: {
+          project_id?: string | null
+          process_step_id?: string | null
+          evaluation_id?: string | null
+          qualification_session_id?: string | null
+          candidate_consent_at?: string | null
+          transcript_purged_at?: string | null
+          transcript_expires_at?: string
           alerts_log?: Json | null
           candidate_id?: string
           coach_feed?: Json | null
@@ -1644,6 +2141,8 @@ export type Database = {
       }
       candidate_evaluations: {
         Row: {
+          project_id: string | null
+          process_step_id: string | null
           ai_generated: boolean
           candidate_id: string
           comments: Json
@@ -1663,6 +2162,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          project_id?: string | null
+          process_step_id?: string | null
           ai_generated?: boolean
           candidate_id: string
           comments?: Json
@@ -1682,6 +2183,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          project_id?: string | null
+          process_step_id?: string | null
           ai_generated?: boolean
           candidate_id?: string
           comments?: Json
@@ -6196,6 +6699,167 @@ export type Database = {
           },
         ]
       }
+      sourcing_agent_candidates: {
+        Row: {
+          agent_id: string
+          candidate_id: string
+          context_key: string
+          created_at: string
+          created_by: string
+          credits_reserved: number
+          credits_used: number
+          decision: string | null
+          id: string
+          organization_id: string
+          person_key: string
+          profile: Json
+          project_id: string
+          provenance: Json
+          reason: string | null
+          result: Json
+          score: number | null
+          source_aliases: Json
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          candidate_id: string
+          context_key: string
+          created_at?: string
+          created_by: string
+          credits_reserved?: number
+          credits_used?: number
+          decision?: string | null
+          id?: string
+          organization_id: string
+          person_key: string
+          profile?: Json
+          project_id: string
+          provenance?: Json
+          reason?: string | null
+          result?: Json
+          score?: number | null
+          source_aliases?: Json
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          candidate_id?: string
+          context_key?: string
+          created_at?: string
+          created_by?: string
+          credits_reserved?: number
+          credits_used?: number
+          decision?: string | null
+          id?: string
+          organization_id?: string
+          person_key?: string
+          profile?: Json
+          project_id?: string
+          provenance?: Json
+          reason?: string | null
+          result?: Json
+          score?: number | null
+          source_aliases?: Json
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "sourcing_agent_candidates_agent_id_organization_id_project_fkey"; columns: ["agent_id", "organization_id", "project_id", "created_by"]; isOneToOne: false; referencedRelation: "sourcing_agents"; referencedColumns: ["id", "organization_id", "project_id", "created_by"] },
+        ]
+      }
+      sourcing_agents: {
+        Row: {
+          account_id: string | null
+          api: string | null
+          approved_context_key: string | null
+          checkpoint: Json
+          context_snapshot: Json
+          created_at: string
+          created_by: string
+          credits_reserved: number
+          credits_used: number
+          daily_date: string
+          id: string
+          last_error: string | null
+          last_reason: string | null
+          last_run_at: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_run_at: string
+          organization_id: string
+          profiles_used: number
+          project_id: string
+          revision: number
+          search_filters_snapshot: Json
+          settings: Json
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          api?: string | null
+          approved_context_key?: string | null
+          checkpoint?: Json
+          context_snapshot?: Json
+          created_at?: string
+          created_by: string
+          credits_reserved?: number
+          credits_used?: number
+          daily_date?: string
+          id?: string
+          last_error?: string | null
+          last_reason?: string | null
+          last_run_at?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_run_at?: string
+          organization_id: string
+          profiles_used?: number
+          project_id: string
+          revision?: number
+          search_filters_snapshot?: Json
+          settings?: Json
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          api?: string | null
+          approved_context_key?: string | null
+          checkpoint?: Json
+          context_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          credits_reserved?: number
+          credits_used?: number
+          daily_date?: string
+          id?: string
+          last_error?: string | null
+          last_reason?: string | null
+          last_run_at?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_run_at?: string
+          organization_id?: string
+          profiles_used?: number
+          project_id?: string
+          revision?: number
+          search_filters_snapshot?: Json
+          settings?: Json
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "sourcing_agents_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "sourcing_agents_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "sourcing_projects"; referencedColumns: ["id"] },
+        ]
+      }
       sourcing_projects: {
         Row: {
           calendly_link: string | null
@@ -6703,6 +7367,73 @@ export type Database = {
       }
     }
     Functions: {
+      sourcing_agent_hub_counts: {
+        Args: { p_organization_id: string; p_agent_ids: string[] }
+        Returns: {
+          agent_id: string
+          context_key: string | null
+          total: number
+          discovered: number
+          evaluated: number
+          proposed: number
+          reviewed: number
+          fit: number
+          rejected: number
+          skipped: number
+          uncertain: number
+          last_activity_at: string | null
+        }[]
+      }
+      get_agent_memory_automation: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      set_agent_memory_automation: {
+        Args: { p_organization_id: string; p_expected_version: number; p_mode: string; p_dismiss_suggestion?: boolean }
+        Returns: Json
+      }
+      auto_approve_agent_memory: {
+        Args: { p_proposal_id: string; p_automation_version: number }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"] | null
+      }
+      agent_memory_communication_policy: { Args: { p_text: string }; Returns: Json }
+      agent_memory_automatic_source: { Args: { p_proposal_id: string }; Returns: Json }
+      agent_memory_manual_policy_conflict: {
+        Args: { p_organization_id: string; p_project_id: string; p_policy: Json }
+        Returns: boolean
+      }
+      approve_agent_memory: {
+        Args: { p_proposal_id: string; p_expected_version: number; p_content?: string | null; p_scope?: string | null; p_kind?: string | null; p_effects?: string[] | null }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"]
+      }
+      dismiss_agent_memory_proposal: {
+        Args: { p_proposal_id: string; p_expected_version: number }
+        Returns: Database["public"]["Tables"]["agent_memory_proposals"]["Row"]
+      }
+      archive_agent_memory: {
+        Args: { p_memory_id: string; p_expected_version: number }
+        Returns: Database["public"]["Tables"]["agent_memories"]["Row"]
+      }
+      get_agent_memory_context: {
+        Args: { p_organization_id: string; p_project_id?: string | null }
+        Returns: Json
+      }
+      get_agent_sourcing_memory_context: {
+        Args: {
+          p_organization_id: string
+          p_project_id: string | null
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      agent_memory_can_read_project: {
+        Args: { p_organization_id: string; p_project_id: string }
+        Returns: boolean
+      }
+      agent_memory_can_manage: {
+        Args: { p_organization_id: string; p_scope: string; p_project_id: string; p_owner_user_id: string }
+        Returns: boolean
+      }
       acquire_sequence_lock: {
         Args: { p_run_id: string; p_ttl_minutes?: number }
         Returns: boolean

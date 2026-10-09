@@ -345,6 +345,7 @@ async function runScoreMissionProfiles(
             customScoringInstructions: params.scoring_instructions || undefined,
             // Contexte de confiance (service-role) pour l'imputation crédits + org.
             organization_id: task.organization_id,
+            project_id: projectId,
             user_id: task.created_by,
             _ai_action: "scoring",
           }),

@@ -52,7 +52,7 @@ export function useAutoFillFilters({
           }))
         : prev.school,
       // Location radius
-      location_within_area: generatedFilters.location_within_area ?? prev.location_within_area,
+      location_within_area: prev.api === 'recruiter' ? generatedFilters.location_within_area ?? prev.location_within_area : prev.location_within_area,
       // Spotlight
       spotlight: (generatedFilters.spotlight || prev.spotlight) as typeof prev.spotlight,
       // Open to work flag
@@ -65,6 +65,7 @@ export function useAutoFillFilters({
       void (async () => {
         try {
           if (filtersRef.current.location.length > 0) return;
+          const api = filtersRef.current.api;
 
           const { data } = await invokeUnipile({
             body: {
@@ -72,7 +73,7 @@ export function useAutoFillFilters({
               account_id: selectedAccount,
               type: 'LOCATION',
               keywords: locationKeyword,
-              service: 'RECRUITER',
+              service: api === 'classic' ? 'CLASSIC' : api === 'sales_navigator' ? 'SALES_NAVIGATOR' : 'RECRUITER',
             },
           });
 
@@ -88,6 +89,7 @@ export function useAutoFillFilters({
             data.items[0];
 
           if (!best?.id || !best?.title) return;
+          if (filtersRef.current.api !== api) return;
 
           setFilters((curr) => ({
             ...curr,
@@ -98,7 +100,7 @@ export function useAutoFillFilters({
                     id: String(best.id),
                     name: String(best.title),
                     priority: 'MUST_HAVE',
-                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
+                    scope: curr.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT',
                   },
                 ],
           }));

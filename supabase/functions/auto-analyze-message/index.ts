@@ -528,10 +528,11 @@ Deno.serve(async (req) => {
       'timing_issue': 'to_recontact',
     };
     const chatCategory = INTENT_TO_CHAT_CATEGORY[analysis.intent];
-    if (!skipStatusUpdates && chatCategory && chat_id && account_id) {
+    if (!skipStatusUpdates && chatCategory && chat_id && account_id && accountOrgId) {
       const { data: existingEntries } = await supabase
         .from('chat_categories')
         .select('created_by')
+        .eq('organization_id', accountOrgId)
         .eq('account_id', account_id)
         .limit(1);
 
@@ -557,6 +558,7 @@ Deno.serve(async (req) => {
           .upsert({
             chat_id: chat_id,
             account_id: account_id,
+            organization_id: accountOrgId,
             category: chatCategory,
             created_by: userId,
             updated_at: new Date().toISOString(),

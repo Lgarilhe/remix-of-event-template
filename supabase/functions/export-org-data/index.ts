@@ -92,6 +92,8 @@ Deno.serve(async (req) => {
       { data: phoneCalls, error: phoneCallsError },
       { data: phoneCallInsights, error: phoneCallInsightsError },
       { data: phoneCallTranscripts, error: phoneCallTranscriptsError },
+      { data: candidateActionPlans, error: candidateActionPlansError },
+      { data: candidateActionMessages, error: candidateActionMessagesError },
     ] = await Promise.all([
       adminClient
         .from("job_candidate_status")
@@ -158,13 +160,28 @@ Deno.serve(async (req) => {
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(TRANSCRIPTS_EXPORT_LIMIT),
+      // Drafts and source excerpts remain personal, including for an org admin.
+      adminClient.from('candidate_action_plans').select('*')
+        .eq('organization_id', organizationId).eq('user_id', user.id)
+        .order('created_at', { ascending: false }).limit(1000),
+      // Apply the same JWT visibility as the app: own linked mailbox and
+      // acknowledged action sends shared with an authorized mission.
+      userClient.from('candidate_action_messages').select('*')
+        .eq('organization_id', organizationId)
+        .order('occurred_at', { ascending: false }).limit(2000),
     ]);
+    const ownPlanIds = (candidateActionPlans ?? []).map((plan: { id: string }) => plan.id);
+    const actionEffectsQuery = ownPlanIds.length > 0
+      ? await adminClient.from('candidate_action_effects')
+        .select('id,plan_id,kind,audience,payload,status,result,completed_at,updated_at').in('plan_id', ownPlanIds).limit(6000)
+      : { data: [], error: null };
 
     // RGPD art. 20 : un export incomplet doit échouer explicitement, jamais
     // renvoyer un jeu de données tronqué en silence.
     const queryError = candidatesError || projectsError || transactionsError || membersError
       || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError
-      || phoneCallsError || phoneCallInsightsError || phoneCallTranscriptsError;
+      || phoneCallsError || phoneCallInsightsError || phoneCallTranscriptsError
+      || candidateActionPlansError || candidateActionMessagesError || actionEffectsQuery.error;
     if (queryError) {
       console.error("[export-org-data] query failed:", queryError);
       return new Response(
@@ -188,7 +205,15 @@ Deno.serve(async (req) => {
       phone_calls: phoneCalls || [],
       phone_call_insights: phoneCallInsights || [],
       phone_call_transcripts: phoneCallTranscripts || [],
+      candidate_action_plans: candidateActionPlans || [],
+      candidate_action_effects: actionEffectsQuery.data || [],
+      candidate_action_messages: candidateActionMessages || [],
       _meta: {
+        candidate_action_plans_count: (candidateActionPlans || []).length,
+        candidate_action_plans_truncated: (candidateActionPlans || []).length >= 1000,
+        candidate_action_messages_count: (candidateActionMessages || []).length,
+        candidate_action_messages_truncated: (candidateActionMessages || []).length >= 2000,
+        candidate_action_drafts_scope: 'exporting_user_only',
         phone_call_transcripts_count: (phoneCallTranscripts || []).length,
         phone_call_transcripts_truncated: (phoneCallTranscripts || []).length >= TRANSCRIPTS_EXPORT_LIMIT,
         candidates_count: (candidates || []).length,
@@ -212,7 +237,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("[export-org-data] Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Export indisponible' }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

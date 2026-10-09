@@ -1,17 +1,21 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
-import { invokeWithCredits, CREDITS_TOAST_ID } from '@/lib/invokeWithCredits';
+import { invokeWithCredits, CREDITS_TOAST_ID, resolveActionModel } from '@/lib/invokeWithCredits';
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { ACTION_COSTS } from '@/types/aiCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { getYear, parseDate } from '@/components/outreach/dateUtils';
+import { getYear } from '@/components/outreach/dateUtils';
+import { assessProfileExperience, getWorkExperienceDurationMonths } from '../../supabase/functions/_shared/profile-experience.ts';
+import { matchScoringResultsById } from '@/lib/scoringResultIdentity';
 import { Job } from '@/types/jobs';
 import { JobMatchResult, BatchScoringStats, isDegradedScore } from '@/components/outreach/JobScoreDisplay';
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
 import { confirmAlert } from '@/lib/confirmAlert';
 import { serializeProfileForStorage } from '@/lib/serializeProfile';
+import { buildScoringInputVersionKey, buildScoringJobPayload, getCurrentJobScores, getScoringMemoryVersionKey, isCurrentScoringContext } from '@/lib/sourcingScoringContext';
+import type { ScoringContextMetadata } from '@/types/sourcingMemory';
 
 /**
  * Pour un profil Base Konekt (source==='database') affiché en aperçu (données
@@ -202,6 +206,10 @@ async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<voi
 }
 
 interface ScoringOptions {
+  organizationId?: string | null;
+  projectId?: string | null;
+  memoryVersionKey?: string;
+  memoryContextReady?: boolean;
   selectedJob: Job | null;
   selectedProfiles: Set<string>;
   results: LinkedInProfile[];
@@ -281,65 +289,8 @@ export function buildProfileData(profile: LinkedInProfile) {
   const pastJobs = workExperience.filter(exp => exp.end && !exp.current).slice(0, 5);
   const education = profile.education || [];
 
-  // Calculate years of experience from diploma, with work experience fallback
-  const calculateYearsFromDiploma = () => {
-    const relevantDegreeKeywords = [
-      'bachelor', 'licence', 'bac+3',
-      'master', 'msc', 'bac+5', 'maîtrise',
-      'mba', 'ingénieur', 'engineer', 'engineering',
-      'phd', 'doctorat', 'bac+8',
-      'diplôme', 'degree', 'graduate', 'grande école'
-    ];
+  const experienceAssessment = assessProfileExperience(profile);
 
-    const relevantEdu = education
-      .filter((edu: any) => {
-        if (!getYear(edu.end)) return false;
-        const combined = `${edu.degree || ''} ${edu.school || ''} ${edu.field_of_study || ''}`.toLowerCase();
-        return relevantDegreeKeywords.some(kw => combined.includes(kw));
-      })
-      .sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0));
-
-    const diplomaToUse = relevantEdu[0] || education.filter((edu: any) => getYear(edu.end)).sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0))[0];
-
-    if (diplomaToUse) {
-      const endYear = getYear(diplomaToUse.end);
-      if (endYear) {
-        const years = new Date().getFullYear() - endYear;
-        if (years > 0) return years;
-      }
-    }
-
-    // Fallback: use earliest work experience start date
-    let earliestYear: number | null = null;
-    for (const exp of workExperience) {
-      const startYear = getYear(exp.start);
-      if (startYear && startYear > 1970) {
-        if (!earliestYear || startYear < earliestYear) {
-          earliestYear = startYear;
-        }
-      }
-    }
-    if (earliestYear) {
-      const years = new Date().getFullYear() - earliestYear;
-      return years > 0 ? years : null;
-    }
-
-    return null;
-  };
-
-  // Calculate duration in months
-  const calculateDurationMonths = (startRaw?: any, endRaw?: any): number => {
-    const start = parseDate(startRaw);
-    const end = parseDate(endRaw);
-    if (!start?.year) return 0;
-    const endYear = end?.year || new Date().getFullYear();
-    const endMonth = end?.month || new Date().getMonth() + 1;
-    const startYear = start.year;
-    const startMonth = start.month || 1;
-    return (endYear - startYear) * 12 + (endMonth - startMonth);
-  };
-
-  // Format duration string
   const formatDuration = (totalMonths: number): string => {
     const years = Math.floor(totalMonths / 12);
     const months = totalMonths % 12;
@@ -350,21 +301,18 @@ export function buildProfileData(profile: LinkedInProfile) {
 
   // Calculate average tenure
   const calculateAverageTenure = (): number | null => {
-    const positionsWithDates = workExperience.filter(exp => getYear(exp.start));
-    if (positionsWithDates.length === 0) return null;
-
-    const tenures = positionsWithDates.map(exp => calculateDurationMonths(exp.start, exp.end));
-    const totalMonths = tenures.reduce((sum, t) => sum + t, 0);
-    return Math.round(totalMonths / positionsWithDates.length);
+    const tenures = workExperience.map(exp => getWorkExperienceDurationMonths(exp))
+      .filter((months): months is number => months !== null);
+    if (tenures.length === 0) return null;
+    return Math.round(tenures.reduce((sum, months) => sum + months, 0) / tenures.length);
   };
 
-  // Build enriched work experience — send ALL positions for accurate scoring
   const enrichedWorkExperience = workExperience.map(exp => {
-    const durationMonths = calculateDurationMonths(exp.start, exp.end);
+    const durationMonths = getWorkExperienceDurationMonths(exp) ?? undefined;
     return {
       role: exp.role || exp.position || '',
       company: exp.company || '',
-      duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
+      duration: durationMonths !== undefined && durationMonths > 0 ? formatDuration(durationMonths) : undefined,
       durationMonths,
       description: exp.description?.slice(0, 500) || undefined,
       skills: exp.skills?.slice(0, 8).map(s => s.name || String(s)) || undefined,
@@ -405,7 +353,8 @@ export function buildProfileData(profile: LinkedInProfile) {
       const year = endYear ? ` (${endYear})` : '';
       return [school, degree, field].filter(Boolean).join(' - ') + year;
     }).filter((s: string) => s.trim().length > 0) || [],
-    yearsOfExperience: calculateYearsFromDiploma(),
+    yearsOfExperience: experienceAssessment.source === 'work' && experienceAssessment.complete ? experienceAssessment.years : null,
+    experienceAssessment,
     averageTenureMonths: calculateAverageTenure(),
     openToWork: isOpenToWork,
     openProfile: isOpenProfile,
@@ -544,6 +493,7 @@ function mapScoringResult(raw: any): JobMatchResult {
     summary: safeStr(raw.summary),
     recommendation: (recMap[raw.recommendation] || (typeof raw.recommendation === 'string' ? raw.recommendation : 'maybe')) as JobMatchResult['recommendation'],
     salary_analysis: raw.salary_analysis,
+    scoringContext: raw.scoringContext,
     scoring_details: {
       strengths: safeStrArray(raw.strengths, 10),
       concerns: safeStrArray(raw.concerns, 10),
@@ -627,15 +577,17 @@ interface PersistedBatchReport {
   stats: BatchScoringStats | null;
   durationMs: number | undefined;
   savedAt: number;
+  contextKey: string;
 }
 
-function readPersistedBatchReport(jobId: string | null | undefined): PersistedBatchReport | null {
+function readPersistedBatchReport(jobId: string | null | undefined, contextKey: string | null): PersistedBatchReport | null {
   const key = batchReportStorageKey(jobId);
   if (!key) return null;
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedBatchReport;
+    if (!contextKey || parsed.contextKey !== contextKey) return null;
     if (!parsed?.savedAt || Date.now() - parsed.savedAt > BATCH_REPORT_TTL_MS) {
       localStorage.removeItem(key);
       return null;
@@ -648,7 +600,7 @@ function readPersistedBatchReport(jobId: string | null | undefined): PersistedBa
 
 function writePersistedBatchReport(
   jobId: string | null | undefined,
-  data: { report: BatchReportEntry[]; stats: BatchScoringStats | null; durationMs: number | undefined }
+  data: { report: BatchReportEntry[]; stats: BatchScoringStats | null; durationMs: number | undefined; contextKey: string }
 ): void {
   const key = batchReportStorageKey(jobId);
   if (!key) return;
@@ -669,6 +621,10 @@ function clearPersistedBatchReport(jobId: string | null | undefined): void {
 }
 
 export function useLinkedInScoring({
+  organizationId,
+  projectId,
+  memoryVersionKey = getScoringMemoryVersionKey([]),
+  memoryContextReady = true,
   selectedJob,
   selectedProfiles,
   results,
@@ -688,19 +644,39 @@ export function useLinkedInScoring({
   scoringDisabledReason,
   skipBriefCheck,
 }: ScoringOptions) {
+  const currentContextKey = useMemo(() => selectedJob && memoryContextReady
+    ? buildScoringInputVersionKey(selectedJob, customScoringInstructions, { organizationId, projectId,
+      requestModel: resolveActionModel('scoring', scoringModel), memoryVersionKey }) : null,
+  [selectedJob, memoryContextReady, organizationId, projectId, customScoringInstructions, scoringModel, memoryVersionKey]);
+  const liveContextRef = useRef(currentContextKey);
+  const liveGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+  if (liveContextRef.current !== currentContextKey) liveGenerationRef.current++;
+  liveContextRef.current = currentContextKey;
+  const activeBatchContextRef = useRef<{ key: string; generation: number } | null>(null);
+  const activeProfileRequestsRef = useRef(new Set<string>());
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; liveGenerationRef.current++; };
+  }, []);
+  const currentJobScores = useMemo(() => getCurrentJobScores(jobScores, currentContextKey, memoryVersionKey),
+    [jobScores, currentContextKey, memoryVersionKey]);
+  const staleScoreCount = Object.keys(jobScores).length - Object.keys(currentJobScores).length;
+
   // Hydrate from localStorage on mount — survives mobile remounts during scoring
-  const initialPersisted = readPersistedBatchReport(selectedJob?.id);
+  const initialPersisted = readPersistedBatchReport(selectedJob?.id, currentContextKey);
   const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(initialPersisted?.stats ?? null);
   const [batchReport, setBatchReport] = useState<BatchReportEntry[]>(initialPersisted?.report ?? []);
   const [batchDurationMs, setBatchDurationMs] = useState<number | undefined>(initialPersisted?.durationMs);
 
   // Re-hydrate when the active mission changes (selectedJob.id change)
   useEffect(() => {
-    const persisted = readPersistedBatchReport(selectedJob?.id);
+    const persisted = readPersistedBatchReport(selectedJob?.id, currentContextKey);
     setBatchReport(persisted?.report ?? []);
     setBatchStats(persisted?.stats ?? null);
     setBatchDurationMs(persisted?.durationMs);
-  }, [selectedJob?.id]);
+    setScoringInProgress(false);
+  }, [selectedJob?.id, currentContextKey, setScoringInProgress]);
 
   // Auto-restore au focus du tab : si l'user revient sur Konekt après avoir
   // switch d'app pendant un scoring (cas mobile fréquent où le browser purge
@@ -711,7 +687,7 @@ export function useLinkedInScoring({
     const restoreOnFocus = () => {
       // Skip si la modale est déjà ouverte (state non vide)
       if (batchReport.length > 0) return;
-      const persisted = readPersistedBatchReport(selectedJob?.id);
+      const persisted = readPersistedBatchReport(selectedJob?.id, currentContextKey);
       if (persisted?.report?.length && persisted.report.length > 0) {
         console.info('[scoring] Auto-restore batch report from localStorage on focus', {
           jobId: selectedJob?.id,
@@ -730,7 +706,7 @@ export function useLinkedInScoring({
       window.removeEventListener('focus', restoreOnFocus);
       document.removeEventListener('visibilitychange', restoreOnFocus);
     };
-  }, [selectedJob?.id, batchReport.length]);
+  }, [selectedJob?.id, currentContextKey, batchReport.length]);
 
   // Score a single profile.
   // options.deep : scoring profond — le profil passé contient les données
@@ -748,67 +724,54 @@ export function useLinkedInScoring({
       toast.error(scoringDisabledReason);
       return;
     }
+    if (!currentContextKey || !memoryContextReady) {
+      toast.info('Patientez pendant le chargement des règles de cette recherche.');
+      return;
+    }
+    const requestContextKey = currentContextKey;
+    const requestGeneration = liveGenerationRef.current;
+    const isCurrentRequest = () => mountedRef.current && liveContextRef.current === requestContextKey && liveGenerationRef.current === requestGeneration;
+    const profileRequestKey = requestContextKey + ':' + requestGeneration + ':' + profile.id + ':' + (options?.deep ? 'deep' : 'quick');
+    if (activeProfileRequestsRef.current.has(profileRequestKey)) return;
+    activeProfileRequestsRef.current.add(profileRequestKey);
 
     try {
       // Base Konekt : hydrate la fiche complète (collect) avant scoring. No-op LinkedIn.
       const hydratedProfile = await hydrateIfDatabase(profile);
+      if (!isCurrentRequest()) return;
       // Réinjecter la fiche enrichie dans la liste affichée, sinon la modale
       // garde les données d'aperçu partielles (1 exp, ni formation ni skills)
       // alors que le collect a bien ramené la fiche complète.
       if (setResults && hydratedProfile !== profile) {
         setResults((prev) => prev.map((p) => (p.id === profile.id ? { ...hydratedProfile, _preScore: (p as LinkedInProfile & { _preScore?: number })._preScore } : p)));
       }
+      if (!isCurrentRequest()) return;
       const profileData = buildProfileData(hydratedProfile);
 
       const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
         profile: profileData,
-        job: {
-          id: selectedJob.id,
-          title: selectedJob.title,
-          client: selectedJob.client,
-          skills: selectedJob.skills || [],
-          requirements: selectedJob.requirements,
-          description: selectedJob.description,
-          seniority: selectedJob.seniority,
-          location: selectedJob.location,
-          remote: selectedJob.remote,
-          xpMin: selectedJob.xpMin,
-          xpMax: selectedJob.xpMax,
-          salaryMin: selectedJob.salaryMin,
-          salaryMax: selectedJob.salaryMax,
-          tjmMin: (selectedJob as any).tjmMin ?? selectedJob.tjm,
-          contractType: selectedJob.contractType,
-          mustHave: selectedJob.mustHave,
-          shouldHave: selectedJob.shouldHave,
-          niceToHave: selectedJob.niceToHave,
-          bodyContent: selectedJob.bodyContent,
-          originalBriefText: (selectedJob as any).originalBriefText,
-          transversalCriteria: selectedJob.transversalCriteria,
-          // ─── Sprint D : enrichissements brief structurés ─────────────
-          evaluationCriteria: (selectedJob as any).evaluationCriteria,
-          evaluationWeights: (selectedJob as any).evaluationWeights,
-          targetCompanies: (selectedJob as any).targetCompanies,
-          calibrationProfiles: (selectedJob as any).calibrationProfiles,
-          skillsToAvoid: (selectedJob as any).skillsToAvoid,
-          requiredLanguages: (selectedJob as any).requiredLanguages,
-          requiredCertifications: (selectedJob as any).requiredCertifications,
-          urgency: (selectedJob as any).urgency,
-          teamSize: (selectedJob as any).teamSize,
-          reportsTo: (selectedJob as any).reportsTo,
-          manages: (selectedJob as any).manages,
-          pedigreeRequirements: (selectedJob as any).pedigreeRequirements,
-          pedigreePresetName: (selectedJob as any).pedigreePresetName,
-          clientCompetitors: (selectedJob as any).clientCompetitors,
-          restrictSearchToCompetitors: (selectedJob as any).restrictSearchToCompetitors,
-        },
+        job: buildScoringJobPayload(selectedJob),
+        organization_id: organizationId || undefined,
+        project_id: projectId || undefined,
+        expected_memory_version_key: memoryVersionKey,
         customScoringInstructions,
         accountId: accountId || undefined,
         scoringMode: options?.deep ? 'deep' : undefined,
       }, { modelOverride: scoringModel || undefined });
 
+      if (!isCurrentRequest()) return;
       if (error) throw error;
       if (data?.result) {
+        if (typeof data.result !== 'object' || data.result === null || !('profile_id' in data.result) || data.result.profile_id !== profileData.id) {
+          toast.error('La note reçue ne correspond pas à ce profil. Réessayez la notation.');
+          return;
+        }
         const mapped = mapScoringResult(data.result);
+        if (!isCurrentScoringContext(mapped.scoringContext, requestContextKey, memoryVersionKey)) {
+          toast.info('Les règles ont changé. Rechargez la recherche avant de réévaluer.');
+          return;
+        }
+        mapped.clientContextKey = requestContextKey;
         setJobScores(prev => ({ ...prev, [profile.id]: mapped }));
         
         const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
@@ -833,6 +796,7 @@ export function useLinkedInScoring({
             linkedinProfileData,
           });
         }
+        if (!isCurrentRequest()) return;
         if (!options?.deep && isSkip) {
           setSelectedProfiles?.(prev => {
             const newSet = new Set(prev);
@@ -850,9 +814,11 @@ export function useLinkedInScoring({
       console.error('Score error:', err);
       // Un refus de crédits a déjà été annoncé par le wrapper d'appel : un
       // second message générique laisserait croire à une panne.
-      if (!isInsufficientCreditsError(err)) toast.error('Erreur lors du scoring');
+      if (isCurrentRequest() && !isInsufficientCreditsError(err)) toast.error(err instanceof Error && /mémoire|règles|conflit/i.test(err.message) ? err.message : 'Erreur lors du scoring');
+    } finally {
+      activeProfileRequestsRef.current.delete(profileRequestKey);
     }
-  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel, scoringDisabledReason]);
+  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, setResults, customScoringInstructions, accountId, scoringModel, scoringDisabledReason, currentContextKey, memoryContextReady, organizationId, projectId, memoryVersionKey]);
 
   // Batch score selected profiles. `profileIds` : lot explicite (bouton
   // « Scorer les 20 premiers ») : la sélection React n'est pas encore
@@ -867,6 +833,13 @@ export function useLinkedInScoring({
       toast.error(scoringDisabledReason);
       return;
     }
+    if (!currentContextKey || !memoryContextReady) {
+      toast.info('Patientez pendant le chargement des règles de cette recherche.');
+      return;
+    }
+    const requestContextKey = currentContextKey;
+    const requestGeneration = liveGenerationRef.current;
+    const isCurrentRequest = () => mountedRef.current && liveContextRef.current === requestContextKey && liveGenerationRef.current === requestGeneration;
 
     if (targetIds.size === 0) {
       toast.error('Sélectionnez au moins un profil');
@@ -908,15 +881,12 @@ export function useLinkedInScoring({
       });
       if (!ok) return;
     }
+    if (!isCurrentRequest()) return;
 
+    if (activeBatchContextRef.current?.key === requestContextKey && activeBatchContextRef.current.generation === requestGeneration) return;
+    const requestToken = { key: requestContextKey, generation: requestGeneration };
+    activeBatchContextRef.current = requestToken;
     setScoringInProgress(true);
-
-    // 🐛 BUG FIX Opus A1 (race scoring cross-projet) : capture l'ID du job au
-    // lancement. Si l'user change de projet pendant que les batches tournent
-    // (Promise.allSettled en parallèle), on refuse d'écrire les scores sur le
-    // nouveau projet. Avant : setJobScores mettait les scores dans la map du
-    // nouveau projet → faux positifs visuels silencieux.
-    const initialJobId = selectedJob.id;
 
     // Use merged results (including pool profiles) if available, otherwise fall back to search results
     const allProfiles = allAvailableProfilesRef?.current || results;
@@ -925,11 +895,12 @@ export function useLinkedInScoring({
     // exception, un score partiel restait définitif puisque rien ne le
     // re-scorait jamais (l'edge function ne cache plus ces résultats).
     const profilesToScore = allProfiles.filter(p =>
-      targetIds.has(p.id) && (!jobScores[p.id] || isDegradedScore(jobScores[p.id]))
+      targetIds.has(p.id) && (!currentJobScores[p.id] || isDegradedScore(currentJobScores[p.id]))
     );
 
     if (profilesToScore.length === 0) {
       toast.info('Tous les profils sélectionnés sont déjà scorés');
+      if (activeBatchContextRef.current === requestToken) activeBatchContextRef.current = null;
       setScoringInProgress(false);
       return;
     }
@@ -945,8 +916,9 @@ export function useLinkedInScoring({
         description: `${toReveal.length} fiche(s) complète(s) vont être récupérées pour permettre le scoring (≈ ${estCost} crédits).`,
         confirmLabel: 'Révéler et scorer',
       });
-      if (!ok) {
-        setScoringInProgress(false);
+      if (!ok || !isCurrentRequest()) {
+        if (activeBatchContextRef.current === requestToken) activeBatchContextRef.current = null;
+        if (isCurrentRequest()) setScoringInProgress(false);
         return;
       }
     }
@@ -959,6 +931,7 @@ export function useLinkedInScoring({
       // Base Konekt : hydrate les fiches complètes (collect) avant scoring, à
       // concurrence bornée. No-op LinkedIn (needsReveal/hydrateIfDatabase gardés).
       const hydratedProfiles = await hydrateAllChunked(profilesToScore, 4);
+      if (!isCurrentRequest()) return;
       // Réinjecter les fiches enrichies (collect) dans la liste affichée, en
       // conservant le _preScore existant. Sinon les cartes/modales gardent les
       // données d'aperçu partielles après le scoring (bug « fiches vides »).
@@ -975,49 +948,11 @@ export function useLinkedInScoring({
           }));
         }
       }
+      if (!isCurrentRequest()) return;
       const profilesData = hydratedProfiles.map(buildProfileData);
-      const jobPayload = {
-        id: selectedJob.id,
-        title: selectedJob.title,
-        client: selectedJob.client,
-        skills: selectedJob.skills || [],
-        requirements: selectedJob.requirements,
-        description: selectedJob.description,
-        seniority: selectedJob.seniority,
-        location: selectedJob.location,
-        remote: selectedJob.remote,
-        xpMin: selectedJob.xpMin,
-        xpMax: selectedJob.xpMax,
-        salaryMin: selectedJob.salaryMin,
-        salaryMax: selectedJob.salaryMax,
-        tjmMin: (selectedJob as any).tjmMin ?? selectedJob.tjm,
-        contractType: selectedJob.contractType,
-        mustHave: selectedJob.mustHave,
-        shouldHave: selectedJob.shouldHave,
-        niceToHave: selectedJob.niceToHave,
-        bodyContent: selectedJob.bodyContent,
-        // originalBriefText oublié dans le batch jobPayload — fix : transmis aussi
-        originalBriefText: (selectedJob as any).originalBriefText,
-        transversalCriteria: selectedJob.transversalCriteria,
-        // ─── Sprint D : enrichissements brief structurés ─────────────
-        evaluationCriteria: (selectedJob as any).evaluationCriteria,
-        evaluationWeights: (selectedJob as any).evaluationWeights,
-        targetCompanies: (selectedJob as any).targetCompanies,
-        calibrationProfiles: (selectedJob as any).calibrationProfiles,
-        skillsToAvoid: (selectedJob as any).skillsToAvoid,
-        requiredLanguages: (selectedJob as any).requiredLanguages,
-        requiredCertifications: (selectedJob as any).requiredCertifications,
-        urgency: (selectedJob as any).urgency,
-        teamSize: (selectedJob as any).teamSize,
-        reportsTo: (selectedJob as any).reportsTo,
-        manages: (selectedJob as any).manages,
-        pedigreeRequirements: (selectedJob as any).pedigreeRequirements,
-        pedigreePresetName: (selectedJob as any).pedigreePresetName,
-        clientCompetitors: (selectedJob as any).clientCompetitors,
-        restrictSearchToCompetitors: (selectedJob as any).restrictSearchToCompetitors,
-      };
+      const jobPayload = buildScoringJobPayload(selectedJob);
 
-      const allResults: JobMatchResult[] = [];
+      const allResults: Array<JobMatchResult & { profile_id?: string }> = [];
       let rateLimited = false;
       /**
        * Refus de crédits sur un lot. Les vagues suivantes se feraient refuser
@@ -1037,6 +972,7 @@ export function useLinkedInScoring({
 
       // Process batches in parallel waves (PARALLEL_BATCHES at a time)
       for (let wave = 0; wave < batches.length; wave += PARALLEL_BATCHES) {
+        if (!isCurrentRequest()) return;
         if (rateLimited || creditStop) break;
 
         const waveBatches = batches.slice(wave, wave + PARALLEL_BATCHES);
@@ -1051,10 +987,13 @@ export function useLinkedInScoring({
           waveBatches.map(batch =>
             invokeWithCredits('score-profile-job', 'scoring', {
               profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
+              organization_id: organizationId || undefined, project_id: projectId || undefined,
+              expected_memory_version_key: memoryVersionKey,
             }, { modelOverride: scoringModel || undefined })
           )
         );
 
+        if (!isCurrentRequest()) return;
         for (let j = 0; j < waveResults.length; j++) {
           const result = waveResults[j];
           const batchIndex = wave + j + 1;
@@ -1083,21 +1022,11 @@ export function useLinkedInScoring({
             }
             if (errMsg.includes('RATE_LIMITED') || errMsg.includes('429')) {
               rateLimited = true;
-              waveBatches[j].forEach(() => allResults.push({
-                match_score: 0,
-                matching_skills: [],
-                missing_skills: [],
-                experience_match: 'incertain',
-                location_match: false,
-                summary: 'Rate limited - réessayez plus tard',
-                recommendation: 'maybe',
-                // Marque le placeholder comme dégradé : badge "Analyse IA
-                // incomplète" + re-scorable (sinon le guard batch le figeait).
-                skippedLLM: true,
-                // Lot 0b : affiché seulement, jamais enregistré (pas une note).
-                rateLimitedPlaceholder: true,
-              } as any));
               break;
+            }
+            if (error.status === 409 || error.code === 'MEMORY_CONFLICT' || error.code === 'MEMORY_CONTEXT_CHANGED') {
+              toast.error(error.message || 'Une règle de mémoire est en conflit avec le brief. Clarifiez-la avant de réévaluer.');
+              return;
             }
             console.error(`Batch ${batchIndex} error:`, error);
             toast.warning(`Lot ${batchIndex}/${totalBatches} échoué, passage au suivant...`);
@@ -1117,7 +1046,13 @@ export function useLinkedInScoring({
           }
 
           if (data?.results && Array.isArray(data.results)) {
-            allResults.push(...data.results);
+            const matchingResults = data.results.filter((result: { scoringContext?: ScoringContextMetadata }) =>
+              isCurrentScoringContext(result?.scoringContext, requestContextKey, memoryVersionKey));
+            if (matchingResults.length !== data.results.length) {
+              toast.info('Les règles ont changé. Rechargez la recherche avant de réévaluer.');
+              return;
+            }
+            allResults.push(...matchScoringResultsById(waveBatches[j], matchingResults).map(({ result }) => result));
           }
           if ((data as any)?.stats) {
             const stats = (data as any).stats;
@@ -1135,7 +1070,9 @@ export function useLinkedInScoring({
         }
       }
 
-      if (allResults.length > 0) {
+      if (!isCurrentRequest()) return;
+      const matchedResults = matchScoringResultsById(profilesToScore, allResults);
+      if (matchedResults.length > 0) {
         const newScores: Record<string, JobMatchResult> = {};
         const lowScoreProfiles: Array<{
           id: string;
@@ -1159,16 +1096,10 @@ export function useLinkedInScoring({
           linkedinProfileData?: any;
         }> = [];
 
-        allResults.forEach((rawResult: any, index: number) => {
-          // Match by profile_id when available (batch scoring), fallback to index
-          const profile = rawResult.profile_id
-            ? profilesToScore.find(p => p.id === rawResult.profile_id) || profilesToScore[index]
-            : profilesToScore[index];
-          if (!profile) return;
+        matchedResults.forEach(({ profile, result: rawResult }) => {
           const result = mapScoringResult(rawResult);
+          result.clientContextKey = requestContextKey;
           newScores[profile.id] = result;
-          // Résultat factice d'un lot refusé (429) : affiché, jamais enregistré.
-          if (rawResult?.rateLimitedPlaceholder) return;
           const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
           const profileUrl = profile.public_profile_url || profile.profile_url;
           const linkedinProfileData = serializeProfileForStorage(profile);
@@ -1198,23 +1129,13 @@ export function useLinkedInScoring({
           }
         });
 
-        // 🐛 BUG FIX Opus A1 (race scoring cross-projet) : abort si l'user a changé
-        // de projet pendant le scoring — on ne veut pas écrire les scores du job A
-        // dans la map du job B actuellement sélectionné.
-        if (selectedJob?.id !== initialJobId) {
-          console.warn('[useLinkedInScoring] Projet changé pendant scoring, résultats ignorés', {
-            initialJobId,
-            currentJobId: selectedJob?.id,
-          });
-          toast.info('Scoring annulé : vous avez changé de projet.');
-          return;
-        }
+        if (!isCurrentRequest()) return;
 
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true);
 
         // Generate embeddings for scored candidates (fire-and-forget)
-        profilesToScore.forEach(profile => {
+        matchedResults.forEach(({ profile }) => {
           generateCandidateEmbedding(profile).catch(err =>
             console.error('Batch embedding error:', err)
           );
@@ -1229,6 +1150,7 @@ export function useLinkedInScoring({
           await candidateStatus.batchSaveScores(realScoredProfiles);
         }
 
+        if (!isCurrentRequest()) return;
         // Les profils peu adaptés sortent seulement de la sélection.
         if (lowScoreProfiles.length > 0) {
           const lowScoreIds = new Set(lowScoreProfiles.map(p => p.id));
@@ -1250,6 +1172,9 @@ export function useLinkedInScoring({
           );
         } else if (rateLimited) {
           toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
+        } else if (scoredCount < profilesToScore.length) {
+          const remaining = profilesToScore.length - scoredCount;
+          toast.warning(`${scoredCount} profils notés sur ${profilesToScore.length}. ${remaining} sans résultat vérifié : relancez la notation pour les reprendre.`);
         } else if (lowScoreProfiles.length > 0) {
           toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} peu adapté${lowScoreProfiles.length > 1 ? 's' : ''}, à confirmer`);
         } else {
@@ -1288,11 +1213,7 @@ export function useLinkedInScoring({
         setBatchDurationMs(Date.now() - batchStartTime);
 
         // Build detailed per-profile report
-        const reportEntries: BatchReportEntry[] = allResults.map((rawResult: any, index: number) => {
-          const profile = rawResult.profile_id
-            ? profilesToScore.find(p => p.id === rawResult.profile_id) || profilesToScore[index]
-            : profilesToScore[index];
-          if (!profile) return null;
+        const reportEntries: BatchReportEntry[] = matchedResults.map(({ profile, result: rawResult }) => {
           const result = mapScoringResult(rawResult);
           const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
           const profileUrl = profile.public_profile_url || profile.profile_url;
@@ -1318,15 +1239,21 @@ export function useLinkedInScoring({
           report: reportEntries,
           stats: aggregatedStats,
           durationMs: Date.now() - batchStartTime,
+          contextKey: requestContextKey,
         });
+      } else if (!creditStop) {
+        toast.warning(rateLimited
+          ? 'Notation interrompue. Les profils restent à noter : réessayez plus tard.'
+          : 'Aucune note vérifiée reçue. Les profils restent à noter : relancez la notation.');
       }
     } catch (err) {
       console.error('Batch score error:', err);
-      toast.error('Erreur lors du scoring par lot');
+      if (isCurrentRequest()) toast.error('Erreur lors du scoring par lot');
     } finally {
-      setScoringInProgress(false);
+      if (activeBatchContextRef.current === requestToken) activeBatchContextRef.current = null;
+      if (isCurrentRequest()) setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, setStatusFilter, customScoringInstructions, accountId, scoringModel, scoringDisabledReason, skipBriefCheck]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, setStatusFilter, customScoringInstructions, accountId, scoringModel, scoringDisabledReason, skipBriefCheck, currentContextKey, currentJobScores, memoryContextReady, organizationId, projectId, memoryVersionKey]);
 
   const clearBatchReport = useCallback(() => {
     setBatchReport([]);
@@ -1338,6 +1265,9 @@ export function useLinkedInScoring({
   }, [selectedJob?.id]);
 
   return {
+    currentJobScores,
+    staleScoreCount,
+    currentContextKey,
     scoreProfile,
     handleBatchScore,
     batchStats,

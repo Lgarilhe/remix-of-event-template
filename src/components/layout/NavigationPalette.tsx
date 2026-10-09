@@ -34,6 +34,7 @@ import { hasFeature } from '@/lib/featureGates';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { GlobalTaskShortcut } from '@/components/tasks/GlobalTaskShortcut';
 import { useSequencesBeta } from '@/hooks/useSequencesBeta';
+import { AgentOrb } from '@/components/agent/AgentOrb';
 
 export function NavigationPalette() {
   const [open, setOpen] = useState(false);
@@ -100,6 +101,10 @@ export function NavigationPalette() {
           <CommandEmpty>Aucun résultat</CommandEmpty>
 
           <CommandGroup heading="Navigation">
+            <CommandItem onSelect={() => go('/agents/sourcing')}>
+              <AgentOrb size="sm" className="mr-2" />
+              Agents
+            </CommandItem>
             <CommandItem onSelect={() => go('/dashboard')}>
               <LayoutDashboard className="mr-2 h-4 w-4" aria-hidden="true" />
               Tableau de bord

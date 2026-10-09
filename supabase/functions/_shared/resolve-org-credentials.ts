@@ -94,13 +94,21 @@ function normalizeDsn(raw: string): string {
   return `https://${cleaned}`;
 }
 
+function unipileEnvironmentCredentials(): UnipileCredentials | null {
+  const envKey = Deno.env.get("UNIPILE_API_KEY");
+  const envDsn = Deno.env.get("UNIPILE_DSN");
+  return envKey && envDsn ? { apiKey: envKey, dsn: normalizeDsn(envDsn) } : null;
+}
+
 export async function resolveUnipileCredentials(
   organizationId?: string | null,
   supabaseClient?: SupabaseClient
 ): Promise<UnipileCredentials | null> {
   if (organizationId) {
     const cached = cacheGet(unipileCache, organizationId);
-    if (cached !== undefined) return cached;
+    // A negative entry means no org-specific credentials, not no usable
+    // environment connection. Every cached read must retain that fallback.
+    if (cached !== undefined) return cached ?? unipileEnvironmentCredentials();
 
     try {
       const sb = supabaseClient ?? getServiceClient();
@@ -131,13 +139,7 @@ export async function resolveUnipileCredentials(
     }
   }
 
-  const envKey = Deno.env.get("UNIPILE_API_KEY");
-  const envDsn = Deno.env.get("UNIPILE_DSN");
-  if (envKey && envDsn) {
-    return { apiKey: envKey, dsn: normalizeDsn(envDsn) };
-  }
-
-  return null;
+  return unipileEnvironmentCredentials();
 }
 
 // ─── Apollo ──────────────────────────────────────────────────────────────────

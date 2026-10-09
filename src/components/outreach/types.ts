@@ -7,7 +7,9 @@ export interface FilterItem {
 }
 
 // Priority for advanced filters (Recruiter/Sales Navigator)
-// CAN_HAVE = Nice to have, MUST_HAVE = Required, DOESNT_HAVE = Exclude
+// Search logic within a Recruiter facet: CAN_HAVE = OR (at least one),
+// MUST_HAVE = AND (all), DOESNT_HAVE = NOT (exclude). These are not score weights.
+// School CAN_HAVE is a UI exception: a school to review, omitted from search.
 export type FilterPriority = 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
 
 // Scope for role/title filters
@@ -65,6 +67,11 @@ export type ActivityType = 'with_message' | 'without_message' | 'with_note' | 'w
 export type CompanyPriority = 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
 export type CompanyScope = 'CURRENT_OR_PAST' | 'CURRENT' | 'PAST' | 'PAST_NOT_CURRENT';
 
+export interface CompanyIdFilter extends FilterItem {
+  priority?: CompanyPriority;
+  scope?: CompanyScope;
+}
+
 export interface CompanyKeywordFilter {
   keywords: string;
   priority: CompanyPriority;
@@ -84,7 +91,7 @@ export interface LinkedInFiltersState {
   location_within_area: number | null; // Search radius in miles (Recruiter only)
   
   // Company filters - ID-based (all APIs) and Keywords-based (Recruiter only)
-  company: FilterItem[];
+  company: CompanyIdFilter[];
   company_keywords: CompanyKeywordFilter[]; // Keywords with priority/scope (Recruiter only)
   
   industry: FilterItem[];
@@ -541,15 +548,25 @@ export const NETWORK_DISTANCES = [
 
 // Priority options for all filters that support priority
 export const PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
-  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-blue-100 text-blue-700', icon: '○' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
+  { value: 'MUST_HAVE', label: 'Tous (ET)', color: 'bg-success/10 text-foreground', icon: '✓' },
+  { value: 'CAN_HAVE', label: 'Au moins un (OU)', color: 'bg-info/10 text-foreground', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-foreground', icon: '✕' },
 ];
 
-// Role-specific priority options (CAN_HAVE may not be supported for role filter)
+export const SEARCH_FILTER_LOGIC_HELP = 'Tous : chaque valeur est requise. Au moins un : une alternative suffit. Exclure : écarter les profils correspondants. Les préférences de notation se règlent dans le cadrage.';
+
+// Schools to review are intentionally kept out of the provider request.
+export const SCHOOL_PRIORITY_OPTIONS = [
+  { value: 'MUST_HAVE', label: 'Requis pour la recherche', color: 'bg-success/10 text-foreground', icon: '✓' },
+  { value: 'CAN_HAVE', label: 'À examiner', color: 'bg-info/10 text-foreground', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-foreground', icon: '✕' },
+];
+
+// Keep the role editor's existing supported options; alternatives can also be
+// expressed with OR inside a required keyword query.
 export const ROLE_PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
+  { value: 'MUST_HAVE', label: 'Requis', color: 'bg-success/10 text-foreground', icon: '✓' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-foreground', icon: '✕' },
 ];
 
 // Scope options for role/title

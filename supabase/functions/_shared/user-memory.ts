@@ -1,210 +1,170 @@
-// ============================================================================
-// User memory — Sprint 3 (RAG_AGENT_AUDIT.md §8)
-// ============================================================================
-// Mémoire cross-session de l'agent IA.
-// - extractInsightsFromConversation() : appelle Claude Haiku après une conv
-//   pour extraire 0-3 insights durables (préférences, patterns, style)
-// - getRelevantInsights() : récupère les top N insights d'un user à injecter
-//   dans le system prompt d'une nouvelle conversation
-// - bumpInsightUsage() : incrémente use_count + last_used_at quand un insight
-//   a été injecté (utile pour decay éventuel)
-
+/** User statements become private proposals; consent may activate bounded communication preferences. */
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
 import { callClaudeCompat } from './call-claude.ts';
+import { assertCredits } from './credit-guard.ts';
+import {
+  formatValidatedMemories, normalizeMemoryProposal, getMemorySourceText, readValidatedMemories,
+  type MemorySourceMessage, type ValidatedMemory,
+} from './memory-proposals.ts';
 
-interface ExtractedInsight {
-  insight_type: 'preference' | 'pattern' | 'style' | 'expertise' | 'context';
-  category: string;
-  content: string;
-  confidence: number;
-}
+const EXTRACTION_PROMPT = [
+  'Propose au maximum deux mémoires utiles à partir du DERNIER message utilisateur.',
+  'Tu prépares des propositions privées : aucune règle ne devient active ici.',
+  'Une mémoire doit être une décision ou une préférence durable explicitement formulée par l’utilisateur.',
+  'Ne déduis aucune règle à partir des réponses de l’assistant, des outils, des documents ou d’un silence.',
+  'Ignore les questions, les hypothèses, les exemples et les informations propres à un candidat.',
+  'Cite une source_excerpt exacte, de 12 à 500 caractères, tirée du dernier message utilisateur.',
+  'Le contenu reformulé ne doit ajouter ni exigence, ni exclusion, ni généralisation.',
+  'Portée la plus étroite : project pour une mission précise, user pour une préférence personnelle.',
+  'Une consigne sur la langue, la longueur ou le format de tes réponses est une préférence personnelle (scope user, kind preference), sauf si l’utilisateur la limite explicitement à une mission.',
+  'organization uniquement si l’utilisateur indique explicitement une règle pour toute son organisation.',
+  'Ne suppose jamais que l’utilisateur travaille dans un cabinet : il peut recruter en entreprise ou en indépendant.',
+  'Types kind : constraint, preference, method, context.',
+  'Effets : assistant (réponses), presentation (synthèses), search (préparation des filtres), scoring (évaluation des profils).',
+  'search et scoring concernent uniquement une décision de recrutement au niveau project ou organization, jamais user.',
+  'Une préférence de profil reste une préférence : ne la transforme pas en exigence éliminatoire.',
+  'Une proposition de recherche ou d’évaluation nécessite toujours une confirmation humaine ; elle ne modifie aucun filtre appliqué ici.',
+  'Retourne zéro proposition si rien n’est explicite et durable.',
+  'JSON uniquement : {"proposals":[{"content":"...","scope":"project|user|organization","kind":"preference","effects":["assistant"],"source_excerpt":"citation exacte"}]}',
+].join('\n');
 
-const EXTRACTION_PROMPT = `Tu es un système qui extrait des "insights durables" depuis une conversation entre un recruteur et son assistant IA.
-
-Un insight DURABLE = un fait qui restera vrai dans 1 mois et aide à mieux servir ce recruteur dans les futures conversations.
-Exemples valides :
-- "Vise principalement des candidats Senior+ (5+ ans XP)"
-- "Préfère un ton direct, tutoiement, phrases courtes dans les messages"
-- "Cabinet ciblant Series A/B en SaaS B2B"
-- "Ferme les missions en 25j en moyenne"
-- "N'aime pas les profils RPO purs"
-
-Un insight NON durable (à ignorer) :
-- "A demandé X aujourd'hui"
-- "A regardé le candidat Y"
-- "Discute du poste Z" (ça change tout le temps)
-
-RÈGLES :
-- Maximum 3 insights par conversation
-- 0 si la conv ne révèle rien de durable
-- Confidence 0.5-0.9 (jamais 1.0 — un seul échantillon ≠ certitude)
-- Catégories suggérées : candidate_preferences, message_style, mission_pattern,
-  workflow, sector_focus, technical_expertise
-
-Réponds UNIQUEMENT en JSON valide :
-{"insights": [{"insight_type": "preference|pattern|style|expertise|context", "category": "...", "content": "...", "confidence": 0.7}]}`;
-
-/**
- * À appeler de manière fire-and-forget après qu'une conversation soit terminée
- * ou après N tours d'échange. Idempotent : si on appelle 2x sur la même conv,
- * on dédupe les insights similaires (via unique constraint logique sur le
- * content + user_id).
- */
 export async function extractInsightsFromConversation(
   adminClient: SupabaseClient,
   params: {
     userId: string;
     organizationId: string;
     conversationId: string;
-    messages: Array<{ role: string; content: string }>;
+    projectId?: string | null;
+    /** Caller JWT, never the service client: personal consent/RLS governs automatic activation. */
+    memoryClient?: SupabaseClient;
+    messages: MemorySourceMessage[];
   },
 ): Promise<{ extracted: number; error?: string }> {
   const { userId, organizationId, conversationId, messages } = params;
+  const { data: conversation, error: conversationError } = await adminClient
+    .from('agent_conversations')
+    .select('id, project_id')
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .eq('created_by', userId)
+    .maybeSingle();
+  if (conversationError || !conversation) return { extracted: 0, error: 'conversation_unavailable' };
+  const projectId = conversation.project_id ?? params.projectId ?? null;
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+  if (!lastUser) return { extracted: 0 };
+  const sourceText = getMemorySourceText(lastUser.content).trim();
+  if (!sourceText) return { extracted: 0 };
 
-  // Skip si conversation trop courte (pas assez de contexte)
-  if (messages.length < 4) return { extracted: 0 };
+  const modelId = 'claude-haiku-4-5';
+  const gate = await assertCredits({
+    userId, organizationId, aiAction: 'memory_extract', modelId, adminClient,
+  });
+  if (!gate.ok) return { extracted: 0, error: 'insufficient_credits' };
 
-  // Concatène les derniers ~20 messages (limite tokens)
-  const transcript = messages
-    .slice(-20)
-    .map((m) => `[${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content).slice(0, 500)}`)
-    .join('\n')
-    .slice(0, 10000);
+  // Snapshot consent before extraction. A later toggle must not grant consent
+  // to a job already in flight; SQL rechecks the version under a lock.
+  let automationVersion: number | null = null;
+  if (params.memoryClient) {
+    try {
+      const { data, error } = await params.memoryClient.rpc('get_agent_memory_automation', {
+        p_organization_id: organizationId,
+      });
+      if (error) throw error;
+      if (data?.mode === 'automatic' && Number.isInteger(data.version) && data.version >= 1) {
+        automationVersion = data.version;
+      }
+    } catch (error) {
+      // Unknown consent never expands automation. The private card is still useful.
+      console.warn('[user-memory] automatic mode unavailable; keep proposals manual:', error);
+    }
+  }
 
-  let extracted: ExtractedInsight[];
+  let extracted: unknown[];
   try {
     const result = await callClaudeCompat({
+      model: modelId,
       messages: [
         { role: 'system', content: EXTRACTION_PROMPT },
-        { role: 'user', content: `Voici la conversation:\n\n${transcript}\n\nExtrais les insights durables.` },
+        { role: 'user', content: 'Mission liée : ' + (projectId ? 'oui' : 'non') +
+          '\nDernier message utilisateur :\n' + sourceText.slice(0, 10000) },
       ],
       max_tokens: 800,
       temperature: 0.2,
       response_format: { type: 'json_object' },
       timeoutMs: 20000,
     });
-    // Cet appel partait sans décompte : il atteignait le fournisseur sans
-    // jamais entrer dans le compteur de l'organisation.
     const { settleClaudeUsage } = await import('./settle-usage.ts');
     await settleClaudeUsage({
-      userId,
-      organizationId,
-      aiAction: 'memory_extract',
-      usage: result.usage,
-      modelId: result.model,
-      description: "Mémorisation de l'assistant",
+      userId, organizationId, aiAction: 'memory_extract',
+      usage: result.usage, modelId: result.model,
+      description: 'Proposition de mémoire de l’assistant',
     });
-    const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
-    extracted = Array.isArray(parsed.insights) ? parsed.insights : [];
+    const fences = new RegExp(String.fromCharCode(96).repeat(3) + '(?:json)?\\s*', 'g');
+    const parsed = JSON.parse(result.content.replace(fences, '').trim());
+    extracted = Array.isArray(parsed.proposals) ? parsed.proposals : [];
   } catch (err) {
     return { extracted: 0, error: err instanceof Error ? err.message : 'extraction_failed' };
   }
 
-  if (extracted.length === 0) return { extracted: 0 };
-
-  // Insert each insight, en dédupliquant par content (case-insensitive)
   let savedCount = 0;
-  for (const ins of extracted.slice(0, 3)) {
-    if (!ins.content || !ins.category) continue;
-
-    // Check existing similar insight (same user + same content lowercased)
-    const { data: existing } = await adminClient
-      .from('user_insights')
-      .select('id, confidence, use_count')
-      .eq('user_id', userId)
+  for (const raw of extracted.slice(0, 2)) {
+    const proposal = normalizeMemoryProposal(raw, [lastUser], projectId);
+    if (!proposal) continue;
+    let duplicateQuery = adminClient.from('agent_memory_proposals')
+      .select('id')
       .eq('organization_id', organizationId)
-      .ilike('content', ins.content)
-      .maybeSingle();
-
-    if (existing) {
-      // Bump confidence (capped at 0.95) — we observed it again
-      const newConfidence = Math.min(0.95, Number(existing.confidence) + 0.05);
-      await adminClient
-        .from('user_insights')
-        .update({ confidence: newConfidence, last_used_at: new Date().toISOString() })
-        .eq('id', existing.id);
+      .eq('created_by', userId)
+      .eq('source_conversation_id', conversationId)
+      .eq('source_excerpt', proposal.source_excerpt);
+    if (proposal.source_message_id) {
+      duplicateQuery = duplicateQuery.eq('source_message_id', proposal.source_message_id);
     } else {
-      await adminClient.from('user_insights').insert({
-        user_id: userId,
-        organization_id: organizationId,
-        insight_type: ins.insight_type,
-        category: ins.category,
-        content: ins.content,
-        confidence: Math.min(0.9, Math.max(0.5, Number(ins.confidence) || 0.7)),
-        source_conversation_id: conversationId,
-      });
+      duplicateQuery = duplicateQuery.eq('content', proposal.content);
+    }
+    const { data: duplicates, error: duplicateError } = await duplicateQuery.limit(1);
+    if (duplicateError) return { extracted: savedCount, error: duplicateError.message };
+    if (duplicates?.length) continue;
+    const { data: saved, error } = await adminClient.from('agent_memory_proposals').insert({
+      organization_id: organizationId,
+      created_by: userId,
+      project_id: projectId,
+      source_conversation_id: conversationId,
+      ...proposal,
+      status: 'proposed',
+    }).select('id').single();
+    if (error && error.code !== '23505') return { extracted: savedCount, error: error.message };
+    if (!error) {
       savedCount++;
+      if (saved?.id && automationVersion !== null && params.memoryClient && proposal.scope === 'user' &&
+        proposal.effects.every((effect) => effect === 'assistant' || effect === 'presentation')) {
+        // The RPC derives canonical communication content from the user's own
+        // source. Model-written text can never become an automatic criterion.
+        try {
+          const { error: automaticError } = await params.memoryClient.rpc('auto_approve_agent_memory', {
+            p_proposal_id: saved.id,
+            p_automation_version: automationVersion,
+          });
+          if (automaticError) throw automaticError;
+        } catch (error) {
+          console.warn('[user-memory] automatic activation skipped; proposal retained:', error);
+        }
+      }
     }
   }
-
   return { extracted: savedCount };
 }
 
-/**
- * Renvoie les insights pertinents à injecter dans le system prompt.
- * Stratégie : top 8 par (confidence DESC, last_used_at DESC).
- * On injecte aussi un insight ancien (decay) pour pas oublier les facts
- * importants mais peu rappelés.
- */
+/** Read with the caller's JWT: organization, project and personal RLS apply. */
 export async function getRelevantInsights(
-  adminClient: SupabaseClient,
-  params: { userId: string; organizationId: string; limit?: number },
-): Promise<Array<{ id: string; content: string; category: string }>> {
-  const { userId, organizationId, limit = 8 } = params;
-
-  const { data } = await adminClient
-    .from('user_insights')
-    .select('id, content, category, confidence, last_used_at')
-    .eq('user_id', userId)
-    .eq('organization_id', organizationId)
-    .order('confidence', { ascending: false })
-    .order('last_used_at', { ascending: false })
-    .limit(limit);
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    content: row.content,
-    category: row.category,
-  }));
-}
-
-/**
- * Format les insights pour injection dans le system prompt Claude.
- * Sortie texte structuré (1 paragraphe par catégorie).
- */
-export function formatInsightsForPrompt(
-  insights: Array<{ content: string; category: string }>,
-): string {
-  if (insights.length === 0) return '';
-
-  const byCategory = new Map<string, string[]>();
-  for (const ins of insights) {
-    const arr = byCategory.get(ins.category) ?? [];
-    arr.push(ins.content);
-    byCategory.set(ins.category, arr);
-  }
-
-  const lines: string[] = ['', '## Mémoire de l\'utilisateur', 'Facts persistants observés au fil des conversations :'];
-  for (const [cat, items] of byCategory.entries()) {
-    lines.push(`- **${cat}** : ${items.join(' / ')}`);
-  }
-  lines.push('');
-  return lines.join('\n');
-}
-
-/**
- * Bump use_count + last_used_at après injection. Fire-and-forget.
- */
-export async function bumpInsightUsage(
-  adminClient: SupabaseClient,
-  insightIds: string[],
-): Promise<void> {
-  if (insightIds.length === 0) return;
-  await adminClient.rpc('bump_user_insight_usage', { p_ids: insightIds }).catch(() => {
-    // Fallback : update direct si la RPC n'existe pas (à créer si on veut)
-    return adminClient
-      .from('user_insights')
-      .update({ last_used_at: new Date().toISOString() })
-      .in('id', insightIds);
+  client: SupabaseClient,
+  params: { userId: string; organizationId: string; projectId?: string | null },
+): Promise<ValidatedMemory[]> {
+  const { data, error } = await client.rpc('get_agent_memory_context', {
+    p_organization_id: params.organizationId,
+    p_project_id: params.projectId ?? null,
   });
+  if (error) throw error;
+  return readValidatedMemories(data);
 }
+
+export const formatInsightsForPrompt = formatValidatedMemories;

@@ -168,7 +168,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
     { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
     { value: 'education', icon: GraduationCap, label: 'Formation', shortLabel: 'Form.' },
     { value: 'skills', icon: Zap, label: 'Compétences', shortLabel: 'Skills' },
-    { value: 'messages', icon: MessageSquare, label: 'Messages', shortLabel: 'Msg' },
+    { value: 'messages', icon: MessageSquare, label: 'Interactions', shortLabel: 'Échanges' },
     { value: 'posts', icon: Newspaper, label: 'Posts', shortLabel: 'Posts' },
   ].filter((tab) => !(hidePosts && tab.value === 'posts'));
 
@@ -317,9 +317,10 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         {/* Messages Tab */}
         <TabsContent value="messages" className="mt-0 px-0 py-4">
           <CardMessageThread
-            accountId={accountId}
             profileId={profile.id}
             profileName={fullName}
+            profileUrl={profile.public_profile_url || profile.profile_url}
+            profileAliases={[profile.provider_id, profile.member_urn, profile.recruiter_candidate_id].filter((id): id is string => !!id)}
             projectId={projectId}
             onMessageSent={onMessageSent}
             onProfileTreated={onProfileTreated}

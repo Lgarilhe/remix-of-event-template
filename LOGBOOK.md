@@ -32,6 +32,539 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-09 — BUG — Génération des propositions candidat orientée vers un résultat vide
+
+**Contexte** : l’utilisateur constate systématiquement « Aucune nouvelle action à proposer ». L’instruction du modèle demandait littéralement un appel avec `{"plans":[]}`. Cinq générations récentes observées dans les journaux du 9 octobre renvoient chacune 33 tokens de sortie, cohérents avec ces réponses vides ; leur contenu n’est pas journalisé. Une autre perte est reproduite : la demande finale d’un message long disparaissait des extraits envoyés au modèle.
+**Correction** : consigne de remplir les propositions utiles et sourcées, en donnant priorité aux demandes visibles et aux réponses qui les suivent. Une mission absente ou un historique partiel ne supprime pas un besoin attesté ; les échanges clos, refus et absences de besoin peuvent toujours produire zéro action. Date serveur explicite `asOf`. Extraits toujours limités à 900 caractères, conservant le début et la fin avec marqueur de coupure. Six compteurs de diagnostic après validation, sans texte, identité ou référence candidat.
+**Validation** : 40 tests de génération passent, dont quatre scénarios synthétiques à travers le vrai adaptateur avec transport simulé : Claire (demande en fin de message, hors mission), Théo (réponse déjà faite), Guillaume (entretien confirmé sans canal), Sophie (refus). Huit suites ciblées passent ; lint sans diagnostic, build réussi et onze diagnostics TypeScript hérités inchangés. Revue indépendante favorable. Ces tests vérifient le contrat, les extraits et les validations ; ils ne mesurent pas la pertinence effective du modèle. Aucun appel réel au modèle pendant les tests.
+**Impact** : fonction `candidate-actions`, sans changement de schéma, de cibles, d’authentification ou d’exécution. Aucune proposition de remplacement artificielle ni relance automatique. La fenêtre de 40 sources reste inchangée. Déploiement et vérification du module serveur nécessaires après fusion.
+**Refs** : branche `codex/fix-candidate-action-generation` ; `tests/c1/candidate-actions-generation.test.mjs`.
+
+---
+
+## 2026-10-09 — BUG — Fiabilité du sourcing, des filtres et de la notation
+
+**Contexte** : des sélections d’entreprises alternatives étaient transformées en exigences cumulatives ; les textes pouvaient remplacer les identifiants. Les recherches modifiées pendant un chargement et les sauvegardes lentes pouvaient restituer un ancien état. Le deuxième lot de notation V3 ne retrouvait plus les profils après le premier lot.
+**Fait** : logique ET/OU/exclusion et périodes conservées entre interface, transport et agent ; syntaxe booléenne validée sans correction silencieuse, plafond pris en charge par l’app de 200 caractères explicite pour Classic/Sales et requêtes Recruiter intégrales. Géographie, rayon et génération respectent la licence réelle, y compris au premier onboarding ; les filtres non représentables sont refusés avec explication.
+**Notation** : périodes de travail réunies sans compter les interruptions ni doubler les emplois simultanés. Dates partielles encadrées, historiques incomplets et résumés sans exhaustivité conservés pour examen. Les réponses sont associées uniquement à des identifiants uniques vérifiés, jamais à leur position ; absence de résultat et limitation fournisseur restent reprenables. La méthode `sourcing-v3` invalide les notes et calibrages précédents ; un agent doit être recalibré avant une nouvelle recherche.
+**État** : requête appliquée distincte des filtres en cours d’édition, relance explicite, pagination attachée à sa requête et réessai conservant les résultats. Réponses anciennes isolées par compte/utilisateur/organisation/mission/contexte ; sauvegardes ordonnées entre démontages et remontages dans un même navigateur. Plages d’expérience générées identiques au premier chargement et après retour ; les éditions calculées et natives activent chacune leur mode, sans recopier une borne calculée dans un filtre LinkedIn. L’affinage par phrase conserve la borne active non modifiée et respecte son contrat « null = inchangé ».
+**Validation** : suites agents et UX, contrôles C1 concernés, tests HTTP simulés, 32 scénarios du hook d’état, expérience/identités et parité des filtres réussis. Cinq tests exécutent les neuf contrôles d’expérience et l’affinage réel ; le garde C1 du 429 exécute la branche réelle et vérifie l’absence de fausse note. Build production réussi ; onze diagnostics TypeScript hérités, aucun nouveau diagnostic lint ciblé. Les quatre nouveaux boutons utilisent le composant natif ; comparaison des quinze compteurs design à main sans hausse. Deno : modules purs vérifiés ; graphe npm équivalent utilisé pour contrôler les quatre fonctions, mêmes 60 diagnostics hérités et smoke CORS/authentification sans appel externe.
+
+| Persona | Vérification navigateur sur composants réels | Verdict |
+|---|---|---|
+| Guillaume | Recherche de 30 profils, notation 20 puis 10, identités et retour Pipeline/Sourcing sans nouvelle recherche ; requête Recruiter de 330 caractères intacte | PASS |
+| Claire | Requête vide, syntaxe invalide et Classic/Sales à 201 caractères : messages explicites, filtres conservés et aucun appel de recherche | PASS |
+| Théo | Ancienne page reçue pendant la nouvelle recherche, erreur de pagination et réessai exact, IDs de scores ambigus, sauvegardes A/B lentes et changement rapide de mission | PASS |
+| Sophie | 320/390 px clair/sombre, hauteurs 400/844, navigation clavier et focus, dialogues bornés, textes contrastés et boutons d’au moins 44 px | PASS |
+
+**Limites** : fournisseurs et modèle simulés ; aucun sourcing payant ni contact candidat. La qualité d’un sourcing réel et l’exhaustivité de `work_experience` ne sont pas mesurées. La file de sauvegarde protège un navigateur ; elle ne constitue pas une résolution serveur de modifications simultanées par plusieurs recruteurs. Chromium mobile émulé, sans appareil iOS physique. Les écoles facultatives restent à examiner et ne deviennent pas automatiquement un critère de notation. Aucun nouveau connecteur ATS externe ni mémoire automatique étendue. Publication après contrôles CI et vérification des fonctions déployées.
+**Refs** : branche `codex/sourcing-reliability-20261009` ; tests `sourcing-search-lifecycle`, `sourcing-experience-identity`, `sourcing-experience-editors`, `linkedin-search-transport`, `sourcing-filter-parity`, `sourcing-autofill-parity`, `sourcing-filter-logic` et `lot0b-ecrivains`.
+
+---
+
+## 2026-10-09 — BUG — Retour visible après préparation des actions candidat
+
+**Contexte** : un clic sur « Préparer les prochaines actions » pouvait sembler sans effet. Une relecture en arrière-plan désactivait le bouton ; une préparation réussie sans nouveau brouillon (aucune proposition, proposition ignorée ou actions déjà terminées) n’ouvrait aucun retour. Ces chemins sont reproduits avec des transports simulés ; le chemin exact du clic signalé en production n’est pas établi.
+**Correction** : fenêtre ouverte dès le clic, avant la vérification des crédits ; progression puis relecture ou résultat explicite, erreurs avec réessai. La fenêtre peut être fermée pendant l’attente sans réouverture tardive ; retour du focus vers un contrôle disponible. Les propositions ignorées ne sont restaurées qu’après clic explicite. Une relecture n’empêche plus la préparation ; ses réponses périmées sont annulées pour cette portée, et les relectures automatiques sont suspendues pendant la génération. Verrous synchrones contre les doubles clics. Aucun envoi automatique ajouté.
+**Validation locale** : huit suites ciblées passent, dont cinq scénarios du vrai hook ; lint des fichiers modifiés sans diagnostic, onze erreurs TypeScript héritées inchangées, build réussi. Dix nouveaux parcours `@critical` sur les vrais composants et hook sont ajoutés à la CI bloquante : Guillaume (double clic et relecture tardive), Claire (vide, ignoré, terminé), Théo (panne et crédits, reprise sans envoi), Sophie (320/390 px, fermeture et focus). Le navigateur local reste bloqué par `EPERM` ; validation navigateur requise avant fusion.
+**Impact** : interface et hook partagés entre messagerie et fiches candidat. Aucun changement serveur, schéma ou moteur d’exécution ; aucun appel réel au modèle ou envoi candidat pendant les tests.
+**Refs** : branche `codex/fix-action-preparation-feedback` ; `e2e/flows/candidate-actions-preparation.spec.ts`.
+
+---
+
+## 2026-10-08 — BUG — Calibrage bloqué malgré les mots-clés Recruiter
+
+**Contexte** : une requête Recruiter enregistrée de 330 caractères était refusée par le plafond commun de 200 caractères. La recherche interactive tronquait également cette requête. Un rayon sans lieu sélectionné et des suggestions de secteurs résiduelles bloquaient ensuite les filtres modifiés manuellement.
+**Correction** : conservation intégrale des requêtes Recruiter dans la validation et le transport ; comportement Classic/Sales inchangé, avec message de longueur explicite. Les résidus inactifs des filtres manuels suivent la sélection effective de la recherche interactive ; les suggestions non validées restent bloquantes dans les filtres générés. Aucun critère enregistré modifié.
+**Validation** : 19 tests de filtres, régressions worker/workspace et build réussis ; module partagé contrôlé par Deno et lint sans diagnostic ; onze diagnostics TypeScript applicatifs hérités. Rejeu local du snapshot original : 330 caractères conservés, requêtes fournisseur identiques, snapshot inchangé. Quatre personas navigateur : 10 parcours, 14 captures, axe sans violation, mobile 320 px clair/390 px sombre sans débordement ; passage au calibrage simulé uniquement après clic.
+**Limites** : fournisseurs simulés, aucun sourcing payant ni contact candidat. L'identité vérifiée concerne les requêtes fournisseur ; le post-filtrage navigateur préexistant de l'expérience calculée n'est pas exécuté par le worker et reste hors de ce correctif. Publication après contrôles CI et vérification des trois fonctions concernées.
+**Refs** : branche `codex/fix-agent-recruiter-keywords-20261008` ; `tests/agent/continuous-sourcing-filters.test.mjs`.
+
+---
+
+## 2026-10-09 — BUG — Chargement de la messagerie et découverte des interactions
+
+**Contexte** : la messagerie pouvait annoncer une boîte vide avant la résolution du compte personnel. La première requête demandait jusqu’à 125 conversations par dossier, enrichies avant affichage. Dans les fiches candidat, un participant sans conversation était présenté comme une panne ; trois occurrences du 404 documenté « Attendee not found » ont été constatées dans les journaux du 8 octobre.
+**Fait** : disponibilité explicite de la session, des comptes et des liaisons personnelles ; squelette tant que la première lecture est en attente, erreurs avec réessai distinctes d’une absence réelle. Première page et actualisation périodique de 25 conversations par dossier, suite et recherche exhaustive conservées. Les requêtes concurrentes sont regroupées, les clics de pagination et de réessai sont préservés et les pages déjà lues restent affichées. Une session renouvelée ne réinitialise plus la conversation ; un lien ancien est retrouvé progressivement et cette recherche s’arrête au choix manuel d’un autre échange.
+**Interactions** : seul le 404 explicite d’absence de participant à la première page devient une liste vide. Les erreurs d’accès, de quota, de résolution du profil et de pagination restent des erreurs. Si tous les dossiers demandés échouent, le serveur refuse le faux succès vide. Aucun changement de droits, de schéma ou d’envoi.
+**Contrôles** : réponses tardives isolées par utilisateur, organisation et compte ; suppression d’un fil confirmée avant son retrait, sans effacer les autres fils regroupés. Dix-huit scénarios comportementaux du hook et vingt scénarios de découverte passent. Build production réussi, neuf fichiers de tests ciblés réussis ; onze diagnostics TypeScript hérités identiques à main, lint du hook sans nouvelle anomalie, compteurs design inchangés. L’arrivée initiale du compte LinkedIn conserve l’échange e-mail ouvert ; un vrai changement de compte ou sa déconnexion conserve le démontage qui isole les anciennes promesses d’envoi.
+**QA** : dix scénarios de rendu React côté serveur passent localement, dont la reproduction du faux vide sur la version précédente. Huit parcours de navigateur `@critical` sont ajoutés à la CI bloquante avant fusion, avec les composants réels et des fournisseurs simulés.
+
+| Persona | Validation locale | Parcours navigateur bloquant |
+|---|---|---|
+| Guillaume | Pagination, curseurs, fils fusionnés, lien ancien et sélection manuelle : PASS | Recherche dans les pages suivantes |
+| Claire | Résolution des comptes dans plusieurs ordres, attente et absence réelle distinctes : PASS | Session, comptes et liaison chargés séparément |
+| Théo | Erreurs, réessais, périmètres et réponses tardives : PASS | Erreur de comptes, réessai et interactions candidat |
+| Sophie | Rendu de l’attente sans faux vide et e-mail disponible pendant LinkedIn : PASS | Sélection e-mail conservée, réponses à 390 et 320 px |
+
+**Limites** : serveur local et Chromium refusés par le sandbox (EPERM) ; aucun résultat de navigateur local revendiqué. Les parcours visuels sont exécutés en CI. Aucune mesure de latence du réseau de production ni essai sur appareil iOS physique. Les compteurs portent sur les conversations chargées, comme précisé auprès de la pagination. Le traitement préexistant d’un échec partiel parmi plusieurs dossiers reste inchangé ; le correctif serveur distingue ici la panne de tous les dossiers et l’absence documentée de participant.
+**Refs** : branche `codex/inbox-loading-performance` ; `tests/c1/inbox-loading-performance.test.mjs` ; `tests/ux/candidate-messages-discovery.test.mjs`.
+
+---
+
+## 2026-10-08 — SPEC — Espace Agents et pilotage du sourcing
+
+**Fait** : espace personnel `/agents/sourcing`, accessible dans Missions, Assistant et la palette. Un agent par mission, sélection de mission avant configuration et ouverture en pleine page. Pilotage, profils et réglages partagent le contexte, les mémoires et le calibrage existants ; activation et actions payantes restent explicites. Sphères décoratives texturées, animation unique de quatre secondes et mouvement réduit respecté, composants natifs du design system.
+**Données** : pagination des agents et missions personnelles ; noms des missions partagées accessibles résolus uniquement pour les agents concernés. Compteurs agrégés en SQL par lots de 100, sans télécharger les profils historiques ; RPC invoker authentifiée avec RLS existantes, portée organisation/auteur. Compteurs du contexte enregistré et évaluations incertaines de tous contextes distingués. Les réponses tardives d’un autre espace sont refusées et une erreur d’actualisation conserve le dernier état connu.
+**Validation** : hook hub 15/15, workspace 73/73, build et lint ciblé réussis, onze diagnostics TypeScript hérités sans ajout. Audit SQL isolé avec rollback : privilèges, deux organisations, rôles, mission partagée, compteurs exacts, limite 100 IDs, confidentialité et absence de mutation. Les quatre personas Chromium passent en clair/sombre à 320/390 px, clavier, animations et erreurs ; contrôles axe sans violation. Cibles mobiles et débordement de grille à 320 px corrigés ; largeur contrôlée sur body, root et main. Le refus anonyme est vérifié par HTTP en CI, conformément au contournement documenté du crash de l’image locale PostgreSQL sur SET ROLE anon + refus EXECUTE.
+**Limites** : API navigateur simulées et prestataires non sollicités ; la QA ne mesure pas la qualité d’un sourcing réel. Aucun agent lancé ni contact candidat effectué pour les essais. Aucun nouveau connecteur ATS externe.
+**Livraison** : contrôles PR et publication en cours ; aucun statut SHIP anticipé.
+**Refs** : branche `codex/agents-workspace-experience-20261008` ; migration `20261008135554_sourcing_agent_hub_counts.sql`.
+
+---
+
+## 2026-10-08 — REFACTOR — Messagerie et aides à la rédaction allégées
+
+**Contexte** : la proposition de l’assistant, ses explications, les comptes, la régénération et plusieurs aides à la rédaction occupaient simultanément le bas de la conversation.
+**Fait** : une seule proposition principale compacte affiche le titre, le nombre de contenus et les logos des services. « Voir les actions » ouvre la relecture guidée ; les explications restent dans ce parcours. Autres propositions, actualisation, comptes, réglages, historique et suggestions ignorées sont repliés. Les résultats incertains ou incomplets restent prioritaires et le coût reste visible avant une nouvelle préparation. La démo utilise le même résumé compact.
+**Rédaction** : « Aide à la rédaction » déplie les suggestions déjà préparées et les outils. Consulter ou insérer ces suggestions ne monte pas le panneau d’analyse et ne relance pas l’IA. Les outils restent montés pendant leur préparation ; ouverture, fermeture et insertion gèrent le focus clavier. Les raccourcis et la confirmation d’envoi restent actifs. Le panneau d’analyse dispose de commandes mobiles de 44 px.
+**Préflight** : build production réussi, douze fichiers de tests ciblés réussis, onze diagnostics TypeScript et cinq diagnostics lint ciblés hérités identiques à la base. Les quinze compteurs du cliquet design n’augmentent pas. Deux gardes statiques existantes sont adaptées aux références de focus et au libellé mobile de l’aide.
+**QA** : onze scénarios navigateur réussis sur les composants réels à 1920/1440/390/320 px, en clair et sombre. La revue couvre la relecture, l’édition, la confirmation finale, les erreurs, les résultats incertains, les coûts, les raccourcis et le retour du focus. Les seize états audités avec axe, puis le menu et l’aperçu de réponse à 320 px, n’ont aucune violation détectée ; les contrastes restants ont été vérifiés manuellement. Le menu « Proposer une suite » est borné à la hauteur disponible et défile sur petit écran.
+
+| Persona | Vérification ciblée | Verdict |
+|---|---|---|
+| Guillaume | Carte principale unique, trois contenus relus et modifiés, confirmation finale ; outils et raccourcis conservés | PASS |
+| Claire | Clair à 1440 px, détails repliés, logos et coût visibles au bon moment, suggestions existantes sans nouveau débit | PASS |
+| Théo | Erreurs de lecture et de préparation, reprise volontaire, résultat incertain sans répétition d’envoi | PASS |
+| Sophie | Clair/sombre à 390 px et 320 × 500 px, clavier et focus, cibles tactiles, menu défilable, fermeture sans envoi | PASS |
+
+**Limites** : données et appels simulés uniquement, sans message réel ni appel modèle de production. Chromium mobile émulé, sans appareil iOS physique. Publication après contrôles CI.
+**Refs** : branche `codex/inbox-calm-actions` ; `src/components/outreach/inbox/CandidateActionSummary.tsx`.
+
+---
+
+## 2026-10-08 — BUG — Objet e-mail dans une préparation LinkedIn ou WhatsApp
+
+**Contexte** : la préparation pouvait échouer avant la relecture guidée avec « Ce canal ne prend pas en charge cet objet. ». Le schéma commun autorisait un objet facultatif, mais le parseur refusait toute présence de ce champ sur les chats, même vide ou null. Les deux cas sont reproduits sur le commit précédent.
+**Fait** : les cibles indiquent explicitement au modèle si elles acceptent un objet. Un objet superflu valide est omis des brouillons LinkedIn et WhatsApp, sans modifier le corps, la cible ni le compte. Les e-mails conservent un objet obligatoire non vide de 200 caractères maximum ; les types invalides, caractères de contrôle et champs inconnus restent refusés. Aucun changement de transport, de droits ni de validation finale.
+**Validation** : 34 tests de génération, 14 scénarios API sans saut ni reprise et 11 fichiers de tests ciblés réussis ; contrôle Deno du module, lint ciblé et build production réussis. Les onze diagnostics TypeScript hérités sont identiques à la baseline. La vérification API couvre les propositions mixtes, la persistance, le coût unique et l’absence d’envoi avant confirmation. Elle reprend l’ordre d’exécution du client : LinkedIn en dernier, car cet envoi peut déplacer le candidat dans le pipeline.
+
+| Persona | Vérification ciblée | Résultat |
+|---|---|---|
+| Guillaume | Préparation multicanal avec objet superflu ; corps, comptes et destinataires conservés | Tests génération réussis |
+| Claire | Brouillons sans objet pour les chats, objet conservé pour les e-mails ; confirmation requise | Contrat API vérifié ; interface identique à la QA de la relecture guidée |
+| Théo | Types invalides, contrôle des identités, absence d’envoi avant confirmation et un seul règlement | Tests génération réussis ; aucune variable globale de credentials ajoutée |
+| Sophie | Réponse serveur compatible avec le même parcours mobile guidé | Interface inchangée ; QA mobile de la relecture guidée réutilisée, sans nouveau test sur appareil physique |
+
+**Limites** : modèles et fournisseurs simulés localement, aucun message réel ni appel modèle de production. La capture ne permet pas de connaître la valeur exacte du champ renvoyé lors de l’échec ; les formes absente, null, vide et titre valide sont couvertes. Publication après contrôles CI et vérification du code serveur déployé.
+**Refs** : branche `codex/candidate-action-channel-subject` ; `tests/c1/candidate-actions-generation.test.mjs` ; `e2e/api/candidate-actions.spec.ts`.
+
+---
+
+## 2026-10-08 — REFACTOR — Relecture guidée des actions candidat
+
+**Contexte** : la revue de toutes les actions dans une seule fenêtre demandait trop de lecture. La messagerie et les fiches candidat proposent désormais un contenu par écran, modifiable, avec progression et retour en arrière.
+**Fait** : une préparation réussie ouvre le parcours partagé avec l’aperçu fictif. Chaque validation sauvegarde seulement le brouillon courant ; le récapitulatif nomme les destinataires, services, comptes et effets avant la confirmation finale. Les sources et la suite sont dépliables. Le récapitulatif reste affiché pendant les envois ; une réussite ferme la fenêtre avec un bilan exact. Les résultats partiels ou incertains conservent le suivi et les règles de reprise existants.
+**Contrôles** : une relecture porte sur le texte, l’objet, le compte et la destination. La réponse canonique de sauvegarde permet d’avancer sans dépendre du délai de mise à jour du cache ; une modification ultérieure invalide la confirmation. Doubles clics, brouillons vides et résultats tardifs d’un autre candidat protégés. Aucun changement serveur ni de droits.
+**Validation** : quatorze scénarios navigateur sur les composants et le hook réels avec API simulées ; aucun appel modèle ni envoi réel pour les essais. Audits axe de la première étape et du récapitulatif sans violation automatique détectée. Helpers de relecture et onze fichiers de tests ciblés réussis ; build production et lint ciblé réussis, cliquet design inchangé, onze diagnostics TypeScript hérités identiques à main.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Modifier trois contenus, revenir, sauvegarder, confirmer une seule fois et retrouver le bilan | PASS |
+| Claire | Un contenu à la fois, logos et destinations visibles, sources repliées, récapitulatif avant envoi | PASS |
+| Théo | Doubles clics, champs vides, destination modifiée, conflit, changement de candidat, reprise partielle et résultat incertain | PASS |
+| Sophie | Clair/sombre à 390 px et 320 × 500 px, commandes de 44 px, pied de fenêtre visible, mouvement réduit, aucun débordement horizontal | PASS |
+
+**Limites** : Chromium mobile émulé, pas d’appareil iOS physique ni mesure réseau de production. Les validations intermédiaires ne déclenchent pas d’action externe ; la confirmation globale reste nécessaire.
+**Refs** : branche `codex/candidate-actions-guided-review` ; `docs/candidate-contextual-actions.md`.
+
+---
+
+## 2026-10-08 — SHIP — Agent de sourcing continu en production
+
+**Fait** : PR #316 intégrée sur `main` (`6793909400429b7a4f5fc42f9e563b3d58e47fff`). Vercel confirme la publication de ce commit. Migration `20261008113014` appliquée par le workflow du dépôt après deux erreurs de session du connecteur ; les 298 versions locales et distantes correspondent exactement. Déploiement automatique terminé : 81 fonctions publiées, zéro échec. Les sources relues des quatre fonctions concernées correspondent toutes aux fichiers committés, avec authentification applicative conservée : API et worker v1, scoring v75, recherche LinkedIn v51.
+**Validation** : neuf contrôles PR réussis, dont E2E et actions candidat sur API locale réelle. Audit production en lecture seule : onze vérifications réussies, trois tables RLS, 23 corps SQL identiques, contraintes et droits conformes, cron minute actif. Deux invocations planifiées du worker v1 répondent HTTP 200. Aucun agent, candidat, réservation ou appel fournisseur créé pour tester en production.
+**Advisors** : les deux nouvelles alertes de sécurité correspondent aux choix vérifiés : [table privée sans politique navigateur](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) et [helper booléen privilégié à portée contrôlée](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable). Aucun autre compteur sécurité ne change. Les deux FK non indexées supplémentaires ont reçu les index de complément `20261008131500`, validés dans une transaction PostgreSQL isolée puis appliqués après commit ; seul le suivi de cette migration a été aligné sur son fichier. Les index inutilisés sont attendus avant le premier opt-in.
+**Limites** : la QA a utilisé des API simulées, sans recherche LinkedIn ni scoring réel ; elle ne certifie pas la qualité des propositions sur une mission réelle. Budget IA cible et vivier personnel sans synchronisation ATS externe.
+**Refs** : https://github.com/Lgarilhe/remix-of-event-template/pull/316 ; complément https://github.com/Lgarilhe/remix-of-event-template/pull/317 ; CI `37780719461` ; E2E `37780719462` ; migrations `37782634483` ; fonctions `37782634414` ; https://konekt-app-navy.vercel.app.
+
+---
+
+## 2026-10-08 — SPEC — Agent de sourcing continu par mission
+
+**Fait** : agent activé explicitement depuis le menu de la mission. Recherche sur le compte LinkedIn personnel choisi et sa licence réelle, ou parmi les candidats déjà enregistrés par le recruteur. Premier échantillon de cinq profils, au moins trois avis motivés dont un positif, puis approbation explicite des références ajoutées au cadrage. Pause, reprise, arrêt et résolution d’une évaluation interrompue. Aucun contact ni passage automatique en « Retenu ».
+**Contrôles** : contexte brief/filtres/mémoires vérifié avant les opérations externes, lease invalidé à la pause, déduplication durable, plafond de profils, quotas et horaires LinkedIn. Les références et résultats dépendants sont purgés lors d’un effacement. Une évaluation incertaine ne se relance pas automatiquement.
+**Validation** : tests comportementaux du moteur, des handlers et du hook ; audit SQL et courses réelles sur base locale isolée ; QA des quatre personas à 320/390 px avec API simulées et audits axe. Aucun appel LinkedIn/IA réel pendant les vérifications. TypeScript app conserve ses onze diagnostics hérités ; contrôles Deno comparés au socle sans nouveau diagnostic.
+**Limites** : budget IA présenté comme cible, car le coût réel peut dépasser une estimation ; un agent et une phase bornée par tick cron ; le vivier porte sur les candidats personnels enregistrés, sans synchronisation d’un ATS externe.
+**Livraison** : publiée par la PR #316 ; voir l’entrée SHIP ci-dessus.
+**Refs** : branche `codex/continuous-sourcing-agent-20261008`, migration `20261008113014_continuous_sourcing_agent.sql`.
+
+---
+
+## 2026-10-08 — BUG — Préparations candidat lisibles et erreurs distinguées
+
+**Contexte** : la messagerie réelle affichait « La préparation n’a pas pu être lue » après une génération. Le wrapper IA ne garantissait pas le JSON et ses consignes globales de guillemets contredisaient ce format ; une réponse outil sans texte ou un bloc JSON complet étaient également refusés. Des sources volontairement non lues étaient présentées comme des pannes.
+**Fait** : réponse structurée par l’outil fermé `prepare_candidate_actions`, sans exécution ; consignes de rédaction limitées aux textes candidat. JSON brut ou bloc unique accepté après validation, sans réparation de réponse invalide. Première lecture confirmée exigée avant une préparation payante. Lecture et génération ont des erreurs et boutons de reprise distincts ; les propositions connues restent disponibles après une relecture échouée. Sources non applicables expliquées au modèle sans fausse alerte ; véritables limites, échecs de lecture et ambiguïtés restent visibles. Une découverte LinkedIn HTTP en erreur échoue explicitement, au lieu de devenir une absence de conversation.
+**Validation** : 28 tests génération, 23 contexte, 8 helpers UI, 3 hook et 3 découverte transport ; douze scénarios API sur Auth/REST/RPC/fonctions réels locaux, sans retry ni skip, dont réponse `tool_use` sans texte, brouillon persistant, débit unique exact et aucun envoi avant confirmation. Build final réussi ; lint ciblé propre ; les onze diagnostics TypeScript hérités sont identiques à main.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparation persistée, reprise volontaire avec coût, proposition conservée après panne de relecture | PASS |
+| Claire | Erreurs de lecture et de préparation distinctes, détails des sources dépliables, aperçu conservé | PASS |
+| Théo | Première lecture échouée sans appel payant, double clic sans doublon, réponses invalides refusées, vrais échecs de découverte visibles | PASS |
+| Sophie | Clair/sombre à 390 px et 320 × 500 px, commandes de 44 px, reprise au clavier, aucun débordement horizontal | PASS |
+
+**Limites** : prestataires et modèle simulés, aucune interaction avec un candidat réel ni écriture de test en production. Chromium mobile émulé ; pas d’appareil iOS physique ni mesure réseau de production. La panne de découverte LinkedIn bloque la lecture globale, comme les erreurs réseau déjà existantes, et propose une relecture sans appel IA.
+**Impact** : protocole de préparation, alertes de contexte, découverte LinkedIn, hook et affichage des actions, tests de régression et documentation. Aucun changement de schéma ni de droits.
+**Refs** : branche `codex/candidate-actions-generation-fix` ; `docs/candidate-contextual-actions.md`.
+
+## 2026-10-07 — SPEC — Actions candidat branchées sur les comptes réels
+
+**Contexte** : les propositions de la messagerie existaient uniquement dans la démonstration. Le propriétaire demande leur utilisation sur les vrais candidats et les comptes connectés.
+**Fait** : préparation IA à la demande depuis la messagerie et les fiches candidat, avec le modèle, le style et les crédits de l’organisation. Le contexte assemble profil, mission exacte, échanges, séquences, notes, interventions d’équipe, rendez-vous et comptes rendus correctement rattachés. Une proposition relue peut envoyer un message LinkedIn, Gmail/Outlook ou WhatsApp personnel, contacter un collègue de l’organisation, enregistrer une préparation d’entretien ou des questions en note, et publier un commentaire d’équipe avec mentions. Les destinataires et comptes sont vérifiés avant validation et avant exécution. Les autres mutations du catalogue restent hors de ce périmètre.
+**Décision** : plans privés et résultats durables par effet ; validation explicite, reprise limitée aux échecs certains et aucun renvoi automatique si le résultat d’un envoi est inconnu. La déduplication protège aussi deux recruteurs préparant la même action. L’historique personnel importé reste privé ; seuls les envois d’actions confirmés dans une mission sont partagés. Le retour d’un collègue peut alimenter une nouvelle préparation, sans envoi différé automatique. Les emails et WhatsApp reçus hors séquence sont conservés et apparaissent dans la messagerie même sans compte LinkedIn. Les connexions WhatsApp passent par une autorisation personnelle signée dans les paramètres.
+**Validation** : onze scénarios API sur Auth, PostgREST, RPC et fonctions serveur réels locaux, prestataires et modèle simulés, sans retry ; scénario concurrent répété cinq fois sans retry ; audit SQL de 39 contrôles et audit des connexions personnelles, incluant le refus REST des associations e-mail forgées et le callback signé ; tests ciblés de contexte, transport, génération, RGPD et comptes personnels. Parcours Chromium des composants réels en clair/sombre de 320 à 1920 px, dont quatre variantes d’actions et deux variantes de boîte multicanale avec reprise après panne. Build production et cliquets de dette contrôlés avant intégration ; les onze diagnostics TypeScript hérités sont conservés sans ajout.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparer, modifier, confirmer, retrouver les effets persistants ; réponse candidat et coordination distinctes | PASS |
+| Claire | Lire destinataire, service, contenu et nombre d’effets avant une validation explicite | PASS |
+| Théo | Double exécution, deux recruteurs, organisation incorrecte, contexte périmé, compte déconnecté, envoi incertain, confidentialité et effacement | PASS |
+| Sophie | Lire, éditer et confirmer à 390 px et 320 × 500 px ; boîte multicanale et reprise sans débordement horizontal | PASS |
+
+**Limites** : aucun candidat réel contacté pour les essais, aucun appareil iOS physique. Les anciens emails sont importés de manière bornée à l’ouverture du contexte, sans import global des boîtes. Les appels sans identité candidat fiable et les anciens comptes rendus sans mission explicite ne justifient pas une action. Un brief d’entretien exige un rendez-vous futur confirmé. Une préparation consomme les crédits affichés ; les lectures et reprises ne relancent pas le modèle.
+**Impact** : messagerie, fiches candidat, connexions personnelles, scorecards et rattachements d’entretien, fonctions d’actions et webhooks, export/effacement, deux migrations avec RLS et RPC réservées au serveur, scénarios API et CI dédiée.
+**Refs** : branche `codex/candidate-actions-live` ; `docs/candidate-contextual-actions.md` ; migrations `20261007222116` et `20261007222159`.
+
+## 2026-10-07 — SHIP — Mémoire de recrutement en production
+
+**Contexte** : publication autorisée de la mémoire contextualisée, de sa découverte animée et de ses effets sur les filtres et le scoring.
+**Fait** : PR #313 intégrée sur `main` (`dac42e39e26b8d0c2cd4c86424f619365b88c933`). Vercel confirme « Deployment has completed » pour ce commit. Les trois migrations `20261007120447`, `20261007130313` et `20261007181737` ont été appliquées avant l’interface ; leur suivi a été aligné individuellement sur les fichiers committés. Les 295 versions locales et distantes correspondent exactement. Les huit fonctions concernées ont été publiées avant l’intégration ; leurs fichiers relus en production sont identiques aux sources préparées et leur configuration d’authentification existante est conservée.
+**Validation** : six jobs CI et le job E2E réussis sur `571f0fee`, dont les audits SQL mémoire et le refus HTTP anonyme de la RPC ; Playwright : 54 réussis, 214 ignorés par la sélection PR. En production : trois tables RLS, douze politiques, trois guards actifs et 41 contraintes validées ; seize corps de fonctions SQL identiques aux migrations, aucune exécution anonyme et RPC sourcing réservée au serveur. Les alertes des advisors sécurité restent identiques au relevé précédent. Les 204 observations antérieures éligibles sont importées comme propositions personnelles en attente, sans activation automatique.
+**Accès** : bouton « Mémoire de l’assistant » dans l’assistant ; « Mémoire de la mission » dans le menu d’une mission appartenant à l’utilisateur. La découverte reprend les composants et jetons du site. L’automatisation reste optionnelle et limitée aux préférences personnelles explicites de communication ; les critères de recrutement restent confirmés manuellement.
+**Tâches de fond** : les erreurs runtime `Deno.core.runMicrotasks() is not supported in this environment` observées pendant la livraison préexistaient : sept sur le worker v16 avant publication, puis deux sur v17, ces deux dernières associées à HTTP 200 par identifiants d’exécution et de requête. Les autres erreurs sont sur l’ancien worker planifié v51 ou quatre crons hors périmètre. Aucune régression démontrée par ce relevé ; une réponse HTTP 200 ne certifie pas le résultat métier. Défaut runtime à traiter dans le travail sur la fiabilité des agents.
+**Limites** : contrôle de livraison Vercel et métadonnées serveur, sans connexion réelle au parcours utilisateur de production. Le réseau du poste d’exécution bloque le domaine Vercel ; les parcours navigateur ont été vérifiés avec API simulées et en CI. Aucune recherche LinkedIn réelle, analyse payante ou exécution manuelle des workers n’a servi de smoke test. Les agents de sourcing continu ne sont pas livrés dans ce lot.
+**Déploiement automatique** : job migrations réussi ; job Edge réussi avec 78 fonctions publiées et zéro échec. Les huit fonctions liées à la mémoire ont été relues après ce redéploiement et correspondent toujours aux sources préparées ; leur authentification est conservée. L’historique des 295 migrations reste identique.
+**Reste à faire** : calibrer la qualité sur de vrais dossiers et traiter le défaut runtime préexistant avant la recherche récurrente.
+**Refs** : https://github.com/Lgarilhe/remix-of-event-template/pull/313 ; CI `37695472995` ; E2E `37695472909` ; migrations `37698244962` ; fonctions `37698245035` ; https://konekt-app-navy.vercel.app.
+
+## 2026-10-07 — REFACTOR — Mémoires appliquées à la recherche et à l’évaluation
+
+**Contexte** : les mémoires confirmées guidaient l’assistant, mais leurs effets Recherche et Évaluation n’étaient pas reliés à la génération des filtres ni aux notes des candidats.
+**Fait** : les décisions de l’organisation et de la mission sont chargées et autorisées côté serveur avant analyse. Contraintes avant préférences ; l’organisation encadre la mission ; contradiction avec le brief ou analyse de conflit incomplète bloque l’application. Les préférences restent des suggestions ou des bonus. Les mémoires personnelles restent Assistant/Présentation ; l’automatisation existante reste limitée aux préférences explicites de communication, après activation.
+**Recherche** : la confirmation signale les filtres anciens ; « Régénérer » ouvre la vraie revue des filtres, sans lancer LinkedIn. Brief libre complet conservé à la création d’une recherche. Critères obligatoires, souhaités et bonus distincts ; télétravail, client et critères structurés transmis ; temporalité explicite des postes et entreprises conservée. Provenance sauvegardée à plat dans `filters_snapshot` avec les filtres.
+**Évaluation** : cache et affichage vérifient le brief, les consignes, le modèle et les mémoires réellement utilisés. Une note ancienne disparaît des listes, tris et détails ; les décisions humaines restent intactes. La provenance serveur permet de relire une note valide après rechargement, y compris une note de fond. Les retours tardifs et lectures/sauvegardes de statuts d’une autre mission sont ignorés, y compris A→B→A.
+**Isolation** : nouvelle RPC de lecture partagée réservée au service, avec organisation, acteur membre et mission vérifiés ; aucun élargissement C1 des droits aux candidats d’une autre organisation. Migration reconstruite et rejouable ; audit SQL et refus HTTP anonyme câblés dans la CI.
+**UX** : composants et jetons natifs ; règles repliables, niveau/effet lisibles, panne avec Réessayer, commandes tactiles de 44 px à 320 px. Niveaux adaptés au cabinet, au client final et à l’indépendant. Motion inchangé à la demande du propriétaire.
+**Validation locale** : build final réussi ; 20 fichiers de tests agent, 117 UX et 28 C1 passent. Parmi les contrôles comportementaux exécutés directement : 50 scoring, 19 génération serveur, 15 courses du hook, 12 génération frontend, 6 régénération d’outil et 2 worker. Base isolée sans réseau : 295 migrations reconstruites, 150 assertions SQL réussies, puis migration et audit sourcing rejoués. Navigateur : 19 scénarios et 10 audits axe ciblés sans violation, aucune erreur JS finale. TypeScript conserve exactement les 11 erreurs héritées, lint sans aggravation et compteurs design inchangés. Aucune recherche LinkedIn réelle, aucun appel au modèle réel ni écriture en production ; les essais navigateur interceptent les API. Le runtime Deno et les advisors ne sont pas certifiés par ces essais. Le refus HTTP de la RPC doit s’exécuter en CI : le fixture local supautils plante sur un refus EXECUTE par psql, sans relâchement des permissions.
+
+| Persona | Scénario local avec API simulées | Verdict |
+|---|---|---|
+| Guillaume | Confirmer une règle, régénérer/revoir, lancer volontairement, noter et retrouver la provenance | PASS |
+| Claire | Niveaux entreprise/poste, portée des règles et effets distincts compréhensibles | PASS |
+| Théo | Contexte exact, conflits et panne fermés, réponses tardives, aucune écriture distante | PASS |
+| Sophie | Niveaux activité/mission, dialogue et commandes utilisables à 320 px sans débordement | PASS |
+
+**Reste à faire** : déployer cette version locale et ses migrations dans le cadre de la livraison ; vérifier les connecteurs et la qualité des analyses sur de vrais dossiers avant d’activer une recherche récurrente.
+**Refs** : `tests/agent/sourcing-memory-generation.test.mjs`, `tests/agent/scoring-memory-context.test.mjs`, `tests/agent/regenerate-search-filters.test.mjs`, `tests/agent/candidate-status-context-races.test.mjs`, `supabase/tests/agent_sourcing_memory_audit.sql`.
+
+## 2026-10-07 — REFACTOR — Film explicatif de la mémoire
+
+**Contexte** : la découverte expliquait la création d’une mémoire par quatre fondus d’interface, sans montrer son utilité dans l’échange suivant.
+**Fait** : film de 18 secondes avec une consigne persistante : ouverture à 18 px, extraction par raccord du trait au contour, passage au corps natif à 14 px, geste « Modifier → Niveau → Pour moi → Garder », puis mémoire rangée et synthèse en trois points suivis des réserves. Exemple de préférence personnelle confirmée manuellement ; niveaux adaptés au cabinet, à l’entreprise et à l’indépendant. Le préfixe se retire avant la levée de la consigne pour éviter leur croisement ; le titre de confirmation suit le compactage pour conserver la séparation des lignes. Le lecteur, les surfaces et les contrôles reprennent les primitives et jetons Konekt.
+**Lecture** : horloge unique pour les mots, cadrages, curseur, appuis et tracés. Pause complète, reprise au temps restant, relecture à zéro, arrêt sans boucle et pause à l’onglet masqué. Mouvement réduit : consigne, confirmation et bénéfice fixes, avec préférence suivie dans les deux sens. Pied fixe sur écran court, explication complète à 320 px, équivalent accessible permanent.
+**Validation locale** : build final réussi, trois sources identiques aux sourcemaps ; lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs design restent identiques à main. Chromium avec API simulées : 36 contrôles de découverte, quatre de continuité de lecture et 15 ciblés sur l’extraction ; sept audits axe sans violation, aucune erreur navigateur ni écriture métier. Captures clair/sombre à 320/390/1440 px et revue d’images successives du film ; les six régressions métier antérieures sont référencées sans rejeu et exclues des décomptes.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Pause à plusieurs moments, reprise sans redémarrage, relecture et fin tenue | PASS |
+| Claire | Consigne, choix du niveau, confirmation et bénéfice au prochain échange lisibles | PASS |
+| Théo | Scène inerte, aucune écriture, mouvement réduit initial/live et retrait du préfixe avant extraction | PASS |
+| Sophie | Film et explication complets à 320/390 px, niveaux adaptés et commandes de 44 px à 390×400 | PASS |
+
+**État** : validé localement, non déployé. Revue temporelle par images successives ; aucune mesure de fluidité sur un téléphone physique ni essai avec un lecteur d’écran réel.
+**Refs** : `src/components/agent/AgentMemoryMotionScene.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `docs/design/01-direction.md`.
+
+## 2026-10-07 — BUG — Mémoire : composition alignée sur le design system
+
+**Contexte** : le partage des primitives ne couvrait pas la composition de la découverte. Le canevas imbriquait les cartes métier dans une carte de scène, ajoutait un sélecteur de niveaux absent du produit et masquait une partie de l’explication à 320 px.
+**Fait** : fenêtre au format natif `max-w-2xl`, titre unique, légende à 14 px, progression fine, commandes de lecture et pied `DialogFooter`. Exemple pleine largeur à plat : conversation, proposition, détail du véritable champ `Select` Niveau fermé, puis mémoire confirmée. Les quatre états partagent une hauteur intrinsèque ; transitions de 200 ms et 4 px, pression à 98 %, toutes pilotées par l’horloge existante. Surface extérieure, rotation, curseur et rail de grandes pastilles retirés. Actions métier et champ illustratifs restent inertes. Une explication permanente pour les lecteurs d’écran nomme les niveaux selon le contexte, la confirmation et la désactivation.
+**Validation locale** : build final réussi, trois sources identiques aux sourcemaps, lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs design restent identiques à main. Revue de composition comparée aux vrais dialogues Nouvelle séquence et à OnboardingFrame, avec captures clair/sombre à 320/390/1440 px. Chromium avec API simulées : 27 nouveaux contrôles de découverte, sept audits axe sans violation, aucune erreur navigateur ni écriture métier. À 320 px avec entreprise et poste, scène et édition de 272 px ; explication et pied entièrement visibles sans défilement initial. Les six régressions métier de la version précédente sont référencées sans rejeu et exclues de ce décompte.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Pause complète, reprise, fin sans boucle, relecture à zéro et retour aux mémoires | PASS |
+| Claire | Titre unique, validation et automatique optionnel expliqués, fermeture et focus restauré | PASS |
+| Théo | Scène inerte sans écriture, équivalent accessible permanent, mouvement réduit initial et dans les deux sens | PASS |
+| Sophie | Texte et actions visibles à 320/390 px, niveaux adaptés, pied fixe et navigation à 390×400 | PASS |
+
+**État** : validé localement, non déployé. Équivalent lecteur d’écran vérifié dans l’interface et ses attributs ; aucun essai avec un lecteur d’écran réel dans cette passe.
+**Refs** : `docs/design/01-direction.md`, `src/components/sequences/NewSequenceDialog.tsx`, `src/components/onboarding/OnboardingFrame.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`.
+
+## 2026-10-07 — REFACTOR — Mémoire : vraies cartes dans la démonstration
+
+**Fait** : propositions et mémoires confirmées partagent désormais leur présentation avec la scène de découverte : cadre, typographie, niveau, type, effets, date et actions natives. Le pointeur choisit le niveau, presse « Garder », puis la consigne rejoint les mémoires actives. Les actions illustrées sont des éléments décoratifs sans contrôle ni écriture. Horloge de neuf secondes, pause, reprise, relecture et mouvement réduit conservés.
+**Adaptation mobile** : scène de 336 px, en-tête compact et marge intérieure réduite uniquement pour la découverte. À 320 px avec trois niveaux, la proposition garde deux lignes d’actions et 8 px avant le rail ; tous les niveaux et « Garder » restent visibles pendant le clic illustré. Les actions finales restent fixes et le contenu défile localement sur écran court.
+**Validation locale** : build réussi et contenu des cinq sources vérifié dans les sourcemaps ; lint ciblé et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; les 15 compteurs de dette design restent identiques à main. Chromium avec API simulées : 23 contrôles ciblés de démonstration, six régressions des cartes réelles à 320/1440 px et sept audits axe sans violation. Aucun message d’erreur navigateur ni écriture métier depuis la démonstration ; six écritures simulées attendues dans les parcours réels de confirmation, rejet et désactivation. Les 35 contrôles de la version précédente ne sont pas ajoutés à ce décompte.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Vraies cartes, clic illustré, pause complète, reprise, fin sans boucle et relecture | PASS |
+| Claire | Brouillon conservé, confirmation avec les bons paramètres, rejet et désactivation avec confirmation | PASS |
+| Théo | Scène sans action métier, mouvement réduit initial et changement dans les deux sens | PASS |
+| Sophie | Clair/sombre à 320/390/1440 px, trois niveaux à 320 px, actions fixes et défilement clavier à 390×400 | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryPresentation.tsx`, `src/components/agent/AgentMemoryProposalCard.tsx`, `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`.
+
+## 2026-10-07 — DECISION — Mémoire : scène continue et commandes de lecture
+
+**Fait** : démonstration de neuf secondes : surlignage de la consigne, extraction d’une proposition, choix du niveau et rangement dans les mémoires confirmées. Le même ticket se déplace et les traits se dessinent ; parcours diagonal sur mobile, horizontal sur ordinateur. Pause, reprise au temps restant et relecture partagent une seule horloge ; l’onglet masqué met la scène en pause. Exemple fixe avec mouvement réduit, préférence suivie dans les deux sens pendant la découverte. Niveaux adaptés au cabinet, à l’entreprise et à l’indépendant, avec mission ou poste selon le contexte.
+**Validation locale** : build final vérifié sur les trois sources livrées ; lint et 117 contrôles UX passent ; TypeScript conserve exactement ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 35 nouveaux contrôles de déplacement, arrêt sans boucle, pause/reprise, relecture, fermeture et focus ; sept audits axe sans violation, aucune erreur navigateur ni écriture métier. Les 40 contrôles de la première version restent exclus de ce décompte. À 320 px avec trois niveaux, le ticket final conserve 6 px avant le rail ; exemple animé et fixe cohérents.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Parcours continu, pause complète, reprise au temps restant et relecture depuis le début | PASS |
+| Claire | Compris/Passer et relecture depuis l’aide, Échap/croix avec focus restauré | PASS |
+| Théo | Mouvement réduit initial, changements de préférence dans les deux sens et aucune écriture métier | PASS |
+| Sophie | Clair/sombre de 320 à 1440 px, trois niveaux à 320 px, CTA fixes et défilement clavier à 390×400 | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryIntro.tsx`, `src/components/agent/AgentMemoryMotionScene.tsx`, `src/components/agent/AgentMemoryDialog.tsx`.
+
+## 2026-10-07 — DECISION — Première découverte animée de la mémoire
+
+**Fait** : démonstration de 4,12 secondes à la première ouverture volontaire de la mémoire : conversation, proposition, niveau et confirmation. Explications permanentes, actions « Compris » et « Passer » fixes sur mobile, relecture depuis l’aide. Découverte enregistrée par utilisateur et espace dans le navigateur, avec repli de session si le stockage est bloqué. Mouvement réduit : exemple fixe ; changement de préférence ou onglet masqué arrêtent la démonstration. Aucune activation ni mémorisation métier depuis le tutoriel.
+**Validation locale** : build final, lint et gardes contraste/fondations passent ; 117 contrôles UX ; TypeScript identique à ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 40 contrôles fonctionnels, six audits axe stabilisés sans violation, aucune erreur navigateur ni écriture métier.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Démonstration finie sans boucle, replay, accès direct après rechargement et relecture depuis l’aide | PASS |
+| Claire | Texte permanent, activation automatique distincte, fermeture sans flash et focus restauré | PASS |
+| Théo | Isolation utilisateur/espace, changement pendant la démonstration, stockage bloqué et aucune écriture métier | PASS |
+| Sophie | Deux actions visibles à 320/390 px et 390×400, défilement local, mouvement réduit initial et en cours | PASS |
+
+**État** : validé localement, non déployé.
+**Refs** : `src/components/agent/AgentMemoryIntro.tsx`, `src/hooks/useAgentMemoryIntroduction.ts`, `src/components/agent/AgentMemoryDialog.tsx`.
+
+## 2026-10-07 — BUG — Mémoire : cohérence visuelle et actions accessibles sur mobile
+
+**Fait** : surfaces et boutons alignés sur les primitives du site ; réglages allégés, actions « Garder » et « Proposer » mises en avant. Guide repliable des niveaux adapté aux comptes cabinet, entreprise et indépendant. Confirmation de désactivation défilante pour les mémoires longues ; saisie focalisée et visible à la création ou à l’édition.
+**Validation locale** : build et lint ciblé réussis ; 117 contrôles UX passent ; TypeScript conserve ses 11 erreurs héritées ; dette design sans augmentation. Chromium avec API simulées : 38 contrôles de parcours, six groupes de régression automatique, état vide sans défilement initial à 320/390 px ; audits axe clair/sombre sans violation et aucune erreur de page.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Actions principales lisibles, création et confirmation ; activation automatique explicite | PASS |
+| Claire | Réglages moins denses, niveaux et périmètre expliqués, annulation sans écriture | PASS |
+| Théo | Erreur sans utilisation, contexte adapté au compte, conflits et callbacks tardifs préservés | PASS |
+| Sophie | Cibles de 44 px, champ visible, archive longue accessible à 390×400, CTA initial à 320 px | PASS |
+
+**État** : validé localement, non déployé. Guide fonctionnel retenu pour expliquer la cascade ; aucun ajout d’illustration décorative dans les cartes.
+**Refs** : `src/components/agent/AgentMemoryDialog.tsx`, `src/components/agent/AgentMemoryScopeGuide.tsx`, `docs/design/01-direction.md`.
+
+## 2026-10-07 — DECISION — Mémoire automatique personnelle après calibration
+
+**Fait** : invitation après cinq propositions extraites confirmées sans modification ; activation explicite possible dans les réglages, « Plus tard » persistant et retour manuel. Seules les préférences explicites de langue, longueur et format des réponses peuvent devenir automatiques, personnellement dans chaque espace. Les règles de recrutement, de mission et d’organisation restent à confirmer.
+**Validation locale** : build réussi ; TypeScript 11 erreurs héritées, aucune nouvelle ; lint et comparaison design avec main sans augmentation. Tests UX 117, C1 28 et agent 12 fichiers passent. Base reconstruite avec 294 migrations : automatique 50, manuel 38, RLS 32, replay et quatre courses de consentement/ordre passent. Chromium avec API simulées : aucune erreur navigateur, axe sans violation dans le dialogue mobile.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Seuil sans activation implicite, opt-in, Plus tard et retour manuel | PASS |
+| Claire | Périmètre expliqué, annulation sans écriture, erreurs et rechargement | PASS |
+| Théo | Consentement versionné, callbacks tardifs, isolation utilisateur et organisation | PASS |
+| Sophie | Actions tactiles de 44 px, dialogue court défilant et saisie visible à 390×400 | PASS |
+
+**État** : validé localement, non déployé ; aucun appel aux comptes réels ou au modèle de production.
+**Refs** : `supabase/migrations/20261007130313_agent_memory_automation.sql`, `supabase/tests/agent_memory_automation_audit.sql`, `tests/agent/automatic-memory-extraction.test.mjs`.
+## 2026-10-07 — REFACTOR — Séparer les contenus de l’aperçu d’actions
+
+**Contexte** : l’aperçu de réponse et de coordination apparaissait comme un long panneau gris, avec des séparations trop faibles.
+**Fait** : chaque message ou contenu à enregistrer dispose d’une carte opaque bordée, avec bandeau de métadonnées distinct du texte. Destinataire, canal, adresse et objet sont alignés et restent lisibles sur petit écran. Sources et suite en attente ont leurs cartes ; l’en-tête et la validation sont séparés par des bordures visibles. La fenêtre passe à 672 px maximum et garde des marges mobiles ; les boutons Modifier et de validation font 44 px. Les cartes texturées de proposition restent inchangées.
+**Validation** : sept parcours fonctionnels et sept contrôles visuels Chromium sur les composants réels avec services simulés, clair/sombre de 320 à 1920 px et hauteur minimale de 500 px : lecture sans saisie initiale, édition, champs vides, annulation conservant les brouillons, validation unique, coordination distincte, focus et résultat partagé entre chat et fiche. Aucun débordement horizontal ; seule la zone centrale défile et la validation reste visible. Contraste minimal des textes contrôlés sur les surfaces opaques : 6,69:1 en sombre et 5,95:1 en clair. Build réussi, lint ciblé propre, cinq fichiers UX réussis et dette design sans hausse ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans les essais.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lire les effets séparément, modifier puis retrouver les résultats dans chat et fiche | PASS |
+| Claire | Identifier destinataire, service et contenu ; valider depuis la barre fixe | PASS |
+| Théo | Contenu vide, annulation, double clic et séparation des coordonnées candidat/équipe | PASS |
+| Sophie | Lecture, édition et validation sur 390 px et 320 × 500 px, sans débordement ni ouverture initiale du clavier | PASS |
+
+**Limites** : contrôles locaux sur une fixture avec services simulés ; pas de connexion fournisseur ni d’envoi réel. À 320 × 500 px, le corps de lecture reste défilable avec environ 166 px disponibles, l’en-tête et la validation restant visibles.
+**Impact** : `DemoCandidateActions.tsx`, documentation des actions et journal.
+**Refs** : PR #312.
+
+## 2026-10-07 — REFACTOR — Faire ressortir les propositions de la messagerie
+
+**Fait** : les cartes d’actions à préparer reprennent `texturedCard('teal')`, le dégradé et le grain fixes de l’accueil, avec texte clair et bouton principal blanc. Chat et onglet Actions de la fiche partagent le même rendu. Une action réalisée revient à une carte neutre et au bouton de consultation ; les dialogues et les échanges conservent leur fond habituel. Le groupe de boutons se replie sur petit écran et le filet au-dessus de la carte est retiré.
+**Décision** : nouvel usage demandé explicitement par le propriétaire le 07/10/2026, consigné dans la direction design et le commentaire de la primitive ; la liste des usages autorisés du test de l’accueil inclut uniquement ce quatrième composant. Aucun nouveau gradient ni jeton global.
+**Validation** : sept parcours Chromium réussis, clair/sombre de 320 à 1920 px et hauteur de 500 px : texture dans chat/fiche, boutons de 44 px sur mobile, aucun débordement horizontal, sources et focus, dialogue conservant les couleurs de son thème, validation puis carte neutre. Contraste conservateur mesuré sur les fonds capturés sans texte : 4,94:1 minimum pour les textes ; borne minimale du bouton principal survolé 13,01:1. Build réussi, lint ciblé propre, cinq fichiers UX réussis et dette design sans hausse ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans les essais.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Repérer la proposition, préparer puis appliquer et retrouver un résultat visuellement distinct | PASS |
+| Claire | Contraste de la texture et des textes, bouton principal blanc, résultat neutre et aperçu dans son thème | PASS |
+| Théo | Sources accessibles, focus restauré, état par candidat et aucun changement serveur dans la démo | PASS |
+| Sophie | Carte, boutons et fiche à 320/390 px, thèmes clair/sombre, hauteur de 500 px et sans débordement | PASS |
+
+**Refs** : PR #312 ; `docs/design/01-direction.md` § 7. Composants réels avec services simulés, sans compte recruteur réel ni appareil iOS physique. Le contraste est calculé contre le pixel de fond le plus lumineux à l’intérieur de la carte, hors bordure.
+
+## 2026-10-07 — SPEC — Réponse candidat et demande d’équipe liées
+
+**Fait** : la proposition d’Alex prépare trois effets relus ensemble : une réponse Outlook au candidat, une demande Outlook à Guillaume, puis un commentaire dans la fiche. Guillaume ayant déjà sollicité le manager, la demande lui propose de partager les précisions attendues. Une suite distincte reste en attente : compléter la réponse à Alex après réception du retour.
+**Décision** : chaque effet message porte un périmètre explicite candidat/équipe. Les messages aux collègues se lisent dans « Coordination avec l’équipe », partagé entre chat et fiche Interactions. Ils restent hors des événements du candidat utilisés pour ses coordonnées et ses bulles. La suite est une proposition conditionnelle, sans retour reçu supposé ni exécution automatique dans cette démo.
+**Validation** : sept parcours Chromium réussis de 320 à 1920 px, clair/sombre et hauteur de 500 px : destinataires distincts, modification des deux emails, champ d’équipe vide bloquant la validation, annulation conservant les brouillons, double clic produisant un message unique par destinataire, adresse d’Alex conservée, coordination identique dans la fiche et suite en attente. Six régressions profil/interactions et quatre fichiers UX réussis. Build réussi, lint ciblé propre, dette design inchangée ; les 11 diagnostics TypeScript hérités restent identiques. Aucune écriture serveur ni invocation distante dans les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Répondre au candidat et demander au collègue le retour manager en une validation des trois effets | PASS |
+| Claire | Identifier destinataires Candidat/Équipe, service Outlook et suite dépendant d’un retour avant d’appliquer | PASS |
+| Théo | Double clic, annulation, contenus relus, email interne hors coordonnées du candidat et aucun effet différé exécuté | PASS |
+| Sophie | Préparer, modifier les emails, annuler et valider sur 320/390 px, contenu défilant et cibles de 44 px | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Composants réels avec services simulés ; aucun compte recruteur réel ni appareil iOS physique. Réception du retour, nouveau plan et envois réels restent à brancher.
+
+## 2026-10-07 — REFACTOR — Lire les actions préparées avant de les modifier
+
+**Fait** : l’aperçu affiche les contenus complets en lecture, avec destinataires, destinations et nombre d’effets. « Modifier » ouvre seulement le champ choisi ; le focus initial reste sur le titre. « Annuler » ferme sans retirer la suggestion ni perdre les brouillons. « Ignorer la suggestion » reste dans le détail des sources. Un contenu vide affiche une explication et bloque la validation. Les résultats appliqués se relisent sans champ de saisie.
+**Raison** : les grands champs ouverts d’emblée coupaient les textes et focalisaient la saisie avant la lecture ; le bouton de rejet servait de recul ambigu. Le parcours sans retouche conserve deux clics, préparer puis valider.
+**Validation** : sept parcours Chromium réussis, de 320 à 1920 px, clair/sombre et hauteur de 500 px : lecture sans saisie, édition à la demande, annulation conservant le brouillon, partage chat/fiche, validation unique, résultat non éditable, rejet réversible, focus et cibles mobiles de 44 px. Six régressions profil/interactions et quatre fichiers UX réussis. Build réussi, lint ciblé propre, compteurs design inchangés ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent. Aucune écriture serveur ni invocation distante dans la démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Lire puis appliquer deux effets, retrouver les documents dans la fiche et les messages dans les interactions | PASS |
+| Claire | Comprendre les effets et leurs destinations, lire les textes complets avant une édition facultative | PASS |
+| Théo | Champ vide, annulation sans effet, brouillon partagé, double clic unique et isolation des candidats | PASS |
+| Sophie | Lecture sans saisie initiale, modification et annulation à 320/390 px, focus restauré et validation visible | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Composants réels avec services simulés ; aucun compte recruteur réel ni appareil iOS physique. Le moteur et les envois restent fictifs.
+
+## 2026-10-07 — SPEC — Préparer et appliquer des actions concrètes depuis le chat
+
+**Fait** : la démo propose des contenus préparés et des modifications concrètes : brief et questions d’entretien ; commentaire d’équipe avec mention et réponse Outlook ; questions de scorecard et email Gmail ciblé. Le parcours « Préparer », aperçu modifiable, puis « Enregistrer la préparation » ou « Envoyer et enregistrer » applique les deux effets en mémoire. Les documents et commentaires sont visibles dans l’onglet Actions de la fiche fictive, les emails simulés dans le même fil d’interactions. Le résultat s’ouvre en lecture seule. Les brouillons relus et résultats sont partagés entre chat et fiche ; fermer l’aperçu ne les applique pas, une validation double ne les duplique pas, quitter la démo les efface.
+**Décision** : les propositions portent du travail exécutable, une tâche restant utile pour du travail réellement différé. La spécification décrit des effets typés, leur aperçu, leurs destinations, les droits et conflits, des résultats durables par effet et la reprise partielle. Les écritures internes et envois externes ne sont pas présentés comme une transaction atomique. Aucun moteur IA ni service d’envoi réel ajouté à cette démo.
+**Validation** : sept parcours Chromium avec composants réels et services simulés, de 320 à 1920 px, clair/sombre et hauteur de 500 px. Aperçu avant effet, champ vide bloquant la validation, contenu retouché conservé entre les vues puis appliqué, résultat readonly, double clic sans doublon de document ou message, rejet réversible, isolation par candidat, focus clavier, logos et réponses fictives. Six régressions profil/interactions réussies avec pagination, compte personnel, cache isolé et erreurs partielles. Build réussi, lint ciblé propre, quatre fichiers UX réussis, dette design inchangée ; 11 diagnostics TypeScript hérités identiques au contrôle précédent. Aucun appel de génération, envoi ni écriture serveur dans les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Préparer puis appliquer deux effets, retrouver les contenus enregistrés dans la fiche et le message dans le chat | PASS |
+| Claire | Aperçu éditable montrant destinations, destinataire, objet et service avant un bouton de validation explicite | PASS |
+| Théo | Texte vide, fermeture sans effet, brouillon partagé, double validation unique, changement de candidat et remise à zéro | PASS |
+| Sophie | Préparation, édition, validation et réponse à 320/390 px, hauteur de 500 px ; boutons de 44 px et focus restauré | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Vérification sur Chromium avec services simulés, sans compte recruteur réel ni appareil iOS physique. Le critère de scorecard reste non évalué ; la mention d’équipe et les envois sont fictifs.
+
+## 2026-10-07 — REFACTOR — Clarifier la prochaine action dans la démo de messagerie
+
+**Fait** : une seule prochaine action suit les échanges récents, avec titre, motif court et bouton « Ajouter à mes tâches ». « Pourquoi ? » ouvre le responsable, l’échéance et des sources résumées avec logos ; les extraits complets se déplient à la demande. Le panneau latéral conserve le suivi et le profil. La fiche fictive et le chat partagent toujours l’état des tâches. Retour du focus à la fermeture du détail et après un rejet ; une modification de tâche ne déplace pas la lecture en cours.
+**Raison** : le panneau précédent mélangeait le contexte et les propositions, avec trop de détails visibles et un bouton de création ambigu. La proposition est maintenant près de la réponse, dans le contenu qui défile, pour préserver l’espace de lecture sur mobile. Bandeau et boutons raccourcis sur petit écran ; les trois canaux restent sur une ligne à 320 px.
+**Validation** : neuf parcours Chromium sur les composants réels avec services simulés, de 320 à 1920 px, clair/sombre et hauteur de 500 px : sources à la demande, boutons visibles dès l’ouverture, logos chargés, focus clavier, détail depuis la fiche, double clic sans doublon, tâches séparées par candidat, rejet réversible et sortie effaçant les essais. Aucun envoi ni écriture serveur. Six régressions profil/interactions avec pagination, compte personnel, erreurs partielles et cache isolé réussies. Build réussi, quatre fichiers de régression UX réussis, lint ciblé propre, dette design inchangée ; les 11 diagnostics TypeScript hérités sont identiques au contrôle précédent.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Ajouter une tâche, ouvrir son détail depuis la fiche, la terminer et retrouver le même état dans le chat sans déplacement de lecture | PASS |
+| Claire | Prochaine action et motif courts visibles dès l’ouverture ; contexte détaillé et extraits sur demande | PASS |
+| Théo | Double clic, changement de candidat, rejet réversible et remise à zéro ; aucune écriture ni génération distante | PASS |
+| Sophie | Répondre, ouvrir et fermer le détail à 320/390 px, hauteur de 500 px ; boutons de 44 px et aucun débordement | PASS |
+
+**Refs** : PR #312 ; `docs/candidate-contextual-actions.md`. Vérification sur Chromium avec données simulées, sans session recruteur réelle ni appareil iOS physique.
+
+## 2026-10-07 — SPEC — Actions proposées selon les interactions et le contexte candidat
+
+**Fait** : démo enrichie de trois propositions sourcées : préparation d’entretien avec contexte LinkedIn, coordination avec un autre recruteur et clarification d’un critère non évalué dans une scorecard. Sources datées, auteur et logos des services, responsable et échéance suggérés. Création, achèvement et rejet simulés en mémoire, état partagé entre le contexte du chat et l’onglet Actions de la fiche fictive, effacement à la sortie. Les exemples sont écrits pour l’aperçu ; aucun moteur IA réel ni tâche serveur ajouté.
+**Spécification** : `docs/candidate-contextual-actions.md` reprend les procédures Notion actuelles de calage, débrief et relances. Prévoit un contexte partagé, les avis distincts de chaque évaluateur, le travail de l’équipe, les sources indisponibles, les règles de cadence, la provenance, l’attribution et une déduplication serveur. L’API V2 permet les publications LinkedIn ; l’app utilise encore la lecture V1. Prérequis du moteur réel : rattachements entretien/scorecard/rapport à alimenter, responsable de tâche distinct du créateur, mission interne, états durables et politique de partage des interactions.
+**Validation** : build réussi, TypeScript à 11 diagnostics hérités sans ajout, lint ciblé propre, dette design inchangée, trois fichiers de régression profil/historique/contraste réussis. Douze scénarios Chromium avec composants réels et services simulés : six variantes des actions de 320 à 1920 px, clair/sombre, puis six régressions profil et interactions. Aucune écriture ni génération distante pendant les simulations.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Création simulée unique, tâche terminée depuis la fiche et état conservé dans le chat au changement de candidat | PASS |
+| Claire | Motif, sources avec logos, distinction entre scorecard et décision humaine, contexte d’un collègue visible | PASS |
+| Théo | Double clic sans duplication, tâches séparées par candidat, rejet réversible, sortie effaçant les essais, zéro écriture réelle | PASS |
+| Sophie | Contexte et fiche sans débordement à 320/390 px, actions tactiles de 44 px, clair et sombre | PASS |
+
+**Refs** : PR #312 ; consignes Notion `4ccaf5bf38da4fe1ae0a438a03feb05a` et compétences référencées dans la spécification. Aucun envoi réel, aucune migration ni fonction serveur modifiée.
+
+## 2026-10-07 — DECISION — Réutiliser le profil candidat existant dans la messagerie
+
+**Fait** : le profil de la messagerie et la fiche fictive réutilisent `ProfileDetailedTab`, déjà utilisé dans le pipeline, avec logos des sociétés/écoles, périodes, compétences et listes dépliables. Les logos sont conservés lors de la normalisation des données ; les dates utilisent le parseur existant. Suppression de la présentation et des formateurs de dates ajoutés pour cette vue. Cibles tactiles des boutons de dépliage portées à 44 px sur mobile ; logos fictifs locaux dans l'exemple principal.
+**Validation** : build réussi ; 11 erreurs TypeScript héritées, aucun diagnostic sur les fichiers nouveaux ; régressions profil/historique/contraste réussies ; lint ciblé propre et dette design sans augmentation. Six scénarios Chromium sur composants réels avec services simulés, clair/sombre et mobile : logos chargés, dates, listes dépliables, fiche et chat identiques, cache par organisation et absence d'écriture en démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Profil existant, anciens postes/formations dépliables et même historique sur les deux vues | PASS |
+| Claire | Logos des entreprises/écoles chargés et périodes lisibles | PASS |
+| Théo | Normalisation conservant les logos, actualisation isolée et démo sans écriture | PASS |
+| Sophie | Profil sans débordement à 390 px, onglets au clavier et composeur visible à 500 px | PASS |
+
+**Refs** : PR #312, aperçu de `codex/inbox-candidate-history`.
+
+## 2026-10-07 — SPEC — Profil candidat dans la messagerie et interactions partagées
+
+**Fait** : onglets Suivi et Profil dans le contexte candidat, expériences et formations intégrales, compétences, langues et autres rubriques présentes dans le profil. Lecture des instantanés de l'organisation, puis du compte LinkedIn personnel si nécessaire ; actualisation explicite conservant le cache de l'organisation de départ. Les fiches sourcing, pipeline et mission reprennent les cartes et la chronologie des interactions : séquences, emails/WhatsApp envoyés, entretiens, appels et messages LinkedIn paginés. Les réponses LinkedIn utilisent uniquement le compte personnel. La démo contient trois parcours fictifs complets et une fiche Profil/Interactions reprenant exactement les événements du chat, réponses simulées comprises.
+**Validation** : build réussi ; TypeScript à 11 erreurs héritées, aucune nouvelle ; nouveaux composants et hooks sans diagnostic ESLint ; dette design sans augmentation ; 119 fichiers UX et 28 C1 réussis, puis régressions ciblées relancées après les derniers ajustements. Chromium en StrictMode, clair/sombre, 390/1280/1920 px et hauteur mobile 500 px : six scénarios réussis, aucune erreur navigateur et aucune écriture en démo.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Profil complet dans le chat, fiche avec historique identique, anciens messages paginés et réponse unique depuis la fiche | PASS |
+| Claire | Suivi/Profil explicites, formations et compétences, mêmes cartes et logos dans les deux parcours | PASS |
+| Théo | Changement de candidat/organisation/compte, actualisation tardive isolée, panne partielle conservant les événements et absence d'envoi doublé | PASS |
+| Sophie | Onglets accessibles au clavier et cibles de 44 px, fiche et contexte sans débordement mobile, composeur visible à 500 px | PASS |
+
+**Limites** : composants réels avec services simulés pour les essais navigateur ; aucun envoi réel. Les réponses entrantes email/WhatsApp restent illustrées en démo, leur synchronisation réelle n'est pas ajoutée. Aucun schéma ni serveur modifié. Disponible sur l'aperçu de la PR.
+**Refs** : PR #312, branche `codex/inbox-candidate-history`.
+
+## 2026-10-07 — SPEC — Messagerie : exemples fictifs et logos des services
+
+**Contexte** : visualiser les emails, les discussions WhatsApp et les autres événements sans attendre une activité réelle.
+**Décision / Fait** : bouton « Voir la démo » dans la messagerie, accès direct `/inbox?demo=1`. Trois candidats fictifs avec invitations LinkedIn, emails Gmail et Outlook entrants et sortants, échanges WhatsApp, appel Aircall et entretien Calendly avec Google Meet. Réponses simulées en mémoire, brouillons distincts par candidat, sortie vers la messagerie réelle. Les cartes et le contexte réutilisent les composants de la messagerie ; les logos identifient les services connus, sans déduire un fournisseur de l'adresse du destinataire.
+**Validation** : Chromium en StrictMode sur la page Inbox, clair/sombre, 320/390/1280/1600/1920 px : email développé, changement de candidat, réponse unique, brouillon conservé, panneau de contexte, sortie et réouverture sans compte LinkedIn. Aucun débordement, aucune erreur navigateur, aucune écriture serveur dans la démo, composeur visible à 500 px de hauteur. Build réussi ; TypeScript à 11 erreurs héritées ; lint des fichiers touchés sans nouveau diagnostic ; dette design inchangée. Suites UX et C1 vérifiées.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Parcours des trois candidats, Gmail/Outlook/WhatsApp et réponse simulée | PASS |
+| Claire | Distinction de la démo, contenu des emails, entretien et sortie sans compte connecté | PASS |
+| Théo | Lien avec chat réel sans marquage lu en démo, zéro écriture, brouillons séparés et essais effacés à la sortie | PASS |
+| Sophie | Retour à la liste, changement de candidat, contexte et réponse à 320/390 px et hauteur 500 px | PASS |
+
+**Limites** : navigateur avec services simulés pour vérifier l'absence d'écritures ; aucun message réel envoyé. Le mode démo illustre les réponses email/WhatsApp, dont la synchronisation réelle reste à connecter. Fournisseur d'email générique si l'origine de l'événement n'est pas enregistrée.
+**Refs** : PR #312, branche `codex/inbox-candidate-history`.
+
+## 2026-10-07 — SPEC — Messagerie : historique candidat et largeur utile
+
+**Contexte** : la liste étroite et la conversation isolée masquaient le suivi effectué sur les autres canaux.
+**Décision / Fait** : fil chronologique commun aux messages LinkedIn et aux envois réels de séquences (invitation, email, WhatsApp), cartes avec contenu, sujet, destinataire, statut et date d'entretien. Liste élargie ; mission, séquence et prochain entretien dans un panneau latéral sur grand écran, accessible depuis l'en-tête sur les autres tailles. Avant sélection, conversations récentes et accès aux échanges à répondre ou relancer.
+**Validation** : build réussi, 118 fichiers UX et 28 fichiers C1 réussis ; TypeScript à 11 erreurs héritées, dette design sans augmentation, un diagnostic lint hérité sur les fichiers touchés. Régressions sur les alias, 501 envois, les homonymes, les fuseaux horaires, la déduplication et les clés de cache utilisateur/organisation. Chromium en StrictMode : thèmes clair/sombre, 320 à 1920 px, réponse unique, panneau mobile et composeur accessible à 500 px de hauteur.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Contenu des canaux, origine de séquence, 501 envois et texte LinkedIn non dupliqué | PASS |
+| Claire | Date et statut d'entretien, email développé, ouverture depuis les conversations récentes | PASS |
+| Théo | Organisation et candidat changés pendant une lecture, HTML inerte, panne partielle et réessai | PASS |
+| Sophie | Lecture et réponse sur 320/390 px, contexte accessible, aucun débordement horizontal | PASS |
+
+**Limites** : essais navigateur avec données simulées. Vérification SQL en lecture seule de la présence du périmètre organisation sur les sources existantes ; pas de test d'envoi avec un compte réel. Les réponses email et WhatsApp ne sont pas synchronisées dans cette page ; seuls leurs envois de séquence sont ajoutés. Aucun schéma ni serveur modifié.
+**Reste à faire** : relier les conversations et réponses des autres canaux ; validation en compte connecté après fusion.
+**Refs** : branche `codex/inbox-candidate-history`.
+
+## 2026-10-07 — BUG — Messagerie : identités LinkedIn, échéances et catégories
+
+**Fait** : rapprochement des trois identifiants LinkedIn, priorité aux séquences actives avec pagination ; états, compteurs et filtres relus toutes les 30 secondes ; catégories automatiques écrites dans l’organisation vérifiée du compte. Conflit avec main résolu en conservant son contraste.
+**Validation** : build réussi ; TypeScript 11 erreurs héritées, lint et dette design sans augmentation. Régressions UX, C1 et agent vérifiées. Navigateur Chromium avec réponses simulées, sans accès aux comptes réels.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Alias Recruiter/Classic, active ancienne au-delà de 500 inscriptions | PASS |
+| Claire | Réponse du candidat prioritaire, état et compteur cohérents | PASS |
+| Théo | Seuil de relance franchi sans nouveau message ; écriture bornée à l’organisation | PASS |
+| Sophie | Ligne À faire masquée au focus sur 390 px ; insertion conservant le brouillon | PASS |
+
+**Reste à faire** : validation en environnement connecté après fusion ; la fonction serveur est déployée par le workflow de main.
+**Refs** : PR #308.
+
+## 2026-10-07 — BUG — Onboarding : reprises, classement et changement de client
+
+**Fait** : recherche et scoring partagés par le cache du parcours pendant les retours arrière ; tri des dix profils avant l’affichage des six meilleurs ; brief invalidé quand le client change, y compris après rechargement. Conflits avec main résolus et contrastes des nouvelles scènes alignés.
+**Validation** : build réussi ; TypeScript 11 erreurs héritées, lint et dette design sans augmentation. Régressions UX, C1 et agent vérifiées. Chromium en StrictMode, réponses simulées, largeurs de 320 à 1440 px et deux thèmes.
+
+| Persona | Scénario | Verdict |
+|---|---|---|
+| Guillaume | Premier candidat affiché et destinataire du message identiques | PASS |
+| Claire | Espace, brief, mission et fin du parcours entreprise | PASS |
+| Théo | Retour pendant le scoring : un seul appel ; client A puis B ; reprise sans mission dupliquée | PASS |
+| Sophie | Parcours mobile 320/390 px, sans débordement ni erreur navigateur | PASS |
+
+**Reste à faire** : validation en environnement connecté après fusion.
+**Refs** : PR #255.
+
 ## 2026-10-06 — SHIP — Brief IA : consigne dite une fois, offres filtrables, échec d'adresse plus clair
 
 **Contexte** : retour du propriétaire, « le design et l'UX sont à retravailler », puis « fais au mieux » après une revue de la fenêtre de création (choix, saisie, résultat, offres d'une société) en sombre, clair et téléphone.

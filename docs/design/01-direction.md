@@ -215,11 +215,12 @@ Fond animé (décision du propriétaire du 05/10/2026, inspiré de la page Qonto
 - Option `contained` : dans un conteneur à marges (le sourcing), les bords se fondent aussi sur les côtés.
 - Pas d'autre écran sans décision du propriétaire.
 
-Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Trois usages, pas d'autre sans décision du propriétaire :
+Cartes texturées (même décision, 05/10/2026) : `texturedCard(tone)` (`src/components/layout/texturedCard.ts`, styles `.konekt-card-tex` de `src/index.css`) donne à une carte un dégradé et un grain fixes, sans mouvement. Deux teintes : `teal` pour une action à faire, `warm` quand quelque chose bloque. Quatre usages, pas d'autre sans décision du propriétaire :
 
 - La carte « Maintenant » du Pipeline d'une mission (`NowCard.tsx`), seulement quand il y a une action : bleue, chaude pour le rang 0 (blocage). Les états « chargement », « rien à faire » et « tout est reporté » gardent la bande grise.
 - Le bandeau « Compte LinkedIn à reconnecter » en tête de « À faire » (`DashboardFocusPanel`), chaud, placé au-dessus de la liste.
 - La carte de bienvenue de l'accueil (`DashboardGreeting`), bleue, en permanence : une zone réservée aux cas particuliers ne se voyait pas sur un compte qui fonctionne (demande du propriétaire, 05/10/2026). Le bandeau LinkedIn s'y ajoute en dessous quand il y en a un, et la zone « Aucune mission active » reste neutre. Sur téléphone, le titre passe sur deux lignes dans la carte au lieu d'être coupé.
+- Les propositions à préparer dans la messagerie et les fiches candidat (`CandidateActions` sur les données réelles, `DemoCandidateActions` pour l’aperçu, demande du propriétaire du 07/10/2026), bleu-vert avec un bouton principal blanc. Les actions réalisées reviennent à une carte neutre ; les contenus de la validation et les échanges gardent leur fond habituel.
 
 La carte porte ses propres couleurs de texte, claires dans les deux thèmes : en thème clair, c'est une île sombre. Le contenu s'écrit avec les classes habituelles, le bouton plein de la carte est blanc. Le survol d'un bouton discret y assombrit au lieu d'éclaircir, car un survol blanc translucide faisait tomber le contraste à 4,3:1. Mesure faite le 05/10/2026 sur les vrais composants, carte repliée, dépliée et bouton survolé : 6,0:1 au pire sur la carte « Maintenant », 6,4 à 7,1:1 sur l'accueil (carte de bienvenue et bandeau LinkedIn). Une teinte plus claire se mesure avant livraison.
 
@@ -291,7 +292,23 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 - Pas de `div` cliquable : `button` ou `a`.
 - Une information ne passe jamais par la couleur seule : un statut a aussi un mot ou une icône.
 
-## 11. Ce qui garde ces règles
+## 11. L'onboarding suit les mêmes règles
+
+Décision du propriétaire du 06/10/2026, qui retire l'exception du 29/09/2026 : le bureau illustré et ses animations ont été jugés trop chargés. L'onboarding n'a plus aucun droit particulier au mouvement, il suit les règles des autres écrans (§ 1 à 10).
+
+Ce qui le caractérise :
+
+- Quatre étapes (Vous et votre espace, Votre poste, LinkedIn, Premiers profils), puis une fin. Le fil des étapes est un simple texte avec l'étape en cours soulignée, et un trait fin de progression.
+- Une colonne centrée (`OnboardingFrame`), un titre, une phrase d'appui, les champs, un seul bouton plein par écran.
+- La première scène réunit le prénom, le type d'espace et son nom : un espace doit exister avant que LinkedIn, la mission et la recherche puissent fonctionner.
+- L'écran des premiers profils donne des chiffres réels (profils trouvés, compétences retenues, profils notés) et rien d'inventé.
+- La fin est une vitrine : ce qui a été mis en place, puis quatre fonctions en ligne de l'application (assistant d'entretien en direct, appels transcrits et analysés, adresse web, carte « Maintenant »). Une fonction qui n'est pas encore livrée ne s'y annonce pas : `tests/ux/onboarding-parcours.test.mjs` refuse « bientôt » et « prochainement ».
+
+Ce qui a été retiré : le bureau et ses objets, les animations en boucle, la parallaxe, les lueurs qui suivent le pointeur, les titres révélés mot à mot, les nombres qui montent, le texte qui s'écrit, les confettis. Les variables `--paper*` et la règle `html.stage-open` disparaissent de `src/index.css`.
+
+Ce que l'onboarding produit pour de vrai, et non en démonstration : le prénom (profil et compte, il signe les messages de l'IA), l'espace, le logo et le site trouvés pour l'entreprise, une mission avec son brief structuré, ses filtres IA et ses étapes d'entretien, la liaison LinkedIn, une recherche réelle d'une page sur le compte relié, un scoring facultatif, un exemple de message (rien n'est envoyé) et le ton d'écriture (`profiles.ai_context.tone`). Toute nouvelle question posée dans ce parcours doit écrire quelque chose que le produit lit : une réponse sans lecteur n'a pas sa place (c'est ce qui a retiré la taille d'équipe, le volume annuel et les secteurs, écrits mais jamais lus).
+
+## 12. Ce qui garde ces règles
 
 - `npm run audit:design` compte la dette visuelle de `src/` : couleurs brutes et ancienne palette de marque, tailles arbitraires, effets décoratifs, rayons hors système, texte atténué par opacité, variables CSS lues sans être déclarées, emoji, tirets longs, noms de fournisseurs, boutons et champs faits main.
 - Le job CI « Design (ratchet) » refuse une PR qui fait monter un de ces compteurs par rapport à `main`.

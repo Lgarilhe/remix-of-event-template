@@ -111,11 +111,31 @@ test('Ligne non lue : « À répondre » en orange, gras, nombre lu sans pastill
 });
 
 test('Étiquette posée à la main : en texte, elle l’emporte sur l’intention', () => {
-  const html = row({ chat: chat({ unread_count: 0 }), category: 'to_recontact', intent: { intent: 'timing_issue', confidence: 0.8 } });
+  // Votre message est le dernier : une inscription en cours sans réponse garde la conversation en attente.
+  const mine = chat({
+    unread_count: 0,
+    last_message: { text: 'Bonjour Inès', is_sender: true, timestamp: new Date(Date.now() - 5 * MINUTE).toISOString() },
+  });
+  const html = row({ chat: mine, category: 'to_recontact', intent: { intent: 'timing_issue', confidence: 0.8 } });
   assert.match(html, />À recontacter<\/span>/);
   assert.doesNotMatch(html, /Pas le bon moment/);
   assert.doesNotMatch(html, /text-warning/, 'lue : rien en orange');
   assert.match(html, /En attente/, 'inscription en cours sans réponse');
+});
+
+test('Ligne lue : « À répondre » sans orange, « À relancer » après trois jours ouvrés sans réponse', () => {
+  // Le candidat a écrit le dernier message et la ligne est lue : l'état reste dit, sans orange.
+  const read = row({ chat: chat({ unread_count: 0 }) });
+  assert.match(read, /class="inline-flex shrink-0 items-center gap-1 text-muted-foreground">[\s\S]*?À répondre<\/span>/);
+  assert.doesNotMatch(read, /text-warning/);
+  // Vous avez écrit il y a 10 jours, aucune séquence active : la relance est due.
+  const old = new Date(Date.now() - 10 * 86_400_000).toISOString();
+  const due = row({
+    chat: chat({ unread_count: 0, last_message: { text: 'Une date pour échanger ?', is_sender: true, timestamp: old } }),
+    enrollmentsMap: new Map(),
+  });
+  assert.match(due, /À relancer<\/span>/);
+  assert.doesNotMatch(due, /En attente|text-warning/);
 });
 
 test('Canal : rien sur le visage pour LinkedIn, le logo pour un autre canal', () => {
@@ -155,7 +175,7 @@ test('Conversation : état en mots près du nom, inscription discrète, panneau 
   // Arrêt manuel (lot 5b) : mêmes mots, avec l'auteur et la date de l'arrêt.
   assert.match(src, /<EnrollmentStatusBadge\s+status=\{enrollmentStatus\}\s+pauseReason=\{enrollmentPauseReason\}[^>]*?\bplain\s*\/>/);
   assert.match(src, /<span className="sr-only">Séquence : <\/span>/);
-  assert.match(src, /<Button variant="ghost" size="sm" onClick=\{onEnrollInSequence\}/);
+  assert.match(src, /aria-label="Afficher le contexte candidat"/);
   assert.match(src, /className="w-full max-w-sm border-0"/);
   assert.match(src, /\{channel !== 'linkedin' && \(/);
 });
@@ -163,7 +183,7 @@ test('Conversation : état en mots près du nom, inscription discrète, panneau 
 test('Composeur : mise en forme dans un menu, nombre de suggestions neutre, un seul bouton plein', () => {
   const src = read('src/components/outreach/inbox/MessageComposer.tsx');
   assert.match(src, /aria-label="Mise en forme" className=\{TOOL_ICON\}/);
-  assert.doesNotMatch(src, /sm:hidden|hidden items-center gap-0\.5 sm:flex/, 'plus de barre de mise en forme à part');
+  assert.doesNotMatch(src, /hidden items-center gap-0\.5 sm:flex/, 'plus de barre de mise en forme à part');
   assert.match(src, /<DropdownMenuShortcut>\{cmd\}\+B<\/DropdownMenuShortcut>/, 'les raccourcis restent dits');
   assert.match(src, /<span className="tabular-nums text-muted-foreground">\{aiSuggestionsCount\}<\/span>/);
   assert.doesNotMatch(src, /bg-brand\/15/);

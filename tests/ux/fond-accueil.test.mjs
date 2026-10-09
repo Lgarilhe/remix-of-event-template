@@ -194,7 +194,7 @@ test('carte « Maintenant » : texturée seulement quand il y a une action, chau
   assert.match(src, /<div className=\{cn\(CARD, 'flex flex-col gap-3 sm:flex-row sm:items-center'\)\} aria-busy="true"/);
 });
 
-test('cartes texturées : seuls la carte « Maintenant », le bandeau LinkedIn et la carte de bienvenue les utilisent', () => {
+test('cartes texturées : accueil, carte « Maintenant » et propositions candidat seulement', () => {
   const walk = (dir) =>
     readdirSync(dir).flatMap((name) => {
       const abs = join(dir, name);
@@ -208,6 +208,8 @@ test('cartes texturées : seuls la carte « Maintenant », le bandeau LinkedIn e
     'src/components/dashboard/DashboardFocusPanel.tsx',
     'src/components/dashboard/DashboardGreeting.tsx',
     'src/components/missions/v3/pipeline/NowCard.tsx',
+    'src/components/outreach/inbox/CandidateActions.tsx',
+    'src/components/outreach/inbox/DemoCandidateActions.tsx',
   ]);
 });
 

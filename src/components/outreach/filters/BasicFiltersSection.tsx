@@ -258,6 +258,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
           <>
             <PriorityBadges
               items={filters.school}
+              schoolContext
               onRemove={(id) => onRemovePriorityFilter('school', id)}
               onUpdatePriority={(id, priority) => onUpdatePriority('school', id, priority)}
             />

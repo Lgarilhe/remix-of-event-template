@@ -8,7 +8,9 @@
  *
  * Décision du propriétaire du 05/10/2026 (docs/design/01-direction.md, § 7) :
  * réservée à la carte de bienvenue de l'accueil, à la chose à faire maintenant
- * (carte « Maintenant ») et au blocage des envois. Les noms de classe sont
+ * (carte « Maintenant ») et au blocage des envois. Extension du 07/10/2026 :
+ * propositions à préparer dans la messagerie et les fiches candidat,
+ * sur les données réelles comme dans la démo. Les noms de classe sont
  * écrits en entier pour que Tailwind les garde.
  */
 

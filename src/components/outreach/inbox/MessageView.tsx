@@ -24,11 +24,19 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
+import { ConversationContext } from './ConversationContext';
+import { CandidateActions, CandidateActionHistory } from './CandidateActions';
+import { useCandidateActions } from '@/hooks/useCandidateActions';
+import { mergeCandidateActionEvents } from '@/lib/candidateActions';
+import { conversationTimeline } from '@/lib/inboxTimeline';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
 import { MessageComposer } from './MessageComposer';
-import { SmartReplies } from './SmartReplies';
+import { ThreadNextStep } from './ThreadNextStep';
+import type { CtaReplyButtonProps } from './CtaReplyButton';
 import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useNow } from '@/hooks/sidebar/useNow';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberName } from '@/hooks/useTeamMembers';
@@ -37,7 +45,7 @@ import { pauseToastTitle } from '@/lib/sequenceErrorMessages';
 import { readManualStop } from '@/lib/sequenceLabels';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft, readChatDraft } from '@/hooks/useChatDraft';
-import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
+import { useProfileActivity } from '@/hooks/useProfileActivity';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -52,8 +60,8 @@ import {
 import { EmptyState } from '@/components/layout';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import {
-  Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock, ExternalLink,
-  FileText, GitBranch, ListPlus, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
+  Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock,
+  FileText, GitBranch, ListPlus, UserRound, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
@@ -62,6 +70,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
+import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { channelLabel } from '@/lib/channels';
 import {
   getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
@@ -70,6 +79,8 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
+import { businessDaysSince, latestMessage, threadState } from '@/lib/inboxThreadState';
+import { useChatSuggestedAction } from '@/hooks/useChatSuggestedAction';
 import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
 // Boutons icône de l'en-tête : 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
@@ -83,6 +94,7 @@ const MESSAGE_ACTION = cn(
 );
 
 interface MessageViewProps {
+  overview?: React.ReactNode;
   selectedChat: Chat | null;
   messages: Message[];
   loadingMessages: boolean;
@@ -156,6 +168,7 @@ const ThreadNotice: React.FC<{
 );
 
 export const MessageView: React.FC<MessageViewProps> = ({
+  overview,
   selectedChat,
   messages,
   loadingMessages,
@@ -184,11 +197,22 @@ export const MessageView: React.FC<MessageViewProps> = ({
   isReacting,
   isDeleting,
 }) => {
+  const currentTime = useNow(30_000);
+  const { organization, organizationId } = useOrganization();
   const replySuggestions = Array.isArray(replySuggestionsRaw) ? replySuggestionsRaw : [];
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const aiPanelRef = useRef<HTMLDivElement>(null);
+  const composerAreaRef = useRef<HTMLDivElement>(null);
+  const previousAIPanelOpen = useRef(false);
+  useEffect(() => {
+    if (aiPanelOpen) aiPanelRef.current?.focus();
+    else if (previousAIPanelOpen.current) composerAreaRef.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+    previousAIPanelOpen.current = aiPanelOpen;
+  }, [aiPanelOpen]);
+  const [contextOpen, setContextOpen] = useState(false);
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
@@ -234,6 +258,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
     wasSendingRef.current = sending;
   }, [sending, newMessage, clearDraft]);
 
+  const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
+  const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;
+  const profileName = selectedChat ? getChatDisplayName(selectedChat) : null;
+  const profileAliases = [selectedChat?.attendees?.[0]?.provider_id, selectedChat?.attendees?.[0]?.attendee_provider_id, selectedChat?.attendee_provider_id].filter((id): id is string => !!id);
+  const { events: activityEvents, loading: loadingActivity, error: activityError, retry: retryActivity } = useProfileActivity(profileId, profileUrl, profileName, profileAliases);
+
   // ─── Défilement automatique ─────────────────────────────────────────
   // En bas seulement à l'ouverture de la conversation, ou quand un nouveau
   // message arrive alors qu'on était déjà en bas (à moins de 150 px). Sinon
@@ -253,38 +283,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, [selectedChat?.id]);
-
-  // Défilement conditionnel
-  useEffect(() => {
-    if (loadingMessages || messages.length === 0) return;
-    const container = messagesScrollRef.current;
-    if (!container) return;
-
-    const chatChanged = lastChatIdForScrollRef.current !== selectedChat?.id;
-    const newMessagesCount = messages.length;
-    const hasNewMessage = newMessagesCount > lastMessageCountRef.current;
-
-    lastChatIdForScrollRef.current = selectedChat?.id || null;
-    lastMessageCountRef.current = newMessagesCount;
-
-    const shouldScroll = chatChanged || (hasNewMessage && isNearBottomRef.current);
-    if (!shouldScroll) return;
-
-    const t = setTimeout(() => {
-      requestAnimationFrame(() => {
-        try {
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: chatChanged ? 'auto' : 'smooth',
-          });
-          isNearBottomRef.current = true;
-        } catch {
-          container.scrollTop = container.scrollHeight;
-        }
-      });
-    }, 80);
-    return () => clearTimeout(t);
-  }, [messages, loadingMessages, selectedChat?.id]);
 
   // ─── Synchronisation silencieuse d'une conversation vide ────────────
   // Une conversation qui s'ouvre sans message lance une synchronisation de
@@ -333,75 +331,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
       });
   }, [selectedChat?.id, messages.length, loadingMessages, onAutoSyncIfEmpty]);
 
-  const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
-  const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;
-  const profileName = selectedChat ? getChatDisplayName(selectedChat) : null;
-  const { events: activityEvents } = useProfileActivity(profileId, profileUrl, profileName);
-
-  type TimelineItem =
-    | { kind: 'message'; data: Message }
-    | { kind: 'event'; data: ActivityEvent }
-    | { kind: 'date'; date: string; label: string };
-
-  const timeline = useMemo<TimelineItem[]>(() => {
-    const items: TimelineItem[] = [];
-    // Les messages sans contenu affichable (réactions désynchronisées,
-    // réponses partielles du service) donneraient des bulles vides.
-    messages.forEach(m => {
-      if (!hasDisplayableContent(m) && (!m.reactions || m.reactions.length === 0)) return;
-      items.push({ kind: 'message', data: m });
-    });
-    activityEvents.forEach(e => items.push({ kind: 'event', data: e }));
-    items.sort((a, b) => {
-      const tA = (a.kind === 'message' ? a.data.timestamp : a.kind === 'event' ? a.data.timestamp : '') || '';
-      const tB = (b.kind === 'message' ? b.data.timestamp : b.kind === 'event' ? b.data.timestamp : '') || '';
-      return tA.localeCompare(tB);
-    });
-
-    // Séparateurs de date entre deux jours différents
-    const withSeparators: TimelineItem[] = [];
-    let lastDate: string | null = null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const formatLabel = (d: Date): string => {
-      const dStart = new Date(d);
-      dStart.setHours(0, 0, 0, 0);
-      if (dStart.getTime() === today.getTime()) return "Aujourd'hui";
-      if (dStart.getTime() === yesterday.getTime()) return 'Hier';
-      const diff = (today.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24);
-      if (diff < 7) {
-        return d.toLocaleDateString('fr-FR', { weekday: 'long' });
-      }
-      if (d.getFullYear() === today.getFullYear()) {
-        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-      }
-      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-    };
-
-    for (const item of items) {
-      const ts = item.kind === 'message' ? item.data.timestamp : item.kind === 'event' ? item.data.timestamp : '';
-      if (!ts) {
-        withSeparators.push(item);
-        continue;
-      }
-      const d = new Date(ts);
-      if (Number.isNaN(d.getTime())) {
-        withSeparators.push(item);
-        continue;
-      }
-      const dateKey = d.toISOString().split('T')[0];
-      if (dateKey !== lastDate) {
-        withSeparators.push({ kind: 'date', date: dateKey, label: formatLabel(d) });
-        lastDate = dateKey;
-      }
-      withSeparators.push(item);
-    }
-    return withSeparators;
-  }, [messages, activityEvents]);
-
   // User connecté + org + variables custom pour les placeholders templates
   const { user } = useAuthReady();
 
@@ -420,6 +349,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
   const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
   const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
+  const [activeEnrollmentOwner, setActiveEnrollmentOwner] = useState<string | null>(null);
 
   // Nouvelle conversation : la pause affichée ne concerne que la précédente
   useEffect(() => {
@@ -428,7 +358,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   const chatProfileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
   useEffect(() => {
-    if (!chatProfileId) {
+    if (!chatProfileId || !organizationId) {
       setActiveEnrollments([]);
       return;
     }
@@ -440,6 +370,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       const { data, error } = await supabase
         .from('sequence_enrollments')
         .select('id, current_step_order')
+        .eq('organization_id', organizationId)
         .or(enrollmentProfileFilter(chatProfileId))
         .eq('status', 'active')
         .order('created_at', { ascending: false });
@@ -451,10 +382,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
         return;
       }
       setActiveEnrollments(data ?? []);
+      setActiveEnrollmentOwner(`${organizationId}:${chatProfileId}`);
     })();
     return () => { cancelled = true; };
-  }, [chatProfileId, activeEnrollmentsKey]);
-  const hasActiveEnrollment = activeEnrollments.length > 0 && !seqStoppedLocal;
+  }, [chatProfileId, organizationId, activeEnrollmentsKey]);
+  const hasActiveEnrollment = activeEnrollments.length > 0 && activeEnrollmentOwner === `${organizationId}:${chatProfileId}` && !seqStoppedLocal;
 
   // Mise en pause (contrat de pause) : seules les inscriptions changent de
   // statut ; les étapes programmées gardent leur date et le moteur les ignore
@@ -471,6 +403,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       const { data: active, error: fetchErr } = await supabase
         .from('sequence_enrollments')
         .select('id')
+        .eq('organization_id', organizationId)
         .or(enrollmentProfileFilter(profileId))
         .eq('status', 'active')
         .order('created_at', { ascending: false });
@@ -486,6 +419,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       const { data: paused, error: pauseErr } = await supabase
         .from('sequence_enrollments')
         .update({ status: 'paused', pause_reason: 'manual' })
+        .eq('organization_id', organizationId)
         .in('id', ids)
         .eq('status', 'active')
         .select('id');
@@ -567,7 +501,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
     setSummary(null);
     setSummaryOpen(false);
   }, [selectedChat?.id]);
-  const { organization } = useOrganization();
   const memberName = useMemberName();
   const { asMap: customVariablesMap } = useUserTemplateVariables();
 
@@ -673,14 +606,82 @@ export const MessageView: React.FC<MessageViewProps> = ({
     || undefined
   ), [user?.user_metadata?.full_name, user?.user_metadata?.first_name, user?.user_metadata?.last_name]);
 
+  // Ligne « À faire » : même règle que les onglets (src/lib/inboxThreadState.ts),
+  // avec le dernier message lu dans le fil (à jour dès l'envoi) et l'inscription
+  // active lue en base à l'ouverture.
+  const nextStep = useMemo(() => {
+    if (!selectedChat) return null;
+    const last = latestMessage(messages) ?? selectedChat.last_message ?? null;
+    const lastAt = last?.timestamp ?? null;
+    const now = new Date(currentTime);
+    const state = threadState(
+      {
+        lastIsMine: last && typeof last.is_sender === 'boolean' ? last.is_sender : null,
+        lastAt,
+        sequenceActive: hasActiveEnrollment || jobInfo?.status === 'active',
+      },
+      now,
+    );
+    if (state !== 'to_reply' && state !== 'to_follow_up') return null;
+    return { state, lastAt, days: lastAt ? businessDaysSince(lastAt, now) : null };
+  }, [selectedChat, messages, hasActiveEnrollment, jobInfo, currentTime]);
+
+  // Action déjà mise en cache par l'analyse IA (lecture seule), pour « À répondre » :
+  // écartée si le candidat a écrit depuis l'analyse.
+  const cachedSuggestion = useChatSuggestedAction(selectedChat, nextStep?.state === 'to_reply');
+  const nextStepSuggestion = useMemo(() => {
+    const cached = cachedSuggestion.data;
+    if (!cached?.action) return null;
+    if (nextStep?.lastAt && cached.analyzedAt && new Date(nextStep.lastAt) > new Date(cached.analyzedAt)) return null;
+    return cached.action;
+  }, [cachedSuggestion.data, nextStep?.lastAt]);
+
+  const actionMission = activeMissions.find(mission => mission.id === jobInfo?.job_id || mission.job_id === jobInfo?.job_id);
+  const candidateActions = useCandidateActions(profileId ? {
+    candidate_id: profileId,
+    linkedin_url: profileUrl,
+    project_id: actionMission?.id,
+    account_id: selectedChat?.account_id,
+    chat_id: selectedChat?.id,
+  } : null, () => { retryActivity(); void onRefetchMessages?.(); });
+  const candidateActivityEvents = useMemo(() => mergeCandidateActionEvents(activityEvents, candidateActions.plans, messages, candidateActions.messages, selectedChat?.account_id, memberName), [activityEvents, candidateActions.plans, messages, candidateActions.messages, selectedChat?.account_id, memberName]);
+  const timeline = useMemo(() => conversationTimeline(
+    messages.filter(message => hasDisplayableContent(message) || !!message.reactions?.length), candidateActivityEvents, new Date(currentTime),
+  ), [messages, candidateActivityEvents, currentTime]);
+
+  // Défilement conditionnel : les résultats réels suivent la même règle que les messages.
+  useEffect(() => {
+    if (loadingMessages || !timeline.some(item => item.kind !== 'date')) return;
+    const container = messagesScrollRef.current;
+    if (!container) return;
+    const chatChanged = lastChatIdForScrollRef.current !== selectedChat?.id;
+    const newMessagesCount = messages.length + candidateActivityEvents.length;
+    const hasNewMessage = newMessagesCount > lastMessageCountRef.current;
+    lastChatIdForScrollRef.current = selectedChat?.id || null;
+    lastMessageCountRef.current = newMessagesCount;
+    if (!chatChanged && !(hasNewMessage && isNearBottomRef.current)) return;
+    const timer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        try {
+          container.scrollTo({ top: container.scrollHeight, behavior: chatChanged ? 'auto' : 'smooth' });
+          isNearBottomRef.current = true;
+        } catch {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [messages, timeline, candidateActivityEvents.length, loadingMessages, selectedChat?.id]);
+
   // Aucune conversation ouverte (ordinateur)
   if (!selectedChat) {
+    if (overview) return <>{overview}</>;
     return (
       <div className="grid h-full place-items-center bg-background p-6">
         <EmptyState
           illustration="conversation"
           title="Sélectionnez une conversation"
-          description="Vos messages LinkedIn et vos InMails s'affichent ici."
+          description="Retrouvez les échanges, les envois de séquences et les entretiens du candidat dans un même fil."
           className="w-full max-w-sm border-0"
         />
       </div>
@@ -783,10 +784,22 @@ export const MessageView: React.FC<MessageViewProps> = ({
     setReactingMsgId(null);
   };
 
+  const linkedMission = activeMissions.find(mission => mission.id === jobInfo?.job_id || mission.job_id === jobInfo?.job_id);
+  const contextProps = {
+    name: displayName, profileUrl, events: candidateActivityEvents, now: currentTime,
+    profileId, profileAliases,
+    mission: jobInfo?.job_title || inferredMission?.job_title || inferredMission?.name || null,
+    missionUrl: linkedMission ? `/missions/${linkedMission.id}` : inferredMission ? `/missions/${inferredMission.id}` : undefined,
+    probableMission: !jobInfo?.job_title && !!inferredMission,
+    sequenceStatus: enrollmentStatus ? <EnrollmentStatusBadge status={enrollmentStatus} pauseReason={enrollmentPauseReason} manualStop={enrollmentManualStop} stoppedByName={memberName(enrollmentManualStop?.by)} plain /> : undefined,
+    onEnroll: onEnrollInSequence, onAddToPipeline: () => onAddToPipeline(),
+  };
+
   // ─── Mise en page : grille à trois rangées (auto / 1fr / auto) ──────────
   return (
+    <div className="flex h-full min-w-0 overflow-hidden" data-component="conversation-workspace">
     <div
-      className="h-full min-w-0 overflow-hidden bg-background"
+      className="h-full min-w-0 flex-1 overflow-hidden bg-background"
       style={{
         display: 'grid',
         gridTemplateRows: 'auto minmax(0, 1fr) auto',
@@ -808,7 +821,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </Button>
 
           {/* Avatar ; la pastille du canal seulement hors LinkedIn */}
-          <span className="relative mt-0.5 shrink-0">
+          <span className="relative mt-0.5 hidden shrink-0 sm:block">
             <Avatar className="h-10 w-10">
               <AvatarImage src={avatar} alt="" />
               <AvatarFallback className="text-xs font-semibold text-foreground-secondary">
@@ -830,7 +843,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <div className="flex min-w-0 items-baseline gap-x-2">
               <h2 className="min-w-0 truncate text-md font-semibold text-foreground">{displayName}</h2>
               {enrollmentStatus && (
-                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground md:inline-flex">
                   <GitBranch className="h-3 w-3 self-center text-foreground" aria-hidden="true" />
                   <span className="sr-only">Séquence : </span>
                   <EnrollmentStatusBadge
@@ -845,7 +858,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             </div>
             {headline && <p className="truncate text-xs text-muted-foreground">{headline}</p>}
             {contextItems.length > 0 ? (
-              <p className="mt-1 flex min-w-0 items-center gap-x-1.5 whitespace-nowrap text-xs text-muted-foreground">
+              <p className="mt-1 hidden min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground md:flex">
                 {contextItems.map((item, i) => (
                   <React.Fragment key={i}>
                     {i > 0 && <span aria-hidden="true">·</span>}
@@ -871,10 +884,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
           {/* Actions : visibles sur ordinateur et sur téléphone */}
           <div className="flex shrink-0 items-center gap-0.5 md:gap-1">
-            <Button variant="ghost" size="sm" onClick={onEnrollInSequence} className="hidden lg:inline-flex">
-              <ListPlus aria-hidden="true" />
-              Inscrire dans une séquence
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn(HEADER_ICON, '2xl:hidden')} aria-label="Afficher le contexte candidat" onClick={() => setContextOpen(true)}><UserRound aria-hidden="true" /></Button></TooltipTrigger>
+              <TooltipContent>Contexte candidat</TooltipContent>
+            </Tooltip>
             <SnoozeArchiveButtons
               chatId={selectedChat.id}
               accountId={selectedChat.account_id}
@@ -898,7 +911,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 <TooltipContent>Plus d'actions</TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuItem className={cn(MENU_ITEM, 'lg:hidden')} onSelect={onEnrollInSequence}>
+                <DropdownMenuItem className={MENU_ITEM} onSelect={onEnrollInSequence}>
                   <ListPlus className="mr-2 h-4 w-4" aria-hidden="true" />
                   Inscrire dans une séquence
                 </DropdownMenuItem>
@@ -926,7 +939,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {profileUrl && (
                   <DropdownMenuItem asChild className={MENU_ITEM}>
                     <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                      <ServiceLogo service="linkedin" decorative className="mr-2" />
                       Voir le profil LinkedIn
                     </a>
                   </DropdownMenuItem>
@@ -997,7 +1010,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
         className="min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="min-w-0 max-w-full px-3 py-6 md:px-6">
+        <div className="mx-auto min-w-0 w-full max-w-5xl px-3 py-6 md:px-6">
+          {loadingActivity && <p role="status" className="mb-3 text-xs text-muted-foreground">Chargement de l’historique candidat…</p>}
+          {activityError && <div role="status" className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Certains événements n’ont pas pu être chargés.<Button variant="ghost" size="sm" className="max-md:min-h-11" onClick={retryActivity}>Réessayer</Button></div>}
+          {messages.length === 0 && activityEvents.length > 0 && selectedChat.last_message?.text && <section className="mb-4 rounded-lg border border-border p-3">
+            <p className="text-xs font-medium text-foreground">Dernier message LinkedIn connu</p>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground-secondary">{selectedChat.last_message.is_sender ? 'Vous : ' : ''}{selectedChat.last_message.text}</p>
+            {onRefetchMessages && <Button variant="ghost" size="sm" className="mt-2 max-md:min-h-11" onClick={handleRefetch} loading={loadingMessages}>Recharger les messages</Button>}
+          </section>}
           {loadingMessages && messages.length === 0 ? (
             <div className="flex flex-col gap-4" role="status" aria-label="Chargement des messages">
               {[40, 28, 56, 36, 32].map((width, i) => (
@@ -1008,7 +1028,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 />
               ))}
             </div>
-          ) : messages.length === 0 ? (
+          ) : !timeline.some(item => item.kind !== 'date') ? (
             <div className="grid min-h-[40vh] place-items-center">
               {selectedChat.last_message?.text ? (
                 <ThreadNotice
@@ -1081,7 +1101,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 }
 
                 if (item.kind === 'event') {
-                  return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
+                  const author = 'authorName' in item.data && typeof item.data.authorName === 'string' ? item.data.authorName : null;
+                  return <div key={`evt-${item.data.id}`}>{author && <p className="mt-4 text-center text-xs text-foreground-secondary">Envoyé par {author}</p>}{'missionUnidentified' in item.data && item.data.missionUnidentified === true && <p className="mt-2 text-center text-xs text-muted-foreground">Mission non identifiée</p>}<ActivityEventCard event={item.data} /></div>;
                 }
                 const msg = item.data;
                 const isSender = !!msg.is_sender;
@@ -1143,7 +1164,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     )}
 
                     {/* Bulle : 85 % de large au plus sur téléphone, 75 % au-delà */}
-                    <div className={cn('flex min-w-0 max-w-[85%] flex-col md:max-w-[75%]', isSender ? 'items-end' : 'items-start')}>
+                    <div className={cn('flex min-w-0 max-w-[85%] flex-col md:max-w-[min(80%,40rem)]', isSender ? 'items-end' : 'items-start')}>
                       <div
                         className={cn(
                           'min-w-0 max-w-full overflow-hidden rounded-xl px-4 py-2.5 text-sm leading-relaxed',
@@ -1163,6 +1184,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                       </div>
 
                       {/* Réactions reçues, groupées par emoji */}
+                      {item.sequenceEvent && <p className="mt-1 text-xs text-muted-foreground">{item.sequenceEvent.sequenceName || 'Séquence'} · Étape {item.sequenceEvent.stepOrder + 1}</p>}
                       {msg.reactions && msg.reactions.length > 0 && (
                         <div className={cn('mt-1 flex flex-wrap gap-1', isSender ? 'justify-end' : 'justify-start')}>
                           {Object.entries(
@@ -1195,6 +1217,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                           )}
                         >
                           <span className="tabular-nums">{formatMessageTime(msg.timestamp)}</span>
+                          <ChannelIcon channel={channel} size="xs" />
                           {isSender && (msg.read || msg.seen === 1 ? (
                             <span title="Lu" className="inline-flex">
                               <CheckCheck className="h-3 w-3 text-foreground" aria-hidden="true" />
@@ -1265,13 +1288,32 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <div ref={messagesEndRef} />
             </div>
           )}
+          <CandidateActionHistory plans={candidateActions.plans} messages={candidateActions.messages} />
+          <CandidateActions controller={candidateActions} />
         </div>
       </div>
 
-      {/* RANGÉE 3 : suggestions, panneau IA et composeur */}
-      <div>
+      {/* RANGÉE 3 : aide à la demande et composeur */}
+      <div ref={composerAreaRef} className="group/compose">
+        {nextStep && !candidateActions.enabled && (
+          <ThreadNextStep
+            key={selectedChat.id}
+            state={nextStep.state}
+            days={nextStep.days}
+            suggestion={nextStepSuggestion}
+            chatHistory={ctaChatHistory}
+            candidateName={getChatDisplayName(selectedChat)}
+            recruiterName={ctaRecruiterName}
+            jobTitle={currentJobData?.title}
+            jobBrief={ctaJobBrief as CtaReplyButtonProps['jobBrief']}
+            calendlyLink={calendlyLink || undefined}
+            tone={currentTone}
+            // Même règle que le composeur : champ vide, le texte le remplace ; sinon il s'ajoute à la fin.
+            onInsert={(text) => onNewMessageChange(newMessage.trim() ? `${newMessage.trimEnd()}\n\n${text}` : text)}
+          />
+        )}
         {aiPanelOpen && (
-          <div className="max-h-[40vh] overflow-y-auto border-t border-border">
+          <div ref={aiPanelRef} tabIndex={-1} role="region" aria-label="Suggestions de rédaction" className="max-h-[40vh] overflow-y-auto border-t border-border">
             <InlineAIPanel
               open={aiPanelOpen}
               onClose={() => setAiPanelOpen(false)}
@@ -1283,14 +1325,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
             />
           </div>
         )}
-        {/* Suggestions rapides, tant que le panneau IA est fermé */}
-        {!aiPanelOpen && replySuggestions.length > 0 && (
-          <SmartReplies
-            suggestions={replySuggestions}
-            onPick={(text) => onSuggestionClick(text)}
-            onSeeMore={() => setAiPanelOpen(true)}
-          />
-        )}
         <MessageComposer
           value={newMessage}
           onChange={onNewMessageChange}
@@ -1300,6 +1334,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
           aiPanelOpen={aiPanelOpen}
           hasAISuggestions={replySuggestions.length > 0}
           aiSuggestionsCount={replySuggestions.length}
+          replySuggestions={replySuggestions}
+          onSuggestionPick={onSuggestionClick}
           onScheduleCall={onScheduleCall}
           hasCalendlyLink={!!calendlyLink}
           channel={channelLabel(channel)}
@@ -1358,6 +1394,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
+    </div>
+    <aside aria-label="Contexte candidat" className="hidden h-full w-80 shrink-0 overflow-y-auto border-l border-border bg-muted 2xl:block">
+      <ConversationContext {...contextProps} />
+    </aside>
+    <Sheet open={contextOpen} onOpenChange={setContextOpen}>
+      <SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11">
+        <SheetHeader className="px-5 pt-6"><SheetTitle>Contexte candidat</SheetTitle><SheetDescription>Mission, séquence et prochain entretien.</SheetDescription></SheetHeader>
+        <ConversationContext {...contextProps} onEnroll={() => { setContextOpen(false); onEnrollInSequence(); }} onAddToPipeline={() => { setContextOpen(false); onAddToPipeline(); }} />
+      </SheetContent>
+    </Sheet>
     </div>
   );
 };

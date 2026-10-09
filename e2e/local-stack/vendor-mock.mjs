@@ -44,6 +44,37 @@ function multipartFields(raw, contentType) {
   return fields;
 }
 
+// Recettes de test : les références viennent de la vraie consigne du serveur.
+// Ce faux modèle n'invente aucun identifiant et permet de tester le validateur
+// fermé sans recopier la formule des IDs de cibles dans chaque scénario.
+function actionRecipe(body, recipe) {
+  const message = [...(body?.messages ?? [])].reverse().find((item) => item.role === 'user');
+  const prompt = JSON.parse(typeof message?.content === 'string' ? message.content : message?.content?.find((item) => item.type === 'text')?.text);
+  const source = prompt.sources.find((item) => item.type === (recipe.sourceType ?? 'note')) ?? prompt.sources[0];
+  const effects = recipe.effects.map((effect) => {
+    if (effect.kind !== 'message') return effect;
+    const { audience = 'candidate', channel = 'email', ...rest } = effect;
+    const target = prompt.targets.find((item) => item.audience === audience && item.channel === channel);
+    return { ...rest, targetId: target?.id ?? 'missing-target' };
+  });
+  return JSON.stringify({ plans: [{ intent: recipe.intent ?? 'reply', title: 'Répondre et conserver le suivi',
+    reason: 'Une information réelle attend une réponse.', sourceIds: [source.id], effects }] });
+}
+
+// Match the Anthropic protocol: a structured preparation can contain a tool
+// block and thinking without any text block for the wrapper to concatenate.
+function candidateActionReply(body, recipe, serial) {
+  const preparation = actionRecipe(body, recipe);
+  if (recipe.responseMode === 'tool_use') return {
+    content: [
+      { type: 'thinking', thinking: 'Préparation structurée du faux prestataire.' },
+      { type: 'tool_use', id: `toolu_actions_${serial}`, name: 'prepare_candidate_actions', input: JSON.parse(preparation) },
+    ],
+    stop_reason: 'tool_use',
+  };
+  return { content: [{ type: 'text', text: preparation }], stop_reason: 'end_turn' };
+}
+
 http.createServer((req, res) => {
   let raw = '';
   req.on('data', (c) => (raw += c));
@@ -63,7 +94,8 @@ http.createServer((req, res) => {
     log.push({ at: new Date().toISOString(), host: req.headers['x-original-host'] ?? null, method: req.method, path: p, query: Object.fromEntries(url.searchParams), account_id, body });
     const mode = { ...(modes['*'] ?? {}), ...(account_id ? modes[account_id] ?? {} : {}) };
 
-    const routes = [...((account_id && modes[account_id]?.routes) || []), ...(modes['*']?.routes || [])];
+    const routes = [...((account_id && modes[account_id]?.routes) || []), ...(modes['*']?.routes || []),
+      ...(!account_id ? Object.values(modes).flatMap(value => value?.routes ?? []).filter(value => value.unscoped === true) : [])];
     // `url` (au lieu de `path`) : expression appliquée au chemin suivi de la chaîne
     // de requête, pour distinguer les appels d'identifiants propres à une
     // organisation (unipile_dsn « unipile.mock?account_id=X&e2e= » : tout arrive sur « / »).
@@ -90,10 +122,13 @@ http.createServer((req, res) => {
     if (req.method === 'POST' && p === '/v1/messages') {
       const marked = Object.values(modes).flatMap((m) => Object.entries(m?.ai_markers ?? {}))
         .find(([marker]) => marker && raw.includes(marker));
+      const recipe = Object.values(modes).flatMap((m) => Object.entries(m?.action_recipes ?? {}))
+        .find(([marker]) => marker && raw.includes(marker));
+      const reply = !marked && recipe ? candidateActionReply(body, recipe[1], n)
+        : { content: [{ type: 'text', text: marked ? marked[1] : mode.ai_text ?? 'Bonjour, votre parcours m’intéresse. Seriez-vous ouvert à un échange ?' }], stop_reason: 'end_turn' };
       return send(res, 200, {
         id: `msg_ai_${n}`, type: 'message', role: 'assistant', model: body?.model ?? 'mock',
-        content: [{ type: 'text', text: marked ? marked[1] : mode.ai_text ?? 'Bonjour, votre parcours m’intéresse. Seriez-vous ouvert à un échange ?' }],
-        stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 10 },
+        ...reply, usage: { input_tokens: 10, output_tokens: 10 },
       });
     }
     // LinkedIn

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useReducer, useState } from 'react';
+import { useCallback, useRef, useEffect, useLayoutEffect, useReducer, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState, LinkedInProfile, INITIAL_FILTERS } from '@/components/outreach/types';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
@@ -11,10 +11,14 @@ import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
 import { toast } from 'sonner';
+import { enqueueSourcingFilterSave, forgetFailedSourcingSnapshot, isSupersededSourcingSnapshot, rememberLocalSourcingSnapshot, sourcingSnapshotKey,
+  type ExecutedSourcingSearch } from '@/lib/sourcingSearchLifecycle';
 
 export const RESULTS_PER_BATCH = 25;
 
 interface UseLinkedInSearchOptions {
+  organizationId?: string | null;
+  userId?: string | null;
   selectedAccount: string | null;
   activeProject?: SourcingProject | null;
   onProjectChange?: (project: SourcingProject | null) => void;
@@ -22,6 +26,7 @@ interface UseLinkedInSearchOptions {
 
 // ── Reducer: Search State ───────────────────────────────
 interface SearchState {
+  searchScopeKey: string;
   filters: LinkedInFiltersState;
   results: LinkedInProfile[];
   loading: boolean;
@@ -35,6 +40,7 @@ interface SearchState {
   jobScores: Record<string, JobMatchResult>;
   scoringInProgress: boolean;
   sortByScore: boolean;
+  executedSearch: ExecutedSourcingSearch | null;
 }
 
 type SearchAction =
@@ -55,7 +61,8 @@ type SearchAction =
   | { type: 'UPDATE_JOB_SCORES'; updater: (prev: Record<string, JobMatchResult>) => Record<string, JobMatchResult> }
   | { type: 'SET_SCORING_IN_PROGRESS'; inProgress: boolean }
   | { type: 'SET_SORT_BY_SCORE'; sort: boolean }
-  | { type: 'RESET_SEARCH' };
+  | { type: 'SET_EXECUTED_SEARCH'; execution: ExecutedSourcingSearch | null }
+  | { type: 'RESET_SEARCH'; scopeKey?: string };
 
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
@@ -76,9 +83,11 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
     case 'UPDATE_JOB_SCORES': return { ...state, jobScores: action.updater(state.jobScores) };
     case 'SET_SCORING_IN_PROGRESS': return { ...state, scoringInProgress: action.inProgress };
     case 'SET_SORT_BY_SCORE': return { ...state, sortByScore: action.sort };
+    case 'SET_EXECUTED_SEARCH': return { ...state, executedSearch: action.execution };
     // Batched reset: replaces 8 separate set* calls (1 render instead of 8)
     case 'RESET_SEARCH': return {
       ...state,
+      searchScopeKey: action.scopeKey ?? state.searchScopeKey,
       filters: INITIAL_FILTERS,
       results: [],
       hasSearched: false,
@@ -87,6 +96,9 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
       total: null,
       selectedProfiles: new Set(),
       jobScores: {},
+      executedSearch: null,
+      loading: false,
+      loadingMore: false,
     };
     default: return state;
   }
@@ -120,12 +132,16 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
 }
 
 export function useLinkedInSearch({
+  organizationId,
+  userId,
   selectedAccount,
   activeProject,
   onProjectChange,
 }: UseLinkedInSearchOptions) {
+  const projectScope = `${userId ?? ''}:${organizationId ?? ''}:${activeProject?.id ?? ''}`;
   // ── Search state (useReducer #1) ──
   const [searchState, searchDispatch] = useReducer(searchReducer, {
+    searchScopeKey: projectScope,
     filters: INITIAL_FILTERS,
     results: [],
     loading: false,
@@ -139,10 +155,13 @@ export function useLinkedInSearch({
     jobScores: {},
     scoringInProgress: false,
     sortByScore: false,
+    executedSearch: null,
   });
-  const { filters, results, loading, loadingMore, cursor, hasMoreResults, total, hasSearched, selectedJob, selectedProfiles, jobScores, scoringInProgress, sortByScore } = searchState;
+  const { filters, results, loading, loadingMore, cursor, hasMoreResults, total, hasSearched, selectedJob, selectedProfiles, jobScores, scoringInProgress, sortByScore, executedSearch } = searchState;
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
   const pendingLocationRef = useRef<string | null>(null);
+  const locationContextRef = useRef('');
+  locationContextRef.current = `${projectScope}:${selectedAccount ?? ''}`;
 
 
   // ── Concurrents du client (org_competitors per client_name) ─────────────
@@ -154,15 +173,15 @@ export function useLinkedInSearch({
 
   // Backward-compatible wrappers for search state (support both direct values and updater functions)
   const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
-    if (typeof fOrUpdater === 'function') {
-      searchDispatch({ type: 'UPDATE_FILTERS', updater: fOrUpdater });
-    } else {
-      searchDispatch({ type: 'SET_FILTERS', filters: fOrUpdater });
-    }
+    // Launching from a microtask must use the edit made in this same event.
+    const next = typeof fOrUpdater === 'function' ? fOrUpdater(filtersRef.current) : fOrUpdater;
+    filtersRef.current = next;
+    searchDispatch({ type: 'SET_FILTERS', filters: next });
   }, []);
 
   // Helper: resolve a location keyword string to a LinkedIn location ID
   const resolveLocation = useCallback(async (keyword: string, accountId: string) => {
+    const resolutionScope = locationContextRef.current;
     try {
       const { data } = await invokeUnipile({
         body: {
@@ -173,6 +192,7 @@ export function useLinkedInSearch({
           service: 'RECRUITER',
         },
       });
+      if (locationContextRef.current !== resolutionScope || pendingLocationRef.current !== keyword) return;
       if (!data?.success || !Array.isArray(data?.items) || data.items.length === 0) return;
       const normalized = keyword.toLowerCase();
       const best =
@@ -187,7 +207,7 @@ export function useLinkedInSearch({
           id: String(best.id),
           name: String(best.title),
           priority: 'MUST_HAVE' as const,
-          scope: 'CURRENT_OR_OPEN_TO_RELOCATE' as const,
+          scope: curr.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' as const : 'CURRENT' as const,
         }],
       }));
     } catch (e) {
@@ -208,6 +228,7 @@ export function useLinkedInSearch({
   const setHasMoreResults = useCallback((v: boolean) => searchDispatch({ type: 'SET_HAS_MORE_RESULTS', hasMore: v }), []);
   const setTotal = useCallback((t: number | null) => searchDispatch({ type: 'SET_TOTAL', total: t }), []);
   const setHasSearched = useCallback((v: boolean) => searchDispatch({ type: 'SET_HAS_SEARCHED', searched: v }), []);
+  const setExecutedSearch = useCallback((execution: ExecutedSourcingSearch | null) => searchDispatch({ type: 'SET_EXECUTED_SEARCH', execution }), []);
   const setSelectedJob = useCallback((j: Job | null) => searchDispatch({ type: 'SET_SELECTED_JOB', job: j }), []);
   const setSelectedProfiles = useCallback((sOrUpdater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
     if (typeof sOrUpdater === 'function') {
@@ -250,11 +271,6 @@ export function useLinkedInSearch({
   const { updateProject, findOrCreateForJob } = useSourcingProjects();
   
 
-  // Sync refs
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
-
   useEffect(() => {
     autoHideTreatedRef.current = autoHideTreated;
   }, [autoHideTreated]);
@@ -266,8 +282,19 @@ export function useLinkedInSearch({
 
   // Load filters from active project's filters_snapshot
   const filtersSnapshotRef = useRef<string | null>(null);
+  const loadedFiltersKeyRef = useRef(sourcingSnapshotKey(INITIAL_FILTERS));
   // Track whether cache was hydrated so we skip snapshot reload on remount
   const cacheHydratedRef = useRef(false);
+  const previousProjectScopeRef = useRef(projectScope);
+  useLayoutEffect(() => {
+    if (previousProjectScopeRef.current === projectScope) return;
+    previousProjectScopeRef.current = projectScope;
+    filtersSnapshotRef.current = null;
+    pendingLocationRef.current = null;
+    loadedFiltersKeyRef.current = sourcingSnapshotKey(INITIAL_FILTERS);
+    filtersRef.current = INITIAL_FILTERS;
+    searchDispatch({ type: 'RESET_SEARCH', scopeKey: projectScope });
+  }, [projectScope]);
   useEffect(() => {
     // If cache was just hydrated, the in-memory filters are more recent than DB — skip
     if (cacheHydratedRef.current) {
@@ -275,8 +302,9 @@ export function useLinkedInSearch({
       // Still set the ref so future snapshot changes are detected
       const savedFilters = activeProject?.filters_snapshot;
       if (savedFilters) {
-        filtersSnapshotRef.current = savedFilters.last_manual_edit || savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
+        filtersSnapshotRef.current = sourcingSnapshotKey(savedFilters);
       }
+      loadedFiltersKeyRef.current = sourcingSnapshotKey(filtersRef.current);
       return;
     }
     if (!activeProject) return;
@@ -284,18 +312,27 @@ export function useLinkedInSearch({
     if (!savedFilters || Object.keys(savedFilters).length === 0) return;
 
     // Avoid re-applying the same filters (check by timestamp)
-    const snapshotKey = savedFilters.last_manual_edit || savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
+    const snapshotKey = sourcingSnapshotKey(savedFilters);
+    // A refetch acknowledging an earlier local save must not replace a newer
+    // draft or the payload already queued behind that save.
+    if (isSupersededSourcingSnapshot(activeProject.id, savedFilters)) return;
     if (filtersSnapshotRef.current === snapshotKey) return;
     filtersSnapshotRef.current = snapshotKey;
+    pendingLocationRef.current = null;
 
     // If filters were manually edited (UI format already), load directly
     if (savedFilters.last_manual_edit) {
-      const { last_manual_edit, generated_at, suggestions, skills_keywords, location_keywords, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
+      const { last_manual_edit, generated_at, suggestions, memory_context, brief_text, skills_keywords, location_keywords,
+        native_experience_reviewed, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
       // Mark as initial load so the save effect skips this change
       initialFilterLoadRef.current = true;
       // Don't restore api from snapshot — it must match the current search source toggle
       const { api: _savedApi, ...safeUiFilters } = uiFilters as any;
-      setFilters({ ...INITIAL_FILTERS, ...safeUiFilters });
+      setFilters({ ...INITIAL_FILTERS, ...safeUiFilters,
+        ...(native_experience_reviewed === true ? { years_of_experience_min: years_of_experience_min ?? null,
+          years_of_experience_max: years_of_experience_max ?? null } : {}),
+      });
+      loadedFiltersKeyRef.current = sourcingSnapshotKey(filtersRef.current);
       return;
     }
 
@@ -346,10 +383,12 @@ export function useLinkedInSearch({
         }
       }
     } else {
-      setFilters({ ...INITIAL_FILTERS, ...savedFilters });
+      const { generated_at, suggestions, memory_context, brief_text, ...uiFilters } = savedFilters;
+      setFilters({ ...INITIAL_FILTERS, ...uiFilters });
     }
     // Mark as initial load so the save effect skips this filter change
     initialFilterLoadRef.current = true;
+    loadedFiltersKeyRef.current = sourcingSnapshotKey(filtersRef.current);
     toast.info(`Filtres du projet "${activeProject.name}" chargés`);
   }, [activeProject?.id, activeProject?.filters_snapshot]); // Re-run when filters are generated
 
@@ -449,6 +488,8 @@ export function useLinkedInSearch({
       }
       if (jd.calibration_profiles?.length) {
         (job as any).calibrationProfiles = jd.calibration_profiles.slice(0, 5).map((p: any) => ({
+          ...(typeof p.sourcing_agent_candidate_id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.sourcing_agent_candidate_id)
+            ? { sourcing_agent_candidate_id: p.sourcing_agent_candidate_id } : {}),
           name: p.name,
           headline: p.headline,
           linkedinUrl: p.linkedin_url,
@@ -531,89 +572,96 @@ export function useLinkedInSearch({
   }, [selectedAccount, resolveLocation]);
 
   // ── Auto-persist filter changes to filters_snapshot (debounced) ──
-  const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialFilterLoadRef = useRef(true);
+  type PendingFilterSave = {
+    projectId: string;
+    filters: LinkedInFiltersState;
+    snapshot: Record<string, unknown>;
+    timer: ReturnType<typeof setTimeout>;
+  };
+  const pendingFilterSaveRef = useRef<PendingFilterSave | null>(null);
+  const latestProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  const latestProjectSnapshotRef = useRef<Record<string, unknown>>(activeProject?.filters_snapshot || {});
+  const currentSaveProjectRef = useRef({ id: activeProject?.id ?? null, snapshot: activeProject?.filters_snapshot || {} });
+  currentSaveProjectRef.current = { id: activeProject?.id ?? null, snapshot: activeProject?.filters_snapshot || {} };
 
-  // Reset initial-load guard when project changes
   useEffect(() => {
     initialFilterLoadRef.current = true;
-  }, [activeProject?.id]);
-
-  // Keep latest values in refs so pending edits survive tab changes/unmounts
-  const latestFiltersForSaveRef = useRef(filters);
-  const latestProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
-  const latestProjectSnapshotRef = useRef<Record<string, any>>((activeProject?.filters_snapshot || {}) as Record<string, any>);
+    latestProjectIdRef.current = currentSaveProjectRef.current.id;
+    latestProjectSnapshotRef.current = currentSaveProjectRef.current.snapshot;
+  }, [projectScope]);
 
   useEffect(() => {
-    latestFiltersForSaveRef.current = filters;
-  }, [filters]);
-
-  useEffect(() => {
-    latestProjectIdRef.current = activeProject?.id ?? null;
-    latestProjectSnapshotRef.current = (activeProject?.filters_snapshot || {}) as Record<string, any>;
+    const snapshot = activeProject?.filters_snapshot || {};
+    if (activeProject?.id && isSupersededSourcingSnapshot(activeProject.id, snapshot)) return;
+    latestProjectSnapshotRef.current = snapshot;
   }, [activeProject?.id, activeProject?.filters_snapshot]);
 
-  const mergeProjectSnapshotMeta = useCallback((patch: Record<string, any>) => {
-    latestProjectSnapshotRef.current = {
-      ...latestProjectSnapshotRef.current,
-      ...patch,
-    };
+  const mergeProjectSnapshotMeta = useCallback((patch: Record<string, unknown>) => {
+    latestProjectSnapshotRef.current = { ...latestProjectSnapshotRef.current, ...patch };
+    const pending = pendingFilterSaveRef.current;
+    if (pending && pending.projectId === latestProjectIdRef.current) {
+      pending.snapshot = { ...pending.snapshot, ...patch };
+    }
   }, []);
 
-  const persistFiltersSnapshot = useCallback((filtersToPersist: LinkedInFiltersState) => {
-    const projectId = latestProjectIdRef.current;
-    if (!projectId) return;
-    if (JSON.stringify(filtersToPersist) === JSON.stringify(INITIAL_FILTERS)) return;
-
+  const persistFiltersSnapshot = useCallback((pending: PendingFilterSave) => {
     const ts = new Date().toISOString();
-    filtersSnapshotRef.current = ts;
-
-    const nextSnapshot = {
-      ...latestProjectSnapshotRef.current,
-      ...filtersToPersist,
-      last_manual_edit: ts,
-    };
-
-    latestProjectSnapshotRef.current = nextSnapshot;
-    updateProject({
-      id: projectId,
-      filters_snapshot: nextSnapshot,
+    const nextSnapshot = { ...pending.snapshot, ...pending.filters, native_experience_reviewed: true, last_manual_edit: ts };
+    rememberLocalSourcingSnapshot(pending.projectId, nextSnapshot);
+    if (latestProjectIdRef.current === pending.projectId) {
+      filtersSnapshotRef.current = sourcingSnapshotKey(nextSnapshot);
+      latestProjectSnapshotRef.current = nextSnapshot;
+      loadedFiltersKeyRef.current = sourcingSnapshotKey(pending.filters);
+    }
+    // The payload is bound to its original project, even after the next mission
+    // has rendered. Errors are reported by the mutation's onError handler.
+    void enqueueSourcingFilterSave(pending.projectId, () => updateProject({ id: pending.projectId, filters_snapshot: nextSnapshot })).catch(error => {
+      forgetFailedSourcingSnapshot(pending.projectId, nextSnapshot);
+      if (latestProjectIdRef.current === pending.projectId && filtersSnapshotRef.current === sourcingSnapshotKey(nextSnapshot)) {
+        filtersSnapshotRef.current = null;
+        loadedFiltersKeyRef.current = '';
+      }
+      console.error(error);
     });
   }, [updateProject]);
 
+  const flushPendingFilterSave = useCallback(() => {
+    const pending = pendingFilterSaveRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingFilterSaveRef.current = null;
+    persistFiltersSnapshot(pending);
+  }, [persistFiltersSnapshot]);
+
+  // This is the only lifecycle cleanup. The debounce effect below must not
+  // cancel the pending payload before this flush runs on navigation/unmount.
+  useEffect(() => () => flushPendingFilterSave(), [projectScope, flushPendingFilterSave]);
+
   useEffect(() => {
-    // Skip the first render (initial load from filters_snapshot)
+    const previous = pendingFilterSaveRef.current;
+    if (previous) {
+      clearTimeout(previous.timer);
+      pendingFilterSaveRef.current = null;
+    }
     if (initialFilterLoadRef.current) {
       initialFilterLoadRef.current = false;
       return;
     }
     if (!activeProject?.id) return;
-    // Don't save default/empty filters
-    if (JSON.stringify(filters) === JSON.stringify(INITIAL_FILTERS)) return;
-
-    if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
-    filterSaveTimerRef.current = setTimeout(() => {
-      filterSaveTimerRef.current = null;
-      persistFiltersSnapshot(latestFiltersForSaveRef.current);
-    }, 2000);
-
-    return () => {
-      if (filterSaveTimerRef.current) {
-        clearTimeout(filterSaveTimerRef.current);
-        filterSaveTimerRef.current = null;
-      }
+    if (sourcingSnapshotKey(filters) === loadedFiltersKeyRef.current) return;
+    const pending: PendingFilterSave = {
+      projectId: activeProject.id,
+      filters: structuredClone(filters),
+      snapshot: structuredClone(latestProjectSnapshotRef.current),
+      timer: setTimeout(() => {
+        if (pendingFilterSaveRef.current !== pending) return;
+        pendingFilterSaveRef.current = null;
+        persistFiltersSnapshot(pending);
+      }, 2000),
     };
-  }, [filters, activeProject?.id, persistFiltersSnapshot]);
-
-  // Flush pending save when leaving the mission/tab before the debounce completes
-  useEffect(() => {
-    return () => {
-      if (!filterSaveTimerRef.current) return;
-      clearTimeout(filterSaveTimerRef.current);
-      filterSaveTimerRef.current = null;
-      persistFiltersSnapshot(latestFiltersForSaveRef.current);
-    };
-  }, [activeProject?.id, persistFiltersSnapshot]);
+    pendingFilterSaveRef.current = pending;
+  }, [filters, projectScope, activeProject?.id, persistFiltersSnapshot]);
 
   // Seed jobScores from DB statuses (so pool profiles show their scores without re-scoring)
   useEffect(() => {
@@ -656,17 +704,21 @@ export function useLinkedInSearch({
   const prevSelectedJobRef = useRef<string | null>(null);
   useEffect(() => {
     const jobId = selectedJob?.id || null;
-    if (prevSelectedJobRef.current !== null && prevSelectedJobRef.current !== jobId) {
+    if (!activeProject?.id && prevSelectedJobRef.current !== null && prevSelectedJobRef.current !== jobId) {
       // Job actually changed → single batched reset (1 render instead of 8)
+      filtersRef.current = INITIAL_FILTERS;
+      pendingLocationRef.current = null;
       searchDispatch({ type: 'RESET_SEARCH' });
     }
     setStatusFilter('all');
     setShowDismissed(false);
     prevSelectedJobRef.current = jobId;
-  }, [selectedJob?.id]);
+  }, [selectedJob?.id, activeProject?.id, setStatusFilter, setShowDismissed]);
 
   // Clear filters — single batched dispatch (1 render instead of 8)
   const handleClearFilters = useCallback(() => {
+    pendingLocationRef.current = null;
+    filtersRef.current = INITIAL_FILTERS;
     searchDispatch({ type: 'RESET_SEARCH' });
   }, []);
 
@@ -721,6 +773,8 @@ export function useLinkedInSearch({
     setTotal,
     hasSearched,
     setHasSearched,
+    executedSearch,
+    setExecutedSearch,
     
     // Job & Scoring
     selectedJob,
@@ -768,5 +822,6 @@ export function useLinkedInSearch({
     
     // Cache coordination
     cacheHydratedRef,
+    searchScopeKey: searchState.searchScopeKey,
   };
 }
