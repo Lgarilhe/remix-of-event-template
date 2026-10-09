@@ -217,7 +217,7 @@ test('S-7 : la nouvelle page mission et la page d\'une recherche passent la disp
 test('S-7b : la nouvelle page n\'écrit rien dans l\'état ni le cache de l\'ancienne', () => {
   const search = code('src/components/outreach/LinkedInSearch.tsx');
   // Clé du cache à part : l'ancienne page garde `mission-sourcing:{id}`.
-  assert.match(search, /`\$\{isV3 \? 'mission-sourcing-v3' : 'mission-sourcing'\}:\$\{activeProject\.id\}`/);
+  assert.match(search, /`\$\{isV3 \? 'mission-sourcing-v3' : 'mission-sourcing'\}:\$\{user\.id\}:\$\{organizationId\}:\$\{activeProject\.id\}:\$\{selectedAccount \?\? 'database'\}`/);
   // Vue du vivier jamais forcée dans l'état : seule la lecture change en v3.
   assert.match(search, /showPoolView: isV3 \|\| showPoolView,/);
   const panel = code('src/components/outreach/search/SearchResultsPanel.tsx');

@@ -11,8 +11,10 @@
 // averageTenureMonths absents → pénalité "données incomplètes").
 //
 // ⚠️ Toute évolution de buildProfileData côté frontend doit être répercutée ici
-// (les deux runtimes — navigateur / Deno edge — ne partagent pas de module).
+// Le calcul de durée de carrière est partagé avec le navigateur.
 // ============================================================================
+
+import { assessProfileExperience, getWorkExperienceDurationMonths } from "./profile-experience.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -59,57 +61,7 @@ export function buildProfileData(profile: Any): Any {
   const pastJobs = workExperience.filter((exp: Any) => exp.end && !exp.current).slice(0, 5);
   const education: Any[] = profile.education || [];
 
-  const calculateYearsFromDiploma = (): number | null => {
-    const relevantDegreeKeywords = [
-      "bachelor", "licence", "bac+3",
-      "master", "msc", "bac+5", "maîtrise",
-      "mba", "ingénieur", "engineer", "engineering",
-      "phd", "doctorat", "bac+8",
-      "diplôme", "degree", "graduate", "grande école",
-    ];
-    const relevantEdu = education
-      .filter((edu: Any) => {
-        if (!getYear(edu.end)) return false;
-        const combined = `${edu.degree || ""} ${edu.school || ""} ${edu.field_of_study || ""}`.toLowerCase();
-        return relevantDegreeKeywords.some((kw) => combined.includes(kw));
-      })
-      .sort((a: Any, b: Any) => (getYear(b.end) || 0) - (getYear(a.end) || 0));
-
-    const diplomaToUse = relevantEdu[0] ||
-      education.filter((edu: Any) => getYear(edu.end)).sort((a: Any, b: Any) => (getYear(b.end) || 0) - (getYear(a.end) || 0))[0];
-
-    if (diplomaToUse) {
-      const endYear = getYear(diplomaToUse.end);
-      if (endYear) {
-        const years = new Date().getFullYear() - endYear;
-        if (years > 0) return years;
-      }
-    }
-
-    let earliestYear: number | null = null;
-    for (const exp of workExperience) {
-      const startYear = getYear(exp.start);
-      if (startYear && startYear > 1970) {
-        if (!earliestYear || startYear < earliestYear) earliestYear = startYear;
-      }
-    }
-    if (earliestYear) {
-      const years = new Date().getFullYear() - earliestYear;
-      return years > 0 ? years : null;
-    }
-    return null;
-  };
-
-  const calculateDurationMonths = (startRaw?: Any, endRaw?: Any): number => {
-    const start = parseDate(startRaw);
-    const end = parseDate(endRaw);
-    if (!start?.year) return 0;
-    const endYear = end?.year || new Date().getFullYear();
-    const endMonth = end?.month || new Date().getMonth() + 1;
-    const startYear = start.year;
-    const startMonth = start.month || 1;
-    return (endYear - startYear) * 12 + (endMonth - startMonth);
-  };
+  const experienceAssessment = assessProfileExperience(profile);
 
   const formatDuration = (totalMonths: number): string => {
     const years = Math.floor(totalMonths / 12);
@@ -120,19 +72,18 @@ export function buildProfileData(profile: Any): Any {
   };
 
   const calculateAverageTenure = (): number | null => {
-    const positionsWithDates = workExperience.filter((exp: Any) => getYear(exp.start));
-    if (positionsWithDates.length === 0) return null;
-    const tenures = positionsWithDates.map((exp: Any) => calculateDurationMonths(exp.start, exp.end));
-    const totalMonths = tenures.reduce((sum: number, t: number) => sum + t, 0);
-    return Math.round(totalMonths / positionsWithDates.length);
+    const tenures = workExperience.map(exp => getWorkExperienceDurationMonths(exp))
+      .filter((months): months is number => months !== null);
+    if (tenures.length === 0) return null;
+    return Math.round(tenures.reduce((sum, months) => sum + months, 0) / tenures.length);
   };
 
   const enrichedWorkExperience = workExperience.map((exp: Any) => {
-    const durationMonths = calculateDurationMonths(exp.start, exp.end);
+    const durationMonths = getWorkExperienceDurationMonths(exp) ?? undefined;
     return {
       role: exp.role || exp.position || "",
       company: exp.company || "",
-      duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
+      duration: durationMonths !== undefined && durationMonths > 0 ? formatDuration(durationMonths) : undefined,
       durationMonths,
       description: exp.description?.slice(0, 500) || undefined,
       skills: exp.skills?.slice(0, 8).map((s: Any) => s.name || String(s)) || undefined,
@@ -176,7 +127,8 @@ export function buildProfileData(profile: Any): Any {
       const year = endYear ? ` (${endYear})` : "";
       return [school, degree, field].filter(Boolean).join(" - ") + year;
     }).filter((s: string) => s.trim().length > 0) || [],
-    yearsOfExperience: calculateYearsFromDiploma(),
+    yearsOfExperience: experienceAssessment.source === 'work' && experienceAssessment.complete ? experienceAssessment.years : null,
+    experienceAssessment,
     averageTenureMonths: calculateAverageTenure(),
     openToWork: isOpenToWork,
     openProfile: isOpenProfile,

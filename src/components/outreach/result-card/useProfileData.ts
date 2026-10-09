@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { LinkedInProfile } from '../types';
 import { ProfileData } from './types';
-import { parseDate, getYear } from '../dateUtils';
+import { parseDate } from '../dateUtils';
+import { assessProfileExperience } from '../../../../supabase/functions/_shared/profile-experience.ts';
 
 const getTenureDisplay = (start?: any, end?: any) => {
   const s = parseDate(start);
@@ -15,73 +16,6 @@ const getTenureDisplay = (start?: any, end?: any) => {
   if (years > 0 && months > 0) return `${years} an${years > 1 ? 's' : ''} ${months} mois`;
   if (years > 0) return `${years} an${years > 1 ? 's' : ''}`;
   if (months > 0) return `${months} mois`;
-  return null;
-};
-
-const calculateExperienceFromDiploma = (education: any[], workExperience?: any[]) => {
-  const relevantDegreeKeywords = [
-    'bachelor', 'licence', 'bac+3', 'bac +3',
-    'master', 'msc', 'm.sc', 'bac+5', 'bac +5', 'maîtrise',
-    'mba',
-    'ingénieur', 'engineer', 'engineering',
-    'phd', 'doctorat', 'doctorate', 'bac+8', 'bac +8',
-    'diplôme', 'degree', 'graduate',
-    'grande école', 'grande ecole'
-  ];
-
-  let diplomaToUse: any = null;
-
-  if (education && education.length > 0) {
-    const relevantEducation = education
-      .filter((edu: any) => {
-        if (!getYear(edu.end)) return false;
-        const combined = `${(edu.degree || '').toLowerCase()} ${(edu.school || '').toLowerCase()} ${(edu.field_of_study || '').toLowerCase()}`;
-        return relevantDegreeKeywords.some(keyword => combined.includes(keyword));
-      })
-      .sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0));
-
-    diplomaToUse = relevantEducation[0] ||
-      education.filter((edu: any) => getYear(edu.end)).sort((a: any, b: any) => (getYear(b.end) || 0) - (getYear(a.end) || 0))[0];
-  }
-
-  if (diplomaToUse) {
-    const diplomaYear = getYear(diplomaToUse.end);
-    if (diplomaYear) {
-      const currentYear = new Date().getFullYear();
-      const yearsOfExperience = currentYear - diplomaYear;
-      if (yearsOfExperience > 0) {
-        return {
-          years: yearsOfExperience,
-          diplomaYear,
-          diplomaName: diplomaToUse.degree || diplomaToUse.school,
-        };
-      }
-    }
-  }
-
-  // Fallback: use earliest work experience start date
-  if (workExperience && workExperience.length > 0) {
-    let earliestYear: number | null = null;
-    for (const exp of workExperience) {
-      const startYear = getYear(exp.start);
-      if (startYear && startYear > 1970) {
-        if (!earliestYear || startYear < earliestYear) {
-          earliestYear = startYear;
-        }
-      }
-    }
-    if (earliestYear) {
-      const years = new Date().getFullYear() - earliestYear;
-      if (years > 0) {
-        return {
-          years,
-          diplomaYear: earliestYear,
-          diplomaName: 'Début de carrière',
-        };
-      }
-    }
-  }
-
   return null;
 };
 
@@ -121,10 +55,11 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
     const isLikelyToRespond = interests.includes('LIKELY_TO_RESPOND');
     const isActiveTalent = interests.includes('ACTIVE_TALENT');
 
-    const experienceFromDiploma = calculateExperienceFromDiploma(education, workExperience);
-    const totalExperience = experienceFromDiploma
-      ? `${experienceFromDiploma.years} an${experienceFromDiploma.years > 1 ? 's' : ''} d'exp.`
-      : null;
+    const experience = assessProfileExperience(profile);
+    const experienceFromDiploma = null;
+    const totalExperience = experience.source === 'work' && experience.years !== null
+      ? `${experience.complete && !experience.approximate ? '' : '≈ '}${experience.years} an${experience.years > 1 ? 's' : ''} d'exp.${experience.complete ? '' : ' renseignée'}`
+      : experience.educationYear ? `Formation ${experience.educationYear} · XP à vérifier` : null;
 
     return {
       firstName, lastName, initials, fullName,

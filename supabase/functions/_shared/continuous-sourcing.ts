@@ -1,6 +1,6 @@
 /** A mission agent performs one durable, fenced piece of work per invocation. */
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.75.1';
-import { stableScoringContextKey } from './scoring-context.ts';
+import { stableScoringContextKey, SOURCING_SCORING_ENGINE_VERSION } from './scoring-context.ts';
 import { loadSourcingMemoryContext } from './sourcing-memory.ts';
 import { buildJobFromBrief, buildProfileData } from './profile-data.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
@@ -9,7 +9,8 @@ import { assertCredits } from './credit-guard.ts';
 import { calculateTokenCredits, estimateCredits, MODEL_CATALOG } from './ai-config.ts';
 import { enforceLinkedInAction, getUserQuotas, isWithinBusinessHours, nextBusinessHoursStart } from './linkedin-quotas.ts';
 import { isCandidateErasedForOrg, linkedInProfileSlug } from './get-or-fetch-contact.ts';
-import { buildContinuousSearchRequest } from './continuous-sourcing-filters.ts';
+import { buildContinuousSearchRequest, continuousCalculatedExperienceRange } from './continuous-sourcing-filters.ts';
+import { matchesCalculatedExperience } from './profile-experience.ts';
 
 export type AgentJson = Record<string, unknown>;
 export type AgentApi = 'classic' | 'recruiter' | 'sales_navigator';
@@ -128,6 +129,7 @@ export async function loadContinuousContext(admin: SupabaseClient, project: Agen
   ]);
   const inputs = { job_details: project.job_details, filters_snapshot: project.filters_snapshot,
     source: config.source, account_id: config.account_id, api: config.api, model_id: config.settings.model_id,
+    scoring_engine_version: SOURCING_SCORING_ENGINE_VERSION,
     search_memory_version_key: search.versionKey, scoring_memory_version_key: scoring.versionKey };
   return { ...inputs, context_key: await continuousContextKey(inputs),
     search_memory_provenance: search.provenance, scoring_memory_provenance: scoring.provenance };
@@ -516,7 +518,14 @@ export function createContinuousDependencies(admin: SupabaseClient, supabaseUrl:
         organization_id: agent.organization_id, account_id: agent.account_id, api: agent.api, category: 'people', limit,
         ...(cursor ? { cursor } : {}) };
       const result = await functions('unipile-search', payload);
-      const profiles = (Array.isArray(result.results) ? result.results : []).map(record).slice(0, limit);
+      const calculated = continuousCalculatedExperienceRange(agent.search_filters_snapshot, agent.api!);
+      const profiles = (Array.isArray(result.results) ? result.results : []).map(record).slice(0, limit)
+        .filter(profile => matchesCalculatedExperience({
+          work_experience: Array.isArray(profile.work_experience) ? profile.work_experience : undefined,
+          current_positions: Array.isArray(profile.current_positions) ? profile.current_positions : undefined,
+          past_positions: Array.isArray(profile.past_positions) ? profile.past_positions : undefined,
+          education: Array.isArray(profile.education) ? profile.education : undefined,
+        }, calculated.min, calculated.max));
       const nextCursor = typeof result.cursor === 'string' && result.cursor ? result.cursor : null;
       return { profiles, cursor: nextCursor, exhausted: !nextCursor };
     },

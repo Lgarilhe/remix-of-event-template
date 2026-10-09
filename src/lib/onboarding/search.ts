@@ -99,7 +99,7 @@ export async function runFirstSearch(input: {
   limit?: number;
 }): Promise<{ candidates: PreviewCandidate[]; total: number | null; license: LinkedInLicense }> {
   const license = licenseOf(input.subscriptions);
-  const { update } = await mapGeneratedFilters(input.filters, { accountId: input.accountId });
+  const { update } = await mapGeneratedFilters(input.filters, { accountId: input.accountId, api: license });
   const state = { ...INITIAL_FILTERS, ...update, api: license };
 
   if (license !== 'recruiter') {

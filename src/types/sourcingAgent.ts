@@ -195,7 +195,7 @@ export function sourcingProfileDetails(candidate: SourcingAgentCandidate) {
 }
 
 const REASONS: Record<string, string> = {
-  CONTEXT_CHANGED: 'Le cadrage ou les règles ont changé. Revoyez les critères avant de reprendre.',
+  CONTEXT_CHANGED: 'Les critères ou la méthode de notation ont changé : relancez le calibrage.',
   MEMORY_CONFLICT: 'Des règles de recherche se contredisent. Vérifiez les mémoires appliquées.',
   CALIBRATION_REQUIRED: 'Votre avis est nécessaire pour calibrer la recherche.',
   WAITING_REVIEW: 'Les propositions attendent votre avis.',

@@ -114,6 +114,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
       >
         <PriorityBadges
           items={filters.job_title}
+          supportsAll={filters.api === 'recruiter'}
           onRemove={(id) => onRemovePriorityFilter('job_title', id)}
           onUpdatePriority={(id, priority) => onUpdatePriority('job_title', id, priority)}
         />
@@ -220,7 +221,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               />
               <div className="flex items-center gap-2 mt-1">
                 <div className="space-y-1 flex-1">
-                  <Label className="text-xs text-muted-foreground">Priorité</Label>
+                  <Label className="text-xs text-muted-foreground">Règle de recherche</Label>
                   <Select value={roleDialogPriority} onValueChange={(v) => onRoleDialogPriorityChange(v as FilterPriority)}>
                     <SelectTrigger className="text-xs h-7">
                       <SelectValue />
@@ -233,7 +234,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                   </Select>
                 </div>
                 <div className="space-y-1 flex-1">
-                  <Label className="text-xs text-muted-foreground">Scope</Label>
+                  <Label className="text-xs text-muted-foreground">Période</Label>
                   <Select value={roleDialogScope} onValueChange={(v) => onRoleDialogScopeChange(v as FilterScope)}>
                     <SelectTrigger className="text-xs h-7">
                       <SelectValue />
@@ -247,14 +248,14 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                 </div>
               </div>
               <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
-                <p className="font-medium text-foreground/70">💡 Synonym Rings — ratissez large :</p>
+                <p className="font-medium text-foreground/70">Élargir avec des intitulés équivalents :</p>
                 <ul className="space-y-1 list-disc list-inside">
                   <li>Combiner <strong>FR + EN</strong> : <code className="text-xs bg-muted px-1 rounded">"DevOps Engineer" OR "Ingénieur DevOps" OR SRE</code></li>
                   <li>Inclure les <strong>variantes</strong> : <code className="text-xs bg-muted px-1 rounded">"VP Sales" OR "Head of Sales" OR "Directeur Commercial"</code></li>
                   <li><strong>Guillemets</strong> pour les titres composés : <code className="text-xs bg-muted px-1 rounded">"Product Manager"</code></li>
                   <li>Exclure avec <strong>NOT</strong> : <code className="text-xs bg-muted px-1 rounded">Sales NOT (Assistant OR Associate)</code></li>
                 </ul>
-                <p className="text-xs mt-1 text-muted-foreground/70">⚠️ Mettre les technos/compétences dans Mots-clés, pas ici. Limite ~200 caractères.</p>
+                <p className="text-xs mt-1 text-muted-foreground/70">Placez les technologies et compétences dans leurs filtres. OR permet de chercher plusieurs intitulés équivalents dans une seule règle requise.</p>
               </div>
               <DialogFooter>
                 <Button variant="outline" size="sm" onClick={() => onRoleDialogOpenChange(false)}>Annuler</Button>
@@ -286,7 +287,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
           </Dialog>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Priorité</Label>
+              <Label className="text-xs text-muted-foreground">Règle de recherche</Label>
               <Select value={newRolePriority} onValueChange={(v) => onNewRolePriorityChange(v as FilterPriority)} disabled={!isFilterSupported(filters.api, 'role')}>
                 <SelectTrigger className="text-xs h-7">
                   <SelectValue />
@@ -299,7 +300,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Scope</Label>
+              <Label className="text-xs text-muted-foreground">Période</Label>
               <Select value={newRoleScope} onValueChange={(v) => onNewRoleScopeChange(v as FilterScope)} disabled={!isFilterSupported(filters.api, 'role')}>
                 <SelectTrigger className="text-xs h-7">
                   <SelectValue />
@@ -401,6 +402,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
       >
         <PriorityBadges
           items={filters.degree}
+          supportsAll={false}
           onRemove={(id) => onRemovePriorityFilter('degree', id)}
           onUpdatePriority={(id, priority) => onUpdatePriority('degree', id, priority)}
         />

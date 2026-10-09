@@ -18,7 +18,8 @@ function compile(path, { suffix = '', globals = {} } = {}) {
   return context.exports;
 }
 
-const profileData = compile('supabase/functions/_shared/profile-data.ts');
+const experience = compile('supabase/functions/_shared/profile-experience.ts');
+const profileData = compile('supabase/functions/_shared/profile-data.ts', { globals: experience });
 const projectId = '11111111-1111-4111-8111-111111111111';
 const organizationId = '22222222-2222-4222-8222-222222222222';
 const userId = '33333333-3333-4333-8333-333333333333';

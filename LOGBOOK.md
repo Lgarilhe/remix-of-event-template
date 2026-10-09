@@ -32,6 +32,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-09 — BUG — Fiabilité du sourcing, des filtres et de la notation
+
+**Contexte** : des sélections d’entreprises alternatives étaient transformées en exigences cumulatives ; les textes pouvaient remplacer les identifiants. Les recherches modifiées pendant un chargement et les sauvegardes lentes pouvaient restituer un ancien état. Le deuxième lot de notation V3 ne retrouvait plus les profils après le premier lot.
+**Fait** : logique ET/OU/exclusion et périodes conservées entre interface, transport et agent ; syntaxe booléenne validée sans correction silencieuse, plafond pris en charge par l’app de 200 caractères explicite pour Classic/Sales et requêtes Recruiter intégrales. Géographie, rayon et génération respectent la licence réelle, y compris au premier onboarding ; les filtres non représentables sont refusés avec explication.
+**Notation** : périodes de travail réunies sans compter les interruptions ni doubler les emplois simultanés. Dates partielles encadrées, historiques incomplets et résumés sans exhaustivité conservés pour examen. Les réponses sont associées uniquement à des identifiants uniques vérifiés, jamais à leur position ; absence de résultat et limitation fournisseur restent reprenables. La méthode `sourcing-v3` invalide les notes et calibrages précédents ; un agent doit être recalibré avant une nouvelle recherche.
+**État** : requête appliquée distincte des filtres en cours d’édition, relance explicite, pagination attachée à sa requête et réessai conservant les résultats. Réponses anciennes isolées par compte/utilisateur/organisation/mission/contexte ; sauvegardes ordonnées entre démontages et remontages dans un même navigateur. Plages d’expérience générées identiques au premier chargement et après retour ; plages natives modifiées manuellement conservées.
+**Validation** : suites agents et UX, contrôles C1 concernés, tests HTTP simulés, 32 scénarios du hook d’état, expérience/identités et parité des filtres réussis. Build production réussi ; onze diagnostics TypeScript hérités, aucun nouveau diagnostic lint ciblé et compteurs design sans hausse. Deno : modules purs vérifiés ; graphe npm équivalent utilisé pour contrôler les quatre fonctions, mêmes 60 diagnostics hérités et smoke CORS/authentification sans appel externe.
+
+| Persona | Vérification navigateur sur composants réels | Verdict |
+|---|---|---|
+| Guillaume | Recherche de 30 profils, notation 20 puis 10, identités et retour Pipeline/Sourcing sans nouvelle recherche ; requête Recruiter de 330 caractères intacte | PASS |
+| Claire | Requête vide, syntaxe invalide et Classic/Sales à 201 caractères : messages explicites, filtres conservés et aucun appel de recherche | PASS |
+| Théo | Ancienne page reçue pendant la nouvelle recherche, erreur de pagination et réessai exact, IDs de scores ambigus, sauvegardes A/B lentes et changement rapide de mission | PASS |
+| Sophie | 320/390 px clair/sombre, hauteurs 400/844, navigation clavier et focus, dialogues bornés, textes contrastés et boutons d’au moins 44 px | PASS |
+
+**Limites** : fournisseurs et modèle simulés ; aucun sourcing payant ni contact candidat. La qualité d’un sourcing réel et l’exhaustivité de `work_experience` ne sont pas mesurées. La file de sauvegarde protège un navigateur ; elle ne constitue pas une résolution serveur de modifications simultanées par plusieurs recruteurs. Chromium mobile émulé, sans appareil iOS physique. Les écoles facultatives restent à examiner et ne deviennent pas automatiquement un critère de notation. Aucun nouveau connecteur ATS externe ni mémoire automatique étendue. Publication après contrôles CI et vérification des fonctions déployées.
+**Refs** : branche `codex/sourcing-reliability-20261009` ; tests `sourcing-search-lifecycle`, `sourcing-experience-identity`, `linkedin-search-transport`, `sourcing-filter-parity`, `sourcing-autofill-parity`, `sourcing-filter-logic`.
+
+---
+
 ## 2026-10-08 — BUG — Calibrage bloqué malgré les mots-clés Recruiter
 
 **Contexte** : une requête Recruiter enregistrée de 330 caractères était refusée par le plafond commun de 200 caractères. La recherche interactive tronquait également cette requête. Un rayon sans lieu sélectionné et des suggestions de secteurs résiduelles bloquaient ensuite les filtres modifiés manuellement.

@@ -34,6 +34,7 @@ function compile(path, { prelude = '', suffix = '', globals = {}, transform = so
 }
 
 const client = compile('src/lib/sourcingScoringContext.ts');
+const experience = compile('supabase/functions/_shared/profile-experience.ts');
 const sourcing = compile('supabase/functions/_shared/sourcing-memory.ts');
 const context = compile('supabase/functions/_shared/scoring-context.ts', {
   prelude: 'const { parseSourcingMemoryConflicts } = __sourcing;\n', globals: { __sourcing: sourcing },
@@ -297,7 +298,7 @@ function scoringHelpers(globals = {}) {
   return compile('supabase/functions/score-profile-job/index.ts', {
     prelude: 'const { createScoringContextMetadata, parseScoringMemoryConflicts } = __context;\n',
     suffix: '\nexports.__helpers = { applyHardFilters, computeWeightedScore, getCachedScore, buildJobContext, buildProfileSection, callLLM, callLLMBatch };\n',
-    globals: { __context: context, ...globals },
+    globals: { __context: context, ...experience, ...globals },
   }).__helpers;
 }
 
@@ -339,6 +340,34 @@ test('null or invalid experience stays unknown in filtering, dimensions, verdict
     assert.doesNotMatch(prompt, /XP: 0 ans/);
   }
   assert.equal((await helpers.applyHardFilters({ id: 'candidate-a', name: 'Camille', yearsOfExperience: 0 }, job)).passed, false);
+});
+
+test('batch model responses only bind unique supplied identities; malformed entries stay missing for individual retry', async () => {
+  const inputs = ['candidate-a', 'candidate-b', 'candidate-c'].map(id => ({
+    profile: { id, name: id },
+    preComputedData: { weightedScore: 50, dimensions: {}, matchedSkills: [], missingSkills: [], semanticScore: null },
+  }));
+  for (const [response, expected] of [
+    [[{ id: 'candidate-b', overallScore: 92 }, { id: 'candidate-a', overallScore: 74 }], [['candidate-a', 74], ['candidate-b', 92]]],
+    [[{ overallScore: 99 }, { id: 'foreign', overallScore: 98 }, { id: 'candidate-c', overallScore: 65 }], [['candidate-c', 65]]],
+    [[null, { id: 'candidate-a', overallScore: 99 }, { id: 'candidate-a', overallScore: 42 }, { id: 'candidate-b', overallScore: 70 }], [['candidate-b', 70]]],
+  ]) {
+    let calls = 0;
+    const helpers = scoringHelpers({
+      Deno: { serve() {}, env: { get: key => key === 'ANTHROPIC_API_KEY' ? 'mock-api-key' : undefined } },
+      fetch: async url => {
+        calls++;
+        assert.equal(url, 'https://api.anthropic.com/v1/messages');
+        return new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(response) }],
+          usage: { input_tokens: 120, output_tokens: 30 } }), { status: 200 });
+      },
+    });
+    const mapped = await helpers.callLLMBatch(inputs, job);
+    assert.equal(calls, 1, 'only the mocked model is called');
+    assert.deepEqual(plain([...mapped].map(([id, result]) => [id, result.overallScore])), expected);
+    assert.ok(inputs.filter(input => !mapped.has(input.profile.id)).every(input =>
+      ![...mapped.keys()].includes(input.profile.id)), 'missing or ambiguous identities cannot acquire another candidate’s note');
+  }
 });
 
 function cacheClient(result, ageMs = 0) {
@@ -463,7 +492,7 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
   const { __helpers: helpers } = compile('supabase/functions/score-profile-job/index.ts', {
     prelude: 'const { ' + Object.keys(dependencies).join(', ') + ' } = __dependencies;\n',
     suffix: '\nexports.__helpers = { callLLM, callLLMBatch };\n',
-    globals: { __dependencies: dependencies,
+    globals: { __dependencies: dependencies, ...experience,
       __dynamic: {
         '../_shared/settle-credits.ts': {
           extractAIParams: () => ({ aiAction: 'scoring', modelId, description: null, wasAutoRouted: autoRouted }),

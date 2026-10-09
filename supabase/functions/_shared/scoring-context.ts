@@ -1,5 +1,7 @@
 import { parseSourcingMemoryConflicts, type SourcingMemoryContext, type SourcingMemoryConflict } from './sourcing-memory.ts';
 
+export const SOURCING_SCORING_ENGINE_VERSION = 'sourcing-v3';
+
 export function stableScoringContextKey(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return '[' + value.map(stableScoringContextKey).join(',') + ']';
@@ -84,6 +86,7 @@ export function buildScoringInputVersionKey(
   job: unknown, instructions: unknown, options: ScoringInputContextOptions,
 ): string {
   return stableScoringContextKey({
+    scoringEngineVersion: SOURCING_SCORING_ENGINE_VERSION,
     job: normalizeScoringJob(job, options.projectId),
     organizationId: options.organizationId ?? null, projectId: options.projectId ?? null,
     customScoringInstructions: instructions === '' || instructions === null ? undefined : instructions,
