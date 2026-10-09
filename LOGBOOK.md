@@ -42,6 +42,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-09 — BUG — Chargement de la messagerie et découverte des interactions
+
+**Contexte** : la messagerie pouvait annoncer une boîte vide avant la résolution du compte personnel. La première requête demandait jusqu’à 125 conversations par dossier, enrichies avant affichage. Dans les fiches candidat, un participant sans conversation était présenté comme une panne ; trois occurrences du 404 documenté « Attendee not found » ont été constatées dans les journaux du 8 octobre.
+**Fait** : disponibilité explicite de la session, des comptes et des liaisons personnelles ; squelette tant que la première lecture est en attente, erreurs avec réessai distinctes d’une absence réelle. Première page et actualisation périodique de 25 conversations par dossier, suite et recherche exhaustive conservées. Les requêtes concurrentes sont regroupées, les clics de pagination et de réessai sont préservés et les pages déjà lues restent affichées. Une session renouvelée ne réinitialise plus la conversation ; un lien ancien est retrouvé progressivement et cette recherche s’arrête au choix manuel d’un autre échange.
+**Interactions** : seul le 404 explicite d’absence de participant à la première page devient une liste vide. Les erreurs d’accès, de quota, de résolution du profil et de pagination restent des erreurs. Si tous les dossiers demandés échouent, le serveur refuse le faux succès vide. Aucun changement de droits, de schéma ou d’envoi.
+**Contrôles** : réponses tardives isolées par utilisateur, organisation et compte ; suppression d’un fil confirmée avant son retrait, sans effacer les autres fils regroupés. Dix-huit scénarios comportementaux du hook et vingt scénarios de découverte passent. Build production réussi, neuf fichiers de tests ciblés réussis ; onze diagnostics TypeScript hérités identiques à main, lint du hook sans nouvelle anomalie, compteurs design inchangés. L’arrivée initiale du compte LinkedIn conserve l’échange e-mail ouvert ; un vrai changement de compte ou sa déconnexion conserve le démontage qui isole les anciennes promesses d’envoi.
+**QA** : dix scénarios de rendu React côté serveur passent localement, dont la reproduction du faux vide sur la version précédente. Huit parcours de navigateur `@critical` sont ajoutés à la CI bloquante avant fusion, avec les composants réels et des fournisseurs simulés.
+
+| Persona | Validation locale | Parcours navigateur bloquant |
+|---|---|---|
+| Guillaume | Pagination, curseurs, fils fusionnés, lien ancien et sélection manuelle : PASS | Recherche dans les pages suivantes |
+| Claire | Résolution des comptes dans plusieurs ordres, attente et absence réelle distinctes : PASS | Session, comptes et liaison chargés séparément |
+| Théo | Erreurs, réessais, périmètres et réponses tardives : PASS | Erreur de comptes, réessai et interactions candidat |
+| Sophie | Rendu de l’attente sans faux vide et e-mail disponible pendant LinkedIn : PASS | Sélection e-mail conservée, réponses à 390 et 320 px |
+
+**Limites** : serveur local et Chromium refusés par le sandbox (EPERM) ; aucun résultat de navigateur local revendiqué. Les parcours visuels sont exécutés en CI. Aucune mesure de latence du réseau de production ni essai sur appareil iOS physique. Les compteurs portent sur les conversations chargées, comme précisé auprès de la pagination. Le traitement préexistant d’un échec partiel parmi plusieurs dossiers reste inchangé ; le correctif serveur distingue ici la panne de tous les dossiers et l’absence documentée de participant.
+**Refs** : branche `codex/inbox-loading-performance` ; `tests/c1/inbox-loading-performance.test.mjs` ; `tests/ux/candidate-messages-discovery.test.mjs`.
+
+---
+
 ## 2026-10-08 — SPEC — Espace Agents et pilotage du sourcing
 
 **Fait** : espace personnel `/agents/sourcing`, accessible dans Missions, Assistant et la palette. Un agent par mission, sélection de mission avant configuration et ouverture en pleine page. Pilotage, profils et réglages partagent le contexte, les mémoires et le calibrage existants ; activation et actions payantes restent explicites. Sphères décoratives texturées, animation unique de quatre secondes et mouvement réduit respecté, composants natifs du design system.
