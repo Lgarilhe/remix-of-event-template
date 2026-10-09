@@ -56,10 +56,10 @@ function useAvailableHeight<T extends HTMLElement>() {
 }
 
 export default function Inbox() {
-  const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
+  const { accounts: rawAccounts, ready: accountsReady, loadError: accountsError, reload: reloadAccounts } = useLinkedInAccounts();
   const { organizationId } = useOrganization();
-  const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
-  const { user } = useAuthReady();
+  const { getUserLinkedAccountId, isReady: mappingsReady, isError: mappingsError, refetch: reloadMappings } = useMemberLinkedInAccounts();
+  const { user, isReady: authReady } = useAuthReady();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const { ref: frameRef, height } = useAvailableHeight<HTMLDivElement>();
   // Deep link depuis une notification de nouveau message : /inbox?chatId=<id>
@@ -83,20 +83,28 @@ export default function Inbox() {
   // compte LinkedIn personnel. Pas de fallback vers accounts[0] qui leakait
   // les conversations d'un autre membre.
   const accounts = useMemo(() => {
-    if (!rawAccounts) return [];
+    if (!authReady || !accountsReady || !mappingsReady || !rawAccounts) return [];
     const mapped = rawAccounts.map(a => applySubscriptionOverrides(a as LinkedInAccount));
     const currentUserId = user?.id ?? null;
     if (!currentUserId) return [];
     const linkedId = getUserLinkedAccountId(currentUserId);
     if (!linkedId) return [];
     return mapped.filter(a => a.id === linkedId);
-  }, [rawAccounts, user?.id, getUserLinkedAccountId]);
+  }, [rawAccounts, user?.id, getUserLinkedAccountId, authReady, accountsReady, mappingsReady]);
+
+  // Ne jamais rendre le compte précédent pendant la résolution d'une nouvelle
+  // session ou liaison personnelle. Le compte courant est connu dès ce rendu.
+  const currentAccount = accounts.find(account => account.id === selectedAccount)?.id ?? accounts[0]?.id ?? null;
+  const accountsLoading = !authReady || (!accountsReady && !accountsError) || (!mappingsReady && !mappingsError);
+  const connectionsError = accountsError || mappingsError ? 'Les comptes de messagerie n’ont pas pu être actualisés.' : null;
+  const retryConnections = useCallback(() => {
+    void reloadAccounts();
+    void reloadMappings();
+  }, [reloadAccounts, reloadMappings]);
 
   useEffect(() => {
-    if (!selectedAccount && accounts.length > 0) {
-      setSelectedAccount(accounts[0].id);
-    }
-  }, [accounts, selectedAccount]);
+    if (selectedAccount !== currentAccount) setSelectedAccount(currentAccount);
+  }, [currentAccount, selectedAccount]);
 
   // Lecture par conversation (D35) : seules les notifications de message de la
   // conversation ouverte sont marquées lues, par le lien ?chatId= (réponse
@@ -142,13 +150,15 @@ export default function Inbox() {
           <MessagesInbox
             key={initialChatId ?? 'inbox'}
             accounts={accounts}
-            selectedAccount={selectedAccount}
+            selectedAccount={currentAccount}
             onAccountChange={setSelectedAccount}
             initialChatId={initialChatId}
             onChatChange={handleChatChange}
             initialTab={initialTab}
             onTabChange={handleTabChange}
             loading={accountsLoading}
+            accountsError={connectionsError}
+            onAccountsRetry={retryConnections}
             fullHeight
           />
         </AttendeePicturesProvider>

@@ -246,7 +246,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
     if (filteredChats.length === 0 && externalConversations.length === 0) {
       if (collapsed) return null;
-      if (totalConversations === 0) {
+      if (totalConversations === 0 && !hasMoreChats) {
         return (
           <div className="p-3">
             <EmptyState
@@ -264,7 +264,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           <EmptyState
             variant="compact"
             icon={Search}
-            title={hasAnyFilter ? 'Aucune conversation ne correspond' : 'Aucune conversation active'}
+            title={hasMoreChats ? 'Aucune conversation dans la liste chargée' : hasAnyFilter ? 'Aucune conversation ne correspond' : 'Aucune conversation active'}
             description={
               hasAnyFilter
                 ? 'Modifiez la recherche ou les filtres pour élargir la liste.'
@@ -283,16 +283,16 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               )
             }
           />
-          {searchQuery && hasMoreChats && onLoadAllChats && (
+          {hasMoreChats && (searchQuery ? onLoadAllChats : onLoadMoreChats) && (
             <Button
               variant="ghost"
               size="sm"
-              className="w-full"
-              onClick={onLoadAllChats}
-              loading={loadingAllChats}
+              className="min-h-11 w-full"
+              onClick={searchQuery ? onLoadAllChats : onLoadMoreChats}
+              loading={loadingAllChats || loadingMoreChats}
             >
-              {!loadingAllChats && <Search aria-hidden="true" />}
-              {loadingAllChats ? 'Recherche en cours…' : 'Chercher dans toutes les conversations'}
+              {searchQuery && !loadingAllChats && <Search aria-hidden="true" />}
+              {loadingAllChats || loadingMoreChats ? 'Chargement…' : searchQuery ? 'Chercher dans toutes les conversations' : 'Charger plus de conversations'}
             </Button>
           )}
         </div>
@@ -326,13 +326,14 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
         </Button></li>)}
         {!collapsed && hasMoreChats && (
           <li className="p-2">
+            <p className="px-2 pb-2 text-xs text-muted-foreground">Les compteurs portent sur les conversations chargées.</p>
             {searchQuery && onLoadAllChats ? (
-              <Button variant="ghost" size="sm" className="w-full" onClick={onLoadAllChats} loading={loadingAllChats}>
+              <Button variant="ghost" size="sm" className="min-h-11 w-full" onClick={onLoadAllChats} loading={loadingAllChats}>
                 {!loadingAllChats && <Search aria-hidden="true" />}
                 {loadingAllChats ? 'Recherche en cours…' : 'Chercher dans toutes les conversations'}
               </Button>
             ) : onLoadMoreChats ? (
-              <Button variant="outline" size="sm" className="w-full" onClick={onLoadMoreChats} loading={loadingMoreChats}>
+              <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={onLoadMoreChats} loading={loadingMoreChats}>
                 {loadingMoreChats ? 'Chargement…' : 'Charger plus de conversations'}
               </Button>
             ) : null}

@@ -67,20 +67,34 @@ interface MessagesInboxProps {
   initialTab?: ResponseFilter;
   onTabChange?: (tab: ResponseFilter) => void;
   loading?: boolean;
+  accountsError?: string | null;
+  onAccountsRetry?: () => void;
   fullHeight?: boolean;
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
-  const { selectedAccount, loading } = props;
+  const { selectedAccount } = props;
   const { user } = useAuthReady();
   const { organizationId } = useOrganization();
   const multichannel = useMultichannelInbox();
-  if (!selectedAccount && loading && multichannel.isLoading) return <div className="grid h-full place-items-center bg-background p-4"><Spinner label="Chargement de vos conversations" size="lg" /></div>;
-  return <MessagesInboxInner key={JSON.stringify([user?.id, organizationId, selectedAccount])} {...props} multichannel={multichannel} />;
+  const scope = JSON.stringify([user?.id, organizationId]);
+  const [boundary, setBoundary] = useState({ scope, account: selectedAccount, generation: 0 });
+  let generation = boundary.generation;
+  if (boundary.scope !== scope || boundary.account !== selectedAccount) {
+    generation = boundary.scope !== scope ? 0 : boundary.generation + (boundary.account ? 1 : 0);
+    setBoundary({ scope, account: selectedAccount, generation });
+  }
+  // La première résolution null → compte préserve l'e-mail ouvert et son
+  // brouillon. Un vrai changement de compte ou sa déconnexion remonte l'écran
+  // pour isoler aussi les anciennes promesses d'envoi et de rédaction.
+  return <MessagesInboxInner key={JSON.stringify([scope, generation])} {...props} multichannel={multichannel} />;
 };
 
 const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnType<typeof useMultichannelInbox> }> = ({
   selectedAccount,
+  loading = false,
+  accountsError,
+  onAccountsRetry,
   multichannel,
   onUnreadCountChange,
   initialChatId,
@@ -187,6 +201,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
   const handleDeleteChat = async (chatId: string) => {
     const success = await deleteChat(chatId);
     if (success) {
+      inbox.removeChatFromList(chatId);
       if (inbox.selectedChat?.id === chatId) {
         inbox.setSelectedChat(null);
       }
@@ -220,8 +235,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
           chats={inbox.chats}
           filteredChats={inbox.filteredChats}
           selectedChat={inbox.selectedChat}
-          loadingChats={inbox.loadingChats || multichannel.isLoading}
-          chatsError={inbox.chatsError}
+          loadingChats={loading || inbox.loadingChats || multichannel.isPending}
+          chatsError={accountsError || inbox.chatsError}
           searchQuery={inbox.searchQuery}
           showUnreadOnly={inbox.showUnreadOnly}
           sourceFilter={inbox.sourceFilter}
@@ -247,7 +262,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
           }}
           onSetCategory={inbox.chatCategories.setCategory}
           onChatSelect={selectLinkedInChat}
-          onRefresh={() => { if (selectedAccount) void inbox.fetchChats(true); void multichannel.refetch(); }}
+          onRefresh={() => { if (accountsError) onAccountsRetry?.(); if (selectedAccount) void inbox.fetchChats(true); void multichannel.refetch(); }}
           hasMoreChats={inbox.hasMoreChats}
           loadingMoreChats={inbox.loadingMoreChats}
           loadingAllChats={inbox.loadingAllChats}

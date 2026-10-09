@@ -32,6 +32,8 @@ import {
   type ThreadState,
 } from '@/lib/inboxThreadState';
 
+const CHAT_PAGE_SIZE = 25;
+
 /** Identifiant de mission (sourcing_projects.id). */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -317,7 +319,6 @@ interface UseMessagesInboxOptions {
 // ── Reducer: Chat State ─────────────────────────────────
 interface ChatState {
   chats: Chat[];
-  filteredChats: Chat[];
   selectedChat: Chat | null;
   messages: Message[];
   loadingChats: boolean;
@@ -332,9 +333,9 @@ interface ChatState {
 }
 
 type ChatAction =
+  | { type: 'RESET_CHAT_SCOPE'; loading: boolean; initialChatId: string | null }
   | { type: 'SET_CHATS'; chats: Chat[] }
   | { type: 'UPDATE_CHATS'; updater: (prev: Chat[]) => Chat[] }
-  | { type: 'SET_FILTERED_CHATS'; chats: Chat[] }
   | { type: 'SELECT_CHAT'; chat: Chat | null }
   | { type: 'UPDATE_SELECTED_CHAT'; updater: (prev: Chat | null) => Chat | null }
   | { type: 'SET_MESSAGES'; messages: Message[] }
@@ -351,9 +352,15 @@ type ChatAction =
 
 function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
+    case 'RESET_CHAT_SCOPE': return {
+      ...state, chats: [], messages: [],
+      selectedChat: action.initialChatId ? { id: action.initialChatId, account_id: '' } : null,
+      loadingChats: action.loading, loadingMessages: false, sending: false,
+      cursor: null, hasMore: true, chatCursors: {}, hasMoreChats: false,
+      loadingMoreChats: false, loadingAllChats: false,
+    };
     case 'SET_CHATS': return { ...state, chats: action.chats };
     case 'UPDATE_CHATS': return { ...state, chats: action.updater(state.chats) };
-    case 'SET_FILTERED_CHATS': return { ...state, filteredChats: action.chats };
     case 'SELECT_CHAT': return { ...state, selectedChat: action.chat };
     case 'UPDATE_SELECTED_CHAT': return { ...state, selectedChat: action.updater(state.selectedChat) };
     case 'SET_MESSAGES': return { ...state, messages: action.messages };
@@ -368,7 +375,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'FETCH_CHATS_SUCCESS': return {
       ...state,
       chats: action.chats,
-      filteredChats: action.chats,
       chatCursors: action.cursors,
       hasMoreChats: action.hasMore,
       loadingChats: false,
@@ -488,18 +494,37 @@ function contextReducer(state: ContextState, action: ContextAction): ContextStat
   }
 }
 
+type ChatReadMode = 'refresh' | 'poll' | 'more' | 'all' | 'restore';
+
+interface ChatListSession {
+  key: string;
+  active: boolean;
+  rawChats: Map<string, Chat>;
+  deletedIds: Set<string>;
+  cursors: Record<string, string | null>;
+  loaded: boolean;
+  request: Promise<void> | null;
+  mode: ChatReadMode | null;
+  queuedReads: Map<ChatReadMode, Promise<void>>;
+}
+
 export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange, initialResponseFilter }: UseMessagesInboxOptions) {
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
   const currentTime = useNow(30_000);
+  const userId = user?.id ?? null;
+  const scopeKey = JSON.stringify([userId, organizationId, selectedAccount]);
+  const currentScopeRef = useRef(scopeKey);
+  currentScopeRef.current = scopeKey;
+  const listSessionRef = useRef<ChatListSession | null>(null);
+  const contextSessionRef = useRef<{ active: boolean } | null>(null);
 
   // ── Chat state (useReducer #1) ──
   const [chatState, chatDispatch] = useReducer(chatReducer, {
     chats: [],
-    filteredChats: [],
     selectedChat: initialChatId ? { id: initialChatId, account_id: '' } as Chat : null,
     messages: [],
-    loadingChats: false,
+    loadingChats: !isReady || !!selectedAccount,
     loadingMessages: false,
     sending: false,
     cursor: null,
@@ -509,7 +534,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     loadingMoreChats: false,
     loadingAllChats: false,
   });
-  const { chats, filteredChats, selectedChat, messages, loadingChats, loadingMessages, sending, cursor, hasMore, chatCursors, hasMoreChats, loadingMoreChats, loadingAllChats } = chatState;
+  const { chats, selectedChat, messages, loadingChats, loadingMessages, sending, cursor, hasMore, hasMoreChats, loadingMoreChats, loadingAllChats } = chatState;
 
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
   const chatsRef = useRef<Chat[]>([]);
@@ -532,7 +557,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       chatDispatch({ type: 'SET_CHATS', chats: chatsOrUpdater });
     }
   }, []);
-  const setFilteredChats = useCallback((c: Chat[]) => chatDispatch({ type: 'SET_FILTERED_CHATS', chats: c }), []);
   const setMessages = useCallback((msgsOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
     if (typeof msgsOrUpdater === 'function') {
       chatDispatch({ type: 'UPDATE_MESSAGES', updater: msgsOrUpdater });
@@ -548,7 +572,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const setChatCursors = useCallback((c: Record<string, string | null>) => {
     chatDispatch({ type: 'SET_CHAT_PAGINATION', cursors: c, hasMore: Object.values(c).some(v => v !== null) });
   }, []);
-  const setHasMoreChats = useCallback((_v: boolean) => { /* handled by SET_CHAT_PAGINATION */ }, []);
   const setLoadingMoreChats = useCallback((v: boolean) => chatDispatch({ type: 'LOADING_MORE_CHATS', loading: v }), []);
   const setLoadingAllChats = useCallback((v: boolean) => chatDispatch({ type: 'LOADING_ALL_CHATS', loading: v }), []);
 
@@ -600,6 +623,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   }, [selectChat]);
 
   const setSelectedChat = useCallback((chat: Chat | null) => {
+    // Un choix explicite (y compris Retour) remplace le lien initial : une
+    // page arrivée plus tard ne doit plus rouvrir cette ancienne conversation.
+    pendingInitialChatId.current = null;
     selectChat(chat);
     onChatChange?.(chat?.id || null);
   }, [selectChat, onChatChange]);
@@ -650,6 +676,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // smart replies dans l'inbox (cohérence avec les messages sortants).
   const fetchEnrollments = useCallback(async () => {
     if (!organizationId) return;
+    const requestContext = contextSessionRef.current;
     try {
       const data = await fetchInboxEnrollmentRows(supabase, organizationId);
 
@@ -678,11 +705,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           client_name: projectInfo?.client_name || null,
         };
       }));
-      setEnrollmentsMap(map);
+      if (requestContext?.active && contextSessionRef.current === requestContext) setEnrollmentsMap(map);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
     }
-  }, [organizationId]);
+  }, [organizationId, setEnrollmentsMap]);
 
   // Fetch active missions (sourcing_projects) avec leur outreach_config.
   // Sert à afficher le contexte mission/incarnation IA dans l'inbox même
@@ -693,6 +720,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // sequence_enrollment.
   const fetchActiveMissions = useCallback(async () => {
     if (!organizationId) return;
+    const requestContext = contextSessionRef.current;
     try {
       const { data, error } = await supabase
         .from('sourcing_projects')
@@ -713,6 +741,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         status: p.status || 'active',
         outreach_config: (p.job_details as any)?.outreach_config || null,
       }));
+      if (!requestContext?.active || contextSessionRef.current !== requestContext) return;
       setActiveMissions(missions);
       // Postes proposés aux suggestions de réponse et à l'analyse : les missions
       // actives, identifiées par leur uuid (le job_id des inscriptions en séquence).
@@ -722,7 +751,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     } catch (error) {
       console.error('Error fetching active missions:', error);
     }
-  }, [organizationId]);
+  }, [organizationId, setActiveMissions, setAvailableJobs]);
 
   // Séquences actives de l'organisation (la RLS borne à l'organisation), comme
   // le menu Séquence du sourcing : une séquence partagée par un collègue est
@@ -730,7 +759,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // par ordre : la préparation avec aperçu montre les messages avant
   // l'inscription. Rechargée à chaque ouverture du dialogue de choix.
   const fetchSequences = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
+    const requestContext = contextSessionRef.current;
 
     setSequencesStatus('loading');
     try {
@@ -742,6 +772,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         .order('step_order', { referencedTable: 'sequence_steps', ascending: true });
       
       if (error) throw error;
+      if (!requestContext?.active || contextSessionRef.current !== requestContext) return;
       setSequences((data || []).map(s => {
         const steps = [...(s.sequence_steps || [])].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
         return {
@@ -755,181 +786,131 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       setSequencesStatus('ready');
     } catch (error) {
       console.error('Error fetching sequences:', error);
-      setSequencesStatus('error');
+      if (requestContext?.active && contextSessionRef.current === requestContext) setSequencesStatus('error');
     }
-  }, [user]);
+  }, [userId, setSequences]);
 
-  // Fetch all chats
-  const fetchChats = useCallback(async (showToast = false) => {
-    if (!selectedAccount) return;
-
-    setLoadingChats(true);
-    try {
-      const { data } = await invokeUnipile({
-        body: {
-          action: 'get_chats',
-          account_id: selectedAccount,
-          limit: 250,
-        },
+  // Une seule lecture de liste en vol, partagée entre premier affichage,
+  // actualisation, pagination et polling. Les fils bruts restent indexés par
+  // id : replier puis déplier les conversations perdait leurs fils secondaires.
+  const readChatPage = useCallback(function readChatPage(mode: ChatReadMode, showToast = false): Promise<void> {
+    const session = listSessionRef.current;
+    if (!isReady || !userId || !organizationId || !selectedAccount || !session?.active || session.key !== scopeKey) return Promise.resolve();
+    const stillActive = () => session.active && listSessionRef.current === session && currentScopeRef.current === scopeKey;
+    if (mode === 'restore' && !pendingInitialChatId.current) return Promise.resolve();
+    if (session.request) {
+      if (mode === 'poll' || mode === session.mode || session.mode === 'all'
+        || (mode === 'refresh' && session.mode !== 'poll')) return session.request;
+      // Un clic Charger la suite ou Réessayer pendant un poll doit réellement
+      // avancer après celui-ci. Les doubles clics partagent la même attente.
+      const queued = session.queuedReads.get(mode);
+      if (queued) return queued;
+      if (mode === 'refresh') setLoadingChats(true);
+      const pending = session.request.then(() => {
+        session.queuedReads.delete(mode);
+        if (stillActive()) return readChatPage(mode, showToast);
       });
-
-      if (!data?.success) throw new Error(data?.error as string);
-
-      const fetchedChats = data.chats as Chat[] || [];
-      const mergedChats = mergeChatsByCandidate(fetchedChats);
-      setChatsError(null);
-      setChats(mergedChats);
-      setFilteredChats(mergedChats);
-      
-      // Store per-folder cursors for pagination
-      if (data.cursors) {
-        setChatCursors(data.cursors as Record<string, string | null>);
-        setHasMoreChats(Object.values(data.cursors as Record<string, string | null>).some(c => c !== null));
-      } else {
-        setChatCursors({});
-        setHasMoreChats(false);
-      }
-      
-      // Replace placeholder with full chat object (without triggering onChatChange)
-      if (pendingInitialChatId.current) {
-        const match = mergedChats.find((c: Chat) => c.id === pendingInitialChatId.current || c._mergedChatIds?.includes(pendingInitialChatId.current!));
-        if (match) {
-          _setSelectedChat(match);
-        }
-        pendingInitialChatId.current = null;
-      }
-      
-      if (showToast) toast.success('Conversations actualisées');
-    } catch (error) {
-      console.error('Error fetching chats:', error);
-      setChatsError(error instanceof Error && error.message ? error.message : 'unknown');
-      // Liste déjà affichée : elle reste en place, un toast signale l'échec.
-      // Liste vide : l'erreur prend sa place, avec « Réessayer ».
-      if (chatsRef.current.length > 0) {
-        toast.error("Les conversations n'ont pas été actualisées", {
-          description: 'Vérifiez votre connexion, puis réessayez.',
-        });
-      }
-    } finally {
-      setLoadingChats(false);
+      session.queuedReads.set(mode, pending);
+      return pending;
     }
-  }, [selectedAccount]);
+    const paging = mode === 'more' || mode === 'all' || mode === 'restore';
+    if (paging && !Object.values(session.cursors).some(Boolean)) return Promise.resolve();
 
-  // Load more chats using per-folder cursors
-  const loadMoreChats = useCallback(async () => {
-    if (!selectedAccount || !hasMoreChats || loadingMoreChats) return;
+    if (mode === 'refresh') setLoadingChats(true);
+    if (mode === 'more' || mode === 'restore') setLoadingMoreChats(true);
+    if (mode === 'all') setLoadingAllChats(true);
+    const request = (async () => {
+      let added = 0;
+      try {
+        do {
+          const previousCursors = session.cursors;
+          const { data } = await invokeUnipile({
+            body: {
+              action: 'get_chats',
+              account_id: selectedAccount,
+              organization_id: organizationId,
+              limit: mode === 'all' ? 100 : CHAT_PAGE_SIZE,
+              ...(paging ? { cursors: previousCursors } : {}),
+            },
+          });
+          if (!stillActive()) return;
+          if (!data?.success) throw new Error(data?.error as string);
 
-    setLoadingMoreChats(true);
-    try {
-      const { data } = await invokeUnipile({
-        body: { 
-          action: 'get_chats', 
-          account_id: selectedAccount,
-          limit: 250,
-          cursors: chatCursors,
-        },
-      });
-
-      if (!data?.success) throw new Error(data?.error as string);
-
-      const newChats = data.chats as Chat[] || [];
-      
-      // Merge with existing chats, deduplicating by ID, then re-merge by candidate
-      setChats(prev => {
-        // Expand previously merged chats back to their originals for proper re-merge
-        const allExisting: Chat[] = [];
-        for (const c of prev) {
-          if (c._mergedChatIds && c._mergedChatIds.length > 1) {
-            // We only have the primary — keep it as-is since we don't have the originals anymore
-            allExisting.push({ ...c, _mergedChatIds: undefined });
-          } else {
-            allExisting.push(c);
+          const page = (data.chats as Chat[]) || [];
+          for (const chat of page) {
+            if (session.deletedIds.has(chat.id)) continue;
+            if (!session.rawChats.has(chat.id)) added += 1;
+            session.rawChats.set(chat.id, chat);
           }
+          // Un rafraîchissement de la première page ne remet jamais le curseur
+          // avant les pages déjà chargées, et conserve l'historique consulté.
+          if (!session.loaded || paging) {
+            session.cursors = (data.cursors as Record<string, string | null>) || {};
+            setChatCursors(session.cursors);
+          }
+          session.loaded = true;
+          const merged = mergeChatsByCandidate(Array.from(session.rawChats.values()));
+          setChats(merged);
+          setChatsError(null);
+
+          if (pendingInitialChatId.current) {
+            const id = pendingInitialChatId.current;
+            const match = merged.find(chat => chat.id === id || chat._mergedChatIds?.includes(id));
+            if (match) {
+              _setSelectedChat(match);
+              pendingInitialChatId.current = null;
+            }
+          }
+          // Un curseur identique ne doit pas boucler indéfiniment si le
+          // fournisseur ne peut pas avancer. « Charger la suite » reste offert.
+          if ((mode !== 'all' && mode !== 'restore') || JSON.stringify(previousCursors) === JSON.stringify(session.cursors)) break;
+        } while (stillActive() && (mode !== 'restore' || !!pendingInitialChatId.current) && Object.values(session.cursors).some(Boolean));
+        if (showToast) toast.success('Conversations actualisées');
+        else if (paging && mode !== 'restore' && added > 0) toast.success(`${added} conversations supplémentaires chargées`);
+      } catch (error) {
+        if (!stillActive()) return;
+        if (mode === 'poll') return;
+        console.error('Error fetching chats:', error);
+        setChatsError(error instanceof Error && error.message ? error.message : 'unknown');
+        if (session.rawChats.size > 0) {
+          toast.error(paging ? "Les conversations suivantes n'ont pas été chargées" : "Les conversations n'ont pas été actualisées", {
+            description: 'Vérifiez votre connexion, puis réessayez.',
+          });
         }
-        const existingIds = new Set(allExisting.map(c => c.id));
-        const uniqueNew = newChats.filter(c => !existingIds.has(c.id));
-        const combined = [...allExisting, ...uniqueNew];
-        return mergeChatsByCandidate(combined);
-      });
-      
-      // Update cursors
-      if (data.cursors) {
-        setChatCursors(data.cursors as Record<string, string | null>);
-        setHasMoreChats(Object.values(data.cursors as Record<string, string | null>).some(c => c !== null));
-      } else {
-        setChatCursors({});
-        setHasMoreChats(false);
-      }
-      
-      toast.success(`${newChats.length} conversations supplémentaires chargées`);
-    } catch (error) {
-      console.error('Error loading more chats:', error);
-      toast.error("Les conversations suivantes n'ont pas été chargées", {
-        description: 'Réessayez dans un instant.',
-      });
-    } finally {
-      setLoadingMoreChats(false);
-    }
-  }, [selectedAccount, chatCursors, hasMoreChats, loadingMoreChats]);
-
-  // Load ALL remaining chats (for exhaustive search)
-  const loadAllChats = useCallback(async () => {
-    if (!selectedAccount || !hasMoreChats || loadingAllChats) return;
-
-    setLoadingAllChats(true);
-    let currentCursors = { ...chatCursors };
-    const allNewChats: Chat[] = [];
-
-    try {
-      while (Object.values(currentCursors).some(c => c !== null)) {
-        const { data } = await invokeUnipile({
-          body: {
-            action: 'get_chats',
-            account_id: selectedAccount,
-            limit: 250,
-            cursors: currentCursors,
-          },
-        });
-
-        if (!data?.success) break;
-
-        const newChats = data.chats as Chat[] || [];
-        allNewChats.push(...newChats);
-
-        if (data.cursors) {
-          currentCursors = data.cursors as Record<string, string | null>;
-        } else {
-          currentCursors = {};
+      } finally {
+        if (stillActive()) {
+          session.request = null;
+          session.mode = null;
+          setLoadingChats(false);
+          setLoadingMoreChats(false);
+          setLoadingAllChats(false);
         }
-
-        if (newChats.length === 0) break;
       }
+    })();
+    session.request = request;
+    session.mode = mode;
+    return request;
+  }, [isReady, userId, selectedAccount, organizationId, scopeKey, setLoadingChats, setLoadingMoreChats, setLoadingAllChats, setChatCursors, setChats, _setSelectedChat]);
 
-      // Single state update with all accumulated chats
-      if (allNewChats.length > 0) {
-        setChats(prev => {
-          const allExisting = prev.map(c => ({ ...c, _mergedChatIds: undefined }));
-          const existingIds = new Set(allExisting.map(c => c.id));
-          const uniqueNew = allNewChats.filter(c => !existingIds.has(c.id));
-          const combined = [...allExisting, ...uniqueNew];
-          return mergeChatsByCandidate(combined);
-        });
-      }
+  const removeChatFromList = useCallback((chatId: string) => {
+    const session = listSessionRef.current;
+    if (!session?.active || session.key !== currentScopeRef.current) return;
+    // La suppression distante concerne un seul fil. Les autres conversations
+    // du même candidat restent accessibles, même si elles étaient regroupées.
+    session.deletedIds.add(chatId);
+    session.rawChats.delete(chatId);
+    if (pendingInitialChatId.current === chatId) pendingInitialChatId.current = null;
+    setChats(mergeChatsByCandidate(Array.from(session.rawChats.values())));
+  }, [setChats]);
 
-      setChatCursors(currentCursors);
-      setHasMoreChats(Object.values(currentCursors).some(c => c !== null));
-      if (allNewChats.length > 0) {
-        toast.success(`${allNewChats.length} conversations supplémentaires chargées`);
-      }
-    } catch (error) {
-      console.error('Error loading all chats:', error);
-      toast.error("La recherche dans toutes les conversations n'a pas abouti", {
-        description: 'Réessayez dans un instant.',
-      });
-    } finally {
-      setLoadingAllChats(false);
-    }
-  }, [selectedAccount, chatCursors, hasMoreChats, loadingAllChats]);
+  const fetchChats = useCallback(async (showToast = false) => {
+    await readChatPage('refresh', showToast);
+    // Un ancien lien de notification peut viser une page ultérieure. On la
+    // retrouve sans bloquer la première page ni les messages déjà affichés.
+    if (pendingInitialChatId.current) void readChatPage('restore');
+  }, [readChatPage]);
+  const loadMoreChats = useCallback(() => readChatPage('more'), [readChatPage]);
+  const loadAllChats = useCallback(() => readChatPage('all'), [readChatPage]);
 
   // Fetch messages for a chat - use ref for cursor to avoid stale closure
   const cursorRef = useRef<string | null>(null);
@@ -938,6 +919,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const fetchMessages = useCallback(async (chatId: string, loadMore = false): Promise<number> => {
     if (!selectedAccount) return 0;
 
+    const requestSession = listSessionRef.current;
     // Resolve merged IDs from current chats state (avoid stale selectedChat closure)
     const chat = chatsRef.current.find(c => c.id === chatId || c._mergedChatIds?.includes(chatId));
     const mergedIds = chat?._mergedChatIds;
@@ -947,6 +929,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     // fils fusionnés) : une réponse arrivée après un changement de
     // conversation ne doit pas écraser le fil du nouveau chat.
     const stillActive = () => {
+      if (!requestSession?.active || requestSession !== listSessionRef.current || requestSession.key !== currentScopeRef.current) return false;
       const current = selectedChatIdRef.current;
       if (!current) return false;
       if (current === chatId) return true;
@@ -1454,6 +1437,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     const chat = chats.find(c => c.id === chatId);
     const chatIdsToMark = chat?._mergedChatIds || [chatId];
 
+    for (const id of chatIdsToMark) {
+      const raw = listSessionRef.current?.rawChats.get(id);
+      if (raw) listSessionRef.current?.rawChats.set(id, { ...raw, unread_count: 0, unread: 0 });
+    }
+
     // Fire-and-forget: tell Unipile to mark each chat as read server-side
     for (const cid of chatIdsToMark) {
       invokeUnipile({
@@ -1493,8 +1481,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     return countThreadStates(active);
   }, [chats, chatStatus.statusMap, threadStates, currentTime]);
 
-  // Filter chats effect
-  useEffect(() => {
+  // Les filtres font partie du même rendu que les données : aucune frame de
+  // liste vide entre la réponse réseau et l'application des filtres.
+  const filteredChats = useMemo(() => {
     let result = chats;
     
     if (sourceFilter === 'recruiter') {
@@ -1533,7 +1522,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       result = result.filter(chat => buildChatSearchText(chat).includes(query));
     }
 
-    setFilteredChats(result);
+    return result;
   }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, threadStates, currentTime, chatCategories.categoryFilter, chatCategories.categoriesMap, chatStatus.statusFilter, chatStatus.statusMap]);
 
   // Unread count effect
@@ -1542,71 +1531,52 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     onUnreadCountChange?.(totalUnread);
   }, [chats, onUnreadCountChange]);
 
-  // Load chats on account change
+  // Les changements d'objet user lors du renouvellement de session ne
+  // rechargent ni la liste ni la sélection. Seul le périmètre réel la réinitialise.
   useEffect(() => {
-    if (isReady && user && selectedAccount) {
-      fetchChats();
-      fetchEnrollments();
-      fetchActiveMissions();
-      fetchSequences();
+    const session: ChatListSession = { key: scopeKey, active: true, rawChats: new Map(), deletedIds: new Set(), cursors: {}, loaded: false, request: null, mode: null, queuedReads: new Map() };
+    listSessionRef.current = session;
+    const restoreId = pendingInitialChatId.current;
+    selectedChatIdRef.current = restoreId;
+    chatsRef.current = [];
+    chatDispatch({ type: 'RESET_CHAT_SCOPE', loading: !isReady || !!selectedAccount, initialChatId: restoreId });
+    setChatsError(null);
+    uiDispatch({ type: 'SET_NEW_MESSAGE', value: '' });
+    if (isReady && userId && selectedAccount) void fetchChats();
+    return () => { session.active = false; };
+  }, [isReady, userId, selectedAccount, scopeKey, fetchChats]);
 
-      // Don't reset chat/messages if we have an initial chat to restore
-      if (!pendingInitialChatId.current) {
-        setSelectedChat(null);
-        setMessages([]);
-      }
+  // Le contexte se charge à part : ni son résultat ni un changement de
+  // compte LinkedIn ne relancent la lecture des missions et des séquences.
+  useEffect(() => {
+    const context = { active: true };
+    contextSessionRef.current = context;
+    ctxDispatch({ type: 'SET_ENROLLMENTS_MAP', map: new Map() });
+    ctxDispatch({ type: 'SET_ACTIVE_MISSIONS', missions: [] });
+    ctxDispatch({ type: 'SET_AVAILABLE_JOBS', jobs: [] });
+    ctxDispatch({ type: 'SET_SEQUENCES', sequences: [] });
+    if (isReady && userId && organizationId) {
+      void fetchEnrollments();
+      void fetchActiveMissions();
+      void fetchSequences();
     }
-  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchActiveMissions, fetchSequences, user]);
+    return () => { context.active = false; };
+  }, [isReady, userId, organizationId, fetchEnrollments, fetchActiveMissions, fetchSequences]);
 
-  // Auto-poll chat list every 30s to detect new messages / conversations
   useEffect(() => {
-    if (!isReady || !user || !selectedAccount) return;
-
-    const pollChats = async () => {
-      try {
-        const { data } = await invokeUnipile({
-          body: {
-            action: 'get_chats',
-            account_id: selectedAccount,
-            limit: 250,
-          },
-        });
-
-        if (!data?.success) return;
-
-        const freshChats = data.chats as Chat[] || [];
-        setChats(prev => {
-          // Expand merged chats for proper re-merge
-          const prevFlat = prev.map(c => ({ ...c, _mergedChatIds: undefined }));
-          const freshIds = new Set(freshChats.map(c => c.id));
-          const extraChats = prevFlat.filter(c => !freshIds.has(c.id));
-          if (extraChats.length === 0) {
-            const prevUnread = prev.reduce((a, c) => a + getUnreadCount(c), 0);
-            const freshMerged = mergeChatsByCandidate(freshChats);
-            const freshUnread = freshMerged.reduce((a, c) => a + getUnreadCount(c), 0);
-            if (prev.length === freshMerged.length && prevUnread === freshUnread) {
-              const prevFirst = prev[0];
-              const freshFirst = freshMerged[0];
-              if (prevFirst?.id === freshFirst?.id && prevFirst?.timestamp === freshFirst?.timestamp) return prev;
-            }
-            return freshMerged;
-          }
-          const combined = [...freshChats, ...extraChats];
-          return mergeChatsByCandidate(combined);
-        });
-      } catch {
-        // Silently ignore polling errors
-      }
+    if (!isReady || !userId || !selectedAccount) return;
+    const pollChats = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void readChatPage('poll');
     };
-
     const intervalId = setInterval(pollChats, 30_000);
     return () => clearInterval(intervalId);
-  }, [isReady, selectedAccount, user]);
+  }, [isReady, userId, selectedAccount, readChatPage]);
 
   // Load messages on chat selection & mark as read + auto-load AI suggestions
   // depuis le cache (instant) ou via auto-analyze (background ~2-3s)
   useEffect(() => {
-    if (selectedChat) {
+    if (selectedAccount && selectedChat && selectedChatIdRef.current === selectedChat.id) {
       // Clear previous messages immediately to avoid stale content bleed
       setMessages([]);
       setCursor(null);
@@ -1618,7 +1588,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
       // Try to load suggestions from cache instantly (Smart Replies inline)
       const chatId = selectedChat.id;
-      const accountId = selectedChat.account_id;
+      const accountId = selectedChat.account_id || selectedAccount;
       (async () => {
         try {
           const { data: cached } = await supabase
@@ -1673,13 +1643,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         }
       })();
     }
-  }, [selectedChat?.id, fetchMessages]);
+  }, [selectedChat?.id, fetchMessages, selectedAccount]);
 
   // Auto-poll messages every 20s when a chat is selected (était 5s, trop agressif)
   // Skip si l'onglet n'est pas visible (économie de quota Unipile + UX moins
   // saccadée). 20s suffit largement pour la latence acceptable des messages LI.
   useEffect(() => {
-    if (!isReady || !user || !selectedChat || !selectedAccount) return;
+    if (!isReady || !userId || !selectedChat || !selectedAccount) return;
 
     const chatId = selectedChat.id;
     let active = true;
@@ -1755,7 +1725,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       active = false;
       clearInterval(intervalId);
     };
-  }, [isReady, selectedChat?.id, selectedAccount, user]);
+  }, [isReady, selectedChat?.id, selectedAccount, userId]);
 
   // Scroll to bottom helper
 
@@ -1767,25 +1737,30 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   }, [messages, loadingMessages, scrollToBottom]);
 
+  // Le changement de compte est visible dès ce rendu, avant le reset de
+  // l'effet : aucune conversation de l'ancien compte ne traverse cette frame.
+  // Le contexte de l'organisation reste partagé avec les autres canaux.
+  const currentListScope = !!listSessionRef.current?.active && listSessionRef.current.key === scopeKey;
+
   return {
     // Organization
     organizationId,
     // Chat state
-    chats,
-    filteredChats,
-    selectedChat,
+    chats: currentListScope ? chats : [],
+    filteredChats: currentListScope ? filteredChats : [],
+    selectedChat: currentListScope ? selectedChat : null,
     setSelectedChat,
-    messages,
-    loadingChats,
+    messages: currentListScope ? messages : [],
+    loadingChats: currentListScope ? loadingChats : !isReady || !!selectedAccount,
     /** Échec de la dernière lecture de la liste (null si elle a abouti). */
-    chatsError,
-    loadingMessages,
+    chatsError: currentListScope ? chatsError : null,
+    loadingMessages: currentListScope && loadingMessages,
     searchQuery,
     setSearchQuery,
     newMessage,
     setNewMessage,
     sending,
-    hasMore,
+    hasMore: currentListScope && hasMore,
     messagesEndRef,
     messagesContainerRef,
     
@@ -1796,7 +1771,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setSourceFilter,
     responseFilter,
     setResponseFilter,
-    threadCounts,
+    threadCounts: currentListScope ? threadCounts : countThreadStates([]),
     
     // Categories
     chatCategories,
@@ -1835,11 +1810,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     
     // Actions
     fetchChats,
+    removeChatFromList,
     loadMoreChats,
     loadAllChats,
-    hasMoreChats,
-    loadingMoreChats,
-    loadingAllChats,
+    hasMoreChats: currentListScope && hasMoreChats,
+    loadingMoreChats: currentListScope && loadingMoreChats,
+    loadingAllChats: currentListScope && loadingAllChats,
     fetchMessages,
     syncChatHistory,
     sendMessage,

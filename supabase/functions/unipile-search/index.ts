@@ -1496,8 +1496,19 @@ async function handleGetChats(
     
     const data = await response.json();
     if (!response.ok) {
+      // The attendee lookup returns 404 before this person has a conversation.
+      // Only this documented absence is empty: account/route errors and a
+      // disappearing attendee during pagination still report an unavailable read.
+      const detail = typeof data.detail === 'string' ? data.detail : data.message;
+      if (response.status === 404 && !cursor && typeof detail === 'string'
+        && /(?:^|\n)Attendee not found\.?\s*$/i.test(detail.trim())) {
+        return new Response(
+          JSON.stringify({ success: true, chats: [], cursor: null }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       console.warn('Chats attendee lookup failed (status', response.status, '):', data.detail || data.message);
-      // Return 200 with success:false so the frontend gracefully shows "no conversation"
+      // Preserve real lookup failures; an unavailable history is not an empty one.
       return new Response(
         JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur', chats: [] }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1530,11 +1541,11 @@ async function handleGetChats(
   
   console.log('Fetching chats from folders:', folderNames, '| Account:', accountId, '| Cursors:', JSON.stringify(folderCursors));
   
-  const fetchFromFolder = async (folderName: string): Promise<{ items: Record<string, unknown>[]; cursor: string | null }> => {
+  const fetchFromFolder = async (folderName: string): Promise<{ items: Record<string, unknown>[]; cursor: string | null; succeeded: boolean | null }> => {
     // If cursor is explicitly null (not undefined), this folder is exhausted
     if (folderCursors[folderName] === null && Object.prototype.hasOwnProperty.call(folderCursors, folderName)) {
       console.log(`Folder ${folderName}: exhausted (cursor=null), skipping`);
-      return { items: [], cursor: null };
+      return { items: [], cursor: null, succeeded: null };
     }
     
     const folderCursor = folderCursors[folderName]; // undefined on first fetch, string on subsequent
@@ -1556,15 +1567,15 @@ async function handleGetChats(
       const data = await response.json();
       if (!response.ok) {
         console.error(`Error fetching ${folderName}:`, data);
-        return { items: [], cursor: null };
+        return { items: [], cursor: null, succeeded: false };
       }
       
       const items = data.items || [];
       console.log(`Folder ${folderName}: ${items.length} chats, cursor: ${data.cursor || 'null'}`);
-      return { items, cursor: data.cursor || null };
+      return { items, cursor: data.cursor || null, succeeded: true };
     } catch (error) {
       console.error(`Exception fetching ${folderName}:`, error);
-      return { items: [], cursor: null };
+      return { items: [], cursor: null, succeeded: false };
     }
   };
   
@@ -1574,6 +1585,14 @@ async function handleGetChats(
     fetchFromFolder('INBOX_LINKEDIN_RECRUITER'),
     fetchFromFolder('INBOX'),
   ]);
+
+  const requestedFolders = [classicResult, recruiterResult, genericResult].filter(result => result.succeeded !== null);
+  if (requestedFolders.length && !requestedFolders.some(result => result.succeeded)) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Les conversations LinkedIn sont temporairement indisponibles.' }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
   
   // Build next cursors object
   const nextCursors: Record<string, string | null> = {

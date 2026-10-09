@@ -20,7 +20,7 @@ export async function fetchCandidateMessages(organizationId: string, accountId: 
     const cursors = new Set<string>();
     do {
       const { data } = await invokeUnipile({ body: { action: 'get_chats', organization_id: organizationId, account_id: accountId, attendee_provider_id: id, limit: 100, ...(cursor ? { cursor } : {}) } });
-      if (!data.success) { if (cursor) throw new Error('Une partie des conversations est indisponible.'); return; }
+      if (!data.success) throw new Error(cursor ? 'Une partie des conversations est indisponible.' : 'Les conversations LinkedIn sont temporairement indisponibles.');
       lookupSucceeded = true;
       objects(data.chats).forEach(chat => { if (typeof chat.id === 'string') chats.set(chat.id, chat); });
       cursor = typeof data.cursor === 'string' && data.cursor ? data.cursor : undefined;
@@ -37,7 +37,7 @@ export async function fetchCandidateMessages(organizationId: string, accountId: 
       const profile = data.profile as Record<string, unknown>;
       const providerId = typeof profile.provider_id === 'string' ? profile.provider_id : typeof profile.id === 'string' ? profile.id : null;
       if (providerId && !ids.includes(providerId)) await readChats(providerId);
-    } else if (!lookupSucceeded) throw new Error('Les conversations LinkedIn sont temporairement indisponibles.');
+    } else throw new Error('Les conversations LinkedIn sont temporairement indisponibles.');
   }
   if (!lookupSucceeded) throw new Error('Les conversations LinkedIn sont temporairement indisponibles.');
   const messages: Message[] = [];
