@@ -9,7 +9,7 @@ const fixtures = {
     export function useRef(initial){const s=f(),i=s.cursor++;return s.slots[i]??=( {current:initial} );}
     export function useState(initial){const s=f(),i=s.cursor++;if(!(i in s.slots))s.slots[i]=initial;return [s.slots[i],v=>s.slots[i]=typeof v==='function'?v(s.slots[i]):v];}`,
   '@tanstack/react-query': `export function useQuery(options){const s=globalThis.__candidateActionsHookTest;s.queryOptions=options;return s.query;}
-    export function useQueryClient(){return {setQueryData(key,value){const s=globalThis.__candidateActionsHookTest;s.query.data=typeof value==='function'?value(s.query.data):value;},invalidateQueries:async()=>{}};}`,
+    export function useQueryClient(){return {setQueryData(key,value){const s=globalThis.__candidateActionsHookTest;s.query.data=typeof value==='function'?value(s.query.data):value;},cancelQueries:async options=>{globalThis.__candidateActionsHookTest.cancellations.push(options);},invalidateQueries:async()=>{}};}`,
   '@/hooks/useAuthReady': `export const useAuthReady=()=>({user:{id:'user-a'},isReady:true});`,
   '@/hooks/useOrganization': `export const useOrganization=()=>({organizationId:'org-a'});`,
   '@/lib/invokeEdgeFunction': `export const invokeEdgeFunction=async(name,body)=>globalThis.__candidateActionsHookTest.request(name,body);`,
@@ -29,7 +29,7 @@ const { useCandidateActions } = await import(`data:text/javascript;base64,${Buff
 const scope = { candidate_id: 'candidate-a', project_id: 'project-a' };
 const payload = (plans = []) => ({ success: true, plans, channels: [{ service: 'gmail', address: 'recruiter@example.test' }], warnings: [], generation: { estimated: 4, model: 'fixture-model' } });
 function setup(data) {
-  const state = { cursor: 0, slots: [], calls: [], creditCalls: [], query: { data, isError: false, isLoading: false, isFetching: false }, respond: async () => ({ data: payload(), error: null }) };
+  const state = { cursor: 0, slots: [], calls: [], creditCalls: [], cancellations: [], query: { data, isError: false, isLoading: false, isFetching: false }, respond: async () => ({ data: payload(), error: null }) };
   state.request = async (name, body) => { state.calls.push({ name, ...body }); return state.respond(body); };
   state.read = async () => {
     try { state.query.data = await state.queryOptions.queryFn(); state.query.isError = false; state.query.error = null; }
@@ -100,4 +100,45 @@ test('a failed background read retains the last confirmed proposals and known ch
   assert.equal(stale.readError, 'Connexion interrompue : réessayez la lecture.');
   assert.equal(stale.operationError, null);
   assert.equal(state.creditCalls.length, 0);
+});
+
+test('preparation suspends background reads and cancels only this candidate before publishing its result', async () => {
+  const state = setup(payload());
+  state.query.isFetching = true;
+  let start, release;
+  const started = new Promise(resolve => { start = resolve; });
+  state.respond = async () => new Promise(resolve => {
+    release = () => resolve({ data: payload([{ id: 'new-plan', status: 'draft', effects: [{ status: 'prepared' }] }]), error: null });
+    start();
+  });
+  const pending = state.render().generate();
+  await started;
+  const preparing = state.render();
+  assert.equal(preparing.enabled, true);
+  assert.equal(state.queryOptions.enabled, false);
+  assert.equal(preparing.operation.type, 'generate');
+  assert.equal(await preparing.generate(), null);
+  release();
+  await pending;
+  const ready = state.render();
+  assert.equal(state.queryOptions.enabled, true);
+  assert.equal(ready.operation, null);
+  assert.equal(ready.plans[0].id, 'new-plan');
+  assert.deepEqual(state.creditCalls, ['candidate_actions']);
+  assert.deepEqual(state.cancellations, [
+    { queryKey: ['candidate-actions', ready.scopeKey], exact: true },
+    { queryKey: ['candidate-actions', ready.scopeKey], exact: true },
+  ]);
+});
+
+test('no proposal is a completed preparation result, not a failure or an automatic retry', async () => {
+  const state = setup(payload());
+  const result = await state.render().generate();
+  assert.deepEqual(result.plans, []);
+  const ready = state.render();
+  assert.equal(ready.operation, null);
+  assert.equal(ready.operationError, null);
+  assert.equal(state.queryOptions.enabled, true);
+  assert.equal(state.creditCalls.length, 1);
+  assert.deepEqual(state.calls.map(call => call.action), ['generate']);
 });

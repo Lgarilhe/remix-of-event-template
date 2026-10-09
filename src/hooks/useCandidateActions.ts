@@ -26,9 +26,10 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
   const [unverified, setUnverified] = useState<Record<string, string[]>>({});
   const inFlight = useRef(new Set<string>());
   const enabled = isReady && !!user && !!fullScope?.candidate_id;
+  const generating = operation?.scope === scopeKey && operation.type === 'generate';
   const query = useQuery({
     queryKey,
-    enabled,
+    enabled: enabled && !generating,
     staleTime: 30_000,
     refetchInterval: 60_000,
     retry: false,
@@ -73,8 +74,11 @@ export function useCandidateActions(scope: Omit<CandidateActionScope, 'organizat
     // Cette garde protège aussi les appels autres que le bouton de l'interface.
     if (!query.data?.success) return Promise.resolve(null);
     return run('generate', undefined, async () => {
+      // Une relecture déjà partie ne doit pas remplacer le résultat de ce clic.
+      await queryClient.cancelQueries({ queryKey, exact: true });
       const response = await invokeWithCredits<ActionsPayload>('candidate-actions', 'candidate_actions', { action: 'generate', ...fullScope }, { modelOverride: query.data?.generation?.model, description: 'Préparer les prochaines actions du candidat' });
       if (response.error || !response.data?.success) throw response.error || new Error(response.data?.error || 'Les prochaines actions n’ont pas pu être préparées.');
+      await queryClient.cancelQueries({ queryKey, exact: true });
       queryClient.setQueryData(queryKey, response.data);
       return response.data;
     });

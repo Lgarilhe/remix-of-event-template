@@ -32,6 +32,16 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-09 — BUG — Retour visible après préparation des actions candidat
+
+**Contexte** : un clic sur « Préparer les prochaines actions » pouvait sembler sans effet. Une relecture en arrière-plan désactivait le bouton ; une préparation réussie sans nouveau brouillon (aucune proposition, proposition ignorée ou actions déjà terminées) n’ouvrait aucun retour. Ces chemins sont reproduits avec des transports simulés ; le chemin exact du clic signalé en production n’est pas établi.
+**Correction** : fenêtre ouverte dès le clic, avant la vérification des crédits ; progression puis relecture ou résultat explicite, erreurs avec réessai. La fenêtre peut être fermée pendant l’attente sans réouverture tardive ; retour du focus vers un contrôle disponible. Les propositions ignorées ne sont restaurées qu’après clic explicite. Une relecture n’empêche plus la préparation ; ses réponses périmées sont annulées pour cette portée, et les relectures automatiques sont suspendues pendant la génération. Verrous synchrones contre les doubles clics. Aucun envoi automatique ajouté.
+**Validation locale** : huit suites ciblées passent, dont cinq scénarios du vrai hook ; lint des fichiers modifiés sans diagnostic, onze erreurs TypeScript héritées inchangées, build réussi. Dix nouveaux parcours `@critical` sur les vrais composants et hook sont ajoutés à la CI bloquante : Guillaume (double clic et relecture tardive), Claire (vide, ignoré, terminé), Théo (panne et crédits, reprise sans envoi), Sophie (320/390 px, fermeture et focus). Le navigateur local reste bloqué par `EPERM` ; validation navigateur requise avant fusion.
+**Impact** : interface et hook partagés entre messagerie et fiches candidat. Aucun changement serveur, schéma ou moteur d’exécution ; aucun appel réel au modèle ou envoi candidat pendant les tests.
+**Refs** : branche `codex/fix-action-preparation-feedback` ; `e2e/flows/candidate-actions-preparation.spec.ts`.
+
+---
+
 ## 2026-10-08 — BUG — Calibrage bloqué malgré les mots-clés Recruiter
 
 **Contexte** : une requête Recruiter enregistrée de 330 caractères était refusée par le plafond commun de 200 caractères. La recherche interactive tronquait également cette requête. Un rayon sans lieu sélectionné et des suggestions de secteurs résiduelles bloquaient ensuite les filtres modifiés manuellement.

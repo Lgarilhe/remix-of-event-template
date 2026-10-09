@@ -52,6 +52,9 @@ export function CandidateActions({ controller }: { controller: CandidateActionsC
 
 function CandidateActionsContent({ controller }: { controller: CandidateActionsController }) {
   const [dialog, setDialog] = useState<{ planId: string; view: 'sources' | 'prepare' | 'result' } | null>(null);
+  const [preparation, setPreparation] = useState<'pending' | 'empty' | 'dismissed' | 'completed' | 'error' | null>(null);
+  const preparationVisible = useRef(false);
+  const preparationInFlight = useRef(false);
   const [edits, setEdits] = useState<Record<string, CandidateActionEdits>>({});
   const [editedRevisions, setEditedRevisions] = useState<Record<string, number>>({});
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -124,9 +127,26 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
     } else setDialog({ planId: result.id, view: 'result' });
   }
   async function prepareAgain() {
-    const result = await controller.generate();
+    if (busy || preparationInFlight.current) return;
+    preparationInFlight.current = true;
+    preparationVisible.current = true;
+    setPreparation('pending');
+    setDialog(null);
+    const result = await controller.generate().finally(() => { preparationInFlight.current = false; });
+    // Fermer l'attente laisse la préparation se terminer dans la conversation,
+    // sans rouvrir une fenêtre que la personne vient de quitter.
+    if (!preparationVisible.current) return;
     const fresh = result?.plans.find(plan => plan.status === 'draft');
-    if (fresh) setDialog({ planId: fresh.id, view: 'prepare' });
+    const active = fresh ?? result?.plans.find(plan => plan.status !== 'dismissed' && !candidateActionCompleted(plan));
+    if (active) {
+      preparationVisible.current = false;
+      setPreparation(null);
+      setDialog({ planId: active.id, view: fresh ? 'prepare' : 'result' });
+    } else setPreparation(!result ? 'error' : result.plans.some(plan => plan.status === 'dismissed') ? 'dismissed' : result.plans.some(candidateActionCompleted) ? 'completed' : 'empty');
+  }
+  function closePreparation() {
+    preparationVisible.current = false;
+    setPreparation(null);
   }
   function planCard(plan: CandidateActionPlan, secondary = false) {
     const needsReview = candidateActionNeedsReview(plan) || plan.status === 'needs_review' || controller.unverifiedPlanIds.includes(plan.id);
@@ -145,19 +165,19 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
   return <section className="mt-4 space-y-2" aria-label="Prochaines actions" data-component="candidate-actions">
     {controller.loading && <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Chargement des actions enregistrées…</p>}
     {controller.readError && <div className="space-y-2 rounded-xl border border-border-strong bg-muted p-4 text-sm leading-relaxed text-foreground" role="alert"><p>{controller.readError}</p>{controller.contextLoaded && <p className="text-xs text-foreground-secondary">Les derniers contenus chargés restent disponibles.</p>}<Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.fetching} onClick={() => void controller.refresh()}>Réessayer la lecture</Button></div>}
-    {controller.operationError && <div className="space-y-2 rounded-xl border border-border-strong bg-muted p-4 text-sm leading-relaxed text-foreground" role="alert"><p>{controller.operationError.message}</p>{controller.operationError.type === 'generate' ? <><Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.loading || controller.fetching || !controller.contextLoaded} loading={controller.operation?.type === 'generate'} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>Réessayer la préparation</Button>{controller.generation && <p className="text-xs text-foreground-secondary">Environ {controller.generation.estimated} crédits IA</p>}</> : <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier l’état enregistré</Button>}</div>}
+    {controller.operationError && <div className="space-y-2 rounded-xl border border-border-strong bg-muted p-4 text-sm leading-relaxed text-foreground" role="alert"><p>{controller.operationError.message}</p>{controller.operationError.type === 'generate' ? <><Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.loading || !controller.contextLoaded} loading={controller.operation?.type === 'generate'} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>Réessayer la préparation</Button>{controller.generation && <p className="text-xs text-foreground-secondary">Environ {controller.generation.estimated} crédits IA</p>}</> : <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier l’état enregistré</Button>}</div>}
     {controller.warnings.length > 0 && <Collapsible className="space-y-1"><div className="flex flex-wrap items-center gap-x-2 text-xs text-foreground-secondary"><ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Informations du contexte à vérifier">{candidateActionWarningLabels(controller.warnings).map(label => <li key={label}>{label}</li>)}</ul><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-1 px-0">Voir les précisions<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger></div><CollapsibleContent className="space-y-2 rounded-lg bg-muted p-3 text-xs leading-relaxed text-foreground-secondary">{controller.warnings.map(warning => <p key={warning}>{warning}</p>)}</CollapsibleContent></Collapsible>}
     {primaryPlan && planCard(primaryPlan)}
     {otherPlans.length > 0 && <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="min-h-11 gap-2">Autres propositions ({otherPlans.length})<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent className="space-y-2">{otherPlans.map(plan => planCard(plan, true))}</CollapsibleContent></Collapsible>}
     {!controller.loading && controller.contextLoaded && next.length === 0 && controller.operationError?.type !== 'generate' && <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Button variant="outline" size="sm" className="min-h-11" loading={controller.operation?.type === 'generate'} disabled={busy || controller.loading || controller.fetching || !controller.contextLoaded} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>{next.length ? 'Préparer une nouvelle proposition' : 'Préparer les prochaines actions'}</Button>
+      <Button variant="outline" size="sm" className="min-h-11" loading={controller.operation?.type === 'generate'} disabled={busy || controller.loading || !controller.contextLoaded} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>{controller.operation?.type === 'generate' ? 'Préparation en cours…' : 'Préparer les prochaines actions'}</Button>
       {controller.generation && <p className="text-xs text-muted-foreground">Environ {controller.generation.estimated} crédits IA</p>}
     </div>}
     <Collapsible>
       <CollapsibleTrigger asChild><Button ref={refreshButton} variant="ghost" size="sm" className="min-h-11 gap-2 px-0">Détails et réglages<ChevronDown className="h-4 w-4" aria-hidden="true" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 rounded-lg bg-muted p-3">
         <div className="flex flex-wrap items-center gap-2"><Button variant="ghost" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.fetching} onClick={() => void controller.refresh()}>Actualiser les actions</Button>
-          {next.length > 0 && controller.operationError?.type !== 'generate' && <div className="space-y-1"><Button variant="outline" size="sm" className="min-h-11" loading={controller.operation?.type === 'generate'} disabled={busy || controller.loading || controller.fetching || !controller.contextLoaded} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>Préparer une nouvelle proposition</Button>{controller.generation && <p className="text-xs text-muted-foreground">Environ {controller.generation.estimated} crédits IA</p>}</div>}
+          {next.length > 0 && controller.operationError?.type !== 'generate' && <div className="space-y-1"><Button variant="outline" size="sm" className="min-h-11" loading={controller.operation?.type === 'generate'} disabled={busy || controller.loading || !controller.contextLoaded} onClick={event => { triggerRef.current = event.currentTarget; void prepareAgain(); }}>Préparer une nouvelle proposition</Button>{controller.generation && <p className="text-xs text-muted-foreground">Environ {controller.generation.estimated} crédits IA</p>}</div>}
         </div>
         {next.filter(plan => plan.status === 'draft' && !controller.unverifiedPlanIds.includes(plan.id)).map(plan => <div key={plan.id} className="flex items-center justify-between gap-3"><p className="min-w-0 line-clamp-2 break-words text-sm text-foreground">{plan.title}</p><Button variant="ghost" size="sm" className="min-h-11 shrink-0 text-muted-foreground" aria-label={`Ignorer la proposition : ${plan.title}`} disabled={busy} onClick={async () => {
           if (await controller.setDismissed(plan, true)) requestAnimationFrame(() => refreshButton.current?.focus());
@@ -175,6 +195,32 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
     </Collapsible>}
       </CollapsibleContent>
     </Collapsible>
+    <Dialog open={preparation !== null} onOpenChange={opened => { if (!opened) closePreparation(); }}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto [&>button]:h-11 [&>button]:w-11" onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (dialog) return;
+        const trigger = triggerRef.current;
+        (trigger?.isConnected && !trigger.disabled ? trigger : refreshButton.current)?.focus();
+      }}>
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle>{preparation === 'empty' ? 'Aucune nouvelle action à proposer' : preparation === 'dismissed' ? 'Une proposition a déjà été ignorée' : preparation === 'completed' ? 'Les actions sont déjà terminées' : preparation === 'error' ? 'La préparation n’a pas abouti' : 'Préparation des actions'}</DialogTitle>
+          <DialogDescription aria-live="polite" aria-atomic="true">{preparation === 'pending' ? 'Les échanges et le contexte du candidat sont analysés pour préparer les contenus à relire.' : preparation === 'empty' ? 'Le contexte disponible ne fait pas ressortir de nouvelle action pertinente pour le moment.' : preparation === 'dismissed' ? 'Une proposition enregistrée a été ignorée. Vous pouvez la revoir si elle vous est utile.' : preparation === 'completed' ? 'Des actions ont déjà été réalisées pour ce candidat. Leur résultat reste disponible.' : 'Vous pouvez réessayer lorsque le problème est résolu.'}</DialogDescription>
+        </DialogHeader>
+        {preparation === 'pending' && <div className={texturedCard('teal', 'flex items-center gap-3 rounded-xl p-4 text-sm')} role="status"><Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden="true" />Analyse du contexte en cours…</div>}
+        {preparation === 'error' && <p className="rounded-lg border border-border-strong bg-muted p-3 text-sm text-foreground" role="alert">{controller.operationError?.message ?? 'La préparation n’a pas pu démarrer. Réessayez.'}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" className="h-auto min-h-11 whitespace-normal py-2" onClick={closePreparation}>{preparation === 'pending' ? 'Continuer dans la conversation' : 'Revenir à la conversation'}</Button>
+          {preparation === 'error' && <Button variant="primary" className="min-h-11" disabled={busy || !controller.contextLoaded} onClick={() => void prepareAgain()}>Réessayer la préparation</Button>}
+          {preparation === 'dismissed' && dismissed[0] && <Button variant="primary" className="min-h-11" disabled={busy} loading={controller.operation?.type === 'restore'} onClick={async () => {
+            const restored = await controller.setDismissed(dismissed[0], false);
+            if (!preparationVisible.current) return;
+            if (restored) { closePreparation(); setDialog({ planId: restored.id, view: 'prepare' }); }
+            else setPreparation('error');
+          }}>Revoir la suggestion</Button>}
+          {preparation === 'completed' && results[0] && <Button variant="primary" className="min-h-11" onClick={() => { closePreparation(); setDialog({ planId: results[0].id, view: 'result' }); }}>Voir le résultat</Button>}
+        </div>
+      </DialogContent>
+    </Dialog>
     <Dialog open={!!detail} onOpenChange={opened => { if (!opened && !busy) setDialog(null); }}>
       {detail && (((editable && dialog?.view === 'prepare') || sendingReview) && !sourcesView ? <GuidedActionReview
         key={detail.id}
@@ -252,7 +298,7 @@ function CandidateActionsContent({ controller }: { controller: CandidateActionsC
           <div className="flex flex-wrap justify-end gap-2">
             {sourcesView && editable ? <><Button variant="ghost" size="sm" className="min-h-11" disabled={busy} onClick={async () => { if (await controller.setDismissed(detail, true)) setDialog(null); }}>Ignorer la suggestion</Button><Button variant="primary" size="sm" className="min-h-11" disabled={busy} onClick={() => setDialog({ planId: detail.id, view: 'prepare' })}>Préparer</Button></> : <>
               <Button variant="ghost" size="sm" className="min-h-11" disabled={busy} onClick={() => setDialog(null)}>{completed ? 'Fermer le résultat' : !editable ? 'Fermer le suivi' : 'Annuler'}</Button>
-              {detail.status === 'needs_review' && !candidateActionNeedsReview(detail) && !controller.unverifiedPlanIds.includes(detail.id) ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || controller.fetching} loading={controller.operation?.type === 'generate'} onClick={() => void prepareAgain()}>Préparer à nouveau</Button> : uncertain ? <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier le résultat</Button> : editable ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || staleEdits} onClick={() => setDialog({ planId: detail.id, view: 'prepare' })}>Voir les actions</Button> : !completed && candidateActionCanResume(detail) && <Button variant="primary" size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" disabled={!valid || busy || staleEdits} loading={controller.operation?.type === 'execute'} onClick={() => void confirm()}>{candidateActionConfirmLabel(detail)}</Button>}
+              {detail.status === 'needs_review' && !candidateActionNeedsReview(detail) && !controller.unverifiedPlanIds.includes(detail.id) ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || !controller.contextLoaded} loading={controller.operation?.type === 'generate'} onClick={() => void prepareAgain()}>Préparer à nouveau</Button> : uncertain ? <Button variant="outline" size="sm" className="min-h-11" disabled={busy || controller.fetching} onClick={() => void controller.refresh()}>Vérifier le résultat</Button> : editable ? <Button variant="primary" size="sm" className="min-h-11" disabled={busy || staleEdits} onClick={() => setDialog({ planId: detail.id, view: 'prepare' })}>Voir les actions</Button> : !completed && candidateActionCanResume(detail) && <Button variant="primary" size="sm" className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" disabled={!valid || busy || staleEdits} loading={controller.operation?.type === 'execute'} onClick={() => void confirm()}>{candidateActionConfirmLabel(detail)}</Button>}
             </>}
           </div>
         </div>
