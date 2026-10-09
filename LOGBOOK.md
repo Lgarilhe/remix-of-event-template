@@ -32,6 +32,16 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-09 — BUG — Génération des propositions candidat orientée vers un résultat vide
+
+**Contexte** : l’utilisateur constate systématiquement « Aucune nouvelle action à proposer ». L’instruction du modèle demandait littéralement un appel avec `{"plans":[]}`. Cinq générations récentes observées dans les journaux du 9 octobre renvoient chacune 33 tokens de sortie, cohérents avec ces réponses vides ; leur contenu n’est pas journalisé. Une autre perte est reproduite : la demande finale d’un message long disparaissait des extraits envoyés au modèle.
+**Correction** : consigne de remplir les propositions utiles et sourcées, en donnant priorité aux demandes visibles et aux réponses qui les suivent. Une mission absente ou un historique partiel ne supprime pas un besoin attesté ; les échanges clos, refus et absences de besoin peuvent toujours produire zéro action. Date serveur explicite `asOf`. Extraits toujours limités à 900 caractères, conservant le début et la fin avec marqueur de coupure. Six compteurs de diagnostic après validation, sans texte, identité ou référence candidat.
+**Validation** : 40 tests de génération passent, dont quatre scénarios synthétiques à travers le vrai adaptateur avec transport simulé : Claire (demande en fin de message, hors mission), Théo (réponse déjà faite), Guillaume (entretien confirmé sans canal), Sophie (refus). Huit suites ciblées passent ; lint sans diagnostic, build réussi et onze diagnostics TypeScript hérités inchangés. Revue indépendante favorable. Ces tests vérifient le contrat, les extraits et les validations ; ils ne mesurent pas la pertinence effective du modèle. Aucun appel réel au modèle pendant les tests.
+**Impact** : fonction `candidate-actions`, sans changement de schéma, de cibles, d’authentification ou d’exécution. Aucune proposition de remplacement artificielle ni relance automatique. La fenêtre de 40 sources reste inchangée. Déploiement et vérification du module serveur nécessaires après fusion.
+**Refs** : branche `codex/fix-candidate-action-generation` ; `tests/c1/candidate-actions-generation.test.mjs`.
+
+---
+
 ## 2026-10-09 — BUG — Retour visible après préparation des actions candidat
 
 **Contexte** : un clic sur « Préparer les prochaines actions » pouvait sembler sans effet. Une relecture en arrière-plan désactivait le bouton ; une préparation réussie sans nouveau brouillon (aucune proposition, proposition ignorée ou actions déjà terminées) n’ouvrait aucun retour. Ces chemins sont reproduits avec des transports simulés ; le chemin exact du clic signalé en production n’est pas établi.
