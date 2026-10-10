@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   addDays,
   differenceInMinutes,
@@ -59,6 +60,7 @@ import { plural } from '@/lib/plural';
 
 type CalendarView = 'week' | 'day' | 'list';
 const VIEW_KEY = 'calendar-view-mode';
+const CalendarDemo = React.lazy(() => import('@/components/calendar/CalendarDemo'));
 
 /** Affichage mémorisé ; sur téléphone, la liste par défaut (A-49). */
 function readStoredView(): CalendarView {
@@ -80,6 +82,14 @@ function durationLabel(minutes: number): string {
 }
 
 export default function CalendarPage() {
+  const [params] = useSearchParams();
+  if (params.get('demo') === '1') {
+    return <React.Suspense fallback={<Skeleton className="m-6 h-64 rounded-xl" />}><CalendarDemo /></React.Suspense>;
+  }
+  return <LiveCalendarPage />;
+}
+
+function LiveCalendarPage() {
   const { user } = useAuthReady();
   const [view, setViewState] = useState<CalendarView>(readStoredView);
   const setView = (next: CalendarView) => {
@@ -215,6 +225,9 @@ export default function CalendarPage() {
         subtitle={subtitle}
         actions={
           <>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/calendar?demo=1">Voir un exemple</Link>
+            </Button>
             <SegmentedControl
               aria-label="Affichage"
               size="default"
@@ -335,7 +348,7 @@ export default function CalendarPage() {
           illustration="cafe"
           title={`Rien de prévu ${periodNoun}`}
           headingLevel={2}
-          description="Les entretiens, les InMails programmés et les étapes de séquence s'afficheront ici. Les rendez-vous pris via Calendly arrivent d'eux-mêmes."
+          description="Les entretiens saisis dans Konekt ou pris via Calendly s'affichent ici. Les rendez-vous Outlook et Google Agenda ne sont pas encore importés automatiquement."
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => openCreate()}>
               <Plus aria-hidden="true" />
