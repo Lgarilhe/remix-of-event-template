@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { CalendarDemoProvider } from '@/components/calendar/CalendarDemoProvider';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
 import { GoShortcuts } from '@/components/layout/GoShortcuts';
 import { AssistantLauncher } from '@/components/agent/AssistantLauncher';
@@ -43,6 +44,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
+      <CalendarDemoProvider>
       <a href="#main-content" className="skip-to-content">
         Aller au contenu principal
       </a>
@@ -82,6 +84,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* Bulle ronde de l'assistant, en bas à droite (Ctrl K ouvre le même tiroir) */}
       <AssistantLauncher />
+      </CalendarDemoProvider>
     </SidebarProvider>
   );
 };

@@ -14,6 +14,18 @@ export function useCalendarEvents() {
 }
 export const groupEventsByDay = () => ({});
 export const useAuthReady = () => ({ user: null, isReady: true });
+export function useUpcomingInterviews() {
+  const rows = new URLSearchParams(window.location.search).has('upcoming') ? [{
+    id: 'native-session', status: 'scheduled',
+    event_start_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+    event_end_at: new Date(Date.now() + 50 * 60_000).toISOString(),
+    event_location: 'https://meet.google.com/real-fixture',
+    event_name: 'Entretien de Samira', candidate_name: 'Samira Legrand',
+    candidate_profile_id: 'samira-fixture', project_id: 'native-mission', job_title: 'Développeuse',
+  }] : [];
+  return { rows, status: 'ok', stale: false, retry: () => {} };
+}
+export const useMissionNames = () => () => 'Mission de test';
 /** Échec explicite si une régression tente de lire/écrire la base ou des crédits. */
 export const supabase = new Proxy({}, {
   get(_target, key) { throw new Error(`Accès Supabase inattendu dans l’aperçu : ${String(key)}`); },
