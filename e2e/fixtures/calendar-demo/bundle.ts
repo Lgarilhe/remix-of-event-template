@@ -19,6 +19,8 @@ export async function calendarDemoHarnessHtml() {
       '@/components/calendar/CreateEventModal': path.join(fixture, 'mocks.tsx'),
       '@/hooks/useCalendarEvents': path.join(fixture, 'mocks.tsx'),
       '@/hooks/useAuthReady': path.join(fixture, 'mocks.tsx'),
+      '@/hooks/sidebar/useUpcomingInterviews': path.join(fixture, 'mocks.tsx'),
+      '@/hooks/sidebar/useMyMissions': path.join(fixture, 'mocks.tsx'),
       '@/integrations/supabase/client': path.join(fixture, 'mocks.tsx'),
       '@': path.join(root, 'src'),
     },

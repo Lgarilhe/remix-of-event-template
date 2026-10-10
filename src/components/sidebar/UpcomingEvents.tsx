@@ -7,14 +7,15 @@
  * vers l'agenda. Cliquer une ligne ouvre la fiche du candidat (la page de
  * l'entretien s'il n'est pas rattaché à un candidat). De 15 minutes avant le
  * début jusqu'à la fin, la ligne propose en dessous l'assistant d'entretien, la
- * visio et la grille (une seule ligne d'icônes). Section masquée quand rien
- * n'est prévu.
+ * visio et la grille (une seule ligne d'icônes). Sans rendez-vous prévu,
+ * un lien permet d'essayer les exemples locaux.
  *
  * La lecture est celle de l'alerte de début d'entretien (useUpcomingInterviews).
  */
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, Ellipsis } from 'lucide-react';
+import { CalendarClock, Ellipsis, Play } from 'lucide-react';
+import { useCalendarDemo } from '@/components/calendar/CalendarDemoProvider';
 import { useUpcomingInterviews } from '@/hooks/sidebar/useUpcomingInterviews';
 import { useMissionNames } from '@/hooks/sidebar/useMyMissions';
 import { useNow } from '@/hooks/sidebar/useNow';
@@ -31,8 +32,10 @@ import { SidebarSection } from './SidebarSection';
 import { SidebarRow } from './SidebarRow';
 import { InterviewActionButtons } from './InterviewActionButtons';
 import { SIDEBAR_GHOST_CLASS } from './sidebarButtonClass';
+import { UpcomingInterviewExamples } from './UpcomingInterviewExamples';
 
 export function UpcomingEvents() {
+  const demo = useCalendarDemo();
   const nowMs = useNow(60_000);
   const now = new Date(nowMs);
   const navigate = useNavigate();
@@ -74,24 +77,30 @@ export function UpcomingEvents() {
     );
   });
 
-  // Même règle que SidebarSection : rien pendant le chargement ni quand rien n'est prévu,
-  // et alors ni bordure ni marge non plus.
-  if (status === 'loading' || (status === 'ok' && upcoming.length === 0)) return null;
+  // Une démonstration déjà ouverte reste disponible même si la lecture réelle attend.
+  if (status === 'loading' && !demo.active) return null;
+  const showReal = status !== 'loading' && (status !== 'ok' || upcoming.length > 0);
 
   return (
     <div className="max-h-[45vh] shrink-0 overflow-y-auto border-t border-sidebar-border pt-1">
-      <SidebarSection
+      {(!demo.active || showReal) && <SidebarSection
         id="upcoming-events"
         title="Événements à venir"
         state={status}
         stale={stale}
         onRetry={retry}
         isEmpty={upcoming.length === 0}
+        hideWhenEmpty={false}
+        emptyText="Aucun événement à venir."
         errorText="Impossible de charger vos événements."
-        footer={<SidebarRow leading={<Ellipsis />} title="Tout afficher" to="/calendar" muted />}
+        footer={<>
+          {showReal && <SidebarRow leading={<Ellipsis />} title="Tout afficher" to="/calendar" muted />}
+          {!demo.active && <SidebarRow leading={<Play />} title="Voir un exemple" onSelect={demo.startDemo} muted />}
+        </>}
       >
         {items}
-      </SidebarSection>
+      </SidebarSection>}
+      <UpcomingInterviewExamples hasRealEvents={showReal} />
     </div>
   );
 }
