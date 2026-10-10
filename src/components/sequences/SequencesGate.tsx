@@ -1,8 +1,9 @@
 // Refonte des séquences (lot 5c-2) : garde des routes /sequences et
 // /sequences/:id, placée avant la mise en page.
 //
-// Interrupteur éteint (défaut jusqu'au lot 5h) : renvoi vers la liste des
-// missions, où vivent les séquences aujourd'hui, sans monter la page.
+// Interrupteur éteint (secours ?sequences-v2=0 ou clé à '0', jusqu'au lot 5j ;
+// allumé par défaut depuis le lot 5h) : renvoi vers la liste des missions, où
+// vivent les séquences de l'ancien parcours, sans monter la page.
 // ?sequences-v2=1 allume et ?sequences-v2=0 éteint dès ce rendu (pas
 // d'aller-retour le temps que l'effet écrive l'interrupteur) ; le paramètre
 // quitte ensuite l'adresse.

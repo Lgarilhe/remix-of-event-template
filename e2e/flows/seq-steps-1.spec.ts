@@ -14,7 +14,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { test as base, expect } from '../fixtures';
-import { E2E, authStorageKey } from '../helpers/env';
+import { E2E, authStorageKey, pinLegacySequences } from '../helpers/env';
 import { admin, seedMission, signIn } from '../helpers/supabase-admin';
 
 interface Space {
@@ -183,6 +183,11 @@ async function openStepSettings(page: Page, order: number, other: number) {
 /** Liste « Étape suivante » du panneau de réglage (onglet Visuel). */
 const nextStepSelect = (page: Page) =>
   page.getByText('Vers quelle étape aller après celle-ci').locator('xpath=preceding-sibling::*[@role="combobox"][1]');
+
+// Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+test.beforeEach(async ({ context }) => {
+  await pinLegacySequences(context);
+});
 
 // Quitter l'éditeur avec des changements non enregistrés ouvre la
 // confirmation du navigateur (beforeunload) : acceptée, la navigation suit.

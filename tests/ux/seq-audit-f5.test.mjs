@@ -354,10 +354,11 @@ test('SEQ-073 — l’auto-pause d’une séquence est inventoriée et compte da
   assert.match(autoPause, /type: 'error',/);
   assert.match(autoPause, /title: 'Séquence mise en pause automatiquement',/);
   const header = block(read('src/lib/notificationKinds.ts'), '/**', '*/');
-  assert.match(header, /\| process-sequences \(auto-pause, trop d'échecs\)\s+\| error\s+\| Séquence mise en pause automatiquement \| \/missions\/…\?tab=outreach ou \/missions \| sequence_auto_pause \| action \|/);
+  // Lot 5h : une séquence sans mission mène à sa page (/sequences/<id>), plus à /missions.
+  assert.match(header, /\| process-sequences \(auto-pause, trop d'échecs\)\s+\| error\s+\| Séquence mise en pause automatiquement \| \/missions\/…\?tab=outreach ou \/sequences\/… \| sequence_auto_pause \| action \|/);
   const row = { type: 'error', link: '/missions/p1?tab=outreach', metadata: { source: 'sequence_auto_pause', sequence_id: 's1' } };
   assert.equal(kinds.notificationKind(row), 'action');
-  assert.equal(kinds.isActionable({ ...row, link: '/missions' }), true);
+  assert.equal(kinds.isActionable({ ...row, link: '/sequences/s1' }), true);
 });
 
 test('SEQ-165 — types générés : compteurs d’inscriptions et rôle collaborateur', () => {

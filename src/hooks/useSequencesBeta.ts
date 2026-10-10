@@ -1,7 +1,7 @@
 // Refonte des séquences (lot 5c-2) : état de l'interrupteur des pages
 // Séquences, partagé par la garde des routes, la mise en page, la barre
 // latérale, la palette et les raccourcis (magasin de src/lib/sequencesBeta.ts).
-// Rendu serveur : valeur par défaut (éteint).
+// Rendu serveur : valeur par défaut (allumé depuis le lot 5h).
 import { useEffect, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {

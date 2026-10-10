@@ -147,6 +147,8 @@ async function alertSiblingStopFailure(
     candidateName: string | null;
     sequenceId: string | null;
     enrollmentIds: string[];
+    /** Identifiant du candidat au /pipeline, pour une alerte sans séquence (chemin LinkedIn). */
+    candidateId?: string | null;
   }>,
 ): Promise<void> {
   for (const alert of alerts) {
@@ -173,7 +175,15 @@ async function alertSiblingStopFailure(
         type: 'action',
         title: 'Relances non arrêtées après une réponse',
         body: `${alert.candidateName || 'Le candidat'} a répondu, mais ses autres séquences ou InMails programmés n'ont pas pu être arrêtés. Un nouvel essai automatique est en cours : vérifiez ses inscriptions pour qu'aucune relance ne parte.`,
-        link: projectId ? `/missions/${projectId}?tab=outreach` : '/missions',
+        // Lot 5h : sans mission, la page de la séquence au lieu de /missions. Sans
+        // séquence (InMails seuls, y compris ceux d'une mission : la mission ne
+        // vient que de la séquence) : la fiche du candidat (décision du
+        // 07/10/2026), que l'écran Séquences ne montre pas.
+        link: projectId
+          ? `/missions/${projectId}?tab=outreach`
+          : alert.sequenceId
+            ? `/sequences/${alert.sequenceId}`
+            : alert.candidateId ? `/pipeline?candidate=${encodeURIComponent(alert.candidateId)}` : '/pipeline',
         metadata: {
           source: SIBLING_STOP_FAILED_SOURCE,
           event_key: eventKey,
@@ -2056,16 +2066,40 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       if (membersError) console.warn('[unipile-webhook] sibling stop alert: linked members lookup failed:', membersError);
       const members = (accountMembers ?? []) as Array<{ user_id: string; organization_id: string | null }>;
       if (accountInMailsFailed) for (const m of members) if (m.organization_id) stopFailedOrgs.add(m.organization_id);
-      await alertSiblingStopFailure(supabase, eventKey, [...stopFailedOrgs].map((orgId) => {
+      const alerts = [];
+      for (const orgId of stopFailedOrgs) {
         const orgRows = anchorRows.filter((e) => e.organization_id === orgId);
-        return {
+        let candidateId = (inmailMatches ?? []).find((m) => m.organization_id === orgId)?.recipient_profile_id;
+        // Un InMail seulement programmé peut porter un identifiant Recruiter
+        // différent de l'expéditeur. Résoudre sa fiche pour l'alerte seulement :
+        // il ne doit pas devenir une preuve de contact envoyé dans les ancres.
+        if (orgRows.length === 0 && !candidateId && resolvedAltIds.length > 0) {
+          try {
+            const { data: pendingInMails, error: pendingError } = await supabase
+              .from('inmail_queue')
+              .select('recipient_profile_id')
+              .eq('organization_id', orgId)
+              .eq('account_id', account_id)
+              .in('status', ['pending', 'scheduled'])
+              .in('recipient_profile_id', [senderId, ...resolvedAltIds])
+              .limit(1);
+            if (pendingError) console.warn('[unipile-webhook] sibling stop alert: candidate lookup failed:', pendingError);
+            else candidateId = pendingInMails?.[0]?.recipient_profile_id;
+          } catch (e) {
+            console.warn('[unipile-webhook] sibling stop alert: candidate lookup failed:', e);
+          }
+        }
+        alerts.push({
           organizationId: orgId,
           userIds: [...members.filter((m) => m.organization_id === orgId).map((m) => m.user_id), ...orgRows.map((e) => e.created_by)],
           candidateName: orgRows[0]?.profile_name || payload.sender?.attendee_name || null,
           sequenceId: orgRows[0]?.sequence_id ?? null,
           enrollmentIds: orgRows.map((e) => e.id),
-        };
-      }));
+          // Sans séquence : l'identifiant de l'InMail au /pipeline, sinon l'expéditeur.
+          candidateId: candidateId ?? senderId ?? null,
+        });
+      }
+      await alertSiblingStopFailure(supabase, eventKey, alerts);
     }
     throw failures[0];
   }
@@ -2178,7 +2212,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           type: 'new_message',
           title: `Nouveau message de ${candidateName}`,
           body: chatId ? `Vous avez reçu un nouveau message LinkedIn` : null,
-          // /outreach est une route legacy (redirigée vers /missions, query perdue).
+          // /outreach est une route legacy (redirigée vers /sequences depuis le lot 5h, query perdue).
           link: chatId ? `/inbox?chatId=${encodeURIComponent(chatId)}` : '/inbox',
           metadata,
         });
@@ -2660,7 +2694,8 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
           type: 'new_message',
           title: `Nouveau message de ${candidateName}`,
           body: 'Réponse reçue par e-mail : la séquence est arrêtée pour ce candidat, aucune relance ne partira.',
-          link: projectId ? `/missions/${projectId}?tab=outreach` : '/missions',
+          // Lot 5h : sans mission, la page de la séquence au lieu de /missions.
+          link: projectId ? `/missions/${projectId}?tab=outreach` : `/sequences/${primary.sequence_id}`,
           metadata: {
             is_candidate: true,
             channel: 'email',
@@ -2838,7 +2873,8 @@ async function handleBounce(supabase: SupabaseClient, accountId: string, payload
             type: 'action',
             title: 'Adresse e-mail invalide, séquence arrêtée',
             body: `L'adresse ${e.address} ${who}est invalide : la séquence est arrêtée et plus aucun e-mail ne lui sera envoyé.`,
-            link: projectId ? `/missions/${projectId}?tab=outreach` : '/missions',
+            // Lot 5h : sans mission, la page de la séquence au lieu de /missions.
+            link: projectId ? `/missions/${projectId}?tab=outreach` : `/sequences/${e.sequence_id}`,
             metadata: {
               source: 'email_bounce',
               enrollment_id: e.id,

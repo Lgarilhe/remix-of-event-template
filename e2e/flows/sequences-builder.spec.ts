@@ -24,7 +24,7 @@
  * autre suite, n'a rien à ramasser dans ces données.
  */
 import { test as base, expect } from '../fixtures';
-import { E2E, authStorageKey } from '../helpers/env';
+import { E2E, authStorageKey, pinLegacySequences } from '../helpers/env';
 import {
   addMember,
   admin,
@@ -138,6 +138,11 @@ async function sequenceByName(orgId: string, name: string) {
   if (error) throw new Error(`sequenceByName: ${error.message}`);
   return data ?? [];
 }
+
+// Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+test.beforeEach(async ({ context }) => {
+  await pinLegacySequences(context);
+});
 
 test.describe('Éditeur de séquences', () => {
   test('@critical créer une séquence depuis le builder la fait apparaître dans la liste (SEC-013)', async ({

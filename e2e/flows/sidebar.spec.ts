@@ -9,10 +9,10 @@
  * @smoke
  */
 import { randomUUID } from 'node:crypto';
-import type { Browser, BrowserContext, Page } from '@playwright/test';
+import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import { storageStateFor } from '../helpers/registry';
-import { signIn, type TestOrg } from '../helpers/supabase-admin';
+import { admin, signIn, type TestOrg } from '../helpers/supabase-admin';
 import { E2E, authStorageKey } from '../helpers/env';
 
 const todoTab = (page: Page) => page.getByRole('tab', { name: /^À traiter/ });
@@ -24,10 +24,15 @@ const sidebarPanel = (page: Page) => page.locator('#sidebar-panel');
  * dans global.setup.ts. `hideFirstSteps` pose, avant tout chargement, la clé
  * FIRST_STEPS_HIDDEN_KEY de src/lib/firstSteps.ts.
  */
-async function ownerContext(browser: Browser, org: TestOrg, opts: { hideFirstSteps?: boolean } = {}): Promise<BrowserContext> {
+async function ownerContext(
+  browser: Browser,
+  org: TestOrg,
+  opts: { hideFirstSteps?: boolean; device?: Pick<BrowserContextOptions, 'viewport' | 'isMobile' | 'hasTouch'> } = {},
+): Promise<BrowserContext> {
   const session = await signIn(org.owner.email, org.owner.password);
   const origin = new URL(E2E.baseUrl).origin;
   const context = await browser.newContext({
+    ...opts.device,
     storageState: {
       cookies: [],
       origins: [{ origin, localStorage: [{ name: authStorageKey(), value: JSON.stringify(session) }] }],
@@ -200,6 +205,66 @@ test.describe('@smoke Barre latérale à onglets', () => {
       }
     } finally {
       await context.close();
+    }
+  });
+
+  // 11. Rangée basse à sept cibles (lot 5h) : Séquences par défaut, Appels dès
+  // un premier appel reçu, Marketplace pour un cabinet, Paramètres, Aide.
+  // Rien ne sort de la barre : deux lignes de cibles de 44 px au téléphone,
+  // une ligne de cibles de 32 px de large sur ordinateur.
+  test('rangée basse à sept cibles : tout tient dans la barre, au téléphone et sur ordinateur', async ({ org, browser, browserName }) => {
+    test.skip(browserName === 'firefox', 'isMobile non pris en charge');
+    const { error } = await admin().from('phone_calls').insert({
+      organization_id: org.orgId,
+      provider: 'aircall',
+      external_id: `e2e-rangee-${randomUUID()}`,
+      direction: 'inbound',
+      last_event_at: new Date().toISOString(),
+    });
+    expect(error, 'appel amorcé').toBeNull();
+
+    const devices = [
+      { name: 'téléphone', device: { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true }, minSide: 44 },
+      { name: 'ordinateur', device: { viewport: { width: 1280, height: 800 } }, minSide: 32 },
+    ];
+    for (const { name, device, minSide } of devices) {
+      const context = await ownerContext(browser, org, { hideFirstSteps: true, device });
+      try {
+        const page = await context.newPage();
+        await page.goto('/dashboard');
+        await expect(page).not.toHaveURL(/\/auth/);
+        if (device.isMobile) await page.getByRole('button', { name: 'Afficher ou masquer la navigation' }).click();
+        const bar = device.isMobile ? page.getByRole('dialog', { name: 'Barre latérale' }) : page.locator('[data-sidebar="sidebar"]');
+        for (const label of ['Tâches', 'Agenda', 'Séquences', 'Appels', 'Marketplace', 'Paramètres']) {
+          await expect(bar.getByRole('link', { name: label, exact: true }), `${name} : ${label}`).toBeVisible();
+        }
+        await expect(bar.getByRole('button', { name: 'Aide', exact: true })).toBeVisible();
+
+        const m = await bar.getByRole('link', { name: 'Paramètres', exact: true }).evaluate((settings) => {
+          const row = settings.parentElement as HTMLElement;
+          const container = (settings.closest('[role="dialog"]') ?? settings.closest('[data-sidebar="sidebar"]')) as HTMLElement;
+          const c = container.getBoundingClientRect();
+          return {
+            clientWidth: row.clientWidth,
+            scrollWidth: row.scrollWidth,
+            container: { left: c.left, right: c.right },
+            targets: [...row.children].map((el) => {
+              const r = el.getBoundingClientRect();
+              return { label: el.getAttribute('aria-label') ?? '', left: r.left, right: r.right, width: r.width, height: r.height };
+            }),
+          };
+        });
+        expect(m.targets.map((t) => t.label), `${name} : sept cibles`).toHaveLength(7);
+        expect(m.scrollWidth, `${name} : rangée sans débordement`).toBeLessThanOrEqual(m.clientWidth);
+        for (const t of m.targets) {
+          expect(t.left, `${name} : ${t.label} dans la barre (gauche)`).toBeGreaterThanOrEqual(m.container.left);
+          expect(t.right, `${name} : ${t.label} dans la barre (droite)`).toBeLessThanOrEqual(m.container.right);
+          expect(t.width, `${name} : ${t.label} assez large`).toBeGreaterThanOrEqual(minSide);
+          expect(t.height, `${name} : ${t.label} assez haute`).toBeGreaterThanOrEqual(minSide);
+        }
+      } finally {
+        await context.close();
+      }
     }
   });
 });

@@ -1424,6 +1424,10 @@ test.describe('Moteur engine-2 : auto-pause des séquences', () => {
     }
     expect(await sequenceActive(seq.sequenceId), 'refus 4xx comptés : séquence désactivée').toBe(false);
     for (const id of enrs) expect((await enrollmentFull(id)).pause_reason).toBe('auto_paused');
+    // Lot 5h : séquence sans mission, la notification mène à sa page (/sequences/<id>), plus à /missions.
+    const { data: notifs } = await admin().from('notifications').select('user_id, link')
+      .eq('organization_id', org.orgId).eq('metadata->>source', 'sequence_auto_pause').eq('metadata->>sequence_id', seq.sequenceId);
+    expect((notifs ?? []).map((n) => ({ user_id: n.user_id, link: n.link }))).toEqual([{ user_id: users[0].userId, link: `/sequences/${seq.sequenceId}` }]);
     cleanups.push(() => admin().from('notifications').delete().eq('organization_id', org.orgId));
   });
 

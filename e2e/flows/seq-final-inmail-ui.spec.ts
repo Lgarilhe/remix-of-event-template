@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import type { Browser, BrowserContext, Locator, Page, Route } from '@playwright/test';
 import { test, expect } from '@playwright/test';
+import { pinLegacySequences } from '../helpers/env';
 import {
   admin,
   createOrg,
@@ -163,6 +164,8 @@ interface Harness {
  */
 async function openSearchResults(browser: Browser, ws: Workspace, profiles: Candidate[]): Promise<Harness> {
   const context = await browser.newContext({ storageState: await storageStateForUser(ws.org.owner), timezoneId: 'Europe/Paris' });
+  // Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+  await pinLegacySequences(context);
   contexts.push(context);
   await context.route('**/functions/v1/unipile-accounts', async (route) => {
     const action = actionOf(route);

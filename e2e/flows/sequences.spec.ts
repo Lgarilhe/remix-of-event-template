@@ -11,10 +11,16 @@
  * moteur de bout en bout dans `e2e/api/sequences-scenarios.spec.ts`.
  */
 import { test, expect } from '../fixtures';
+import { pinLegacySequences } from '../helpers/env';
 import { storageStateFor, role } from '../helpers/registry';
 import { admin, seedEnrollment, seedMission, seedSequence } from '../helpers/supabase-admin';
 
 test.use({ storageState: storageStateFor('agencyOwner') });
+
+// Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+test.beforeEach(async ({ context }) => {
+  await pinLegacySequences(context);
+});
 
 test.describe('Séquences', () => {
   let missionId: string;

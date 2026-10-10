@@ -149,7 +149,7 @@ jobs:
       - name: Lot 5c tests (socle des pages Séquences)
         env:
           TZ: Europe/Paris
-        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs tests/ux/lot5e-redaction-ecrans.test.mjs
+        run: node --test tests/ux/seq-v2-socle.test.mjs tests/ux/seq-audit-f2d.test.mjs tests/ux/seq-v2-editeur.test.mjs tests/ux/seq-v2-charge-utile.test.mjs tests/ux/lot5e-redaction-ecrans.test.mjs tests/ux/lot5h-bascule.test.mjs tests/ux/sequence-alert-candidate.test.mjs
       # Refonte des séquences, lot 5e-2 : écrans du style et du niveau de l'IA
       # (parité navigateur et serveur, coût de chaque niveau, corps envoyés,
       # carte du niveau au seul propriétaire). Empaquette les modules avec esbuild.

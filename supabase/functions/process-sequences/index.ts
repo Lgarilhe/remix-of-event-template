@@ -3881,7 +3881,8 @@ async function handleProcess(supabase: any, force = false) {
           type: 'error',
           title: 'Séquence mise en pause automatiquement',
           body: `La séquence « ${seqRow.name || 'sans nom'} » a été désactivée : ${seqStats.failed} envois sur ${seqStats.actioned} ont échoué lors du dernier passage. Vérifiez le compte d'envoi et les étapes en échec, puis réactivez la séquence.`,
-          link: seqRow.project_id ? `/missions/${seqRow.project_id}?tab=outreach` : '/missions',
+          // Lot 5h : séquence sans mission, sa page (/sequences/:id ; secours ?sequences-v2=0 : /missions).
+          link: seqRow.project_id ? `/missions/${seqRow.project_id}?tab=outreach` : `/sequences/${seqId}`,
           metadata: { source: 'sequence_auto_pause', sequence_id: seqId, failed: seqStats.failed, actioned: seqStats.actioned },
         });
         if (notifErr) console.warn(`[process] Notification d'auto-pause non créée pour ${seqId}:`, notifErr);

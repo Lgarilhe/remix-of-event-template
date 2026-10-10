@@ -160,11 +160,12 @@ test('B-C6 — rangée basse : quatre liens (six avec Séquences et Appels), Aid
     assert.ok(bottomRow.includes(route), `SidebarBottomRow.tsx : ${route} absent`);
   }
   // Les cibles sont rendues par un même <Link> (liste), l'Aide seule est un bouton (HelpMenu).
-  // Lot 5c-2 (décision 8 du 05/10) : Séquences quand l'interrupteur konekt.sequences-v2 est allumé.
+  // Lot 5c-2 (décision 8 du 05/10) : Séquences quand l'interrupteur konekt.sequences-v2 est allumé,
+  // c'est-à-dire pour tous depuis le lot 5h (absente seulement avec le secours ?sequences-v2=0).
   // Téléphonie : Appels, que seul un premier appel reçu de l'opérateur relié fait apparaître.
   assert.ok(countOf(bottomRow, '<Link') >= 1, '<Link absent');
   assert.equal(countOf(bottomRow, '{ to: \''), 6, 'six entrées dans la liste, Séquences et Appels conditionnels compris');
-  assert.match(bottomRow, /\.\.\.\(showSequences \? \[\{ to: '\/sequences', label: 'Séquences', icon: Send \}\] : \[\]\)/, 'Séquences seulement drapeau allumé');
+  assert.match(bottomRow, /\.\.\.\(showSequences \? \[\{ to: '\/sequences', label: 'Séquences', icon: Send \}\] : \[\]\)/, 'Séquences drapeau allumé (défaut depuis le lot 5h)');
   assert.match(bottomRow, /const showSequences = useSequencesBeta\(\);/);
   assert.ok(bottomRow.includes("...(showCalls ? [{ to: '/calls', label: 'Appels', icon: Phone }] : [])"), 'Appels derrière showCalls');
   // Séquences, puis Appels, entre Agenda et Marketplace.

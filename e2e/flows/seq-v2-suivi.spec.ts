@@ -2,9 +2,12 @@
  * Refonte des séquences, lot 5c-2 (partie 1) : interrupteur konekt.sequences-v2,
  * écran « Séquences » de l'organisation et ses accès.
  *
- * Contrat testé (docs/refonte-mission/lot5-plan.md, 5c-2 ; décision 8) :
- * - drapeau éteint : /sequences renvoie vers /missions, aucune entrée dans la
- *   barre latérale ni dans la palette Ctrl J ;
+ * Contrat testé (docs/refonte-mission/lot5-plan.md, 5c-2 et 5h ; décision 8) :
+ * - lot 5h : drapeau allumé par défaut, entrée « Séquences » sans paramètre,
+ *   /outreach mène à /sequences ;
+ * - secours (?sequences-v2=0 ou clé à « 0 », jusqu'au lot 5j) : /sequences
+ *   renvoie vers /missions, aucune entrée dans la barre latérale ni dans la
+ *   palette Ctrl J ;
  * - ?sequences-v2=1 allume : entrée « Séquences » de la rangée basse (lien,
  *   page courante), palette Ctrl J, « G puis S » ;
  * - tableau : interrupteur (pause immédiate avec « Annuler », lot 5b), barre
@@ -23,9 +26,9 @@
  *
  * Exige la stack locale (E2E_EDGE_FUNCTIONS=1) : nudge_sequences et la mise
  * en pause tournent pour de vrai. Seule la liste des comptes LinkedIn du
- * prestataire est simulée dans le navigateur. Les gardes drapeau éteint
- * (premier bloc, @smoke) n'appellent aucune fonction serveur : elles tournent
- * aussi sur la CI de PR, sans E2E_EDGE_FUNCTIONS.
+ * prestataire est simulée dans le navigateur. Les gardes du défaut et du
+ * secours (premier bloc, @smoke) n'appellent aucune fonction serveur : elles
+ * tournent aussi sur la CI de PR, sans E2E_EDGE_FUNCTIONS.
  */
 import { randomUUID } from 'node:crypto';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
@@ -42,6 +45,7 @@ import {
   storageStateForUser,
   type TestUser,
 } from '../helpers/supabase-admin';
+import { SEQUENCES_V2_STORAGE_KEY, pinLegacySequences } from '../helpers/env';
 
 const EDGE_DEPLOYED = process.env.E2E_EDGE_FUNCTIONS === '1';
 const EDGE_SKIP_REASON = 'process-sequences non déployée sur cet environnement (E2E_EDGE_FUNCTIONS=1 pour activer)';
@@ -120,12 +124,41 @@ async function seedTrackedSequence(orgId: string, ownerId: string, missionId: st
   return { sequenceId, name, active };
 }
 
-// Drapeau éteint : rien de visible ne change (critère de fin du 5c-2). Aucune fonction serveur appelée.
-test.describe('Séquences v2 — drapeau éteint (lot 5c-2)', () => {
-  test('@smoke drapeau éteint : /sequences renvoie vers les missions, aucune entrée dans la barre ni la palette', async ({ browser, org }) => {
+const storedFlag = (page: Page) => page.evaluate((key) => window.localStorage.getItem(key), SEQUENCES_V2_STORAGE_KEY);
+
+// Lot 5h : allumé par défaut ; le secours (?sequences-v2=0 ou clé à « 0 ») rend
+// l'ancien parcours, sans changement (critère de fin du 5c-2). Aucune fonction serveur appelée.
+test.describe('Séquences v2 : défaut allumé et secours (lots 5c-2 et 5h)', () => {
+  test('@smoke défaut allumé (lot 5h) : entrée « Séquences » sans paramètre, palette, /outreach mène à /sequences, /outreach?sequences-v2=0 au secours', async ({ browser, org }) => {
     const account = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_e2e_${rand()}`);
     const page = await openAs(browser, org.owner, [account]);
-    await page.goto('/sequences', { waitUntil: 'domcontentloaded' });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const entry = page.getByRole('link', { name: 'Séquences', exact: true });
+    await expect(entry).toBeVisible({ timeout: 30_000 });
+    expect(await storedFlag(page), 'rien d’écrit : la valeur par défaut suffit').toBeNull();
+    await page.keyboard.press('Control+j');
+    const palette = page.getByRole('dialog', { name: 'Aller à' });
+    await expect(palette.getByRole('option', { name: /Séquences/ })).toBeVisible();
+    await page.keyboard.press('Escape');
+    // Ancienne adresse /outreach : l'écran Séquences, plus la liste des missions.
+    await page.goto('/outreach', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/sequences$/, { timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'Séquences' })).toBeVisible({ timeout: 30_000 });
+    await expect(entry).toHaveAttribute('aria-current', 'page');
+    // Secours demandé sur l'ancienne adresse même, sans clé posée avant : le
+    // paramètre suit la redirection et la garde des pages l'applique.
+    expect(await storedFlag(page)).toBeNull();
+    await page.goto('/outreach?sequences-v2=0', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
+    await expect(page.getByRole('link', { name: 'Agenda' }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toHaveCount(0);
+    expect(await storedFlag(page)).toBe('0');
+  });
+
+  test('@smoke secours ?sequences-v2=0 : /sequences et /outreach renvoient vers les missions, aucune entrée dans la barre ni la palette, choix gardé', async ({ browser, org }) => {
+    const account = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_e2e_${rand()}`);
+    const page = await openAs(browser, org.owner, [account]);
+    await page.goto('/sequences?sequences-v2=0', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
     await expect(page.getByRole('link', { name: 'Agenda' }).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toHaveCount(0);
@@ -134,9 +167,21 @@ test.describe('Séquences v2 — drapeau éteint (lot 5c-2)', () => {
     await expect(palette).toBeVisible();
     await expect(palette.getByRole('option', { name: /Tâches/ })).toBeVisible();
     await expect(palette.getByRole('option', { name: /Séquences/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    // Choix gardé dans le navigateur : sans paramètre, toujours l'ancien parcours.
+    expect(await storedFlag(page)).toBe('0');
+    await page.goto('/outreach', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
+    await page.goto('/sequences', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
+    // ?sequences-v2=1 reste accepté : le nouveau parcours revient.
+    await page.goto('/dashboard?sequences-v2=1', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
+    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toBeVisible({ timeout: 30_000 });
+    expect(await storedFlag(page)).toBe('1');
   });
 
-  test('@smoke drapeau éteint : « Diagnostic des envois » de la mission garde ses chiffres à la réouverture', async ({ browser, org }) => {
+  test('@smoke secours : « Diagnostic des envois » de la mission garde ses chiffres à la réouverture', async ({ browser, org }) => {
     const owner = org.owner;
     const account = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
     const missionId = await seedMission(org.orgId, owner.userId, { name: 'Mission diagnostic' });
@@ -144,6 +189,8 @@ test.describe('Séquences v2 — drapeau éteint (lot 5c-2)', () => {
     const name = `Séquence diagnostic ${rand()}`;
     await admin().from('outreach_sequences').update({ name, project_id: missionId }).eq('id', sequenceId);
     const page = await openAs(browser, owner, [account]);
+    // Clé à « 0 » posée avant le chargement (secours, lot 5h).
+    await pinLegacySequences(page);
     await page.goto(`/missions/${missionId}?tab=outreach`, { waitUntil: 'domcontentloaded' });
     await expect(page.getByText(name, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
     // Drapeau éteint : le nom n'est pas un lien vers la page de la séquence.

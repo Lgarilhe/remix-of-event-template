@@ -772,6 +772,9 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(panel(page)).toBeVisible({ timeout: 30_000 });
     await expect(panel(page)).toHaveAttribute('data-panel', 'contact');
     await expect(panel(page)).toContainText('Prise de contact');
+    // Lot 5h : onglet Séquences par défaut, avec le nouveau parcours sans paramètre (lien vers l'écran de l'organisation).
+    await expect(panel(page).getByRole('tab', { name: 'Séquences', exact: true })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
+    await expect(panel(page).getByRole('link', { name: /Toutes les séquences de l.organisation/ })).toHaveAttribute('href', '/sequences', { timeout: 30_000 });
 
     await page.goto(missionUrl(ws, '?tab=insights'), { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(urlIs(ws, '?bilan=1'), { timeout: 30_000 });

@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import type { Browser, BrowserContext, Locator, Page, Route } from '@playwright/test';
 import { test, expect } from '../fixtures';
+import { pinLegacySequences } from '../helpers/env';
 import {
   addMember,
   admin,
@@ -110,6 +111,8 @@ interface OpenOptions {
  */
 async function openAs(browser: Browser, user: TestUser, accounts: MockAccount[], opts: OpenOptions = {}) {
   const context = await browser.newContext({ storageState: await storageStateForUser(user) });
+  // Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+  await pinLegacySequences(context);
   contexts.push(context);
   const aiCalls: Array<Record<string, unknown>> = [];
   await context.route('**/functions/v1/**', async (route) => {

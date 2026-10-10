@@ -15,6 +15,7 @@
  */
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { test, expect } from '@playwright/test';
+import { pinLegacySequences } from '../helpers/env';
 import {
   admin,
   createOrg,
@@ -55,6 +56,8 @@ test.afterEach(async () => {
 /** Page connectée (fuseau de Paris) ; seule l'action `list` de unipile-accounts est simulée. */
 async function openAs(browser: Browser, user: TestUser, accountIds: string[]): Promise<Page> {
   const context = await browser.newContext({ storageState: await storageStateForUser(user), timezoneId: TIMEZONE, locale: 'fr-FR' });
+  // Lot 5h : ancienne interface des séquences, épinglée sur le secours (clé à « 0 ») jusqu'au lot 5j.
+  await pinLegacySequences(context);
   contexts.push(context);
   await context.route('**/functions/v1/unipile-accounts', async (route) => {
     let action: string | undefined;

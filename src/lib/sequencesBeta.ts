@@ -2,23 +2,25 @@
 // (/sequences, /sequences/:id) et de leurs accès (barre latérale, palette
 // Ctrl J, « G puis S », lignes de la liste des séquences).
 //
-// Interrupteur par navigateur, éteint par défaut jusqu'au lot 5h : clé
-// konekt.sequences-v2 du stockage local ('1' = allumé, '0' = éteint, absente =
-// valeur par défaut). ?sequences-v2=1 allume, ?sequences-v2=0 éteint ; la page
+// Interrupteur par navigateur, allumé par défaut depuis le lot 5h (bascule) :
+// clé konekt.sequences-v2 du stockage local ('1' = allumé, '0' = éteint,
+// absente = valeur par défaut). ?sequences-v2=0 éteint (secours, jusqu'au
+// lot 5j qui retire l'ancien parcours), ?sequences-v2=1 rallume ; la page
 // retire ensuite le paramètre de l'adresse. Stockage indisponible (navigation
 // privée, sites bloqués) : la valeur par défaut vaut pour la session en cours,
 // jamais d'erreur.
 //
-// Éteint, rien de visible ne change : aucun lien ne mène aux pages, et leurs
-// adresses renvoient à la liste des missions.
+// Éteint (secours) : l'ancien parcours, sans changement. Aucun lien ne mène
+// aux pages, leurs adresses renvoient à la liste des missions, et
+// SequenceBuilder reste le seul éditeur.
 //
 // Module pur, sans import : lu par la mise en page, la barre latérale, la
 // palette, les raccourcis et la garde des routes. Modèle : missionBeta.ts.
 
 export const SEQUENCES_BETA_STORAGE_KEY = 'konekt.sequences-v2';
 export const SEQUENCES_BETA_PARAM = 'sequences-v2';
-/** Valeur d'un navigateur qui n'a jamais choisi : éteint (jusqu'au lot 5h). */
-export const SEQUENCES_BETA_DEFAULT = false;
+/** Valeur d'un navigateur qui n'a jamais choisi : allumé (depuis le lot 5h). */
+export const SEQUENCES_BETA_DEFAULT = true;
 
 /** Écran Séquences de l'organisation. */
 export const SEQUENCES_PATH = '/sequences';
@@ -120,6 +122,17 @@ export function sequencesBetaParam(search: string): boolean | null {
   if (raw === '1') return true;
   if (raw === '0') return false;
   return null;
+}
+
+/**
+ * Recherche réduite à ?sequences-v2=0 ou =1 ('' sans choix valable) : ce que
+ * garde une ancienne adresse redirigée vers /sequences (/outreach), pour que la
+ * garde des pages applique le secours ou le rallumage.
+ */
+export function onlySequencesBetaParam(search: string): string {
+  const requested = sequencesBetaParam(search);
+  if (requested === null) return '';
+  return `?${SEQUENCES_BETA_PARAM}=${requested ? '1' : '0'}`;
 }
 
 /** Recherche sans ?sequences-v2= : '' ou '?a=b', les autres paramètres gardés dans leur ordre. */

@@ -26,7 +26,7 @@
  * - « Ouvrir la séquence » du Journal : la proposition de l'assistant (ligne
  *   agent_tool_executions) montrée en entier, rejetée avec la note « Reprise
  *   dans l'éditeur », reprise dans l'éditeur, sa mission dans l'adresse ;
- * - drapeau éteint (@smoke) : aucune porte, /sequences/nouvelle?depart=ia
+ * - drapeau éteint (@smoke, secours ?sequences-v2=0 depuis le lot 5h) : aucune porte, /sequences/nouvelle?depart=ia
  *   renvoie vers les missions, la carte du Journal garde ses textes entiers
  *   sans « Ouvrir la séquence ».
  * Captures à 1 280 et 360 px jointes au rapport.
@@ -585,10 +585,11 @@ test.describe('Séquences v2 : rédaction par l’IA (lot 5e)', () => {
   });
 });
 
-// Drapeau éteint (défaut) : aucune porte de la rédaction ; la carte de l'assistant garde ses textes entiers
-// (create_sequence réaligné sans drapeau), sans « Ouvrir la séquence ». Aucune fonction serveur appelée :
-// ce bloc tourne aussi sur la CI de PR (@smoke), sans E2E_EDGE_FUNCTIONS.
-test.describe('Séquences v2 : rédaction par l’IA, drapeau éteint (lot 5e)', () => {
+// Drapeau éteint (secours ?sequences-v2=0 depuis le lot 5h, jusqu'au lot 5j) : aucune porte de la
+// rédaction ; la carte de l'assistant garde ses textes entiers (create_sequence réaligné sans drapeau),
+// sans « Ouvrir la séquence ». Aucune fonction serveur appelée : ce bloc tourne aussi sur la CI de PR
+// (@smoke), sans E2E_EDGE_FUNCTIONS.
+test.describe('Séquences v2 : rédaction par l’IA, drapeau éteint (lot 5e, secours du lot 5h)', () => {
   test('@smoke drapeau éteint : aucune porte de rédaction, /sequences/nouvelle?depart=ia renvoie vers les missions, carte du Journal entière sans « Ouvrir la séquence »', async ({ browser, org }) => {
     const owner = org.owner;
     await setOrgPlan(org.orgId);
@@ -596,9 +597,13 @@ test.describe('Séquences v2 : rédaction par l’IA, drapeau éteint (lot 5e)',
     const missionId = await seedMission(org.orgId, owner.userId, { name: 'Directeur financier', job_details: JOB });
     await insertProposal(org.orgId, owner.userId, missionId);
 
-    const page = await openAt(browser, owner, account, `/missions/${missionId}?tab=outreach`);
+    // Secours posé avant le chargement de la mission : ?sequences-v2=0 sur une première page, choix gardé.
+    const page = await openAt(browser, owner, account, '/dashboard?sequences-v2=0');
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
+    await expect.poll(() => page.evaluate(() => window.localStorage.getItem('konekt.sequences-v2'))).toBe('0');
     const draftCalls: string[] = [];
     page.on('request', (r) => { if (r.url().includes('/functions/v1/draft-sequence')) draftCalls.push(r.url()); });
+    await page.goto(`/missions/${missionId}?tab=outreach`, { waitUntil: 'domcontentloaded' });
     // Ancien état vide : ni porte du panneau, ni texte de la rédaction.
     await expect(page.getByText('Aucune séquence pour cette mission')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: 'Rédiger une séquence pour cette mission' })).toHaveCount(0);
