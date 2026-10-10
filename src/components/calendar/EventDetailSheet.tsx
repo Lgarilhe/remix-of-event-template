@@ -1,11 +1,10 @@
 /**
  * EventDetailSheet — fiche d'un événement de l'agenda, ouverte au clic.
  *
- * Candidat, mission, animateur, lieu et notes, puis une seule action
- * principale : le compte rendu d'un entretien passé (même page que la barre
- * latérale), sinon rejoindre la réunion quand elle a un lien, sinon préparer
- * l'entretien. Le reste (tâches de préparation et de compte rendu) est dans le
- * menu « Plus » (revue design A-47).
+ * Candidat, mission, animateur, lieu et notes, puis les accès à la visio,
+ * à la grille et à l'assistant pour un entretien à venir lié à un candidat.
+ * Un entretien passé ouvre son compte rendu. La préparation et les tâches
+ * restent accessibles dans le menu « Plus ».
  */
 
 import React, { useState } from 'react';
@@ -27,6 +26,9 @@ import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { EVENT_TYPES, roundLabel } from '@/components/calendar/eventMeta';
 import type { CalendarEvent } from '@/hooks/useCalendarEvents';
+import { InterviewActionButtons } from '@/components/sidebar/InterviewActionButtons';
+import { interviewLinks } from '@/lib/sidebarSignals';
+import { CalendarServiceLogo } from '@/components/calendar/CalendarServiceLogo';
 
 interface EventDetailSheetProps {
   event: CalendarEvent | null;
@@ -73,6 +75,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
   const meta = event.meta || {};
   const location = getLocationMeta(meta.location);
   const LocationIcon = location.icon;
+  const locationService = location.label === 'Google Meet' ? 'google_meet' : location.label === 'Microsoft Teams' ? 'teams' : null;
   const round = roundLabel(meta.round);
 
   const startDate = (() => {
@@ -105,6 +108,9 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
   // Identifiant de la session d'entretien (événements « qualif-<id> »)
   const sessionId = isInterview && event.id.startsWith('qualif-') ? event.id.slice('qualif-'.length) : null;
   const canPrepare = isInterview && !isPast && !!meta.candidateId;
+  const interviewActions = sessionId && meta.candidateId && !isPast && !['cancelled', 'completed'].includes(event.status)
+    ? interviewLinks({ id: sessionId, candidate_profile_id: meta.candidateId, project_id: meta.projectId ?? null })
+    : null;
   const openReport = () => {
     navigate(`/qualification/${sessionId}`);
     onOpenChange(false);
@@ -227,7 +233,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
             <Block title="Lieu">
               <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
-                  <LocationIcon className="h-4 w-4" aria-hidden="true" />
+                  {locationService ? <CalendarServiceLogo service={locationService} decorative className="h-4 w-4" /> : <LocationIcon className="h-4 w-4" aria-hidden="true" />}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-foreground">{location.label}</span>
@@ -253,14 +259,23 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
         </div>
 
         {(primary || hasMenu) && (
-          <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-popover px-6 py-4">
-            {primary === 'report' && (
+          <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-border bg-popover px-6 py-4">
+            {interviewActions && (
+              <InterviewActionButtons
+                links={interviewActions}
+                joinUrl={location.href}
+                showContextLinks={false}
+                onOpen={(to) => { navigate(to); onOpenChange(false); }}
+                className="flex-1"
+              />
+            )}
+            {!interviewActions && primary === 'report' && (
               <Button type="button" variant="primary" className="flex-1" onClick={openReport}>
                 <FileText aria-hidden="true" />
                 Ouvrir le compte rendu
               </Button>
             )}
-            {primary === 'join' && location.href && (
+            {!interviewActions && primary === 'join' && location.href && (
               <Button asChild variant="primary" className="flex-1">
                 <a href={location.href} target="_blank" rel="noopener noreferrer">
                   <Video aria-hidden="true" />
@@ -268,7 +283,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
                 </a>
               </Button>
             )}
-            {primary === 'prepare' && (
+            {!interviewActions && primary === 'prepare' && (
               <Button type="button" variant="primary" className="flex-1" onClick={prepareInterview}>
                 <ClipboardList aria-hidden="true" />
                 Préparer l'entretien
@@ -283,7 +298,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
-                  {canPrepare && primary !== 'prepare' && (
+                  {canPrepare && (interviewActions || primary !== 'prepare') && (
                     <DropdownMenuItem onSelect={prepareInterview}>
                       <ClipboardList className="mr-2 h-4 w-4" aria-hidden="true" />
                       Préparer l'entretien

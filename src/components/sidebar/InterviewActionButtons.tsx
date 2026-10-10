@@ -25,6 +25,10 @@ export interface InterviewActionButtonsProps {
   joinUrl: string | null;
   /** Ouvre une page de l'application. */
   onOpen: (to: string) => void;
+  /** Aperçu local : remplace l'ouverture de la visio externe. */
+  onJoin?: () => void;
+  /** La fiche affiche déjà le candidat et l'entretien. */
+  showContextLinks?: boolean;
   /** Une ligne : actions secondaires en icônes (nom accessible et infobulle gardés), sans fiche. */
   compact?: boolean;
   /** Classes ajoutées aux boutons secondaires (survol de la barre, par exemple). */
@@ -38,6 +42,8 @@ export function InterviewActionButtons({
   links,
   joinUrl,
   onOpen,
+  onJoin,
+  showContextLinks = true,
   compact = false,
   secondaryClassName,
   className,
@@ -74,10 +80,13 @@ export function InterviewActionButtons({
           {compact ? 'Assistant' : "Assistant d'entretien"}
         </Button>
       )}
-      {joinUrl && secondary('Rejoindre la visio', 'Rejoindre', <Video aria-hidden="true" />, () => window.open(joinUrl, '_blank', 'noopener,noreferrer'))}
-      {links.candidate && !compact && secondary('Fiche du candidat', 'Fiche', <User aria-hidden="true" />, () => onOpen(links.candidate as string))}
+      {(joinUrl || onJoin) && secondary('Rejoindre la visio', 'Rejoindre', <Video aria-hidden="true" />, () => {
+        if (onJoin) onJoin();
+        else if (joinUrl) window.open(joinUrl, '_blank', 'noopener,noreferrer');
+      })}
+      {links.candidate && !compact && showContextLinks && secondary('Fiche du candidat', 'Fiche', <User aria-hidden="true" />, () => onOpen(links.candidate as string))}
       {links.scorecard && secondary("Grille d'entretien", 'Grille', <ClipboardList aria-hidden="true" />, () => onOpen(links.scorecard as string))}
-      {!links.candidate && !compact && (
+      {!links.candidate && !compact && showContextLinks && (
         <Button type="button" variant="outline" size="xs" onClick={() => onOpen(links.qualification)} className={cn(TOUCH, 'rounded-md', secondaryClassName)}>
           Ouvrir l'entretien
         </Button>
