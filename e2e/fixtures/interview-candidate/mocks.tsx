@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- Harnais local de parcours. */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ATSCandidate } from '@/hooks/useATSData';
+import type { CandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 
 export const MISSION_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 export const MISSION_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -51,7 +52,12 @@ export const useATSData = () => ({
   candidates, loading: false, error: null, refetch: async () => {},
   handleStageChange() {}, moveCandidates() {}, undoStageMoves() {}, refreshStageReaders: async () => {}, handleTagsChange() {},
 });
-export const useCandidateFullProfile = () => ({ scoringHistory: [], sequenceEnrollments: [] });
+const fullProfile: CandidateFullProfile = {
+  qualificationSessions: [], sequenceEnrollments: [], sequenceSteps: [], inmailsSent: [],
+  scoringHistory: [], accountId: null, airtableMatch: null, airtableShortlists: [],
+  airtableNotes: [], airtableAppointments: [], aircallCalls: [], timeline: [], loading: false,
+};
+export const useCandidateFullProfile = () => fullProfile;
 export const useMyLinkedInAccountId = () => null;
 export const useAgent = () => ({ openAgent() {} });
 export const getCandidateContacts = async () => null;
