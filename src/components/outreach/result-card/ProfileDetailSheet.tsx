@@ -186,7 +186,7 @@ export interface ProfileDetailPipelineMeta {
   /** Liste des étapes possibles ({ key, label }). */
   stageOptions: Array<{ key: string; label: string }>;
   /** Callback de changement de stage. */
-  onStageChange: (newStage: string) => void;
+  onStageChange?: (newStage: string) => void;
   /** Score IA (0-100) cliquable pour ouvrir l'onglet Évaluation. */
   score?: number | null;
   onScoreClick?: () => void;
@@ -1087,7 +1087,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             {/* ─── PIPELINE META : étape, note en anneau, étiquettes et Portail (mode pipeline seulement) ─── */}
             {pipelineMeta && (
               <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <Select value={pipelineMeta.stage} onValueChange={(value) => pipelineMeta.onStageChange(value)}>
+                {pipelineMeta.onStageChange ? <Select value={pipelineMeta.stage} onValueChange={(value) => pipelineMeta.onStageChange?.(value)}>
                   <SelectTrigger aria-label="Étape du candidat" className="h-9 w-auto min-w-[10.5rem] gap-2 text-sm">
                     <SelectValue />
                   </SelectTrigger>
@@ -1096,7 +1096,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                       <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
+                </Select> : <span className="text-sm text-muted-foreground">{pipelineMeta.stage}</span>}
                 {/* La note ouvre l'onglet Évaluation */}
                 {pipelineMeta.score != null && pipelineMeta.score > 0 && (
                   <button

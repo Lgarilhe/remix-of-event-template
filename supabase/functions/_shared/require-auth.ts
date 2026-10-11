@@ -3,7 +3,7 @@
  * Validates JWT tokens from the Authorization header.
  * Allows service_role key passthrough for internal/cron calls.
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -64,7 +64,7 @@ export async function requireAuth(
  * Requires a service-role Supabase client (bypasses RLS).
  */
 export async function verifyOrgMembership(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: SupabaseClient,
   userId: string,
   organizationId: string
 ): Promise<boolean> {
@@ -99,7 +99,7 @@ export async function requireOrgAccess(
 ): Promise<{
   userId: string;
   organizationId: string;
-  adminClient: ReturnType<typeof createClient>;
+  adminClient: SupabaseClient;
 }> {
   const auth = await requireAuth(req, corsHeaders);
   if (!auth.userId) {

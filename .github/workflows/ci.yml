@@ -46,6 +46,8 @@ jobs:
       # d'organisation, portail client, rôle Collaborateur).
       - name: C1 regression tests (fonctions)
         run: node --test tests/c1/c1-fonctions.test.mjs
+      - name: Préparation des grilles planifiées
+        run: node tests/c1/scheduled-scorecard.test.mjs
       # Refonte mission, lot 0b : écrivains de l'étape candidat (notation,
       # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
       - name: Lot 0b regression tests (écrivains)

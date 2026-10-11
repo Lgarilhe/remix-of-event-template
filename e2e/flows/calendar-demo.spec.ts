@@ -80,12 +80,24 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     const audit = await open(page);
     await card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
     const dialog = camilleDialog(page);
+    await candidateSheet(page, dialog);
+    await expect(dialog.getByRole('tab', { name: 'Évaluation', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.getByText(/^Grille préparée ·/)).toBeVisible();
+    await expect(dialog.getByRole('radiogroup')).toHaveCount(3);
+    await expect(dialog.getByText('Comment avez-vous transformé un retour utilisateur en amélioration du produit ?', { exact: true })).toBeVisible();
     await dialog.getByRole('radiogroup', { name: 'Note : Recherche utilisateur', exact: true }).getByRole('radio', { name: '4 sur 5', exact: true }).click();
     await page.keyboard.press('ArrowRight');
     await expect(dialog.getByRole('radiogroup', { name: 'Note : Recherche utilisateur', exact: true }).getByRole('radio', { name: '5 sur 5', exact: true })).toBeChecked();
     await page.keyboard.press('ArrowLeft');
     await dialog.getByLabel('Commentaire : Recherche utilisateur', { exact: true }).fill('A expliqué les retours des huit utilisateurs.');
     await dialog.getByLabel('Notes de l’entretien', { exact: true }).fill('Revoir ensemble la mesure des abandons.');
+    await dialog.getByRole('tab', { name: 'Profil', exact: true }).click();
+    await expect(dialog.getByRole('heading', { name: 'Expérience', exact: true })).toBeVisible();
+    await expect(dialog.getByText('Studio Horizon (fictif)', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Formation', exact: true })).toBeVisible();
+    await expect(dialog.getByText('Master Design d’interaction', { exact: true })).toBeVisible();
+    await dialog.getByRole('tab', { name: 'Évaluation', exact: true }).click();
+    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Revoir ensemble la mesure des abandons.');
     await dialog.getByRole('button', { name: 'Fermer', exact: true }).click();
     await expect(card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true })).toBeFocused();
     await card(page, 'Alex Martin').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
@@ -114,19 +126,25 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await dialog.getByRole('button', { name: 'Voir le compte rendu', exact: true }).click();
     await expect(dialog.getByRole('region', { name: 'Compte rendu fictif', exact: true })).toContainText('Exemple pré-écrit');
     await dialog.getByRole('button', { name: 'Compléter ma grille', exact: true }).click();
-    await expect(dialog.getByRole('tab', { name: 'Grille', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.getByRole('tab', { name: 'Évaluation', exact: true })).toHaveAttribute('aria-selected', 'true');
     await isolated(page, audit);
   });
 
-  test('Sophie — cartes et dialogue utilisables à 320 px', async ({ page }) => {
+  test('Sophie — cartes et fiche candidat utilisables à 320 px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     const audit = await open(page);
     await expect(card(page, 'Camille Durand')).toBeVisible();
     await fits(page);
     await card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
     const dialog = camilleDialog(page);
+    await candidateSheet(page, dialog);
     await fits(page, dialog);
     await dialog.getByLabel('Notes de l’entretien', { exact: true }).fill('Note sur mobile.');
+    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Note sur mobile.');
+    await dialog.getByRole('tab', { name: 'Profil', exact: true }).click();
+    await expect(dialog.getByText('Studio Horizon (fictif)', { exact: true })).toBeVisible();
+    await fits(page, dialog);
+    await dialog.getByRole('tab', { name: 'Évaluation', exact: true }).click();
     await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Note sur mobile.');
     await dialog.getByRole('tab', { name: 'Assistant', exact: true }).click();
     await dialog.getByRole('button', { name: 'Lancer la simulation', exact: true }).click();
@@ -181,6 +199,8 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     const audit = await open(page, '/inbox');
     await page.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
     await sidebarScorecard(page, 'Camille Durand').click();
+    await candidateSheet(page, camilleDialog(page));
+    await expect(camilleDialog(page).getByRole('tab', { name: 'Évaluation', exact: true })).toHaveAttribute('aria-selected', 'true');
     await camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true }).fill('Suivi conservé entre les pages.');
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('navigation', { name: 'Navigation de l’aperçu' }).getByRole('link', { name: 'Pipeline', exact: true }).click();
@@ -215,6 +235,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     const dialog = camilleDialog(page);
     await expect(dialog).toBeVisible();
     await expect(drawer).toBeHidden();
+    await candidateSheet(page, dialog);
     await fits(page, dialog);
     await dialog.getByLabel('Notes de l’entretien', { exact: true }).fill('Essai depuis le tiroir mobile.');
     await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toBeFocused();
@@ -231,7 +252,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await dialog.getByRole('button', { name: 'Lancer la simulation', exact: true }).click();
     await dialog.getByRole('button', { name: 'Voir le compte rendu', exact: true }).click();
     await expect(dialog.getByRole('region', { name: 'Compte rendu fictif', exact: true })).toBeVisible();
-    await dialog.getByRole('tab', { name: 'Grille', exact: true }).click();
+    await dialog.getByRole('tab', { name: 'Évaluation', exact: true }).click();
     await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Essai depuis le tiroir mobile.');
     await fits(page, dialog);
     await test.info().attach('sidebar-interview-mobile-320', { body: await page.screenshot(), contentType: 'image/png' });
@@ -242,6 +263,9 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     const audit = await open(page, '/inbox?upcoming=1');
     const native = page.getByRole('link', { name: /Samira Legrand/ });
     await expect(native).toBeVisible();
+    expectCandidateDestination(await native.getAttribute('href'), {
+      candidate: 'samira-fixture', mission: 'native-mission', session: 'native-session',
+    });
     await page.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
     await expect(sidebarCard(page, 'Camille Durand')).toBeVisible();
     await expect(native).toBeVisible();
@@ -267,6 +291,29 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
   }
 
+  async function candidateSheet(page: Page, sheet: Locator) {
+    await expect(sheet.getByText('Fiche candidat · Exemple', { exact: true })).toBeVisible();
+    const viewport = page.viewportSize()!;
+    const expectedWidth = viewport.width >= 640 ? Math.min(viewport.width * 0.95, 720) : viewport.width;
+    await expect.poll(async () => {
+      const box = await sheet.boundingBox();
+      return box !== null && Math.abs(box.width - expectedWidth) <= 1
+        && Math.abs(box.x + box.width - viewport.width) <= 1
+        && Math.abs(box.y) <= 1 && Math.abs(box.height - viewport.height) <= 1;
+    }).toBe(true);
+  }
+
+  function expectCandidateDestination(value: string | null, expected: { candidate: string; mission: string; session: string; coaching?: string }) {
+    expect(value).not.toBeNull();
+    const url = new URL(value!, 'https://app.example.test');
+    expect(url.pathname).toBe('/pipeline');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      candidate: expected.candidate, tab: 'evaluation', prepareInterview: '1',
+      mission: expected.mission, session: expected.session,
+      ...(expected.coaching ? { coaching: expected.coaching } : {}),
+    });
+  }
+
   for (const action of ["Grille d'entretien", "Assistant d'entretien"]) {
     test(`Claire — ${action} conserve la mission et la session du rendez-vous`, async ({ page }) => {
       const audit = await open(page, '/native-event');
@@ -275,7 +322,11 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
       await expect(sheet.getByRole('button', { name: 'Rejoindre la visio', exact: true })).toBeVisible();
       await sheet.getByRole('button', { name: action, exact: true }).click();
       const destination = page.getByRole('status', { name: 'Destination' });
-      await expect(destination).toHaveText('/pipeline/scorecard/candidate%2Ffixture?mission=mission%2Ffixture&session=session-fixture' + (action === "Assistant d'entretien" ? '&coaching=1' : ''));
+      await expect(destination).toBeVisible();
+      expectCandidateDestination(await destination.textContent(), {
+        candidate: 'candidate/fixture', mission: 'mission/fixture', session: 'session-fixture',
+        ...(action === "Assistant d'entretien" ? { coaching: '1' } : {}),
+      });
       await expect(sheet).toHaveCount(0);
       await isolated(page, audit);
     });

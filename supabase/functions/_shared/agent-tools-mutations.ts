@@ -10,6 +10,7 @@
 //   3. Le tool est automatiquement exposé à Claude via getAnthropicToolDefinitions()
 // ============================================================================
 
+import { startScheduledScorecard } from './start-scheduled-scorecard.ts';
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
@@ -4550,7 +4551,7 @@ const scheduleInterview: AgentTool = {
     "Use when the user says 'programme un entretien avec X', 'cale un call avec Marie jeudi 14h', 'planifie la pré-qualif de Théo'. " +
     "Pass start_at as full ISO 8601 datetime WITH timezone (Europe/Paris for French users). Default duration: 45 min. " +
     "Optional mission_id/mission_name links the interview to a mission (recommended when known). " +
-    "This creates the calendar slot in Konekt only — it does NOT send any invitation email to the candidate. " +
+    "This creates the calendar slot in Konekt only — it does NOT send any invitation email to the candidate. The interview scorecard is prepared automatically using the usual AI credits. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -4595,6 +4596,7 @@ const scheduleInterview: AgentTool = {
       details: {
         candidate_name: candidate.candidateName,
         candidate_in_pipeline: candidate.inPipeline,
+        scorecard_preparation: "Grille préparée à l’avance avec les crédits IA habituels",
         event_name: eventName,
         start_at: slot.startAt.toISOString(),
         end_at: slot.endAt.toISOString(),
@@ -4644,6 +4646,7 @@ const scheduleInterview: AgentTool = {
       .select('id')
       .single();
     if (error) return { success: false, error: error.message };
+    startScheduledScorecard(data.id, ctx.organizationId);
 
     return {
       success: true,

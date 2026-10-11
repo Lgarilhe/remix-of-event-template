@@ -35,7 +35,12 @@ import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { BulkActionsBar, type BulkMoveResult } from '@/components/ats/BulkActionsBar';
 import { useATSData, ATS_STAGES, countPeople, type ATSCandidate } from '@/hooks/useATSData';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
+import { supabase } from '@/integrations/supabase/client';
 import { plural } from '@/lib/plural';
+import { candidateFromUnassignedInterview, QUALIFICATION_CANDIDATE_FIELDS } from '@/lib/qualificationCandidate';
 
 type PipelineView = 'kanban' | 'table' | 'timeline' | 'analytics';
 
@@ -52,6 +57,15 @@ const parseView = (value: string | null): PipelineView =>
 
 const EMPTY_FILTERS: ATSFiltersValue = { search: '', stage: [], source: [], job: [], tag: [], hasReminder: false };
 
+type CandidateLinkResult = {
+  key: string;
+  status: 'loading' | 'ready' | 'error';
+  candidate?: ATSCandidate;
+  sessionId?: string;
+  message?: string;
+  pipelineAttached?: boolean;
+};
+
 export default function ATS() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeView, _setActiveView] = useState<PipelineView>(() => parseView(searchParams.get('view')));
@@ -61,6 +75,15 @@ export default function ATS() {
   const deepLinkCandidateId = searchParams.get('candidate');
   const deepLinkTab = searchParams.get('tab');
   const deepLinkPrepare = searchParams.get('prepareInterview') === '1';
+  const deepLinkCoaching = searchParams.get('coaching') === '1';
+  const deepLinkMission = searchParams.get('mission');
+  const deepLinkSession = searchParams.get('session');
+  const { organizationId } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id;
+  const deepLinkKey = JSON.stringify([organizationId, userId, deepLinkCandidateId, deepLinkMission, deepLinkSession, deepLinkTab, deepLinkPrepare, deepLinkCoaching]);
+  const [candidateLink, setCandidateLink] = useState<CandidateLinkResult | null>(null);
+  const [candidateLinkRetry, setCandidateLinkRetry] = useState(0);
 
   // Sync view → URL pour bookmark / partage de lien direct
   const setActiveView = useCallback(
@@ -144,30 +167,75 @@ export default function ATS() {
 
   const [filters, setFilters] = useState<ATSFiltersValue>(EMPTY_FILTERS);
 
-  // Deep-link : ?candidate=ID → résout dans la liste et ouvre la modale.
-  // Re-run quand la liste candidates est chargée (sinon on rate la 1re fois)
-  // ou quand le query param change.
+  // Un rendez-vous identifie le candidat ET sa mission. Vérifier l'événement
+  // avant d'ouvrir la grille empêche d'évaluer une autre candidature du même profil.
   useEffect(() => {
-    if (!deepLinkCandidateId || candidates.length === 0) return;
-    if (selectedCandidate?.candidateId === deepLinkCandidateId) return; // déjà ouvert
-    const found = candidates.find(c => c.candidateId === deepLinkCandidateId);
-    if (found) {
-      setSelectedCandidate(found);
-    }
-  }, [deepLinkCandidateId, candidates, selectedCandidate?.candidateId]);
+    if (!deepLinkCandidateId || !organizationId || !userId || loading) return;
+    let cancelled = false;
+    setCandidateLink(previous => previous?.key === deepLinkKey && previous.status === 'ready'
+      ? previous : { key: deepLinkKey, status: 'loading' });
+    const resolve = async () => {
+      const missionId = missionIdOfJob(deepLinkMission) ?? null;
+      const sessionId = missionIdOfJob(deepLinkSession) ?? null;
+      if ((deepLinkMission && !missionId) || (deepLinkSession && !sessionId)) {
+        throw new Error("Ce lien d'entretien n'est pas valide. Ouvrez le rendez-vous depuis l'agenda.");
+      }
+      let requestedMission = missionId;
+      if (sessionId) {
+        const { data: event, error: eventError } = await supabase.from('qualification_sessions')
+          .select(QUALIFICATION_CANDIDATE_FIELDS)
+          .eq('id', sessionId)
+          .eq('candidate_profile_id', deepLinkCandidateId)
+          .eq('organization_id', organizationId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (eventError) throw new Error("Impossible de vérifier l'entretien. Vérifiez votre connexion, puis réessayez.");
+        if (!event || (missionId && event.project_id !== missionId)) {
+          throw new Error("Cet entretien n'est plus accessible pour ce candidat et cette mission.");
+        }
+        if ((event.manager_id ?? event.created_by) !== userId) {
+          throw new Error("Cet entretien est animé par un autre membre de l'équipe. Ouvrez l'agenda pour retrouver vos rendez-vous.");
+        }
+        requestedMission = event.project_id;
+        // Un rendez-vous sans mission peut être le premier contact avec cette
+        // personne. Son identité vient de l'événement, jamais d'une autre mission.
+        const unassigned = candidateFromUnassignedInterview(event, candidates.find(candidate => candidate.candidateId === deepLinkCandidateId));
+        if (unassigned) {
+          setCandidateLink({ key: deepLinkKey, status: 'ready', candidate: unassigned, sessionId, pipelineAttached: false });
+          return;
+        }
+      }
+      const found = candidates.find(candidate => candidate.candidateId === deepLinkCandidateId
+        && (!(sessionId || missionId) || (candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null) === requestedMission));
+      if (!found) throw new Error("La fiche de ce candidat n'est pas disponible dans cette mission. Actualisez le pipeline ou ouvrez l'agenda.");
+      if (!cancelled) setCandidateLink({ key: deepLinkKey, status: 'ready', candidate: found, sessionId: sessionId ?? undefined });
+    };
+    void resolve().catch(reason => {
+      if (!cancelled) setCandidateLink({ key: deepLinkKey, status: 'error', message: reason instanceof Error ? reason.message : "Impossible d'ouvrir la fiche. Réessayez." });
+    });
+    return () => { cancelled = true; };
+  }, [deepLinkCandidateId, deepLinkMission, deepLinkSession, deepLinkKey, organizationId, userId, loading, candidates, candidateLinkRetry]);
+
+  const currentLink = candidateLink?.key === deepLinkKey ? candidateLink : null;
+  const candidateToOpen = deepLinkCandidateId
+    ? currentLink?.status === 'ready' ? currentLink.candidate : null
+    : selectedCandidate;
 
   // Quand l'user ferme la modale, on retire les query params de deep-link
   // pour pas que ça re-trigger à chaque navigation
   const handleCloseCandidate = useCallback(() => {
     setSelectedCandidate(null);
-    if (deepLinkCandidateId || deepLinkTab || deepLinkPrepare) {
+    if (deepLinkCandidateId || deepLinkTab || deepLinkPrepare || deepLinkMission || deepLinkSession || deepLinkCoaching) {
       const params = new URLSearchParams(searchParams);
       params.delete('candidate');
       params.delete('tab');
       params.delete('prepareInterview');
+      params.delete('mission');
+      params.delete('session');
+      params.delete('coaching');
       setSearchParams(params, { replace: true });
     }
-  }, [deepLinkCandidateId, deepLinkTab, deepLinkPrepare, searchParams, setSearchParams]);
+  }, [deepLinkCandidateId, deepLinkTab, deepLinkPrepare, deepLinkMission, deepLinkSession, deepLinkCoaching, searchParams, setSearchParams]);
 
   // Get unique values for filters
   const filterOptions = useMemo(() => {
@@ -224,8 +292,10 @@ export default function ATS() {
   }, [filteredCandidates]);
 
   // La fiche reçoit le candidat tel qu'il est en base (étape comprise).
-  const handleCandidateClick = (candidate: ATSCandidate) =>
+  const handleCandidateClick = (candidate: ATSCandidate) => {
+    if (deepLinkCandidateId) handleCloseCandidate();
     setSelectedCandidate(candidates.find(c => c.id === candidate.id) ?? candidate);
+  };
 
   const handleReminderClick = (candidateId: string) => {
     const candidate = candidates.find(c => c.candidateId === candidateId);
@@ -235,7 +305,7 @@ export default function ATS() {
     }
     // La fiche remplace le panneau des rappels au lieu de s'empiler dessus.
     setRemindersOpen(false);
-    setSelectedCandidate(candidate);
+    handleCandidateClick(candidate);
   };
 
   const hasCandidates = candidates.length > 0;
@@ -378,19 +448,42 @@ export default function ATS() {
         />
       )}
 
+      {deepLinkCandidateId && currentLink?.status === 'error' && (
+        <ErrorState
+          variant="compact"
+          className="mb-4"
+          title="Impossible d'ouvrir la fiche de l'entretien"
+          description={currentLink.message}
+          onRetry={() => {
+            setCandidateLink({ key: deepLinkKey, status: 'loading' });
+            setCandidateLinkRetry(value => value + 1);
+            void refetch().catch(() => undefined);
+          }}
+          action={<Button asChild variant="outline" size="sm"><Link to="/calendar">Ouvrir l'agenda</Link></Button>}
+        />
+      )}
+      {deepLinkCandidateId && (!currentLink || currentLink.status === 'loading') && (
+        <p role="status" className="mb-4 text-sm text-muted-foreground">Ouverture de la fiche de l'entretien…</p>
+      )}
+
       {renderPipeline()}
 
       <RemindersSidebar open={remindersOpen} onOpenChange={setRemindersOpen} onReminderClick={handleReminderClick} />
 
-      {selectedCandidate && (
+      {candidateToOpen && (
         <CandidateDetailModal
-          candidate={selectedCandidate}
+          key={deepLinkCandidateId ? deepLinkKey : candidateToOpen.id}
+          candidate={candidateToOpen}
           onClose={handleCloseCandidate}
           onStageChange={handleStageChange}
           onTagsChange={handleTagsChange}
           onRefresh={refetch}
           initialTab={deepLinkTab || undefined}
           autoGenerateScorecard={deepLinkPrepare}
+          autoOpenScorecard={deepLinkTab === 'evaluation'}
+          autoStartCoaching={deepLinkCoaching}
+          qualificationSessionId={currentLink?.sessionId}
+          pipelineAttached={currentLink?.pipelineAttached}
         />
       )}
 

@@ -1,14 +1,10 @@
 // Deno.serve used directly
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
-
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
+import { prepareScheduledScorecard } from "../_shared/scheduled-scorecard.ts";
+import type { AuthResult } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,14 +26,39 @@ Deno.serve(async (req) => {
     }
     const userId = auth.userId;
 
-    // Rate limit: 20 req/min
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
+    const body = await req.json();
+    if (body.qualificationSessionId) {
+      return await prepareScheduledScorecard({
+        body, auth, admin: svc, corsHeaders,
+        generate: (context, ownerId, organizationId) => generateScorecard(context, { userId: ownerId, method: "jwt" }, svc, { organizationId, deferSettlement: true }),
+      });
+    }
+    // Rate limit: 20 req/min
     const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'generate_scorecard', p_max_requests: 20, p_window_seconds: 60 });
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
 
-    const body = await req.json();
+    return await generateScorecard(body, auth, svc);
+
+  } catch (error) {
+    console.error("generate-scorecard error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+/** Shared generation path. Session callers persist successfully before settling credits. */
+async function generateScorecard(
+  body: ReturnType<typeof JSON.parse>,
+  auth: AuthResult,
+  svc: SupabaseClient,
+  options: { organizationId?: string; deferSettlement?: boolean } = {},
+): Promise<Response> {
+  const userId = auth.userId;
     const { candidateProfile, jobContext, scoringDetails, interviewStage } = body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "generate_scorecard", modelId: "claude-sonnet-4-6", description: null,
@@ -143,6 +164,7 @@ Génère la scorecard d'évaluation sur mesure.`;
     // règlement plus bas.
     const gate = await assertCredits({
       userId,
+      organizationId: options.organizationId,
       aiAction: _aiParams.aiAction,
       modelId: modelToUse,
       systemCall: auth.method === "service_role" && !userId,
@@ -300,7 +322,7 @@ Génère la scorecard d'évaluation sur mesure.`;
     // ── Fire-and-forget RAG ingestion (scorecard) ──
     const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
     const serviceKeyRag = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-    if (supabaseUrlRag && serviceKeyRag && candidateProfile?.name) {
+    if (!options.deferSettlement && supabaseUrlRag && serviceKeyRag && candidateProfile?.name) {
       // Resolve org from user profile
       const { data: userProfile } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
       const orgId = userProfile?.active_organization_id;
@@ -326,7 +348,7 @@ Génère la scorecard d'évaluation sur mesure.`;
     }
 
     // Settle AI credits (fire-and-forget)
-    if (_tokensIn + _tokensOut > 0) {
+    if (!options.deferSettlement && _tokensIn + _tokensOut > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
@@ -343,14 +365,7 @@ Génère la scorecard d'évaluation sur mesure.`;
       } catch (e) { console.warn("[generate-scorecard] settle skipped:", e); }
     }
 
-    return new Response(JSON.stringify({ success: true, criteria: normalizedCriteria }), {
+    return new Response(JSON.stringify({ success: true, criteria: normalizedCriteria, ...(options.deferSettlement ? { usage: { tokensInput: _tokensIn, tokensOutput: _tokensOut, modelId: modelToUse } } : {}) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error) {
-    console.error("generate-scorecard error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-});
+}
