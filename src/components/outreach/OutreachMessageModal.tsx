@@ -311,7 +311,17 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         }
       });
 
-      if (!data?.success) throw new Error(data?.error as string || 'Erreur lors de l\'envoi');
+      if (!data?.success) {
+        // Correctif 4 : candidat effacé (CANDIDATE_ERASED) ou effacement non
+        // vérifié (GDPR_UNVERIFIED), la phrase du serveur dit pourquoi ; aucun
+        // nouvel essai, le message reste dans le champ.
+        const refusal = data?.error_code === 'CANDIDATE_ERASED' || data?.error_code === 'GDPR_UNVERIFIED' ? data.error : undefined;
+        if (refusal) {
+          toast.error(refusal);
+          return;
+        }
+        throw new Error(data?.error as string || 'Erreur lors de l\'envoi');
+      }
 
       // Track quota
       if (!isFirstDegree) {
