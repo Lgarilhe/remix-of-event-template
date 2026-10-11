@@ -1,8 +1,6 @@
-import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { invokeUnipile } from '@/lib/invokeUnipile';
-import { LinkedInFiltersState, LinkedInApiType } from '@/components/outreach/types';
-import { GeneratedFilters } from '@/components/outreach/JobSelector';
+import { useCallback, useEffect, useRef } from 'react';
+import type { LinkedInFiltersState } from '@/components/outreach/types';
+import { mapGeneratedFilters, type GeneratedFilters } from '@/components/outreach/search/generateFiltersFromJob';
 import { toast } from 'sonner';
 
 interface AutoFillOptions {
@@ -16,115 +14,61 @@ export function useAutoFillFilters({
   filtersRef,
   setFilters,
 }: AutoFillOptions) {
+  const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const contextKey = JSON.stringify([selectedAccount, filtersRef.current]);
+  const contextRef = useRef(contextKey);
+  // Publish the rendered account/filter context immediately, before effects:
+  // a late location resolution must not apply to another search.
+  contextRef.current = contextKey;
 
-  const handleAutoFillFilters = useCallback((generatedFilters: GeneratedFilters) => {
-    setFilters(prev => ({
-      ...prev,
-      // Keywords
-      keywords: generatedFilters.keywords || prev.keywords,
-      // Role filters (for Recruiter mode)
-      role: generatedFilters.role?.length > 0 ? generatedFilters.role.map(r => ({
-        keywords: r.keywords,
-        priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
-        scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
-      })) : prev.role,
-      // Seniority
-      seniority: generatedFilters.seniority?.length > 0 ? generatedFilters.seniority : prev.seniority,
-      // Years of experience
-      calculated_experience_min: generatedFilters.years_of_experience_min ?? prev.calculated_experience_min,
-      calculated_experience_max: generatedFilters.years_of_experience_max ?? prev.calculated_experience_max,
-      years_of_experience_min: null,
-      years_of_experience_max: null,
-      // Company keywords exclusions
-      company_keywords: generatedFilters.company_keywords?.length > 0
-        ? generatedFilters.company_keywords.map(c => ({
-            keywords: c.keywords,
-            priority: c.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
-            scope: c.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT',
-          }))
-        : prev.company_keywords,
-      // School filters
-      school: generatedFilters.school?.length > 0
-        ? generatedFilters.school.map(s => ({
-            id: s.id,
-            name: s.name,
-            priority: s.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
-          }))
-        : prev.school,
-      // Location radius
-      location_within_area: prev.api === 'recruiter' ? generatedFilters.location_within_area ?? prev.location_within_area : prev.location_within_area,
-      // Spotlight
-      spotlight: (generatedFilters.spotlight || prev.spotlight) as typeof prev.spotlight,
-      // Open to work flag
-      open_to_work: generatedFilters.open_to_work ?? prev.open_to_work,
-    }));
+  useEffect(() => {
+    const generation = generationRef;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generation.current++;
+    };
+  }, [contextKey]);
 
-    // Resolve location keywords → location IDs
-    const locationKeyword = generatedFilters.location_keywords?.[0]?.trim();
-    if (locationKeyword && selectedAccount) {
-      void (async () => {
-        try {
-          if (filtersRef.current.location.length > 0) return;
-          const api = filtersRef.current.api;
+  const handleAutoFillFilters = useCallback(async (generatedFilters: GeneratedFilters) => {
+    if (!mountedRef.current || contextRef.current !== contextKey) return;
+    const generation = ++generationRef.current;
+    const snapshot = filtersRef.current;
+    const isCurrent = () => mountedRef.current
+      && generationRef.current === generation
+      && contextRef.current === contextKey
+      && JSON.stringify([selectedAccount, filtersRef.current]) === contextKey;
 
-          const { data } = await invokeUnipile({
-            body: {
-              action: 'get_parameters',
-              account_id: selectedAccount,
-              type: 'LOCATION',
-              keywords: locationKeyword,
-              service: api === 'classic' ? 'CLASSIC' : api === 'sales_navigator' ? 'SALES_NAVIGATOR' : 'RECRUITER',
-            },
-          });
-
-          if (!data?.success || !Array.isArray(data?.items) || (data.items as any[]).length === 0) {
-            console.warn('[AutoFill] Location could not be resolved:', locationKeyword);
-            return;
-          }
-
-          const normalized = locationKeyword.toLowerCase();
-          const best =
-            data.items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-            data.items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-            data.items[0];
-
-          if (!best?.id || !best?.title) return;
-          if (filtersRef.current.api !== api) return;
-
-          setFilters((curr) => ({
-            ...curr,
-            location: curr.location.length
-              ? curr.location
-              : [
-                  {
-                    id: String(best.id),
-                    name: String(best.title),
-                    priority: 'MUST_HAVE',
-                    scope: curr.api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT',
-                  },
-                ],
-          }));
-
-          console.log('[AutoFill] Resolved location:', { keyword: locationKeyword, id: best.id, title: best.title });
-        } catch (e) {
-          console.error('[AutoFill] Failed to resolve location:', e);
-        }
-      })();
+    try {
+      const { update } = await mapGeneratedFilters(generatedFilters, {
+        accountId: selectedAccount,
+        api: snapshot.api,
+        currentLocation: snapshot.location,
+        currentRoles: snapshot.role,
+        currentKeywords: snapshot.keywords,
+      });
+      // Retain this legacy entry point's explicit school priorities and any
+      // calculated bound omitted by a partial generation.
+      if (update.school) {
+        update.school = update.school.map((school, index) => ({
+          ...school,
+          priority: generatedFilters.school[index].priority as LinkedInFiltersState['school'][number]['priority'],
+        }));
+      }
+      if (typeof generatedFilters.years_of_experience_min !== 'number') delete update.calculated_experience_min;
+      if (typeof generatedFilters.years_of_experience_max !== 'number') delete update.calculated_experience_max;
+      if (!isCurrent()) return;
+      setFilters(previous => isCurrent() && JSON.stringify([selectedAccount, previous]) === contextKey
+        ? { ...previous, ...update }
+        : previous);
+    } catch (error) {
+      if (!isCurrent()) return;
+      toast.error(error instanceof Error
+        ? error.message
+        : 'Les filtres n’ont pas pu être appliqués. Réessayez dans quelques instants.');
     }
-
-    console.log('[AutoFill] Applied filters:', {
-      keywords: generatedFilters.keywords,
-      roles: generatedFilters.role?.length,
-      seniority: generatedFilters.seniority,
-      calculatedXp: `${generatedFilters.years_of_experience_min}-${generatedFilters.years_of_experience_max}`,
-      companyExclusions: generatedFilters.company_keywords?.length,
-      schools: generatedFilters.school?.length,
-      locationKeywords: generatedFilters.location_keywords,
-      locationRadius: generatedFilters.location_within_area,
-      spotlight: generatedFilters.spotlight,
-      openToWork: generatedFilters.open_to_work,
-    });
-  }, [selectedAccount, filtersRef, setFilters]);
+  }, [selectedAccount, filtersRef, setFilters, contextKey]);
 
   return { handleAutoFillFilters };
 }

@@ -1,6 +1,6 @@
 /** Build a people search from the mission's saved filters. No generated query,
  * account fallback, or silently discarded mandatory filter is allowed here. */
-import { searchBooleanIssue } from './search-boolean.ts';
+import { compileSearchRoles, SearchRoleFilterError, searchBooleanIssue } from './search-boolean.ts';
 export type ContinuousSearchApi = 'classic' | 'recruiter' | 'sales_navigator';
 type Obj = Record<string, unknown>;
 type Priority = 'MUST_HAVE' | 'CAN_HAVE' | 'DOESNT_HAVE';
@@ -202,7 +202,6 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
   if (!manual && !present(out.industry) && present(saved.industry_keywords)) fail('filters_unresolved', 'Sélectionnez les secteurs suggérés dans les filtres avant de démarrer l’agent.');
 
   const roles = entries(saved.role).map(v => ({ keywords: booleanQuery(v.keywords, 'Rôle', api), priority: priority(v.priority), scope: scope(v.scope, aiFormat ? 'CURRENT' : 'CURRENT_OR_PAST', ROLE_SCOPES, 'Rôle') }));
-  if (roles.length) { recruiterOnly(api, 'Rôle et sa période'); out.role = roles; }
   const companies = entries(saved.company_keywords).map(v => ({ keywords: booleanQuery(v.keywords, 'Entreprise', api), priority: priority(v.priority ?? (aiFormat ? 'DOESNT_HAVE' : 'MUST_HAVE')), scope: scope(v.scope, 'CURRENT_OR_PAST', COMPANY_SCOPES, 'Entreprise') }));
   if (companies.length) {
     recruiterOnly(api, 'Entreprises par mots-clés');
@@ -229,7 +228,11 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
       const period = scope(v.scope, key === 'past_job_title' ? 'PAST' : 'CURRENT_OR_PAST', ROLE_SCOPES, 'Intitulé');
       if (key === 'past_job_title' && period !== 'PAST') fail('filters_invalid', 'Les intitulés passés doivent porter sur la période passée.');
       if (api === 'sales_navigator' && (p === 'CAN_HAVE' || (present(v.scope) && period !== (key === 'past_job_title' ? 'PAST' : 'CURRENT')))) fail('filters_unsupported', 'Cette licence ne conserve pas la priorité ou la période de l’intitulé. Revoyez ce filtre.');
-      return { id: facetId(v.id), priority: p, ...(api === 'recruiter' && key === 'job_title' ? { scope: period } : {}) };
+      // Current Sales Navigator titles accept either a resolved ID or literal
+      // text. Past titles still require a resolved numeric facet.
+      const id = api === 'sales_navigator' && key === 'job_title' && typeof v.id === 'string' ? text(v.id) : facetId(v.id);
+      if (!id) fail('filters_invalid', 'Renseignez les intitulés dans les filtres de recherche.');
+      return { id, priority: p, ...(api === 'recruiter' && key === 'job_title' ? { scope: period } : {}) };
     });
   }
   if (present(saved.network_distance)) out.network_distance = enumValues(saved.network_distance, [1, 2, 3], 'Relation');
@@ -322,6 +325,24 @@ export function buildContinuousSearchRequest(snapshot: unknown, api: ContinuousS
     if (Object.keys(advanced).some(k => !['first_name', 'last_name', 'title', 'company', 'school'].includes(k))) fail('filters_invalid', 'Revoyez les mots-clés avancés.');
     out.advanced_keywords = Object.fromEntries(Object.entries(advanced).map(([key, value]) => [key, booleanQuery(value, 'Mots-clés avancés', api)]));
   }
+  // Use the same role compiler as generation and interactive transport. A
+  // licence conversion must keep title clauses out of general profile keywords
+  // and must fail when the selected priority or period cannot be represented.
+  let compiledRoles: ReturnType<typeof compileSearchRoles>;
+  try {
+    compiledRoles = compileSearchRoles(roles, api, {
+      classicTitle: text(advanced.title),
+      salesTitles: Array.isArray(out.job_title) ? out.job_title as Array<{ id: string; priority: Priority }> : [],
+    });
+  } catch (error) {
+    if (error instanceof SearchRoleFilterError) fail(error.code, error.message);
+    throw error;
+  }
+  if (compiledRoles.role?.length) out.role = compiledRoles.role;
+  if (compiledRoles.salesTitles?.length) out.job_title = compiledRoles.salesTitles;
+  if (compiledRoles.classicTitle) out.advanced_keywords = {
+    ...obj(out.advanced_keywords), title: booleanQuery(compiledRoles.classicTitle, 'Intitulés', api),
+  };
 
   // These fields are stripped by the current handler, override the request,
   // or need browser post-filtering. Do not silently widen an unattended hunt.

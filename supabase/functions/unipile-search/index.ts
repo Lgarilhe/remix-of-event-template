@@ -32,7 +32,7 @@ interface SearchParams {
   school?: string[] | Array<{ id: string; priority: string }>;
   
   // Priority filters (Recruiter/Sales Nav)
-  job_title?: Array<{ id: string; priority: string }>;
+  job_title?: Array<{ id: string; priority: string; scope?: string }>;
   skills?: Array<{ id: string; priority: string }>;
   
   // Role filter (Recruiter)
@@ -83,7 +83,7 @@ interface SearchParams {
   
   // Past filters
   past_company?: { include?: string[]; exclude?: string[] } | string[];
-  past_job_title?: Array<{ id: string; priority: string }>;
+  past_job_title?: Array<{ id: string; priority: string; scope?: string }>;
   
   // Advanced keywords (Classic)
   advanced_keywords?: {
@@ -115,7 +115,7 @@ import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInA
 import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
 import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
 import { assertContinuousOperationContext } from '../_shared/continuous-sourcing.ts';
-import { searchBooleanIssue } from '../_shared/search-boolean.ts';
+import { compileSearchRoles, SearchRoleFilterError, searchBooleanIssue } from '../_shared/search-boolean.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -654,7 +654,12 @@ async function handleSearch(
     const advKw: Record<string, string> = {};
     if (advanced_keywords.first_name) advKw.first_name = advanced_keywords.first_name;
     if (advanced_keywords.last_name) advKw.last_name = advanced_keywords.last_name;
-    if (advanced_keywords.title) advKw.title = advanced_keywords.title;
+    if (advanced_keywords.title) {
+      if (advanced_keywords.title.length > 200) {
+        throw new UnipileInputError(`La requête « Intitulés » contient ${advanced_keywords.title.length} caractères. Cette recherche accepte actuellement jusqu’à 200 caractères pour cette licence. Revoyez les intitulés.`, 400, 'KEYWORDS_TOO_LONG');
+      }
+      advKw.title = validateBooleanKeywords(advanced_keywords.title, 'Intitulés');
+    }
     if (advanced_keywords.company) advKw.company = advanced_keywords.company;
     if (advanced_keywords.school) advKw.school = advanced_keywords.school;
     if (Object.keys(advKw).length > 0) {
@@ -801,6 +806,9 @@ async function handleSearch(
   // - Sales Navigator: uses `role` with { include: [...], exclude: [...] }
   // - Classic: no direct job_title filter
   if (job_title?.length) {
+    if (api === 'classic') {
+      throw new UnipileInputError('Les intitulés sélectionnés ne sont pas compatibles avec LinkedIn Classic. Utilisez les mots-clés d’intitulés ou changez de licence.', 400, 'FILTERS_UNSUPPORTED');
+    }
     if (api === 'recruiter') {
       // Recruiter uses `role` (not current_job_title)
       searchBody.role = job_title.map((t: { id?: string; keywords?: string; priority?: string; scope?: string; is_selection?: boolean }) => {
@@ -815,6 +823,9 @@ async function handleSearch(
         };
       });
     } else if (api === 'sales_navigator') {
+      if (job_title.some(t => t.scope && t.scope !== 'CURRENT')) {
+        throw new UnipileInputError('Sales Navigator ne conserve que les intitulés actuels dans ce filtre. Revoyez la période ou utilisez Recruiter.', 400, 'FILTERS_UNSUPPORTED');
+      }
       // Sales Navigator uses `role` with { include, exclude }
       const includeIds = job_title.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
       const excludeIds = job_title.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);
@@ -836,20 +847,33 @@ async function handleSearch(
     });
   }
 
-  // Role filter - Recruiter specific with keywords, priority, scope
-  // Note: if job_title already set `role`, append keyword-based roles
-  if (role?.length && api === 'recruiter') {
-    const keywordRoles = role.map(r => ({
-      keywords: validateBooleanKeywords(r.keywords, 'Poste'),
-      priority: r.priority || 'MUST_HAVE',
-      scope: r.scope || 'CURRENT_OR_PAST',
-    }));
-    // Merge with ID-based roles from job_title if any
-    if (Array.isArray(searchBody.role)) {
-      (searchBody.role as unknown[]).push(...keywordRoles);
-    } else {
-      searchBody.role = keywordRoles;
+  // The shared compiler preserves generated title criteria across licences.
+  // Unsupported periods or combinations fail before LinkedIn is consulted.
+  try {
+    if (role != null && !Array.isArray(role)) {
+      throw new UnipileInputError('Revoyez le format des intitulés de poste.', 400, 'FILTERS_INVALID');
     }
+    const compiledRoles = compileSearchRoles((role ?? []).map(r => ({
+      ...r, keywords: validateBooleanKeywords(r?.keywords, 'Poste'),
+      scope: r.scope ?? (api === 'recruiter' ? 'CURRENT_OR_PAST' : 'CURRENT'),
+    })), api, {
+      classicTitle: advanced_keywords?.title,
+      salesTitles: api === 'sales_navigator' ? job_title : [],
+    });
+    if (api === 'recruiter' && compiledRoles.role?.length) {
+      searchBody.role = [...(Array.isArray(searchBody.role) ? searchBody.role : []), ...compiledRoles.role];
+    } else if (api === 'classic' && compiledRoles.classicTitle) {
+      searchBody.advanced_keywords = { ...(searchBody.advanced_keywords as Record<string, string> || {}), title: compiledRoles.classicTitle };
+    } else if (api === 'sales_navigator' && compiledRoles.salesTitles?.length) {
+      const include = compiledRoles.salesTitles.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
+      const exclude = compiledRoles.salesTitles.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);
+      searchBody.role = { ...(include.length ? { include } : {}), ...(exclude.length ? { exclude } : {}) };
+    }
+  } catch (error) {
+    if (error instanceof SearchRoleFilterError) {
+      throw new UnipileInputError(error.message, 400, error.code.toUpperCase());
+    }
+    throw error;
   }
 
   // Function/Department filter
@@ -1148,6 +1172,12 @@ async function handleSearch(
   // - Recruiter: merged into `role` with scope: 'PAST' (not a separate param)
   // - Sales Navigator: `past_role` with { include: [...], exclude: [...] }
   if (past_job_title?.length) {
+    if (api === 'classic') {
+      throw new UnipileInputError('Les intitulés passés nécessitent LinkedIn Recruiter ou Sales Navigator. Revoyez ce filtre ou changez de licence.', 400, 'FILTERS_UNSUPPORTED');
+    }
+    if (past_job_title.some(t => t.scope && t.scope !== 'PAST')) {
+      throw new UnipileInputError('Les intitulés passés doivent porter sur la période passée. Revoyez ce filtre.', 400, 'FILTERS_INVALID');
+    }
     if (api === 'recruiter') {
       // Recruiter doesn't have a separate past_job_title. Past titles go into `role` with scope: 'PAST'
       const pastRoles = past_job_title.map(t => ({
@@ -1162,6 +1192,9 @@ async function handleSearch(
         searchBody.role = pastRoles;
       }
     } else if (api === 'sales_navigator') {
+      if (past_job_title.some(t => typeof t.id !== 'string' || !/^\d+$/.test(t.id) || Number(t.id) <= 0)) {
+        throw new UnipileInputError('Sélectionnez les intitulés passés dans les suggestions avant de rechercher avec Sales Navigator.', 400, 'FILTERS_UNSUPPORTED');
+      }
       // Sales Navigator uses `past_role` with { include, exclude }
       const includeIds = past_job_title.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
       const excludeIds = past_job_title.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);

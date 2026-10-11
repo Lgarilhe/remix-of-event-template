@@ -130,13 +130,19 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
         />
       </FilterGroup>
 
-      {/* Role (keywords with scope) - Recruiter only */}
+      {/* Canonical roles stay editable; the shared request adapter validates
+          the selected licence without changing their priorities or periods. */}
       <FilterGroup
         title="Rôle (mots-clés booléens)"
         badge={filters.role.length}
         unsupported={!isFilterSupported(filters.api, 'role')}
         unsupportedTooltip={getFilterTooltip(filters.api, 'role')}
       >
+        {getFilterTooltip(filters.api, 'role') && (
+          <p className="text-xs text-muted-foreground mb-2" role="note">
+            {getFilterTooltip(filters.api, 'role')}
+          </p>
+        )}
         {filters.role.map((role, index) => (
           <div key={index} className="p-2 bg-brand-purple/10 rounded-lg mb-2 space-y-2 min-w-0">
             <div className="flex items-start gap-2 min-w-0">
@@ -211,6 +217,11 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               <DialogHeader>
                 <DialogTitle>{editingRoleIndex !== null ? 'Modifier' : 'Ajouter'} — Rôle (mots-clés booléens)</DialogTitle>
               </DialogHeader>
+              {getFilterTooltip(filters.api, 'role') && (
+                <p className="text-xs text-muted-foreground" role="note">
+                  {getFilterTooltip(filters.api, 'role')}
+                </p>
+              )}
               <Textarea
                 autoFocus
                 value={roleDialogDraft}
@@ -253,7 +264,11 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                   <li>Combiner <strong>FR + EN</strong> : <code className="text-xs bg-muted px-1 rounded">"DevOps Engineer" OR "Ingénieur DevOps" OR SRE</code></li>
                   <li>Inclure les <strong>variantes</strong> : <code className="text-xs bg-muted px-1 rounded">"VP Sales" OR "Head of Sales" OR "Directeur Commercial"</code></li>
                   <li><strong>Guillemets</strong> pour les titres composés : <code className="text-xs bg-muted px-1 rounded">"Product Manager"</code></li>
-                  <li>Exclure avec <strong>NOT</strong> : <code className="text-xs bg-muted px-1 rounded">Sales NOT (Assistant OR Associate)</code></li>
+                  {filters.api === 'sales_navigator' ? (
+                    <li>Exclure un intitulé avec une règle <strong>« Exclure »</strong> séparée.</li>
+                  ) : (
+                    <li>Exclure avec <strong>NOT</strong> : <code className="text-xs bg-muted px-1 rounded">Sales NOT (Assistant OR Associate)</code></li>
+                  )}
                 </ul>
                 <p className="text-xs mt-1 text-muted-foreground/70">Placez les technologies et compétences dans leurs filtres. OR permet de chercher plusieurs intitulés équivalents dans une seule règle requise.</p>
               </div>

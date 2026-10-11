@@ -1,5 +1,6 @@
-// Filter support per API type based on Unipile API documentation
-// Extracted from schema validation errors in edge function logs
+// Filter support in the application for each LinkedIn licence. Native filters
+// follow the Unipile schema; canonical role criteria also use our shared
+// request adapter, which rejects requirements a licence cannot preserve.
 
 import { LinkedInApiType } from './types';
 
@@ -45,7 +46,7 @@ export type FilterKey =
   | 'funding_stage'
   | 'company_domain';
 
-// Filter support matrix based on Unipile API documentation
+// A supported editor does not imply every combination is supported by a licence.
 export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, FilterSupport>> = {
   classic: {
     keywords: { supported: true },
@@ -55,7 +56,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     school: { supported: true },
     job_title: { supported: false, tooltip: "Utilisez 'Mots-clés avancés > Titre' ou le filtre 'Mots-clés' en mode Classic" },
     skills: { supported: false, tooltip: "Les compétences ne sont pas disponibles en mode Classic. Utilisez Recruiter" },
-    role: { supported: false, tooltip: "Le filtre de rôle booléen n'est disponible qu'en mode Recruiter" },
+    role: { supported: true, tooltip: "Classic recherche les postes actuels ou passés ensemble : choisissez « Actuel ou passé ». Les règles et exclusions sont conservées, dans la limite de 200 caractères." },
     function: { supported: false, tooltip: "Le département n'est pas disponible en mode Classic" },
     degree: { supported: false, tooltip: "Le niveau d'études n'est pas disponible en mode Classic" },
     seniority: { supported: false, tooltip: "Le niveau de séniorité n'est pas disponible en mode Classic" },
@@ -128,7 +129,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     school: { supported: true }, // With include/exclude
     job_title: { supported: true }, // current_job_title with priority
     skills: { supported: false, tooltip: "Les compétences ne sont pas disponibles en Sales Navigator. Utilisez Recruiter" },
-    role: { supported: false, tooltip: "Le filtre de rôle booléen n'est disponible qu'en mode Recruiter" },
+    role: { supported: true, tooltip: "Sales Navigator accepte ici des intitulés actuels en alternatives (OR) et des exclusions. Plusieurs groupes obligatoires ou une expression avec AND/NOT nécessitent Recruiter. Limite : 200 caractères." },
     function: { supported: true }, // Department with include/exclude
     degree: { supported: false, tooltip: "Le niveau d'études n'est pas disponible en Sales Navigator" },
     seniority: { supported: true },
@@ -200,7 +201,7 @@ export const isFilterSupported = (api: LinkedInApiType, filterKey: FilterKey): b
   return FILTER_API_SUPPORT[api]?.[filterKey]?.supported ?? false;
 };
 
-// Helper to get tooltip for unsupported filter
+// Explanation for unavailable native filters or adapted role criteria.
 export const getFilterTooltip = (api: LinkedInApiType, filterKey: FilterKey): string | undefined => {
   return FILTER_API_SUPPORT[api]?.[filterKey]?.tooltip;
 };

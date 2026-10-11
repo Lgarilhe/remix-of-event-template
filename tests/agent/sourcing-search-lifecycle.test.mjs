@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 
@@ -76,7 +77,8 @@ function modules(overrides = {}, globals = {}) {
     } }).outputText;
     const exports = {};
     cache.set(path, exports);
-    vm.runInNewContext(transpiled, { exports, require: load, structuredClone,
+    vm.runInNewContext(transpiled, { exports, require: request => load(request.startsWith('.')
+      ? posix.normalize(posix.join(posix.dirname(file), request)) : request), structuredClone,
       console: { log() {}, warn() {}, error() {} }, setTimeout, clearTimeout, ...globals }, { filename: file });
     return exports;
   }

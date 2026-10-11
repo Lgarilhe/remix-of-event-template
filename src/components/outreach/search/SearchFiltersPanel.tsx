@@ -390,6 +390,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           accountId={selectedAccount}
           searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           currentLocation={filters.location}
+          currentRoles={filters.role}
+          currentKeywords={filters.keywords}
+          filtersKey={JSON.stringify(filters)}
           onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
           onSuggestionsGenerated={onSuggestionsGenerated}
           onMemoryContextGenerated={onMemoryContextGenerated}
@@ -418,6 +421,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             projectId={activeProject?.id ?? null}
             accountId={selectedAccount}
             currentLocation={filters.location}
+            currentRoles={filters.role}
+            currentKeywords={filters.keywords}
+            filtersKey={JSON.stringify(filters)}
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
             onSuggestionsGenerated={onSuggestionsGenerated}
             onMemoryContextGenerated={onMemoryContextGenerated}

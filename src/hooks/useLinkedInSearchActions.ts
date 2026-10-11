@@ -15,6 +15,7 @@ import { BASE_KONEKT_QUERY_KEY } from '@/hooks/useBaseKonekt';
 import { toast } from 'sonner';
 import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
 import { sourcingSearchInputKey, type ExecutedSourcingSearch } from '@/lib/sourcingSearchLifecycle';
+import { compileSearchRoles, searchBooleanIssue } from '../../supabase/functions/_shared/search-boolean.ts';
 
 const RESULTS_PER_BATCH = 25;
 
@@ -362,10 +363,14 @@ export function buildSearchParams(
 
   // Job title — include name for database mode (Apollo rejects numeric IDs)
   if (filters.job_title.length) {
+    if (filters.api === 'classic') {
+      throw new Error('LinkedIn Classic ne prend pas en charge les intitulés sélectionnés. Revoyez les filtres de poste ou changez de licence.');
+    }
     baseParams.job_title = filters.job_title.map(item => ({
       id: item.id,
       name: item.name || item.id,
       priority: item.priority,
+      ...('scope' in item ? { scope: item.scope } : {}),
     }));
   }
 
@@ -388,7 +393,7 @@ export function buildSearchParams(
   // Role with seniority handling
   let allRoles = filters.role.map(r => ({
     keywords: r.keywords,
-    priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
+    priority: r.priority,
     scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
   }));
 
@@ -436,8 +441,28 @@ export function buildSearchParams(
     }
   }
 
-  if (allRoles.length) {
-    baseParams.role = allRoles;
+  // Keep canonical roles in the editor/snapshot; compile only at the shared
+  // request boundary. An unsupported period or AND must never disappear.
+  const compiledRoles = compileSearchRoles(allRoles, filters.api, {
+    classicTitle: filters.title_keywords,
+    salesTitles: filters.job_title,
+  });
+  if (compiledRoles.role) baseParams.role = compiledRoles.role;
+  if (compiledRoles.salesTitles) baseParams.job_title = compiledRoles.salesTitles;
+  if (filters.api === 'classic') {
+    const advanced = {
+      ...(filters.first_name ? { first_name: filters.first_name } : {}),
+      ...(filters.last_name ? { last_name: filters.last_name } : {}),
+      ...((compiledRoles.classicTitle || filters.title_keywords) ? { title: compiledRoles.classicTitle || filters.title_keywords } : {}),
+    };
+    for (const value of Object.values(advanced)) {
+      if (value.length > 200 || searchBooleanIssue(value)) {
+        throw new Error('Validez les mots-clés avancés et leur limite de 200 caractères. Aucun critère n’a été tronqué.');
+      }
+    }
+    if (Object.keys(advanced).length) baseParams.advanced_keywords = advanced;
+  } else if (filters.title_keywords || filters.first_name || filters.last_name) {
+    throw new Error('Les mots-clés avancés nécessitent LinkedIn Classic. Revoyez ces filtres ou changez de licence.');
   }
 
   // ─── Augmentation : min_seniority → seniority natif sur Sales Navigator ─
@@ -573,9 +598,24 @@ export function buildSearchParams(
     baseParams.past_company = { include: filters.past_company.map(f => f.id) };
   }
   if (filters.past_job_title.length) {
+    if (filters.api === 'classic') {
+      throw new Error('Les intitulés passés nécessitent LinkedIn Recruiter ou Sales Navigator. Revoyez ce filtre ou changez de licence.');
+    }
+    if (filters.api !== 'database' && filters.past_job_title.some(item => 'scope' in item && item.scope != null && item.scope !== 'PAST')) {
+      throw new Error('Les intitulés passés doivent porter sur la période passée. Revoyez ce filtre.');
+    }
+    if (filters.api === 'sales_navigator') {
+      if (filters.past_job_title.some(item => item.priority === 'CAN_HAVE')) {
+        throw new Error('Sales Navigator ne conserve pas cette priorité pour les intitulés passés. Revoyez la priorité ou utilisez Recruiter.');
+      }
+      if (filters.past_job_title.some(item => !/^\d+$/.test(item.id) || Number(item.id) <= 0)) {
+        throw new Error('Sélectionnez les intitulés passés dans les suggestions avant de rechercher avec Sales Navigator.');
+      }
+    }
     baseParams.past_job_title = filters.past_job_title.map(item => ({
       id: item.id,
       priority: item.priority,
+      ...('scope' in item ? { scope: item.scope } : {}),
     }));
   }
 
@@ -695,6 +735,7 @@ export function buildSearchParams(
       id: item.id,
       name: item.name,
       priority: item.priority,
+      ...('scope' in item ? { scope: item.scope } : {}),
     }));
   }
 

@@ -5,7 +5,6 @@ import { buildProfileData } from '@/hooks/useLinkedInScoring';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
-import { splitRoleKeywords } from './brief';
 
 /**
  * Première recherche de l'onboarding : les filtres enregistrés sur la mission,
@@ -85,13 +84,6 @@ function searchErrorFrom(data: { error?: string; errorType?: string }): FirstSea
   return new FirstSearchError(data.error || "La recherche n'a pas abouti. Réessayez dans un instant.", 'other');
 }
 
-/** Titres visés, en « OU » entre guillemets : le seul moyen de garder le poste sur Classic et Sales Navigator, où le filtre de poste est ignoré. */
-function titleClause(filters: GeneratedFilters): string {
-  const titles = splitRoleKeywords(filters.role?.[0]?.keywords).slice(0, 4);
-  if (titles.length === 0) return '';
-  return `(${titles.map((t) => `"${t.replace(/"/g, '')}"`).join(' OR ')})`;
-}
-
 export async function runFirstSearch(input: {
   filters: GeneratedFilters;
   accountId: string;
@@ -102,12 +94,13 @@ export async function runFirstSearch(input: {
   const { update } = await mapGeneratedFilters(input.filters, { accountId: input.accountId, api: license });
   const state = { ...INITIAL_FILTERS, ...update, api: license };
 
-  if (license !== 'recruiter') {
-    const clause = titleClause(input.filters);
-    if (clause) state.keywords = state.keywords ? `${clause} AND (${state.keywords})` : clause;
+  let params: ReturnType<typeof buildSearchParams>;
+  try {
+    params = buildSearchParams(state, input.accountId);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Revoyez les critères de recherche.';
+    throw new FirstSearchError(`${reason} Continuez sans aperçu pour revoir les filtres dans la mission.`, 'other');
   }
-
-  const params = buildSearchParams(state, input.accountId);
   const { data } = await invokeUnipile({ body: { ...params, limit: input.limit ?? 10 } });
   if (!data?.success) throw searchErrorFrom(data ?? {});
 

@@ -44,10 +44,31 @@ export function uniqueList(values: string[]): string[] {
   return out;
 }
 
-/** « "SRE" OU "Platform Engineer" » : les intitulés d'un filtre de poste. */
+/** Sépare seulement une liste simple de titres ; une requête complexe reste intacte. */
 export function splitRoleKeywords(keywords: string | undefined): string[] {
-  if (!keywords) return [];
-  return uniqueList(keywords.split(/\s+OR\s+/i).map((part) => part.replace(/^["'\s]+|["'\s]+$/g, '')));
+  const query = keywords?.trim();
+  if (!query) return [];
+  const parts: string[] = [];
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < query.length; i++) {
+    const ch = query[i];
+    if (ch === '"') { quoted = !quoted; continue; }
+    if (quoted) continue;
+    // Parentheses, conjunctions and exclusions are not editable title lists.
+    if (ch === '(' || ch === ')' || /^(?:AND|NOT)(?=\s|$)/.test(query.slice(i)) && (i === 0 || /\s/.test(query[i - 1]))) {
+      return [query];
+    }
+    if (query.slice(i, i + 2) === 'OR' && i > 0 && /\s/.test(query[i - 1]) && /\s/.test(query[i + 2] ?? '')) {
+      parts.push(query.slice(start, i).trim());
+      start = i + 2;
+      i++;
+    }
+  }
+  if (quoted) return [query];
+  parts.push(query.slice(start).trim());
+  if (parts.some(part => !part)) return [query];
+  return uniqueList(parts.map(part => /^"[^"\n]*"$/.test(part) || /^'[^'\n]*'$/.test(part) ? part.slice(1, -1) : part));
 }
 
 function cut(text: string, max: number): string {
@@ -88,7 +109,8 @@ export function parseBriefResponse(data: unknown, title: string): BriefDraft | n
   const suggestions = (d.suggestions && typeof d.suggestions === 'object' ? d.suggestions : {}) as Raw;
   const power = (d.power_filters && typeof d.power_filters === 'object' ? d.power_filters : {}) as Raw;
 
-  const titles = splitRoleKeywords(filters.role?.[0]?.keywords);
+  const titleRole = filters.role?.find(role => role.priority !== 'DOESNT_HAVE');
+  const titles = splitRoleKeywords(titleRole?.keywords);
   const location = strList(filters.location_keywords)[0] ?? (isStr(analysis.location_hint) ? analysis.location_hint.trim() : '');
   const rationale = isStr(analysis.search_rationale) ? cut(analysis.search_rationale.trim(), 220) : null;
 
@@ -139,11 +161,27 @@ export function briefToFilters(draft: BriefDraft): GeneratedFilters {
     open_to_work: false,
   };
   const titles = uniqueList(draft.titles);
+  const roles = [...base.role];
+  const titleRoleIndex = roles.findIndex(role => role.priority !== 'DOESNT_HAVE');
+  const titleRole = roles[titleRoleIndex];
+  const originalTitles = splitRoleKeywords(titleRole?.keywords);
+  const titlesUnchanged = titles.length === originalTitles.length && titles.every((title, i) => title === originalTitles[i]);
+  if (!titlesUnchanged) {
+    if (!titles.length) {
+      if (titleRoleIndex >= 0) roles.splice(titleRoleIndex, 1);
+    } else {
+      const keywords = titles.map(title => {
+        if (title.includes('"')) throw new Error('Retirez les guillemets des intitulés ajoutés avant de continuer.');
+        return `"${title}"`;
+      }).join(' OR ');
+      const updatedRole = titleRole ? { ...titleRole, keywords } : { keywords, priority: 'MUST_HAVE', scope: 'CURRENT' };
+      if (titleRoleIndex >= 0) roles[titleRoleIndex] = updatedRole;
+      else roles.unshift(updatedRole);
+    }
+  }
   return {
     ...base,
-    role: titles.length > 0
-      ? [{ keywords: titles.length > 1 ? titles.join(' OR ') : titles[0], priority: 'MUST_HAVE', scope: 'CURRENT' }]
-      : base.role,
+    role: roles,
     skills_keywords: uniqueList(draft.skills),
     years_of_experience_min: draft.xpMin,
     years_of_experience_max: draft.xpMax,

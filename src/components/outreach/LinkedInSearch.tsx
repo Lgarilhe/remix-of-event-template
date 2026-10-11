@@ -310,7 +310,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   liveBriefKey.current = stableScoringContextKey({ job: search.selectedJob, details: activeProject?.job_details,
     description: activeProject?.description });
   const generationContextKey = stableScoringContextKey({ organizationId, projectId: activeProject?.id,
-    brief: liveBriefKey.current, searchMemoryVersionKey, api: search.filters.api });
+    brief: liveBriefKey.current, searchMemoryVersionKey, api: search.filters.api, accountId: selectedAccount });
   const generationEpoch = useRef({ key: generationContextKey, version: 0 });
   if (generationEpoch.current.key !== generationContextKey) {
     generationEpoch.current = { key: generationContextKey, version: generationEpoch.current.version + 1 };
@@ -1241,6 +1241,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     const scopeAtStart = liveMemoryScope.current;
     const briefAtStart = liveBriefKey.current;
     const epochAtStart = generationEpoch.current.version;
+    const filtersAtStart = sourcingSnapshotKey(search.filtersRef.current);
     const { update, suggestions, memoryContext } = await generateFiltersFromJob({
       job,
       organizationId,
@@ -1249,11 +1250,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       searchSource: searchSource === 'database' ? 'database' : 'linkedin',
       api: search.filtersRef.current.api,
       currentLocation: search.filtersRef.current.location,
+      currentRoles: search.filtersRef.current.role,
+      currentKeywords: search.filtersRef.current.keywords,
     });
     const currentScope = liveMemoryScope.current;
     if (scopeAtStart.organizationId !== currentScope.organizationId || scopeAtStart.projectId !== currentScope.projectId
       || scopeAtStart.searchMemoryVersionKey !== currentScope.searchMemoryVersionKey || briefAtStart !== liveBriefKey.current
-      || epochAtStart !== generationEpoch.current.version) {
+      || epochAtStart !== generationEpoch.current.version || filtersAtStart !== sourcingSnapshotKey(search.filtersRef.current)) {
       throw new Error('Le contexte a changé pendant la génération. Relancez-la pour appliquer les bons critères.');
     }
     if (memoryContext && memoryContext.versionKey !== currentScope.searchMemoryVersionKey) {
