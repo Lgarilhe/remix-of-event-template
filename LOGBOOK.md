@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-11 — SHIP — Refonte mission, lot 0b-5 : la garde des étapes passe en refus
+
+**Contexte** : la garde `stage_write_guard` journalisait les écritures directes de l'étape depuis le 28/09. Lecture en prod le 11/10 : `jcs_direct_write_log` à 0 ligne au total, donc aucune écriture directe pendant les 5 jours ouvrés qui suivent les lots 0c-3 et 0c-4 (04/10) ; déclencheur actif (`tgenabled = O`) ; aucune ligne dont l'étape stockée diffère de l'étape dérivée de son couple.
+**Fait** : migration `20261011103640_refonte_mission_lot0b5_garde_refuse.sql`, qui redéfinit seulement `jcs_stage_write_mode()` en `refuse` (signature et droits de 0b-1). Une écriture directe qui change l'étape lève 42501, HINT `STAGE_DIRECT_WRITE`. Runbook d'arrêt d'urgence dans l'en-tête de la migration et dans CLAUDE.md. Le contrôle S8 de `candidate_stage_writers_audit.sql` exige désormais `refuse`. Amorçage des tests e2e réécrit par `insertLegacyCandidateRows` (`e2e/helpers/supabase-admin.ts`, écriture sans jeton par psql) : `seedJcs` de `e2e/api/seq-reply-paths.spec.ts` et six sites de `e2e/flows` (`seq-ui-2`, `seq-reply-paths`, `seq-decisions-ui`).
+**Validation** : base reconstruite depuis les migrations, mode `refuse` ; les 33 audits SQL de la CI passent ; S8 échoue si le mode revient à `observe`. Recherche des écrivains sur 5 angles (fonctions edge, navigateur, SQL, e2e et tests, autres dossiers) avec vérification contradictoire : aucun écrivain de production refusé, sept sites de tests. Rejeu des specs e2e API en `refuse` : 15 échecs dus au refus, tous dans `seq-reply-paths` (amorçage `seedJcs`), corrigés ; après correction le fichier donne les mêmes résultats en `refuse` et en `observe`.
+**Impact** : les écrivains passent tous par `set_candidate_stage` (lot 0b-4), rien ne change pour l'utilisateur. En refus le journal n'enregistre plus rien (l'écriture est annulée) : un écrivain oublié se lit dans l'erreur et les journaux de l'API.
+**Reste à faire** :
+- [ ] Fusion sur `main`, puis `select public.jcs_stage_write_mode()` en prod (attendu : `refuse`) et suivi du workflow des migrations.
+- [ ] Première semaine : chercher `STAGE_DIRECT_WRITE` dans les journaux de l'API.
+- [ ] Hors lot : une quarantaine de tests e2e API échouent avec « Incoming message without valid timestamp » (webhook), à l'identique en `observe` ; à reprendre.
+**Refs** : `docs/refonte-mission/conception.md` section 13 ; entrée du 04/10 (fenêtre du lot 0b-5).
+
+---
+
 ## 2026-10-09 — BUG — Génération des propositions candidat orientée vers un résultat vide
 
 **Contexte** : l’utilisateur constate systématiquement « Aucune nouvelle action à proposer ». L’instruction du modèle demandait littéralement un appel avec `{"plans":[]}`. Cinq générations récentes observées dans les journaux du 9 octobre renvoient chacune 33 tokens de sortie, cohérents avec ces réponses vides ; leur contenu n’est pas journalisé. Une autre perte est reproduite : la demande finale d’un message long disparaissait des extraits envoyés au modèle.

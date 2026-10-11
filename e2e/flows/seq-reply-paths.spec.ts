@@ -30,6 +30,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  insertLegacyCandidateRows,
   seedEnrollment,
   seedExecution,
   seedLinkedInAccount,
@@ -149,11 +150,10 @@ async function seedReplyScene(label: string): Promise<Seeded> {
   const cardM1 = `${profileName} M1`;
   const cardM2 = `${profileName} M2`;
   for (const [jobId, name] of [[missionId, cardM1], [otherMissionId, cardM2]] as const) {
-    const { error } = await admin().from('job_candidate_status').insert({
+    insertLegacyCandidateRows([{
       organization_id: org.orgId, created_by: owner, job_id: jobId, candidate_id: profileId,
       candidate_name: name, status: 'messaged', pipeline_stage: 'Contacté',
-    });
-    if (error) throw new Error(`job_candidate_status: ${error.message}`);
+    }]);
   }
   return { org, accountId, missionId, sequenceName, enrollmentId, profileId, profileName, cardM1, cardM2 };
 }

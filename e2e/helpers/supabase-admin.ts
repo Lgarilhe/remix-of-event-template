@@ -404,6 +404,47 @@ function psql(sql: string): string {
 }
 
 /**
+ * Insère des lignes candidat avec le couple (status, pipeline_stage) de l'ancien
+ * modèle, écrites sans jeton (psql, rôle postgres). La garde stage_write_guard,
+ * en refus depuis le lot 0b-5, refuse tout INSERT par la clé de service dont le
+ * couple dérive une autre étape que À trier ; sans jeton elle laisse passer
+ * (migration, psql, cron) et le déclencheur d'étape dérive l'étape du couple
+ * comme avant. Les lignes partagent les mêmes colonnes (les autres prennent leur
+ * valeur par défaut). Pour amorcer une étape par le chemin des écrivains, voir
+ * seedCandidateRow (set_candidate_stage). Rend l'id et le nom de chaque ligne.
+ */
+export function insertLegacyCandidateRows(rows: Array<Record<string, unknown>>): Array<{ id: string; candidate_name: string }> {
+  if (rows.length === 0) return [];
+  const cols = Object.keys(rows[0]);
+  for (const c of cols) if (!/^[a-z_][a-z0-9_]*$/.test(c)) throw new Error(`insertLegacyCandidateRows: colonne ${c}`);
+  for (const r of rows) {
+    const keys = Object.keys(r);
+    if (keys.length !== cols.length || !cols.every((c) => keys.includes(c))) throw new Error('insertLegacyCandidateRows: colonnes différentes d’une ligne à l’autre');
+  }
+  const json = JSON.stringify(rows);
+  if (json.includes('$seed$')) throw new Error('insertLegacyCandidateRows: contenu non admis');
+  const list = cols.join(', ');
+  let out: string;
+  try {
+    out = execFileSync(
+      'psql',
+      ['-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atq', '-F', '\u001f', '-c',
+        `INSERT INTO public.job_candidate_status (${list})
+         SELECT ${list} FROM jsonb_populate_recordset(NULL::public.job_candidate_status, $seed$${json}$seed$::jsonb)
+         RETURNING id, candidate_name`],
+      { env: { ...process.env, PGPASSWORD: 'postgres' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+  } catch (e) {
+    const err = e as { stderr?: string; message: string };
+    throw new Error(`job_candidate_status: ${(err.stderr || err.message).trim()}`);
+  }
+  return out.split('\n').filter(Boolean).map((line) => {
+    const [id, candidate_name] = line.split('\u001f');
+    return { id, candidate_name };
+  });
+}
+
+/**
  * Antidate l'entrée d'une ligne candidat dans son étape (stage_entered_at) de
  * `days` jours. Le déclencheur d'étape remet cette colonne à sa valeur quand
  * elle est écrite en direct : la date est posée sous le drapeau de reprise

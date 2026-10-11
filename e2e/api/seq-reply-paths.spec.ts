@@ -40,6 +40,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  insertLegacyCandidateRows,
   seedLinkedInAccount,
   seedMission,
   seedSequence,
@@ -174,12 +175,12 @@ async function seedJcs(
   orgId: string, createdBy: string, jobId: string, candidateId: string,
   status = 'messaged', pipelineStage: string | null = null, candidateName = 'Camille Martin',
 ): Promise<string> {
-  const { data, error } = await admin().from('job_candidate_status').insert({
+  // Écrit sans jeton : la garde (refus depuis le lot 0b-5) refuse ce couple par la clé de service.
+  const [row] = insertLegacyCandidateRows([{
     organization_id: orgId, created_by: createdBy, job_id: jobId, candidate_id: candidateId,
     status, pipeline_stage: pipelineStage, candidate_name: candidateName,
-  }).select('id').single();
-  if (error || !data) throw new Error(`job_candidate_status: ${error?.message}`);
-  return data.id as string;
+  }]);
+  return row.id;
 }
 
 /**

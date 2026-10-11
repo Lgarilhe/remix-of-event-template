@@ -23,7 +23,8 @@
 -- L et E sont joués après B, sur les liens repris.
 -- Chaque partie pose son mode de garde dans la transaction (W à C en refus :
 -- les écrivains du lot 0b ne passent jamais par une écriture directe). Le
--- bloc S accepte observe ou refuse : l'audit reste vert avant et après 0b-5.
+-- bloc S exige le mode refuse posé par la migration 0b-5 (11/10/2026) : une
+-- base reconstruite à neuf doit sortir des migrations en refus.
 -- Fonctions serveur appelées en postgres avec le jeton service_role, et une
 -- fois sous SET ROLE service_role après contrôle des droits. Aucune fonction
 -- n'est appelée sous SET ROLE authenticated ou anon sans que son droit ait
@@ -326,8 +327,8 @@ BEGIN
    WHERE table_schema = 'public' AND table_name = 'inmail_queue' AND column_name = 'project_id';
   failures := failures || pg_temp.cw_eq('S7 type', got, 'uuid');
 
-  -- S8. Mode de la garde : observe (0b-1) ou refuse (0b-5).
-  IF v_mode IS NULL OR v_mode NOT IN ('observe', 'refuse') THEN
+  -- S8. Mode de la garde posé par les migrations : refuse (0b-5).
+  IF v_mode IS DISTINCT FROM 'refuse' THEN
     failures := failures || format('[S8 mode de la garde : %s] ', coalesce(v_mode, 'NULL'));
   END IF;
 

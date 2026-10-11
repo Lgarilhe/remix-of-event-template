@@ -29,6 +29,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  insertLegacyCandidateRows,
   seedLinkedInAccount,
   seedMission,
   setOrgPlan,
@@ -438,7 +439,8 @@ async function pipelineRow(id: string) {
 }
 
 async function seedPipelineRows(ws: Workspace, rows: Array<{ name: string; status: string; pipeline_stage: string | null }>) {
-  const { data, error } = await admin().from('job_candidate_status').insert(rows.map((r) => ({
+  // Écrites sans jeton : la garde (refus depuis le lot 0b-5) refuse ces couples par la clé de service.
+  const data = insertLegacyCandidateRows(rows.map((r) => ({
     job_id: `project:${ws.missionId}`,
     project_id: ws.missionId,
     candidate_id: `ACoAADUIK${rand()}`,
@@ -447,9 +449,8 @@ async function seedPipelineRows(ws: Workspace, rows: Array<{ name: string; statu
     pipeline_stage: r.pipeline_stage,
     created_by: ws.org.owner.userId,
     organization_id: ws.org.orgId,
-  }))).select('id, candidate_name');
-  if (error || !data) throw new Error(`seedPipelineRows: ${error?.message}`);
-  return new Map((data as Array<{ id: string; candidate_name: string }>).map((d) => [d.candidate_name, d.id]));
+  })));
+  return new Map(data.map((d) => [d.candidate_name, d.id]));
 }
 
 test.describe('Décision 29 : colonne « A répondu » du pipeline de mission', () => {
@@ -521,11 +522,10 @@ test.describe('Décision 29 : colonne « A répondu » du pipeline de mission', 
     const name = 'Julie Reponse';
     const enrollmentId = await seedEnrollment(ws, seq, { profile_id: profileId, profile_name: name, job_id: `project:${ws.missionId}` });
     await seedScheduled(ws, enrollmentId, seq.stepIds[1]);
-    const { data: jcs, error: jcsErr } = await admin().from('job_candidate_status').insert({
+    const [jcs] = insertLegacyCandidateRows([{
       job_id: `project:${ws.missionId}`, project_id: ws.missionId, candidate_id: profileId, candidate_name: name,
       status: 'messaged', pipeline_stage: 'messaged', created_by: ws.org.owner.userId, organization_id: ws.org.orgId,
-    }).select('id').single();
-    expect(jcsErr, jcsErr?.message).toBeNull();
+    }]);
     const page = await openAs(browser, ws.org.owner, [ws.accountId]);
     await openMissionKanban(page, ws.missionId, name);
     await expect(column(page, 'Contacté').getByText(name, { exact: true })).toBeVisible();
@@ -537,7 +537,7 @@ test.describe('Décision 29 : colonne « A répondu » du pipeline de mission', 
     await page.getByRole('menuitem', { name: 'Marquer comme ayant répondu' }).click();
     await page.getByRole('alertdialog', { name: `Marquer ${name} comme ayant répondu ?` }).getByRole('button', { name: 'Marquer comme ayant répondu' }).click();
     await expect(toast(page, `Réponse enregistrée pour ${name}`)).toBeVisible({ timeout: 20_000 });
-    await expect.poll(() => pipelineRow(jcs!.id as string), { timeout: 15_000 }).toMatchObject({ status: 'replied' });
+    await expect.poll(() => pipelineRow(jcs.id), { timeout: 15_000 }).toMatchObject({ status: 'replied' });
 
     await openMissionKanban(page, ws.missionId, name);
     await expect(column(page, 'A répondu').getByText(name, { exact: true })).toBeVisible();
@@ -556,11 +556,10 @@ test.describe('Décision 31 : fiche candidat, inscriptions d’un autre membre',
     await admin().from('mission_team').insert({ project_id: ws.missionId, user_id: collab.userId, role: 'sourcer' });
     const profileId = `ACoAADUIF${rand()}`;
     const name = 'Lina Fiche';
-    const { error: jcsErr } = await admin().from('job_candidate_status').insert({
+    insertLegacyCandidateRows([{
       job_id: `project:${ws.missionId}`, project_id: ws.missionId, candidate_id: profileId, candidate_name: name,
       status: 'messaged', pipeline_stage: 'messaged', created_by: collab.userId, organization_id: ws.org.orgId,
-    });
-    expect(jcsErr, jcsErr?.message).toBeNull();
+    }]);
     // Inscriptions du propriétaire dans des séquences du collaborateur : il les
     // voit (ses séquences), sans pouvoir agir dessus. Depuis le lot C1 (R7), il
     // ne lit plus du tout une séquence du propriétaire, même dans l'équipe de la

@@ -27,6 +27,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  insertLegacyCandidateRows,
   seedLinkedInAccount,
   seedMission,
   setOrgPlan,
@@ -506,7 +507,7 @@ test.describe('Suivi des inscrits : réponse et relance', () => {
     const name = 'Denise Roy';
     const [e1] = await seedEnrollments(ws, seq1, [{ profile_id: profileId, profile_name: name, job_id: `project:${ws.missionId}` }]);
     const [e2] = await seedEnrollments(ws, seq2, [{ profile_id: profileId, profile_name: name, status: 'paused', pause_reason: 'manual' }]);
-    const { error: jcsErr } = await admin().from('job_candidate_status').insert({
+    insertLegacyCandidateRows([{
       job_id: `project:${ws.missionId}`,
       project_id: ws.missionId,
       candidate_id: profileId,
@@ -514,8 +515,7 @@ test.describe('Suivi des inscrits : réponse et relance', () => {
       status: 'contacted',
       created_by: ws.org.owner.userId,
       organization_id: ws.org.orgId,
-    });
-    expect(jcsErr, jcsErr?.message).toBeNull();
+    }]);
     await seedExecutions(ws, seq1, [
       { enrollmentId: e1, stepIndex: 0, status: 'sending', scheduled_at: new Date(Date.now() - 60_000).toISOString() },
       { enrollmentId: e1, stepIndex: 1, status: 'waiting_event', scheduled_at: inHours(40) },
@@ -1562,11 +1562,10 @@ test.describe('Fiche candidat : séquences du candidat', () => {
     const ws = await workspace('E2E ui-2 fiche');
     const profileId = `ACoAAUI2FC${rand()}`;
     const name = 'Lucie Fiche';
-    const { error: jcsErr } = await admin().from('job_candidate_status').insert({
+    insertLegacyCandidateRows([{
       job_id: `project:${ws.missionId}`, project_id: ws.missionId, candidate_id: profileId, candidate_name: name,
       status: 'contacted', pipeline_stage: 'messaged', created_by: ws.org.owner.userId, organization_id: ws.org.orgId,
-    });
-    expect(jcsErr, jcsErr?.message).toBeNull();
+    }]);
     const seq1 = await missionSequence(ws, 'Fiche A ui-2', messageSteps(['Un', 'Deux', 'Trois']));
     const seq2 = await missionSequence(ws, 'Fiche B ui-2', messageSteps(['Un', 'Deux']));
     const seq3 = await missionSequence(ws, 'Fiche C ui-2', messageSteps(['Un', 'Deux']));

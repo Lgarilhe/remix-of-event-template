@@ -248,16 +248,21 @@ job_candidate_status       — un candidat dans une mission : note et étape. Mo
                              retenus au total (cumuls : un candidat qui avance ou qu'on écarte ne les fait pas baisser) ;
                              stats_dismissed = écartés en ce moment ; stats_scored = notés. Affichés avec « au total »
                              (tableau de bord, Vue d'ensemble, recherches, résumé du matin), jamais sous le nom d'une étape.
-                             Garde stage_write_guard (lot 0b), en observation : une écriture directe qui change l'étape
-                             dérivée (jeton authenticated, service_role ou anon, ou SET ROLE) est journalisée dans
-                             jcs_direct_write_log (rôle, utilisateur, ligne, couples, x-client-info ; fermé à anon et
-                             authenticated). Le navigateur signe x-client-info de son build : `konekt/<7 caractères du commit
+                             Garde stage_write_guard (lot 0b), en refus depuis le lot 0b-5 (11/10/2026) : une écriture
+                             directe qui change l'étape dérivée (jeton authenticated, service_role ou anon, ou SET ROLE) lève
+                             l'erreur 42501 (HINT STAGE_DIRECT_WRITE, DETAIL = ligne et couples). Pendant l'observation
+                             (28/09 au 11/10), elle était journalisée dans jcs_direct_write_log (rôle, utilisateur, ligne,
+                             couples, x-client-info ; fermé à anon et authenticated) et le journal est resté vide ; en refus,
+                             rien n'y est plus écrit (l'écriture est annulée), l'écrivain fautif se lit dans l'erreur et les
+                             journaux de l'API. Le navigateur signe x-client-info de son build : `konekt/<7 caractères du commit
                              Vercel>`, ou `konekt/dev` (src/integrations/supabase/client.ts, define de vite.config.ts).
-                             Passent sans trace : set_candidate_stage(s), insertion À trier, note, changement
+                             Passent sans refus : set_candidate_stage(s), insertion À trier, note, changement
                              de mission au couple intact, replace_process_steps, contextes sans jeton (migration, psql, cron).
-                             Mode : jcs_stage_write_mode() (off, observe, refuse). Le refus (HINT STAGE_DIRECT_WRITE) viendra
-                             au lot 0b-5. Arrêt d'urgence neutre : ALTER TABLE public.job_candidate_status DISABLE TRIGGER
-                             stage_write_guard; puis un fichier de migration qui repose le mode voulu (règle 1).
+                             Mode : jcs_stage_write_mode() (off, observe, refuse), posé par une migration (la dernière gagne ;
+                             0b-1 ne rétrograde jamais un refus déjà posé). Arrêt d'urgence neutre : ALTER TABLE
+                             public.job_candidate_status DISABLE TRIGGER stage_write_guard; puis, le jour même, un fichier de
+                             migration qui repose le mode voulu ET réactive le déclencheur (règle 1) ; runbook complet dans
+                             l'en-tête de la migration du lot 0b-5. Le bloc S8 de candidate_stage_writers_audit.sql exige refuse.
 mission_candidate_rows     : vue (lot 0c-1, security_invoker : RLS de l'appelant ; SELECT authenticated et service_role,
                              rien pour anon). Une ligne par (organisation, mission, candidat) : la ligne canonique d'un
                              groupe de doublons (écart d'une personne s'il est sa dernière décision, sinon étape la plus
