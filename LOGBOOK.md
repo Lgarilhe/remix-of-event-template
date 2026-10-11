@@ -32,6 +32,13 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-11 — SPEC — Rendez-vous : fiche candidat et grille préparée à la planification
+
+**Décision** : Laurent demande que le clic sur un rendez-vous ouvre la fiche candidat sur Évaluation, avec la grille préparée dès la planification et les crédits IA habituels. Les exemples reprennent le panneau candidat et le contenu de profil existant.
+**Fait** : la grille est rattachée à l'entretien et à son intervenant. Planification dans l'agenda, via l'assistant ou Calendly : préparation en arrière-plan, persistée avant facturation. Réouverture gratuite, reprise explicite après échec, protection contre les appels concurrents et les réaffectations. Les candidats hors pipeline gardent une fiche consultable sans mission inventée. Aucun microphone ni message n'est déclenché à l'ouverture.
+**QA** : build réussi ; TypeScript reste aux 11 erreurs connues ; contrôles design et régressions ciblées passants ; 15 scénarios serveur simulés passants. Les scénarios navigateur couvrent Guillaume (bonne mission et grille prête), Claire (entrée directe et candidat hors pipeline), Théo (mauvais entretien, droits, réponse tardive) et Sophie (fiche et saisie mobile). Exécution navigateur et audit SQL réel requis en CI avant fusion, Chromium et Docker locaux indisponibles.
+**Impact** : agenda, barre latérale, fiche candidat, scorecard, génération et liens de planification ; migration additive de rattachement et audit SQL.
+
 ## 2026-10-11 — BUG — Tests API du webhook : le faux prestataire ne servait pas la lecture d'un message
 
 **Contexte** : depuis le 08/10 (#314, actions candidat), `unipile-webhook` appelle `captureCandidateActionIncoming` avant `handleNewMessage` / `handleNewMail`. Cette capture lit le message reçu chez le prestataire (`GET /messages/<id>`, puis la conversation, ou `GET /emails/<id>`). Le faux prestataire des tests ne servait pas ces lectures : il renvoyait une réponse vide, la capture levait « Incoming message without valid timestamp » et le webhook répondait 500. Les specs des séquences sont ignorées par la CI (sans edge functions locales), la dérive n'a donc rien fait échouer. Mesure du 11/10 sur la pile locale : 67 échecs sur 13 fichiers, identiques en `observe` et en `refuse`.

@@ -32,6 +32,11 @@ export function Destination() {
   return <><h1>Destination du rendez-vous</h1><output aria-label="Destination">{location.pathname + location.search}</output></>;
 }
 
+function PipelineFixture() {
+  const location = useLocation();
+  return new URLSearchParams(location.search).has('candidate') ? <Destination /> : <SidebarApp />;
+}
+
 /** Vrai tiroir mobile : le dialogue doit survivre au démontage de son contenu. */
 export function SidebarApp() {
   const location = useLocation();
@@ -61,7 +66,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/native-event" element={<NativeEventFixture />} />
         <Route path="/inbox" element={<SidebarApp />} />
-        <Route path="/pipeline" element={<SidebarApp />} />
+        <Route path="/pipeline" element={<PipelineFixture />} />
         <Route path="*" element={<Destination />} />
       </Routes>
     </div></TooltipProvider></CalendarDemoProvider></SidebarProvider>

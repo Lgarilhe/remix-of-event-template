@@ -244,8 +244,12 @@ test('relances non arrêtées sans séquence ni mission : la fiche du candidat, 
   // Identifiant : celui d'un InMail de l'organisation (son entrée au /pipeline), sinon l'expéditeur.
   assert.match(webhook, /let candidateId = \(inmailMatches \?\? \[\]\)\.find\(\(m\) => m\.organization_id === orgId\)\?\.recipient_profile_id;/);
   assert.match(webhook, /candidateId: candidateId \?\? senderId \?\? null,/);
-  // Le /pipeline ouvre la fiche par cet identifiant, celui de l'entrée d'un InMail sans ligne de mission.
-  assert.match(code('src/pages/ATS.tsx'), /candidates\.find\(c => c\.candidateId === deepLinkCandidateId\)/);
+  // Sans session ni mission dans l'adresse, la recherche reste fondée sur le
+  // candidat seul : une notification d'InMail ne doit pas exiger de ligne de mission.
+  // Les liens d'entretien ajoutent leur contrôle de mission dans l'autre branche.
+  const ats = code('src/pages/ATS.tsx');
+  assert.match(ats, /const found = candidates\.find\((\w+) => \1\.candidateId === deepLinkCandidateId\s*&& \(!\(sessionId \|\| missionId\) \|\|/, 'le lien candidat seul reste accepté sans mission ni entretien');
+  assert.match(ats, /setCandidateLink\(\{[^}]*status: 'ready', candidate: found,/, 'le candidat trouvé ouvre sa fiche');
   assert.match(code('src/hooks/useATSData.ts'), /candidateId: inmail\.recipient_profile_id,/);
 });
 

@@ -72,8 +72,10 @@ test('0c-4 : le plein écran garde la mission de la fiche (?mission=)', () => {
   const tab = code('src/components/ats/ScorecardTab.tsx');
   // Même repli que buildJobContext : une fiche sans projectId garde sa mission par le job_id.
   assert.match(tab, /const missionKey = candidate\.projectId \?\? missionIdOfJob\(candidate\.jobId\) \?\? null;\s*if \(missionKey\) params\.set\('mission', missionKey\)/);
-  assert.match(tab, /if \(qualificationSessionId\) params\.set\('session', qualificationSessionId\)/);
-  assert.match(tab, /\[activeKey, flush, navigate, candidate\.candidateId, candidate\.projectId, candidate\.jobId, qualificationSessionId\]/);
+  // Une grille ouverte depuis l'historique porte elle-même son rendez-vous ;
+  // sinon, le contexte vérifié fourni par le calendrier reste le repli.
+  assert.match(tab, /const sessionId = activeEval\?\.qualificationSessionId \?\? qualificationSessionId;\s*if \(sessionId\) params\.set\('session', sessionId\)/);
+  assert.match(tab, /\[activeKey, activeEval\?\.qualificationSessionId, flush, navigate, candidate\.candidateId, candidate\.projectId, candidate\.jobId, qualificationSessionId\]/);
   const page = code('src/pages/ScorecardFullPage.tsx');
   assert.match(page, /missionIdOfJob\(searchParams\.get\('mission'\)\)/);
   assert.match(page, /\.eq\('project_id', mission\)/);
@@ -85,7 +87,7 @@ test('0c-4 : le plein écran garde la mission de la fiche (?mission=)', () => {
   // Le calendrier rattache l'entretien par son ID vérifié et le candidat exact.
   assert.match(page, /\.from\('qualification_sessions'\)[\s\S]*?\.eq\('id', sessionParam\)[\s\S]*?\.eq\('candidate_profile_id', candidateId\)/);
   assert.match(page, /missionParam && event\.project_id !== missionParam/);
-  assert.match(page, /\[candidateId, missionParam, sessionParam, reloadTick\]/);
+  assert.match(page, /\[candidateId, missionParam, sessionParam, organizationId, userId, invalidInterviewLink, reloadTick\]/);
 });
 
 test('0c-4 : CandidateDetailModal ne lit plus de notes de mission que rien n\'affiche', () => {

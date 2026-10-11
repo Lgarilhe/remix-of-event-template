@@ -35,6 +35,7 @@ const {
   joinUrlOf,
   upcomingInterviews,
 } = await load('src/lib/sidebarSignals.ts');
+const { candidateFromUnassignedInterview } = await load('src/lib/qualificationCandidate.ts');
 
 const MIN = 60_000;
 // Mercredi 7 octobre 2026, 9 h (heure de Paris).
@@ -104,18 +105,18 @@ test('EV-5 — heure d\'une ligne', () => {
   assert.equal(formatUpcomingTime('pas une date', NOW), '');
 });
 
-test('EV-6 — adresses : fiche, grille, assistant, avec la mission', () => {
+test('EV-6 — adresses : la fiche ouvre sa grille préparée, avec la mission et l’entretien', () => {
   const links = interviewLinks({ id: 'q1', candidate_profile_id: 'cand 1', project_id: 'p-1' });
   assert.equal(links.qualification, '/qualification/q1');
-  assert.equal(links.candidate, '/pipeline?candidate=cand%201');
-  assert.equal(links.scorecard, '/pipeline/scorecard/cand%201?mission=p-1&session=q1');
-  assert.equal(links.coaching, '/pipeline/scorecard/cand%201?mission=p-1&session=q1&coaching=1');
+  assert.equal(links.candidate, '/pipeline?candidate=cand%201&tab=evaluation&prepareInterview=1&mission=p-1&session=q1');
+  assert.equal(links.scorecard, links.candidate);
+  assert.equal(links.coaching, `${links.scorecard}&coaching=1`);
 });
 
 test('EV-7 — adresses sans mission, puis sans candidat', () => {
   const noMission = interviewLinks({ id: 'q1', candidate_profile_id: 'c1', project_id: null });
-  assert.equal(noMission.scorecard, '/pipeline/scorecard/c1?session=q1');
-  assert.equal(noMission.coaching, '/pipeline/scorecard/c1?session=q1&coaching=1');
+  assert.equal(noMission.scorecard, '/pipeline?candidate=c1&tab=evaluation&prepareInterview=1&session=q1');
+  assert.equal(noMission.coaching, `${noMission.scorecard}&coaching=1`);
   const noCandidate = interviewLinks({ id: 'q2', candidate_profile_id: null, project_id: 'p-1' });
   assert.deepEqual(noCandidate, { qualification: '/qualification/q2', candidate: null, scorecard: null, coaching: null });
 });
@@ -125,6 +126,28 @@ test('EV-8 — lien de visio', () => {
   assert.equal(joinUrlOf('Bureau Paris'), null);
   assert.equal(joinUrlOf('+33 6 12 34 56 78'), null);
   assert.equal(joinUrlOf(null), null);
+});
+
+test('EV-8b — un entretien hors pipeline conserve l’identité sans emprunter une mission', () => {
+  const event = { id: 'session', candidate_profile_id: 'person', project_id: null, candidate_name: 'Samira',
+    candidate_headline: 'Développeuse', candidate_linkedin_url: null, invitee_email: 'samira@example.test',
+    job_title: 'Échange de découverte', created_at: '2026-10-10', updated_at: '2026-10-11' };
+  const identity = { candidateId: 'person', id: 'other-row', projectId: 'other-mission', jobId: 'project:other-mission',
+    jobTitle: 'Poste différent', processStepId: 'other-step', score: 94, tags: ['autre mission'],
+    linkedinProfileData: { summary: 'Parcours partagé de la même personne' } };
+  const candidate = candidateFromUnassignedInterview(event, identity);
+  assert.equal(candidate.name, 'Samira');
+  assert.equal(candidate.email, 'samira@example.test');
+  assert.equal(candidate.linkedinProfileData.summary, 'Parcours partagé de la même personne');
+  assert.equal(candidate.projectId, null);
+  assert.equal(candidate.jobId, null);
+  assert.equal(candidate.processStepId, null);
+  assert.equal(candidate.score, null);
+  assert.deepEqual(candidate.tags, []);
+  assert.equal(candidate.jobTitle, 'Échange de découverte');
+  assert.equal(candidateFromUnassignedInterview(event).candidateId, 'person', 'aucune ligne pipeline requise');
+  assert.equal(candidateFromUnassignedInterview({ ...event, project_id: 'mission' }), null, 'pas de faux rattachement à une mission');
+  assert.equal(candidateFromUnassignedInterview(event, { ...identity, candidateId: 'someone-else' }).linkedinProfileData, null, 'jamais le parcours d’une autre personne');
 });
 
 test('EV-9 — l\'alerte part à l\'heure du début, pas avant', () => {
