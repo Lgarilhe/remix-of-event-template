@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startScheduledScorecard } from "../_shared/start-scheduled-scorecard.ts";
 import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON } from "../_shared/candidate-reply-closure.ts";
 import { candidateRef, recordMeeting, resolveMeetingMission, type CandidateRef } from "../_shared/candidate-stage-events.ts";
@@ -190,6 +191,7 @@ async function moveRescheduledSession(payload: CalendlyInviteePayload | undefine
   };
   const updated = oldRows.length > 0 && Object.keys(patch).length > 0 ? await updateOpenSessions(oldRows, patch) : 0;
   console.log(`[calendly-webhook] déplacement ${oldInviteeId} → ${newInviteeId}: ${updated} séance(s) déplacée(s)`);
+  for (const row of rows) startScheduledScorecard(row.id, row.organization_id);
   return { handled: true, updated };
 }
 
@@ -565,6 +567,7 @@ Deno.serve(async (req) => {
     }
 
     console.log('[calendly-webhook] Created qualification session:', session.id);
+    startScheduledScorecard(session.id, candidateOrgId);
 
     // Arrêt des séquences du candidat (rendez-vous = objectif atteint).
     // SEQ-008 / SEQ-112 : jamais sans filtre de profil, toujours dans

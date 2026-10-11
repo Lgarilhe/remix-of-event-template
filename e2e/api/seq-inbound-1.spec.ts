@@ -454,9 +454,9 @@ test.describe('Réponse du candidat', () => {
     await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
     await setMockMode(accountId, {
       routes: [
-        { method: 'GET', path: '^/$', status: 503, body: { status: 503, title: 'Service Unavailable' }, times: 1 },
+        { method: 'GET', url: '/attendees', status: 503, body: { status: 503, title: 'Service Unavailable' }, times: 1 },
         {
-          method: 'GET', path: '^/$', status: 200, body: {
+          method: 'GET', url: '/attendees', status: 200, body: {
             object: 'ChatAttendeeList', items: [
               { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
               { object: 'ChatAttendee', id: 'att_candidate', provider_id: 'ACoAAMOCKCANDIDATE', is_self: 0 },

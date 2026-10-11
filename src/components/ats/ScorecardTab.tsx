@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json, Tables } from '@/integrations/supabase/types';
-import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
+import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { HIRING_VERDICTS, INTERVIEW_TYPES, hiringVerdictMeta, interviewTypeLabel } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
@@ -115,8 +115,9 @@ interface EvaluationData {
   interviewStage?: InterviewStage;
   projectId?: string | null;
   processStepId?: string | null;
+  qualificationSessionId?: string | null;
   /** Rattachement d'une grille pas encore écrite : le candidat et le poste au moment de sa création. */
-  origin?: { candidateId: string; jobId: string | null; jobTitle: string | null; organizationId: string | null; projectId: string | null; processStepId: string | null };
+  origin?: { candidateId: string; jobId: string | null; jobTitle: string | null; organizationId: string | null; projectId: string | null; processStepId: string | null; qualificationSessionId: string | null };
 }
 
 /** Champs du brief de mission lus pour situer la génération. */
@@ -197,6 +198,7 @@ function rowToEvaluation(d: Tables<'candidate_evaluations'>): EvaluationData {
     interviewStage: (d.interview_stage as InterviewStage) || undefined,
     projectId: d.project_id,
     processStepId: d.process_step_id,
+    qualificationSessionId: d.qualification_session_id,
   };
 }
 
@@ -296,6 +298,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   const baseId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
+  const scope = JSON.stringify([organizationId, candidate.candidateId, candidate.projectId, candidate.jobId, qualificationSessionId]);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const preparationRunRef = useRef(0);
+  const loadedUserIdRef = useRef<string | null>(null);
+  const autoGenTriggered = useRef<string | null>(null);
 
   // La liste vit dans une référence, source de vérité des écritures ; l'état la recopie pour l'affichage.
   const evaluationsRef = useRef<EvaluationData[]>([]);
@@ -309,6 +318,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   const [reloadTick, setReloadTick] = useState(0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [preparationMessage, setPreparationMessage] = useState<string | null>(null);
+  const [preparationBlocked, setPreparationBlocked] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<InterviewStage | ''>('');
   const [showCoaching, setShowCoaching] = useState(false);
@@ -385,6 +396,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           organization_id: ev.origin.organizationId,
           project_id: ev.origin.projectId,
           process_step_id: ev.origin.processStepId,
+          qualification_session_id: ev.origin.qualificationSessionId,
         })
         .select('id, updated_at')
         .single();
@@ -477,6 +489,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      preparationRunRef.current += 1;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -500,11 +513,41 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     let cancelled = false;
     const load = async () => {
       setLoadState('loading');
+      setLoadedScope(null);
+      setActiveKey(null);
+      setGenerating(false);
+      setPreparationMessage(null);
+      setPreparationBlocked(false);
+      preparationRunRef.current += 1;
       const { data: { user } } = await supabase.auth.getUser();
       if (cancelled) return;
       if (!user) {
         setLoadState('error');
         return;
+      }
+      loadedUserIdRef.current = user.id;
+      if (qualificationSessionId) {
+        if (!organizationId) return;
+        const { data: interview, error: interviewError } = await supabase
+          .from('qualification_sessions')
+          .select('id, organization_id, candidate_profile_id, project_id, manager_id, created_by')
+          .eq('id', qualificationSessionId)
+          .eq('organization_id', organizationId)
+          .maybeSingle();
+        if (cancelled) return;
+        const projectId = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
+        if (interviewError || !interview || interview.candidate_profile_id !== candidate.candidateId || interview.project_id !== projectId) {
+          setLoadState('error');
+          return;
+        }
+        if ((interview.manager_id || interview.created_by) !== user.id) {
+          commit([]);
+          setLoadedScope(scope);
+          setLoadState('ready');
+          setPreparationBlocked(true);
+          setPreparationMessage('Cet entretien est attribué à un autre recruteur.');
+          return;
+        }
       }
       let query = supabase
         .from('candidate_evaluations')
@@ -514,6 +557,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
       if (organizationId) query = query.eq('organization_id', organizationId);
       const projectId = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
       query = projectId ? query.eq('project_id', projectId) : query.is('project_id', null);
+      // Un rendez-vous ouvre sa grille exacte, jamais la plus récente d'un autre entretien.
+      if (qualificationSessionId) query = query.eq('qualification_session_id', qualificationSessionId);
       const { data, error } = await query.order('created_at', { ascending: false });
       if (cancelled) return;
       if (error) {
@@ -523,6 +568,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
       }
       const loaded = (data ?? []).map(rowToEvaluation);
       commit(loaded);
+      setLoadedScope(scope);
       setLoadState('ready');
       // Plein écran ou assistant d'entretien : on ouvre la plus récente.
       if ((autoOpenFirst || autoStartCoaching) && loaded.length > 0) openEvaluation(loaded[0].key);
@@ -543,7 +589,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     };
     // persist, commit, isDirty et openEvaluation sont stables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidate.candidateId, candidate.projectId, candidate.jobId, organizationId, autoOpenFirst, autoStartCoaching, reloadTick]);
+  }, [candidate.candidateId, candidate.projectId, candidate.jobId, organizationId, qualificationSessionId, autoOpenFirst, autoStartCoaching, reloadTick, scope]);
 
   // Assistant d'entretien demandé par l'adresse (plein écran, ?coaching=1) : il s'ouvre avec la grille,
   // pas à chaque saisie (on peut le fermer).
@@ -680,6 +726,68 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     return data.criteria;
   }, [candidate, enrichedProfile, selectedModel, buildJobContext]);
 
+  /** La préparation du rendez-vous est partagée avec sa planification : relire
+   * ou attendre une grille existante ne relance jamais une génération payante. */
+  const prepareScheduledEvaluation = useCallback(async (retry = false, sessionId = qualificationSessionId) => {
+    if (!sessionId || !organizationId) return;
+    const requestedScope = scope;
+    const run = ++preparationRunRef.current;
+    const isCurrent = () => mountedRef.current && scopeRef.current === requestedScope && preparationRunRef.current === run;
+    setGenerating(true);
+    setPreparationMessage(null);
+    setPreparationBlocked(false);
+    try {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (!isCurrent()) return;
+        const { data, error } = await invokeEdgeFunction<{
+          status?: 'preparing' | 'ready' | 'failed' | 'skipped';
+          evaluation?: Tables<'candidate_evaluations'>;
+          reason?: string;
+          error?: string;
+        }>('generate-scorecard', {
+          qualificationSessionId: sessionId,
+          organization_id: organizationId,
+          background: true,
+          ...(retry && attempt === 0 ? { retry: true } : {}),
+        });
+        if (!isCurrent()) return;
+        if (error) throw error;
+        if (data?.status === 'ready' && data.evaluation) {
+          const row = data.evaluation;
+          const projectId = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
+          if (row.created_by !== loadedUserIdRef.current) {
+            setPreparationBlocked(true);
+            setPreparationMessage('Cet entretien est attribué à un autre recruteur.');
+            return;
+          }
+          if (row.qualification_session_id !== sessionId || row.candidate_id !== candidate.candidateId || row.organization_id !== organizationId || row.project_id !== projectId) {
+            throw new Error("La grille n'a pas pu être rattachée à cet entretien. Réessayez.");
+          }
+          const evaluation = rowToEvaluation(row);
+          if (!evaluation.criteria.length) throw new Error("La préparation n'a pas encore fourni de critères. Réessayez.");
+          commit(qualificationSessionId ? [evaluation] : [evaluation, ...evaluationsRef.current.filter((existing) => existing.id !== evaluation.id)]);
+          openEvaluation(evaluation.key);
+          setSaveState('idle');
+          return;
+        }
+        if (data?.status === 'failed' || data?.status === 'skipped') {
+          setPreparationBlocked(data.status === 'skipped');
+          setPreparationMessage(data.reason === 'assigned_elsewhere'
+            ? 'Cet entretien est attribué à un autre recruteur.'
+            : data.error || "La grille n'a pas pu être préparée pour cet entretien.");
+          return;
+        }
+        if (data?.status !== 'preparing') throw new Error('La préparation est indisponible. Réessayez.');
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 3000));
+      }
+      if (isCurrent()) setPreparationMessage('La préparation continue en arrière-plan. Réessayez dans un instant pour ouvrir la grille.');
+    } catch (error) {
+      if (isCurrent()) setPreparationMessage(error instanceof Error ? error.message : 'La préparation est indisponible. Réessayez.');
+    } finally {
+      if (isCurrent()) setGenerating(false);
+    }
+  }, [qualificationSessionId, organizationId, scope, candidate.projectId, candidate.jobId, candidate.candidateId, commit, openEvaluation]);
+
   const createDraft = useCallback((): string => {
     const key = newLocalKey();
     const draft: EvaluationData = {
@@ -691,6 +799,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
       jobTitle: candidate.jobTitle || undefined,
       projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null,
       processStepId: candidate.processStepId ?? null,
+      qualificationSessionId: qualificationSessionId ?? null,
       origin: {
         candidateId: candidate.candidateId,
         jobId: candidate.jobId,
@@ -698,14 +807,22 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         organizationId: organizationId || null,
         projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null,
         processStepId: candidate.processStepId ?? null,
+        qualificationSessionId: qualificationSessionId ?? null,
       },
     };
     commit([draft, ...evaluationsRef.current]);
     return key;
-  }, [candidate.candidateId, candidate.jobId, candidate.jobTitle, candidate.projectId, candidate.processStepId, organizationId, commit]);
+  }, [candidate.candidateId, candidate.jobId, candidate.jobTitle, candidate.projectId, candidate.processStepId, qualificationSessionId, organizationId, commit]);
 
   /** Génère les critères d'une nouvelle grille et l'enregistre aussitôt (elle survit au changement d'onglet). */
   const generateInto = useCallback(async (key: string) => {
+    const source = evaluationsRef.current.find((evaluation) => evaluation.key === key);
+    if (source?.qualificationSessionId || qualificationSessionId) {
+      await prepareScheduledEvaluation(true, source?.qualificationSessionId ?? qualificationSessionId);
+      return;
+    }
+    if (!source) return;
+    const generationScope = scope;
     if (!candidate?.name && !candidate?.headline) {
       toast.error('Profil trop incomplet pour générer une grille', {
         description: 'Ajoutez au moins le nom ou le titre du candidat, puis réessayez.',
@@ -716,26 +833,19 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     try {
       const stage = selectedStage || undefined;
       const criteria = await requestCriteria(stage);
+      if (!mountedRef.current || scopeRef.current !== generationScope) {
+        // La préparation a commencé sur une autre fiche : conserver son
+        // rattachement et l'enregistrer sans l'afficher chez le candidat courant.
+        await writeEvaluation({ ...source, criteria, ratings: {}, comments: {}, overallScore: null, interviewStage: stage });
+        return;
+      }
       const exists = evaluationsRef.current.some((e) => e.key === key);
       const filled = (ev: EvaluationData): EvaluationData => ({ ...ev, criteria, ratings: {}, comments: {}, overallScore: null, interviewStage: stage });
       if (exists) {
         commit(evaluationsRef.current.map((e) => (e.key === key ? filled(e) : e)));
       } else {
         // La personne a quitté l'écran de génération : la grille rejoint la liste.
-        commit([
-          filled({
-            key,
-            criteria: [],
-            ratings: {},
-            comments: {},
-            overallScore: null,
-            jobTitle: candidate.jobTitle || undefined,
-            projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null,
-            processStepId: candidate.processStepId ?? null,
-            origin: { candidateId: candidate.candidateId, jobId: candidate.jobId, jobTitle: candidate.jobTitle, organizationId: organizationId || null, projectId: candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null, processStepId: candidate.processStepId ?? null },
-          }),
-          ...evaluationsRef.current,
-        ]);
+        commit([filled(source), ...evaluationsRef.current]);
       }
       if (mountedRef.current) setCurrentCriterionIdx(0);
       revisionRef.current[key] = (revisionRef.current[key] ?? 0) + 1;
@@ -748,12 +858,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         });
       }
     } catch (err) {
+      if (!mountedRef.current || scopeRef.current !== generationScope) return;
       if (err instanceof CreditsError) return;
       toast.error(err instanceof Error ? err.message : 'La génération de la grille a échoué. Réessayez dans un instant.');
     } finally {
-      if (mountedRef.current) setGenerating(false);
+      if (mountedRef.current && scopeRef.current === generationScope) setGenerating(false);
     }
-  }, [candidate, selectedStage, requestCriteria, commit, persist, organizationId]);
+  }, [candidate, selectedStage, requestCriteria, commit, persist, qualificationSessionId, prepareScheduledEvaluation, scope, writeEvaluation]);
 
   /** Nouveaux critères pour la grille ouverte ; les notes et commentaires sont effacés (confirmé avant). */
   const regenerate = useCallback(async () => {
@@ -776,19 +887,23 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   }, [activeKey, selectedStage, requestCriteria, updateEvaluation, flush]);
 
   // CTA « Préparer l'entretien » du calendrier : une seule fois, et seulement sans grille existante.
-  const autoGenTriggered = useRef(false);
   useEffect(() => {
-    if (!autoGenerate || autoGenTriggered.current || loadState !== 'ready' || generating) return;
-    autoGenTriggered.current = true;
+    if (!autoGenerate || preparationBlocked || autoGenTriggered.current === scope || loadedScope !== scope || loadState !== 'ready' || generating) return;
+    autoGenTriggered.current = scope;
     const first = evaluationsRef.current[0];
-    if (first) {
+    if (first && (!qualificationSessionId || first.criteria.length)) {
       openEvaluation(first.key);
+      if (first.qualificationSessionId && !first.criteria.length) void prepareScheduledEvaluation(false, first.qualificationSessionId);
+      return;
+    }
+    if (qualificationSessionId) {
+      void prepareScheduledEvaluation();
       return;
     }
     const key = createDraft();
     openEvaluation(key);
     void generateInto(key);
-  }, [autoGenerate, loadState, generating, openEvaluation, createDraft, generateInto]);
+  }, [autoGenerate, scope, loadedScope, loadState, generating, preparationBlocked, qualificationSessionId, prepareScheduledEvaluation, openEvaluation, createDraft, generateInto]);
 
   // ─── Saisie ───
   const handleRate = useCallback((criterionId: string, rating: number) => {
@@ -848,10 +963,18 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   }, [activeKey, flush, commit]);
 
   const handleNewScorecard = useCallback(() => {
+    if (qualificationSessionId && evaluationsRef.current[0]) {
+      openEvaluation(evaluationsRef.current[0].key);
+      return;
+    }
+    if (qualificationSessionId) {
+      void prepareScheduledEvaluation(true);
+      return;
+    }
     const key = createDraft();
     openEvaluation(key);
     setSelectedStage('');
-  }, [createDraft, openEvaluation]);
+  }, [createDraft, openEvaluation, qualificationSessionId, prepareScheduledEvaluation]);
 
   /** Plein écran ou assistant d'entretien : la saisie en attente est écrite avant de partir. */
   const openFullPage = useCallback(async (coaching: boolean) => {
@@ -868,11 +991,12 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     // Même repli que buildJobContext : une fiche sans projectId garde sa mission par le job_id.
     const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId) ?? null;
     if (missionKey) params.set('mission', missionKey);
-    if (qualificationSessionId) params.set('session', qualificationSessionId);
+    const sessionId = activeEval?.qualificationSessionId ?? qualificationSessionId;
+    if (sessionId) params.set('session', sessionId);
     if (coaching) params.set('coaching', '1');
     const query = params.toString();
     navigate(`/ats/scorecard/${candidate.candidateId}${query ? `?${query}` : ''}`);
-  }, [activeKey, flush, navigate, candidate.candidateId, candidate.projectId, candidate.jobId, qualificationSessionId]);
+  }, [activeKey, activeEval?.qualificationSessionId, flush, navigate, candidate.candidateId, candidate.projectId, candidate.jobId, qualificationSessionId]);
 
   const openCoaching = useCallback(() => {
     // Déjà en plein écran : l'assistant s'ouvre sur place.
@@ -985,6 +1109,33 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     </AlertDialog>
   );
 
+  if (loadedScope !== scope && loadState !== 'error') {
+    return (
+      <div className="space-y-2" aria-busy="true">
+        <span className="sr-only" role="status">Chargement de la grille d'entretien</span>
+        <Skeleton className="h-20 rounded-xl" />
+        <Skeleton className="h-20 rounded-xl" />
+      </div>
+    );
+  }
+
+  if ((qualificationSessionId || activeEval?.qualificationSessionId) && (generating || preparationMessage)) {
+    return (
+      <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy={generating}>
+        <p className="flex items-center gap-2 text-sm text-foreground">
+          {generating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          {generating ? "Préparation de la grille d'entretien…" : preparationMessage}
+        </p>
+        {generating && <p className="text-xs text-muted-foreground">Les critères et les questions seront disponibles ici dès que la grille sera prête.</p>}
+        {!generating && !preparationBlocked && (
+          <Button variant="outline" size="sm" onClick={() => void prepareScheduledEvaluation(true, activeEval?.qualificationSessionId ?? qualificationSessionId)} className={touch}>
+            Réessayer
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   // ─── Écran de génération (grille sans critères) ───
   if (activeEval && activeEval.criteria.length === 0) {
     const titleId = `${baseId}-generation`;
@@ -1095,7 +1246,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           candidateLinkedinUrl={candidate.linkedin}
           projectId={activeEval.projectId}
           processStepId={activeEval.processStepId}
-          qualificationSessionId={qualificationSessionId}
+          qualificationSessionId={activeEval.qualificationSessionId ?? qualificationSessionId}
           jobId={candidate.jobId || ''}
           jobTitle={candidate.jobTitle || ''}
           jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
@@ -1544,10 +1695,12 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="eyebrow">Vos grilles ({evaluations.length})</p>
-            <Button variant="outline" size="sm" onClick={handleNewScorecard} className={touch}>
-              <Plus aria-hidden="true" />
-              Créer une grille
-            </Button>
+            {!qualificationSessionId && (
+              <Button variant="outline" size="sm" onClick={handleNewScorecard} className={touch}>
+                <Plus aria-hidden="true" />
+                Créer une grille
+              </Button>
+            )}
           </div>
           <ul className="space-y-2">
             {evaluations.map((ev) => {

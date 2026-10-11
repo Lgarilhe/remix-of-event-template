@@ -142,6 +142,30 @@ http.createServer((req, res) => {
         network_distance: distance, is_relationship: distance === 'FIRST_DEGREE', invitation: null,
       });
     }
+    // Lecture d'un message reçu et de sa conversation : le webhook (capture des actions candidat) les
+    // lit avant de traiter une réponse. Un message daté, de l'interlocuteur (is_sender 0) ; la
+    // conversation n'a pas d'account_id, donc elle est jugée hors du compte et rien n'est capturé.
+    // Un test qui veut capturer script ses propres routes (elles passent avant ce défaut).
+    // Identifiants propres à une organisation : « unipile.mock?account_id=X&e2e= » envoie tout sur « / »
+    // et le vrai chemin suit « e2e= » dans la chaîne de requête ; « unipile.mock/e2e-xxx » le précède d'un
+    // préfixe. Ces deux défauts reconnaissent les trois formes ; les routes scriptées gardent le chemin brut.
+    const embedded = p === '/' ? /[?&]e2e=(\/api\/v1\/[^&]*)/.exec(url.search)?.[1] : undefined;
+    const dp = embedded ? decodeURIComponent(embedded) : p;
+    if (req.method === 'GET' && (m = dp.match(/\/api\/v1\/messages\/([^/]+)$/))) {
+      return send(res, 200, { object: 'Message', id: decodeURIComponent(m[1]), timestamp: new Date().toISOString(), is_sender: 0, chat_id: 'chat_mock_incoming', text: 'Message de test' });
+    }
+    if (req.method === 'GET' && (m = dp.match(/\/api\/v1\/chats\/([^/]+)$/))) {
+      return send(res, 200, { object: 'Chat', id: decodeURIComponent(m[1]), type: 0 });
+    }
+    // E-mail reçu : adressé à la boîte que le test déclare par setMockMode(<boîte>, { email_address }).
+    // Sans adresse déclarée, la boîte n'est pas vérifiable et le webhook répond 500, comme en production.
+    if (req.method === 'GET' && (m = dp.match(/\/api\/v1\/emails\/([^/?]+)$/))) {
+      return send(res, 200, {
+        object: 'Email', id: decodeURIComponent(m[1]), date: new Date().toISOString(), subject: 'Re: test', body_plain: 'Réponse de test',
+        from_attendee: { identifier: 'candidat.mock@e2e.konekt.test' },
+        to_attendees: mode.email_address ? [{ identifier: mode.email_address }] : [],
+      });
+    }
     if (req.method === 'GET' && /^\/api\/v1\/chat_attendees\/[^/]+\/chats$/.test(p)) return send(res, 200, { object: 'ChatList', items: [], cursor: null });
     if (req.method === 'GET' && /^\/api\/v1\/chats\/[^/]+\/messages$/.test(p)) return send(res, 200, { object: 'MessageList', items: [], cursor: null });
     // Participants d'une conversation : le compte lui-même (is_self) et le candidat.

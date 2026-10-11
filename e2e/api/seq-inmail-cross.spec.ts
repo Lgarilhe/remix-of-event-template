@@ -396,11 +396,15 @@ test.describe('InMail groupé et réponses du candidat', () => {
   test('une réponse par e-mail qui clôt l’inscription annule aussi l’InMail programmé de l’organisation vers ce candidat', async () => {
     const { org, accountId } = await newSendingOrg('E2E InMailX réponse e-mail');
     const mailbox = `mbx_${rand()}`;
+    const mailboxAddress = `recruteur.${rand()}@e2e.konekt.test`;
     const { error: mbxError } = await admin().from('member_email_accounts').insert({
       organization_id: org.orgId, user_id: org.owner.userId, linked_by: org.owner.userId,
-      email_account_id: mailbox, email_address: `recruteur.${rand()}@e2e.konekt.test`, provider: 'GOOGLE',
+      email_account_id: mailbox, email_address: mailboxAddress, provider: 'GOOGLE',
     });
     if (mbxError) throw new Error(`member_email_accounts: ${mbxError.message}`);
+    // Le webhook lit l'e-mail reçu chez le prestataire : le faux prestataire l'adresse à cette boîte.
+    await setMockMode(mailbox, { email_address: mailboxAddress });
+    mockAccounts.push(mailbox);
     const candidateEmail = `camille.${rand()}@e2e.konekt.test`;
     const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour']);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { email_used: candidateEmail });

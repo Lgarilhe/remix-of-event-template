@@ -16,6 +16,11 @@ export interface CalendarDemoInterview {
   calendar: 'outlook' | 'google_calendar';
   meeting: 'teams' | 'google_meet';
   criteria: CalendarDemoCriterion[];
+  profile: {
+    summary: string;
+    work_experience: { role: string; company: string; description: string; start: { year: number }; current: boolean }[];
+    education: { school: string; degree: string; start: { year: number }; end: { year: number } }[];
+  };
   transcript: { speaker: 'Recruteur' | 'Candidat'; text: string }[];
   insight: string;
   followUp: string;
@@ -44,6 +49,11 @@ export function createCalendarDemo(now = new Date()): CalendarDemoInterview[] {
           jobTitle: 'Product Designer', clientName: 'Atelier Cloud', round: { kind: 'numbered', n: 1, label: '1er entretien' } },
       },
       initials: 'CD', calendar: 'outlook', meeting: 'teams',
+      profile: {
+        summary: 'Product Designer avec six ans d’expérience, Camille accompagne les équipes produit de la recherche utilisateur à la conception des parcours.',
+        work_experience: [{ role: 'Product Designer', company: 'Studio Horizon (fictif)', description: 'Recherche utilisateur, conception des parcours et tests de prototypes avec les développeurs.', start: { year: 2020 }, current: true }],
+        education: [{ school: 'École de design (fictive)', degree: 'Master Design d’interaction', start: { year: 2018 }, end: { year: 2020 } }],
+      },
       criteria: [
         { id: 'research', label: 'Recherche utilisateur', question: 'Comment avez-vous transformé un retour utilisateur en amélioration du produit ?' },
         { id: 'collaboration', label: 'Collaboration avec les développeurs', question: 'Comment gérez-vous les compromis entre expérience et contraintes techniques ?' },
@@ -68,6 +78,11 @@ export function createCalendarDemo(now = new Date()): CalendarDemoInterview[] {
           jobTitle: 'Account Executive', clientName: 'Nova Studio', round: { kind: 'numbered', n: 2, label: '2e entretien' } },
       },
       initials: 'AM', calendar: 'google_calendar', meeting: 'google_meet',
+      profile: {
+        summary: 'Account Executive avec cinq ans d’expérience, Alex accompagne des clients B2B sur des ventes complexes impliquant plusieurs décideurs.',
+        work_experience: [{ role: 'Account Executive', company: 'Horizon Solutions (fictif)', description: 'Découverte des besoins, construction de pilotes et négociation avec les équipes métier et les achats.', start: { year: 2021 }, current: true }],
+        education: [{ school: 'École de commerce (fictive)', degree: 'Master Management commercial', start: { year: 2019 }, end: { year: 2021 } }],
+      },
       criteria: [
         { id: 'sales', label: 'Gestion du cycle de vente', question: 'Décrivez une vente complexe que vous avez menée de bout en bout.' },
         { id: 'discovery', label: 'Découverte des besoins', question: 'Comment identifiez-vous les décideurs et les priorités du client ?' },
