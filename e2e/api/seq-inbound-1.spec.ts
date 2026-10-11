@@ -488,6 +488,33 @@ test.describe('Réponse du candidat', () => {
     expect((await exec(followUp)).status).toBe('cancelled');
   });
 
+  // capture-actions-candidat-non-bloquante
+  test('@critical lecture du message reçu impossible chez le prestataire (503) : la réponse clôt quand même l’inscription et arrête la relance, le webhook répond 200', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E inbound capture');
+    const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance ne doit pas partir']);
+    const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
+    const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
+
+    // La capture des actions candidat lit le message chez le prestataire avant le traitement de la réponse.
+    // Cette lecture n'a pas d'account_id : route sans compte, chemin propre au test.
+    const messageId = `msg_${rand()}`;
+    await setMockMode(accountId, {
+      routes: [{ unscoped: true, method: 'GET', path: `^/api/v1/messages/${messageId}$`, status: 503, body: { status: 503, title: 'Service Unavailable' } }],
+    });
+    cleanups.push(() => setMockMode(accountId, {}));
+
+    const res = await rawWebhook(replyFrom(accountId, profileId, { messageId }));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const served = (await mockCalls()).filter((c) => c.scripted && c.path === `/api/v1/messages/${messageId}`);
+    expect(served.length, 'la lecture du message a bien reçu le 503 scripté').toBeGreaterThanOrEqual(1);
+
+    expect((await enr(enrollmentId)).status, 'réponse enregistrée malgré la capture en échec').toBe('replied');
+    expect((await exec(followUp)).status, 'relance annulée').toBe('cancelled');
+    expect((await analytics(sequenceId)).replies, 'réponse comptée une fois').toBe(1);
+    await runCycle();
+    expect(await sentTexts(accountId), 'aucun message au candidat qui a répondu').toEqual([]);
+  });
+
   // message-received-expediteur-soi
   test('message envoyé par le compte lui-même : rien n’est clos et les notifications de la conversation passent en lues ; payload incomplet ignoré sans écriture', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound soi');

@@ -99,11 +99,42 @@ async function contactBinding(admin: ActionClient, account: BoundAccount, counte
   return { ...mission, audience: 'candidate' };
 }
 
-export async function captureCandidateActionIncoming(admin: ActionClient, payload: Row, rawEnvelope?: unknown): Promise<{ channel: BoundAccount['channel'] | null; audience: 'candidate' | 'team' | null; captured: boolean }> {
+export type IncomingCapture = { channel: BoundAccount['channel'] | null; audience: 'candidate' | 'team' | null; captured: boolean; failed?: boolean };
+const NOT_CAPTURED: IncomingCapture = { channel: null, audience: null, captured: false };
+
+/** Capture exacte : toute erreur remonte à l'appelant. */
+export async function captureCandidateActionIncoming(admin: ActionClient, payload: Row, rawEnvelope?: unknown): Promise<IncomingCapture> {
   const accountId = str(payload.account_id);
-  if (!accountId) return { channel: null, audience: null, captured: false };
+  if (!accountId) return NOT_CAPTURED;
   const account = await boundAccount(admin, accountId);
-  if (!account) return { channel: null, audience: null, captured: false };
+  if (!account) return NOT_CAPTURED;
+  return captureBoundIncoming(admin, account, accountId, payload, rawEnvelope);
+}
+
+/**
+ * Capture pour le webhook : l'historique des échanges ne doit jamais retenir le traitement d'une
+ * réponse (clôture de l'inscription, arrêt des relances, étape du pipeline). Une erreur de lecture chez
+ * le prestataire (délai, 5xx, conversation introuvable) ou d'identité de la boîte (alias, copie cachée)
+ * est journalisée et rend `failed`, le message n'est pas capturé et le traitement suit. L'historique se
+ * complète à l'ouverture du contexte du candidat. Exceptions qui remontent : une panne de la base à la
+ * résolution du compte (le rejeu est le bon réflexe) et un compte WhatsApp, dont un message ne doit
+ * jamais passer par le traitement LinkedIn.
+ */
+export async function captureCandidateActionIncomingBestEffort(admin: ActionClient, payload: Row, rawEnvelope?: unknown): Promise<IncomingCapture> {
+  const accountId = str(payload.account_id);
+  if (!accountId) return NOT_CAPTURED;
+  const account = await boundAccount(admin, accountId);
+  if (!account) return NOT_CAPTURED;
+  try {
+    return await captureBoundIncoming(admin, account, accountId, payload, rawEnvelope);
+  } catch (error) {
+    if (account.channel === 'whatsapp') throw error;
+    console.error('[candidate-actions] Incoming capture failed (non-blocking):', { channel: account.channel, error: error instanceof Error ? error.message : String(error) });
+    return { channel: account.channel, audience: null, captured: false, failed: true };
+  }
+}
+
+async function captureBoundIncoming(admin: ActionClient, account: BoundAccount, accountId: string, payload: Row, rawEnvelope?: unknown): Promise<IncomingCapture> {
   const nested = rec(rec(payload.data).message);
   const raw = rec(rawEnvelope);
   const v2 = typeof raw.type === 'string' ? rec(raw.payload) : {};
