@@ -1103,6 +1103,7 @@ Risques. Faibles. Livrable à tout moment après 5c-2.
    - `{{client}}` reçoit toujours le vrai nom (`template-interpolation.ts:225-227`). Un modèle écrit à la main l'envoie au candidat, même quand l'anonymisation est demandée.
    - Correctif : l'alias remplace le nom quand `anonymize_client` est actif, dans le moteur et dans les aperçus.
    - Tests : test Deno, et un cas `e2e/api` qui lit le journal du faux prestataire.
+   - Fait le 11/10/2026 : `buildSequenceContext` rend l'alias, sinon « notre client », au moteur, dans `preview_values` et sur la carte de l'assistant (`e2e/api/seq-correctifs-donnees.spec.ts`).
 2. Rémunération dans les aperçus de `generate-outreach-message` (P, avant 5a-2).
    - Un aperçu validé part tel quel, alors que le moteur interdit la rémunération.
    - Correctif : retirer ces champs du prompt, puis passer `detectSequenceViolations` sur l'aperçu.
@@ -1111,6 +1112,7 @@ Risques. Faibles. Livrable à tout moment après 5c-2.
    - `unipile-search` `send_message` saute seulement l'écriture pour un candidat effacé (l. 1914-1920) : le message part.
    - Correctif : refus de l'envoi pour tout appelant (fiche, messagerie, fenêtre de message, assistant), registre illisible compris, avec un message en français.
    - Tests : un cas `e2e/api` (journal du faux LinkedIn vide, erreur rendue), garde statique.
+   - Fait le 11/10/2026 : `checkSendRecipient` refuse avant le plafond et l'envoi (403 `CANDIDATE_ERASED`, 503 `GDPR_UNVERIFIED`), destinataire lu dans la conversation quand `chat_id` est donné ; les écrans hors assistant n'affichent pas encore la phrase du serveur (`e2e/api/seq-correctifs-envois.spec.ts`, `tests/c1/correctifs-envois.test.mjs`).
 
 ---
 

@@ -63,7 +63,17 @@ function InteractionThread({ profileId, profileName, profileUrl, profileAliases 
     const text = replyText.trim();
     try {
       const { data } = await invokeUnipile({ body: { action: 'send_message', organization_id: query.organizationId, account_id: query.accountId, chat_id: chatId, text, project_id: projectId } });
-      if (!data.success) throw new Error('Envoi impossible');
+      if (!data.success) {
+        // Correctif 4 : candidat effacé (CANDIDATE_ERASED) ou effacement non
+        // vérifié (GDPR_UNVERIFIED), la phrase du serveur dit pourquoi ; aucun
+        // nouvel essai, le texte reste dans le champ.
+        const refusal = data.error_code === 'CANDIDATE_ERASED' || data.error_code === 'GDPR_UNVERIFIED' ? data.error : undefined;
+        if (refusal) {
+          if (mounted.current) toast.error(refusal);
+          return;
+        }
+        throw new Error('Envoi impossible');
+      }
       emitQuotaAction('messagesSent', 1, query.accountId);
       const sent = data.message && typeof data.message === 'object' ? data.message as Record<string, unknown> : {};
       queryClient.setQueryData<CandidateMessages>(query.queryKey, previous => previous && ({ ...previous, messages: [...previous.messages, { id: typeof sent.id === 'string' ? sent.id : `sent-${Date.now()}`, text, is_sender: true, timestamp: new Date().toISOString() }] }));

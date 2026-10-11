@@ -20,8 +20,19 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveSendingAccountOwner } from "./sequence-sender.ts";
+import { pickBriefFacts } from "./sequence-draft.ts";
 
 export type PlaceholderContext = Record<string, string | undefined>;
+
+/**
+ * Valeur de {{client}} quand l'anonymisation du client est demandée sans
+ * alias (correctif 1 du plan du lot 5) : neutre, elle ne révèle rien et se
+ * lit dans les tournures courantes (« chez notre client », « pour notre
+ * client », « Nous accompagnons notre client »), sans inventer de description
+ * de l'entreprise. Le texte de secours écrit dans le modèle
+ * ({{client | fallback:"…"}}) ne s'applique pas : la variable a une valeur.
+ */
+export const ANONYMIZED_CLIENT_FALLBACK = "notre client";
 
 // ─── Filtres pipe-style ──────────────────────────────────────────────
 
@@ -249,7 +260,15 @@ export async function buildSequenceContext(
         ctx.poste_recherche = String(jd.title || row.name || "");
         const jdClient = (jd.client as Record<string, unknown> | undefined)?.name;
         const clientName = row.client_name || jdClient || jd.client_name;
-        if (clientName) ctx.client = String(clientName);
+        // Client anonymisé (Cadrage, outreach_config.anonymize_client) : même
+        // lecture que la rédaction par l'IA (pickBriefFacts, sequence-draft.ts).
+        // {{client}} rend l'alias, à défaut ANONYMIZED_CLIENT_FALLBACK s'il y a
+        // un nom à cacher, jamais le nom réel ; le moteur et l'aperçu
+        // (preview_values, carte de l'assistant) passent par ici.
+        const brief = pickBriefFacts({ jobDetails: row.job_details, missionName: row.name ?? "", clientName: row.client_name });
+        if (brief.company.anonymized) {
+          if (brief.outreach.alias || clientName) ctx.client = brief.outreach.alias ?? ANONYMIZED_CLIENT_FALLBACK;
+        } else if (clientName) ctx.client = String(clientName);
         if (jd.location) ctx.lieu_poste = String(jd.location);
         if (jd.contract_type) ctx.type_contrat = String(jd.contract_type);
         const skills = jd.skills_must_have;
