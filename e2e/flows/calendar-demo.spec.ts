@@ -48,6 +48,16 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
   const sidebarCard = (page: Page, name: string) => page.getByRole('listitem', { name: `Entretien fictif avec ${name}`, exact: true });
   const camilleDialog = (page: Page) => page.getByRole('dialog', { name: 'Camille Durand', exact: true });
 
+  async function sidebarAction(page: Page, name: string, action: string) {
+    const trigger = page.getByRole('button', { name: `Actions pour ${name}`, exact: true });
+    await trigger.focus();
+    await trigger.press('Enter');
+    await page.getByRole('menuitem', { name: action, exact: true }).click();
+    return trigger;
+  }
+
+  const sidebarScorecard = (page: Page, name: string) => sidebarCard(page, name).getByRole('button').filter({ hasText: name });
+
   test('Claire — deux rendez-vous et leurs services, rejoindre reste dans l’aperçu', async ({ page }) => {
     const audit = await open(page);
     const camille = card(page, 'Camille Durand');
@@ -152,14 +162,17 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     const alex = sidebarCard(page, 'Alex Martin');
     await expect(camille).toBeVisible();
     await expect(alex).toBeVisible();
-    await expect(camille.getByText('Outlook', { exact: true })).toBeVisible();
-    await expect(camille.getByText('Microsoft Teams', { exact: true })).toBeVisible();
-    await expect(alex.getByText('Google Agenda', { exact: true })).toBeVisible();
-    await expect(alex.getByText('Google Meet', { exact: true })).toBeVisible();
-    await camille.getByRole('button', { name: 'Rejoindre la visio', exact: true }).click();
+    await expect(camille.getByRole('img', { name: 'Outlook', exact: true })).toBeVisible();
+    await expect(alex.getByRole('img', { name: 'Google Agenda', exact: true })).toBeVisible();
+    await camille.hover();
+    const actions = camille.getByRole('button', { name: 'Actions pour Camille Durand', exact: true });
+    await actions.click();
+    const join = page.getByRole('menuitem', { name: 'Rejoindre la visio', exact: true });
+    await expect(join.getByRole('img', { name: 'Microsoft Teams', exact: true })).toBeVisible();
+    await join.click();
     await expect(camilleDialog(page).getByRole('heading', { name: 'Aperçu Microsoft Teams', exact: true })).toBeVisible();
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
-    await expect(camille.getByRole('button', { name: 'Rejoindre la visio', exact: true })).toBeFocused();
+    await expect(actions).toBeFocused();
     await expect(page.getByRole('status', { name: 'Page active' })).toHaveText('/inbox');
     await isolated(page, audit);
   });
@@ -167,24 +180,24 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
   test('Guillaume — les essais de la barre latérale suivent la navigation puis sont effacés à l’arrêt', async ({ page }) => {
     const audit = await open(page, '/inbox');
     await page.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
-    await sidebarCard(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
+    await sidebarScorecard(page, 'Camille Durand').click();
     await camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true }).fill('Suivi conservé entre les pages.');
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('navigation', { name: 'Navigation de l’aperçu' }).getByRole('link', { name: 'Pipeline', exact: true }).click();
     await expect(page.getByRole('status', { name: 'Page active' })).toHaveText('/pipeline');
-    await sidebarCard(page, 'Alex Martin').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
+    await sidebarScorecard(page, 'Alex Martin').click();
     const alex = page.getByRole('dialog', { name: 'Alex Martin', exact: true });
     await expect(alex.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('');
     await alex.getByLabel('Notes de l’entretien', { exact: true }).fill('Uniquement Alex.');
     await alex.getByRole('button', { name: 'Fermer', exact: true }).click();
-    await sidebarCard(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
+    await sidebarScorecard(page, 'Camille Durand').click();
     await expect(camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Suivi conservé entre les pages.');
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('button', { name: 'Quitter les exemples', exact: true }).click();
     await expect(sidebarCard(page, 'Camille Durand')).toHaveCount(0);
     await expect(page.getByRole('status', { name: 'Page active' })).toHaveText('/pipeline');
     await page.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
-    await sidebarCard(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
+    await sidebarScorecard(page, 'Camille Durand').click();
     await expect(camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('');
     await isolated(page, audit);
   });
@@ -198,7 +211,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await expect(drawer).toBeVisible();
     await drawer.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
     await fits(page);
-    await sidebarCard(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
+    await sidebarAction(page, 'Camille Durand', "Grille d'entretien");
     const dialog = camilleDialog(page);
     await expect(dialog).toBeVisible();
     await expect(drawer).toBeHidden();
@@ -213,7 +226,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await page.getByRole('button', { name: 'Action de la page (0)', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Action de la page (1)', exact: true })).toBeVisible();
     await trigger.click();
-    await sidebarCard(page, 'Camille Durand').getByRole('button', { name: "Assistant d'entretien", exact: true }).click();
+    await sidebarAction(page, 'Camille Durand', "Assistant d'entretien");
     await expect(drawer).toBeHidden();
     await dialog.getByRole('button', { name: 'Lancer la simulation', exact: true }).click();
     await dialog.getByRole('button', { name: 'Voir le compte rendu', exact: true }).click();
@@ -232,8 +245,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await page.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
     await expect(sidebarCard(page, 'Camille Durand')).toBeVisible();
     await expect(native).toBeVisible();
-    const section = page.locator('[data-sidebar-section="upcoming-events"]');
-    await section.getByRole('button', { name: 'Rejoindre la visio', exact: true }).click();
+    await sidebarAction(page, 'Samira Legrand', 'Rejoindre la visio');
     expect(await page.evaluate(() => (window as PreviewWindow).calendarWindows)).toEqual([
       { url: 'https://meet.google.com/real-fixture', target: '_blank', features: 'noopener,noreferrer' },
     ]);
