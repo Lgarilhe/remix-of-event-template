@@ -75,7 +75,9 @@ const SHOULD_HAVE_MAX = 3;
  * Variables que le moteur remplit (copie de SEQUENCE_TEMPLATE_KEYS,
  * src/components/outreach/sequence/sequenceGraph.ts ; égalité vérifiée par
  * sequence-draft.test.ts). {{client}} en fait partie mais reste interdite dans
- * un brouillon : elle donnerait le vrai nom d'un client anonymisé.
+ * un brouillon : la rédaction nomme le client par les faits fermés
+ * (pickBriefFacts), et la variable ne doit pas réintroduire un nom que
+ * l'organisation a choisi de taire, même si le moteur rend désormais l'alias.
  */
 export const DRAFT_TEMPLATE_KEYS: readonly string[] = [
   'prenom', 'nom', 'nom_complet', 'headline', 'poste_actuel', 'entreprise_actuelle',

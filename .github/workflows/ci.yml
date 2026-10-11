@@ -87,6 +87,12 @@ jobs:
       # ai-config, aucun nom de modèle dans les textes, vouvoiement imposé).
       - name: Lot 5e-2 regression tests (style et niveau de l'IA)
         run: node --test tests/c1/lot5e2-style-niveau.test.mjs
+      # Correctifs des séquences (11/10/2026) : réponses proposées aux
+      # candidats au vouvoiement, lectures de l'assistant sur les trois formes
+      # de job_id et l'étape générale, envoi refusé à un candidat effacé avant
+      # tout appel au prestataire, séance d'agenda sans effet sur les séquences.
+      - name: Correctifs des séquences (textes, assistant, envois)
+        run: node --test tests/c1/correctifs-textes-assistant.test.mjs tests/c1/correctifs-envois.test.mjs
       # Photos des candidats : la notation garde la photo LinkedIn enregistrée,
       # le rafraîchissement des adresses est branché (tests sans dépendance).
       - name: Photos des candidats (notation)
