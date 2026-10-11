@@ -1,0 +1,417 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "POST /v2/{account_id}/linkedin/recruiter/search/people (Full and Partial profile, spec recruiter-salesnav.md)",
+    "inferred": [
+      "is_active_talent mapped to the ACTIVE_TALENT interest (the spec repeats the open-to-work description for this flag)"
+    ]
+  },
+  "context": {
+    "product": "recruiter"
+  },
+  "input": {
+    "data": [
+      {
+        "object": "PeopleSearchResult",
+        "product": "recruiter",
+        "visibility": "full",
+        "id": "AEMAAA_full",
+        "candidate_id": "cand_1",
+        "is_hidden_candidate": false,
+        "is_open_to_work": true,
+        "is_recently_open_to_work": false,
+        "is_active_talent": true,
+        "is_closer_in_network": false,
+        "display_name": "Claire Moreau",
+        "member_id": "55555",
+        "public_identifier": "claire-moreau",
+        "profile_url": "https://www.linkedin.com/in/claire-moreau",
+        "public_picture_url": "https://media.licdn.com/cm.jpg",
+        "relations_count": 800,
+        "location": "Paris",
+        "headline": "Data Scientist",
+        "can_send_inmail": true,
+        "network_distance": "THIRD_DEGREE",
+        "interest_level": "HIGH",
+        "hiring_project": {
+          "id": "hp1",
+          "name": "Data 2026",
+          "pipeline_stage": "contacted"
+        },
+        "industry": "Software",
+        "followers_count": 200,
+        "summary": "Passionnée de données.",
+        "emails": [
+          "claire@example.com"
+        ],
+        "phone_numbers": [
+          "+33611111111"
+        ],
+        "work_experience": [
+          {
+            "company": {
+              "id": "77",
+              "name": "DataCorp"
+            },
+            "job_title": "Data Scientist",
+            "started_on": "01/01/2021",
+            "location": "Paris"
+          },
+          {
+            "company": {
+              "id": null,
+              "name": "Startup X"
+            },
+            "job_title": "Analyste",
+            "started_on": "06/01/2018",
+            "ended_on": "12/31/2020"
+          }
+        ],
+        "skills": [
+          {
+            "name": "Python",
+            "endorsement_count": 30
+          },
+          {
+            "name": "SQL",
+            "endorsement_count": 12
+          }
+        ],
+        "education": [
+          {
+            "school": {
+              "id": "12",
+              "name": "ENSAE"
+            },
+            "degree": "Ingénieur",
+            "fields_of_study": [
+              "Statistiques"
+            ],
+            "started_on": "09/01/2013",
+            "ended_on": "06/30/2016"
+          }
+        ],
+        "languages": [
+          {
+            "language": "Français",
+            "proficiency": "NATIVE_OR_BILINGUAL"
+          }
+        ],
+        "certifications": [],
+        "projects": [],
+        "volunteering": [],
+        "recommendations": []
+      },
+      {
+        "object": "PeopleSearchResult",
+        "product": "recruiter",
+        "visibility": "partial",
+        "id": "AEMAAA_part",
+        "candidate_id": "cand_2",
+        "is_hidden_candidate": true,
+        "headline": "Ingénieur logiciel",
+        "location": "Nantes",
+        "can_send_inmail": false,
+        "network_distance": "OUT_OF_NETWORK",
+        "work_experience": [
+          {
+            "company": {
+              "id": null,
+              "name": "Confidentiel SA"
+            },
+            "job_title": "Ingénieur",
+            "started_on": "01/01/2020"
+          }
+        ]
+      }
+    ],
+    "total_count": 3400,
+    "next_cursor": "rec_cursor_2"
+  },
+  "expected": {
+    "success": true,
+    "results": [
+      {
+        "id": "AEMAAA_full",
+        "provider_id": "AEMAAA_full",
+        "public_identifier": "claire-moreau",
+        "member_urn": "urn:li:member:55555",
+        "recruiter_candidate_id": "cand_1",
+        "name": "Claire Moreau",
+        "first_name": null,
+        "last_name": null,
+        "headline": "Data Scientist",
+        "summary": "Passionnée de données.",
+        "location": "Paris",
+        "industry": "Software",
+        "profile_url": "https://www.linkedin.com/in/claire-moreau",
+        "public_profile_url": "https://www.linkedin.com/in/claire-moreau",
+        "profile_picture_url": "https://media.licdn.com/cm.jpg",
+        "profile_picture_url_large": null,
+        "network_distance": "DISTANCE_3",
+        "network_degree": "THIRD_DEGREE",
+        "can_send_inmail": true,
+        "open_to_work": true,
+        "is_open_to_work": true,
+        "premium": null,
+        "is_premium": null,
+        "open_profile": null,
+        "is_open_profile": null,
+        "verified": null,
+        "connections_count": 800,
+        "followers_count": 200,
+        "shared_connections_count": null,
+        "profile_visibility": "full",
+        "hiddenCandidate": false,
+        "interests": [
+          "ACTIVE_TALENT"
+        ],
+        "interestLikelihood": "HIGH",
+        "keywords_match": null,
+        "recently_hired": null,
+        "last_outreach_activity": null,
+        "contact_info": {
+          "emails": [
+            "claire@example.com"
+          ],
+          "phones": [
+            "+33611111111"
+          ],
+          "adresses": [],
+          "socials": []
+        },
+        "work_experience": [
+          {
+            "id": null,
+            "company": "DataCorp",
+            "company_id": "77",
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": "Paris",
+            "role": "Data Scientist",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": true,
+            "skills": null,
+            "start": {
+              "year": 2021,
+              "month": 1
+            },
+            "end": null
+          },
+          {
+            "id": null,
+            "company": "Startup X",
+            "company_id": null,
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": null,
+            "role": "Analyste",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": false,
+            "skills": null,
+            "start": {
+              "year": 2018,
+              "month": 6
+            },
+            "end": {
+              "year": 2020,
+              "month": 12
+            }
+          }
+        ],
+        "current_positions": [
+          {
+            "id": null,
+            "company": "DataCorp",
+            "company_id": "77",
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": "Paris",
+            "role": "Data Scientist",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": true,
+            "skills": null,
+            "start": {
+              "year": 2021,
+              "month": 1
+            },
+            "end": null
+          }
+        ],
+        "past_positions": [
+          {
+            "id": null,
+            "company": "Startup X",
+            "company_id": null,
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": null,
+            "role": "Analyste",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": false,
+            "skills": null,
+            "start": {
+              "year": 2018,
+              "month": 6
+            },
+            "end": {
+              "year": 2020,
+              "month": 12
+            }
+          }
+        ],
+        "education": [
+          {
+            "id": null,
+            "school": "ENSAE",
+            "school_id": "12",
+            "school_url": null,
+            "school_picture_url": null,
+            "degree": "Ingénieur",
+            "grade": null,
+            "description": null,
+            "activities": null,
+            "field_of_study": "Statistiques",
+            "skills": null,
+            "start": {
+              "year": 2013,
+              "month": 9
+            },
+            "end": {
+              "year": 2016,
+              "month": 6
+            }
+          }
+        ],
+        "skills": [
+          {
+            "name": "Python",
+            "endorsement_count": 30,
+            "endorsement_id": null,
+            "endorsed": null,
+            "insights": null
+          },
+          {
+            "name": "SQL",
+            "endorsement_count": 12,
+            "endorsement_id": null,
+            "endorsed": null,
+            "insights": null
+          }
+        ],
+        "languages": [
+          {
+            "name": "Français",
+            "proficiency": "native_or_bilingual"
+          }
+        ],
+        "product": "recruiter",
+        "source_object": null
+      },
+      {
+        "id": "AEMAAA_part",
+        "provider_id": "AEMAAA_part",
+        "public_identifier": null,
+        "member_urn": null,
+        "recruiter_candidate_id": "cand_2",
+        "name": null,
+        "first_name": null,
+        "last_name": null,
+        "headline": "Ingénieur logiciel",
+        "summary": null,
+        "location": "Nantes",
+        "industry": null,
+        "profile_url": null,
+        "public_profile_url": null,
+        "profile_picture_url": null,
+        "profile_picture_url_large": null,
+        "network_distance": "OUT_OF_NETWORK",
+        "network_degree": "OUT_OF_NETWORK",
+        "can_send_inmail": false,
+        "open_to_work": null,
+        "is_open_to_work": null,
+        "premium": null,
+        "is_premium": null,
+        "open_profile": null,
+        "is_open_profile": null,
+        "verified": null,
+        "connections_count": null,
+        "followers_count": null,
+        "shared_connections_count": null,
+        "profile_visibility": "partial",
+        "hiddenCandidate": true,
+        "interests": [],
+        "interestLikelihood": null,
+        "keywords_match": null,
+        "recently_hired": null,
+        "last_outreach_activity": null,
+        "contact_info": null,
+        "work_experience": [
+          {
+            "id": null,
+            "company": "Confidentiel SA",
+            "company_id": null,
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": null,
+            "role": "Ingénieur",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": true,
+            "skills": null,
+            "start": {
+              "year": 2020,
+              "month": 1
+            },
+            "end": null
+          }
+        ],
+        "current_positions": [
+          {
+            "id": null,
+            "company": "Confidentiel SA",
+            "company_id": null,
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": null,
+            "role": "Ingénieur",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": true,
+            "skills": null,
+            "start": {
+              "year": 2020,
+              "month": 1
+            },
+            "end": null
+          }
+        ],
+        "past_positions": [],
+        "education": null,
+        "skills": null,
+        "languages": null,
+        "product": "recruiter",
+        "source_object": null
+      }
+    ],
+    "cursor": "rec_cursor_2",
+    "total": 3400
+  }
+}

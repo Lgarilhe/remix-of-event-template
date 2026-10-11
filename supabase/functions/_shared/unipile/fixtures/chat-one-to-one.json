@@ -1,0 +1,131 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/{account_id}/chats (Chat with user and a full last_message, spec messaging.md)",
+    "inferred": [
+      "the folder names of v1 are synthesised from the licence of the inbox the chat was listed from; the real values of `folders` are undocumented"
+    ]
+  },
+  "context": {
+    "accountId": "acc_test_linkedin",
+    "inboxKind": "recruiter"
+  },
+  "input": {
+    "object": "Chat",
+    "id": "chat_001",
+    "name": "Marie Dupont",
+    "description": "Une opportunité chez Acme",
+    "created_at": "2026-09-01T08:00:00.000Z",
+    "updated_at": "2026-09-02T09:00:00.000Z",
+    "last_message_timestamp": "2026-09-02T09:00:00.000Z",
+    "muted_until": false,
+    "user_id": "ACoAAB1234567",
+    "is_group": false,
+    "is_1to1": true,
+    "is_channel": false,
+    "type": "1to1",
+    "is_pinned": false,
+    "is_readonly": false,
+    "is_archived": false,
+    "folders": [
+      "inbox_x"
+    ],
+    "unread_count": 2,
+    "provider": "linkedin",
+    "last_message": {
+      "object": "Message",
+      "id": "msg_009",
+      "text": "Merci pour votre message",
+      "sender_id": "ACoAAB1234567",
+      "chat_id": "chat_001",
+      "timestamp": "2026-09-02T09:00:00.000Z",
+      "is_sender": false,
+      "is_hidden": false,
+      "is_seen": false,
+      "is_delivered": true,
+      "is_deleted": false,
+      "is_edited": false,
+      "is_pinned": false,
+      "is_event": false,
+      "is_mentionned": false,
+      "reactions_counter": [],
+      "provider": "linkedin",
+      "attachments": [],
+      "hyperlinks": [],
+      "specifics": {
+        "type": "INMAIL_REPLY",
+        "subject": "Une opportunité"
+      }
+    },
+    "user": {
+      "object": "User",
+      "id": "ACoAAB1234567",
+      "type": "individual",
+      "display_name": "Marie Dupont",
+      "first_name": "Marie",
+      "last_name": "Dupont",
+      "public_identifier": "marie-dupont-123",
+      "profile_url": "https://www.linkedin.com/in/marie-dupont-123",
+      "public_picture_url": "https://media.licdn.com/marie.jpg",
+      "description": "Directrice Produit",
+      "specifics": {
+        "network_distance": "FIRST_DEGREE",
+        "location": "Paris"
+      }
+    }
+  },
+  "expected": {
+    "id": "chat_001",
+    "account_id": "acc_test_linkedin",
+    "account_type": "LINKEDIN",
+    "name": "Marie Dupont",
+    "subject": "Une opportunité chez Acme",
+    "timestamp": "2026-09-02T09:00:00.000Z",
+    "unread_count": 2,
+    "unread": 2,
+    "attendees": [
+      {
+        "id": "ACoAAB1234567",
+        "provider_id": "ACoAAB1234567",
+        "attendee_provider_id": "ACoAAB1234567",
+        "name": "Marie Dupont",
+        "display_name": "Marie Dupont",
+        "first_name": "Marie",
+        "last_name": "Dupont",
+        "public_identifier": "marie-dupont-123",
+        "profile_url": "https://www.linkedin.com/in/marie-dupont-123",
+        "profile_picture_url": "https://media.licdn.com/marie.jpg",
+        "picture_url": "https://media.licdn.com/marie.jpg",
+        "headline": "Directrice Produit",
+        "occupation": "Directrice Produit",
+        "network_distance": "DISTANCE_1",
+        "specifics": {
+          "occupation": "Directrice Produit",
+          "network_distance": "DISTANCE_1"
+        },
+        "is_self": false
+      }
+    ],
+    "attendee_provider_id": "ACoAAB1234567",
+    "folder": [
+      "INBOX_LINKEDIN_RECRUITER"
+    ],
+    "content_type": "inmail",
+    "is_inmail": true,
+    "type": 0,
+    "is_group": false,
+    "is_readonly": false,
+    "is_archived": false,
+    "last_message": {
+      "text": "Merci pour votre message",
+      "sender_id": "ACoAAB1234567",
+      "timestamp": "2026-09-02T09:00:00.000Z",
+      "is_sender": false,
+      "message_type": "INMAIL_REPLY",
+      "sender_name": null,
+      "is_preview": false
+    },
+    "inmail_unknown": false
+  }
+}
