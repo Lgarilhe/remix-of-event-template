@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
@@ -83,12 +83,18 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   // Role filter state
   const [newRoleKeywords, setNewRoleKeywords] = useState('');
   const [newRolePriority, setNewRolePriority] = useState<FilterPriority>('MUST_HAVE');
-  const [newRoleScope, setNewRoleScope] = useState<FilterScope>('CURRENT_OR_PAST');
+  const [newRoleScope, setNewRoleScope] = useState<FilterScope>(filters.api === 'sales_navigator' ? 'CURRENT' : 'CURRENT_OR_PAST');
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [roleDialogDraft, setRoleDialogDraft] = useState('');
   const [editingRoleIndex, setEditingRoleIndex] = useState<number | null>(null);
   const [roleDialogPriority, setRoleDialogPriority] = useState<FilterPriority>('MUST_HAVE');
   const [roleDialogScope, setRoleDialogScope] = useState<FilterScope>('CURRENT_OR_PAST');
+
+  // Only the new-role draft gets a licence-specific default. Existing role
+  // periods stay in filters until the recruiter explicitly edits them.
+  useEffect(() => {
+    setNewRoleScope(filters.api === 'sales_navigator' ? 'CURRENT' : 'CURRENT_OR_PAST');
+  }, [filters.api]);
 
   const toggleSection = useCallback((section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));

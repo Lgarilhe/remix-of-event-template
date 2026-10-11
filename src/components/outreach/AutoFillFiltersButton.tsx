@@ -8,19 +8,21 @@ import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { invokeUnipile } from '@/lib/invokeUnipile';
-import { LinkedInFiltersState, LinkedInApiType, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
+import { LinkedInFiltersState, LinkedInApiType, LocationFilterItem, RoleFilter } from './types';
 import { Job } from '@/types/jobs';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useOrganization } from '@/hooks/useOrganization';
-import { requireGeneratedFilters, requireGeneratedSearchMemoryContext, type GeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
+import { mapGeneratedFilters, requireGeneratedFilters, requireGeneratedSearchMemoryContext, type GeneratedFilters, type GeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
 import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
 
 interface AutoFillFiltersButtonProps {
   selectedJob: Job | null;
   accountId: string | null;
   currentLocation?: LocationFilterItem[];
+  currentRoles?: RoleFilter[];
+  currentKeywords?: string;
+  filtersKey?: string;
   api?: LinkedInApiType;
   onApplyFilters: (filters: Partial<LinkedInFiltersState>) => void;
   onSuggestionsGenerated?: (suggestions: {
@@ -35,22 +37,6 @@ interface AutoFillFiltersButtonProps {
   searchSource?: 'linkedin' | 'database';
   projectId?: string | null;
   onMemoryContextGenerated?: (context: GeneratedSearchMemoryContext | null) => void;
-}
-
-interface GeneratedFilters {
-  keywords: string;
-  role: Array<{ keywords: string; priority: string; scope: string }>;
-  seniority: string[];
-  years_of_experience_min: number | null;
-  years_of_experience_max: number | null;
-  skills_keywords: string[];
-  industry_keywords: string[];
-  location_keywords: string[];
-  location_within_area: number | null;
-  company_keywords: Array<{ keywords: string; priority: string; scope: string }>;
-  school: Array<{ id: string; name: string; priority: string }>;
-  spotlight: string;
-  open_to_work: boolean;
 }
 
 // Build the same job context as the edge function for preview
@@ -119,6 +105,9 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   selectedJob,
   accountId,
   currentLocation,
+  currentRoles,
+  currentKeywords,
+  filtersKey,
   api = 'recruiter',
   onApplyFilters,
   onSuggestionsGenerated,
@@ -139,7 +128,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   const [showOutput, setShowOutput] = useState(true);
   const [missingFields, setMissingFields] = useState<{ critical: string[], optional: string[] }>({ critical: [], optional: [] });
   const generationRef = useRef(0);
-  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource, api]);
+  const contextKey = stableScoringContextKey([organizationId, projectId, selectedJob, accountId, searchSource, api, filtersKey]);
   const contextRef = useRef(contextKey);
   contextRef.current = contextKey;
   useEffect(() => {
@@ -222,140 +211,10 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       // Store debug data
       setDebugData({ input: inputContext, output: generated });
 
-      // Build the filter update
-      const update: Partial<LinkedInFiltersState> = {};
-
-      // Keywords
-      if (generated.keywords) {
-        update.keywords = generated.keywords;
-      }
-
-      // Role filters
-      if (generated.role?.length) {
-        update.role = generated.role.map(r => ({
-          keywords: r.keywords,
-          priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
-          scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
-        })) as RoleFilter[];
-      }
-
-      // Seniority
-      if (generated.seniority?.length) {
-        update.seniority = generated.seniority;
-      }
-
-      // Generated XP has the same calculated meaning as the first-search mapper.
-      // Use typeof check to handle 0 correctly (0 is a valid value!)
-      const hasXpMin = typeof generated.years_of_experience_min === 'number';
-      const hasXpMax = typeof generated.years_of_experience_max === 'number';
-      
-      if (hasXpMin || hasXpMax) {
-        update.calculated_experience_min = hasXpMin ? generated.years_of_experience_min : null;
-        update.calculated_experience_max = hasXpMax ? generated.years_of_experience_max : null;
-        // Native ranges are a separate, explicit user choice.
-        update.years_of_experience_min = null;
-        update.years_of_experience_max = null;
-        
-        console.log('[AutoFill] Experience set:', { 
-          min: update.calculated_experience_min, 
-          max: update.calculated_experience_max 
-        });
-      }
-
-      // Location radius
-      if (generated.location_within_area !== undefined) {
-        update.location_within_area = api === 'recruiter' ? generated.location_within_area : null;
-      }
-
-      // Location: try to resolve a keyword (e.g. "Courbevoie") to a valid LinkedIn location ID.
-      // IMPORTANT: never overwrite a location already selected by the user (and valid).
-      const hasValidExistingLocation = (currentLocation || []).some((loc) => /^\d+$/.test(String(loc.id)));
-
-      const locationKeywords = (generated.location_keywords || []).map((k: string) => k.trim()).filter(Boolean);
-
-      if (!hasValidExistingLocation && locationKeywords.length > 0 && accountId) {
-        // Try each location keyword in sequence until one resolves
-        const resolvedLocations: LocationFilterItem[] = [];
-
-        for (const keyword of locationKeywords.slice(0, 3)) { // Max 3 attempts
-          try {
-            const { data: paramData } = await invokeUnipile({
-              body: {
-                action: 'get_parameters',
-                account_id: accountId,
-                type: 'LOCATION',
-                keywords: keyword,
-                service: api === 'sales_navigator' ? 'SALES_NAVIGATOR' : api === 'classic' ? 'CLASSIC' : 'RECRUITER',
-              },
-            });
-
-            const items = Array.isArray(paramData?.items) ? paramData.items as any[] : [];
-            if (paramData?.success && items.length > 0) {
-              const normalized = keyword.toLowerCase();
-              const best =
-                items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-                items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-                items[0];
-
-              if (best?.id && best?.title) {
-                // Avoid duplicate IDs
-                if (!resolvedLocations.some(l => l.id === String(best.id))) {
-                  resolvedLocations.push({
-                    id: String(best.id),
-                    name: String(best.title),
-                    priority: 'MUST_HAVE',
-                    scope: api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT',
-                  });
-                }
-                break; // Found one valid location, stop (OR logic — one is enough)
-              }
-            }
-          } catch (e) {
-            console.warn('[AutoFill] Failed to resolve location keyword:', keyword, e);
-          }
-        }
-
-        if (resolvedLocations.length > 0) {
-          update.location = resolvedLocations;
-        }
-        // Don't set location = [] — preserve user's existing location if resolution fails
-      }
-
-      // Company keywords (e.g., exclude client)
-      if (generated.company_keywords?.length) {
-        update.company_keywords = generated.company_keywords.map(c => ({
-          keywords: c.keywords,
-          priority: c.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
-          scope: c.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST' | 'PAST_NOT_CURRENT',
-        })) as CompanyKeywordFilter[];
-      }
-
-      // Schools with IDs
-      if (generated.school?.length) {
-        update.school = generated.school.map(s => ({
-          id: s.id,
-          name: s.name,
-          priority: 'CAN_HAVE' as const, // Force CAN_HAVE for OR logic
-        })) as PriorityFilterItem[];
-      }
-
-      // AI-generated keyword-based skills (skills + certifications + domain expertise)
-      if (generated.skills_keywords?.length) {
-        update.skills_keywords = generated.skills_keywords;
-      }
-
-      // AI-generated industry keywords
-      if (generated.industry_keywords?.length) {
-        update.industry_keywords = generated.industry_keywords;
-      }
-
-      // Open to work / Spotlight
-      if (generated.spotlight) {
-        update.spotlight = generated.spotlight as SpotlightType | '';
-      }
-      if (generated.open_to_work !== undefined) {
-        update.open_to_work = generated.open_to_work;
-      }
+      // Keep the same mapper as prompt generation and onboarding. Location
+      // resolution is asynchronous, so recheck the active context afterwards.
+      if (!isCurrent()) return;
+      const { update } = await mapGeneratedFilters(generated, { accountId, currentLocation, currentRoles, currentKeywords, api });
 
       // Apply filters
       if (!isCurrent()) return;
@@ -402,7 +261,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }, [selectedJob, accountId, currentLocation, api, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel, organizationId, projectId, contextKey, onMemoryContextGenerated]);
+  }, [selectedJob, accountId, currentLocation, currentRoles, currentKeywords, api, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel, organizationId, projectId, contextKey, onMemoryContextGenerated]);
 
   const isDisabled = disabled || !selectedJob || !accountId || loading;
 

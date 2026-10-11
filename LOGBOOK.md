@@ -32,6 +32,28 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-11 — BUG — Intitulés générés compatibles avec la licence LinkedIn
+
+**Contexte** : le problème restant de la PR #324 est toujours présent sur `main` `61049f0f` : les trois commits suivants concernent les séquences, l’Agenda et la barre latérale. La génération conserve des rôles que le transport Classic/Sales ignore ; l’onboarding utilise un repli distinct limité au premier groupe et à quatre titres ; la recherche continue refuse ces rôles.
+**Fait** : adaptation commune à la construction des requêtes, à la validation continue et au transport. Les rôles restent enregistrés et éditables avec leurs priorités et périodes. Classic traduit les critères sans période exclusive dans le champ Titre ; Sales utilise les inclusions/exclusions natives de postes actuels en texte ; Recruiter conserve les critères natifs complets. Les combinaisons non représentables, expressions invalides et dépassements de longueur sont refusés avec explication, sans troncature. L’onboarding affiche ces refus et propose de poursuivre vers les filtres existants de la mission.
+**Contraintes manuelles** : groupes obligatoires, exclusions, titres natifs, mots-clés et lieux existants conservés ; mots-clés distincts combinés par ET sans croissance lors d’une génération identique. Deux ensembles d’alternatives divergents ne sont pas fusionnés silencieusement. Les trois entrées de mapping réutilisent le mapper partagé ; une modification pendant la génération ou la résolution de lieu invalide le résultat tardif. L’éditeur de rôles existant devient accessible sur Classic/Sales avec indication des limites ; changer de licence ne modifie aucune période sauvegardée.
+**Validation** : 441 tests agents (440 réussis, un saut préexistant), 581 tests C1 réussis ; 2 068 tests UX (2 065 réussis, trois échecs reproduits à l’identique sur `main`, dans les tests de carte texturée et de messagerie). Les 58 tests finaux ciblant le hook, l’éditeur et l’onboarding réussissent. Build production réussi ; onze diagnostics TypeScript hérités identiques, aucune nouvelle erreur ou alerte lint ciblée, quinze compteurs design inchangés. Tests HTTP, fournisseur et modèle simulés ; aucun appel payant réel ni contact candidat.
+
+| Persona | Vérification automatisée du contrat | QA navigateur |
+|---|---|---|
+| Guillaume | Six titres, alternatives, exclusions et critères Recruiter ; conservation des filtres et régressions de pagination/notation #324 | Scénario ajouté, non exécuté |
+| Claire | Refus explicites de licence/longueur, critères conservés et première recherche déléguée au constructeur commun | Scénario ajouté, non exécuté |
+| Théo | Syntaxe, périodes, filtres manuels, conflits d’alternatives, générations répétées et réponses tardives ; aucun appel fournisseur sur refus | Scénario ajouté, non exécuté |
+| Sophie | Composants d’édition réutilisés et périodes préservées ; scénario mobile Sales préparé avec réseau intercepté | Scénario ajouté, non exécuté |
+
+**Limites** : Chromium et son exécutable headless indisponibles ; les téléchargements locaux échouent avec des archives vides/corrompues. Les quatre scénarios Playwright sont découverts et leur bundle compilé, mais aucun verdict navigateur n’est revendiqué. Deno absent ; modules et transport vérifiés par les tests TypeScript exécutés dans Node. La pertinence et la couverture temporelle effective du fournisseur ne sont pas mesurées. Classic refuse une exigence exclusivement actuelle/passée ; Sales refuse les groupes obligatoires distincts et les expressions complexes de poste, et exige des identifiants résolus pour les postes passés. Aucun déploiement effectué.
+**Reste à faire** :
+- [ ] Exécuter les quatre scénarios navigateur avant fusion ; PR en brouillon jusque-là.
+- [ ] Contrôler les fonctions partagées et déployées dans la CI avant publication.
+**Refs** : PR #324 ; branche `codex/sourcing-license-titles-20261011` ; `tests/agent/sourcing-role-licenses.test.mjs`, `tests/agent/sourcing-auto-fill-hook.test.mjs` et `e2e/flows/sourcing-filter-generation.spec.ts` ; contrat consulté : https://developer.unipile.com/reference/linkedincontroller_search.
+
+---
+
 ## 2026-10-09 — BUG — Génération des propositions candidat orientée vers un résultat vide
 
 **Contexte** : l’utilisateur constate systématiquement « Aucune nouvelle action à proposer ». L’instruction du modèle demandait littéralement un appel avec `{"plans":[]}`. Cinq générations récentes observées dans les journaux du 9 octobre renvoient chacune 33 tokens de sortie, cohérents avec ces réponses vides ; leur contenu n’est pas journalisé. Une autre perte est reproduite : la demande finale d’un message long disparaissait des extraits envoyés au modèle.

@@ -6,9 +6,9 @@
  * (`SearchPromptBar`) : la phrase de l'utilisateur augmente le brief (voir
  * `buildAugmentedJob`), et le reste du pipeline est identique à l'auto-fill.
  *
- * NB : la logique de mapping duplique volontairement celle de
- * `AutoFillFiltersButton` pour ne pas toucher au flux auto-fill existant
- * (consolidation prévue dans un second temps).
+ * Le mapping est également utilisé par `AutoFillFiltersButton`. Les rôles
+ * restent éditables avec leurs priorités et périodes ; le constructeur de
+ * requête commun les adapte à la licence sans perdre de contrainte.
  */
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -143,11 +143,13 @@ export async function generateFiltersFromJob(params: {
   searchSource: 'linkedin' | 'database';
   api?: LinkedInApiType;
   currentLocation?: LocationFilterItem[];
+  currentRoles?: RoleFilter[];
+  currentKeywords?: string;
   modelOverride?: string;
   organizationId?: string | null;
   projectId?: string | null;
 }): Promise<GenerateFiltersResult> {
-  const { job, accountId, searchSource, api, currentLocation, modelOverride, organizationId, projectId } = params;
+  const { job, accountId, searchSource, api, currentLocation, currentRoles, currentKeywords, modelOverride, organizationId, projectId } = params;
 
   const { data, error } = await invokeWithCredits<{
     filters?: GeneratedFilters;
@@ -172,8 +174,28 @@ export async function generateFiltersFromJob(params: {
       ? data.suggestions
       : null;
 
-  const { update, filterCount } = await mapGeneratedFilters(generated, { accountId, currentLocation, api });
+  const { update, filterCount } = await mapGeneratedFilters(generated, { accountId, currentLocation, currentRoles, currentKeywords, api });
   return { update, suggestions, filterCount, memoryContext };
+}
+
+function alreadyConjoined(current: string, generated: string): boolean {
+  const suffix = ` AND (${generated})`;
+  if (!current.endsWith(suffix)) return false;
+  const prefix = current.slice(0, -suffix.length);
+  if (!prefix.startsWith('(') || !prefix.endsWith(')')) return false;
+  let depth = 0;
+  let quoted = false;
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === '"') { quoted = !quoted; continue; }
+    if (quoted) continue;
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    // Only the exact conjunction we compose can be reused. A suffix in an
+    // ungrouped OR expression does not make that criterion mandatory.
+    if (depth < 0 || (depth === 0 && i < prefix.length - 1)) return false;
+  }
+  return depth === 0 && !quoted;
 }
 
 /**
@@ -185,19 +207,42 @@ export async function generateFiltersFromJob(params: {
  */
 export async function mapGeneratedFilters(
   generated: GeneratedFilters,
-  ctx: { accountId: string | null; currentLocation?: LocationFilterItem[]; api?: LinkedInApiType },
+  ctx: { accountId: string | null; currentLocation?: LocationFilterItem[]; currentRoles?: RoleFilter[]; currentKeywords?: string; api?: LinkedInApiType },
 ): Promise<{ update: Partial<LinkedInFiltersState>; filterCount: number }> {
   const { accountId, currentLocation, api = 'recruiter' } = ctx;
   const update: Partial<LinkedInFiltersState> = {};
 
-  if (generated.keywords) update.keywords = generated.keywords;
+  if (generated.keywords) {
+    const current = ctx.currentKeywords?.trim();
+    update.keywords = current && alreadyConjoined(current, generated.keywords)
+      ? current
+      : current && current !== generated.keywords.trim()
+        ? `(${current}) AND (${generated.keywords})`
+        : generated.keywords;
+  }
 
   if (generated.role?.length) {
     update.role = generated.role.map(r => ({
       keywords: r.keywords,
-      priority: r.priority as 'MUST_HAVE' | 'DOESNT_HAVE',
+      priority: r.priority as 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE',
       scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
     })) as RoleFilter[];
+    const sameRole = (a: RoleFilter, b: RoleFilter) => a.keywords === b.keywords
+      && a.priority === b.priority && a.scope === b.scope;
+    const currentAlternatives = (ctx.currentRoles ?? []).filter(role => role.priority === 'CAN_HAVE');
+    const generatedAlternatives = update.role.filter(role => role.priority === 'CAN_HAVE');
+    if (currentAlternatives.length && generatedAlternatives.length
+      && (currentAlternatives.length !== generatedAlternatives.length
+        || !currentAlternatives.every(role => generatedAlternatives.some(other => sameRole(role, other))))) {
+      throw new Error('Les alternatives existantes et générées diffèrent. Revoyez les postes ou effacez explicitement ces filtres avant de les régénérer.');
+    }
+    // Without provenance, an existing obligation cannot be assumed to come
+    // from an earlier generation. Removing it requires an explicit edit/reset.
+    for (const existing of ctx.currentRoles ?? []) {
+      if (!update.role.some(role => sameRole(role, existing))) {
+        update.role.push({ ...existing });
+      }
+    }
   }
 
   if (generated.seniority?.length) update.seniority = generated.seniority;

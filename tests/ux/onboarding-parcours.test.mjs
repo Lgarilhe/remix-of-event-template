@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { build, transformSync } from 'esbuild';
 
 const ROOT = new URL('../../', import.meta.url);
@@ -157,12 +158,60 @@ test('Brief : les corrections se retrouvent dans les filtres enregistrés sur la
   const edited = { ...draft, skills: ['Go', 'Terraform'], titles: ['Platform Engineer'], xpMin: 6, xpMax: 9, location: '' };
   const filters = brief.briefToFilters(edited);
   assert.deepEqual(filters.skills_keywords, ['Go', 'Terraform']);
-  assert.equal(filters.role[0].keywords, 'Platform Engineer');
+  assert.equal(filters.role[0].keywords, '"Platform Engineer"');
   assert.equal(filters.years_of_experience_min, 6);
   assert.equal(filters.years_of_experience_max, 9);
   assert.deepEqual(filters.location_keywords, []);
   assert.deepEqual(filters.company_keywords, RESPONSE.filters.company_keywords, 'le client exclu des expériences est conservé');
-  assert.equal(brief.briefToFilters({ ...draft, titles: ['A', 'B'] }).role[0].keywords, 'A OR B');
+  assert.equal(brief.briefToFilters({ ...draft, titles: ['A', 'B'] }).role[0].keywords, '"A" OR "B"');
+});
+
+test('Brief : OR sépare les alternatives seulement hors des phrases, les requêtes complexes restent intactes', () => {
+  assert.deepEqual(brief.splitRoleKeywords('"Research OR Development" OR "Research AND Development" OR SRE'),
+    ['Research OR Development', 'Research AND Development', 'SRE']);
+  assert.deepEqual(brief.splitRoleKeywords("Director of O'Reilly OR SRE"), ["Director of O'Reilly", 'SRE']);
+  assert.deepEqual(brief.splitRoleKeywords('Research or development'), ['Research or development']);
+  for (const query of ['(SRE OR DevOps) AND NOT "Junior Engineer"', 'SRE OR (DevOps AND Cloud)', 'SRE NOT Junior', '"SRE OR DevOps']) {
+    assert.deepEqual(brief.splitRoleKeywords(query), [query]);
+  }
+});
+
+test('Brief : la lecture puis l’enregistrement ne réécrivent aucune contrainte de rôle', () => {
+  const roles = [
+    { keywords: '"Junior Engineer"', priority: 'DOESNT_HAVE', scope: 'CURRENT' },
+    { keywords: '(SRE OR DevOps) AND NOT "Intern"', priority: 'MUST_HAVE', scope: 'PAST' },
+    { keywords: '"Platform Engineer"', priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' },
+    { keywords: 'Cloud', priority: 'MUST_HAVE', scope: 'CURRENT' },
+  ];
+  const response = { ...RESPONSE, filters: { ...RESPONSE.filters, role: roles } };
+  const draft = brief.parseBriefResponse(response, 'Infrastructure');
+  assert.deepEqual(draft.titles, [roles[1].keywords], 'le premier rôle exclu ne devient pas un intitulé recherché');
+  assert.deepEqual(brief.briefToFilters(draft).role, roles);
+  const edited = brief.briefToFilters({ ...draft, titles: ['Research AND Development', 'Research OR Development', 'NOT analyst'] });
+  assert.equal(edited.role[1].keywords, '"Research AND Development" OR "Research OR Development" OR "NOT analyst"');
+  assert.equal(edited.role[1].scope, 'PAST');
+  assert.equal(edited.role[1].priority, 'MUST_HAVE');
+  assert.deepEqual([edited.role[0], ...edited.role.slice(2)], [roles[0], ...roles.slice(2)]);
+  assert.deepEqual(response.filters.role, roles, 'la réponse IA n’est jamais mutée');
+});
+
+test('Brief : toutes les alternatives restent présentes et les exclusions survivent à l’ajout ou au retrait du rôle affiché', () => {
+  const roles = [
+    { keywords: 'Junior', priority: 'DOESNT_HAVE', scope: 'CURRENT' },
+    { keywords: 'A OR B OR C OR D OR E OR F OR G', priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' },
+    { keywords: 'Cloud', priority: 'MUST_HAVE', scope: 'PAST' },
+  ];
+  const draft = brief.parseBriefResponse({ ...RESPONSE, filters: { ...RESPONSE.filters, role: roles } }, 'Infrastructure');
+  assert.equal(draft.titles.length, 7);
+  assert.deepEqual(brief.briefToFilters(draft).role, roles);
+  const edited = brief.briefToFilters({ ...draft, titles: ['Platform Engineer'] });
+  assert.equal(edited.role[1].priority, 'CAN_HAVE');
+  assert.equal(edited.role[1].scope, 'CURRENT_OR_PAST');
+  assert.deepEqual(brief.briefToFilters({ ...draft, titles: [] }).role, [roles[0], roles[2]]);
+  const onlyExclusions = brief.parseBriefResponse({ ...RESPONSE, filters: { ...RESPONSE.filters, role: [roles[0]] } }, 'Infrastructure');
+  const withTitle = brief.briefToFilters({ ...onlyExclusions, titles: ['Platform Engineer'] });
+  assert.deepEqual(withTitle.role, [{ keywords: '"Platform Engineer"', priority: 'MUST_HAVE', scope: 'CURRENT' }, roles[0]]);
+  assert.throws(() => brief.briefToFilters({ ...draft, titles: ['An "embedded" quote'] }), /guillemets/);
 });
 
 test('Brief : le brief structuré de la mission suit la forme du parcours « brief » de la création', () => {
@@ -279,10 +328,59 @@ test('Première recherche : une seule page, un seul appel, filtres relus sur la 
   const hook = code('src/hooks/onboarding/useFirstSearch.ts');
   assert.match(hook, /\.from\('sourcing_projects'\)[\s\S]*\.eq\('id', missionId\)/);
   assert.match(hook, /id: `project:\$\{missionId\}`/, 'le scoring exige une mission de l’organisation');
-  // Sur Classic et Sales Navigator, le filtre de poste est ignoré : le poste passe dans les mots-clés.
-  assert.match(search, /license !== 'recruiter'/);
+  // La première recherche délègue à la même adaptation des licences que la mission.
+  assert.doesNotMatch(search, /titleClause|splitRoleKeywords|slice\(0, 4\)/);
   // Le scoring ne bloque jamais l’aperçu.
   assert.match(search, /if \(error\) \{[\s\S]*return \[\];/);
+});
+
+function firstSearchHarness(builder = filters => ({ keywords: filters.keywords, role: filters.role, api: filters.api })) {
+  const calls = [];
+  const builds = [];
+  const maps = [];
+  const source = read('src/lib/onboarding/search.ts').replace(/^import[^\n]*;\r?\n/gm, '');
+  const { code: js } = transformSync(source, { loader: 'ts', format: 'cjs' });
+  const sandbox = {
+    module: { exports: {} }, exports: {}, INITIAL_FILTERS: {}, Error,
+    mapGeneratedFilters: async (filters, context) => { maps.push({ filters, context }); return { update: { ...filters } }; },
+    buildSearchParams: (filters, account) => { builds.push({ filters, account }); return builder(filters); },
+    invokeUnipile: async ({ body }) => { calls.push(body); return { data: { success: true, results: [], total: 0 } }; },
+    invokeWithCredits: () => { throw new Error('Unexpected paid call'); },
+  };
+  vm.runInNewContext(js, sandbox);
+  return { run: sandbox.module.exports.runFirstSearch, FirstSearchError: sandbox.module.exports.FirstSearchError, calls, builds, maps };
+}
+
+test('Première recherche : chaque licence conserve tous les rôles et la requête jusqu’au constructeur partagé', async () => {
+  const filters = { ...RESPONSE.filters, keywords: 'Go AND NOT Java', role: [
+    { keywords: 'A OR B OR C OR D OR E OR F', priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' },
+    { keywords: 'Junior', priority: 'DOESNT_HAVE', scope: 'CURRENT' },
+    { keywords: 'Platform Engineer', priority: 'CAN_HAVE', scope: 'PAST' },
+  ] };
+  for (const license of ['classic', 'sales_navigator', 'recruiter']) {
+    const h = firstSearchHarness();
+    const result = await h.run({ filters, accountId: 'test-account', subscriptions: { [license]: true } });
+    assert.equal(result.license, license);
+    assert.equal(h.maps[0].context.api, license);
+    assert.equal(h.builds.length, 1);
+    assert.equal(h.builds[0].account, 'test-account');
+    assert.equal(h.builds[0].filters.keywords, filters.keywords);
+    assert.deepEqual(h.builds[0].filters.role, filters.role);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].limit, 10);
+    assert.deepEqual(h.calls[0].role, filters.role);
+    assert.equal(h.calls[0].keywords, filters.keywords);
+  }
+});
+
+test('Première recherche : une incompatibilité de licence ou de longueur bloque avant tout appel LinkedIn', async () => {
+  for (const message of ['La période nécessite Recruiter.', 'La requête dépasse 200 caractères.']) {
+    const h = firstSearchHarness(() => { throw new Error(message); });
+    await assert.rejects(h.run({ filters: RESPONSE.filters, accountId: 'test-account', subscriptions: { classic: true } }),
+      error => error instanceof h.FirstSearchError && error.kind === 'other'
+        && error.message === `${message} Continuez sans aperçu pour revoir les filtres dans la mission.`);
+    assert.equal(h.calls.length, 0);
+  }
 });
 
 test('Mission : créée avec l’organisation de l’utilisateur, brief structuré et filtres IA', () => {

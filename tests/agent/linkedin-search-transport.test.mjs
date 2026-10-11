@@ -222,6 +222,119 @@ test('Recruiter role IDs, keyword roles and past roles retain their priorities a
   ]);
 });
 
+test('Classic translates role requirements into native title keywords while preserving a reviewed clause', async () => {
+  const h = harness();
+  const params = { api: 'classic', keywords: 'Kubernetes OR Python',
+    advanced_keywords: { first_name: 'Alice', title: 'Architect OR Consultant' },
+    role: [
+      { keywords: 'Cloud Engineer OR Platform Engineer', priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' },
+      { keywords: 'Intern OR Apprentice', priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' },
+    ] };
+  const before = structuredClone(params);
+  assert.equal((await h.search(params)).status, 200);
+  const body = h.calls.provider[0];
+  assert.equal(body.role, undefined);
+  assert.equal(body.keywords, params.keywords);
+  assert.deepEqual(body.advanced_keywords, { first_name: 'Alice',
+    title: '(Architect OR Consultant) AND ("Cloud Engineer" OR "Platform Engineer") AND NOT ("Intern" OR "Apprentice")' });
+  assert.deepEqual(params, before);
+});
+
+test('Sales Navigator uses every generated current-title alternative and negative title', async () => {
+  const h = harness();
+  assert.equal((await h.search({ api: 'sales_navigator', role: [
+    { keywords: '"Cloud Engineer" OR "Platform Engineer" OR SRE OR DevOps OR "Backend Engineer"', priority: 'MUST_HAVE', scope: 'CURRENT' },
+    { keywords: 'Intern OR Apprentice', priority: 'DOESNT_HAVE', scope: 'CURRENT' },
+  ] })).status, 200);
+  assert.deepEqual(h.calls.provider[0].role,
+    { include: ['Cloud Engineer', 'Platform Engineer', 'SRE', 'DevOps', 'Backend Engineer'], exclude: ['Intern', 'Apprentice'] });
+  assert.equal(h.calls.provider[0].keywords, 'Engineer', 'the existing keyword criterion remains independent');
+});
+
+test('Sales Navigator appends generated exclusions to native titles but refuses an unrelated positive group', async () => {
+  const selected = [{ id: '900', priority: 'MUST_HAVE', scope: 'CURRENT' }, { id: 'Junior', priority: 'DOESNT_HAVE', scope: 'CURRENT' }];
+  const h = harness();
+  assert.equal((await h.search({ api: 'sales_navigator', job_title: selected,
+    role: [{ keywords: 'Intern', priority: 'DOESNT_HAVE', scope: 'CURRENT' }] })).status, 200);
+  assert.deepEqual(h.calls.provider[0].role, { include: ['900'], exclude: ['Junior', 'Intern'] });
+  const blocked = harness();
+  const result = await blocked.search({ api: 'sales_navigator', job_title: selected,
+    role: [{ keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }] });
+  assert.equal(result.status, 400);
+  assert.equal(result.data.error_code, 'FILTERS_UNSUPPORTED');
+  assert.equal(blocked.calls.provider.length, 0);
+  assert.equal(blocked.calls.writes.length, 0);
+});
+
+test('unsupported role periods and Boolean combinations cannot disappear at the HTTP boundary', async () => {
+  const role = (keywords, priority = 'MUST_HAVE', scope = 'CURRENT') => ({ keywords, priority, scope });
+  const cases = [
+    { api: 'classic', role: [role('Engineer')] },
+    { api: 'classic', role: [role('Engineer', 'MUST_HAVE', 'PAST')] },
+    { api: 'classic', job_title: [{ id: '900', priority: 'MUST_HAVE' }] },
+    { api: 'classic', past_job_title: [{ id: '900', priority: 'MUST_HAVE' }] },
+    { api: 'sales_navigator', role: [role('Engineer', 'MUST_HAVE', 'CURRENT_OR_PAST')] },
+    { api: 'sales_navigator', role: [role('Engineer', 'MUST_HAVE', 'PAST')] },
+    { api: 'sales_navigator', job_title: [{ id: '900', priority: 'MUST_HAVE', scope: 'PAST' }] },
+    { api: 'sales_navigator', past_job_title: [{ id: 'Engineer', priority: 'MUST_HAVE', scope: 'PAST' }] },
+    { api: 'sales_navigator', role: [role('Engineer'), role('Architect')] },
+    { api: 'sales_navigator', role: [role('Engineer'), role('Architect', 'CAN_HAVE')] },
+    { api: 'sales_navigator', role: [role('Engineer AND Cloud')] },
+    { api: 'sales_navigator', role: [role('Engineer NOT Junior')] },
+  ];
+  for (const params of cases) {
+    const h = harness();
+    const result = await h.search(params);
+    assert.equal(result.status, 400, JSON.stringify(params));
+    assert.equal(result.data.error_code, 'FILTERS_UNSUPPORTED');
+    assert.equal(h.calls.provider.length, 0);
+    assert.equal(h.calls.writes.length, 0);
+  }
+});
+
+test('Classic title keywords and generated title lists reject length overflow without paid calls', async () => {
+  for (const params of [
+    { api: 'classic', advanced_keywords: { title: 'x'.repeat(201) } },
+    { api: 'classic', advanced_keywords: { title: 'Engineer AND' } },
+    { api: 'classic', advanced_keywords: { title: 'x'.repeat(150) }, role: [{ keywords: 'y'.repeat(50), priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' }] },
+    { api: 'sales_navigator', role: [{ keywords: 'x'.repeat(201), priority: 'MUST_HAVE', scope: 'CURRENT' }] },
+  ]) {
+    const h = harness();
+    const result = await h.search(params);
+    assert.equal(result.status, 400);
+    assert.equal(h.calls.provider.length, 0);
+    assert.equal(h.calls.writes.length, 0);
+  }
+  const exact = harness();
+  assert.equal((await exact.search({ api: 'classic', advanced_keywords: { title: 'x'.repeat(200) } })).status, 200);
+  assert.equal(exact.calls.provider[0].advanced_keywords.title.length, 200);
+  const salesExact = harness();
+  assert.equal((await salesExact.search({ api: 'sales_navigator', job_title: [
+    { id: 'x'.repeat(200), priority: 'MUST_HAVE', scope: 'CURRENT' },
+  ] })).status, 200);
+  assert.equal(salesExact.calls.provider[0].role.include[0].length, 200);
+  const salesTooLong = harness();
+  assert.equal((await salesTooLong.search({ api: 'sales_navigator', job_title: [
+    { id: 'x'.repeat(201), priority: 'MUST_HAVE', scope: 'CURRENT' },
+  ] })).status, 400);
+  assert.equal(salesTooLong.calls.provider.length, 0);
+  assert.equal(salesTooLong.calls.writes.length, 0);
+});
+
+test('Sales Navigator preserves numeric past-title facets and rejects a conflicting period before consultation', async () => {
+  const h = harness();
+  assert.equal((await h.search({ api: 'sales_navigator', past_job_title: [
+    { id: '900', priority: 'MUST_HAVE', scope: 'PAST' }, { id: '901', priority: 'DOESNT_HAVE' },
+  ] })).status, 200);
+  assert.deepEqual(h.calls.provider[0].past_role, { include: ['900'], exclude: ['901'] });
+  const blocked = harness();
+  assert.equal((await blocked.search({ api: 'sales_navigator', past_job_title: [
+    { id: '900', priority: 'MUST_HAVE', scope: 'CURRENT' },
+  ] })).status, 400);
+  assert.equal(blocked.calls.provider.length, 0);
+  assert.equal(blocked.calls.writes.length, 0);
+});
+
 test('provider rejection of a full valid Recruiter query is reported without a shortened retry', async () => {
   const h = harness({ type: 'errors/content_too_large', detail: 'Too large' }, 400);
   const keywords = 'Cloud '.repeat(80) + 'NOT "Client actuel"';

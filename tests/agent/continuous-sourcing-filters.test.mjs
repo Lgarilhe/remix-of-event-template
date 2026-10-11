@@ -51,7 +51,7 @@ async function providerBody(request) {
   return body;
 }
 const frontend = compile(snippet('src/components/outreach/types.ts', ['INITIAL_FILTERS'])
-  + '\n' + snippet('src/hooks/useLinkedInSearchActions.ts', ['buildSearchParams']));
+  + '\n' + snippet('src/hooks/useLinkedInSearchActions.ts', ['buildSearchParams']), boolean);
 function ui(filtersInput) {
   return frontend.buildSearchParams({ ...plain(frontend.INITIAL_FILTERS), ...filtersInput }, 'account');
 }
@@ -239,10 +239,91 @@ test('Classic uses its supported array facets and reviewed advanced keywords', a
   assert.deepEqual(body.open_to, ['boardMember']);
 });
 
+test('Classic keeps every generated title clause, exclusion and reviewed title requirement', async () => {
+  const saved = { ...base, last_manual_edit: '2026-10-11', title_keywords: 'Architect OR Consultant',
+    first_name: 'Alice', role: [
+      { keywords: 'Cloud Engineer OR Platform Engineer', priority: 'MUST_HAVE', scope: 'CURRENT_OR_PAST' },
+      { keywords: 'Intern OR Apprentice', priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' },
+    ] };
+  const before = structuredClone(saved);
+  const request = build(saved, 'classic');
+  const expectedTitle = '(Architect OR Consultant) AND ("Cloud Engineer" OR "Platform Engineer") AND NOT ("Intern" OR "Apprentice")';
+  assert.equal(request.role, undefined);
+  assert.equal(request.keywords, 'Python', 'roles never become broad profile keywords');
+  assert.deepEqual(request.advanced_keywords, { first_name: 'Alice', title: expectedTitle });
+  assert.deepEqual((await providerBody(request)).advanced_keywords, request.advanced_keywords);
+  assert.deepEqual(await providerBody(request), await providerBody(ui({ ...saved, api: 'classic' })));
+  assert.deepEqual(saved, before, 'the reviewed criteria remain immutable');
+});
+
+test('Sales Navigator keeps multiple title alternatives and text exclusions in its native current-role filter', async () => {
+  const saved = { ...base, role: [
+    { keywords: '"Cloud Engineer" OR "Platform Engineer" OR "Site Reliability Engineer" OR SRE OR DevOps', priority: 'MUST_HAVE', scope: 'CURRENT' },
+    { keywords: 'Intern OR Apprentice', priority: 'DOESNT_HAVE', scope: 'CURRENT' },
+  ] };
+  const before = structuredClone(saved);
+  const request = build(saved, 'sales_navigator');
+  assert.equal(request.role, undefined);
+  assert.equal(request.keywords, 'Python');
+  const body = await providerBody(request);
+  assert.deepEqual(body.role, {
+    include: ['Cloud Engineer', 'Platform Engineer', 'Site Reliability Engineer', 'SRE', 'DevOps'],
+    exclude: ['Intern', 'Apprentice'],
+  });
+  assert.deepEqual(body, await providerBody(ui({ ...saved, api: 'sales_navigator' })));
+  assert.deepEqual(saved, before);
+});
+
+test('Sales Navigator retains reviewed native title filters and never widens an existing inclusion list', async () => {
+  const selected = { ...base, last_manual_edit: '2026-10-11', job_title: [{ id: '900', priority: 'MUST_HAVE', scope: 'CURRENT' }] };
+  const excluded = { ...selected, role: [{ keywords: 'Intern OR Apprentice', priority: 'DOESNT_HAVE', scope: 'CURRENT' }] };
+  assert.deepEqual((await providerBody(build(excluded, 'sales_navigator'))).role,
+    { include: ['900'], exclude: ['Intern', 'Apprentice'] });
+  rejects({ ...selected, role: [{ keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }] },
+    'sales_navigator', 'filters_unsupported', /distinctes|élargir/);
+  assert.deepEqual((await providerBody(build({ ...base,
+    job_title: [{ id: 'Cloud Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }],
+    past_job_title: [{ id: '901', priority: 'DOESNT_HAVE', scope: 'PAST' }],
+  }, 'sales_navigator'))).role, { include: ['Cloud Engineer'] });
+  rejects({ ...base, past_job_title: [{ id: 'Cloud Engineer', priority: 'MUST_HAVE', scope: 'PAST' }] },
+    'sales_navigator', 'filters_unresolved', /Validez|suggestions/);
+});
+
+test('unrepresentable periods, independent required groups and Boolean operators fail before continuous discovery', () => {
+  const role = (keywords, priority = 'MUST_HAVE', scope = 'CURRENT') => ({ keywords, priority, scope });
+  for (const scope of ['CURRENT', 'PAST']) {
+    rejects({ ...base, role: [role('Engineer', 'MUST_HAVE', scope)] }, 'classic', 'filters_unsupported', /période|Classic/);
+  }
+  for (const scope of ['PAST', 'CURRENT_OR_PAST']) {
+    rejects({ ...base, role: [role('Engineer', 'MUST_HAVE', scope)] }, 'sales_navigator', 'filters_unsupported', /période/);
+  }
+  for (const roles of [
+    [role('Engineer'), role('Architect')],
+    [role('Engineer'), role('Architect', 'CAN_HAVE')],
+    [role('Engineer AND Cloud')],
+    [role('Engineer NOT Junior')],
+  ]) rejects({ ...base, role: roles }, 'sales_navigator', 'filters_unsupported', /groupes|expression/);
+});
+
+test('title-length limits reject complete clauses without clipping alternatives or exclusions', () => {
+  const title = 'Engineer '.repeat(23).trim();
+  for (const api of ['classic', 'sales_navigator']) {
+    const scope = api === 'classic' ? 'CURRENT_OR_PAST' : 'CURRENT';
+    rejects({ ...base, role: [{ keywords: title, priority: 'MUST_HAVE', scope }] }, api, 'filters_invalid', /200/);
+  }
+  rejects({ ...base, title_keywords: 'x'.repeat(201) }, 'classic', 'filters_invalid', /201.*200/);
+  const exact = build({ ...base, title_keywords: 'x'.repeat(200) }, 'classic');
+  assert.equal(exact.advanced_keywords.title.length, 200);
+  const sales = { ...base, job_title: [{ id: 'x'.repeat(200), priority: 'MUST_HAVE', scope: 'CURRENT' }] };
+  assert.equal(build(sales, 'sales_navigator').job_title[0].id.length, 200);
+  rejects({ ...sales, job_title: [{ ...sales.job_title[0], id: 'x'.repeat(201) }] },
+    'sales_navigator', 'filters_invalid', /200/);
+});
+
 test('unsupported constraints fail before a provider request with an actionable reason', () => {
   const cases = [
-    [{ ...base, role: [{ keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }] }, 'classic', /Rôle/],
-    [{ ...base, role: [{ keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }] }, 'sales_navigator', /Rôle/],
+    [{ ...base, role: [{ keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }] }, 'classic', /période|Classic/],
+    [{ ...base, role: [{ keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'PAST' }] }, 'sales_navigator', /période|Sales Navigator/],
     [{ ...base, company_keywords: [{ keywords: 'Client', priority: 'DOESNT_HAVE' }] }, 'sales_navigator', /Entreprises/],
     [{ ...base, location: [{ id: '101', priority: 'DOESNT_HAVE', scope: 'CURRENT' }] }, 'classic', /exclusions/],
     [{ ...base, location: [{ id: '101', scope: 'OPEN_TO_RELOCATE_ONLY' }] }, 'sales_navigator', /mobilité/],

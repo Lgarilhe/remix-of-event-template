@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -24,13 +24,14 @@ function compile(path, globals = {}, extra = '') {
   return context.exports;
 }
 const types = compile('src/components/outreach/types.ts');
+const support = compile('src/components/outreach/filterApiSupport.ts');
 const symbols = Object.fromEntries([
   'Button', 'Textarea', 'Input', 'Badge', 'Select', 'SelectContent', 'SelectItem', 'SelectTrigger', 'SelectValue',
   'Dialog', 'DialogContent', 'DialogHeader', 'DialogTitle', 'DialogFooter', 'Search', 'Loader2', 'Pencil', 'Plus', 'X', 'Lock', 'AlertTriangle', 'JobSelector',
   'Switch', 'Alert', 'AlertDescription', 'AlertTitle', 'Tooltip', 'TooltipContent', 'TooltipProvider', 'TooltipTrigger',
   'SearchHistory', 'LinkedInFilters', 'BaseKonektDialog', 'FilterFacets', 'AutoFillFiltersButton', 'SearchPromptBar', 'QuotaDisplay',
 ].map(name => [name, name]));
-const globals = { ...types, ...symbols, cn: (...args) => args.filter(Boolean).join(' '), plural: (_, singular) => singular };
+const globals = { ...types, ...support, ...symbols, cn: (...args) => args.filter(Boolean).join(' '), plural: (_, singular) => singular };
 const flow = compile('src/components/outreach/search/SourcingFlow.tsx', globals, '\nexport { buildChips };');
 const base = overrides => ({ ...copy(types.INITIAL_FILTERS), api: 'recruiter', ...overrides });
 const tokens = (priorities, key = 'role') => priorities.map((priority, i) => key === 'role'
@@ -62,6 +63,31 @@ function stateHarness(path, extraGlobals = {}, extra = '') {
     ...extraGlobals,
   }, extra);
   return { render(name, props) { cursor = 0; return module[name](props); } };
+}
+
+// Keep the complete hook and shared mapper together; only React and external
+// provider boundaries are replaced. Relative imports resolve from their real
+// production module, so sharing the mapper cannot leave a copied test path.
+function modules(overrides = {}) {
+  const cache = new Map();
+  function load(specifier, importer = root) {
+    if (Object.hasOwn(overrides, specifier)) return overrides[specifier];
+    let path = specifier.startsWith('@/') ? new URL('src/' + specifier.slice(2), root) : new URL(specifier, importer);
+    if (!/\.(?:ts|tsx)$/.test(path.pathname)) path = new URL(path.href + (existsSync(new URL(path.href + '.ts')) ? '.ts' : '.tsx'));
+    if (cache.has(path.href)) return cache.get(path.href);
+    const { outputText, diagnostics } = ts.transpileModule(readFileSync(path, 'utf8'), {
+      fileName: path.pathname, reportDiagnostics: true,
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
+    });
+    assert.equal(diagnostics?.length ?? 0, 0);
+    const exports = {};
+    cache.set(path.href, exports);
+    vm.runInNewContext(outputText, { exports, require: name => load(name, path), structuredClone,
+      setTimeout, clearTimeout, AbortController, fetch() { throw new Error('No network expected'); },
+      console: { log() {}, warn() {}, error() {} } }, { filename: path.pathname });
+    return exports;
+  }
+  return load;
 }
 
 test('Recruiter summaries distinguish all values, alternatives and exclusions', () => {
@@ -137,18 +163,25 @@ test('autofill adds only supported geographic defaults and preserves a location 
   for (const api of ['recruiter', 'classic', 'sales_navigator']) {
     const filtersRef = { current: base({ api }) };
     const calls = [];
-    const hook = compile('src/hooks/useAutoFillFilters.ts', { ...globals, useCallback: fn => fn,
-      console: { log() {}, warn() {}, error() {} },
-      invokeUnipile: async request => { calls.push(request.body); return { data: { success: true, items: [{ id: '100', title: 'Paris' }] } }; },
+    const load = modules({
+      react: { useCallback: fn => fn, useRef: value => ({ current: value }), useEffect: fn => { fn(); } },
+      '@/lib/invokeUnipile': { invokeUnipile: async request => {
+        calls.push(request.body);
+        return { data: { success: true, items: [{ id: '100', title: 'Paris' }] } };
+      } },
+      '@/lib/invokeWithCredits': { invokeWithCredits() { throw new Error('No paid model call expected'); } },
+      '@/integrations/supabase/client': { supabase: new Proxy({}, { get() { throw new Error('No database call expected'); } }) },
+      sonner: { toast: { error() { throw new Error('No toast expected'); } } },
     });
+    const hook = load('src/hooks/useAutoFillFilters.ts');
     const { handleAutoFillFilters } = hook.useAutoFillFilters({ selectedAccount: 'account-a', filtersRef, setFilters: fn => { filtersRef.current = fn(filtersRef.current); } });
-    handleAutoFillFilters({ keywords: 'Engineer', location_keywords: ['Paris'], location_within_area: 25 });
+    await handleAutoFillFilters({ keywords: 'Engineer', location_keywords: ['Paris'], location_within_area: 25 });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(filtersRef.current.location[0].scope, api === 'recruiter' ? 'CURRENT_OR_OPEN_TO_RELOCATE' : 'CURRENT');
     assert.equal(filtersRef.current.location_within_area, api === 'recruiter' ? 25 : null);
     assert.equal(calls[0].service, api === 'recruiter' ? 'RECRUITER' : api === 'classic' ? 'CLASSIC' : 'SALES_NAVIGATOR');
     filtersRef.current.location[0].scope = 'OPEN_TO_RELOCATE_ONLY';
-    handleAutoFillFilters({ location_keywords: ['Lyon'] });
+    await handleAutoFillFilters({ location_keywords: ['Lyon'] });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(filtersRef.current.location[0].scope, 'OPEN_TO_RELOCATE_ONLY', 'explicit choices remain available for validation, never silently rewritten');
     assert.equal(calls.length, 1);
@@ -221,4 +254,87 @@ test('keyword editor retains a 330-character Recruiter query and warns before Cl
       assert.equal(filters.keywords, '');
     }
   }
+});
+
+test('generated roles remain editable through the existing role group on every LinkedIn licence', () => {
+  const extra = Object.fromEntries(['FilterSection', 'FilterGroup', 'AutocompleteInput', 'SelectedBadges',
+    'PriorityBadges', 'MultiSelectDropdown', 'Label', 'Briefcase'].map(name => [name, name]));
+  const h = stateHarness('src/components/outreach/filters/PositionFiltersSection.tsx', extra);
+  const groups = stateHarness('src/components/outreach/FilterComponents.tsx');
+  for (const api of ['classic', 'sales_navigator', 'recruiter']) {
+    const filters = base({ api, role: [
+      { keywords: 'Engineer OR Architect', priority: 'MUST_HAVE', scope: 'CURRENT' },
+      { keywords: 'Junior', priority: 'DOESNT_HAVE', scope: 'PAST' },
+    ] });
+    const before = copy(filters), events = [];
+    const props = { filters, onChange: value => events.push({ change: value }), accountId: null,
+      searchInputs: {}, parameterOptions: {}, loadingParams: null, onSearchInput() {},
+      isOpen: true, onToggle() {}, activeFiltersPreview: [], countPositionFilters: 2,
+      onAddSimpleFilter() {}, onRemoveSimpleFilter() {}, onAddPriorityFilter() {}, onUpdatePriority() {}, onRemovePriorityFilter() {},
+      newRoleKeywords: '', onNewRoleKeywordsChange() {}, newRolePriority: 'MUST_HAVE', onNewRolePriorityChange() {},
+      newRoleScope: api === 'sales_navigator' ? 'CURRENT' : 'CURRENT_OR_PAST', onNewRoleScopeChange() {},
+      roleDialogOpen: false, onRoleDialogOpenChange: value => events.push({ open: value }),
+      roleDialogDraft: '', onRoleDialogDraftChange: value => events.push({ draft: value }),
+      roleDialogPriority: 'MUST_HAVE', onRoleDialogPriorityChange: value => events.push({ priority: value }),
+      roleDialogScope: 'CURRENT_OR_PAST', onRoleDialogScopeChange: value => events.push({ scope: value }),
+      editingRoleIndex: null, onEditingRoleIndexChange: value => events.push({ index: value }),
+      onRemoveRole() {}, onUpdateRole: (index, update) => events.push({ index, update }),
+    };
+    const tree = h.render('PositionFiltersSection', props);
+    assert.equal(support.isFilterSupported(api, 'role'), true);
+    const group = nodes(tree).find(n => n.type === 'FilterGroup' && n.props.title === 'Rôle (mots-clés booléens)');
+    assert.ok(group);
+    assert.equal(group.props.unsupported, false, api);
+    const renderedGroup = groups.render('FilterGroup', group.props);
+    assert.doesNotMatch(renderedGroup.props.className, /pointer-events-none|select-none/, api);
+    assert.ok(nodes(group).some(n => n.type === 'Select' && n.props.value === 'CURRENT'));
+    assert.ok(nodes(group).some(n => n.type === 'Select' && n.props.value === 'PAST'));
+    assert.deepEqual(events, [], 'rendering never rewrites an incompatible generated period');
+    nodes(group).find(n => n.type === 'button' && text(n) === 'Engineer OR Architect').props.onClick();
+    assert.deepEqual(events, [{ index: 0 }, { draft: 'Engineer OR Architect' }, { priority: 'MUST_HAVE' }, { scope: 'CURRENT' }, { open: true }]);
+    events.length = 0;
+    nodes(group).find(n => n.type === 'Select' && n.props.value === 'CURRENT').props.onValueChange('CURRENT_OR_PAST');
+    assert.deepEqual(copy(events), [{ index: 0, update: { scope: 'CURRENT_OR_PAST' } }]);
+    assert.deepEqual(copy(filters), before);
+    if (api === 'classic') assert.match(text(group), /Classic.*actuels ou passés.*Actuel ou passé.*200/);
+    if (api === 'sales_navigator') {
+      assert.match(text(group), /Sales Navigator.*actuels.*alternatives.*AND\/NOT.*200/);
+      assert.doesNotMatch(text(group), /Sales NOT \(Assistant OR Associate\)/, 'the shared dialog does not suggest unsupported Sales Boolean NOT');
+    }
+  }
+});
+
+test('licence switching changes only the new-role default and never stored periods or an edited role', () => {
+  const extra = Object.fromEntries(['FilterSection', 'FilterGroup', 'AutocompleteInput', 'SelectedBadges', 'PriorityBadges',
+    'MultiSelectDropdown', 'CompanyFilter', 'BasicFiltersSection', 'PositionFiltersSection', 'RecruiterFiltersSection',
+    'DatabaseFiltersSection', 'Label', 'Clock', 'Building2', 'History', 'Sparkles'].map(name => [name, name]));
+  const h = stateHarness('src/components/outreach/LinkedInFilters.tsx', { ...extra, useEffect(fn) { fn(); } });
+  const roles = [
+    { keywords: 'Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' },
+    { keywords: 'Junior', priority: 'DOESNT_HAVE', scope: 'PAST' },
+  ];
+  const before = copy(roles), updates = [];
+  const render = api => {
+    const props = { filters: base({ api, role: roles }), accountId: null, onChange: value => updates.push(value) };
+    h.render('LinkedInFilters', props);
+    const tree = h.render('LinkedInFilters', props);
+    return nodes(tree).find(n => n.type === 'PositionFiltersSection').props;
+  };
+  const initial = render('recruiter');
+  initial.onEditingRoleIndexChange(1);
+  initial.onRoleDialogDraftChange('Junior');
+  initial.onRoleDialogPriorityChange('DOESNT_HAVE');
+  initial.onRoleDialogScopeChange('PAST');
+  initial.onRoleDialogOpenChange(true);
+  for (const api of ['recruiter', 'sales_navigator', 'classic', 'recruiter']) {
+    const position = render(api);
+    assert.equal(position.newRoleScope, api === 'sales_navigator' ? 'CURRENT' : 'CURRENT_OR_PAST');
+    assert.deepEqual(copy(position.filters.role), before);
+    assert.equal(position.editingRoleIndex, 1);
+    assert.equal(position.roleDialogDraft, 'Junior');
+    assert.equal(position.roleDialogPriority, 'DOESNT_HAVE');
+    assert.equal(position.roleDialogScope, 'PAST');
+  }
+  assert.deepEqual(copy(roles), before);
+  assert.deepEqual(updates, [], 'changing a licence does not dispatch rewritten filters');
 });
