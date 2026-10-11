@@ -32,6 +32,16 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-11 — BUG — Tests API du webhook : le faux prestataire ne servait pas la lecture d'un message
+
+**Contexte** : depuis le 08/10 (#314, actions candidat), `unipile-webhook` appelle `captureCandidateActionIncoming` avant `handleNewMessage` / `handleNewMail`. Cette capture lit le message reçu chez le prestataire (`GET /messages/<id>`, puis la conversation, ou `GET /emails/<id>`). Le faux prestataire des tests ne servait pas ces lectures : il renvoyait une réponse vide, la capture levait « Incoming message without valid timestamp » et le webhook répondait 500. Les specs des séquences sont ignorées par la CI (sans edge functions locales), la dérive n'a donc rien fait échouer. Mesure du 11/10 sur la pile locale : 67 échecs sur 13 fichiers, identiques en `observe` et en `refuse`.
+**Fait** : `e2e/local-stack/vendor-mock.mjs` sert par défaut la lecture d'un message daté (interlocuteur, `is_sender` 0), d'une conversation et d'un e-mail (adressé à la boîte déclarée par `setMockMode(<boîte>, { email_address })`), pour les trois formes d'identifiants (chemin direct, `unipile.mock?account_id=X&e2e=`, préfixe `unipile.mock/e2e-…`). Les routes scriptées passent avant ces défauts. Les deux scripts « participants » de `seq-inbound-1` et `seq-decisions-reply` visent `url: '/attendees'` au lieu de toute lecture à la racine. Les quatre tests de réponse par e-mail déclarent l'adresse de leur boîte.
+**Validation** : les 13 fichiers repris passent en `refuse` (212 réussis, 1 ignoré, 0 échec). Suite d'API complète rejouée en `refuse` sur une base reconstruite : 581 réussis, 1 ignoré, 0 échec (avant : 458 réussis, 67 échecs, 46 non exécutés). Les specs des séquences restent hors de la CI de PR, faute d'edge functions locales.
+**À décider (production)** : la capture est attendue sans garde avant le traitement de la réponse. Une erreur de lecture chez le prestataire (délai de 4 s, 5xx, conversation introuvable, boîte e-mail dont l'adresse n'est ni expéditeur ni destinataire, par exemple en copie cachée) fait répondre 500 au webhook et empêche `handleNewMessage` de clore l'inscription et d'arrêter les relances jusqu'à un rejeu réussi. Piste : traiter la réponse d'abord, garder la capture au mieux, et ne renvoyer 500 pour la capture qu'après le traitement. Non fait : change la sémantique d'échec du webhook, à valider avec le propriétaire.
+**Refs** : `e2e/local-stack/vendor-mock.mjs` ; `supabase/functions/unipile-webhook/index.ts` (cas `new_message`, `message_received`, `mail_received`) ; `supabase/functions/_shared/candidate-actions/incoming.ts`.
+
+---
+
 ## 2026-10-11 — SHIP — Refonte mission, lot 0b-5 : la garde des étapes passe en refus
 
 **Contexte** : la garde `stage_write_guard` journalisait les écritures directes de l'étape depuis le 28/09. Lecture en prod le 11/10 : `jcs_direct_write_log` à 0 ligne au total, donc aucune écriture directe pendant les 5 jours ouvrés qui suivent les lots 0c-3 et 0c-4 (04/10) ; déclencheur actif (`tgenabled = O`) ; aucune ligne dont l'étape stockée diffère de l'étape dérivée de son couple.
@@ -39,9 +49,9 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Validation** : base reconstruite depuis les migrations, mode `refuse` ; les 33 audits SQL de la CI passent ; S8 échoue si le mode revient à `observe`. Recherche des écrivains sur 5 angles (fonctions edge, navigateur, SQL, e2e et tests, autres dossiers) avec vérification contradictoire : aucun écrivain de production refusé, sept sites de tests. Rejeu des specs e2e API en `refuse` : 15 échecs dus au refus, tous dans `seq-reply-paths` (amorçage `seedJcs`), corrigés ; après correction le fichier donne les mêmes résultats en `refuse` et en `observe`.
 **Impact** : les écrivains passent tous par `set_candidate_stage` (lot 0b-4), rien ne change pour l'utilisateur. En refus le journal n'enregistre plus rien (l'écriture est annulée) : un écrivain oublié se lit dans l'erreur et les journaux de l'API.
 **Reste à faire** :
-- [ ] Fusion sur `main`, puis `select public.jcs_stage_write_mode()` en prod (attendu : `refuse`) et suivi du workflow des migrations.
-- [ ] Première semaine : chercher `STAGE_DIRECT_WRITE` dans les journaux de l'API.
-- [ ] Hors lot : une quarantaine de tests e2e API échouent avec « Incoming message without valid timestamp » (webhook), à l'identique en `observe` ; à reprendre.
+- [x] Fusion sur `main` le 11/10/2026 (`7cc0d5d`, avance rapide) ; workflow des migrations vert ; en prod `jcs_stage_write_mode()` rend `refuse`, déclencheur actif, migration suivie.
+- [ ] Première semaine : chercher `STAGE_DIRECT_WRITE` dans les journaux de l'API (la lecture des journaux a demandé une approbation et n'a pas été faite le 11/10).
+- [x] Les 67 échecs e2e API « Incoming message without valid timestamp » (webhook) sont repris dans l'entrée suivante.
 **Refs** : `docs/refonte-mission/conception.md` section 13 ; entrée du 04/10 (fenêtre du lot 0b-5).
 
 ---

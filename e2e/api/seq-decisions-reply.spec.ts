@@ -518,6 +518,9 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
       email_account_id: mailbox, email_address: 'recruteur@e2e.konekt.test', provider: 'GOOGLE',
     });
     if (mbErr) throw new Error(`member_email_accounts: ${mbErr.message}`);
+    // Le webhook lit l'e-mail reçu chez le prestataire : le faux prestataire l'adresse à cette boîte.
+    await setMockMode(mailbox, { email_address: 'recruteur@e2e.konekt.test' });
+    cleanups.push(() => setMockMode(mailbox, {}));
     const email = `cand-${rand()}@e2e.konekt.test`;
     await admin().from('sequence_enrollments').update({ email_used: email }).eq('id', s.e1.enrollmentId);
     failSiblingStop([s.e2.enrollmentId]);
@@ -639,9 +642,9 @@ test.describe('Décision 11 : expéditeur non vérifiable, échec et rejeu', () 
     await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
     await setMockMode(accountId, {
       routes: [
-        { method: 'GET', path: '^/$', status: 503, body: { status: 503, title: 'Service Unavailable' }, times: 1 },
+        { method: 'GET', url: '/attendees', status: 503, body: { status: 503, title: 'Service Unavailable' }, times: 1 },
         {
-          method: 'GET', path: '^/$', status: 200, body: {
+          method: 'GET', url: '/attendees', status: 200, body: {
             object: 'ChatAttendeeList', items: [
               { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
               { object: 'ChatAttendee', id: 'att_candidate', provider_id: 'ACoAAMOCKCANDIDATE', is_self: 0 },
