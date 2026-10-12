@@ -320,6 +320,27 @@ test('5F1-B4 groupé : première exécution refusée, tout le lot est retiré et
   assert.equal(kept.results.errors[0], "Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure.");
 });
 
+test('5F1-B4b groupé : un retrait complet ne laisse aucune réinscription à signaler', async () => {
+  const longAgo = new Date(Date.now() - 200 * 86400000).toISOString();
+  const former = { profile_id: 'ancien', provider_id: 'ACw1', resolved_profile_id: null, profile_url: null, status: 'completed', completed_at: longAgo, replied_at: null, updated_at: longAgo };
+  const script = (removed) => (call) => {
+    if (call.table === 'sequence_enrollments' && call.op === 'select') return { data: [former], error: null };
+    if (call.table === 'sequence_step_executions') return { error: { code: '42501' } };
+    if (call.op === 'delete') return { data: removed(call), error: null };
+    return undefined;
+  };
+  const ok = fakeClient(script((call) => call.in[0][1].map((id) => ({ id }))));
+  const gone = await silent(() => lib.enrollCandidates(options(ok.supabase)));
+  assert.deepEqual(gone.schedulingFailure, { rolledBack: true });
+  assert.equal(gone.results.formerPassages, 0);
+
+  // Retrait impossible : les inscriptions existent, la réinscription reste signalée.
+  const stuck = fakeClient(script(() => []));
+  const kept = await silent(() => lib.enrollCandidates(options(stuck.supabase)));
+  assert.deepEqual(kept.schedulingFailure, { rolledBack: false });
+  assert.equal(kept.results.formerPassages, 1);
+});
+
 test('5F1-B5 sans première étape à planifier, l’inscription est retirée (groupé et un par un)', async () => {
   const noStep = { sequence: { id: 'seq-1', steps: [] } };
   const batch = fakeClient();

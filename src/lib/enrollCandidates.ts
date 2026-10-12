@@ -382,6 +382,8 @@ async function enrollBatch(
       .select('id');
     const rolledBack = !rollbackError && (removed?.length ?? 0) === insertedIds.length;
     results.success = 0;
+    // Retirées, ces inscriptions ne sont plus des réinscriptions à signaler.
+    if (rolledBack) results.formerPassages = 0;
     results.errors.push(rolledBack ? BATCH_ROLLED_BACK_MESSAGE : BATCH_NOT_ROLLED_BACK_MESSAGE);
     return { rolledBack };
   }
