@@ -38,6 +38,8 @@ bash e2e/local-stack/down.sh                # --reset supprime aussi la base
 
 Le fichier d'environnement pose `E2E_EDGE_FUNCTIONS=1` et `E2E_VENDOR_MOCK_URL`. Sans ces variables, les tests qui en dépendent sont ignorés.
 
+Un passage réel de `rgpd-purge` (`{"dry_run": false}`) supprime dans toute la base locale ce qui dépasse ses fenêtres. Un test qui en lance un, ou qui vieillit des données au-delà de ces fenêtres puis les vérifie, le fait sous `withRgpdPurgeLock` (`e2e/helpers/rgpd-purge-lock.ts`), un verrou partagé par les workers.
+
 Le workflow `.github/workflows/candidate-actions.yml` lance cette stack sur les PR et les pushes vers `main` pour `e2e/api/candidate-actions.spec.ts`. Il reconstruit la base avec les migrations du dépôt, puis exécute les vrais handlers, avec Auth, RLS et RPC : brouillons persistants, validation explicite, envoi unique sous concurrence, résultat partiel, résultat inconnu sans renvoi, nouveau contexte, crédits et isolation entre recruteurs. Les envois et le modèle sont simulés par le faux prestataire. Ce contrôle refuse une suite ignorée ; il ne demande aucun secret de production. Les autres suites du moteur restent disponibles avec les commandes ci-dessus.
 
 Prérequis : Docker, `psql`, Node, et Deno (ou `npx deno`). Les journaux et les pid sont dans `/tmp/konekt-e2e-stack` (variable `E2E_STACK_DIR`).

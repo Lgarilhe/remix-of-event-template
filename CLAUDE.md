@@ -290,8 +290,9 @@ sequence_enrollments       — candidates in sequences (.pause_reason : manual, 
                              .assigned_sender_id en text ; trigger sequence_enrollments_check_sender_owner : pas d'inscription
                              depuis le compte LinkedIn relié à un autre membre, HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER ;
                              effacement RGPD, 11/10/2026 : l'étape 7 bis de recordGdprErasure retire tracking_data.message_overrides
-                             (textes retouchés pour le candidat) des inscriptions retrouvées, marqueurs gardés ; aucun
-                             rattrapage des effacements passés, voir les points ouverts du plan du lot 5)
+                             (textes retouchés pour le candidat) des inscriptions retrouvées, marqueurs gardés ; effacements
+                             passés rattrapés par la migration 20261012112803 (décision du 12/10/2026 : inscriptions au marqueur
+                             gdpr_erased_at non vide, seule la clé message_overrides part, updated_at gardé))
 organizations              — org + subscription
 organization_members       — member roles (admin/owner/collaborator)
 profiles                   — user profiles
@@ -373,7 +374,10 @@ candidate_reminders        : rappels et tâches sur un candidat (nom affiché, m
                              rappel sans organisation n'est supprimé que si son auteur n'est membre que de l'organisation de
                              l'effacement (résultat deletedReminders). Exportée par export-org-data, filtrée par organisation
                              (10 000 lignes au plus, _meta.candidate_reminders_count et candidate_reminders_truncated), donc
-                             sans les rappels sans organisation. Pas encore de purge par ancienneté.
+                             sans les rappels sans organisation. Purge à 24 mois (décision du 12/10/2026) : rgpd-purge, étape 9,
+                             24 mois après la dernière activité (la plus tardive de created_at, updated_at, due_at et
+                             completed_at, `_shared/reminder-retention.ts`), rappels sans organisation compris, en « compte
+                             seulement » par défaut comme les autres étapes (reminders_purged, reminders_without_org_purged).
 candidate_evaluations      : grille d'entretien (« scorecard » dans le code). Refonte scorecard et assistant en direct, lot 1
                              (05/10/2026) : .project_id (mission) et .process_step_id (étape d'entretien de cette mission), tous deux
                              ON DELETE SET NULL ; .candidate_id est l'identifiant du profil (job_candidate_status.candidate_id), jamais

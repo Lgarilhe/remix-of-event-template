@@ -578,10 +578,10 @@ export async function recordGdprErasure(
   //    tracking_data (GDPR_SCRUBBED_TRACKING_KEYS), retirés des inscriptions
   //    trouvées à l'étape 2. Fusion ligne par ligne comme à l'étape 3 bis : les
   //    marqueurs relus par les contrôles (gdpr_erased_at, completion_reason,
-  //    manual_stop) restent. Pas de rattrapage : une inscription effacée avant
-  //    cette étape n'est retrouvée que par son URL de profil (l'étape 7 a vidé
-  //    email_used), et celles d'un effacement par adresse seule gardent leurs
-  //    retouches jusqu'à une reprise de données à part.
+  //    manual_stop) restent. Une nouvelle demande ne retrouverait une
+  //    inscription effacée avant cette étape que par son URL de profil
+  //    (l'étape 7 a vidé email_used) : ces effacements passés sont rattrapés
+  //    par la migration 20261012112803 (marqueur gdpr_erased_at).
   for (let i = 0; i < allIds.length; i += 100) {
     const { data: rows, error: readError } = await supabase
       .from('sequence_enrollments')
