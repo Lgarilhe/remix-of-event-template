@@ -1,5 +1,5 @@
 import { candidateActionStoredEmailSource, loadCandidateActionTargets, readCandidateActionEmailContext, sendCandidateActionMessage, validateCandidateActionChat } from './transport.ts';
-import { captureCandidateActionIncoming } from './incoming.ts';
+import { captureCandidateActionIncoming, captureCandidateActionIncomingBestEffort } from './incoming.ts';
 import type { CandidateActionMessageEffect, CandidateActionScope } from './types.ts';
 
 type Row = Record<string, unknown>;
@@ -178,6 +178,66 @@ Deno.test('email reply outside any sequence persists full content on its exact c
     equal(f.tables.candidate_action_messages[0].content, 'Mes disponibilités sont mardi.');
     equal(f.tables.candidate_action_messages[0].project_id, mission);
     equal(f.tables.sequence_enrollments.length, 0);
+  } finally { f.close(); }
+});
+
+/** Les journaux d'erreur attendus ne polluent pas la sortie et leur nombre est vérifié. */
+async function withSilencedErrors<T>(run: () => Promise<T>): Promise<{ result: T; logged: unknown[][] }> {
+  const original = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try { return { result: await run(), logged }; } finally { console.error = original; }
+}
+
+Deno.test('best-effort capture: a LinkedIn message the provider cannot describe is logged, not thrown, so the reply is still processed', async () => {
+  const f = fixture();
+  try {
+    f.tables.member_linkedin_accounts.push({ organization_id: f.org, user_id: f.user, linkedin_account_id: 'own-li', linkedin_account_name: 'Recruteur', account_status: 'OK' });
+    f.provider(() => ({ object: 'Message', id: 'li-message', chat_id: 'li-thread', is_sender: 0, text: 'Oui avec plaisir' }));
+    let exactRejected = false;
+    try { await captureCandidateActionIncoming(f.client, { account_id: 'own-li', message_id: 'li-message' }); } catch { exactRejected = true; }
+    assert(exactRejected, 'the exact capture keeps throwing');
+    const { result, logged } = await withSilencedErrors(() => captureCandidateActionIncomingBestEffort(f.client, { account_id: 'own-li', message_id: 'li-message' }));
+    equal(result, { channel: 'linkedin', audience: null, captured: false, failed: true });
+    equal(logged.length, 1);
+    equal(f.tables.candidate_action_messages.length, 0);
+  } finally { f.close(); }
+});
+
+Deno.test('best-effort capture: an email whose mailbox identity cannot be verified (alias, hidden copy) does not hold back reply handling', async () => {
+  const f = fixture();
+  try {
+    f.provider(() => ({ id: 'alias-id', account_id: 'own-mail', from_attendee: { identifier: 'candidate@example.test' }, to_attendees: [{ identifier: 'alias@example.test' }], body_plain: 'Réponse sur un alias.', subject: 'Re', date: '2026-10-07T10:00:00Z', thread_id: 'alias-thread' }));
+    let exactRejected = false;
+    try { await captureCandidateActionIncoming(f.client, { account_id: 'own-mail', email_id: 'alias-id' }); } catch { exactRejected = true; }
+    assert(exactRejected, 'the exact capture keeps throwing');
+    const { result } = await withSilencedErrors(() => captureCandidateActionIncomingBestEffort(f.client, { account_id: 'own-mail', email_id: 'alias-id' }));
+    equal(result, { channel: 'email', audience: null, captured: false, failed: true });
+    equal(f.tables.candidate_action_messages.length, 0);
+  } finally { f.close(); }
+});
+
+Deno.test('best-effort capture: a WhatsApp failure still throws, because that message must never reach the LinkedIn handler', async () => {
+  const f = fixture();
+  try {
+    f.tables.member_whatsapp_accounts.push({ organization_id: f.org, user_id: f.user, whatsapp_account_id: 'own-wa', phone_number: '+33600000002', account_status: 'OK' });
+    f.provider(() => ({ id: 'wa-message', chat_id: 'wa-thread', is_sender: false, text: 'Bonjour' }));
+    let rejected = false;
+    try { await captureCandidateActionIncomingBestEffort(f.client, { account_id: 'own-wa', message_id: 'wa-message' }); } catch { rejected = true; }
+    assert(rejected);
+  } finally { f.close(); }
+});
+
+Deno.test('best-effort capture: a readable message is captured exactly like the exact capture, and unbound accounts are ignored', async () => {
+  const f = fixture();
+  try {
+    f.tables.job_candidate_status.push({ organization_id: f.org, candidate_id: f.scope.candidate_id, project_id: null, job_id: 'ats-job' });
+    f.provider(() => ({ id: 'ok-id', provider_id: 'ok-provider', account_id: 'own-mail', from_attendee: { identifier: 'candidate@example.test' }, to_attendees: [{ identifier: 'recruiter@example.test' }], body_plain: 'Bonjour, je suis disponible.', subject: 'Re', date: '2026-10-07T10:00:00Z', thread_id: 'ok-thread' }));
+    const result = await captureCandidateActionIncomingBestEffort(f.client, { account_id: 'own-mail', email_id: 'ok-id' });
+    equal(result, { channel: 'email', audience: 'candidate', captured: true });
+    equal(f.tables.candidate_action_messages.length, 1);
+    equal(await captureCandidateActionIncomingBestEffort(f.client, { account_id: 'unknown-account', message_id: 'x' }), { channel: null, audience: null, captured: false });
+    equal(await captureCandidateActionIncomingBestEffort(f.client, {}), { channel: null, audience: null, captured: false });
   } finally { f.close(); }
 });
 
