@@ -19,7 +19,7 @@ import {
 } from "../_shared/candidate-reply-closure.ts";
 import { candidateRef, recordInbound, recordOwnMessage, type CandidateRef } from "../_shared/candidate-stage-events.ts";
 import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
-import { captureCandidateActionIncoming } from "../_shared/candidate-actions/incoming.ts";
+import { captureCandidateActionIncomingBestEffort } from "../_shared/candidate-actions/incoming.ts";
 import { candidateActionPhone } from "../_shared/candidate-actions/transport.ts";
 
 const corsHeaders = {
@@ -753,7 +753,7 @@ Deno.serve(async (req) => {
 
       case 'new_message':
       case 'message_received': {
-        const captured = await captureCandidateActionIncoming(supabase, payload as unknown as Record<string, unknown>, rawPayload);
+        const captured = await captureCandidateActionIncomingBestEffort(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // WhatsApp has a personal binding and its own history. It must never
         // pass through the LinkedIn enrollment/stage handler.
         if (captured.channel !== 'whatsapp') await handleNewMessage(supabase, payload, uCreds, eventKey);
@@ -763,7 +763,7 @@ Deno.serve(async (req) => {
       case 'mail_received':
       case 'mail.received':
       case 'new_email': {
-        const captured = await captureCandidateActionIncoming(supabase, payload as unknown as Record<string, unknown>, rawPayload);
+        const captured = await captureCandidateActionIncomingBestEffort(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // Un email a été reçu sur un compte connecté → vérifier si c'est une
         // réponse à une étape de séquence email pour stopper les suivantes.
         if (captured.audience !== 'team') await handleNewMail(supabase, payload, eventKey);
