@@ -13,8 +13,9 @@
  *   exécution), retrait du seul candidat dont la planification échoue, retouches
  *   par candidat dans `tracking_data`.
  *
- * Rien n'est écrit dans le pipeline à l'inscription : le serveur pose l'étape
- * du candidat au premier envoi réel.
+ * Seule écriture dans le pipeline : la règle Retenu (retainCandidates), une
+ * fois l'inscription faite. L'étape suivante est posée par le serveur au
+ * premier envoi réel.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -32,6 +33,7 @@ import {
   sequenceInactiveReason,
 } from '@/components/outreach/enrollment-preview/enrollmentHelpers';
 import { findRecentEnrollments, type RecentEnrollment } from '@/lib/enrollmentDuplicates';
+import { retainCandidates } from '@/lib/retainCandidates';
 import { normalizeNetworkDistance, pickFirstStep } from '@/lib/sequenceCompatibility';
 
 type Client = SupabaseClient<Database>;
@@ -89,6 +91,14 @@ export type EnrollCandidatesOptions = EnrollCandidatesBase & (
     }
 );
 
+/** Règle Retenu appliquée aux candidats inscrits (absente sans mission ou sans inscription). */
+export interface RetainSummary {
+  /** Candidats passés en Retenu. */
+  saved: number;
+  /** Candidats inscrits qui n'ont pas pu passer en Retenu : l'inscription, elle, est faite. */
+  failed: number;
+}
+
 export type EnrollOutcome =
   /** Rien n'a été écrit : `message` est le texte à afficher. */
   | { status: 'refused'; message: string; recentEnrollments: Map<string, RecentEnrollment> | null }
@@ -100,6 +110,7 @@ export type EnrollOutcome =
       recentEnrollments: Map<string, RecentEnrollment>;
       /** Écriture groupée seulement : la première exécution n'a pas pu être planifiée pour le lot. */
       schedulingFailure?: { rolledBack: boolean };
+      retained?: RetainSummary;
     }
   /** Exception : `results` garde ce qui a été compté avant l'arrêt. */
   | {
@@ -258,11 +269,43 @@ export async function enrollCandidates(options: EnrollCandidatesOptions): Promis
       results.skipped += duplicates;
       await enrollOneByOne(ctx, enrollSet, options, results, enrolledIds);
     }
-    return { status: 'done', results, enrolledIds, recentEnrollments: known, schedulingFailure };
+    const retained = await retainEnrolled(ctx, enrollSet, enrolledIds, options.job);
+    return { status: 'done', results, enrolledIds, recentEnrollments: known, schedulingFailure, retained };
   } catch (error) {
     // Détail technique en console seulement : jamais de message brut de la base.
     console.error('[enrollCandidates] enrollment aborted:', error);
     return { status: 'failed', error, results, enrolledIds, recentEnrollments: recent };
+  }
+}
+
+/**
+ * Règle Retenu : un candidat inscrit passe en Retenu s'il était À trier ou
+ * Écarté (jamais en arrière), dans la mission de l'inscription. Sans mission,
+ * rien n'est écrit. Une erreur ne défait pas l'inscription : elle est rendue
+ * dans `failed`.
+ */
+async function retainEnrolled(
+  ctx: Context,
+  enrollSet: LinkedInProfile[],
+  enrolledIds: string[],
+  job: EnrollCandidatesBase['job'],
+): Promise<RetainSummary | undefined> {
+  if (!job?.id || enrolledIds.length === 0) return undefined;
+  const enrolled = new Set(enrolledIds);
+  try {
+    const outcome = await retainCandidates({
+      supabase: ctx.supabase,
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      job: { id: job.id },
+      profiles: enrollSet.filter(p => enrolled.has(p.id)),
+      fromStages: ['to_sort', 'rejected'],
+      surface: 'enrollment',
+    });
+    return { saved: outcome.saved, failed: outcome.failed };
+  } catch (error) {
+    console.error('[enrollCandidates] retain failed:', error);
+    return { saved: 0, failed: enrolledIds.length };
   }
 }
 

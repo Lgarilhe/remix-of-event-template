@@ -75,14 +75,15 @@ import {
   isOtherMemberAccountError,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
+  retainFailedLabel,
   samePersonRefusedLabel,
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { enrollCandidates, type EnrollResults } from '@/lib/enrollCandidates';
 import { plural } from '@/lib/plural';
-import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
+import { skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
-import { serializeProfileForStorage } from '@/lib/serializeProfile';
+import { retainCandidates } from '@/lib/retainCandidates';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
@@ -686,8 +687,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         return;
       }
 
-      // Rien n'est écrit dans le pipeline à l'inscription : le serveur passe
-      // le candidat à « Contacté » au premier envoi réel (lot 0b).
+      // Les candidats inscrits passent en Retenu (règle de l'inscription) ; le
+      // serveur les passe à l'étape suivante au premier envoi réel (lot 0b).
 
       // Les candidats inscrits n'ont plus besoin de leurs aperçus.
       const results = outcome.results;
@@ -709,6 +710,13 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       if (results.formerPassages > 0) toast.warning(formerPassageLabel(results.formerPassages));
       if (results.alreadyPassed > 0) toast.info(alreadyPassedLabel(results.alreadyPassed));
       if (results.skipped > 0) toast.info(alreadyInSequenceLabel(results.skipped));
+      if (outcome.retained) {
+        if (outcome.retained.saved > 0) void invalidateStageReaders(queryClient);
+        if (outcome.retained.failed > 0) {
+          const label = retainFailedLabel(outcome.retained.failed);
+          toast.warning(label.title, { description: label.description });
+        }
+      }
     } finally {
       setIsEnrolling(false);
       setEnrollProgress(null);
@@ -742,60 +750,26 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         toast.error('Session expirée : reconnectez-vous, puis réessayez.');
         return;
       }
-      const userId = user.id;
 
-      // Clé des lignes du Sourcing de mission : job.id tel quel (« project:<uuid> »
-      // depuis une mission), comme useJobCandidateStatus. Une ligne déjà présente
-      // sous l'une des deux formes (avec ou sans préfixe) est reprise, jamais
-      // doublée : set_candidate_stages porte sur les lignes réelles du candidat.
-      const jobIdForms = job.id.startsWith('project:')
-        ? [job.id, job.id.slice('project:'.length)]
-        : [job.id];
-      const { data: existingRows, error: readError } = await supabase
-        .from('job_candidate_status')
-        .select('id, candidate_id')
-        .in('job_id', jobIdForms)
-        .eq('created_by', userId)
-        .in('candidate_id', activeProfiles.map(p => p.id));
-      if (readError) throw readError;
-      const existingCandidates = new Set((existingRows ?? []).map(r => r.candidate_id));
-
-      const missingProfiles = activeProfiles.filter(profile => !existingCandidates.has(profile.id));
-      const rows = missingProfiles.map(profile => ({
-        job_id: job.id,
-        candidate_id: profile.id,
-        candidate_name: profile.name || null,
-        candidate_headline: profile.headline || null,
-        linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-        // Profil entier, photo comprise (lot P, P-0b) : jamais une photo seule.
-        linkedin_profile_data: serializeProfileForStorage(profile),
-        created_by: userId,
-        organization_id: organizationId, // requis par RLS org_members_all
-      }));
-
-      let written: { id: string }[] = [];
-      if (rows.length > 0) {
-        const { data, error: writeError } = await supabase
-          .from('job_candidate_status')
-          .upsert(rows, { onConflict: 'job_id,candidate_id,created_by' })
-          .select('id');
-        if (writeError) throw writeError;
-        written = data ?? [];
-      }
-
-      const ids = [...(existingRows ?? []).map(r => r.id), ...written.map(r => r.id)];
-      const outcome = await setCandidateStages(ids, { stage: 'retained' }, RETAIN_FROM_STAGES, { surface: 'enrollment' });
-      const saved = outcome.updated + outcome.unchanged;
+      // Création des lignes absentes, puis étape Retenu : un seul chemin, aussi
+      // celui de la règle de l'inscription (src/lib/retainCandidates.ts).
+      const retained = await retainCandidates({
+        supabase,
+        organizationId,
+        userId: user.id,
+        job,
+        profiles: activeProfiles,
+        fromStages: RETAIN_FROM_STAGES,
+        surface: 'enrollment',
+      });
+      const { saved, skipped: skippedCount, failed, failure } = retained;
       if (saved > 0) void invalidateStageReaders(queryClient);
-      const failure = outcome.error ?? outcome.rows.find(r => r.result === 'error') ?? null;
-      if (failure) console.error('[EnrollmentPreviewModal] Shortlist stage failed:', failure);
 
-      if (saved === 0 && outcome.skipped === 0) {
+      if (saved === 0 && skippedCount === 0) {
         // Rien d'enregistré (refus silencieux ou refus de l'étape) : la fenêtre reste ouverte.
         toast.error(failure ? stageErrorMessage(failure.hint) : "Ajout impossible : aucun candidat n'a été enregistré.");
         return;
       }
-      const failed = (existingRows ?? []).length + rows.length - saved - outcome.skipped;
       if (saved > 0) {
         const added = plural(saved, 'candidat retenu', 'candidats retenus');
         if (failed > 0) {
@@ -806,7 +780,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           toast.success(added);
         }
       }
-      const skipped = skippedStageMessage(outcome.skipped);
+      const skipped = skippedStageMessage(skippedCount);
       if (skipped) toast.info(skipped);
       onSuccess();
     } catch (err) {

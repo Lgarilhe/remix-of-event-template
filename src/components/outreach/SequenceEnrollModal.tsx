@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useId } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -33,11 +34,13 @@ import {
   isOtherMemberAccountError,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
+  retainFailedLabel,
   samePersonRefusedLabel,
   SEQUENCES_PLAN_REQUIRED_MESSAGE,
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { enrollCandidates, type EnrollResults } from '@/lib/enrollCandidates';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -121,6 +124,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   const [duplicateCheckAttempt, setDuplicateCheckAttempt] = useState(0);
   const [enrollDuplicatesAnyway, setEnrollDuplicatesAnyway] = useState(false);
   const { organizationId, isAdmin } = useOrganization();
+  const queryClient = useQueryClient();
   const excludeId = useId();
   const duplicatesId = useId();
   // Compte d'envoi affiché avant l'inscription ; déconnecté ou relié à un
@@ -334,12 +338,19 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         return;
       }
 
-      // Rien n'est écrit dans le pipeline à l'inscription : le serveur passe le
-      // candidat à « Contacté » au premier envoi réel (lot 0b).
+      // Les candidats inscrits passent en Retenu (règle de l'inscription) ; le
+      // serveur les passe à l'étape suivante au premier envoi réel (lot 0b).
       if (enrollmentResults.success > 0) {
         toast.success(`${plural(enrollmentResults.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });
+      }
+      if (outcome.retained) {
+        if (outcome.retained.saved > 0) void invalidateStageReaders(queryClient);
+        if (outcome.retained.failed > 0) {
+          const label = retainFailedLabel(outcome.retained.failed);
+          toast.warning(label.title, { description: label.description });
+        }
       }
       announceOthers(enrollmentResults);
     } finally {
