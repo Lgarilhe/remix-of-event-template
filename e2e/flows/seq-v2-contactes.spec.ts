@@ -145,7 +145,25 @@ async function seedSix(ws: Workspace) {
 
 test('Contactés : chaque candidat dans son groupe, ouvert par défaut, « Séquences » gardé dans l\'adresse', async ({ browser }) => {
   const ws = await workspace('E2E contactés groupes');
-  await seedSix(ws);
+  const { alice } = await seedSix(ws);
+  // Rendez-vous pris : une réponse, pas une fin sans suite.
+  await candidate(ws, 'cand_gaelle', 'Gaëlle Meunier', 'contacted', {
+    status: 'completed',
+    completed_at: new Date().toISOString(),
+    tracking_data: { completion_reason: 'meeting_booked' },
+  });
+  // Lien de la conversation de la réponse (lot 0b) : la ligne ouvre cette conversation, pas la messagerie en général.
+  const conversationId = await seedMissionConversation({
+    orgId: ws.org.orgId,
+    projectId: ws.missionId,
+    accountId: ws.accountId,
+    candidateId: 'cand_alice',
+    createdBy: ws.org.owner.userId,
+    chatId: 'chat_alice_e2e',
+    lastInboundAt: new Date(),
+  });
+  const { error: linkError } = await admin().from('mission_conversations').update({ enrollment_id: alice.enrollmentId }).eq('id', conversationId);
+  if (linkError) throw new Error(`lien de conversation: ${linkError.message}`);
   const context = await openContext(browser, ws);
   const page = await context.newPage();
   await page.goto(panelUrl(ws), { waitUntil: 'domcontentloaded' });
@@ -160,6 +178,8 @@ test('Contactés : chaque candidat dans son groupe, ouvert par défaut, « Séqu
   // Un groupe par situation.
   await expect(group(page, 'replied')).toContainText('Alice Martin');
   await expect(group(page, 'replied')).toContainText('A répondu le');
+  await expect(group(page, 'replied')).toContainText('Gaëlle Meunier');
+  await expect(group(page, 'replied')).toContainText('rendez-vous pris');
   await expect(group(page, 'blocked')).toContainText('Bruno Petit');
   await expect(group(page, 'blocked')).toContainText('En pause : compte LinkedIn déconnecté');
   await expect(group(page, 'waiting')).toContainText('Chloé Durand');
@@ -177,7 +197,7 @@ test('Contactés : chaque candidat dans son groupe, ouvert par défaut, « Séqu
   await expect(closed).toContainText('sans réponse');
 
   // Le geste d'une réponse mène à la messagerie ; celui d'un compte déconnecté, aux connexions.
-  await expect(group(page, 'replied').getByRole('link', { name: 'Voir la conversation' })).toHaveAttribute('href', /\/inbox/);
+  await expect(group(page, 'replied').getByRole('link', { name: 'Voir la conversation' }).first()).toHaveAttribute('href', /\/inbox\?chatId=chat_alice_e2e$/);
 
   // « Séquences » s'écrit dans l'adresse et survit à un rechargement.
   await sequences.click();

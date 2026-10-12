@@ -19,7 +19,7 @@ import { EmptyLinkedInAccountState } from '@/components/missions/EmptyLinkedInAc
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
-import { CONTACTED_ENROLLMENT_LIMIT, useMissionContactedView } from '@/hooks/useMissionContacted';
+import { useMissionContactedView } from '@/hooks/useMissionContacted';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { cn } from '@/lib/utils';
@@ -76,10 +76,14 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
     return asksInvitations ? 'invitations' : 'sequences';
   });
   const contacted = useMissionContactedView(project.id, project.job_id, { enabled: sequencesV2 && !isArchived });
-  // null : la lecture des contactés décide encore de l'onglet. Une lecture en échec ouvre « Séquences ».
-  const tab: ContactTab | null = sequencesV2
-    ? chosen ?? (contacted.isPending ? null : (contacted.view?.total ?? 0) > 0 ? 'contactes' : 'sequences')
-    : chosen ?? 'sequences';
+  // Onglet de départ, tranché une fois par la première lecture des contactés puis gardé : une relecture
+  // (retour sur l'onglet, inscription faite à côté) ne fait pas changer d'onglet sous les mains de la
+  // personne. Une lecture en échec ouvre « Séquences ». null : la lecture décide encore.
+  const startTab = useRef<ContactTab | null>(null);
+  if (sequencesV2 && startTab.current === null && !contacted.isPending) {
+    startTab.current = (contacted.view?.total ?? 0) > 0 ? 'contactes' : 'sequences';
+  }
+  const tab: ContactTab | null = sequencesV2 ? chosen ?? startTab.current : chosen ?? 'sequences';
 
   // L'onglet suit l'adresse (?outreach=), par remplacement et sans perdre le
   // marqueur d'historique du panneau (Retour le ferme toujours). Interrupteur
@@ -218,7 +222,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
               status={contacted.view ? 'ready' : contacted.isError ? 'error' : 'loading'}
               view={contacted.view}
               chatByEnrollment={contacted.data?.chatByEnrollment ?? NO_CHATS}
-              truncated={(contacted.data?.enrollments.length ?? 0) >= CONTACTED_ENROLLMENT_LIMIT}
+              truncated={contacted.data?.truncated ?? false}
               onRefresh={() => contacted.refetch()}
             />
           </SectionErrorBoundary>

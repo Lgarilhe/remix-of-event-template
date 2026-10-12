@@ -1,7 +1,8 @@
 // Refonte mission, lot 5f-2b : onglet « Contactés » du panneau Prise de contact.
 // Une ligne par candidat de la mission, rangée dans l'un de quatre groupes :
 //   - « A répondu » : inscription répondue (ou arrêtée parce qu'il a répondu
-//     ailleurs), ou candidat à l'étape Répondu du Pipeline ;
+//     ailleurs), terminée par un rendez-vous pris, ou candidat à l'étape Répondu
+//     du Pipeline ;
 //   - « Bloqués » : l'envoi ne peut pas repartir sans geste (compte
 //     déconnecté, abonnement requis, plafond atteint, échec d'envoi, candidat
 //     injoignable, message rédigé par l'IA à relire) ;
@@ -15,6 +16,7 @@
 
 import {
   enrollmentStatusLine,
+  isMeetingBookedCompletion,
   type EnrollmentStatusLine,
   type StatusLineContext,
   type StatusLineEnrollment,
@@ -102,6 +104,13 @@ export interface ContactedContext {
   canManageSequence?: boolean;
   /** Compte LinkedIn relié à la personne connectée : « Reconnecter le compte » lui est proposé. */
   myAccountId?: string | null;
+  /**
+   * Lister les candidats Contacté ou Répondu du Pipeline qui n'ont pas d'inscription
+   * (« Contacté hors séquence »). Faux pour un collaborateur : la RLS ne lui rend que
+   * ses inscriptions, un candidat de séquence d'un collègue passerait pour contacté à
+   * la main. Vrai par défaut.
+   */
+  includeManual?: boolean;
 }
 
 // ─── Identité d'un candidat ────────────────────────────────────────────────
@@ -156,6 +165,8 @@ export function contactedGroupOf(
   pipelineReplied: boolean,
 ): ContactedGroupKey {
   if (enrollment && isGdprErasedEnrollment(asRecord(enrollment.tracking_data)?.gdpr_erased_at, enrollment.executions)) return 'closed';
+  // Un rendez-vous pris est une réponse : la séquence a atteint son but, le recruteur doit le voir.
+  if (enrollment && isMeetingBookedCompletion(enrollment.status, enrollment.tracking_data)) return 'replied';
   if (pipelineReplied || line?.chip === 'a-repondu' || line?.action?.kind === 'conversation') return 'replied';
   if (!enrollment || !line) return 'waiting';
   if (line.chip === 'en-echec' || line.action?.kind === 'review') return 'blocked';
@@ -186,13 +197,15 @@ function enrollmentActivity(e: ContactedEnrollment, group: ContactedGroupKey): n
 
 /**
  * Inscription qui représente un candidat dans plusieurs séquences : la réponse
- * la plus récente s'il y en a une (c'est le fait qui compte), sinon la dernière
- * inscription de la mission.
+ * la plus récente s'il y en a une (c'est le fait qui compte), sinon la plus
+ * récente des inscriptions vivantes (en cours ou en pause : c'est elle qui peut
+ * demander un geste), sinon la dernière inscription de la mission.
  */
 function representative(group: ContactedEnrollment[]): ContactedEnrollment {
   const byRecent = [...group].sort((a, b) => time(b.createdAt) - time(a.createdAt) || b.id.localeCompare(a.id));
   const replied = byRecent.filter((e) => e.status === 'replied').sort((a, b) => time(b.replied_at) - time(a.replied_at));
-  return replied[0] ?? byRecent[0];
+  const alive = byRecent.filter((e) => e.status === 'active' || e.status === 'paused');
+  return replied[0] ?? alive[0] ?? byRecent[0];
 }
 
 /**
@@ -272,7 +285,8 @@ export function buildContacted(
       headline: erased ? null : row?.headline || chosen.profileHeadline || null,
       candidateId: erased ? null : row?.candidateId ?? chosen.profileId,
       pictureUrl: erased ? null : row?.pictureUrl ?? null,
-      rowId: row?.id ?? null,
+      // Profil effacé : pas de fiche à ouvrir, elle montrerait l'identité que la liste masque.
+      rowId: erased ? null : row?.id ?? null,
       profileUrl: erased ? null : chosen.profileUrl ?? row?.linkedinUrl ?? null,
       enrollment: chosen,
       line,
@@ -282,7 +296,7 @@ export function buildContacted(
   }
 
   // Contactés ou répondus sans inscription : le message a été écrit hors d'une séquence.
-  for (const row of rows) {
+  for (const row of ctx.includeManual === false ? [] : rows) {
     if (usedRows.has(row.id)) continue;
     if (row.stage !== 'contacted' && row.stage !== 'replied') continue;
     // Une même ligne peut avoir été rapprochée par une seconde clé : vérifiée ci-dessus par id.

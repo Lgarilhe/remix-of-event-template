@@ -36,7 +36,7 @@ interface ContactedListProps {
   status: ContactedListStatus;
   view: ContactedView | null;
   chatByEnrollment: ReadonlyMap<string, string>;
-  /** La mission a plus d'inscriptions que la lecture n'en rend. */
+  /** La mission a plus de contacts que la lecture n'en rend. */
   truncated: boolean;
   /** Relit la liste (après un geste, ou sur « Réessayer »). */
   onRefresh: () => void | Promise<unknown>;
@@ -63,6 +63,20 @@ export function ContactedList({ projectId, status, view, chatByEnrollment, trunc
   const { offerUndoPause, stopEnrollments } = useUndoableEnrollmentAction();
   const sequencesBeta = useSequencesBeta();
   const [collapsed, setCollapsed] = useState<ReadonlySet<ContactedGroupKey>>(COLLAPSED_AT_START);
+  // Ligne dont un geste est en cours : ses boutons attendent la relecture (un second clic donnerait un échec trompeur).
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const runGesture = async (entryKey: string, gesture: () => Promise<unknown>) => {
+    setBusy((prev) => new Set(prev).add(entryKey));
+    try {
+      await gesture();
+    } finally {
+      setBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(entryKey);
+        return next;
+      });
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -117,24 +131,24 @@ export function ContactedList({ projectId, status, view, chatByEnrollment, trunc
       offerUndoPause,
       setBulkResuming: () => {},
     });
-    void stopEnrollment(enrollment.id);
+    void runGesture(entry.key, () => stopEnrollment(enrollment.id));
   };
 
   const stop = (entry: ContactedEntry) => {
     const enrollment = entry.enrollment;
     if (!enrollment) return;
-    void stopEnrollments({
+    void runGesture(entry.key, () => stopEnrollments({
       enrollmentIds: [enrollment.id],
       candidateName: entry.name,
-      onSettled: () => { void onRefresh(); },
-    });
+      onSettled: async () => { await onRefresh(); },
+    }));
   };
 
   const actionFor = (entry: ContactedEntry): ReactNode => {
     const enrollment = entry.enrollment;
     const action = entry.line?.action;
     if (!enrollment || !action) return null;
-    const small = { variant: 'ghost' as const, size: 'xs' as const, className: cn('shrink-0 text-muted-foreground', TOUCH) };
+    const small = { variant: 'ghost' as const, size: 'xs' as const, disabled: busy.has(entry.key), className: cn('shrink-0 text-muted-foreground', TOUCH) };
     switch (action.kind) {
       case 'pause':
         return isOwn(entry) ? <Button type="button" {...small} onClick={() => pause(entry)}>{action.label}</Button> : null;
@@ -179,20 +193,18 @@ export function ContactedList({ projectId, status, view, chatByEnrollment, trunc
         return (
           <section key={group.key} aria-labelledby={headingId} data-contacted-group={group.key}>
             <h3 id={headingId} className="text-sm font-semibold text-foreground">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 aria-expanded={open}
                 onClick={() => toggle(group.key)}
-                className={cn(
-                  'flex w-full items-center gap-1.5 rounded-sm text-left',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  TOUCH,
-                )}
+                className={cn('-ml-2.5 h-auto justify-start gap-1.5 text-sm font-semibold', TOUCH)}
               >
                 <Chevron className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span>{group.label}</span>
                 <span className="font-normal tabular-nums text-muted-foreground">{group.entries.length}</span>
-              </button>
+              </Button>
             </h3>
             {open && (
               <ul className="mt-1 divide-y divide-border">
@@ -203,16 +215,14 @@ export function ContactedList({ projectId, status, view, chatByEnrollment, trunc
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           {entry.rowId ? (
-                            <button
+                            <Button
                               type="button"
+                              variant="link"
                               onClick={() => openCandidate(entry.rowId as string)}
-                              className={cn(
-                                'block max-w-full truncate rounded-sm text-left text-sm font-medium text-foreground underline-offset-4 hover:underline',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                              )}
+                              className="block h-auto max-w-full truncate rounded-sm p-0 text-left text-sm font-medium"
                             >
                               {entry.name}
-                            </button>
+                            </Button>
                           ) : (
                             <p className="truncate text-sm font-medium text-foreground">{entry.name}</p>
                           )}
@@ -241,7 +251,7 @@ export function ContactedList({ projectId, status, view, chatByEnrollment, trunc
       })}
       {truncated && (
         <p className="text-xs text-muted-foreground">
-          {`Seules les ${CONTACTED_ENROLLMENT_LIMIT} inscriptions les plus récentes de la mission sont affichées.`}
+          {`Seuls les ${CONTACTED_ENROLLMENT_LIMIT} contacts les plus récents de la mission sont affichés.`}
         </p>
       )}
     </div>

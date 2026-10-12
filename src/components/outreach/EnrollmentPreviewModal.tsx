@@ -82,7 +82,7 @@ import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErr
 import { enrollCandidates, type EnrollResults } from '@/lib/enrollCandidates';
 import { plural } from '@/lib/plural';
 import { skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
-import { invalidateStageReaders } from '@/lib/stageDisplay';
+import { invalidateMissionContacted, invalidateStageReaders } from '@/lib/stageDisplay';
 import { retainCandidates } from '@/lib/retainCandidates';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
@@ -695,6 +695,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       discardSessionPreviews(outcome.enrolledIds);
       setEnrollResults(results);
       if (results.success > 0) {
+        void invalidateMissionContacted(queryClient);
         toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });

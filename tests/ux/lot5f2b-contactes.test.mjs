@@ -96,17 +96,20 @@ test('5F2B-1 chaque statut d’inscription va dans son groupe', async (t) => {
     ['bounced', { status: 'bounced' }],
     ['manual-stop', { status: 'completed', tracking_data: { completion_reason: 'manual_stop', manual_stop: { token: 'x', by: 'u1', at: at(6) } } }],
     ['erased', { status: 'paused', pause_reason: 'account_disconnected', tracking_data: { gdpr_erased_at: at(7) } }],
+    // Un rendez-vous pris est une réponse, pas une fin sans suite.
+    ['meeting', { status: 'completed', completed_at: at(6), tracking_data: { completion_reason: 'meeting_booked' } }],
   ];
   const expected = {
     replied: 'replied', 'stopped-sibling-reply': 'replied',
     account: 'blocked', subscription: 'blocked', quota: 'blocked', unreachable: 'blocked', 'send-failed': 'blocked', 'auto-paused': 'blocked', 'ai-review': 'blocked',
     active: 'waiting', 'manual-pause': 'waiting', 'sequence-paused': 'waiting', 'quota-blocked-step': 'waiting',
     completed: 'closed', stopped: 'closed', cancelled: 'closed', bounced: 'closed', 'manual-stop': 'closed', erased: 'closed',
+    meeting: 'replied',
   };
   const view = m.buildContacted(cases.map(([id, extra]) => enrollment(id, extra)), [], { now: NOW });
   for (const [id] of cases) assert.equal(groupOf(view, id), expected[id], `${id}`);
   assert.equal(view.total, cases.length);
-  assert.deepEqual(view.counts, { replied: 2, blocked: 7, waiting: 4, closed: 6 });
+  assert.deepEqual(view.counts, { replied: 3, blocked: 7, waiting: 4, closed: 6 });
   // Les groupes sortent dans l'ordre de l'écran.
   assert.deepEqual(view.groups.map((g) => g.key), ['replied', 'blocked', 'waiting', 'closed']);
   assert.deepEqual(view.groups.map((g) => g.label), ['A répondu', 'Bloqués', 'En attente', 'Sans suite']);
@@ -135,6 +138,22 @@ test('5F2B-2 une ligne par candidat : identités réunies, la réponse puis la d
   assert.equal(replied.total, 1);
   assert.equal(replied.entries[0].key, 'r');
   assert.equal(replied.entries[0].group, 'replied');
+
+  // Une inscription vivante (bloquée ou en cours) prime sur une inscription plus récente déjà terminée :
+  // c'est elle qui peut demander un geste.
+  const alive = m.buildContacted([
+    enrollment('blocked-old', { profileId: 'Y', createdAt: at(1), status: 'paused', pause_reason: 'account_disconnected' }),
+    enrollment('done-new', { profileId: 'Y', createdAt: at(8), status: 'completed', completed_at: at(9) }),
+  ], [], { now: NOW });
+  assert.equal(alive.total, 1);
+  assert.equal(alive.entries[0].key, 'blocked-old');
+  assert.equal(alive.entries[0].group, 'blocked');
+  // Sans inscription vivante, la plus récente représente le candidat.
+  const closed = m.buildContacted([
+    enrollment('c1', { profileId: 'W', createdAt: at(1), status: 'completed' }),
+    enrollment('c2', { profileId: 'W', createdAt: at(8), status: 'stopped' }),
+  ], [], { now: NOW });
+  assert.equal(closed.entries[0].key, 'c2');
 });
 
 test('5F2B-3 lignes du Pipeline : contactés hors séquence, fiche et nom des inscrits, réponse vue par le Pipeline', async (t) => {
@@ -189,6 +208,24 @@ test('5F2B-4 effacement RGPD : fermé, sans nom, sans photo, sans lien', async (
   assert.equal(entry.pictureUrl, null);
   assert.equal(entry.candidateId, null);
   assert.equal(entry.profileUrl, null);
+  assert.equal(entry.rowId, null, 'la fiche montrerait l’identité que la liste masque');
+});
+
+test('5F2B-4b collaborateur : sans inscription visible, un candidat du Pipeline n’est pas « hors séquence »', async (t) => {
+  const m = await loadTs(t, 'src/lib/contactedGroups.ts');
+  if (!m) return;
+  // La RLS ne rend au collaborateur que ses inscriptions ; le Pipeline lui montre toute la mission.
+  const rows = [row('1', { candidateId: 'p-1', name: 'Alice Martin', stage: 'replied', repliedAt: at(4) }), row('2', { candidateId: 'p-2', name: 'Bruno Petit' })];
+  const own = [enrollment('mine', { profileId: 'p-2', status: 'active' })];
+  const asCollaborator = m.buildContacted(own, rows, { now: NOW, includeManual: false });
+  assert.deepEqual(asCollaborator.entries.map((e) => e.key), ['mine'], 'seule sa ligne est listée');
+  assert.equal(asCollaborator.entries[0].name, 'Bruno Petit', 'le nom et la fiche de sa ligne viennent encore du Pipeline');
+  assert.equal(asCollaborator.entries[0].rowId, '2');
+  assert.equal(asCollaborator.total, 1);
+  // Sans aucune inscription à lui : rien, donc l’état vide s’affiche.
+  assert.equal(m.buildContacted([], rows, { now: NOW, includeManual: false }).total, 0);
+  // Propriétaire et administrateur voient toutes les inscriptions : les lignes sans inscription sont bien hors séquence.
+  assert.equal(m.buildContacted(own, rows, { now: NOW }).total, 2);
 });
 
 test('5F2B-5 tri dans un groupe : le fait le plus récent d’abord, départage stable', async (t) => {
@@ -261,9 +298,27 @@ test('5F2B-8 lecture : trois formes de l’id de mission, sous la RLS, jamais d�
   const src = code(HOOK);
   assert.match(src, /missionEnrollmentJobIds\(projectId, projectJobId\)/);
   assert.match(src, /\.in\('job_id', jobIds\)/);
-  assert.match(src, /queryKey: \['project-candidates', id, 'contacted'\]/, 'relu par invalidateStageReaders avec la mission');
+  // Clé hors des lectures d'étape : un geste d'étape ne relit pas cette lecture lourde ; une inscription, si.
+  assert.match(src, /queryKey: \[MISSION_CONTACTED_KEY, id\]/);
+  assert.match(src, /refetchOnMount: 'always'/);
+  const stageDisplay = read('src/lib/stageDisplay.ts');
+  assert.match(stageDisplay, /export const MISSION_CONTACTED_KEY = 'mission-contacted';/);
+  const readerKeys = stageDisplay.slice(stageDisplay.indexOf('STAGE_READER_KEYS'), stageDisplay.indexOf('];', stageDisplay.indexOf('STAGE_READER_KEYS')));
+  assert.doesNotMatch(readerKeys, /mission-contacted|MISSION_CONTACTED_KEY/);
+  for (const modal of ['src/components/outreach/SequenceEnrollModal.tsx', 'src/components/outreach/EnrollmentPreviewModal.tsx']) {
+    assert.match(read(modal), /(?:results|enrollmentResults)\.success > 0\) \{\s*void invalidateMissionContacted\(queryClient\);/, `${modal} : relit les contactés après une inscription`);
+  }
+  // Plafonds : on lit une ligne de plus pour savoir qu'on coupe, et l'inscription d'un candidat du Pipeline au-delà du plafond est lue.
+  assert.match(src, /\.limit\(CONTACTED_ENROLLMENT_LIMIT \+ 1\)/);
+  assert.match(src, /\.limit\(CONTACTED_ROW_LIMIT \+ 1\)/);
+  assert.match(src, /if \(enrollmentsTruncated\) \{/);
+  assert.match(src, /\.in\('profile_id', unmatched\.slice\(i, i \+ ROW_ID_BATCH_SIZE\)\)/);
+  assert.match(src, /truncated: enrollmentsTruncated \|\| rowsTruncated/);
+  // Collaborateur : pas de « hors séquence » deviné.
+  assert.match(src, /includeManual: !isCollaborator/);
+  assert.doesNotMatch(src, /rowsDb|\bany\b/, 'lecture typée, sans any');
   // Toute lecture de la vue exclut les profils jamais ouverts et se limite à la mission.
-  const rowReads = src.match(/rowsDb\s*\.from\('mission_candidate_rows'\)[\s\S]*?;/g) ?? [];
+  const rowReads = src.match(/supabase\s*\.from\('mission_candidate_rows'\)[\s\S]*?;/g) ?? [];
   assert.ok(rowReads.length >= 1, 'lecture de mission_candidate_rows');
   for (const read of rowReads) {
     assert.match(read, /\.eq\('project_id', projectId\)/);
@@ -293,6 +348,11 @@ test('5F2B-9 liste : gestes du lot 5b seulement, collaborateur sur ses lignes, l
   assert.doesNotMatch(src, /resume_enrollments|re_enroll|mark_replied|skip_execution/);
   // Sans suite : replié au départ ; un groupe vide n’est pas écrit.
   assert.match(src, /COLLAPSED_AT_START: ReadonlySet<ContactedGroupKey> = new Set\(\['closed'\]\)/);
+  // Un geste en cours désactive les boutons de sa ligne jusqu'à la relecture.
+  assert.match(src, /disabled: busy\.has\(entry\.key\)/);
+  assert.match(src, /onSettled: async \(\) => \{ await onRefresh\(\); \}/);
+  // Cliquet du design : pas de bouton écrit à la main, le composant Button.
+  assert.doesNotMatch(src, /<button\b/);
   assert.match(src, /group\.entries\.length > 0/);
   assert.match(src, /aria-expanded=\{open\}/);
   // États de la lecture : chargement, erreur avec réessai, vide.
@@ -304,7 +364,9 @@ test('5F2B-9 liste : gestes du lot 5b seulement, collaborateur sur ses lignes, l
 test('5F2B-10 panneau : Contactés ouvert s’il a une ligne, l’onglet suit l’adresse, interrupteur éteint inchangé', () => {
   const src = code(PANEL);
   assert.match(src, /outreachParam === 'contactes' \|\| outreachParam === 'sequences' \? outreachParam : null/);
-  assert.match(src, /chosen \?\? \(contacted\.isPending \? null : \(contacted\.view\?\.total \?\? 0\) > 0 \? 'contactes' : 'sequences'\)/);
+  // L'onglet de départ est tranché une fois par la première lecture, puis gardé : une relecture ne change pas d'onglet.
+  assert.match(src, /const startTab = useRef<ContactTab \| null>\(null\);\s*if \(sequencesV2 && startTab\.current === null && !contacted\.isPending\) \{\s*startTab\.current = \(contacted\.view\?\.total \?\? 0\) > 0 \? 'contactes' : 'sequences';/);
+  assert.match(src, /const tab: ContactTab \| null = sequencesV2 \? chosen \?\? startTab\.current : chosen \?\? 'sequences';/);
   assert.match(src, /useMissionContactedView\(project\.id, project\.job_id, \{ enabled: sequencesV2 && !isArchived \}\)/);
   // « Séquences » s’écrit dans l’adresse interrupteur allumé ; éteint, elle la retire comme avant.
   assert.match(src, /if \(!sequencesV2 && next === 'sequences'\) params\.delete\(OUTREACH_PARAM\);\s*else params\.set\(OUTREACH_PARAM, next\);/);
@@ -350,4 +412,14 @@ test('5F2B-12 textes de la partie ajoutée : français, sans tiret long, sans «
     assert.doesNotMatch(source, /[A-Za-zÀ-ÿ]\(s\)/, `${name} : accorder par le nombre`);
     assert.doesNotMatch(code(source), /\b(Unipile|Apollo|PDL|People Data Labs|Anthropic|Claude)\b/, `${name} : nom de prestataire`);
   }
+});
+
+test('5F2B-13 CI : les contrôles de comportement tournent sous Node 22 (lecture native du TypeScript)', () => {
+  // Sous Node 20 ces tests se sautent sans bruit (loadTs) et la CI resterait verte sans rien exécuter.
+  const ci = read('.github/workflows/ci.yml');
+  const jobs = ci.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  const job = jobs.find((chunk) => chunk.includes('node --test tests/ux/lot5f2b-contactes.test.mjs'));
+  assert.ok(job, 'étape de CI du lot 5f-2b');
+  assert.match(job, /node-version: 22/, 'job sous Node 22');
+  assert.equal(ci.split('lot5f2b-contactes.test.mjs').length - 1, 1, 'une seule étape');
 });

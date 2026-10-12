@@ -40,7 +40,7 @@ import {
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { enrollCandidates, type EnrollResults } from '@/lib/enrollCandidates';
-import { invalidateStageReaders } from '@/lib/stageDisplay';
+import { invalidateMissionContacted, invalidateStageReaders } from '@/lib/stageDisplay';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -341,6 +341,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       // Les candidats inscrits passent en Retenu (règle de l'inscription) ; le
       // serveur les passe à l'étape suivante au premier envoi réel (lot 0b).
       if (enrollmentResults.success > 0) {
+        void invalidateMissionContacted(queryClient);
         toast.success(`${plural(enrollmentResults.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });

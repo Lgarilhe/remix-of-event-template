@@ -8,8 +8,11 @@
 // candidats contactés ou répondus, plus celles des candidats inscrits (fiche,
 // photo). Le rangement en groupes est dans src/lib/contactedGroups.ts.
 //
-// Clé sous ['project-candidates', id, …] : relue avec les autres lectures de la
-// mission par invalidateStageReaders, après une inscription ou un geste d'étape.
+// Clé ['mission-contacted', id], hors de invalidateStageReaders : un geste
+// d'étape (Retenir, Écarter) ne change pas les inscriptions, et cette lecture est
+// lourde (inscriptions, exécutions, liens, lignes) ; elle est relue après une
+// inscription (invalidateMissionContacted, appelé par les deux fenêtres), à
+// chaque ouverture du panneau et au retour sur l'onglet.
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +22,7 @@ import { useAuthReady } from '@/hooks/useAuthReady';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberName } from '@/hooks/useTeamMembers';
+import { MISSION_CONTACTED_KEY } from '@/lib/stageDisplay';
 import { missionEnrollmentJobIds } from '@/lib/sequenceErrorMessages';
 import { buildContacted, type ContactedEnrollment, type ContactedRow, type ContactedView } from '@/lib/contactedGroups';
 import type { StatusLineExecution } from '@/lib/enrollmentStatusLine';
@@ -36,9 +40,14 @@ const EXECUTION_STATUSES = ['active', 'paused', 'stopped'];
 /** Exécutions utiles : en attente, en échec, ou annulées avec un motif (effacement, réponse ailleurs). */
 const EXECUTION_FILTER = 'skip_reason.not.is.null,status.in.(scheduled,waiting_event,quota_blocked,sending,failed)';
 
+/** Colonnes des inscriptions lues (une constante littérale : la lecture reste typée). */
+const ENROLLMENT_COLUMNS = 'id, sequence_id, profile_id, provider_id, resolved_profile_id, profile_name, profile_headline, profile_url, status, pause_reason, tracking_data, replied_at, completed_at, updated_at, created_at, created_by, account_id, sequence:outreach_sequences(name, is_active)';
+
 export interface MissionContactedData {
   enrollments: ContactedEnrollment[];
   rows: ContactedRow[];
+  /** Plus d'inscriptions ou de lignes contactées que la lecture n'en garde (les plus récentes sont rendues). */
+  truncated: boolean;
   /** Conversation LinkedIn d'une inscription répondue ou arrêtée (lien du lot 0b). */
   chatByEnrollment: Map<string, string>;
 }
@@ -47,9 +56,6 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 
 const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
-
-// La vue n'a pas de clé primaire déclarée : lecture non typée, lignes validées par toMissionCandidateRow.
-const rowsDb = supabase as unknown as { from: (table: 'mission_candidate_rows') => any };
 
 function toExecution(raw: unknown): (StatusLineExecution & { enrollment_id: string }) | null {
   const r = asRecord(raw);
@@ -136,17 +142,23 @@ function toContactedRows(data: unknown): ContactedRow[] {
   return out;
 }
 
-async function readRows(projectId: string, candidateIds: string[]): Promise<ContactedRow[]> {
-  const base = () => rowsDb
+async function readRows(projectId: string, candidateIds: string[]): Promise<{ rows: ContactedRow[]; truncated: boolean }> {
+  const base = () => supabase
     .from('mission_candidate_rows')
     .select(MISSION_ROW_LIGHT_COLUMNS)
     .eq('project_id', projectId)
     .eq('is_unopened', false);
 
-  // Contactés et répondus de la mission, inscrits ou non.
-  const contacted = await base().in('general_stage', ['contacted', 'replied']).order('id', { ascending: true }).limit(CONTACTED_ROW_LIMIT);
+  // Contactés et répondus de la mission, inscrits ou non, les plus récemment contactés d'abord.
+  const contacted = await base()
+    .in('general_stage', ['contacted', 'replied'])
+    .order('contacted_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: true })
+    .limit(CONTACTED_ROW_LIMIT + 1);
   if (contacted.error) throw contacted.error;
-  const rows = toContactedRows(contacted.data);
+  const all = toContactedRows(contacted.data);
+  const truncated = all.length > CONTACTED_ROW_LIMIT;
+  const rows = all.slice(0, CONTACTED_ROW_LIMIT);
 
   // Candidats inscrits que le Pipeline range ailleurs (Retenu avant le premier envoi, entretien…) : leur fiche et leur photo.
   const known = new Set(rows.map((row) => row.candidateId));
@@ -156,54 +168,87 @@ async function readRows(projectId: string, candidateIds: string[]): Promise<Cont
     if (page.error) throw page.error;
     rows.push(...toContactedRows(page.data));
   }
-  return rows;
+  return { rows, truncated };
+}
+
+function toEnrollment(r: Record<string, unknown>, executions: Map<string, StatusLineExecution[]>): ContactedEnrollment {
+  const sequenceRaw = Array.isArray(r.sequence) ? r.sequence[0] : r.sequence;
+  const sequence = asRecord(sequenceRaw);
+  return {
+    id: String(r.id),
+    sequenceId: String(r.sequence_id),
+    sequenceName: text(sequence?.name),
+    sequenceActive: typeof sequence?.is_active === 'boolean' ? sequence.is_active : null,
+    profileId: String(r.profile_id),
+    providerId: text(r.provider_id),
+    resolvedProfileId: text(r.resolved_profile_id),
+    profileName: text(r.profile_name),
+    profileHeadline: text(r.profile_headline),
+    profileUrl: text(r.profile_url),
+    createdBy: text(r.created_by),
+    accountId: text(r.account_id),
+    createdAt: String(r.created_at),
+    status: String(r.status),
+    pause_reason: text(r.pause_reason),
+    tracking_data: r.tracking_data,
+    replied_at: text(r.replied_at),
+    completed_at: text(r.completed_at),
+    updated_at: text(r.updated_at),
+    executions: executions.get(String(r.id)) ?? [],
+  };
 }
 
 async function readMissionContacted(projectId: string, projectJobId: string | null): Promise<MissionContactedData> {
   const jobIds = missionEnrollmentJobIds(projectId, projectJobId);
   const { data, error } = await supabase
     .from('sequence_enrollments')
-    .select('id, sequence_id, profile_id, provider_id, resolved_profile_id, profile_name, profile_headline, profile_url, status, pause_reason, tracking_data, replied_at, completed_at, updated_at, created_at, created_by, account_id, sequence:outreach_sequences(name, is_active)')
+    .select(ENROLLMENT_COLUMNS)
     .in('job_id', jobIds)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
-    .limit(CONTACTED_ENROLLMENT_LIMIT);
+    .limit(CONTACTED_ENROLLMENT_LIMIT + 1);
   if (error) throw error;
 
-  const raws = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const all = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const enrollmentsTruncated = all.length > CONTACTED_ENROLLMENT_LIMIT;
+  const raws = all.slice(0, CONTACTED_ENROLLMENT_LIMIT);
+
+  const profileIds = (list: Array<Record<string, unknown>>) => [...new Set(list.map((r) => String(r.profile_id)))];
+  const { rows, truncated: rowsTruncated } = await readRows(projectId, profileIds(raws));
+
+  // Plafond atteint : l'inscription d'un candidat du Pipeline peut être au-delà. Sans elle, il serait dit
+  // « contacté hors séquence » ; on lit donc les inscriptions des candidats de ces lignes, quel que soit leur âge.
+  if (enrollmentsTruncated) {
+    const known = new Set(raws.flatMap((r) => [text(r.profile_id), text(r.provider_id), text(r.resolved_profile_id)]).filter((id): id is string => !!id));
+    const unmatched = [...new Set(rows.map((row) => row.candidateId))].filter((id) => !known.has(id));
+    const seen = new Set(raws.map((r) => String(r.id)));
+    for (let i = 0; i < unmatched.length; i += ROW_ID_BATCH_SIZE) {
+      const page = await supabase
+        .from('sequence_enrollments')
+        .select(ENROLLMENT_COLUMNS)
+        .in('job_id', jobIds)
+        .in('profile_id', unmatched.slice(i, i + ROW_ID_BATCH_SIZE))
+        .order('created_at', { ascending: false })
+        .limit(ROW_ID_BATCH_SIZE * 4);
+      if (page.error) throw page.error;
+      for (const extra of (page.data ?? []) as unknown as Array<Record<string, unknown>>) {
+        if (seen.has(String(extra.id))) continue;
+        seen.add(String(extra.id));
+        raws.push(extra);
+      }
+    }
+  }
+
   const withExecutions = raws.filter((r) => EXECUTION_STATUSES.includes(String(r.status))).map((r) => String(r.id));
   const withChats = raws.filter((r) => r.status === 'replied' || r.status === 'stopped').map((r) => String(r.id));
   const [executions, chatByEnrollment] = await Promise.all([readExecutions(withExecutions), readChats(withChats)]);
 
-  const enrollments: ContactedEnrollment[] = raws.map((r) => {
-    const sequenceRaw = Array.isArray(r.sequence) ? r.sequence[0] : r.sequence;
-    const sequence = asRecord(sequenceRaw);
-    return {
-      id: String(r.id),
-      sequenceId: String(r.sequence_id),
-      sequenceName: text(sequence?.name),
-      sequenceActive: typeof sequence?.is_active === 'boolean' ? sequence.is_active : null,
-      profileId: String(r.profile_id),
-      providerId: text(r.provider_id),
-      resolvedProfileId: text(r.resolved_profile_id),
-      profileName: text(r.profile_name),
-      profileHeadline: text(r.profile_headline),
-      profileUrl: text(r.profile_url),
-      createdBy: text(r.created_by),
-      accountId: text(r.account_id),
-      createdAt: String(r.created_at),
-      status: String(r.status),
-      pause_reason: text(r.pause_reason),
-      tracking_data: r.tracking_data,
-      replied_at: text(r.replied_at),
-      completed_at: text(r.completed_at),
-      updated_at: text(r.updated_at),
-      executions: executions.get(String(r.id)) ?? [],
-    };
-  });
-
-  const rows = await readRows(projectId, [...new Set(enrollments.map((e) => e.profileId))]);
-  return { enrollments, rows, chatByEnrollment };
+  return {
+    enrollments: raws.map((r) => toEnrollment(r, executions)),
+    rows,
+    chatByEnrollment,
+    truncated: enrollmentsTruncated || rowsTruncated,
+  };
 }
 
 /**
@@ -218,10 +263,12 @@ export function useMissionContacted(
 ) {
   const id = projectId ?? null;
   return useQuery({
-    queryKey: ['project-candidates', id, 'contacted'],
+    queryKey: [MISSION_CONTACTED_KEY, id],
     queryFn: () => readMissionContacted(id as string, projectJobId ?? null),
     enabled: id !== null && (options?.enabled ?? true),
     staleTime: 30_000,
+    // Ouvrir le panneau relit toujours : une pause ou une reprise faite sur la page d'une séquence y apparaît.
+    refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   });
 }
@@ -237,7 +284,7 @@ export function useMissionContactedView(
   options?: { enabled?: boolean },
 ) {
   const query = useMissionContacted(projectId, projectJobId, options);
-  const { isAdmin } = useOrganization();
+  const { isAdmin, isCollaborator } = useOrganization();
   const { user } = useAuthReady();
   const memberName = useMemberName();
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
@@ -245,8 +292,9 @@ export function useMissionContactedView(
   const myAccountId = userId ? getUserLinkedAccountId(userId) : null;
   const data = query.data;
   const view = useMemo<ContactedView | null>(
-    () => (data ? buildContacted(data.enrollments, data.rows, { memberName, canManageSequence: isAdmin, myAccountId }) : null),
-    [data, isAdmin, myAccountId, memberName],
+    // Un collaborateur ne lit que ses inscriptions : un candidat de séquence d'un collègue ne doit pas passer pour contacté à la main.
+    () => (data ? buildContacted(data.enrollments, data.rows, { memberName, canManageSequence: isAdmin, myAccountId, includeManual: !isCollaborator }) : null),
+    [data, isAdmin, isCollaborator, myAccountId, memberName],
   );
   return { ...query, view };
 }
