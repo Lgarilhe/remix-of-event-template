@@ -8,7 +8,8 @@
  *     le seul import du prestataire ;
  *   - UNS-3 aucun nom de prestataire dans une chaîne qui peut atteindre un utilisateur (les journaux du
  *     serveur, console.*, sont libres) ;
- *   - UNS-4 les actions sont exactement celles d'avant (les nouvelles actions sont réservées à un lot suivant) ;
+ *   - UNS-4 les actions sont celles d'avant plus celles du lot S8 (search_from_url, list_recruiter_projects,
+ *     list_sent_invitations, withdraw_invitation) ;
  *   - UNS-5 un identifiant de compte n'arrive à aucun appel sans avoir passé le rattachement à l'organisation.
  *
  * Lancer : node --test tests/c1/unipile-search-v2.test.mjs
@@ -27,7 +28,8 @@ const read = name => readFileSync(join(DIR, name), 'utf8');
 const ast = name => ts.createSourceFile(name, read(name), ts.ScriptTarget.Latest, true);
 
 test('UNS-0 le dossier est lu en entier', () => {
-  for (const name of ['index.ts', 'search.ts', 'search-request.ts', 'chats.ts', 'profile.ts', 'send.ts', 'licence.ts', 'responses.ts']) {
+  for (const name of ['index.ts', 'search.ts', 'search-request.ts', 'chats.ts', 'profile.ts', 'send.ts', 'licence.ts', 'responses.ts',
+    'search-url.ts', 'recruiter-projects.ts', 'invitations.ts', 'account-rules.ts']) {
     assert.ok(FILES.includes(name), `module attendu et absent : ${name}`);
   }
 });
@@ -83,11 +85,12 @@ test('UNS-3 aucun nom de prestataire dans une chaîne qui peut atteindre un util
   assert.deepEqual(found, []);
 });
 
-test('UNS-4 les actions sont exactement celles d\'avant', () => {
+test('UNS-4 les actions sont celles d\'avant plus les quatre du lot S8', () => {
   const actions = [...read('index.ts').matchAll(/case '([a-z_]+)':/g)].map(match => match[1]).sort();
   assert.deepEqual(actions, [
-    'endorse_skill', 'get_chats', 'get_messages', 'get_parameters', 'get_profile', 'get_user_posts', 'mark_as_read',
-    'search', 'send_message', 'sync_chat_history',
+    'endorse_skill', 'get_chats', 'get_messages', 'get_parameters', 'get_profile', 'get_user_posts',
+    'list_recruiter_projects', 'list_sent_invitations', 'mark_as_read', 'search', 'search_from_url', 'send_message',
+    'sync_chat_history', 'withdraw_invitation',
   ]);
 });
 
@@ -99,7 +102,12 @@ test('UNS-5 le compte est contrôlé avant toute action et dans l\'ordre : forma
   const dispatch = index.indexOf('switch (action) {');
   assert.ok(format > 0 && owner > format && quota > owner && dispatch > quota, 'ordre des contrôles');
   assert.match(index, /kinds: \['linkedin'\]/, 'seuls les comptes LinkedIn');
-  assert.match(index, /action === 'send_message' && !isInternal && ownership\.userId !== userId/, 'envoi depuis son propre compte');
+  // Envoi et retrait d'une invitation : depuis son propre compte (account-rules.ts), jugé avant le plafond.
+  assert.match(index, /ownerOnlyRefusal\(action, \{ isInternal, userId, accountOwnerId: ownership\.userId \}\)/, 'règle du compte propre');
+  assert.ok(index.indexOf('ownerOnlyRefusal(action') > owner && index.indexOf('ownerOnlyRefusal(action') < quota);
+  const rules = read('account-rules.ts');
+  assert.match(rules, /OWNER_ONLY_ACTIONS[^;]*'send_message'[^;]*'withdraw_invitation'/, 'actions réservées au compte propre');
+  assert.match(rules, /context\.accountOwnerId === context\.userId/);
   // Aucun handler ne reçoit le compte brut de la requête.
   assert.doesNotMatch(index, /handle[A-Za-z]+\(\s*account_id\b/);
   assert.match(index, /!isUnipileConfigured\(\)/);
@@ -125,4 +133,34 @@ test('UNS-6 un envoi : forme de l\'InMail avant le plafond et le marqueur, marqu
   assert.ok(gate > 0);
   assert.ok(index.indexOf('await prepareSearch(') > 0 && index.indexOf('await prepareSearch(') < gate);
   assert.ok(index.indexOf('await planSend(') > 0 && index.indexOf('await planSend(') < gate);
+});
+
+test('UNS-7 lot S8 : lire une adresse ne cherche pas, le retrait ne touche que les invitations envoyées, le registre suit le retrait', () => {
+  // search_from_url ne lance aucune recherche chez le prestataire : ni searchFromUrl, ni requête directe.
+  const url = read('search-url.ts');
+  assert.doesNotMatch(url, /searchFromUrl\(|unipileJson|unipileFetch|searchRecruiterPeople|searchClassicPeople|searchSalesNavigator/);
+  assert.match(url, /resolveSearchUrl\(/);
+  // list_recruiter_projects : licence Recruiter jugée avant la liste.
+  const projects = read('recruiter-projects.ts');
+  const projectsLicence = projects.indexOf('licenceProblem(accountId, recruiterProjectsProblem)');
+  assert.ok(projectsLicence > 0 && projectsLicence < projects.indexOf('await listRecruiterProjects('));
+  // Les projets clos sont demandés aussi : sans `status`, le prestataire ne rend que les projets actifs.
+  assert.match(projects, /status: \[\.\.\.PROJECT_STATUSES\]/);
+  assert.match(projects, /PROJECT_STATUSES = \['ACTIVE', 'CLOSED'\]/);
+  // withdraw_invitation : l'invitation est retrouvée parmi les ENVOYÉES avant l'annulation, qui précède le registre
+  // et la mise à jour des inscriptions ; la route d'annulation refuserait sinon une demande reçue.
+  const inv = read('invitations.ts');
+  const body = inv.slice(inv.indexOf('export async function handleWithdrawInvitation('));
+  const lookup = body.indexOf('await findSentInvitation(');
+  const cancel = body.indexOf('await withdrawRelationRequest(');
+  const ledger = body.indexOf('await logWithdrawal(');
+  const sync = body.indexOf('await syncWithdrawnEnrollments(');
+  assert.ok(lookup > 0 && cancel > lookup && ledger > cancel && sync > ledger, 'ordre : recherche, annulation, registre, inscriptions');
+  assert.doesNotMatch(inv, /cancelRelationRequest\(|acceptRelationRequest\(/, 'seul le retrait d\'une invitation envoyée');
+  assert.match(inv, /listSentRelationRequests\(/);
+  // Les écritures d'inscriptions restent dans l'organisation de l'appelant.
+  assert.match(inv, /\.eq\('organization_id', organizationId\)/);
+  assert.match(inv, /\.eq\('organization_id', args\.organizationId\)/);
+  // Le retrait ne passe par aucun plafond : le registre ne lui donne qu'un type qu'aucun plafond ne lit.
+  assert.match(inv, /WITHDRAW_LEDGER_TYPE = 'invitation_withdraw'/);
 });

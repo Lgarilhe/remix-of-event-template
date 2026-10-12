@@ -55,9 +55,9 @@ export function licencesFromContracts(contracts: ReadonlyArray<{ product?: unkno
  * Licences d'un compte. Un compte sans contrat (ou dont la liste est refusée comme
  * introuvable, interdite ou invalide) est Classic ; toute autre erreur remonte.
  */
-export async function resolveLicences(accountId: string, now: () => number = Date.now): Promise<Licences> {
+export async function resolveLicences(accountId: string, now: () => number = Date.now, refresh = false): Promise<Licences> {
   const hit = licenceCache.get(accountId);
-  if (hit && now() - hit.at < LICENCE_TTL_MS) return hit.value;
+  if (!refresh && hit && now() - hit.at < LICENCE_TTL_MS) return hit.value;
   let value: Licences;
   try {
     value = licencesFromContracts(await listContracts(accountId));
@@ -68,6 +68,28 @@ export async function resolveLicences(accountId: string, now: () => number = Dat
   if (licenceCache.size >= CACHE_MAX) licenceCache.clear();
   licenceCache.set(accountId, { at: now(), value });
   return value;
+}
+
+/**
+ * Refus de licence (`problemOf` rend un texte français ou `null`) jugé sur les licences du compte. Un refus fondé
+ * sur une lecture gardée en cache est revérifié une fois auprès du prestataire : après un changement de contrat
+ * (action `select_contract` d'une autre fonction, cache d'un autre isolat), la licence lue il y a moins de
+ * 2 minutes peut être périmée. Une revérification impossible garde le premier refus.
+ */
+export async function licenceProblem(
+  accountId: string,
+  problemOf: (licences: Licences) => string | null,
+  now: () => number = Date.now,
+): Promise<string | null> {
+  const hit = licenceCache.get(accountId);
+  const served = hit !== undefined && now() - hit.at < LICENCE_TTL_MS;
+  const problem = problemOf(await resolveLicences(accountId, now));
+  if (problem === null || !served) return problem;
+  try {
+    return problemOf(await resolveLicences(accountId, now, true));
+  } catch {
+    return problem;
+  }
 }
 
 /**

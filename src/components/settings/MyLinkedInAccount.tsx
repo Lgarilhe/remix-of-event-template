@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useId } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useId } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
@@ -30,6 +30,9 @@ import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
 import { offerLabelOf, sinceDate, viewOfHealth } from '@/components/connections/connectionView';
 import { cn } from '@/lib/utils';
 import { LinkedInSafetySettings, TimeZoneName } from './LinkedInSafetySettings';
+
+// Invitations en attente et choix du contrat : chargés à la demande, seulement pour un compte utilisable.
+const LinkedInExtras = lazy(() => import('@/components/connections/LinkedInExtras'));
 
 /**
  * MyLinkedInAccount : Paramètres, Connexions, « Mon compte LinkedIn ».
@@ -301,6 +304,17 @@ export const MyLinkedInAccount = () => {
         )}
       </CardContent>
     </Card>
+
+    {/* Invitations en attente et contrat LinkedIn (section chargée à la demande) */}
+    {myMapping && myAccount && li.isUsable && (
+      <Suspense fallback={null}>
+        <LinkedInExtras
+          accountId={myMapping.linkedin_account_id}
+          subscriptions={myAccount.subscriptions}
+          onContractChanged={() => { void reloadAccounts(); }}
+        />
+      </Suspense>
+    )}
 
     {/* Plafonds du jour : compteurs serveur du compte rattaché */}
     {myMapping && <LinkedInQuotaCard accountId={myMapping.linkedin_account_id} />}

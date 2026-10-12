@@ -512,9 +512,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   useEffect(() => {
     if (!staticAvatar && attendeeId && !getPicture(attendeeId)) {
-      fetchPicture(attendeeId);
+      fetchPicture(attendeeId, { chatId: selectedChat?.id, accountId: selectedChat?.account_id });
     }
-  }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
+  }, [attendeeId, selectedChat?.id, selectedChat?.account_id, staticAvatar, fetchPicture, getPicture]);
 
   // ─── Calculs avant le retour anticipé (même ordre des hooks à chaque rendu)
   const jobInfo = selectedChat ? getChatJobInfo(selectedChat, enrollmentsMap) : null;

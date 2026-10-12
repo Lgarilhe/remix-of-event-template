@@ -7,9 +7,11 @@
  * frontière entre elles est le rattachement du compte à l'organisation de
  * l'appelant, contrôlé ici avant tout appel (`assertAccountOwnedByOrg`).
  *
- * Actions : search, get_parameters, get_profile, get_chats, get_messages,
- * sync_chat_history, send_message, mark_as_read, get_user_posts, endorse_skill.
- * Les gestionnaires vivent dans search.ts, profile.ts, chats.ts et send.ts.
+ * Actions : search, get_parameters, search_from_url, list_recruiter_projects, get_profile, get_chats,
+ * get_messages, sync_chat_history, send_message, mark_as_read, get_user_posts, endorse_skill,
+ * list_sent_invitations, withdraw_invitation.
+ * Les gestionnaires vivent dans search.ts, search-url.ts, recruiter-projects.ts, profile.ts, chats.ts,
+ * send.ts et invitations.ts.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
@@ -25,9 +27,13 @@ import {
   userSafeMessage,
   type AccountOwnership,
 } from '../_shared/unipile/index.ts';
+import { ownerOnlyRefusal } from './account-rules.ts';
 import { handleGetChats, handleGetMessages, handleMarkAsRead, handleSyncChatHistory } from './chats.ts';
+import { handleListSentInvitations, handleWithdrawInvitation } from './invitations.ts';
 import { handleEndorseSkill, handleGetProfile, handleGetUserPosts } from './profile.ts';
+import { handleListRecruiterProjects } from './recruiter-projects.ts';
 import { corsHeaders, failureResponse, INTERNAL_ERROR_MESSAGE, json, UnipileInputError } from './responses.ts';
+import { handleSearchFromUrl } from './search-url.ts';
 import { handleGetParameters, prepareSearch, runSearch, type PreparedSearch, type SearchFailureRow } from './search.ts';
 import { handleSendMessage, planSend, type SendContext, type SendPlan } from './send.ts';
 
@@ -132,17 +138,10 @@ Deno.serve(async (req) => {
         error: "Ce compte LinkedIn n'est pas rattaché à votre organisation. Associez-le depuis Paramètres > Connecteurs.",
       }, 403);
     }
-    // Règle de sécurité (SEC-006) et non conséquence de l'API v2 : un membre n'envoie que depuis le compte qu'il a
-    // relié, jamais depuis celui d'un collègue. Avec la clé unique du prestataire, l'ancien envoi « depuis le
-    // compte du propriétaire du fil » était un défaut documenté. Règle à confirmer par le propriétaire du produit
-    // (les propriétaires et administrateurs voient encore les comptes de l'équipe dans l'interface).
-    if (action === 'send_message' && !isInternal && ownership.userId !== userId) {
-      return json({
-        success: false,
-        errorType: 'ACCOUNT_NOT_YOURS',
-        error: "Ce compte LinkedIn est relié par un autre membre de l'organisation. Envoyez depuis votre propre compte.",
-      }, 403);
-    }
+    // Règle de sécurité (SEC-006) et non conséquence de l'API v2 : un membre n'envoie et ne retire une invitation
+    // que depuis le compte qu'il a relié, jamais depuis celui d'un collègue (voir account-rules.ts).
+    const refusal = ownerOnlyRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId });
+    if (refusal) return json(refusal.body, refusal.status);
 
     // The cron worker has already reserved the automatic quota. Fence again
     // immediately before the actual provider call.
@@ -244,6 +243,18 @@ Deno.serve(async (req) => {
 
       case 'get_parameters':
         return await handleGetParameters(accountIdRaw, params);
+
+      case 'search_from_url':
+        return await handleSearchFromUrl(accountIdRaw, params);
+
+      case 'list_recruiter_projects':
+        return await handleListRecruiterProjects(accountIdRaw, params);
+
+      case 'list_sent_invitations':
+        return await handleListSentInvitations(accountIdRaw, params);
+
+      case 'withdraw_invitation':
+        return await handleWithdrawInvitation(accountIdRaw, params, { organizationId: String(organization_id), userId, admin: () => admin });
 
       case 'get_profile':
         return await handleGetProfile(accountIdRaw, params, continuousGuard);

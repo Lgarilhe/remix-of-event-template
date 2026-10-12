@@ -19,7 +19,8 @@ import {
   unipileJson,
   type SearchParametersRequest,
 } from '../_shared/unipile/index.ts';
-import { resolveLicences, searchLicenceProblem, type Licence, type Licences } from './licence.ts';
+import { licenceProblem, resolveLicences, searchLicenceProblem, type Licence, type Licences } from './licence.ts';
+import { applyProjectTitle } from './recruiter-projects.ts';
 import { compileSearchRequest, type CompiledSearchRequest } from './search-request.ts';
 import { failureResponse, json, UnipileInputError } from './responses.ts';
 
@@ -90,7 +91,7 @@ export async function prepareSearch(
   if (!deps.beforeProvider && api !== 'classic') {
     let problem: string | null = null;
     try {
-      problem = searchLicenceProblem(api, await resolveLicences(accountId));
+      problem = await licenceProblem(accountId, (licences) => searchLicenceProblem(api, licences));
     } catch (error) {
       if (error instanceof UnipileError && ['account_disconnected', 'account_degraded', 'auth', 'config'].includes(error.kind)) {
         return { response: failureResponse(error, 'search') };
@@ -105,6 +106,8 @@ export async function prepareSearch(
 /** Envoie la recherche préparée et met les résultats dans la forme lue par Konekt. */
 export async function runSearch(accountId: string, prepared: PreparedSearch, deps: SearchDeps = {}): Promise<Response> {
   const { api, compiled, dropped } = prepared;
+  // Sous la barrière de l'agent continu, aucune lecture de plus : le nom du projet n'est pas cherché.
+  if (api === 'recruiter' && !deps.beforeProvider) await applyProjectTitle(accountId, compiled.body);
   console.log('Search body:', JSON.stringify(compiled.body), 'query:', JSON.stringify(compiled.query));
   try {
     if (deps.beforeProvider) await deps.beforeProvider();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
@@ -9,6 +9,9 @@ import { BaseKonektDialog } from './BaseKonektDialog';
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { SearchPromptBar } from './SearchPromptBar';
+import { PasteSearchUrl } from './PasteSearchUrl';
+import { RecruiterProjectPicker } from './RecruiterProjectPicker';
+import { shouldClearHiringProject } from './recruiterProjectOptions';
 import { FilterFacets } from './FilterFacets';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
@@ -148,6 +151,17 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       onSearchSourceChange?.('linkedin');
     }
   }, [baseKonektLoading, baseKonektUsable, searchSource, onSearchSourceChange]);
+
+  // Le projet Recruiter choisi est retiré quand il ne peut plus s'appliquer (autre source, autre compte). Ce panneau
+  // reste monté, contrairement au sélecteur : le choix n'est jamais gardé caché puis renvoyé à la recherche.
+  const previousAccountRef = useRef(selectedAccount);
+  useEffect(() => {
+    const previousAccount = previousAccountRef.current;
+    previousAccountRef.current = selectedAccount;
+    if (shouldClearHiringProject({ projectId: filters.hiring_project, api: filters.api, previousAccount, account: selectedAccount })) {
+      setFilters(prev => (prev.hiring_project ? { ...prev, hiring_project: '' } : prev));
+    }
+  }, [selectedAccount, filters.api, filters.hiring_project, setFilters]);
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount);
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
@@ -394,6 +408,25 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           onSuggestionsGenerated={onSuggestionsGenerated}
           onMemoryContextGenerated={onMemoryContextGenerated}
         />
+      )}
+
+      {/* Lien de recherche LinkedIn collé et projet Recruiter : source LinkedIn seulement. */}
+      {searchSource !== 'database' && filters.api !== 'database' && (
+        <div className="space-y-2">
+          <PasteSearchUrl
+            accountId={selectedAccount}
+            api={filters.api}
+            subscriptions={subscriptions}
+            onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+          />
+          {filters.api === 'recruiter' && subscriptions?.recruiter && (
+            <RecruiterProjectPicker
+              accountId={selectedAccount}
+              value={filters.hiring_project}
+              onChange={(projectId) => setFilters(prev => ({ ...prev, hiring_project: projectId }))}
+            />
+          )}
+        </div>
       )}
 
       {/* Facettes — la recherche entière lisible et éditable d'un coup d'œil.

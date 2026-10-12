@@ -14,13 +14,17 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ErrorBox } from '@/components/layout/ErrorBox';
+import { WebhookDeliveryLog } from '@/components/outreach/WebhookDeliveryLog';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 import { Bell, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface WebhookInfo {
+  /** Identifiant de ligne (`we_...:famille`) ; `delete` l'accepte et supprime le point de réception entier. */
   id: string;
+  /** Identifiant du point de réception, partagé par toutes les lignes qu'il couvre. */
+  endpoint_id?: string;
   request_url: string;
   source: string;
   account_ids?: string[];
@@ -31,8 +35,15 @@ interface WebhookListResponse {
   webhooks?: WebhookInfo[] | { items?: WebhookInfo[] };
 }
 
+/**
+ * Réponse de `register` : un seul point de réception pour toutes les familles, créé ou
+ * mis à jour sur place. Les doublons de la même adresse sont supprimés après coup.
+ */
 interface WebhookRegisterResponse {
-  results?: Array<{ source: string; success: boolean }>;
+  action?: 'created' | 'updated';
+  id?: string;
+  deleted_duplicates?: number;
+  duplicates_not_deleted?: number;
 }
 
 /**
@@ -59,6 +70,11 @@ const SOURCES: Record<string, { label: string; description: string; subject: str
 };
 const REQUIRED_SOURCES = ['messaging', 'users', 'accounts'];
 const sourceLabel = (source: string) => SOURCES[source]?.label ?? 'Autre notification';
+/** Une suppression retire le point de réception entier : toutes les lignes qui le partagent disparaissent avec elle. */
+const endpointOf = (webhook: Pick<WebhookInfo, 'id' | 'endpoint_id'>) => webhook.endpoint_id ?? webhook.id;
+/** « des réponses des candidats, des invitations acceptées et des changements d’état des comptes LinkedIn » */
+const joinSubjects = (subjects: string[]) =>
+  subjects.length <= 1 ? subjects.join('') : `${subjects.slice(0, -1).join(', ')} et ${subjects[subjects.length - 1]}`;
 
 export function WebhookManager() {
   const [webhooks, setWebhooks] = useState<WebhookInfo[]>([]);
@@ -66,7 +82,7 @@ export function WebhookManager() {
   // Lecture ratée : sans cet état, la liste vide annonçait trois notifications manquantes.
   const [loadError, setLoadError] = useState(false);
   const [registering, setRegistering] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingEndpoint, setDeletingEndpoint] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WebhookInfo | null>(null);
 
   const fetchWebhooks = async () => {
@@ -108,13 +124,13 @@ export function WebhookManager() {
       });
 
       if (response.error) throw response.error;
-      if (!response.data?.success) {
-        const failedSources = response.data?.results?.filter((r) => !r.success) || [];
-        if (failedSources.length > 0) {
-          toast.warning(`Certaines notifications n’ont pas pu être activées : ${failedSources.map((r) => sourceLabel(r.source).toLowerCase()).join(', ')}.`);
-        } else {
-          throw new Error(response.data?.error);
-        }
+      if (!response.data?.success) throw new Error(response.data?.error);
+
+      const notDeleted = response.data.duplicates_not_deleted ?? 0;
+      if (notDeleted > 0) {
+        toast.warning(
+          `Les notifications sont actives, mais ${plural(notDeleted, 'doublon n’a pas pu être supprimé', 'doublons n’ont pas pu être supprimés')}. Relancez l’activation pour réessayer.`,
+        );
       } else {
         toast.success('Notifications en temps réel activées');
       }
@@ -122,14 +138,17 @@ export function WebhookManager() {
       await fetchWebhooks();
     } catch (error) {
       console.error('Error registering webhooks:', error);
-      toast.error('Les notifications n’ont pas pu être activées. Réessayez.');
+      // Le serveur écrit une phrase française neutre (configuration incomplète, liste trop longue) : on la montre seule.
+      const detail = error instanceof Error && error.message.trim() && error.message !== 'undefined' ? error.message.trim() : null;
+      toast.error(detail ?? 'Les notifications n’ont pas pu être activées. Réessayez.');
     } finally {
       setRegistering(false);
     }
   };
 
   const handleDelete = async (webhookId: string) => {
-    setDeletingId(webhookId);
+    const row = webhooks.find((w) => w.id === webhookId);
+    setDeletingEndpoint(row ? endpointOf(row) : webhookId);
     try {
       const response = await invokeEdgeFunction('unipile-manage-webhooks', {
         action: 'delete', webhook_id: webhookId,
@@ -138,15 +157,23 @@ export function WebhookManager() {
       if (response.error) throw response.error;
       if (!response.data?.success) throw new Error(response.data?.error);
 
-      toast.success('Notification supprimée');
+      toast.success('Notifications en temps réel supprimées');
       await fetchWebhooks();
     } catch (error) {
       console.error('Error deleting webhook:', error);
-      toast.error('La notification n’a pas pu être supprimée. Réessayez.');
+      toast.error('Les notifications n’ont pas pu être supprimées. Réessayez.');
     } finally {
-      setDeletingId(null);
+      setDeletingEndpoint(null);
     }
   };
+
+  /** Ce que la suppression arrête : les familles de toutes les lignes du même point de réception. */
+  const deleteSubjects = (target: WebhookInfo) =>
+    joinSubjects(
+      webhooks
+        .filter((w) => endpointOf(w) === endpointOf(target))
+        .map((w) => SOURCES[w.source]?.subject ?? 'de ces événements'),
+    );
 
   const registeredSources = webhooks.map(w => w.source);
   const missingSources = REQUIRED_SOURCES.filter(s => !registeredSources.includes(s));
@@ -229,15 +256,15 @@ export function WebhookManager() {
                         variant="ghost"
                         size="icon-xs"
                         onClick={() => setDeleteTarget(webhook)}
-                        disabled={deletingId === webhook.id}
-                        loading={deletingId === webhook.id}
+                        disabled={deletingEndpoint === endpointOf(webhook)}
+                        loading={deletingEndpoint === endpointOf(webhook)}
                         className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
-                        aria-label={`Supprimer la notification « ${sourceLabel(webhook.source)} »`}
+                        aria-label={`Supprimer toutes les notifications en temps réel, depuis la ligne « ${sourceLabel(webhook.source)} »`}
                       >
-                        {deletingId !== webhook.id && <Trash2 aria-hidden="true" />}
+                        {deletingEndpoint !== endpointOf(webhook) && <Trash2 aria-hidden="true" />}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Supprimer</TooltipContent>
+                    <TooltipContent>Supprimer toutes les notifications</TooltipContent>
                   </Tooltip>
                 </li>
               ))}
@@ -265,15 +292,17 @@ export function WebhookManager() {
         </>
       )}
 
+      {/* Visible seulement quand le serveur confirme le droit de lecture (administrateurs de la plateforme). */}
+      <WebhookDeliveryLog />
+
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Supprimer la notification « {deleteTarget ? sourceLabel(deleteTarget.source) : ''} » ?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Supprimer les notifications en temps réel ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Konekt ne sera plus prévenu en temps réel {deleteTarget ? SOURCES[deleteTarget.source]?.subject ?? 'de ces événements' : ''}.
-              {' '}Vous pourrez la rétablir avec « Activer les notifications en temps réel ».
+              Les notifications ne se suppriment pas une par une : toutes s’arrêtent ensemble.
+              {' '}Konekt ne sera plus prévenu en temps réel {deleteTarget ? deleteSubjects(deleteTarget) : ''}.
+              {' '}Vous pourrez les rétablir avec « Activer les notifications en temps réel ».
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

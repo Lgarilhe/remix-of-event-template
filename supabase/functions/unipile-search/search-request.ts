@@ -355,6 +355,26 @@ export function adaptSearchRequest(params: Rec, api: SearchApi): AdaptedSearch {
   return { api, filters: f, spotlights, ignored };
 }
 
+/** Identifiant d'un projet Recruiter : chiffres seulement (`^[0-9]+$` chez le prestataire). */
+const RECRUITER_PROJECT_ID_RE = /^\d{1,20}$/;
+
+/**
+ * `recruiter_project_id` (choisi dans le sélecteur de projets Recruiter) limite la recherche aux personnes
+ * déjà dans ce projet : c'est le filtre `project` de la recherche de personnes Recruiter, que la requête à
+ * plat nomme `hiring_project`. Un `hiring_project` donné explicitement l'emporte. Hors Recruiter, le filtre
+ * est rendu dans `filters_dropped` comme tout filtre que la licence n'applique pas. Identifiant invalide :
+ * refus avant tout appel.
+ */
+function withRecruiterProject(params: Rec): Rec {
+  const raw = params.recruiter_project_id;
+  if (raw === undefined || raw === null || raw === '') return params;
+  const id = typeof raw === 'number' ? String(raw) : raw;
+  if (typeof id !== 'string' || !RECRUITER_PROJECT_ID_RE.test(id.trim())) {
+    throw new UnipileInputError('Ce projet Recruiter n’est pas valide. Choisissez-le de nouveau dans la liste.', 400, 'RECRUITER_PROJECT_INVALID');
+  }
+  return text(params.hiring_project) ? params : { ...params, hiring_project: id.trim() };
+}
+
 export interface CompiledSearchRequest {
   api: SearchApi;
   compiled: CompiledSearch;
@@ -375,7 +395,7 @@ export function compileSearchRequest(params: Rec): CompiledSearchRequest {
   if ((params.category ?? 'people') !== 'people') {
     throw new UnipileInputError('Seules les recherches de personnes sont prises en charge.', 400, 'UNSUPPORTED_SEARCH_CATEGORY');
   }
-  const adapted = adaptSearchRequest(params, api as SearchApi);
+  const adapted = adaptSearchRequest(withRecruiterProject(params), api as SearchApi);
   let compiled: CompiledSearch;
   try {
     compiled = toKonektFilters(adapted.filters, {

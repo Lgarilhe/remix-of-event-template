@@ -417,18 +417,22 @@ test('v2 seulement — les événements non vus sont journalisés et acquittés,
   }
 });
 
-test('v2 seulement — gestion des webhooks : lister, enregistrer (idempotent, PATCH), supprimer ; journal et rejeu réservés', () => {
+test('v2 seulement — gestion des webhooks : lister, enregistrer (idempotent, PATCH), supprimer, journal et rejeu', () => {
   const index = read('supabase/functions/unipile-manage-webhooks/index.ts');
-  assert.match(index, /const RESERVED_ACTIONS = new Set\(\['list_deliveries', 'replay_event'\]\);/);
-  assert.match(index, /error_code: 'not_implemented' \}, 501\)/);
-  assert.doesNotMatch(index, /listDeliveries|replayEvent/, 'réservés, pas implémentés ici');
+  // L'aiguillage et la porte des administrateurs de la plateforme sont dans handlers.ts (jouables en test).
+  assert.match(index, /return await runAction\(action, body as Record<string, unknown>, userId\);/);
+  assert.doesNotMatch(index, /RESERVED_ACTIONS|not_implemented/, 'journal et rejeu ne sont plus réservés');
   const handlers = read('supabase/functions/unipile-manage-webhooks/handlers.ts');
   assert.match(handlers, /await patchEndpoint\(plan\.keepId,/);
   assert.match(handlers, /planEndpointSync\(listed\.items, receiverUrl, V2_TRIGGER_EVENTS\)/);
   assert.match(handlers, /listAllEndpoints\(\)/, 'toutes les pages');
   // Les mutations restent réservées aux administrateurs de la plateforme et aux owner/admin.
-  assert.match(index, /if \(action === 'register' \|\| action === 'delete'\) \{\s*const denied = platformAdminDenied\(userId\);/);
+  assert.match(handlers, /if \(action === 'register' \|\| action === 'delete'\) \{\s*const denied = platformAdminDenied\(userId\);/);
   assert.match(index, /callerRole !== 'owner' && callerRole !== 'admin'/);
+  // Journal et rejeu : strictement réservés aux administrateurs de la plateforme (échec fermé sans le secret).
+  assert.match(handlers, /action === 'list_deliveries' \|\| action === 'replay_event'\) \{\s*const denied = strictPlatformAdminDenied\(userId\);/);
+  assert.match(handlers, /await listDeliveries\(/);
+  assert.match(handlers, /await replayEvent\(eventId, endpointId\)/);
 });
 
 test('v2 seulement — le récepteur du suivi des e-mails s\'authentifie par le jeton et ne traite que tracking.*', () => {

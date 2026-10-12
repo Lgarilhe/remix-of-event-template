@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, GitBranch, RefreshCw } from 'lucide-react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { useMessagesInbox, type InboxSequenceOption } from '@/hooks/useMessagesInbox';
-import { useMessageActions } from '@/hooks/useMessageActions';
+import { useMessageActions, type MessageChatRef } from '@/hooks/useMessageActions';
 import { useEdgeFunctionWarmup } from '@/hooks/useEdgeFunctionWarmup';
 import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
 import { useChatDrafts } from '@/hooks/useChatDraft';
@@ -199,7 +199,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
   };
 
   const handleDeleteChat = async (chatId: string) => {
-    const success = await deleteChat(chatId);
+    const chatAccountId = inbox.chats.find(c => c.id === chatId)?.account_id ?? selectedAccount;
+    const success = await deleteChat(chatId, chatAccountId);
     if (success) {
       inbox.removeChatFromList(chatId);
       if (inbox.selectedChat?.id === chatId) {
@@ -210,8 +211,20 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
     return success;
   };
 
+  // Le service LinkedIn ne retrouve un message que par sa conversation et son compte.
+  // Un fil fusionné porte des messages de plusieurs conversations : celle du message
+  // (chat_id rendu par le serveur) passe avant la conversation ouverte.
+  const messageChatRef = (messageId: string): MessageChatRef | null => {
+    const chat = inbox.selectedChat;
+    if (!chat) return null;
+    const message = inbox.messages.find(m => m.id === messageId) as ({ chat_id?: string | null } | undefined);
+    return { chatId: message?.chat_id || chat.id, accountId: chat.account_id ?? selectedAccount };
+  };
+
   const handleDeleteMessage = async (messageId: string) => {
-    const success = await deleteMessage(messageId);
+    const ref = messageChatRef(messageId);
+    if (!ref) return false;
+    const success = await deleteMessage(messageId, ref);
     if (success) inbox.fetchChats(false);
     return success;
   };
@@ -219,7 +232,9 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
   // Réaction : les messages sont relus après succès, la fonction d'envoi ne
   // mettant pas à jour l'état local.
   const handleAddReaction = async (messageId: string, reaction: string): Promise<boolean> => {
-    const success = await addReaction(messageId, reaction);
+    const ref = messageChatRef(messageId);
+    if (!ref) return false;
+    const success = await addReaction(messageId, reaction, ref);
     if (success && inbox.selectedChat?.id) {
       inbox.fetchMessages(inbox.selectedChat.id);
     }
@@ -467,12 +482,11 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
 const PreloadAttendeePictures: React.FC<{ chats: import('@/hooks/useMessagesInbox').Chat[] }> = ({ chats }) => {
   const { preloadPictures } = useAttendeePicturesContext();
   useEffect(() => {
-    const ids = chats
+    const requests = chats
       .filter((c) => !getChatAvatar(c) && c.attendees?.[0]?.id)
-      .map((c) => c.attendees?.[0]?.id)
-      .filter((id): id is string => !!id)
+      .map((c) => ({ attendeeId: c.attendees![0].id as string, chatId: c.id, accountId: c.account_id }))
       .slice(0, 20);
-    if (ids.length > 0) preloadPictures(ids);
+    if (requests.length > 0) preloadPictures(requests);
   }, [chats, preloadPictures]);
   return null;
 };

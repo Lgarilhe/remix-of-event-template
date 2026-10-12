@@ -40,6 +40,7 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
 // Retour d'une connexion de compte (adresse de retour posée par le serveur, voir unipile-accounts connection_start).
 const ConnectReturn = lazy(() => import("./pages/ConnectReturn"));
+const AdminBascule = lazy(() => import("./pages/AdminBascule"));
 // Mission (/missions/:id et ses écrans) : ancienne ou nouvelle page selon l'interrupteur (src/pages/MissionEntry.tsx).
 const MissionEntry = lazy(() => import("./pages/MissionEntry"));
 const Inbox = lazy(() => import("./pages/Inbox"));
@@ -207,6 +208,8 @@ const AppContent = () => {
           <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           {/* Retour de connexion : avant /settings/*, dans la coquille de l'application mais hors de la navigation des Paramètres. Ne lit que ?state=. */}
           <Route path="/settings/account/connections/retour" element={<ProtectedRoute><OrganizationGuard><AppLayout><ConnectReturn /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          {/* Page cachée de l'administration de la plateforme (bascule de la connexion) : aucune entrée de navigation, le serveur rend 403 à qui n'est pas administrateur. */}
+          <Route path="/settings/admin/bascule" element={<ProtectedRoute><OrganizationGuard><AppLayout><AdminBascule /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings/*" element={<LegacySettingsRedirect><ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute></LegacySettingsRedirect>} />
           {/* Tarifs : page publique (sans session ni organisation), la page gère elle-même l'état connecté */}
           <Route path="/pricing" element={<Pricing />} />

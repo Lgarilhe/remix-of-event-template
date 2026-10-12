@@ -170,9 +170,9 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
 
   useEffect(() => {
     if (!staticAvatar && attendeeId && !getPicture(attendeeId)) {
-      fetchPicture(attendeeId);
+      fetchPicture(attendeeId, { chatId: chat.id, accountId: chat.account_id });
     }
-  }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
+  }, [attendeeId, chat.id, chat.account_id, staticAvatar, fetchPicture, getPicture]);
 
   const unreadLabel = unreadCount > 1 ? `${unreadCount} messages non lus` : '1 message non lu';
 
