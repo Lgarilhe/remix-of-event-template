@@ -211,7 +211,7 @@ jobs:
           count_errors() {
             local files
             files=$(for f in $ENTRY_POINTS; do [ -f "$f" ] && echo "$f"; done)
-            deno check --node-modules-dir=none --import-map="$MAP" $files > "$1" 2>&1
+            NO_COLOR=1 deno check --node-modules-dir=none --import-map="$MAP" $files > "$1" 2>&1
             local rc=$? n
             n=$(grep -c '\[ERROR\]' "$1")
             if [ "$rc" -ne 0 ] && [ "$n" -eq 0 ]; then echo -1; else echo "$n"; fi
@@ -238,7 +238,7 @@ jobs:
             exit 0
           fi
 
-          git -c advice.detachedHead=false checkout "$BASE_SHA"
+          git -c advice.detachedHead=false checkout "$BASE_SHA" || exit 1
           ERRS_BASE=$(count_errors "$RUNNER_TEMP/check-base.log")
           echo "deno check (base) : $ERRS_BASE erreurs de typage"
           if [ "$ERRS_BASE" -ge 0 ] && [ "$ERRS_PR" -gt "$ERRS_BASE" ]; then
