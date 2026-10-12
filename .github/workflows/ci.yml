@@ -52,6 +52,11 @@ jobs:
       # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
       - name: Lot 0b regression tests (écrivains)
         run: node --test tests/c1/lot0b-ecrivains.test.mjs
+      # Refonte mission, lot 5f-1 : un seul écrivain navigateur des
+      # inscriptions en séquence (enrollCandidates), joué contre un faux client
+      # pour l'écriture groupée et l'écriture candidat par candidat.
+      - name: Lot 5f-1 regression tests (inscription)
+        run: node --test tests/c1/lot5f-inscription.test.mjs
       # Agenda Outlook (lot I3), demande A : table member_calendar_accounts,
       # colonnes d'agenda des séances, effacement, purge et export RGPD.
       - name: Agenda Outlook, base de données et RGPD

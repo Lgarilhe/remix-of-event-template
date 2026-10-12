@@ -66,6 +66,8 @@ function slice(source, start, marker) {
 const previewHook = read('src/hooks/useEnrollmentPreview.ts');
 const previewModal = read('src/components/outreach/EnrollmentPreviewModal.tsx');
 const enrollModal = read('src/components/outreach/SequenceEnrollModal.tsx');
+// Lot 5f-1 : l'écriture des inscriptions est dans la bibliothèque, pas dans les fenêtres.
+const enrollLib = read('src/lib/enrollCandidates.ts');
 const bulkInMail = read('src/components/outreach/BulkInMailModal.tsx');
 const accountsHook = read('src/hooks/useFilteredLinkedInAccounts.ts');
 
@@ -138,12 +140,17 @@ test('SEQ-032 — première étape A/B : tirage pondéré comme le moteur, jamai
 });
 
 test('SEQ-032 — les deux inscriptions tirent la première étape par candidat et l’enregistrent', () => {
+  // Un seul constructeur de première exécution, appelé pour chaque inscription créée par les deux écrivains.
+  assert.match(enrollLib, /const \{ step, variantAssigned \} = pickFirstStep\(ctx\.sequence\.steps\)/);
+  assert.match(enrollLib, /variant_assigned: variantAssigned/);
+  assert.match(enrollLib, /insertedRows\.flatMap\(enrollment => \{\s*const row = buildFirstExecution\(ctx, enrollment\.id, \{\}\);/, 'écriture groupée : un tirage par inscription');
+  assert.match(enrollLib, /buildFirstExecution\(ctx, enrollment\.id, stepConfigOverrides\)/, 'un candidat après l’autre : un tirage par inscription');
   for (const [name, source] of [['aperçu', previewModal], ['inscription simple', enrollModal]]) {
-    assert.match(source, /const \{ step: firstStep, variantAssigned \} = pickFirstStep\(sequence\.steps\)/, name);
-    assert.match(source, /variant_assigned: variantAssigned/, name);
+    assert.match(source, /await enrollCandidates\(\{/, name);
+    assert.doesNotMatch(source, /pickFirstStep\(sequence\.steps\)/, `${name} : le tirage n'est plus dans la fenêtre`);
   }
-  assert.doesNotMatch(previewModal, /sequence\.steps\.find\(\(s: any\) => \(s\.step_order \?\? s\.stepOrder\) === 0\)/);
-  assert.doesNotMatch(enrollModal, /const firstStep = sortedSteps\[0\]/);
+  assert.doesNotMatch(enrollLib, /sequence\.steps\.find\(\(s: any\) => \(s\.step_order \?\? s\.stepOrder\) === 0\)/);
+  assert.doesNotMatch(enrollLib, /const firstStep = sortedSteps\[0\]/);
 });
 
 // ---------------------------------------------------------------- SEQ-043
@@ -247,8 +254,11 @@ test('SEQ-046 / SEQ-066 — chaque inscription porte provider_id, email_used et 
   );
   assert.deepEqual(enrollmentRowFields({}), { provider_id: null, email_used: null, phone_used: null });
   assert.deepEqual(enrollmentRowFields({ contact_info: { emails: [''], phones: [] } }), { provider_id: null, email_used: null, phone_used: null });
+  // Un seul constructeur de ligne, pour les deux écrivains de la bibliothèque.
+  assert.match(enrollLib, /\.\.\.enrollmentRowFields\(profile\),/, 'la ligne d\'inscription doit poser les champs de contact');
+  assert.equal((enrollLib.match(/\.\.\.enrollmentRowFields\(/g) || []).length, 1);
   for (const [name, source] of [['aperçu', previewModal], ['inscription simple', enrollModal]]) {
-    assert.match(source, /\.\.\.enrollmentRowFields\(profile\),/, `${name} : la ligne d'inscription doit poser les champs de contact`);
+    assert.doesNotMatch(source, /enrollmentRowFields/, `${name} : la ligne n'est plus construite dans la fenêtre`);
   }
 });
 
@@ -268,7 +278,8 @@ test('SEQ-047 — pendant l’inscription, la préparation ne se ferme pas et mo
   assert.match(previewModal, /onClick=\{requestClose\} disabled=\{isBusy\}/);
   assert.doesNotMatch(slice(previewModal, 'function SummaryMode(', 'function SummaryRow('), /onClose|onEnroll|onShortlist/, 'le résumé n’a plus de bouton qui ferme ou inscrit hors de la garde');
   assert.match(previewModal, /`Inscription \$\{progress\.done\} sur \$\{progress\.total\}…`/);
-  assert.match(previewModal, /setEnrollProgress\(\{ done: index \+ 1, total: enrollSet\.length \}\)/);
+  assert.match(previewModal, /onProgress: \(done, total\) => setEnrollProgress\(\{ done, total \}\)/);
+  assert.match(enrollLib, /options\.onProgress\?\.\(index \+ 1, enrollSet\.length\)/);
   assert.match(previewModal, /Inscription en cours, ne fermez pas cette fenêtre\./);
   // Inscription simple : Échap, clic extérieur et croix ignorés pendant l'écriture.
   assert.match(enrollModal, /if \(!open && !isEnrolling\) handleClose\(\);/);

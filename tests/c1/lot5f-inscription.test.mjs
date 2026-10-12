@@ -1,0 +1,595 @@
+/**
+ * Refonte mission, lot 5f-1 : un seul chemin d'inscription côté navigateur.
+ *
+ * Deux blocs :
+ * - garde statique : `src/lib/enrollCandidates.ts` est le seul fichier de `src/`
+ *   qui écrit `sequence_enrollments` (insertion, upsert, suppression) et qui
+ *   insère `sequence_step_executions` ; aucun mot du pipeline n'y figure ; les
+ *   deux fenêtres l'appellent chacune dans son mode ;
+ * - comportement : la bibliothèque est transpilée en mémoire et jouée contre un
+ *   faux client, pour les deux écrivains (groupé, un candidat après l'autre).
+ *
+ * Lancer : node --test tests/c1/lot5f-inscription.test.mjs
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { build } from 'esbuild';
+
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
+
+const LIB = 'src/lib/enrollCandidates.ts';
+const SIMPLE = 'src/components/outreach/SequenceEnrollModal.tsx';
+const PREVIEW = 'src/components/outreach/EnrollmentPreviewModal.tsx';
+
+// ---------------------------------------------------------------- garde statique
+function sourceFiles(dir) {
+  const out = [];
+  for (const name of readdirSync(path.join(ROOT, dir))) {
+    const rel = `${dir}/${name}`;
+    if (statSync(path.join(ROOT, rel)).isDirectory()) out.push(...sourceFiles(rel));
+    else if (/\.(ts|tsx)$/.test(name) && rel !== 'src/integrations/supabase/types.ts') out.push(rel);
+  }
+  return out;
+}
+
+/** Fichiers de src/ dont une requête sur `table` enchaîne tout de suite une écriture de la liste. */
+function writersOf(table, operations) {
+  const from = new RegExp(`\\.from\\(\\s*['"]${table}['"](?:\\s+as\\s+\\w+)?\\s*\\)`, 'g');
+  const write = new RegExp(`^\\s*\\.(${operations.join('|')})\\(`);
+  const files = [];
+  for (const rel of sourceFiles('src')) {
+    const source = read(rel);
+    for (const match of source.matchAll(from)) {
+      if (write.test(source.slice(match.index + match[0].length, match.index + match[0].length + 80))) {
+        files.push(rel);
+        break;
+      }
+    }
+  }
+  return files;
+}
+
+test('5F1-S1 un seul fichier de src/ crée ou retire des inscriptions', () => {
+  assert.deepEqual(writersOf('sequence_enrollments', ['insert', 'upsert', 'delete']), [LIB]);
+});
+
+test('5F1-S2 un seul fichier de src/ insère des exécutions d’étape', () => {
+  assert.deepEqual(writersOf('sequence_step_executions', ['insert', 'upsert']), [LIB]);
+  // La suppression d'une exécution n'a aucun écrivain navigateur.
+  assert.deepEqual(writersOf('sequence_step_executions', ['delete']), []);
+});
+
+test('5F1-S3 la bibliothèque n’écrit rien dans le pipeline', () => {
+  const lib = read(LIB);
+  for (const word of ['job_candidate_status', 'Contacté', 'messaged', 'setCandidateStage', 'candidateStage']) {
+    assert.ok(!lib.includes(word), `${LIB} ne doit pas contenir « ${word} »`);
+  }
+  assert.doesNotMatch(lib, /from ['"]sonner['"]/, 'la bibliothèque ne parle pas à l’écran');
+  assert.doesNotMatch(lib, /from ['"]react['"]/);
+  assert.doesNotMatch(lib, /@\/integrations\/supabase\/client/, 'le client est passé en paramètre');
+  // Import de type seulement : le hook lui-même alourdirait les chunks de la messagerie et du Pipeline.
+  assert.doesNotMatch(lib, /^import (?!type)[^;]*@\/hooks\/useEnrollmentPreview/m);
+});
+
+test('5F1-S4 les deux fenêtres appellent la bibliothèque, chacune dans son mode', () => {
+  const simple = read(SIMPLE);
+  const preview = read(PREVIEW);
+  for (const [name, source] of [['modale simple', simple], ['aperçu', preview]]) {
+    assert.doesNotMatch(source, /\.from\(\s*['"]sequence_enrollments['"]/, `${name} : plus d’accès direct aux inscriptions`);
+    assert.doesNotMatch(source, /\.from\(\s*['"]sequence_step_executions['"]/, `${name} : plus d’accès direct aux exécutions`);
+    assert.match(source, /import \{ enrollCandidates, type EnrollResults \} from '@\/lib\/enrollCandidates';/, name);
+    assert.doesNotMatch(source, /interface EnrollResults/, `${name} : le type n’est plus dupliqué`);
+  }
+  assert.match(simple, /mode: 'batch',\s*firstStepTiming: 'business_hours',/);
+  assert.match(preview, /mode: 'one_by_one',\s*firstStepTiming: 'raw',/);
+  assert.match(preview, /messageOverridesFor: getMessageOverrides,\s*stepConfigOverrides: getStepConfigOverrides,/);
+  // Les gardes qui dépendent de l'écran restent dans les fenêtres, avant l'écriture.
+  for (const source of [simple, preview]) {
+    const body = source.slice(source.indexOf('const handleEnroll = async () => {'), source.indexOf('await enrollCandidates({'));
+    assert.match(body, /if \(sendingAccount\.blockReason\)/);
+    assert.match(body, /if \(recipients\.blocked/);
+    assert.match(body, /setIsEnrolling\(true\);/);
+  }
+});
+
+test('5F1-S5 job_id sans « project: », provider_id, email_used et phone_used posés par un seul constructeur', () => {
+  const lib = read(LIB);
+  assert.equal((lib.match(/\.\.\.enrollmentRowFields\(/g) || []).length, 1);
+  assert.match(lib, /job\.id\.slice\('project:'\.length\)/);
+  assert.equal((lib.match(/\.from\('sequence_enrollments'\)\s*\.upsert\(/g) || []).length, 3, 'groupé, repli candidat par candidat, boucle un par un');
+});
+
+// ---------------------------------------------------------------- comportement
+async function loadLib() {
+  const resolveSrc = (spec) => {
+    const base = path.join(ROOT, 'src', spec.slice(2));
+    for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')]) {
+      if (existsSync(candidate)) return candidate;
+    }
+    throw new Error(`module introuvable : ${spec}`);
+  };
+  const result = await build({
+    stdin: { contents: read(LIB), resolveDir: path.join(ROOT, 'src/lib'), loader: 'ts' },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'neutral',
+    logLevel: 'silent',
+    plugins: [{
+      name: 'alias',
+      setup(b) {
+        b.onResolve({ filter: /^@\// }, (args) => ({ path: resolveSrc(args.path) }));
+      },
+    }],
+  });
+  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+}
+
+const lib = await loadLib();
+
+/**
+ * Faux client : enregistre chaque requête (table, opération, charge, filtres) et
+ * répond par `handle(call)`. Les lectures rendent `[]`, sauf la séquence (active).
+ */
+function fakeClient(handle = () => undefined, { user = { id: 'user-1' } } = {}) {
+  const calls = [];
+  const filters = (call) => ({
+    select: (cols) => { call.cols = cols; return call.chain; },
+  });
+  const from = (table) => {
+    const call = { table, op: 'select', payload: null, options: null, eq: [], in: [], single: false };
+    calls.push(call);
+    const chain = {
+      select: (cols) => { call.cols = cols; return chain; },
+      upsert: (payload, options) => { call.op = 'upsert'; call.payload = payload; call.options = options; return chain; },
+      insert: (payload) => { call.op = 'insert'; call.payload = payload; return chain; },
+      delete: () => { call.op = 'delete'; return chain; },
+      update: (payload) => { call.op = 'update'; call.payload = payload; return chain; },
+      eq: (c, v) => { call.eq.push([c, v]); return chain; },
+      in: (c, v) => { call.in.push([c, v]); return chain; },
+      or: () => chain, gte: () => chain, neq: () => chain, order: () => chain, limit: () => chain, is: () => chain,
+      maybeSingle: () => { call.single = true; return chain; },
+      then: (resolve, reject) => Promise.resolve(respond(call)).then(resolve, reject),
+    };
+    void filters;
+    return chain;
+  };
+  const respond = (call) => {
+    const scripted = handle(call);
+    if (scripted !== undefined) return scripted;
+    if (call.table === 'outreach_sequences') return { data: { is_active: true }, error: null };
+    if (call.op === 'upsert') {
+      const rows = Array.isArray(call.payload) ? call.payload : [call.payload];
+      const out = rows.map((r) => ({ id: `enr-${r.profile_id}`, profile_id: r.profile_id }));
+      return { data: call.single ? out[0] ?? null : out, error: null };
+    }
+    if (call.op === 'delete') {
+      const ids = call.in.find(([c]) => c === 'id')?.[1] ?? [call.eq.find(([c]) => c === 'id')?.[1]];
+      return { data: ids.map((id) => ({ id })), error: null };
+    }
+    if (call.op === 'insert') return { data: null, error: null };
+    return { data: [], error: null };
+  };
+  const supabase = {
+    auth: { getUser: async () => ({ data: { user } }) },
+    from,
+    rpc: async () => ({ data: [], error: null }),
+  };
+  return { supabase, calls };
+}
+
+const writes = (calls, table, op) => calls.filter((c) => c.table === table && c.op === op);
+
+const person = (n, extra = {}) => ({
+  id: `ACo${n}`,
+  provider_id: `ACw${n}`,
+  name: `Candidat ${n}`,
+  headline: `Poste ${n}`,
+  profile_url: `https://www.linkedin.com/in/candidat-${n}`,
+  network_distance: 2,
+  contact_info: { emails: [`  Candidat${n}@Exemple.FR `], phones: [] },
+  ...extra,
+});
+
+const STEP = { id: 'step-1', step_order: 0, action_type: 'connection_request', delay_days: 0, delay_hours: 0, delay_minutes: 0 };
+const MISSION = '11111111-1111-4111-8111-111111111111';
+
+function options(supabase, overrides = {}) {
+  const candidates = overrides.candidates ?? [person(1), person(2), person(3)];
+  return {
+    supabase,
+    organizationId: 'org-1',
+    accountId: 'acc-1',
+    sequence: { id: 'seq-1', steps: [STEP] },
+    job: { id: `project:${MISSION}`, title: 'Poste cible' },
+    allProfiles: candidates,
+    candidates,
+    recentEnrollments: new Map(),
+    allowDuplicates: false,
+    noCandidatesMessage: 'AUCUN CANDIDAT',
+    mode: 'batch',
+    firstStepTiming: 'raw',
+    ...overrides,
+  };
+}
+
+const silent = async (fn) => {
+  const { error, warn } = console;
+  console.error = () => {};
+  console.warn = () => {};
+  try { return await fn(); } finally { console.error = error; console.warn = warn; }
+};
+
+test('5F1-B1 groupé : une écriture des inscriptions, une des premières exécutions, rien ailleurs', async () => {
+  const { supabase, calls } = fakeClient();
+  const outcome = await lib.enrollCandidates(options(supabase));
+  assert.equal(outcome.status, 'done');
+  assert.equal(outcome.results.success, 3);
+  assert.deepEqual(outcome.enrolledIds, ['ACo1', 'ACo2', 'ACo3']);
+
+  const upserts = writes(calls, 'sequence_enrollments', 'upsert');
+  assert.equal(upserts.length, 1, 'une seule écriture groupée');
+  assert.deepEqual(upserts[0].options, { onConflict: 'sequence_id,profile_id', ignoreDuplicates: true });
+  assert.equal(upserts[0].cols, 'id, profile_id');
+  const rows = upserts[0].payload;
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].job_id, MISSION, 'sans le préfixe project:');
+  assert.equal(rows[0].job_title, 'Poste cible');
+  assert.equal(rows[0].created_by, 'user-1');
+  assert.equal(rows[0].account_id, 'acc-1');
+  assert.equal(rows[0].organization_id, 'org-1');
+  assert.equal(rows[0].status, 'active');
+  assert.equal(rows[0].current_step_order, 0);
+  assert.equal(rows[0].network_distance, 'SECOND_DEGREE');
+  assert.equal(rows[0].provider_id, 'ACw1');
+  assert.equal(rows[0].email_used, 'candidat1@exemple.fr');
+  assert.equal(rows[0].phone_used, null);
+  assert.ok(rows.every((r) => !('tracking_data' in r)), 'aucune retouche en écriture groupée');
+
+  const executions = writes(calls, 'sequence_step_executions', 'insert');
+  assert.equal(executions.length, 1);
+  assert.equal(executions[0].payload.length, 3, 'une première exécution par inscription');
+  assert.deepEqual(executions[0].payload.map((e) => e.enrollment_id), ['enr-ACo1', 'enr-ACo2', 'enr-ACo3']);
+  assert.ok(executions[0].payload.every((e) => e.step_id === 'step-1' && e.status === 'scheduled' && e.organization_id === 'org-1' && e.step_order === 0));
+  assert.equal(calls.filter((c) => c.op !== 'select').length, 2, 'aucune autre écriture');
+  assert.ok(calls.every((c) => c.table !== 'job_candidate_status'), 'rien dans le pipeline');
+});
+
+test('5F1-B2 groupé : un refus de la base reprend candidat par candidat, les autres sont inscrits', async () => {
+  const people = [person(1), person(2), person(3), person(4)];
+  const { supabase, calls } = fakeClient((call) => {
+    if (call.table !== 'sequence_enrollments' || call.op !== 'upsert') return undefined;
+    if (Array.isArray(call.payload)) return { data: null, error: { code: '23505', hint: 'ENROLLMENT_SAME_PERSON_IN_SEQUENCE' } };
+    if (call.payload.profile_id === 'ACo2') return { data: null, error: { code: '42501', hint: 'ENROLLMENT_GDPR_ERASED' } };
+    if (call.payload.profile_id === 'ACo3') return { data: null, error: { code: '23505', hint: 'ENROLLMENT_SAME_PERSON_IN_SEQUENCE' } };
+    if (call.payload.profile_id === 'ACo4') return { data: null, error: { code: '500', message: 'brut' } };
+    return undefined;
+  });
+  const outcome = await silent(() => lib.enrollCandidates(options(supabase, { candidates: people })));
+  assert.equal(outcome.status, 'done');
+  assert.equal(outcome.results.success, 1);
+  assert.deepEqual(outcome.results.gdprErased, ['Candidat 2']);
+  assert.deepEqual(outcome.results.samePerson, ['Candidat 3']);
+  assert.deepEqual(outcome.results.errors, ['Inscription impossible pour Candidat 4. Réessayez ou contactez le support.']);
+  assert.equal(outcome.results.skipped, 0, 'un refusé n’est pas compté « déjà dans la séquence »');
+  assert.equal(writes(calls, 'sequence_enrollments', 'upsert').length, 5, 'groupé, puis un par candidat');
+  assert.equal(writes(calls, 'sequence_step_executions', 'insert')[0].payload.length, 1);
+});
+
+test('5F1-B3 groupé : le compte d’un collègue arrête tout, une erreur du groupe sans refus aussi', async () => {
+  const other = fakeClient((call) => {
+    if (call.table !== 'sequence_enrollments' || call.op !== 'upsert') return undefined;
+    if (Array.isArray(call.payload)) return { data: null, error: { code: '23505', hint: 'ENROLLMENT_GDPR_ERASED' } };
+    return { data: null, error: { code: '42501', hint: 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' } };
+  });
+  const first = await silent(() => lib.enrollCandidates(options(other.supabase)));
+  assert.equal(first.status, 'failed');
+  assert.equal(first.error.hint, 'ENROLL_ACCOUNT_OF_OTHER_MEMBER');
+  assert.equal(writes(other.calls, 'sequence_enrollments', 'upsert').length, 2, 'arrêt au premier refus du compte');
+  assert.equal(writes(other.calls, 'sequence_step_executions', 'insert').length, 0);
+
+  const generic = fakeClient((call) => (call.op === 'upsert' ? { data: null, error: { code: '08006', message: 'réseau' } } : undefined));
+  const second = await silent(() => lib.enrollCandidates(options(generic.supabase)));
+  assert.equal(second.status, 'failed');
+  assert.equal(writes(generic.calls, 'sequence_enrollments', 'upsert').length, 1, 'pas de reprise sans refus typé');
+});
+
+test('5F1-B4 groupé : première exécution refusée, tout le lot est retiré et aucun succès n’est annoncé', async () => {
+  const { supabase, calls } = fakeClient((call) => (call.table === 'sequence_step_executions' ? { error: { code: '42501' } } : undefined));
+  const outcome = await silent(() => lib.enrollCandidates(options(supabase)));
+  assert.equal(outcome.status, 'done');
+  assert.equal(outcome.results.success, 0);
+  assert.deepEqual(outcome.schedulingFailure, { rolledBack: true });
+  assert.deepEqual(outcome.enrolledIds, []);
+  assert.equal(outcome.results.errors[0], "L'inscription a échoué : aucune étape n'a pu être planifiée. Aucun message ne partira. Réessayez.");
+  const removal = writes(calls, 'sequence_enrollments', 'delete');
+  assert.equal(removal.length, 1);
+  assert.deepEqual(removal[0].in, [['id', ['enr-ACo1', 'enr-ACo2', 'enr-ACo3']]]);
+
+  const partial = fakeClient((call) => {
+    if (call.table === 'sequence_step_executions') return { error: { code: '42501' } };
+    if (call.op === 'delete') return { data: [{ id: 'enr-ACo1' }], error: null };
+    return undefined;
+  });
+  const kept = await silent(() => lib.enrollCandidates(options(partial.supabase)));
+  assert.deepEqual(kept.schedulingFailure, { rolledBack: false });
+  assert.equal(kept.results.errors[0], "Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure.");
+});
+
+test('5F1-B5 sans première étape à planifier, l’inscription est retirée (groupé et un par un)', async () => {
+  const noStep = { sequence: { id: 'seq-1', steps: [] } };
+  const batch = fakeClient();
+  const b = await silent(() => lib.enrollCandidates(options(batch.supabase, noStep)));
+  assert.deepEqual(b.schedulingFailure, { rolledBack: true });
+  assert.equal(writes(batch.calls, 'sequence_step_executions', 'insert').length, 0, 'aucune ligne d’exécution à écrire');
+  assert.equal(writes(batch.calls, 'sequence_enrollments', 'delete').length, 1);
+
+  const single = fakeClient();
+  const s = await silent(() => lib.enrollCandidates(options(single.supabase, {
+    ...noStep, mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}),
+  })));
+  assert.equal(s.status, 'done');
+  assert.equal(s.results.success, 0);
+  assert.equal(s.results.errors.length, 3);
+  assert.equal(writes(single.calls, 'sequence_enrollments', 'delete').length, 3, 'chaque inscription créée est retirée');
+});
+
+test('5F1-B6 groupé : déjà inscrits, déjà passés et course comptés sans erreur', async () => {
+  const existing = (status) => ({
+    profile_id: 'ACo1', provider_id: 'ACw1', resolved_profile_id: null, profile_url: null, status,
+    completed_at: new Date().toISOString(), replied_at: null, updated_at: new Date().toISOString(),
+  });
+  const people = [person(1), person(2), person(3)];
+  const all = fakeClient((call) => {
+    if (call.table !== 'sequence_enrollments' || call.op !== 'select') return undefined;
+    return { data: people.map((p, i) => ({ ...existing(i === 0 ? 'completed' : 'active'), profile_id: p.id, provider_id: p.provider_id })), error: null };
+  });
+  const out = await lib.enrollCandidates(options(all.supabase, { candidates: people }));
+  assert.equal(out.status, 'done');
+  assert.equal(out.results.success, 0);
+  assert.equal(out.results.alreadyPassed, 1);
+  assert.equal(out.results.skipped, 2);
+  assert.equal(all.calls.filter((c) => c.op !== 'select').length, 0, 'aucune écriture');
+
+  const race = fakeClient((call) => {
+    if (call.table === 'sequence_enrollments' && call.op === 'upsert') {
+      return { data: [{ id: 'enr-ACo1', profile_id: 'ACo1' }, { id: 'enr-ACo2', profile_id: 'ACo2' }], error: null };
+    }
+    return undefined;
+  });
+  const raced = await silent(() => lib.enrollCandidates(options(race.supabase)));
+  assert.equal(raced.results.success, 2);
+  assert.equal(raced.results.skipped, 1, 'inscrit entre-temps par une autre session');
+  assert.equal(writes(race.calls, 'sequence_step_executions', 'insert')[0].payload.length, 2);
+});
+
+test('5F1-B7 refus sans écriture : session, séquence désactivée, aucun candidat, tous déjà contactés', async () => {
+  const noUser = fakeClient(() => undefined, { user: null });
+  const a = await lib.enrollCandidates(options(noUser.supabase));
+  assert.deepEqual([a.status, a.message], ['refused', lib.SESSION_EXPIRED_MESSAGE]);
+
+  const inactive = fakeClient((call) => (call.table === 'outreach_sequences' ? { data: { is_active: false }, error: null } : undefined));
+  const b = await lib.enrollCandidates(options(inactive.supabase));
+  assert.equal(b.status, 'refused');
+  assert.equal(b.message, "Cette séquence est désactivée. Réactivez-la avant d'inscrire des candidats.");
+
+  const missing = fakeClient((call) => (call.table === 'outreach_sequences' ? { data: null, error: null } : undefined));
+  const c = await lib.enrollCandidates(options(missing.supabase));
+  assert.equal(c.message, 'Cette séquence est introuvable. Rechargez la page, puis réessayez.');
+
+  const none = fakeClient();
+  const d = await lib.enrollCandidates(options(none.supabase, { candidates: [] }));
+  assert.deepEqual([d.status, d.message], ['refused', 'AUCUN CANDIDAT']);
+
+  const recent = new Map([['ACo1', { createdAt: new Date().toISOString() }], ['ACo2', {}], ['ACo3', {}]]);
+  const e = await lib.enrollCandidates(options(none.supabase, { recentEnrollments: recent }));
+  assert.deepEqual([e.status, e.message], ['refused', 'Tous les candidats ont déjà été contactés par votre organisation']);
+  assert.equal(e.recentEnrollments, recent);
+
+  const forced = await lib.enrollCandidates(options(none.supabase, { recentEnrollments: recent, allowDuplicates: true }));
+  assert.equal(forced.status, 'done', 'la dérogation d’un administrateur passe l’anti-doublon de l’organisation');
+  for (const client of [noUser, inactive, missing]) assert.equal(client.calls.filter((x) => x.op !== 'select').length, 0);
+});
+
+test('5F1-B8 anti-doublon relu ici quand l’écran ne l’a pas obtenu, échec fermé', async () => {
+  const ok = fakeClient();
+  const read = await lib.enrollCandidates(options(ok.supabase, { recentEnrollments: null }));
+  assert.equal(read.status, 'done');
+  assert.ok(read.recentEnrollments instanceof Map, 'rendu à l’écran pour son état');
+
+  const failing = fakeClient((call) => (call.table === 'sequence_enrollments' && call.op === 'select' ? { data: null, error: { code: '500' } } : undefined));
+  failing.supabase.rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'absente' } });
+  const failed = await silent(() => lib.enrollCandidates(options(failing.supabase, { recentEnrollments: null })));
+  assert.equal(failed.status, 'failed', 'on n’inscrit jamais sans cette vérification');
+  assert.equal(failed.recentEnrollments, null);
+  assert.equal(failing.calls.filter((c) => c.op !== 'select').length, 0);
+});
+
+test('5F1-B9 même personne sous deux identifiants : une inscription, l’autre comptée déjà dans la séquence', async () => {
+  const a = person(1);
+  const b = person(2, { provider_id: a.provider_id });
+  for (const mode of ['batch', 'one_by_one']) {
+    const { supabase, calls } = fakeClient();
+    const extra = mode === 'one_by_one' ? { messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}) } : {};
+    const out = await lib.enrollCandidates(options(supabase, { candidates: [a, b], mode, ...extra }));
+    assert.equal(out.results.success, 1, mode);
+    assert.equal(out.results.skipped, 1, mode);
+    assert.equal(writes(calls, 'sequence_step_executions', 'insert').length, 1, mode);
+  }
+});
+
+test('5F1-O1 un par un : retouches lues au moment du candidat, tracking_data seulement s’il y en a, progression', async () => {
+  const { supabase, calls } = fakeClient();
+  const log = [];
+  const base = options(supabase, {
+    mode: 'one_by_one',
+    messageOverridesFor: (id) => {
+      log.push(`overrides:${id}`);
+      return id === 'ACo2' ? { 'step-1': { subject: 's', message: 'm', isEdited: true } } : {};
+    },
+    stepConfigOverrides: () => ({}),
+    onProgress: (done, total) => log.push(`progress:${done}/${total}`),
+  });
+  const original = supabase.from;
+  supabase.from = (table) => {
+    const chain = original(table);
+    const last = calls[calls.length - 1];
+    if (table === 'sequence_enrollments' || table === 'sequence_step_executions') log.push(`from:${table}`);
+    void last;
+    return chain;
+  };
+  const out = await lib.enrollCandidates(base);
+  assert.equal(out.status, 'done');
+  assert.equal(out.results.success, 3);
+
+  const upserts = writes(calls, 'sequence_enrollments', 'upsert');
+  assert.equal(upserts.length, 3, 'une écriture par candidat');
+  assert.ok(upserts.every((u) => u.single && u.cols === 'id, profile_id'));
+  assert.ok(!('tracking_data' in upserts[0].payload), 'pas de retouche : colonne non envoyée');
+  assert.deepEqual(upserts[1].payload.tracking_data, { message_overrides: { 'step-1': { subject: 's', message: 'm', isEdited: true } } });
+  assert.ok(!('tracking_data' in upserts[2].payload));
+  assert.equal(writes(calls, 'sequence_step_executions', 'insert').length, 3, 'une exécution par candidat');
+
+  assert.deepEqual(log.filter((l) => l.startsWith('progress:')), ['progress:1/3', 'progress:2/3', 'progress:3/3']);
+  const order = log.filter((l) => l.startsWith('overrides:') || l.startsWith('from:sequence_step_executions'));
+  assert.deepEqual(order, [
+    'overrides:ACo1', 'from:sequence_step_executions',
+    'overrides:ACo2', 'from:sequence_step_executions',
+    'overrides:ACo3', 'from:sequence_step_executions',
+  ], 'la retouche d’un candidat est lue après l’inscription du précédent');
+});
+
+test('5F1-O2 un par un : réglages de délai par étape écrits et appliqués à la première exécution', async () => {
+  const { supabase, calls } = fakeClient();
+  const step = { ...STEP, delay_days: 1, delay_hours: 2, delay_minutes: 30 };
+  const before = Date.now();
+  await lib.enrollCandidates(options(supabase, {
+    candidates: [person(1)],
+    sequence: { id: 'seq-1', steps: [step] },
+    mode: 'one_by_one',
+    messageOverridesFor: () => ({}),
+    stepConfigOverrides: () => ({ 'step-1': { delayDays: 3, delayHours: 0 }, 'autre': { delayDays: 9 } }),
+  }));
+  const upsert = writes(calls, 'sequence_enrollments', 'upsert')[0];
+  assert.deepEqual(upsert.payload.tracking_data.step_config_overrides, { 'step-1': { delayDays: 3, delayHours: 0 }, 'autre': { delayDays: 9 } });
+  const at = new Date(writes(calls, 'sequence_step_executions', 'insert')[0].payload.scheduled_at).getTime();
+  const expected = 3 * 86400000 + 30 * 60000;
+  assert.ok(at >= before + expected - 1000 && at <= Date.now() + expected + 1000, 'maintenant + 3 jours + 30 minutes, sans fenêtre horaire');
+});
+
+test('5F1-O3 un par un : l’exécution refusée retire ce candidat seul, les autres restent inscrits', async () => {
+  const { supabase, calls } = fakeClient((call) => {
+    if (call.table === 'sequence_step_executions' && call.payload.enrollment_id === 'enr-ACo2') return { error: { code: '42501' } };
+    if (call.op === 'delete' && call.eq.some(([, v]) => v === 'enr-ACo2')) return { data: [], error: null };
+    return undefined;
+  });
+  const out = await silent(() => lib.enrollCandidates(options(supabase, {
+    mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}),
+  })));
+  assert.equal(out.results.success, 2);
+  assert.deepEqual(out.enrolledIds, ['ACo1', 'ACo3']);
+  assert.deepEqual(out.results.errors, ["Candidat 2 : les étapes n'ont pas pu être planifiées et l'inscription n'a pas pu être retirée. Retirez-la depuis le suivi de la séquence."]);
+  assert.equal(out.schedulingFailure, undefined, 'pas d’échec global pour un échec par candidat');
+
+  const removed = fakeClient((call) => (call.table === 'sequence_step_executions' && call.payload.enrollment_id === 'enr-ACo1' ? { error: { code: '42501' } } : undefined));
+  const again = await silent(() => lib.enrollCandidates(options(removed.supabase, {
+    mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}),
+  })));
+  assert.deepEqual(again.results.errors, ["Candidat 1 : les étapes n'ont pas pu être planifiées, candidat non inscrit."]);
+  assert.deepEqual(writes(removed.calls, 'sequence_enrollments', 'delete').map((d) => d.eq), [[['id', 'enr-ACo1']]]);
+});
+
+test('5F1-O4 un par un : refus propres au candidat comptés à part, compte d’un collègue arrête la boucle', async () => {
+  const people = [person(1), person(2), person(3), person(4)];
+  const refusals = fakeClient((call) => {
+    if (call.table !== 'sequence_enrollments' || call.op !== 'upsert') return undefined;
+    if (call.payload.profile_id === 'ACo2') return { data: null, error: { code: '42501', hint: 'ENROLLMENT_GDPR_ERASED' } };
+    if (call.payload.profile_id === 'ACo3') return { data: null, error: { code: '23505', hint: 'ENROLLMENT_SAME_PERSON_IN_SEQUENCE' } };
+    if (call.payload.profile_id === 'ACo4') return { data: null, error: { code: '500' } };
+    return undefined;
+  });
+  const out = await silent(() => lib.enrollCandidates(options(refusals.supabase, {
+    candidates: people, mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}),
+  })));
+  assert.equal(out.results.success, 1);
+  assert.deepEqual(out.results.gdprErased, ['Candidat 2']);
+  assert.deepEqual(out.results.samePerson, ['Candidat 3']);
+  assert.deepEqual(out.results.errors, ['Inscription impossible pour Candidat 4. Réessayez ou contactez le support.']);
+
+  const other = fakeClient((call) => (call.op === 'upsert' && call.payload.profile_id === 'ACo2'
+    ? { data: null, error: { code: '42501', hint: 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' } } : undefined));
+  const stopped = await silent(() => lib.enrollCandidates(options(other.supabase, {
+    mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}),
+  })));
+  assert.equal(stopped.status, 'failed');
+  assert.equal(stopped.results.success, 1, 'ce qui était inscrit avant l’arrêt reste compté');
+  assert.deepEqual(stopped.enrolledIds, ['ACo1']);
+  assert.equal(writes(other.calls, 'sequence_enrollments', 'upsert').length, 2, 'le troisième candidat n’est pas tenté');
+});
+
+test('5F1-O5 un par un : déjà dans la séquence, déjà passé, conflit absorbé, ancien passage signalé', async () => {
+  const row = (p, status, extra = {}) => ({
+    profile_id: p.id, provider_id: p.provider_id, resolved_profile_id: null, profile_url: null, status,
+    completed_at: new Date().toISOString(), replied_at: null, updated_at: new Date().toISOString(), ...extra,
+  });
+  const people = [person(1), person(2), person(3), person(4)];
+  const longAgo = new Date(Date.now() - 200 * 86400000).toISOString();
+  const { supabase } = fakeClient((call) => {
+    if (call.table === 'sequence_enrollments' && call.op === 'select') {
+      const clause = String(call.cols);
+      void clause;
+      return { data: [row(people[0], 'active'), row(people[1], 'completed'), row({ id: 'ancien', provider_id: people[3].provider_id }, 'completed', { completed_at: longAgo, updated_at: longAgo })], error: null };
+    }
+    if (call.op === 'upsert' && call.payload.profile_id === 'ACo3') return { data: null, error: null };
+    return undefined;
+  });
+  const out = await lib.enrollCandidates(options(supabase, {
+    candidates: people, mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}),
+  }));
+  assert.equal(out.results.skipped, 2, 'une inscription en cours, un conflit absorbé');
+  assert.equal(out.results.alreadyPassed, 1);
+  assert.equal(out.results.success, 1);
+  assert.equal(out.results.formerPassages, 1, 'sortie de la séquence il y a plus de 90 jours sous un autre identifiant');
+});
+
+test('5F1-T1 première exécution : fenêtre d’envoi du candidat ou délai brut, selon le mode choisi', async () => {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const hourIn = (iso) => parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date(iso)), 10) % 24;
+  const step = { ...STEP, delay_hours: 5, preferred_hour_start: 10, preferred_hour_end: 12 };
+  const windowed = fakeClient();
+  await lib.enrollCandidates(options(windowed.supabase, { sequence: { id: 'seq-1', steps: [step] }, firstStepTiming: 'business_hours' }));
+  for (const e of writes(windowed.calls, 'sequence_step_executions', 'insert')[0].payload) {
+    const hour = hourIn(e.scheduled_at);
+    assert.ok(hour >= 10 && hour < 12, `heure locale ${hour} dans la fenêtre 10-12`);
+  }
+  const raw = fakeClient();
+  const before = Date.now();
+  await lib.enrollCandidates(options(raw.supabase, { sequence: { id: 'seq-1', steps: [step] }, firstStepTiming: 'raw' }));
+  for (const e of writes(raw.calls, 'sequence_step_executions', 'insert')[0].payload) {
+    const at = new Date(e.scheduled_at).getTime();
+    assert.ok(at >= before + 5 * 3600000 - 1000 && at <= Date.now() + 5 * 3600000 + 1000);
+  }
+});
+
+test('5F1-T2 chaque inscription tire sa première étape (test A/B en première position)', async () => {
+  const steps = [
+    { id: 'A', step_order: 0, variant_group: 'A', variant_weight: 50, action_type: 'message' },
+    { id: 'B', step_order: 0, variant_group: 'B', variant_weight: 50, action_type: 'message' },
+  ];
+  const seen = new Set();
+  const realRandom = Math.random;
+  let n = 0;
+  Math.random = () => (n++ % 2 === 0 ? 0.1 : 0.9);
+  try {
+    const { supabase, calls } = fakeClient();
+    await lib.enrollCandidates(options(supabase, { sequence: { id: 'seq-1', steps } }));
+    for (const e of writes(calls, 'sequence_step_executions', 'insert')[0].payload) seen.add(`${e.step_id}:${e.variant_assigned}`);
+  } finally {
+    Math.random = realRandom;
+  }
+  assert.ok(seen.has('A:A') && seen.has('B:B'), `les deux variantes sont tirées : ${[...seen].join(', ')}`);
+});

@@ -22,18 +22,12 @@ import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar'
 import { checkProfilesCompat, pickFirstStep, type CompatIssue } from '@/lib/sequenceCompatibility';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
-import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
 import { RecipientsConfirm } from './enrollment-preview/RecipientsConfirm';
 import { useRecipientsConfirm } from './enrollment-preview/useRecipientsConfirm';
 import {
   alreadyInSequenceLabel,
   alreadyPassedLabel,
-  classifyExistingEnrollment,
-  dedupeProfilesByIdentity,
   DUPLICATE_CHECK_FAILED_MESSAGE,
-  enrollFailureMessage,
-  enrollmentRefusalOf,
-  findBlockingSequenceEnrollments,
   firstActionSummary,
   formerPassageLabel,
   isOtherMemberAccountError,
@@ -41,9 +35,9 @@ import {
   NO_LINKEDIN_ACCOUNT_TITLE,
   samePersonRefusedLabel,
   SEQUENCES_PLAN_REQUIRED_MESSAGE,
-  sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
+import { enrollCandidates, type EnrollResults } from '@/lib/enrollCandidates';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -83,21 +77,6 @@ interface SequenceEnrollModalProps {
 }
 
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
-
-interface EnrollResults {
-  success: number;
-  /** Déjà dans la séquence (en cours ou en pause). */
-  skipped: number;
-  /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
-  alreadyPassed: number;
-  /** Refusés par la base, par nom : profil effacé (décision 12). */
-  gdprErased: string[];
-  /** Refusés par la base, par nom : même personne dans la séquence sous un autre identifiant (décision 21). */
-  samePerson: string[];
-  /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
-  formerPassages: number;
-  errors: string[];
-}
 
 /** Toasts des candidats non inscrits (refus, déjà dans la séquence, échecs) et de l'avertissement de réinscription. */
 function announceOthers(r: EnrollResults) {
@@ -152,8 +131,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   // bloque pas : le serveur reste la référence.
   const { state: subscriptionState, effectivePlanId } = useSubscriptionState();
   const canSendSequences = !subscriptionState || hasPlanFeature(effectivePlanId, 'sequences_send');
-
-  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Séquence avec message : préparation avec aperçu (EnrollmentPreviewModal).
   // Un message compte s'il a un modèle écrit, ou s'il est rédigé par l'IA pour
@@ -309,258 +286,62 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     setIsEnrolling(true);
     setResults(null);
 
-    const enrollmentResults: EnrollResults = {
-      success: 0,
-      skipped: 0,
-      alreadyPassed: 0,
-      gdprErased: [],
-      samePerson: [],
-      formerPassages: 0,
-      errors: [],
-    };
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Session expirée : reconnectez-vous, puis réessayez.');
-        return;
-      }
-      const userId = user.id;
-
-      // Séquence désactivée entre l'ouverture du menu et le clic : refus.
-      const inactiveReason = await sequenceInactiveReason(supabase, sequence.id);
-      if (inactiveReason) {
-        toast.error(inactiveReason);
-        return;
-      }
-
-      // Source des profils à inscrire : on respecte le toggle "exclure les
-      // incompatibles" pour éviter les échecs silencieux (1st degree +
-      // connection_request, etc.), puis l'anti-doublon organisation
-      // sauf dérogation cochée par un propriétaire ou admin.
-      let recent = recentEnrollments;
-      if (!recent) {
-        recent = await findRecentEnrollments(supabase, organizationId, profiles);
-        setRecentEnrollments(recent);
+      const outcome = await enrollCandidates({
+        supabase,
+        organizationId,
+        accountId,
+        sequence,
+        job,
+        allProfiles: profiles,
+        candidates: compatibleProfiles,
+        recentEnrollments,
+        allowDuplicates,
+        noCandidatesMessage: 'Aucun candidat compatible avec cette séquence',
+        mode: 'batch',
+        firstStepTiming: 'business_hours',
+      });
+      // Anti-doublon relu pendant l'inscription : l'écran garde le même état.
+      if (outcome.recentEnrollments) {
+        setRecentEnrollments(outcome.recentEnrollments);
         setDuplicateCheckFailed(false);
       }
-      // Même personne sélectionnée sous deux identifiants : une seule
-      // inscription, les autres comptées « déjà dans cette séquence ».
-      const { unique: enrollSet, duplicates } = dedupeProfilesByIdentity(allowDuplicates
-        ? compatibleProfiles
-        : compatibleProfiles.filter(p => !recent.has(p.id)));
 
-      if (enrollSet.length === 0) {
-        toast.error(
-          compatibleProfiles.length === 0
-            ? 'Aucun candidat compatible avec cette séquence'
-            : 'Tous les candidats ont déjà été contactés par votre organisation',
-        );
+      if (outcome.status === 'refused') {
+        toast.error(outcome.message);
+        return;
+      }
+      if (outcome.status === 'failed') {
+        // Refus de la base (SEQ-043) : compte relié à un autre membre. Réessayer
+        // échouerait de la même façon : on dit pourquoi, sans proposer de réessayer.
+        const otherMemberAccount = isOtherMemberAccountError(outcome.error);
+        outcome.results.errors.push(otherMemberAccount
+          ? OTHER_MEMBER_ACCOUNT_MESSAGE
+          : "L'inscription n'a pas pu aboutir. Réessayez ou contactez le support.");
+        setResults(outcome.results);
+        toast.error('Inscription impossible', {
+          description: otherMemberAccount ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
+        });
         return;
       }
 
-      // 1. Pré-contrôle : qui a déjà une inscription dans cette séquence ? La
-      // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle ;
-      // sous un autre identifiant du candidat ou son slug public, une
-      // inscription en cours ou en pause bloque aussi, dérogation comprise
-      // (SEQ-046), comme une inscription close depuis moins de 90 jours
-      // (décision 21) ; au-delà, inscription avec un avertissement (décision
-      // 23). Ces candidats ne sont pas envoyés à l'upsert. On
-      // distingue ceux qui y sont encore (en cours, en pause) de ceux qui y
-      // sont déjà passés (terminée, réponse, arrêtée), à reprendre depuis le
-      // suivi. Le résultat exact viendra de
-      // l'upsert ci-dessous.
-      const profileIds = enrollSet.map(p => p.id);
-      const { blocking, formerPassages } = await findBlockingSequenceEnrollments(supabase, sequence.id, enrollSet);
-      const existingStatus = new Map(Array.from(blocking, ([id, e]) => [id, e.status]));
-      const countExisting = (ids: Iterable<string>) => {
-        let inSequence = 0;
-        let passed = 0;
-        for (const id of ids) {
-          if (!existingStatus.has(id)) continue;
-          if (classifyExistingEnrollment(existingStatus.get(id)) === 'in_sequence') inSequence++;
-          else passed++;
-        }
-        return { inSequence, passed };
-      };
-      if (existingStatus.size === enrollSet.length) {
-        // Tous déjà inscrits → sortie avant tout INSERT
-        const { inSequence, passed } = countExisting(profileIds);
-        enrollmentResults.skipped = inSequence + duplicates;
-        enrollmentResults.alreadyPassed = passed;
-        setResults(enrollmentResults);
-        toast.info(passed > 0 ? alreadyPassedLabel(passed) : alreadyInSequenceLabel(enrollmentResults.skipped));
-        return;
-      }
-
-      // 2. Batch UPSERT atomique. La contrainte UNIQUE(sequence_id, profile_id)
-      // élimine la race condition entre le pré-check et l'INSERT : si un autre
-      // onglet/user a inscrit le même candidat entre temps, la ligne est
-      // silencieusement dropée (ignoreDuplicates) et seules les VRAIES nouvelles
-      // inscriptions reviennent dans `insertedEnrollments`.
-      // Normalise job.id : "project:{uuid}" → uuid pour que le cron
-      // process-sequences puisse retrouver le sourcing_project associé.
-      const normalizedJobId = job?.id?.startsWith('project:')
-        ? job.id.slice('project:'.length)
-        : job?.id;
-      const enrollmentRows = enrollSet.filter(p => !existingStatus.has(p.id)).map(profile => {
-        const networkDist = profile.network_distance;
-        const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
-          ? 'FIRST_DEGREE'
-          : networkDist === 2 || networkDist === '2' || networkDist === 'DISTANCE_2'
-          ? 'SECOND_DEGREE'
-          : networkDist === 3 || networkDist === '3' || networkDist === 'DISTANCE_3'
-          ? 'THIRD_DEGREE'
-          : typeof networkDist === 'string' ? networkDist : null;
-
-        return {
-          sequence_id: sequence.id,
-          account_id: accountId,
-          profile_id: profile.id,
-          profile_name: profile.name,
-          profile_headline: profile.headline,
-          profile_url: profile.profile_url || profile.public_profile_url,
-          job_id: normalizedJobId,
-          job_title: job?.title,
-          created_by: userId,
-          user_timezone: userTimezone,
-          current_step_order: 0,
-          status: 'active',
-          network_distance: normalizedDistance,
-          organization_id: organizationId,
-          ...enrollmentRowFields(profile),
-        };
-      });
-
-      const upsertOptions = { onConflict: 'sequence_id,profile_id', ignoreDuplicates: true };
-      const { data: insertedEnrollments, error: enrollError } = await supabase
-        .from('sequence_enrollments')
-        .upsert(enrollmentRows, upsertOptions)
-        .select('id, profile_id');
-
-      // Pas de throw si tableau vide — tous les candidats étaient déjà inscrits
-      // entre le pré-check et l'upsert (race fenêtrée + DB a tout dropé).
-      let insertedRows = insertedEnrollments || [];
-      // Candidats refusés ou en échec à l'insertion une par une.
-      const refused = new Set<string>();
-      if (enrollError) {
-        // Refus de la base propre à un candidat (profil effacé, même personne
-        // dans la séquence, décisions 12 et 21) : l'insertion groupée échoue en
-        // entier, on reprend candidat par candidat pour inscrire les autres.
-        if (!enrollmentRefusalOf(enrollError)) throw enrollError;
-        insertedRows = [];
-        for (const row of enrollmentRows) {
-          const { data: one, error: oneError } = await supabase
-            .from('sequence_enrollments')
-            .upsert(row, upsertOptions)
-            .select('id, profile_id');
-          if (!oneError) {
-            insertedRows.push(...(one ?? []));
-            continue;
-          }
-          // Même compte pour toute la sélection : aucune ligne n'a pu passer avant.
-          if (isOtherMemberAccountError(oneError)) throw oneError;
-          refused.add(row.profile_id);
-          const refusal = enrollmentRefusalOf(oneError);
-          if (refusal === 'gdpr_erased') enrollmentResults.gdprErased.push(row.profile_name || 'Candidat sans nom');
-          else if (refusal === 'same_person') enrollmentResults.samePerson.push(row.profile_name || 'Candidat sans nom');
-          else {
-            console.error('[SequenceEnrollModal] enrollment failed for', row.profile_id, oneError);
-            enrollmentResults.errors.push(enrollFailureMessage(row.profile_name));
-          }
-        }
-      }
-      const insertedProfileIds = new Set(insertedRows.map(e => e.profile_id));
-      const notInserted = profileIds.filter(id => !insertedProfileIds.has(id) && !refused.has(id));
-      const { passed: passedCount } = countExisting(notInserted);
-      enrollmentResults.success = insertedRows.length;
-      enrollmentResults.alreadyPassed = passedCount;
-      enrollmentResults.skipped = notInserted.length - passedCount + duplicates;
-      enrollmentResults.formerPassages = insertedRows.filter(e => formerPassages.has(e.profile_id)).length;
-      if (insertedRows.length < enrollSet.length - existingStatus.size - refused.size) {
-        console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingStatus.size - refused.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
-      }
-      if (insertedRows.length === 0) {
-        setResults(enrollmentResults);
-        announceOthers(enrollmentResults);
-        return;
-      }
-
-      // 3. Batch insert step executions for all new enrollments. Première
-      // étape tirée pour CHAQUE inscription (pickFirstStep) : un test A/B en
-      // première position répartit les variantes comme le moteur, au lieu de
-      // n'envoyer que la première ligne.
-      const now = new Date();
-      const execRows = insertedRows.flatMap(enrollment => {
-        const { step: firstStep, variantAssigned } = pickFirstStep(sequence.steps);
-        if (!firstStep) return [];
-        const scheduledAt = calculateScheduledTime(
-          now,
-          firstStep.delay_days || 0,
-          firstStep.delay_hours || 0,
-          firstStep.delay_minutes || 0,
-          firstStep.preferred_hour_start ?? 9,
-          firstStep.preferred_hour_end ?? 18,
-          userTimezone
-        );
-        return [{
-          enrollment_id: enrollment.id,
-          step_id: firstStep.id,
-          step_order: firstStep.step_order ?? 0,
-          scheduled_at: scheduledAt.toISOString(),
-          status: 'scheduled',
-          variant_assigned: variantAssigned,
-          organization_id: organizationId,
-        }];
-      });
-
-      const { error: execError } = execRows.length === insertedRows.length
-        ? await supabase.from('sequence_step_executions').insert(execRows)
-        : { error: new Error('Aucune étape à planifier') };
-      if (execError) {
-        // Une inscription active sans étape planifiée n'est reprise par le
-        // moteur qu'au mieux une heure plus tard : on retire les inscriptions
-        // créées plutôt que d'annoncer un faux succès (même règle que l'aperçu
-        // d'inscription).
-        console.error('[SequenceEnrollModal] Failed to schedule first executions:', execError);
-        const insertedIds = insertedRows.map(e => e.id);
-        const { data: removed, error: rollbackError } = await supabase
-          .from('sequence_enrollments')
-          .delete()
-          .in('id', insertedIds)
-          .select('id');
-        const rolledBack = !rollbackError && (removed?.length ?? 0) === insertedIds.length;
-        enrollmentResults.success = 0;
-        enrollmentResults.errors.push(rolledBack
-          ? "L'inscription a échoué : aucune étape n'a pu être planifiée. Aucun message ne partira. Réessayez."
-          : "Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure.");
-        setResults(enrollmentResults);
-        toast.error(rolledBack ? 'Inscription impossible' : 'Inscription incomplète', { description: enrollmentResults.errors[0] });
-        return;
-      }
-
-      // 4. Rien n'est écrit dans le pipeline à l'inscription : le serveur
-      // passe le candidat à « Contacté » au premier envoi réel (lot 0b).
-
+      const enrollmentResults = outcome.results;
       setResults(enrollmentResults);
+      if (outcome.schedulingFailure) {
+        toast.error(outcome.schedulingFailure.rolledBack ? 'Inscription impossible' : 'Inscription incomplète', {
+          description: enrollmentResults.errors[0],
+        });
+        return;
+      }
 
-      toast.success(`${plural(enrollmentResults.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
-        description: firstAction ?? undefined,
-      });
+      // Rien n'est écrit dans le pipeline à l'inscription : le serveur passe le
+      // candidat à « Contacté » au premier envoi réel (lot 0b).
+      if (enrollmentResults.success > 0) {
+        toast.success(`${plural(enrollmentResults.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
+          description: firstAction ?? undefined,
+        });
+      }
       announceOthers(enrollmentResults);
-    } catch (err) {
-      // Détail technique en console seulement : jamais de message brut de la base.
-      console.error('Enrollment error:', err);
-      // Refus de la base (SEQ-043) : compte relié à un autre membre. Réessayer
-      // échouerait de la même façon : on dit pourquoi, sans proposer de réessayer.
-      const otherMemberAccount = isOtherMemberAccountError(err);
-      enrollmentResults.errors.push(otherMemberAccount
-        ? OTHER_MEMBER_ACCOUNT_MESSAGE
-        : "L'inscription n'a pas pu aboutir. Réessayez ou contactez le support.");
-      setResults(enrollmentResults);
-      toast.error('Inscription impossible', {
-        description: otherMemberAccount ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
-      });
     } finally {
       setIsEnrolling(false);
     }
@@ -851,70 +632,3 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     </Dialog>
   );
 };
-
-// Helper: get UTC offset in hours for a timezone at a given instant
-function getTimezoneOffsetHours(date: Date, tz: string): number {
-  const localHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(date), 10);
-  const utcHour = date.getUTCHours();
-  let offset = localHour - utcHour;
-  if (offset > 12) offset -= 24;
-  if (offset < -12) offset += 24;
-  return offset;
-}
-
-// Set date so that the LOCAL hour in `tz` equals `desiredLocalHour`
-function setLocalHour(date: Date, tz: string, desiredLocalHour: number, minutes = 0): void {
-  const offset = getTimezoneOffsetHours(date, tz);
-  date.setUTCHours(desiredLocalHour - offset, minutes, 0, 0);
-}
-
-// Helper to calculate scheduled time respecting time windows
-function calculateScheduledTime(
-  fromDate: Date,
-  delayDays: number,
-  delayHours: number,
-  delayMinutes: number,
-  preferredHourStart: number,
-  preferredHourEnd: number,
-  timezone: string
-): Date {
-  const scheduled = new Date(fromDate);
-  
-  scheduled.setTime(scheduled.getTime()
-    + delayDays * 86400000
-    + delayHours * 3600000
-    + delayMinutes * 60000
-  );
-  
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    hour: 'numeric',
-    hour12: false,
-  });
-  const localHour = parseInt(formatter.format(scheduled));
-  
-  if (localHour < preferredHourStart) {
-    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15));
-  } else if (localHour >= preferredHourEnd) {
-    scheduled.setDate(scheduled.getDate() + 1);
-    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15));
-  }
-  
-  const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short' });
-  const day = dayFormatter.format(scheduled);
-  if (day === 'Sun') { scheduled.setDate(scheduled.getDate() + 1); setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15)); }
-  if (day === 'Sat') { scheduled.setDate(scheduled.getDate() + 2); setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15)); }
-  
-  const jitterMinutes = Math.floor(Math.random() * 11) - 5;
-  scheduled.setTime(scheduled.getTime() + jitterMinutes * 60000);
-
-  const finalHour = parseInt(formatter.format(scheduled));
-  if (finalHour < preferredHourStart) {
-    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 6));
-  } else if (finalHour >= preferredHourEnd) {
-    scheduled.setDate(scheduled.getDate() + 1);
-    setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 6));
-  }
-  
-  return scheduled;
-}

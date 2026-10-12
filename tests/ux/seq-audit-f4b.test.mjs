@@ -64,6 +64,8 @@ const REACT_STUB = 'export const useState = () => [undefined, () => {}]; export 
 
 const enrollModal = read('src/components/outreach/SequenceEnrollModal.tsx');
 const previewModal = read('src/components/outreach/EnrollmentPreviewModal.tsx');
+// Lot 5f-1 : l'écriture des inscriptions est dans la bibliothèque, pas dans les fenêtres.
+const enrollLib = read('src/lib/enrollCandidates.ts');
 const previewHookSrc = read('src/hooks/useEnrollmentPreview.ts');
 const bulkInMail = read('src/components/outreach/BulkInMailModal.tsx');
 const enrollButton = read('src/components/outreach/SequenceEnrollButton.tsx');
@@ -238,12 +240,15 @@ test('Lot 0b-2b — mission des envois : sans « project: », uuid seulement, si
 // ---------------------------------------------------------------- SEQ-129
 test('SEQ-129 — modale simple : échec de planification, inscriptions retirées, aucun succès annoncé', () => {
   assert.doesNotMatch(enrollModal, /Traiter les séquences/);
-  const onError = slice(enrollModal, 'if (execError) {', 'return;\n      }');
+  // Lot 5f-1 : le retrait et les textes sont dans la bibliothèque ; la fenêtre annonce l'échec sans succès.
+  const onError = slice(enrollLib, 'if (execError) {', 'return { rolledBack };');
   assert.match(onError, /\.in\('id', insertedIds\)/);
-  assert.match(onError, /enrollmentResults\.success = 0;/);
-  assert.match(onError, /L'inscription a échoué : aucune étape n'a pu être planifiée\. Aucun message ne partira\. Réessayez\./);
-  assert.match(onError, /Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure\./);
-  assert.doesNotMatch(onError, /toast\.success/);
+  assert.match(onError, /results\.success = 0;/);
+  assert.match(enrollLib, /L'inscription a échoué : aucune étape n'a pu être planifiée\. Aucun message ne partira\. Réessayez\./);
+  assert.match(enrollLib, /Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure\./);
+  const failure = slice(enrollModal, 'if (outcome.schedulingFailure) {', 'return;\n      }');
+  assert.match(failure, /outcome\.schedulingFailure\.rolledBack \? 'Inscription impossible' : 'Inscription incomplète'/);
+  assert.doesNotMatch(failure, /toast\.success/);
 });
 
 // ---------------------------------------------------------------- SEQ-130
@@ -258,7 +263,7 @@ test('SEQ-130 — bilan de l’aperçu : titre et icône selon le résultat, toa
   const enroll = slice(previewModal, 'const handleEnroll = async () => {', 'const handleShortlist = async () => {');
   assert.match(enroll, /toast\.error\(`\$\{e\} inscription\$\{e > 1 \? 's' : ''\} en échec`, \{\s*description: 'Le détail est affiché dans la fenêtre\.',/);
   assert.doesNotMatch(enroll, /err\?\.message/, 'plus de message brut de la base');
-  assert.match(enroll, /results\.errors\.push\(enrollFailureMessage\(profile\.name\)\)/);
+  assert.match(enrollLib, /results\.errors\.push\(enrollFailureMessage\(profile\.name\)\)/);
   assert.equal(helpers.enrollFailureMessage('Marie Dupont'), 'Inscription impossible pour Marie Dupont. Réessayez ou contactez le support.');
 });
 
@@ -453,8 +458,9 @@ test('SEQ-144 — menu Séquence : rechargé à chaque ouverture, recherche, mis
   assert.match(enrollButton, /Impossible de charger les séquences/);
   assert.match(enrollButton, /`\/missions\/\$\{missionId\}\?tab=outreach`/);
   // La vraie garde : la séquence est relue active au moment d'inscrire.
+  assert.match(enrollLib, /const inactiveReason = await sequenceInactiveReason\(supabase, sequence\.id\);/);
   for (const [name, source] of [['inscription simple', enrollModal], ['aperçu', previewModal]]) {
-    assert.match(source, /const inactiveReason = await sequenceInactiveReason\(supabase, sequence\.id\);/, name);
+    assert.match(source, /await enrollCandidates\(\{/, name);
   }
   assert.equal(helpers.SEQUENCE_INACTIVE_MESSAGE, "Cette séquence est désactivée. Réactivez-la avant d'inscrire des candidats.");
 });
@@ -514,9 +520,8 @@ test('SEQ-222 — « déjà dans la séquence » distinct de « déjà passé pa
   }
   assert.equal(helpers.alreadyPassedLabel(1), '1 candidat est déjà passé par cette séquence (terminée, réponse ou arrêt). Relancez-le depuis le suivi de la séquence.');
   // L'aperçu lit toute ligne existante (plus seulement trois statuts).
-  const enroll = slice(previewModal, 'const handleEnroll = async () => {', 'const handleShortlist = async () => {');
-  assert.doesNotMatch(enroll, /\.in\('status', \['active', 'completed', 'replied'\]\)/);
-  assert.match(enroll, /classifyExistingEnrollment\(existing\.status\)/);
+  assert.doesNotMatch(enrollLib, /\.in\('status', \['active', 'completed', 'replied'\]\)/);
+  assert.match(enrollLib, /classifyExistingEnrollment\(existing\.status\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-223

@@ -48,17 +48,15 @@ import { HistoryPopover } from './enrollment-preview/HistoryPopover';
 import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
 import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
 import { useOrganization } from '@/hooks/useOrganization';
-import type { Json } from '@/integrations/supabase/types';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
   RECENT_CONTACT_WINDOW_DAYS,
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
-import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, normalizeNetworkDistance, pickFirstStep } from '@/lib/sequenceCompatibility';
+import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, normalizeNetworkDistance } from '@/lib/sequenceCompatibility';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
-import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
 import {
   FirstMessagePreviewBlock,
   RecipientsConfirm,
@@ -71,21 +69,16 @@ import { firstMessagePath } from './enrollment-preview/firstMessagePath';
 import {
   alreadyInSequenceLabel,
   alreadyPassedLabel,
-  classifyExistingEnrollment,
-  dedupeProfilesByIdentity,
   DUPLICATE_CHECK_FAILED_MESSAGE,
-  enrollFailureMessage,
-  enrollmentRefusalOf,
-  findBlockingSequenceEnrollments,
   firstActionSummary,
   formerPassageLabel,
   isOtherMemberAccountError,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
   samePersonRefusedLabel,
-  sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
+import { enrollCandidates, type EnrollResults } from '@/lib/enrollCandidates';
 import { plural } from '@/lib/plural';
 import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
@@ -250,21 +243,6 @@ function compatHeadline(blockers: { issue: string | null }[], included: boolean)
     ? (many ? 'Ils seront inscrits quand même.' : 'Il sera inscrit quand même.')
     : (many ? "Ils sont exclus de l'inscription." : "Il est exclu de l'inscription.");
   return `${n} candidat${many ? 's' : ''} ne ${many ? 'peuvent' : 'peut'} pas suivre cette séquence${reason}. ${outcome}`;
-}
-
-interface EnrollResults {
-  success: number;
-  /** Déjà dans la séquence (en cours ou en pause). */
-  skipped: number;
-  /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
-  alreadyPassed: number;
-  /** Refusés par la base, par nom : profil effacé (décision 12). */
-  gdprErased: string[];
-  /** Refusés par la base, par nom : même personne dans la séquence sous un autre identifiant (décision 21). */
-  samePerson: string[];
-  /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
-  formerPassages: number;
-  errors: string[];
 }
 
 // ── Component ──
@@ -645,8 +623,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   // ── Enrollment Logic ──
 
-  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
   const handleEnroll = async () => {
     // Sans org résolue, les inserts partiraient avec organization_id null →
     // refusés par RLS ou invisibles pour l'org (même garde que
@@ -673,221 +649,49 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     setIsEnrolling(true);
     setEnrollResults(null);
     setEnrollProgress(null);
-    const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, gdprErased: [], samePerson: [], formerPassages: 0, errors: [] };
-    // Candidats réellement inscrits : leurs aperçus de session sont libérés
-    // (rien n'est écrit dans le pipeline à l'inscription, lot 0b).
-    const enrolledProfiles: LinkedInProfile[] = [];
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Session expirée : reconnectez-vous, puis réessayez.');
-        return;
-      }
-      const userId = user.id;
-
-      // Séquence désactivée entre l'ouverture du menu et le clic : refus.
-      const inactiveReason = await sequenceInactiveReason(supabase, sequence.id);
-      if (inactiveReason) {
-        toast.error(inactiveReason);
-        return;
-      }
-
-      // 🔧 Normalise job.id : depuis le flow Sourcing, useLinkedInSearch
-      // génère des jobs synthétiques avec id="project:{uuid}". Si on
-      // sauvegarde "project:abc-123" en sequence_enrollments.job_id, le
-      // cron process-sequences ne pourra PAS retrouver le sourcing_project
-      // associé (queries WHERE id.eq.project:abc-123 → no match) → mode
-      // outreach pas appliqué, contexte mission perdu.
-      const normalizedJobId = job?.id?.startsWith('project:')
-        ? job.id.slice('project:'.length)
-        : job?.id;
-
-      // Anti-doublon organisation : si la vérification à l'ouverture n'a pas
-      // abouti, on la refait ici avant tout INSERT. Les candidats contactés
-      // dans les 90 derniers jours sont exclus sauf dérogation (owner/admin).
-      let recent = recentEnrollments;
-      if (!recent) {
-        recent = await findRecentEnrollments(supabase, organizationId, profiles);
-        setRecentEnrollments(recent);
+      const outcome = await enrollCandidates({
+        supabase,
+        organizationId,
+        accountId,
+        sequence,
+        job,
+        allProfiles: profiles,
+        candidates: activeProfiles,
+        recentEnrollments,
+        allowDuplicates,
+        noCandidatesMessage: 'Aucun candidat à inscrire',
+        mode: 'one_by_one',
+        firstStepTiming: 'raw',
+        messageOverridesFor: getMessageOverrides,
+        stepConfigOverrides: getStepConfigOverrides,
+        onProgress: (done, total) => setEnrollProgress({ done, total }),
+      });
+      // Anti-doublon relu pendant l'inscription : l'écran garde le même état.
+      if (outcome.recentEnrollments) {
+        setRecentEnrollments(outcome.recentEnrollments);
         setDuplicateCheckFailed(false);
       }
-      // Même personne sélectionnée sous deux identifiants : une seule
-      // inscription, les autres comptées « déjà dans cette séquence ».
-      const { unique: enrollSet, duplicates } = dedupeProfilesByIdentity(allowDuplicates
-        ? activeProfiles
-        : activeProfiles.filter(p => !recent.has(p.id)));
-      results.skipped += duplicates;
-      if (enrollSet.length === 0) {
-        toast.error(
-          activeProfiles.length === 0
-            ? 'Aucun candidat à inscrire'
-            : 'Tous les candidats ont déjà été contactés par votre organisation',
-        );
+
+      if (outcome.status === 'refused') {
+        toast.error(outcome.message);
         return;
       }
-
-      for (let index = 0; index < enrollSet.length; index++) {
-        const profile = enrollSet[index];
-        setEnrollProgress({ done: index + 1, total: enrollSet.length });
-        try {
-          // Pré-contrôle : la contrainte DB UNIQUE(sequence_id, profile_id)
-          // est inconditionnelle, toute ligne existante empêche l'inscription ;
-          // sous un autre identifiant du candidat ou son slug public, une
-          // inscription en cours ou en pause l'empêche aussi, dérogation
-          // comprise (SEQ-046), et une inscription close depuis moins de 90
-          // jours (décision 21) ; au-delà, il est inscrit avec un avertissement
-          // (décision 23).
-          // On distingue « déjà dans la séquence » (en cours, en pause) de
-          // « déjà passé par la séquence » (terminée, réponse, arrêtée), à
-          // reprendre depuis le suivi. La race fenêtre entre SELECT et INSERT
-          // est gérée plus bas via UPSERT + ignoreDuplicates.
-          const matches = await findBlockingSequenceEnrollments(supabase, sequence.id, [profile]);
-          const existing = matches.blocking.get(profile.id);
-
-          if (existing) {
-            if (classifyExistingEnrollment(existing.status) === 'in_sequence') results.skipped++;
-            else results.alreadyPassed++;
-            continue;
-          }
-
-          const networkDist = profile.network_distance;
-          const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
-            ? 'FIRST_DEGREE'
-            : networkDist === 2 || networkDist === '2' || networkDist === 'DISTANCE_2'
-            ? 'SECOND_DEGREE'
-            : networkDist === 3 || networkDist === '3' || networkDist === 'DISTANCE_3'
-            ? 'THIRD_DEGREE'
-            : typeof networkDist === 'string' ? networkDist : null;
-
-          const overrides = getMessageOverrides(profile.id);
-          // Overrides de timing per-step (delays, timeouts) éditées par
-          // l'user dans la tree view → stockées dans tracking_data, lues
-          // par process-sequences au scheduling du step suivant.
-          const stepConfigOverrides = getStepConfigOverrides();
-
-          // Construit tracking_data uniquement si on a au moins un override
-          // (sinon on laisse la colonne null pour rester clean).
-          const trackingData: Record<string, Json> = {};
-          if (Object.keys(overrides).length > 0) {
-            trackingData.message_overrides = overrides;
-          }
-          if (Object.keys(stepConfigOverrides).length > 0) {
-            trackingData.step_config_overrides = stepConfigOverrides;
-          }
-
-          const { data: enrollment, error: enrollError } = await supabase
-            .from('sequence_enrollments')
-            .upsert({
-              sequence_id: sequence.id,
-              account_id: accountId,
-              profile_id: profile.id,
-              profile_name: profile.name,
-              profile_headline: profile.headline,
-              profile_url: profile.profile_url || profile.public_profile_url,
-              job_id: normalizedJobId,
-              job_title: job?.title,
-              created_by: userId,
-              organization_id: organizationId, // requis par RLS org_members_all
-              user_timezone: userTimezone,
-              current_step_order: 0,
-              status: 'active',
-              network_distance: normalizedDistance,
-              ...enrollmentRowFields(profile),
-              ...(Object.keys(trackingData).length > 0 ? { tracking_data: trackingData } : {}),
-            }, {
-              onConflict: 'sequence_id,profile_id',
-              ignoreDuplicates: true,
-            })
-            .select()
-            .maybeSingle();
-
-          if (enrollError) throw enrollError;
-          if (!enrollment) {
-            // Conflit DB (race entre pré-check et upsert) → enrollment existait
-            // déjà, on incrémente skipped et on continue.
-            results.skipped++;
-            continue;
-          }
-
-          // Première étape tirée pour CE candidat : un test A/B en première
-          // position répartit les variantes comme le moteur (pondération
-          // variant_weight) au lieu de n'envoyer que la première ligne.
-          const { step: firstStep, variantAssigned } = pickFirstStep(sequence.steps);
-          if (firstStep) {
-            const stepId = firstStep.id;
-            // Applique l'override de timing s'il existe pour le 1er step.
-            // Sinon utilise les valeurs du template séquence.
-            const firstStepOverride = stepConfigOverrides[stepId];
-            const effDelayDays = firstStepOverride?.delayDays ?? firstStep.delay_days ?? 0;
-            const effDelayHours = firstStepOverride?.delayHours ?? firstStep.delay_hours ?? 0;
-            const effDelayMinutes = firstStep.delay_minutes ?? 0; // pas exposé en UI pour le moment
-
-            const scheduledAt = new Date();
-            scheduledAt.setTime(scheduledAt.getTime()
-              + effDelayDays * 86400000
-              + effDelayHours * 3600000
-              + effDelayMinutes * 60000
-            );
-
-            const { error: execError } = await supabase
-              .from('sequence_step_executions')
-              .insert({
-                enrollment_id: enrollment.id,
-                step_id: stepId,
-                step_order: firstStep.step_order ?? firstStep.stepOrder ?? 0,
-                scheduled_at: scheduledAt.toISOString(),
-                status: 'scheduled',
-                variant_assigned: variantAssigned,
-                organization_id: organizationId, // RLS multi-tenant
-              });
-
-            // Si l'insert de la 1re exécution échoue (RLS, contrainte…),
-            // l'enrollment serait « dormant » : actif mais sans aucune étape
-            // planifiée — le moteur ne le reprendra JAMAIS (il ne traite que
-            // des exécutions existantes). On remonte l'erreur au lieu de
-            // compter un faux succès (audit 2026-07, Frontend H2).
-            if (execError) {
-              console.error('[EnrollmentPreviewModal] first execution insert failed:', execError);
-              // Retrait vérifié (.select) : un refus silencieux laisserait une
-              // inscription active sans étape, jamais reprise par le moteur.
-              const { data: removed } = await supabase
-                .from('sequence_enrollments')
-                .delete()
-                .eq('id', enrollment.id)
-                .select('id');
-              results.errors.push(removed?.length
-                ? `${profile.name} : les étapes n'ont pas pu être planifiées, candidat non inscrit.`
-                : `${profile.name} : les étapes n'ont pas pu être planifiées et l'inscription n'a pas pu être retirée. Retirez-la depuis le suivi de la séquence.`);
-              continue;
-            }
-          }
-
-          results.success++;
-          if (matches.formerPassages.has(profile.id)) results.formerPassages++;
-          enrolledProfiles.push(profile);
-        } catch (err) {
-          // Refus de la base (SEQ-043) : compte relié à un autre membre. Tous
-          // les candidats suivants échoueraient pareil : on arrête la boucle.
-          if (isOtherMemberAccountError(err)) throw err;
-          // Refus propres à ce candidat (profil effacé, même personne dans la
-          // séquence) : comptés à part, les suivants restent inscriptibles.
-          const refusal = enrollmentRefusalOf(err);
-          if (refusal === 'gdpr_erased') { results.gdprErased.push(profile.name || 'Candidat sans nom'); continue; }
-          if (refusal === 'same_person') { results.samePerson.push(profile.name || 'Candidat sans nom'); continue; }
-          // Détail technique en console seulement : jamais le message brut de
-          // la base (« new row violates row-level security policy… »).
-          console.error('[EnrollmentPreviewModal] enrollment failed for', profile.id, err);
-          results.errors.push(enrollFailureMessage(profile.name));
-        }
+      if (outcome.status === 'failed') {
+        // Compte relié à un autre membre : réessayer échouerait de la même façon.
+        toast.error('Inscription impossible', {
+          description: isOtherMemberAccountError(outcome.error) ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
+        });
+        return;
       }
 
       // Rien n'est écrit dans le pipeline à l'inscription : le serveur passe
       // le candidat à « Contacté » au premier envoi réel (lot 0b).
 
       // Les candidats inscrits n'ont plus besoin de leurs aperçus.
-      const enrolledIds = enrolledProfiles.map(p => p.id);
-      discardSessionPreviews(enrolledIds);
+      const results = outcome.results;
+      discardSessionPreviews(outcome.enrolledIds);
       setEnrollResults(results);
       if (results.success > 0) {
         toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
@@ -905,12 +709,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       if (results.formerPassages > 0) toast.warning(formerPassageLabel(results.formerPassages));
       if (results.alreadyPassed > 0) toast.info(alreadyPassedLabel(results.alreadyPassed));
       if (results.skipped > 0) toast.info(alreadyInSequenceLabel(results.skipped));
-    } catch (err) {
-      console.error('[EnrollmentPreviewModal] Bulk enrollment failed:', err);
-      // Compte relié à un autre membre : réessayer échouerait de la même façon.
-      toast.error('Inscription impossible', {
-        description: isOtherMemberAccountError(err) ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
-      });
     } finally {
       setIsEnrolling(false);
       setEnrollProgress(null);
