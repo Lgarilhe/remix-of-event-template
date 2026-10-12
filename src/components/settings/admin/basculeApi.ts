@@ -61,11 +61,22 @@ export interface Readiness {
   generatedAt: string | null;
 }
 
+/** Colonne qui porte l'identifiant d'un compte : table, colonne (dites au propriétaire par `whereLabel`) et lignes. */
+export interface HeldRow {
+  table: string;
+  column: string;
+  rows: number;
+}
+
 export interface UnmappedRow {
   kind: string;
   label: string | null;
   ref: string;
   reason: string;
+  /** Simulation seulement : données liées qui restent sur l'ancien identifiant (liaison du membre exclue). */
+  held: HeldRow[];
+  heldRows: number;
+  heldUnread: boolean;
 }
 
 export interface KindCounts {
@@ -97,8 +108,12 @@ export interface OrphanRow {
 export interface BatchRow {
   batchId: string;
   pairs: number;
+  /** Lignes réécrites par le lot ; null quand le serveur ne le dit pas. 0 : rien à annuler. */
+  rows: number | null;
   appliedAt: string | null;
   rolledBack: boolean;
+  /** Un lot plus récent, non annulé, a réécrit des lignes : celui-ci ne s'annule qu'après lui. */
+  newerOpen: boolean;
 }
 
 export interface Preview {
@@ -106,6 +121,9 @@ export interface Preview {
   pairs: PreviewPair[];
   unmapped: UnmappedRow[];
   unmappedTruncated: boolean;
+  /** Lignes que les comptes laissés tels quels gardent sur l'ancien identifiant (un minimum quand `unmappedHeldExact` est faux). */
+  unmappedHeldRows: number;
+  unmappedHeldExact: boolean;
   truncated: boolean;
   sharedTargets: number;
   batches: BatchRow[];
@@ -157,6 +175,8 @@ export interface RollbackResult {
   movedRows: number;
   /** Lignes créées depuis la conversion : elles portent encore le nouvel identifiant. */
   stillNewRows: number;
+  /** Où elles se trouvent : table, colonne et lignes. */
+  stillNew: HeldRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -225,8 +245,17 @@ export function readReadiness(data: Record<string, any> | null): Readiness | nul
   };
 }
 
+function readHeld(raw: unknown): HeldRow[] {
+  return Array.isArray(raw)
+    ? raw.filter(isRecord).map((r) => ({ table: text(r.table), column: text(r.column), rows: num(r.rows) })).filter((r) => r.rows > 0)
+    : [];
+}
+
 function readUnmapped(raw: Record<string, any>): UnmappedRow {
-  return { kind: text(raw.kind), label: textOrNull(raw.label), ref: text(raw.ref), reason: text(raw.reason) };
+  return {
+    kind: text(raw.kind), label: textOrNull(raw.label), ref: text(raw.ref), reason: text(raw.reason),
+    held: readHeld(raw.usage), heldRows: num(raw.held_rows), heldUnread: raw.usage_error === true,
+  };
 }
 
 function readCounts(raw: unknown): KindCounts {
@@ -256,11 +285,14 @@ export function readPreview(data: Record<string, any> | null): Preview | null {
     })),
     unmapped: Array.isArray(data.unmapped) ? data.unmapped.filter(isRecord).map(readUnmapped) : [],
     unmappedTruncated: data.unmapped_truncated === true,
+    unmappedHeldRows: num(data.unmapped_held_rows),
+    unmappedHeldExact: data.unmapped_held_exact === true,
     truncated: data.truncated === true,
     sharedTargets: num(data.shared_targets),
     batches: Array.isArray(data.previous_batches)
       ? data.previous_batches.filter(isRecord).map((b) => ({
-        batchId: text(b.batch_id), pairs: num(b.pairs), appliedAt: textOrNull(b.applied_at), rolledBack: b.rolled_back === true,
+        batchId: text(b.batch_id), pairs: num(b.pairs), rows: typeof b.rows === 'number' ? b.rows : null,
+        appliedAt: textOrNull(b.applied_at), rolledBack: b.rolled_back === true, newerOpen: b.newer_open === true,
       })).filter((b: BatchRow) => b.batchId !== '')
       : [],
     batchesError: data.previous_batches_error === true,
@@ -312,12 +344,27 @@ export function readRollback(data: Record<string, any> | null): RollbackResult |
     restoredRows: num(data.restored_rows),
     movedRows: num(data.moved_rows),
     stillNewRows: num(data.still_new_rows),
+    stillNew: readHeld(data.still_new),
   };
 }
 
 // ---------------------------------------------------------------------------
 // Appels
 // ---------------------------------------------------------------------------
+
+/**
+ * Une seule demande à la fois pour une même lecture : un second appel pendant le premier reprend sa réponse au
+ * lieu d'en lancer une autre (la vérification d'accès au montage, rejouée par le double montage du mode
+ * développement : deux refus 403 au lieu d'un).
+ */
+export function shareInFlight<T>(slot: { current: Promise<T> | null }, start: () => Promise<T>): Promise<T> {
+  if (slot.current) return slot.current;
+  const promise: Promise<T> = start().finally(() => {
+    if (slot.current === promise) slot.current = null;
+  });
+  slot.current = promise;
+  return promise;
+}
 
 async function call<T>(
   invoke: MigrationInvoke,

@@ -29,6 +29,7 @@ const walk = (rel) => readdirSync(join(ROOT, rel), { withFileTypes: true }).flat
 const CONNECTION_FILES = [
   'src/lib/connectionCopy.ts',
   'src/lib/connectionBeta.ts',
+  'src/lib/accountIdFormat.ts',
   'src/hooks/useConnection.ts',
   'src/pages/ConnectReturn.tsx',
   ...walk('src/components/connections'),
@@ -76,6 +77,7 @@ test('aucun tiret cadratin, emoji ni majuscules forcées dans le code de connexi
 const PROVIDERS = ['linkedin', 'whatsapp', 'google', 'outlook', 'imap'];
 const CHANNELS = ['linkedin', 'email', 'whatsapp'];
 const HEALTHS = ['connected', 'syncing', 'connecting', 'limited', 'locked', 'needs_reconnect', 'not_connected', 'unknown'];
+const CAUSES = ['session_expired', 'connection_error', 'authentication_partial', 'outdated_identifier', 'removed', 'unreadable'];
 const CODES = [
   'feature_disabled', 'attempt_not_found', 'attempt_expired', 'attempt_closed', 'already_linked_org', 'already_linked_member', 'revoked',
   'wrong_account', 'claim_cross_tenant', 'claim_other_member', 'claim_revoked', 'claim_expired', 'claim_cancelled', 'claim_error',
@@ -119,6 +121,8 @@ function allStrings() {
     out.push(copy.HEALTH_LABEL[h]);
     for (const c of CHANNELS) out.push(copy.healthReason(h, c));
   }
+  // Une phrase par cause d'un compte à reconnecter ou d'un état non lu, pour chaque canal
+  for (const cause of CAUSES) for (const c of CHANNELS) out.push(copy.causeReason(cause, c));
   out.push(copy.productLabel('classic'), copy.productLabel('recruiter'), copy.productLabel('sales_navigator'), copy.productLabel('autre', 'Offre Premium'));
   return out.filter((s) => typeof s === 'string' && s !== '');
 }

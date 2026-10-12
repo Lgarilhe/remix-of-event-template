@@ -100,8 +100,8 @@ test('search avec recruiter_project_id : le projet limite la recherche Recruiter
   assert.equal(invalid.body.error_code, 'RECRUITER_PROJECT_INVALID');
 });
 
-test('list_sent_invitations : la liste d\'un compte de l\'organisation, lecture permise même sur le compte d\'un collègue', async () => {
-  const colleague = await boot({ linked: [{ id: 'link-1', user_id: 'user-2' }] });
+test('list_sent_invitations : la liste d\'un compte de l\'organisation, lecture permise sur le compte d\'un collègue à un administrateur', async () => {
+  const colleague = await boot({ member: { id: 'member-1', role: 'admin' }, linked: [{ id: 'link-1', user_id: 'user-2' }] });
   colleague.state.routes = { [`GET /${ACCOUNT}/users/me/relation-requests`]: { body: { data: [sent('inv1')], total_count: 1 } } };
   const response = await colleague.post({ action: 'list_sent_invitations' });
   assert.equal(response.status, 200);

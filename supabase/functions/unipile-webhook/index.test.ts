@@ -352,6 +352,150 @@ Deno.test('account.status.errored : ERROR', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Ce que le membre apprend quand son compte change d'état (constat F12)
+// ---------------------------------------------------------------------------
+
+/** Liaison LinkedIn de Marie dont le statut d'avant l'événement est `previous` (null : sans statut). */
+const linkedWith = (previous: string | null) => (call: Call): Reply => {
+  if (call.table === 'rpc:record_webhook_event') return { data: true };
+  if (call.table === 'member_linkedin_accounts' && call.op === 'select') {
+    return { data: [{ user_id: 'u1', organization_id: 'o1', linkedin_account_name: 'Marie', account_status: previous }] };
+  }
+  return undefined;
+};
+const noticesOf = (calls: Call[]) => writes(calls, 'notifications', 'insert').flatMap((c) => c.payload as Array<{
+  user_id: string; organization_id: string; type: string; title: string; body: string; link: string; metadata: Record<string, unknown>;
+}>);
+
+Deno.test('account.locked : LOCKED écrit, une notification seulement au passage d\'un compte OK ou sans statut', async () => {
+  for (const [previous, notified] of [['OK', 1], [null, 1], ['LOCKED', 0], ['CREDENTIALS', 0], ['ERROR', 0], ['DEGRADED', 0], ['PARTIAL', 0]] as const) {
+    await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith(previous), async ({ calls }) => {
+      strictEqual((await mod.handleRequest(post(URL_OK, envelope('account.locked', { object: 'Account', is_locked: true })))).status, 200);
+      const update = writes(calls, 'member_linkedin_accounts', 'update')[0];
+      strictEqual((update.payload as { account_status: string }).account_status, 'LOCKED', String(previous));
+      const notices = noticesOf(calls);
+      strictEqual(notices.length, notified, `${previous} -> ${notified} notification(s)`);
+      if (notified) {
+        const n = notices[0];
+        strictEqual(n.user_id, 'u1');
+        strictEqual(n.organization_id, 'o1');
+        strictEqual(n.type, 'linkedin_disconnected', 'même type que la déconnexion : hors « Pour vous », classée en action');
+        strictEqual(n.title, 'Compte LinkedIn restreint');
+        ok(n.body.includes('« Marie »'), n.body);
+        ok(n.body.includes('restreint par LinkedIn'), n.body);
+        ok(n.body.includes('en pause'), n.body);
+        ok(/Patientez/.test(n.body) && /directement sur LinkedIn/.test(n.body), `ce qu'il faut faire : ${n.body}`);
+        ok(/Se reconnecter n'y change rien/.test(n.body), n.body);
+        ok(!/Reconnectez/.test(n.body), 'aucune invitation à reconnecter');
+        ok(!/unipile/i.test(`${n.title} ${n.body}`), 'jamais le nom du prestataire');
+        ok(!/—/.test(`${n.title} ${n.body}`), 'pas de tiret cadratin');
+        strictEqual(n.metadata.account_status, 'LOCKED');
+        strictEqual(n.metadata.linkedin_account_id, ACC);
+      }
+    });
+  }
+});
+
+Deno.test('account.locked : le statut d\'avant est lu AVANT l\'écriture, et rien n\'est notifié si l\'écriture échoue', async () => {
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith('OK'), async ({ calls }) => {
+    await mod.handleRequest(post(URL_OK, envelope('account.locked', { object: 'Account', is_locked: true })));
+    const readAt = calls.findIndex((c) => c.table === 'member_linkedin_accounts' && c.op === 'select');
+    const writeAt = calls.findIndex((c) => c.table === 'member_linkedin_accounts' && c.op === 'update');
+    ok(readAt >= 0 && readAt < writeAt, 'lecture du statut précédent avant l\'écriture');
+  });
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, (call) => {
+    if (call.table === 'member_linkedin_accounts' && call.op === 'update') return { error: { code: 'XX000', message: 'base indisponible' } };
+    return linkedWith('OK')(call);
+  }, async ({ calls }) => {
+    strictEqual((await mod.handleRequest(post(URL_OK, envelope('account.locked', { object: 'Account', is_locked: true })))).status, 200);
+    strictEqual(noticesOf(calls).length, 0, 'le compte n\'est pas passé LOCKED : personne n\'est prévenu');
+  });
+});
+
+Deno.test('account.locked rejoué (même evt_) : ignoré, ni écriture ni seconde notification', async () => {
+  let first = true;
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, (call) => {
+    if (call.table === 'rpc:record_webhook_event') {
+      const isNew = first;
+      first = false;
+      return { data: isNew };
+    }
+    return linkedWith('OK')(call);
+  }, async ({ calls }) => {
+    const request = () => post(URL_OK, envelope('account.locked', { object: 'Account', is_locked: true }, {}));
+    strictEqual((await mod.handleRequest(request())).status, 200);
+    strictEqual(noticesOf(calls).length, 1);
+    const accountWrites = () => calls.filter((c) => (c.table === 'member_linkedin_accounts' || c.table === 'notifications') && c.op !== 'select').length;
+    const writesBefore = accountWrites();
+    const replay = await mod.handleRequest(request());
+    deepStrictEqual(await replay.json(), { ok: true, deduplicated: true });
+    strictEqual(accountWrites(), writesBefore, 'le rejeu n\'écrit rien');
+    strictEqual(noticesOf(calls).length, 1, 'une seule notification pour le même événement');
+  });
+});
+
+Deno.test('account.unlocked : retour à OK pour un compte LOCKED seulement, aucune notification', async () => {
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith('LOCKED'), async ({ calls }) => {
+    strictEqual((await mod.handleRequest(post(URL_OK, envelope('account.unlocked', { object: 'Account', is_locked: false })))).status, 200);
+    const update = writes(calls, 'member_linkedin_accounts', 'update')[0];
+    strictEqual((update.payload as { account_status: string }).account_status, 'OK');
+    ok(update.filters.some(([name, args]) => name === 'eq' && args[0] === 'account_status' && args[1] === 'LOCKED'));
+    strictEqual(noticesOf(calls).length, 0);
+  });
+});
+
+Deno.test('account.status.running sur un compte verrouillé : même notification, une fois, et pas pour un compte déjà verrouillé ou en panne', async () => {
+  for (const [previous, notified] of [['OK', 1], ['DEGRADED', 1], ['PARTIAL', 1], ['LOCKED', 0], ['CREDENTIALS', 0], ['ERROR', 0]] as const) {
+    await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith(previous), async ({ calls }) => {
+      await mod.handleRequest(post(URL_OK, envelope('account.status.running', { object: 'Account', is_locked: true })));
+      strictEqual((writes(calls, 'member_linkedin_accounts', 'update')[0].payload as { account_status: string }).account_status, 'LOCKED');
+      const notices = noticesOf(calls);
+      strictEqual(notices.length, notified, `${previous} -> ${notified} notification(s)`);
+      if (notified) strictEqual(notices[0].title, 'Compte LinkedIn restreint');
+    });
+  }
+});
+
+Deno.test('account.status.degraded et partial : jamais de notification, même depuis un compte OK relié à un membre', async () => {
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith('OK'), async ({ calls }) => {
+    for (const type of ['account.status.degraded', 'account.status.partial']) {
+      calls.length = 0;
+      strictEqual((await mod.handleRequest(post(URL_OK, envelope(type, { object: 'Account' })))).status, 200);
+      strictEqual(writes(calls, 'member_linkedin_accounts', 'update').length, 1, type);
+      strictEqual(noticesOf(calls).length, 0, `${type} : état de carte seulement`);
+    }
+  });
+});
+
+Deno.test('account.status.running (compte non verrouillé) : OK, aucune notification', async () => {
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith('LOCKED'), async ({ calls }) => {
+    await mod.handleRequest(post(URL_OK, envelope('account.status.running', { object: 'Account', is_locked: false })));
+    strictEqual((writes(calls, 'member_linkedin_accounts', 'update')[0].payload as { account_status: string }).account_status, 'OK');
+    strictEqual(noticesOf(calls).length, 0);
+  });
+});
+
+Deno.test('account.status.errored : la notification parle d\'un problème de connexion, pas d\'un compte « plus connecté » ; disconnected garde son texte', async () => {
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith('OK'), async ({ calls }) => {
+    await mod.handleRequest(post(URL_OK, envelope('account.status.errored', {})));
+    const [n] = noticesOf(calls);
+    strictEqual(n.type, 'linkedin_disconnected');
+    strictEqual(n.title, 'Problème de connexion LinkedIn');
+    ok(n.body.includes('« Marie »') && n.body.includes('problème de connexion'), n.body);
+    ok(!/n'est plus connecté/.test(n.body), `ne dit plus « plus connecté » : ${n.body}`);
+    ok(/Reconnectez-le/.test(n.body), 'reconnecter reste le geste');
+    ok(!/unipile/i.test(`${n.title} ${n.body}`));
+    strictEqual(n.metadata.account_status, 'ERROR');
+  });
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedWith('OK'), async ({ calls }) => {
+    await mod.handleRequest(post(URL_OK, envelope('account.status.disconnected', {})));
+    const [n] = noticesOf(calls);
+    strictEqual(n.title, 'Compte LinkedIn déconnecté');
+    ok(n.body.includes('n\'est plus connecté'), n.body);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // account.remove
 // ---------------------------------------------------------------------------
 

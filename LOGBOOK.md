@@ -32,6 +32,32 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-12 — BUG — Visite de l'application et répétition de la bascule sur une copie locale : 28 défauts relevés, 20 corrigés
+
+**Contexte** : la branche de bascule v2 n'avait jamais tourné de bout en bout. Deux essais sur une copie locale de la base (données fictives, faux prestataire, pile locale ; ni clé réelle, ni production) : une visite de l'application avec plusieurs profils de membre (propriétaire, administrateur, collaborateur), puis une répétition de la bascule qui suit `docs/unipile-v2-bascule.md` étape par étape.
+**Fait** : 28 défauts relevés (F1 à F17 pour la visite, R1 à R11 pour la répétition). Corrigés (20) : F1, F4, F5, F7, F8, F9, F10, F11, F12, F14, F15, R1 à R6, R8, R9, R11. En partie (3) : F3 (écran seulement), F13 (phrases citées), F16 (carte seulement). R7 consigné dans le guide, sans changement de code. F2 ne se reproduit pas. F6, F17 et R10 laissés à une décision. Les plus lourds :
+- un collaborateur lisait les conversations, les messages, le solde d'InMails et les contrats du compte d'une collègue (F9) ;
+- annuler des lots de conversion dans le désordre laissait un tableau d'expéditeurs à moitié converti, impossible à reprendre (R1), et deux conversions simultanées créaient un lot vide que l'annulation marquait restauré sans rien changer (R2) ;
+- les filtres que la licence n'applique pas n'étaient affichés nulle part (F10) ;
+- DEGRADED, PARTIAL et LOCKED retenaient les envois sans prévenir le membre, hors un bandeau sur PARTIAL (F12) ;
+- `?connection-native=1|0` n'était lu par aucun code (F1).
+**Décision** (appliquée, à confirmer par le propriétaire) : un collaborateur ne lit que le compte LinkedIn qu'il a relié, les autres rôles lisent ceux de l'organisation ; DEGRADED et PARTIAL sont un état de carte seulement, LOCKED a une notification, un bandeau et une ligne d'« À traiter » sans « Reconnecter », ERROR et CREDENTIALS sont inchangés.
+**Raison** : l'écran limitait déjà le collaborateur à son compte (`useFilteredLinkedInAccounts`) et `account-rules.ts` annonçait une lecture réservée aux propriétaires et administrateurs, mais le serveur laissait lire tout compte de l'organisation à tout membre.
+**Impact** : fonctions `unipile-search`, `unipile-accounts`, `unipile-webhook`, `unipile-migration` ; migration `20261012173252_provider_account_id_remap_guards.sql` (deux fonctions nouvelles, deux fonctions de la bascule remplacées, aucune table touchée) ; Paramètres › Connexions (trois cartes), tableau de bord, barre latérale, recherche, page de bascule ; `docs/unipile-v2-bascule.md`, `docs/unipile-v2-architecture.md` (parties 4, 6, 7, 8, 9 et 11), `CLAUDE.md`. Le gestionnaire de la bascule marche avec l'ancien SQL, mais sa liste de lots exige la nouvelle migration.
+**Contrôles** : chaque correctif de comportement a un test qui échoue sur le code d'avant (Deno, Node, e2e d'API `account-read-access` et `account-state-notifications`, audit SQL `account_remap_audit.sql` sections 11 et 12, rejoué sur une base vide avec les 304 migrations), sauf des gardes de non-régression et la logique pure de modules nouveaux. Deno : `unipile-search` et `unipile-accounts` 260 réussis, `unipile-migration` 87, `unipile-webhook` 50. `tests/c1` 670 sur 670, `tests/agent` sans échec, TypeScript à 11 erreurs (ligne de base). `tests/ux` : deux échecs déjà présents avant (`fond-accueil`, `seq-audit-f4b`). `deno check` rend les mêmes erreurs de types dans `_shared` qu'avant (référence `eb1286a`), aucune dans les fichiers modifiés. Navigateur (Chromium sur la pile locale) : cartes de connexion, avis de filtres, page de bascule, bandeau de panne.
+**Limites** : le faux prestataire n'est pas le service ; la partie 10 de l'architecture reste à jouer avec une vraie clé. Non vus : poussée en temps réel (rechargement seulement), bandeau de panne sur téléphone et en thème sombre, ligne des filtres « approchés » dans un navigateur (tests et appel direct au serveur seulement). L'exécution complète des 39 specs d'API n'a pas été refaite.
+**Reste à faire** :
+- [ ] Propriétaire : confirmer la règle de lecture des comptes de l'équipe, son extension aux actions qui agissent comme le titulaire (`endorse_skill`, `handle_invitation_received`, `bulk_handle_invitations`) et la liste des comptes que voient les collaborateurs (noms, photos, offres).
+- [ ] Propriétaire : confirmer les signaux de panne (PARTIAL sans signal hors de la carte) et choisir un seul vocabulaire pour LOCKED (« restreint par LinkedIn » ou « accès suspendu »).
+- [ ] Propriétaire : adresse d'assistance personnelle (F6), onglet « Base Konekt » du dialogue des filtres (F17), bouton flottant de l'assistant sur la page de bascule en téléphone (R10), vouvoiement du reste de la recherche (F13).
+- [ ] Serveur : marquer `unverified` dans `unverifiedLinkEntry` (F3, l'écran le lit déjà) ; distinguer le retrait voulu d'un compte WhatsApp de celui du prestataire ; anglais restant (`Forbidden`, `chat_id is required`...).
+- [ ] Front : toast PARTIAL de `LinkedInAccountsContext`, carte « Maintenant », `useDashboardConnections` sur `useMemberEmailList` (F16), inventaire `notificationKinds.ts`.
+- [ ] Tests : garde statique des deux fonctions nouvelles dans `tests/c1/account-remap.test.mjs` ; `KONEKT_PLATFORM_ADMIN_USER_IDS` dans `e2e/local-stack/up.sh`.
+- [ ] Rejouer la pile complète d'API, puis l'essai avec une vraie clé.
+**Refs** : `docs/unipile-v2-architecture.md` partie 11 ; `docs/unipile-v2-bascule.md` ; base `eb1286a`, les correctifs sont dans l'arbre de travail à la date de cette entrée (commit à ajouter ici).
+
+---
+
 ## 2026-10-12 — REFACTOR — Connexion LinkedIn, WhatsApp et e-mail : API v2 seule (branche non fusionnée)
 
 **Contexte** : le code appelait l'API v1 du prestataire (DSN et clé par organisation, `/api/v1` dans une quarantaine de fichiers). Périmètre de la branche `ccr-6c73a178-thbl61` : remplacer tous les appels par l'API v2, sans repli vers la v1, et garder tout nom de prestataire hors des textes lus par un utilisateur.

@@ -129,7 +129,7 @@ export function requireGeneratedFilters<T>(data: {
   filters?: T;
 } | null | undefined): T {
   if (data?.degraded) {
-    throw new Error('L’analyse est incomplète. Aucun filtre n’a été appliqué. Réessaie dans quelques instants.');
+    throw new Error('L’analyse est incomplète. Aucun filtre n’a été appliqué. Réessayez dans quelques instants.');
   }
   if (!data?.success || !data.filters) {
     throw new Error(data?.error || "Réponse invalide de l'API");

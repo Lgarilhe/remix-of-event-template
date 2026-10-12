@@ -30,7 +30,7 @@ import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
 import { useSidebarNotifications } from '@/hooks/sidebar/useSidebarNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
-import { useDashboardConnections } from '@/hooks/useDashboardConnections';
+import { useLinkedInOutage } from '@/hooks/sidebar/useLinkedInOutage';
 import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
 import { DashboardFocusPanel, type FocusPerson } from '@/components/dashboard/DashboardFocusPanel';
@@ -94,7 +94,8 @@ export default function Dashboard() {
   const unreadPeople = replies.data?.candidates.filter((c) => c.counted).slice(0, STACK_FACES).map((r) => ({ name: r.name }));
   const unreadMessagesUnavailable = replies.status === 'error' || replies.status === 'offline';
   const { displayName } = useCurrentProfile();
-  const connections = useDashboardConnections();
+  // Même lecture que la ligne d'À traiter de la barre latérale : un seul prédicat pour la panne LinkedIn.
+  const linkedinOutage = useLinkedInOutage();
 
   const candidatesUnavailable = !!candidatesError && candidates.length === 0;
 
@@ -192,7 +193,8 @@ export default function Dashboard() {
           </div>
           <DashboardFocusPanel
             isLoading={loading}
-            linkedinIssue={connections.linkedin.status === 'error'}
+            linkedinIssue={linkedinOutage.kind === 'reconnect'}
+            linkedinLocked={linkedinOutage.kind === 'locked'}
             unreadMessages={unreadMessages}
             unreadMessagesUnavailable={unreadMessagesUnavailable}
             unreadPeople={unreadPeople}

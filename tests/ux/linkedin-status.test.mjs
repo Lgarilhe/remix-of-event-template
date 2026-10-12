@@ -223,9 +223,10 @@ test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp retiré'
   assert.doesNotMatch(dashboardHook, /type !== 'WHATSAPP'/, 'le repli prenait le premier compte de la liste');
   assert.doesNotMatch(dashboardTodo, /whatsapp/i, 'carte WhatsApp retirée au lot 3');
   assert.doesNotMatch(dashboardPage, /whatsapp/i);
-  // Seul un compte en erreur demande d'agir sur l'accueil ; relier un premier
-  // compte reste dans les premiers pas de la barre latérale.
-  assert.match(dashboardPage, /linkedinIssue=\{connections\.linkedin\.status === 'error'\}/);
+  // Seul un compte à reconnecter demande d'agir sur l'accueil (un compte restreint a son bandeau
+  // sans bouton) ; relier un premier compte reste dans les premiers pas de la barre latérale.
+  // Même lecture que la ligne d'À traiter (useLinkedInOutage, constat F12).
+  assert.match(dashboardPage, /linkedinIssue=\{linkedinOutage\.kind === 'reconnect'\}/);
   assert.match(dashboardTodo, /title="Compte LinkedIn à reconnecter"/);
   assert.match(dashboardTodo, /action=\{\{ label: 'Reconnecter', href: '\/settings\/account\/connections' \}\}/);
 });
@@ -271,11 +272,19 @@ test('C8/C23 — Mon compte LinkedIn : lecture ratée affichée en erreur avec �
     myAccount.indexOf(') : myMapping && !myAccount ? ('),
     myAccount.indexOf('// Not linked (no mapping)'),
   );
-  assert.match(linked, /li\.state === 'load_error' \? \(\s*<LinkedInLoadError accountName=/);
-  assert.match(linked, /\{li\.state === 'load_error' \? CARD_COMMON\.retry : CARD_COMMON\.refreshAccounts\}/);
+  assert.match(linked, /<LinkedInLoadError accountName=/);
+  assert.match(linked, /\{CARD_COMMON\.retry\}/);
   assert.match(linked, /onConfirm=\{handleUnlink\}/, 'Dissocier reste utilisable');
-  // Un compte disparu se remplace par une nouvelle connexion (pas de « Reconnecter » sur un compte qui n'existe plus)
-  assert.match(linked, /li\.state === 'missing' && \(\s*<HostedConnectButton provider="linkedin" label=\{connectLabel\('linkedin'\)\}/);
+  // Un compte disparu se lit comme sur les deux autres cartes : « Reconnecter » ouvre une NOUVELLE connexion
+  // (startsNew), jamais le renouvellement d'un compte qui n'existe plus.
+  const missing = myAccount.slice(
+    myAccount.indexOf("myMapping && !myAccount && li.state === 'missing' ? ("),
+    myAccount.indexOf(') : myMapping && !myAccount ? ('),
+  );
+  assert.ok(missing.length > 0, 'branche du compte disparu introuvable');
+  assert.match(missing, /<ReconnectButton\s+hosted=\{hosted\}\s+provider="linkedin"\s+accountId=\{myMapping\.linkedin_account_id\}\s+startsNew=\{view\.reconnect === 'new_link'\}/);
+  assert.match(missing, /onConfirm=\{handleUnlink\}/, 'Dissocier reste utilisable');
+  assert.doesNotMatch(missing, /HostedConnectButton/);
   // Le message d'erreur est en français, sans nom de fournisseur, dans un avis annoncé aux lecteurs d'écran
   const notice = myAccount.slice(myAccount.indexOf('function LinkedInLoadError'), myAccount.indexOf('/** Heure locale'));
   assert.match(notice, /<ConnectionNotice tone="danger" title=\{LINKEDIN_CARD\.loadErrorTitle\}>/);
@@ -427,7 +436,7 @@ test('R12 — Mon compte LinkedIn : dissociation confirmée, un seul message, pa
   assert.match(myAccount, /expectedAccountId: myMapping\.linkedin_account_id/);
   // Chaque appel de handleUnlink passe par la confirmation commune (AlertDialog, bouton destructif)
   const calls = [...myAccount.matchAll(/onConfirm=\{handleUnlink\}/g)];
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3, 'compte relié, compte disparu, liste non reçue');
   const dialog = read('src/components/connections/ConnectionParts.tsx');
   assert.match(dialog, /<AlertDialogAction variant="destructive" className="max-md:h-11" onClick=\{onConfirm\}>/);
   assert.doesNotMatch(myAccount, /onClick=\{handleUnlink\}/, 'Dissocier sans confirmation');

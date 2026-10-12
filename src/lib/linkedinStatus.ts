@@ -31,8 +31,16 @@
  * - not_connected : aucun compte relié (état « not_linked » d'une carte).
  * connecting (CONNECTING) et unknown (valeur absente ou nouvelle, jamais une
  * panne) complètent la liste.
- * Module pur, sans import : testé par tests/ux/linkedin-status.test.mjs et
- * tests/ux/connexion-sante.test.mjs.
+ *
+ * Hors des cartes, un seul prédicat décide de ce qu'on signale au membre
+ * (linkedInOutageKind, myLinkedInOutage : bandeau du tableau de bord, ligne et
+ * chiffre d'« À traiter ») : « à reconnecter » (avec « Reconnecter »), « restreint »
+ * (LOCKED : les envois sont en pause, se reconnecter n'y change rien, pas de
+ * « Reconnecter »), ou rien. DEGRADED et PARTIAL restent un état de carte : le
+ * moteur retient les envois sans mettre les inscriptions en pause, ni bandeau,
+ * ni notification, ni chiffre.
+ * Module pur, sans import : testé par tests/ux/linkedin-status.test.mjs,
+ * tests/ux/connexion-sante.test.mjs et tests/ux/etat-compte-alertes.test.mjs.
  */
 export type ConnectionHealth =
   | 'connected'
@@ -88,6 +96,22 @@ export function classifyConnectionHealth(input: HealthInput): LinkedInHealth {
 /** Statut seul, sans verrou ni synchronisation : ce que lisent les cartes et l'alerte de déconnexion. */
 export function classifyLinkedInStatus(raw: string | null | undefined): LinkedInHealth {
   return classifyConnectionHealth({ status: raw });
+}
+
+/**
+ * Panne à signaler hors des cartes. 'reconnect' : à reconnecter (« Reconnecter »).
+ * 'locked' : accès restreint, les envois sont en pause et se reconnecter n'y change
+ * rien (pas de « Reconnecter »). Connexion limitée (DEGRADED) et PARTIAL : null, ce
+ * sont des états de carte (la carte de PARTIAL reste « à reconnecter »).
+ */
+export type LinkedInOutageKind = 'reconnect' | 'locked';
+
+export function linkedInOutageKind(input: HealthInput): LinkedInOutageKind | null {
+  const health = classifyConnectionHealth(input);
+  if (health === 'locked') return 'locked';
+  if (health !== 'needs_reconnect') return null;
+  const status = typeof input.status === 'string' ? input.status.trim().toUpperCase() : '';
+  return status === 'PARTIAL' ? null : 'reconnect';
 }
 
 /** Un compte qui peut envoyer : actif, ou actif et en première synchronisation. */
@@ -184,18 +208,20 @@ export function channelStatusOf(state: MyLinkedInState): 'connected' | 'error' |
 }
 
 /**
- * Panne du compte LinkedIn de l'utilisateur, pour « À traiter » (D41).
+ * Panne du compte LinkedIn de l'utilisateur à signaler (bandeau du tableau de bord et « À traiter », D41) :
  * - liaisons non reçues (ou utilisateur inconnu) → null (inconnu) ;
  * - aucune liaison à moi → false ;
- * - liste des comptes reçue → needsAction (à reconnecter, ou compte disparu) ;
+ * - liste des comptes reçue → à reconnecter (ou compte disparu : 'reconnect'), restreint ('locked'), sinon false ;
  * - sinon → statut enregistré sur la liaison (écrit par le webhook) : une
  *   panne de la liste des comptes ne rend pas le chiffre inconnu.
  */
-export function myLinkedInNeedsAction(input: Parameters<typeof resolveMyLinkedInStatus>[0]): boolean | null {
+export function myLinkedInOutage(input: Parameters<typeof resolveMyLinkedInStatus>[0]): LinkedInOutageKind | false | null {
   const { userId, mappings, mappingsLoaded, accountsLoaded } = input;
   if (!userId || !mappingsLoaded) return null;
   const mapping = mappings.find((m) => m.user_id === userId);
   if (!mapping) return false;
-  if (accountsLoaded) return resolveMyLinkedInStatus(input).needsAction;
-  return classifyLinkedInStatus(mapping.account_status) === 'needs_reconnect';
+  if (!accountsLoaded) return linkedInOutageKind({ status: mapping.account_status }) ?? false;
+  const { state, account } = resolveMyLinkedInStatus(input);
+  if (state === 'missing') return 'reconnect';
+  return linkedInOutageKind({ status: account?.status, isLocked: account?.is_locked }) ?? false;
 }

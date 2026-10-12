@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
+import type { SearchFiltersNotice } from '@/lib/searchFilterNotice';
+import { FiltersNoticeLines } from './FiltersNoticeLines';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { CompactResultsTable } from './CompactResultsTable';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -49,6 +51,8 @@ interface SearchResultsPanelProps {
   hasMoreResults: boolean;
   cursor: string | null;
   total: number | null;
+  /** Filtres que le compte LinkedIn n'a pas appliqués dans la recherche affichée. */
+  filtersNotice?: SearchFiltersNotice | null;
   
   // Job & Scoring
   selectedJob: Job | null;
@@ -163,6 +167,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   hasMoreResults,
   cursor,
   total,
+  filtersNotice,
   selectedJob,
   selectedProfiles,
   jobScores,
@@ -550,6 +555,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   return (
     <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
+      {hasSearched && <FiltersNoticeLines notice={filtersNotice} bordered={!isV3} />}
       {isV3 && onSetSelection && onRetainProfiles && onDismissProfiles ? (
         <SourcingResultsV3
           profiles={v3Profiles}

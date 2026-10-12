@@ -7,6 +7,7 @@ import {
   fetchReadiness,
   isFailure,
   rollbackRemap,
+  shareInFlight,
   type ApplyResult,
   type Failure,
   type MigrationInvoke,
@@ -41,6 +42,8 @@ export function useBascule() {
   // Lot en cours d'annulation, pour le texte du dialogue et de l'état.
   const [rollbackTarget, setRollbackTarget] = useState<string | null>(null);
   const mounted = useRef(true);
+  // Vérification d'accès en cours : le double montage de l'effet (mode développement) la reprend, il ne la relance pas.
+  const accessCall = useRef<Promise<Outcome<{ value: true }>> | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -51,7 +54,7 @@ export function useBascule() {
 
   const verifyAccess = useCallback(async () => {
     setAccess('checking');
-    const outcome = await checkAccess(invoke);
+    const outcome = await shareInFlight(accessCall, () => checkAccess(invoke));
     if (!mounted.current) return;
     if (isFailure(outcome)) setAccess(outcome.denied ? 'denied' : { error: outcome });
     else setAccess('granted');

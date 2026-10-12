@@ -33,8 +33,10 @@ export interface FocusPerson {
 }
 
 interface DashboardFocusPanelProps {
-  /** Compte LinkedIn de l'utilisateur en erreur : les envois sont en pause. */
+  /** Compte LinkedIn de l'utilisateur à reconnecter : les envois sont en pause. */
   linkedinIssue?: boolean;
+  /** Compte LinkedIn restreint par LinkedIn : envois en pause, se reconnecter n'y change rien (pas de bouton). */
+  linkedinLocked?: boolean;
   /** Réponses de candidats comptées par la barre latérale ; null tant qu'inconnu. */
   unreadMessages: number | null;
   /** Lecture des réponses en échec ou hors ligne, sans donnée : « Indisponible » au lieu de « Chargement ». */
@@ -101,6 +103,7 @@ const UnknownRow: React.FC<{ title: string; unavailable: boolean }> = ({ title, 
 
 export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
   linkedinIssue = false,
+  linkedinLocked = false,
   unreadMessages,
   unreadMessagesUnavailable = false,
   unreadPeople,
@@ -129,6 +132,13 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
       title="Compte LinkedIn à reconnecter"
       description="Les envois sont en pause jusqu'à la reconnexion."
       action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
+      texture="warm"
+    />
+  ) : linkedinLocked ? (
+    <SignalRow
+      tile={<IconTile icon={Unplug} tone="default" size="lg" />}
+      title="Compte LinkedIn restreint"
+      description="Les envois sont en pause tant que LinkedIn restreint le compte. Patientez ou vérifiez-le directement sur LinkedIn."
       texture="warm"
     />
   ) : null;

@@ -66,6 +66,9 @@ test('organisation obligatoire, appartenance vérifiée, plafond de requêtes pa
   const response = await limited.post({ action: 'search' });
   assert.equal(response.status, 429);
   assert.equal(response.body.errorType, 'RATE_LIMIT');
+  // Ce texte atteint le navigateur : français neutre, comme les autres plafonds de requêtes.
+  assert.equal(response.body.error, 'Trop de demandes. Patientez quelques secondes.');
+  assert.doesNotMatch(response.body.error, /rate limit/i);
 });
 
 test('clé de l\'application absente : panne de configuration dite sans nommer le prestataire', async () => {
@@ -129,6 +132,76 @@ test('un envoi par un membre ne part que du compte qu\'il a relié', async () =>
   assert.equal(accepted.status, 200);
   assert.equal(accepted.body.message.message_id, 'm1');
   assert.deepEqual(own.quotaCalls.map(call => [call.accountId, call.actionType, call.source]), [[ACCOUNT, 'message', 'manual_inbox']]);
+});
+
+test('un collaborateur ne lit que le compte qu\'il a relié ; propriétaire, administrateur et membre lisent celui d\'un collègue (F9)', async () => {
+  const reads = [
+    { action: 'get_chats' },
+    { action: 'get_messages', chat_id: 'c1' },
+    { action: 'sync_chat_history', chat_id: 'c1' },
+    { action: 'list_sent_invitations' },
+    { action: 'list_recruiter_projects' },
+  ];
+  const routes = {
+    [`GET /${ACCOUNT}/inboxes`]: { body: { data: [{ object: 'Inbox', id: 'i1', description: 'Classic', disabled: false }] } },
+    [`GET /${ACCOUNT}/inboxes/i1/chats`]: { body: { data: [] } },
+    [`GET /${ACCOUNT}/chats/c1/messages`]: { body: { data: [] } },
+    [`GET /${ACCOUNT}/chats/c1`]: { body: { id: 'c1', type: '1to1' } },
+    [`GET /${ACCOUNT}/users/me/relation-requests`]: { body: { data: [], total_count: 0 } },
+    [`GET /${ACCOUNT}/linkedin/contracts`]: { body: { object: 'AvailableContracts', contracts: [{ object: 'Contract', id: 'c1', name: 'R', product: 'recruiter', selected: true }] } },
+    [`GET /${ACCOUNT}/linkedin/recruiter/projects`]: { body: { data: [], total_count: 0 } },
+  };
+  const colleagueAccount = [{ id: 'link-1', user_id: 'user-2' }];
+
+  // Collaborateur sur le compte d'un collègue : refusé pour chaque lecture, avant tout appel au prestataire.
+  const collaborator = await boot({ member: { id: 'member-1', role: 'collaborator' }, linked: colleagueAccount });
+  collaborator.state.routes = routes;
+  for (const body of reads) {
+    const refused = await collaborator.post(body);
+    assert.equal(refused.status, 403, body.action);
+    assert.equal(refused.body.errorType, 'ACCOUNT_NOT_YOURS', body.action);
+    assert.match(refused.body.error, /relié par un autre membre/);
+    noVendor(refused.body);
+  }
+  assert.deepEqual(collaborator.provider, [], 'aucun appel au prestataire');
+  assert.deepEqual(collaborator.quotaCalls, []);
+
+  // Rôle absent : traité comme collaborateur (échec fermé).
+  const unknownRole = await boot({ member: { id: 'member-1' }, linked: colleagueAccount });
+  unknownRole.state.routes = routes;
+  for (const body of reads) assert.equal((await unknownRole.post(body)).status, 403, `rôle absent ${body.action}`);
+  assert.deepEqual(unknownRole.provider, []);
+
+  // Collaborateur sur son propre compte : servi.
+  const own = await boot({ member: { id: 'member-1', role: 'collaborator' } });
+  own.state.routes = routes;
+  for (const body of reads) {
+    const served = await own.post(body);
+    assert.equal(served.status, 200, `${body.action} ${JSON.stringify(served.body)}`);
+    assert.equal(served.body.success, true, body.action);
+  }
+  assert.ok(own.provider.length >= reads.length);
+
+  // Propriétaire, administrateur, membre : lisent le compte d'un collègue comme avant.
+  for (const role of ['owner', 'admin', 'member']) {
+    const reader = await boot({ member: { id: 'member-1', role }, linked: colleagueAccount });
+    reader.state.routes = routes;
+    for (const body of reads) {
+      const served = await reader.post(body);
+      assert.equal(served.status, 200, `${role} ${body.action} ${JSON.stringify(served.body)}`);
+      assert.equal(served.body.success, true, `${role} ${body.action}`);
+    }
+  }
+
+  // Appel interne (assistant, agent) : pas concerné, même sans rôle et sur le compte d'un collègue.
+  const internal = await boot({ linked: colleagueAccount });
+  internal.state.routes = routes;
+  for (const body of reads) assert.equal((await internal.post(body, { bearer: 'service-key' })).status, 200, `interne ${body.action}`);
+
+  // Les actions qui se servent seulement du compte pour consulter LinkedIn restent hors de la règle de lecture.
+  const search = await boot({ member: { id: 'member-1', role: 'collaborator' }, linked: colleagueAccount });
+  search.state.routes = { ...routes, [`POST /${ACCOUNT}/linkedin/search/people`]: { body: { data: [] } } };
+  assert.equal((await search.post({ action: 'search', api: 'classic', keywords: 'Go' })).status, 200);
 });
 
 test('le plafond LinkedIn de l\'utilisateur arrête la recherche avant tout appel au prestataire', async () => {

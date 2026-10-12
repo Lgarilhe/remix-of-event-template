@@ -8,7 +8,10 @@
  * - garde statique : confirmation à saisir avant toute conversion, annulation derrière sa propre
  *   confirmation, états chargement / erreur / vide, aucun toast sur le refus ;
  * - la page n'est dans aucune navigation : route seule dans App.tsx, absente du registre des
- *   Paramètres, de la barre latérale et de la palette.
+ *   Paramètres, de la barre latérale et de la palette ;
+ * - répétition de la bascule (12/10/2026) : ordre des annulations (R1), lot sans ligne (R2), phrase d'une
+ *   simulation vide (R4), lignes des comptes sans correspondance (R5), libellés sans nom de table (R6),
+ *   une seule vérification d'accès (R11).
  *
  * Lancer : node --test tests/ux/admin-bascule.test.mjs
  */
@@ -28,6 +31,17 @@ const OWNED = [
 ];
 const SRC = Object.fromEntries(OWNED.map((rel) => [rel, read(rel)]));
 const CODE = Object.fromEntries(Object.entries(SRC).map(([rel, src]) => [rel, stripComments(src)]));
+
+/** Tables du registre des colonnes de la bascule (migration d'origine) : chacune doit avoir un libellé pour le propriétaire. */
+const REGISTRY_TABLES = (() => {
+  const dir = join(ROOT, 'supabase/migrations');
+  const file = readdirSync(dir).find((name) => /_provider_account_id_remap\.sql$/.test(name));
+  const text = readFileSync(join(dir, file), 'utf8');
+  const start = text.indexOf('FROM (VALUES');
+  const end = text.indexOf(') AS v(ord, table_name', start);
+  const rows = [...text.slice(start, end).matchAll(/^\s*\(\d+,\s*'([a-z_]+)',\s*'([a-z_]+)',\s*'[a-z_]+',\s*'(remap|report_only)'/gm)];
+  return [...new Set(rows.filter((m) => m[3] === 'remap').map((m) => m[1]))];
+})();
 
 const VENDOR = /uni\s*pile|apollo|people data labs|\bpdl\b|anthropic|resend/i;
 const FILLER = /\b(crucial|crucia|essentiel|essentielle|robuste|riche|fluide|puissant|innovant|explorer|naviguer|garantir|veiller à)\b/i;
@@ -54,6 +68,17 @@ function allCopyStrings() {
   out.push(copy.readinessCounts({ ok: 7, warn: 2, ko: 1 }), copy.checkedAtText('2026-10-12T10:30:00Z'));
   out.push(copy.previewSummary({ total: 10, already: 2, toConvert: 6, unmapped: 2 }), copy.rowsText(1), copy.rowsText(4));
   out.push(copy.errorText('unmapped_accounts', null), copy.errorText(null, null));
+  out.push(
+    copy.PREVIEW.heldLine(1, ['inscriptions de séquence (1)']), copy.PREVIEW.heldLine(8, ['file des InMails (3)', 'registre des plafonds (5)']),
+    copy.APPLY.unmappedHeld(0, true), copy.APPLY.unmappedHeld(0, false), copy.APPLY.unmappedHeld(1, true), copy.APPLY.unmappedHeld(8, false),
+    copy.ROLLBACK.stillNewWhere(1, ['registre des plafonds (1)']), copy.ROLLBACK.stillNewWhere(3, ['file des InMails (3)']),
+    copy.BATCHES.rows(1), copy.BATCHES.rows(36),
+    copy.nothingToConvertText({ total: 0, already_v2: 0 }), copy.nothingToConvertText({ total: 4, already_v2: 4 }),
+    copy.nothingToConvertText({ total: 91, already_v2: 87 }), copy.nothingToConvertText({ total: 4, already_v2: 0 }),
+    copy.heldText({ held: [], heldRows: 0, heldUnread: true }), copy.heldText({ held: [], heldRows: 0, heldUnread: false }),
+    ...copy.heldParts(REGISTRY_TABLES.map((table) => ({ table, column: 'account_id', rows: 1 }))),
+    copy.capitalize('file des InMails'),
+  );
   return out.filter((s) => typeof s === 'string' && s !== '');
 }
 
@@ -237,12 +262,18 @@ const PREVIEW = {
   ],
   orphans_truncated: true,
   orphans_error: false,
-  unmapped: [{ kind: 'linkedin', label: 'P*** P***', ref: '…rdu', reason: 'ambiguous' }],
+  unmapped: [{
+    kind: 'linkedin', label: 'P*** P***', ref: '…rdu', reason: 'ambiguous',
+    usage: [{ table: 'inmail_queue', column: 'account_id', rows: 1, status: 'remap' }, { table: 'linkedin_action_log', column: 'account_id', rows: 2, status: 'remap' }],
+    usage_error: false, held_rows: 3,
+  }],
   unmapped_truncated: false,
+  unmapped_held_rows: 3,
+  unmapped_held_exact: true,
   already_v2: 1,
   previous_batches: [
-    { batch_id: '33333333-3333-4333-8333-333333333333', pairs: 2, applied_at: '2026-10-11T09:00:00Z', rolled_back: false },
-    { batch_id: '44444444-4444-4444-8444-444444444444', pairs: 1, applied_at: '2026-10-10T09:00:00Z', rolled_back: true },
+    { batch_id: '33333333-3333-4333-8333-333333333333', pairs: 2, rows: 14, applied_at: '2026-10-11T09:00:00Z', rolled_back: false, newer_open: false },
+    { batch_id: '44444444-4444-4444-8444-444444444444', pairs: 1, rows: 5, applied_at: '2026-10-10T09:00:00Z', rolled_back: true, newer_open: false },
   ],
   previous_batches_error: false,
 };
@@ -417,6 +448,180 @@ test('annulation : lot restauré, lot inconnu, lot déjà restauré', async () =
   assert.equal(again.message, copy.ERROR_BY_CODE.batch_already_rolled_back);
 });
 
+// ------------------------------------------------------------------ répétition de la bascule (12/10/2026)
+const OLDER = '55555555-5555-4555-8555-555555555555';
+const NEWER = '66666666-6666-4666-8666-666666666666';
+
+test('R1 : la simulation rend, pour chaque lot, les lignes réécrites et le lot plus récent encore ouvert', async () => {
+  const result = await api.fetchPreview(ok({
+    ...PREVIEW,
+    previous_batches: [
+      { batch_id: NEWER, pairs: 1, rows: 5, applied_at: '2026-10-12T10:00:00Z', rolled_back: false, newer_open: false },
+      { batch_id: OLDER, pairs: 5, rows: 36, applied_at: '2026-10-12T09:00:00Z', rolled_back: false, newer_open: true },
+      { batch_id: '77777777-7777-4777-8777-777777777777', pairs: 1, rows: 0, applied_at: '2026-10-12T08:00:00Z', rolled_back: false, newer_open: false },
+    ],
+  }));
+  assert.deepEqual(result.value.batches.map((b) => [b.batchId, b.rows, b.newerOpen]), [
+    [NEWER, 5, false], [OLDER, 36, true], ['77777777-7777-4777-8777-777777777777', 0, false],
+  ]);
+  // Un serveur qui ne dit pas les lignes : inconnu (null), le bouton reste proposé, jamais « vide ».
+  const bare = await api.fetchPreview(ok({ ...PREVIEW, previous_batches: [{ batch_id: NEWER, pairs: 1, applied_at: null, rolled_back: false }] }));
+  assert.equal(bare.value.batches[0].rows, null);
+  assert.equal(bare.value.batches[0].newerOpen, false);
+});
+
+test('R1 : un lot plus ancien n\u2019a pas de bouton actif tant qu\u2019un lot plus récent est ouvert, un lot sans ligne n\u2019en a pas du tout', () => {
+  const state = copy.batchRollbackState;
+  assert.equal(state({ rolledBack: false, rows: 5, newerOpen: false }), 'available');
+  assert.equal(state({ rolledBack: false, rows: 36, newerOpen: true }), 'blocked');
+  assert.equal(state({ rolledBack: false, rows: 0, newerOpen: false }), 'empty');
+  assert.equal(state({ rolledBack: true, rows: 5, newerOpen: false }), 'done');
+  assert.equal(state({ rolledBack: false, rows: null, newerOpen: false }), 'available', 'lignes inconnues : le serveur décide');
+  assert.equal(copy.BATCHES.blockedByNewer, 'Annulez d\u2019abord la conversion plus récente.');
+  assert.equal(copy.BATCHES.empty, 'Aucune ligne réécrite : rien à annuler.');
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  assert.match(panel, /const state = batchRollbackState\(batch\)/);
+  assert.match(panel, /\(state === 'available' \|\| state === 'blocked'\) && \(/);
+  assert.match(panel, /disabled=\{busy \|\| state === 'blocked'\}/);
+  assert.match(panel, /aria-describedby=\{state === 'blocked' \? `batch-blocked-\$\{batch\.batchId\}` : undefined\}/);
+  assert.match(panel, /state === 'blocked' && \(\s*<p id=\{`batch-blocked-\$\{batch\.batchId\}`\}[^>]*>\{BATCHES\.blockedByNewer\}/);
+  assert.match(panel, /state === 'empty' && <p[^>]*>\{BATCHES\.empty\}/);
+  // La confirmation de l'annulation rappelle l'ordre.
+  assert.ok(copy.ROLLBACK.lines.some((line) => /annulez la plus récente en premier/.test(line)));
+});
+
+test('R1 : le refus du serveur pour l\u2019ordre et pour un lot vide a sa phrase, sans résultat inconnu', async () => {
+  const newer = await api.rollbackRemap(httpError(409, { error_code: 'batch_newer_open' }), OLDER);
+  assert.equal(newer.ok, false);
+  assert.equal(newer.lost, false);
+  assert.equal(newer.message, copy.ERROR_BY_CODE.batch_newer_open);
+  assert.match(newer.message, /Annulez d\u2019abord la plus récente, puis celle-ci/);
+  const empty = await api.rollbackRemap(httpError(409, { error_code: 'batch_empty' }), OLDER);
+  assert.equal(empty.message, copy.ERROR_BY_CODE.batch_empty);
+  assert.match(empty.message, /rien à annuler/);
+});
+
+test('R2 : une conversion qui n\u2019a plus rien à faire rend « Rien à convertir », sans numéro de lot ni bouton d\u2019annulation', async () => {
+  const data = { success: true, batch_id: null, applied: 0, failed: 0, rows_total: 0, skipped_rows: 0, remaining: 0, incomplete: false, unmapped_left: 4, results: [] };
+  const result = await api.applyRemap(ok(data), 'BASCULER', true, 'f'.repeat(64));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.batchId, null);
+  assert.equal(result.value.rowsTotal, 0);
+  assert.match(copy.APPLY.nothingDone, /^Rien à convertir/);
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  // « Rien à convertir » seulement sans échec, sans colonne sautée et sans temps écoulé : un échec sans lot reste montré.
+  assert.match(panel, /!result\.batchId && result\.failed === 0 && result\.skippedRows === 0 && !result\.incomplete/);
+  // Pas de numéro de lot ni de bouton d'annulation sans lot, ou pour un lot qui n'a réécrit aucune ligne.
+  assert.match(panel, /\{result\.batchId && \(\s*<div className="rounded-lg bg-muted px-3 py-2">/);
+  assert.match(panel, /rolledBack \|\| !result\.batchId \|\| result\.rowsTotal === 0 \? null : \(/);
+  // Tous les comptes en échec : le résultat porte les échecs, pas de lot.
+  const failed = await api.applyRemap(ok({
+    ...data, success: false, error_code: 'partial_failure', failed: 1,
+    results: [{ kind: 'linkedin', label: 'C*** M***', ref: '…cdef', status: 'failed', error_code: 'conflict', error: 'x' }],
+  }), 'BASCULER', true, 'f'.repeat(64));
+  assert.equal(failed.value.batchId, null);
+  assert.equal(failed.value.failedPairs.length, 1);
+});
+
+test('R4 : la simulation vide dit pourquoi, selon ce que la base contient', () => {
+  const text = copy.nothingToConvertText;
+  assert.equal(text({ total: 0, already_v2: 0 }), copy.PREVIEW.nothingNoAccounts);
+  assert.equal(text({ total: 4, already_v2: 4 }), copy.PREVIEW.nothingAllConverted);
+  // Après une conversion avec des comptes laissés tels quels : 87 convertis sur 91, 4 sans correspondance.
+  assert.equal(text({ total: 91, already_v2: 87 }), 'Tous les comptes qui ont une correspondance sont déjà convertis.');
+  assert.equal(text({ total: 4, already_v2: 0 }), copy.PREVIEW.nothingNoMatch);
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  assert.match(panel, /nothingToConvertText\(preview\.counts\.all\)/);
+});
+
+test('R5 : un compte sans correspondance dit ses lignes avant la case « Laisser tels quels », dans la simulation et la confirmation', async () => {
+  const result = await api.fetchPreview(ok(PREVIEW));
+  const row = result.value.unmapped[0];
+  assert.equal(row.heldRows, 3);
+  assert.equal(row.heldUnread, false);
+  assert.deepEqual(row.held.map((h) => [h.table, h.rows]), [['inmail_queue', 1], ['linkedin_action_log', 2]]);
+  assert.equal(result.value.unmappedHeldRows, 3);
+  assert.equal(result.value.unmappedHeldExact, true);
+  assert.equal(copy.heldText(row), '3 lignes resteront sur l\u2019ancien identifiant : file des InMails (1), registre des plafonds (2).');
+  assert.equal(copy.heldText({ held: [], heldRows: 0, heldUnread: false }), 'Aucune ligne liée à ce compte.');
+  assert.equal(copy.heldText({ held: [], heldRows: 0, heldUnread: true }), 'Lignes liées non lues.');
+  assert.equal(copy.heldText({ held: [{ table: 'inmail_queue', column: 'account_id', rows: 1 }], heldRows: 1, heldUnread: false }), '1 ligne restera sur l\u2019ancien identifiant : file des InMails (1).');
+  // La liste de la vérification n'a pas de relevé : ses lignes ne portent ni effectif ni « Aucune ligne liée ».
+  const readiness = await api.fetchReadiness(ok(READINESS));
+  assert.equal(readiness.value.checks[2].unmapped[0].heldRows, 0);
+  assert.deepEqual(readiness.value.checks[2].unmapped[0].held, []);
+  // Rien d'identifiable : ni identifiant entier ni nom dans l'état lu.
+  assert.ok(!JSON.stringify(result.value).includes('v1-li-perdu'));
+  // La confirmation dit les lignes avant la case ; la simulation les dit par compte.
+  const dialogs = CODE[`${ADMIN_DIR}/BasculeDialogs.tsx`];
+  assert.match(dialogs, /\{unmapped > 0 && \(\s*<div className="space-y-2">\s*<p[^>]*>\{APPLY\.unmappedHeld\(unmappedRows, unmappedRowsExact\)\}<\/p>\s*<div className="flex items-start gap-3">\s*<Checkbox/);
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  assert.match(panel, /unmappedRows=\{totals\.unmappedRows\}/);
+  assert.match(panel, /unmappedRowsExact=\{totals\.unmappedRowsExact\}/);
+  assert.match(panel, /\{capitalize\(heldText\(row\)\)\}/);
+  assert.equal(copy.APPLY.unmappedHeld(8, true), '8 lignes liées à ces comptes resteront sur l\u2019ancien identifiant (détail dans la simulation).');
+  assert.equal(copy.APPLY.unmappedHeld(8, false), 'Au moins 8 lignes liées à ces comptes resteront sur l\u2019ancien identifiant (détail dans la simulation).');
+  assert.equal(copy.APPLY.unmappedHeld(0, true), 'Aucune ligne n\u2019est liée à ces comptes.');
+});
+
+test('R6 : aucun nom de table ni de colonne n\u2019est montré, chaque table du registre a son libellé', () => {
+  assert.ok(REGISTRY_TABLES.length >= 12, `${REGISTRY_TABLES.length} tables au registre`);
+  for (const table of REGISTRY_TABLES) {
+    const label = copy.whereLabel(table, 'account_id');
+    assert.notEqual(label, 'autres données', `${table} sans libellé`);
+    assert.ok(!/_/.test(label), `nom technique dans « ${label} »`);
+  }
+  assert.equal(copy.whereLabel('inmail_queue', 'account_id'), 'file des InMails');
+  assert.equal(copy.whereLabel('linkedin_action_log', 'account_id'), 'registre des plafonds');
+  assert.equal(copy.whereLabel('table_inconnue', 'colonne'), 'autres données');
+  assert.equal(copy.whereLabel(undefined), 'autres données');
+  assert.notEqual(copy.whereLabel('sequence_enrollments', 'assigned_sender_id'), copy.whereLabel('sequence_enrollments', 'account_id'));
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  assert.doesNotMatch(panel, /row\.table\}\.\{row\.column/, 'liste des identifiants isolés : table.colonne brut');
+  assert.match(panel, /capitalize\(whereLabel\(row\.table, row\.column\)\)/);
+});
+
+test('R6 : après une annulation, les lignes restées au nouvel identifiant disent où elles se trouvent', async () => {
+  const result = await api.rollbackRemap(ok({
+    success: true, batch_id: 'b4', pairs: 1, restored_rows: 3, moved_rows: 0, still_new_rows: 3,
+    still_new: [{ table: 'sequence_enrollments', column: 'account_id', rows: 1 }, { table: 'linkedin_action_log', column: 'account_id', rows: 2 }],
+  }), 'b4');
+  assert.deepEqual(result.value.stillNew.map((h) => [h.table, h.rows]), [['sequence_enrollments', 1], ['linkedin_action_log', 2]]);
+  const where = copy.ROLLBACK.stillNewWhere(3, copy.heldParts(result.value.stillNew));
+  assert.equal(where, 'Elles se trouvent dans : inscriptions de séquence (1), registre des plafonds (2).');
+  assert.equal(copy.ROLLBACK.stillNewWhere(1, ['file des InMails (1)']), 'Elle se trouve dans : file des InMails (1).');
+  // Sans détail du serveur : le total seul, rien d'inventé.
+  const bare = await api.rollbackRemap(ok({ success: true, batch_id: 'b4', pairs: 1, restored_rows: 3, moved_rows: 0, still_new_rows: 2 }), 'b4');
+  assert.deepEqual(bare.value.stillNew, []);
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  assert.match(panel, /ROLLBACK\.stillNewWhere\(step\.value\.stillNewRows, heldParts\(step\.value\.stillNew\)\)/);
+});
+
+test('R11 : une vérification d\u2019accès déjà partie est reprise, jamais relancée', async () => {
+  const slot = { current: null };
+  let started = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const start = () => { started++; return gate.then(() => 'granted'); };
+  // Deux montages de l'effet (mode développement) pendant la même vérification : un seul appel.
+  const first = api.shareInFlight(slot, start);
+  const second = api.shareInFlight(slot, start);
+  assert.equal(started, 1);
+  assert.equal(first, second);
+  release();
+  assert.equal(await first, 'granted');
+  assert.equal(slot.current, null, 'le créneau est libéré à la fin');
+  // Une vérification demandée après coup (Réessayer) repart.
+  assert.equal(await api.shareInFlight(slot, () => { started++; return Promise.resolve('again'); }), 'again');
+  assert.equal(started, 2);
+  // Un échec libère aussi le créneau.
+  await assert.rejects(api.shareInFlight(slot, () => Promise.reject(new Error('boom'))), /boom/);
+  assert.equal(slot.current, null);
+  const hook = CODE[`${ADMIN_DIR}/useBascule.ts`];
+  assert.match(hook, /const outcome = await shareInFlight\(accessCall, \(\) => checkAccess\(invoke\)\)/);
+  assert.equal((hook.match(/checkAccess\(/g) ?? []).length, 1, 'un seul appel de la vérification d\u2019accès dans le hook');
+});
+
 // ------------------------------------------------------------------ garde statique
 test('aucun nom de prestataire dans le code de la page (hors le nom interne de la fonction appelée)', () => {
   for (const [rel, code] of Object.entries(CODE)) {
@@ -500,8 +705,10 @@ test('les boutons d’annulation et de conversion sont éteints pendant une conv
   assert.match(page, /const busy = bascule\.apply\.phase === 'loading' \|\| bascule\.rollback\.phase === 'loading'/);
   assert.match(page, /<PreviewStep[^>]*busy=\{busy\}/);
   assert.match(page, /<ApplyStep[\s\S]*busy=\{busy\}/);
-  // Trois boutons d'annulation : la liste des lots, le résultat de la conversion ; et la conversion elle-même.
-  assert.equal((panel.match(/disabled=\{busy\}/g) ?? []).length, 2);
+  // Boutons d'annulation : la liste des lots (éteint aussi quand un lot plus récent est à annuler d'abord) et le
+  // résultat de la conversion ; puis la conversion elle-même.
+  assert.equal((panel.match(/disabled=\{busy( \|\| state === 'blocked')?\}/g) ?? []).length, 2);
+  assert.match(panel, /disabled=\{busy \|\| state === 'blocked'\}/);
   assert.match(panel, /const canApply = totals !== null && totals\.toConvert > 0 && !busy/);
 });
 

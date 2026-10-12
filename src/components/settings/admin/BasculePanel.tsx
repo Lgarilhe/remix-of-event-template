@@ -25,15 +25,21 @@ import {
   ROLLBACK,
   STATUS_BADGE,
   STATUS_LABEL,
+  batchRollbackState,
+  capitalize,
   checkedAtText,
   countsLine,
+  heldParts,
+  heldText,
   kindLabel,
+  nothingToConvertText,
   previewSummary,
   readinessCounts,
   rowsText,
   skippedReasonLabel,
   unmappedReasonLabel,
   viaLabel,
+  whereLabel,
 } from './basculeCopy';
 import { ApplyDialog, RollbackDialog } from './BasculeDialogs';
 import type { Step } from './useBascule';
@@ -178,6 +184,8 @@ export function previewTotals(preview: Preview) {
     toConvert: preview.pairs.length,
     unmapped: all.unmapped,
     rows: preview.pairs.reduce((sum, pair) => sum + pair.totalRows, 0),
+    unmappedRows: preview.unmappedHeldRows,
+    unmappedRowsExact: preview.unmappedHeldExact,
   };
 }
 
@@ -291,6 +299,7 @@ function UnmappedTable({ rows, truncated }: { rows: UnmappedRow[]; truncated: bo
               {kindLabel(row.kind)}, {maskedOrDash(row.label)} <span className="font-mono text-xs text-muted-foreground">{row.ref}</span>
             </p>
             <p className="text-xs text-foreground-secondary">{unmappedReasonLabel(row.reason)}</p>
+            <p className="text-xs text-foreground-secondary">{capitalize(heldText(row))}</p>
           </li>
         ))}
       </ul>
@@ -306,42 +315,45 @@ function BatchesList({ preview, busy, onRollback }: { preview: Preview; busy: bo
       <h3 className="text-sm font-semibold text-foreground">{BATCHES.heading}</h3>
       {preview.batchesError && <p className="text-sm text-foreground-secondary">{BATCHES.unreadable}</p>}
       <ul className="divide-y divide-border border-y border-border">
-        {preview.batches.map((batch) => (
-          <li key={batch.batchId} className="space-y-2 py-3">
-            <div className="min-w-0">
-              <p className="break-all font-mono text-xs text-foreground">{batch.batchId}</p>
-              <p className="text-xs text-muted-foreground">
-                {BATCHES.pairs(batch.pairs)}
-                {batch.appliedAt ? `, ${new Date(batch.appliedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <Badge variant={batch.rolledBack ? 'muted' : 'info'}>{batch.rolledBack ? BATCHES.rolledBack : BATCHES.applied}</Badge>
-              {!batch.rolledBack && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="min-h-11 text-muted-foreground hover:text-danger md:min-h-0"
-                  aria-label={BATCHES.rollbackAria(batch.batchId)}
-                  disabled={busy}
-                  onClick={() => onRollback(batch.batchId)}
-                >
-                  {BATCHES.rollbackButton}
-                </Button>
+        {preview.batches.map((batch) => {
+          const state = batchRollbackState(batch);
+          return (
+            <li key={batch.batchId} className="space-y-2 py-3">
+              <div className="min-w-0">
+                <p className="break-all font-mono text-xs text-foreground">{batch.batchId}</p>
+                <p className="text-xs text-muted-foreground">
+                  {BATCHES.pairs(batch.pairs)}
+                  {batch.rows !== null && batch.rows > 0 ? `, ${BATCHES.rows(batch.rows)}` : ''}
+                  {batch.appliedAt ? `, ${new Date(batch.appliedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Badge variant={batch.rolledBack ? 'muted' : 'info'}>{batch.rolledBack ? BATCHES.rolledBack : BATCHES.applied}</Badge>
+                {(state === 'available' || state === 'blocked') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-11 text-muted-foreground hover:text-danger md:min-h-0"
+                    aria-label={BATCHES.rollbackAria(batch.batchId)}
+                    aria-describedby={state === 'blocked' ? `batch-blocked-${batch.batchId}` : undefined}
+                    disabled={busy || state === 'blocked'}
+                    onClick={() => onRollback(batch.batchId)}
+                  >
+                    {BATCHES.rollbackButton}
+                  </Button>
+                )}
+              </div>
+              {/* Un lot ne s'annule qu'après les lots plus récents ; un lot sans ligne n'a rien à annuler. */}
+              {state === 'empty' && <p className="text-xs text-foreground-secondary">{BATCHES.empty}</p>}
+              {state === 'blocked' && (
+                <p id={`batch-blocked-${batch.batchId}`} className="text-xs text-foreground-secondary">{BATCHES.blockedByNewer}</p>
               )}
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
-}
-
-function nothingToConvertText(preview: Preview): string {
-  const all = preview.counts.all;
-  if (all.total === 0) return PREVIEW.nothingNoAccounts;
-  if (all.already_v2 === all.total) return PREVIEW.nothingAllConverted;
-  return PREVIEW.nothingNoMatch;
 }
 
 function OrphansList({ rows, truncated }: { rows: OrphanRow[]; truncated: boolean }) {
@@ -353,7 +365,7 @@ function OrphansList({ rows, truncated }: { rows: OrphanRow[]; truncated: boolea
         {rows.map((row, index) => (
           <li key={`${row.table}-${row.column}-${row.ref}-${index}`} className="py-3">
             <p className="text-sm text-foreground">
-              <span className="font-mono text-xs">{row.table}.{row.column}</span>{' '}
+              {capitalize(whereLabel(row.table, row.column))}{' '}
               <span className="font-mono text-xs text-muted-foreground">{row.ref}</span>
             </p>
             <p className="text-xs text-foreground-secondary">{rowsText(row.rows)}</p>
@@ -390,7 +402,7 @@ function PreviewResult({ preview, busy, onRollback }: { preview: Preview; busy: 
       ) : (
         <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center">
           <p className="text-sm font-semibold text-foreground">{PREVIEW.nothingTitle}</p>
-          <p className="mt-1 text-sm text-foreground-secondary">{nothingToConvertText(preview)}</p>
+          <p className="mt-1 text-sm text-foreground-secondary">{nothingToConvertText(preview.counts.all)}</p>
         </div>
       )}
       {preview.unmapped.length > 0 && <UnmappedTable rows={preview.unmapped} truncated={preview.unmappedTruncated} />}
@@ -471,7 +483,8 @@ function ApplyResultView({
   busy: boolean;
   onRollback: (batchId: string) => void;
 }) {
-  if (!result.batchId) {
+  // Aucun lot, aucun échec, aucune colonne sautée : la base n'avait plus rien à convertir (autre conversion passée avant).
+  if (!result.batchId && result.failed === 0 && result.skippedRows === 0 && !result.incomplete) {
     return (
       <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center">
         <p className="text-sm text-foreground-secondary">{APPLY.nothingDone}</p>
@@ -526,15 +539,17 @@ function ApplyResultView({
         </div>
       )}
 
-      <div className="rounded-lg bg-muted px-3 py-2">
-        <p className="text-xs font-semibold text-foreground">{APPLY.batchLabel}</p>
-        <div className="flex flex-wrap items-center gap-x-2">
-          <p className="break-all font-mono text-sm text-foreground">{result.batchId}</p>
-          <CopyBatchId id={result.batchId} />
+      {result.batchId && (
+        <div className="rounded-lg bg-muted px-3 py-2">
+          <p className="text-xs font-semibold text-foreground">{APPLY.batchLabel}</p>
+          <div className="flex flex-wrap items-center gap-x-2">
+            <p className="break-all font-mono text-sm text-foreground">{result.batchId}</p>
+            <CopyBatchId id={result.batchId} />
+          </div>
         </div>
-      </div>
+      )}
 
-      {rolledBack ? null : (
+      {rolledBack || !result.batchId || result.rowsTotal === 0 ? null : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <p className="text-sm text-foreground-secondary">{APPLY.rollbackHint}</p>
           <Button
@@ -629,6 +644,8 @@ export function ApplyStep({
           accounts={totals.toConvert}
           rows={totals.rows}
           unmapped={totals.unmapped}
+          unmappedRows={totals.unmappedRows}
+          unmappedRowsExact={totals.unmappedRowsExact}
           blocking={blocking}
           onConfirm={onApply}
         />
@@ -679,7 +696,12 @@ export function RollbackStatus({ step, batchId }: { step: Step<RollbackResult>; 
               <p className="text-sm text-foreground-secondary">{ROLLBACK.moved(step.value.movedRows)}</p>
             )}
             {step.value.stillNewRows > 0 && (
-              <p className="rounded-lg bg-warning-muted px-3 py-2 text-sm text-foreground">{ROLLBACK.stillNew(step.value.stillNewRows)}</p>
+              <div className="space-y-1 rounded-lg bg-warning-muted px-3 py-2 text-sm text-foreground">
+                <p>{ROLLBACK.stillNew(step.value.stillNewRows)}</p>
+                {step.value.stillNew.length > 0 && (
+                  <p>{ROLLBACK.stillNewWhere(step.value.stillNewRows, heldParts(step.value.stillNew))}</p>
+                )}
+              </div>
             )}
           </div>
         )}

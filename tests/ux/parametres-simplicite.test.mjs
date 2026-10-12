@@ -133,8 +133,8 @@ test('Connexions : plafonds sans « 0 / N », palier en texte, « Dissocier » n
   assert.match(src.linkedin, /\{status\.ramp_stage && status\.ramp_stage !== 'mature' && \(\s*<span className="text-xs text-muted-foreground">\{rampStageLabel\(status\.ramp_stage\)\}<\/span>/);
   assert.doesNotMatch(src.linkedin, /<Badge/);
   assert.doesNotMatch(src.linkedin, /className="text-danger hover:text-danger/);
-  // « Dissocier » : bouton gris au repos, rouge au survol, dans la confirmation commune aux deux états du compte
-  assert.equal((src.linkedin.match(/<RemovalDialog/g) || []).length, 2);
+  // « Dissocier » : bouton gris au repos, rouge au survol, dans la confirmation commune aux trois états du compte (relié, disparu, liste non reçue)
+  assert.equal((src.linkedin.match(/<RemovalDialog/g) || []).length, 3);
   assert.match(read('src/components/connections/ConnectionParts.tsx'), /className="text-muted-foreground hover:text-danger max-sm:flex-1 max-md:h-11"/);
 });
 

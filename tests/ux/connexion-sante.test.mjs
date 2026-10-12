@@ -12,7 +12,7 @@ import { loadTs, read } from './connexion-helpers.mjs';
 
 const status = await loadTs('src/lib/linkedinStatus.ts');
 const copy = await loadTs('src/lib/connectionCopy.ts');
-const { disconnectionAlertFor, classifyConnectionHealth, classifyLinkedInStatus, healthOfState, isHealthUsable, resolveMyLinkedInStatus, channelStatusOf, myLinkedInNeedsAction } = status;
+const { disconnectionAlertFor, classifyConnectionHealth, classifyLinkedInStatus, healthOfState, isHealthUsable, resolveMyLinkedInStatus, channelStatusOf, myLinkedInOutage } = status;
 
 test('OK et statuts d\'événement : connected', () => {
   for (const s of ['OK', 'ok', ' Ok ', 'RUNNING', 'RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS', 'CONNECTED']) {
@@ -118,15 +118,16 @@ test('carte LinkedIn : limited et locked ne demandent pas d\'agir, needs_reconne
   assert.equal(reco.needsAction, true);
 });
 
-test('« À traiter » : une connexion limitée ou un accès suspendu ne comptent pas comme panne à reconnecter', () => {
+test('« À traiter » : à reconnecter et accès restreint comptent ; connexion limitée et PARTIAL (états de carte) non', () => {
   const input = (account_status, accounts) => ({
     userId: ME, mappings: [{ ...mapMoi, account_status }], mappingsLoaded: true, accounts, accountsLoaded: accounts.length > 0,
   });
-  assert.equal(myLinkedInNeedsAction(input('PARTIAL', [])), true);
-  assert.equal(myLinkedInNeedsAction(input('DEGRADED', [])), false);
-  assert.equal(myLinkedInNeedsAction(input('LOCKED', [])), false);
-  assert.equal(myLinkedInNeedsAction(input('CREDENTIALS', [])), true);
-  assert.equal(myLinkedInNeedsAction(input('OK', [{ id: 'acc_moi', status: 'ERROR' }])), true);
+  assert.equal(myLinkedInOutage(input('PARTIAL', [])), false);
+  assert.equal(myLinkedInOutage(input('DEGRADED', [])), false);
+  assert.equal(myLinkedInOutage(input('LOCKED', [])), 'locked');
+  assert.equal(myLinkedInOutage(input('CREDENTIALS', [])), 'reconnect');
+  assert.equal(myLinkedInOutage(input('OK', [{ id: 'acc_moi', status: 'ERROR' }])), 'reconnect');
+  assert.equal(myLinkedInOutage(input('OK', [{ id: 'acc_moi', status: 'PARTIAL' }])), false);
 });
 
 test('tableau de bord : limited, locked et syncing restent neutres', () => {

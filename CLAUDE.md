@@ -732,7 +732,9 @@ Sous le compte rendu de l'assistant d'entretien, `InterviewFollowUp` (`src/compo
 ### État et liaison LinkedIn
 Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes gardées en attente et ignorées par le moteur, InMails programmés annulés, compte retiré des rotations multi-expéditeurs ; helper `_shared/linkedin-sending-stop.ts`). Le même arrêt s'applique quand un membre change de compte et avant le retrait d'un membre (`unipile-accounts` action `stop_member_linkedin`, owner/admin).
 
-Connexion d'un compte (API v2) : actions `connection_*` de `unipile-accounts`, table `connection_attempts` (son `id` est le `state` envoyé au prestataire, 30 minutes), lien hébergé sur `UNIPILE_HOSTED_DOMAIN` par défaut, connexion directe derrière `CONNECTION_NATIVE_ENABLED`. `claim_linkedin_account` n'accepte plus un compte relié à personne, sauf pour un administrateur de la plateforme. Architecture : `docs/unipile-v2-architecture.md`. Bascule des identifiants et mise en production : `docs/unipile-v2-bascule.md` (page `/settings/admin/bascule`, `KONEKT_PLATFORM_ADMIN_USER_IDS`).
+Signalement d'une panne hors des cartes (12/10/2026) : un seul prédicat, `linkedInOutageKind` et `myLinkedInOutage` de `src/lib/linkedinStatus.ts` (hook `useLinkedInOutage`, qui remplacent `myLinkedInNeedsAction`), lu par le bandeau du tableau de bord, la ligne d'« À traiter » et son chiffre : « à reconnecter » (avec « Reconnecter »), « restreint » (LOCKED, sans « Reconnecter ») ou rien. DEGRADED et PARTIAL restent un état de carte, et la carte de PARTIAL reste « à reconnecter » (décision à confirmer par le propriétaire). Les trois cartes de Paramètres › Connexions rendent un compte retiré chez le prestataire de la même façon (« À reconnecter ») et ont une phrase par cause (`viewOfAccount` de `src/components/connections/connectionView.ts`, `causeReason` de `connectionCopy.ts`) ; la carte e-mail liste toutes les boîtes du membre (`useMemberEmailList`).
+
+Connexion d'un compte (API v2) : actions `connection_*` de `unipile-accounts`, table `connection_attempts` (son `id` est le `state` envoyé au prestataire, 30 minutes), lien hébergé sur `UNIPILE_HOSTED_DOMAIN` par défaut, connexion directe derrière `CONNECTION_NATIVE_ENABLED`. `claim_linkedin_account` n'accepte plus un compte relié à personne, sauf pour un administrateur de la plateforme. Architecture : `docs/unipile-v2-architecture.md`. Bascule des identifiants et mise en production : `docs/unipile-v2-bascule.md` (page `/settings/admin/bascule`, `KONEKT_PLATFORM_ADMIN_USER_IDS`). Les lots d'une conversion s'annulent du plus récent au plus ancien (HINT `REMAP_BATCH_NEWER_OPEN`), et une conversion qui ne réécrit aucune ligne ne crée pas de lot (HINT `REMAP_BATCH_EMPTY` à l'annulation d'un lot vide) ; migrations `20261012051307` et `20261012173252`.
 
 ### Séquences : règles du moteur et de l'interface (audit 2026-09-25, `docs/audit-2026-09-25-sequences.md`)
 - **Pause** = `status 'paused'` + `pause_reason` ; les exécutions en attente (`scheduled`, `waiting_event`, `quota_blocked`) gardent leur date et le moteur les ignore. Aucune pause n'annule d'exécution, sauf celles que pose le moteur pour abonnement requis ou compte non rattaché : il annule l'étape courante avec la raison, et la reprise la réarme. Une clôture (réponse, désinscription, rebond, RDV, effacement RGPD) annule toutes les exécutions en attente, jamais `sending`.
@@ -873,7 +875,7 @@ Frontend (invokeUnipile) → unipile-search / unipile-accounts → _shared/unipi
 | Recruiter (`recruiter`) | `recruiter/search/people` (curseur) | Mots-clés booléens, intitulé, compétences, séniorité, projets, spotlights |
 | Sales Navigator (`sales_navigator`) | `sales-navigator/search/people` (décalage, sans curseur) | Recherche de sociétés, filtres société |
 
-Licence déduite de `GET /{acc}/linkedin/contracts` (Classic toujours possible). Recruiter et Sales Navigator s'excluent sur un compte : `POST .../contracts/{id}/select` avant de chercher avec l'autre. Un filtre que la licence ne sait pas exprimer est rendu dans `filters_dropped`, un filtre approché dans `filters_adjusted` (`toKonektFilters`) ; l'agent de sourcing continu refuse plutôt que de chercher plus large (422 `FILTERS_UNSUPPORTED`). L'ancienne matrice des filtres par licence (colonne « Database » comprise) est retirée : lire `_shared/unipile/normalize/search.ts`.
+Licence déduite de `GET /{acc}/linkedin/contracts` (Classic toujours possible). Recruiter et Sales Navigator s'excluent sur un compte : `POST .../contracts/{id}/select` avant de chercher avec l'autre. Un filtre que la licence ne sait pas exprimer est rendu dans `filters_dropped`, un filtre approché dans `filters_adjusted` (`toKonektFilters`) ; l'agent de sourcing continu refuse plutôt que de chercher plus large (422 `FILTERS_UNSUPPORTED`). Une recherche à la main affiche ces deux listes au-dessus des résultats (`src/lib/searchFilterNotice.ts`, rangées dans `ExecutedSourcingSearch.filtersNotice`). L'ancienne matrice des filtres par licence (colonne « Database » comprise) est retirée : lire `_shared/unipile/normalize/search.ts`.
 
 ### Main Actions (unipile-search edge function)
 **search** — corps compilé par licence (`_shared/unipile/normalize/search.ts`) → `{ success, results, cursor, total }` ; mots-clés Classic/Sales Navigator coupés à 200 caractères
@@ -883,6 +885,7 @@ Licence déduite de `GET /{acc}/linkedin/contracts` (Classic toujours possible).
 **get_chats / get_messages** — par compte et par boîte (`inboxes`), dédoublonnés ; une conversation v2 ne porte pas son compte
 **send_message** — `POST /{acc}/chats/{chat}/messages/send` ou `POST /{acc}/chats/send` (nouvelle) ; InMail selon la licence (Recruiter : objet et signature, Sales Navigator : objet, Classic : crédit `classic`) ; réservée au titulaire du compte
 Compte : `unipile-accounts` (`connection_*`, `list`, `inmail_balance`, `list_contracts`, `select_contract`...) ; connexion hébergée par défaut, directe derrière `CONNECTION_NATIVE_ENABLED`
+**Lecture des comptes de l'équipe** (12/10/2026, à confirmer par le propriétaire) : un collaborateur ne lit que le compte qu'il a relié : `unipile-search` `get_chats`, `get_messages`, `sync_chat_history`, `list_sent_invitations`, `list_recruiter_projects` (403 `ACCOUNT_NOT_YOURS`), `unipile-accounts` `inmail_balance`, `list_contracts`, `get_account_details`, `get_attendee_picture`, `list_invitations_received` (403 `account_not_yours`). Propriétaire, administrateur et membre lisent ceux de l'organisation, un rôle inconnu vaut collaborateur, la clé de service n'est pas concernée ; règle dans `unipile-search/account-rules.ts` et `unipile-accounts/ownership.ts`, garde `e2e/api/account-read-access.spec.ts`.
 
 ### Webhook Events (unipile-webhook, jeton `?v2_token=`, 17 événements souscrits)
 | Event v2 | Action |
@@ -891,16 +894,16 @@ Compte : `unipile-accounts` (`connection_*`, `list`, `inmail_balance`, `list_con
 | `message.new` | Mark enrollment as replied, cancel pending steps, auto-analyze ; message propre = `record_own_message` |
 | `email.new` | Réponse retrouvée par `in_reply_to` / `thread_id` |
 | `account.add`, `account.reconnect` | Claim de la tentative `connection_attempts` (`state`), reprise des inscriptions en pause |
-| `account.status.running`, `.degraded`, `.partial` | account_status → OK, DEGRADED, PARTIAL |
-| `account.status.disconnected`, `.errored` | account_status → CREDENTIALS, ERROR, notify user |
-| `account.locked`, `account.unlocked` | LOCKED, puis retour à OK |
+| `account.status.running`, `.degraded`, `.partial` | account_status → OK, DEGRADED, PARTIAL (état de carte seulement : ni bandeau, ni notification) ; avec `is_locked` → LOCKED, notifié comme ci-dessous |
+| `account.status.disconnected`, `.errored` | account_status → CREDENTIALS, ERROR, notify user (« Compte LinkedIn déconnecté » ; « Problème de connexion LinkedIn » pour ERROR) |
+| `account.locked`, `account.unlocked` | LOCKED avec une notification « Compte LinkedIn restreint » au passage de OK à LOCKED (une seule), puis retour à OK |
 | `account.remove` | Compte supprimé chez le prestataire : délier et arrêter les envois (pas une déconnexion récupérable) |
 
 ### Error Handling
 - `429` → reprises avec `Retry-After` (5 s au plus) sur les appels idempotents ; sur un envoi, refus sans reprise ; toast « Trop de requêtes »
 - `uncertain` (délai, 5xx, 2xx illisible sur un envoi) → ni enregistré comme envoyé ni renvoyé
 - `provider_limit` → compte en pause pour la journée ; le plafond vient du registre `linkedin_action_log` (la v2 ne donne plus de pourcentage d'usage)
-- `account_degraded` (DEGRADED, PARTIAL, LOCKED) → envois retenus 6 h, sans mise en pause des inscriptions
+- `account_degraded` (DEGRADED, PARTIAL, LOCKED) → envois retenus 6 h, sans mise en pause des inscriptions ; seul LOCKED est signalé au membre (notification, bandeau, ligne d'« À traiter », sans « Reconnecter »)
 - `CREDENTIALS` / `account_disconnected` (ou ancien identifiant non `acc_`) → inscriptions en pause `account_disconnected`, reconnexion demandée
 - Clé absente → `config` ; erreurs réseau → messages français humanisés
 

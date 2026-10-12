@@ -97,8 +97,9 @@ export function useConnectionNativeFlag(): boolean {
 
 /**
  * ?connection-native=1 ou =0 : écrit l'interrupteur local, puis retire le
- * paramètre de l'adresse (remplacement, sans entrée d'historique). À monter une
- * fois par l'écran qui ouvre l'assistant de connexion.
+ * paramètre de l'adresse (remplacement, sans entrée d'historique). Monté une fois
+ * par AppLayout, comme useSequencesBetaParamSync : le paramètre vaut sur toute
+ * page de l'application, pas seulement sur Connexions.
  */
 export function useConnectionNativeParamSync(): void {
   const { pathname, search, hash } = useLocation();

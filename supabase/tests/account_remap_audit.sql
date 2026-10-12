@@ -29,7 +29,18 @@
 --   9. colonne d'un type inattendu (unsupported_type) : comptée par l'usage et
 --      rapportée par la bascule (skipped_rows), jamais réécrite en silence ;
 --  10. provider_account_id_orphans : identifiants sans compte relié listés,
---      identifiants de comptes reliés, acc_ et uuid absents.
+--      identifiants de comptes reliés, acc_ et uuid absents ;
+--  11. aucune paire inscrite sans ligne (deux conversions simultanées : la seconde
+--      ne laisse pas de lot vide), colonne sautée seule = rien d'inscrit, lot sans
+--      ligne refusé à la restauration (REMAP_BATCH_EMPTY) ;
+--  12. ordre des restaurations : un lot plus ancien ne se restaure pas tant qu'un
+--      lot plus récent non annulé a réécrit des lignes (REMAP_BATCH_NEWER_OPEN),
+--      sans rien modifier ; dans l'ordre (récent d'abord) tout se restaure, le
+--      tableau sender_accounts compris ; remap_batches rend les lignes écrites et
+--      le drapeau newer_open d'après la même règle.
+-- Vérifie aussi la migration *_provider_account_id_remap_guards.sql (fonctions
+-- remap_newer_open_batch et remap_batches, versions de remap_provider_account_id
+-- et rollback_provider_account_id_remap).
 -- Aucune fonction n'est appelée sous SET ROLE anon ou authenticated (CLAUDE.md) :
 -- les droits se lisent avec has_function_privilege et has_table_privilege.
 -- Les contrôles sont accumulés ; une exception finale liste ceux en échec.
@@ -91,10 +102,17 @@ DECLARE
   batch1 uuid := 'ee000000-0000-4000-8000-0000000000f1';
   batch2 uuid := 'ee000000-0000-4000-8000-0000000000f2';
   batch3 uuid := 'ee000000-0000-4000-8000-0000000000f3';
+  batch4 uuid := 'ee000000-0000-4000-8000-0000000000f4';
+  batch5 uuid := 'ee000000-0000-4000-8000-0000000000f5';
+  batch6 uuid := 'ee000000-0000-4000-8000-0000000000f6';
+  batch7 uuid := 'ee000000-0000-4000-8000-0000000000f7';
   batch_unknown uuid := 'ee000000-0000-4000-8000-0000000000f9';
   d0 text;
   d1 text;
   d2 text;
+  da text;
+  db text;
+  b uuid;
   res jsonb;
   n bigint;
   n2 bigint;
@@ -132,7 +150,9 @@ BEGIN
     'public.provider_account_id_usage(text)',
     'public.provider_account_id_orphans(integer)',
     'public.remap_provider_account_id(uuid, text, text, text, uuid)',
-    'public.rollback_provider_account_id_remap(uuid)'] LOOP
+    'public.rollback_provider_account_id_remap(uuid)',
+    'public.remap_newer_open_batch(uuid)',
+    'public.remap_batches(integer)'] LOOP
     IF has_function_privilege('anon', fn, 'EXECUTE') OR has_function_privilege('authenticated', fn, 'EXECUTE') THEN
       failures := failures || format('[2. %s exécutable par anon ou authenticated] ', fn);
     END IF;
@@ -147,7 +167,8 @@ BEGIN
     'public.provider_account_id_usage(text)',
     'public.provider_account_id_orphans(integer)',
     'public.remap_provider_account_id(uuid, text, text, text, uuid)',
-    'public.rollback_provider_account_id_remap(uuid)'] LOOP
+    'public.rollback_provider_account_id_remap(uuid)',
+    'public.remap_batches(integer)'] LOOP
     SELECT prosecdef INTO v_bool FROM pg_proc WHERE oid = fn::regprocedure;
     IF NOT coalesce(v_bool, false) THEN failures := failures || format('[2. %s n''est pas SECURITY DEFINER] ', fn); END IF;
   END LOOP;
@@ -368,6 +389,7 @@ BEGIN
   res := public.remap_provider_account_id(batch1, 'rm-li-a', 'acc_rm_li_a', 'linkedin', u_a);
   SELECT count(*) INTO n2 FROM public.account_id_remap_backup WHERE batch_id = batch1;
   IF (res ->> 'total_rows')::bigint <> 0 OR n2 <> n THEN failures := failures || '[6. rejeu de la paire A a écrit] '; END IF;
+  IF (res ->> 'noop')::boolean IS NOT TRUE THEN failures := failures || format('[6. rejeu sans effet non rapporté noop : %s] ', res::text); END IF;
   SELECT count(*) INTO n FROM public.account_id_remap WHERE batch_id = batch1;
   IF n <> 4 THEN failures := failures || format('[6. %s lignes account_id_remap au lieu de 4] ', n); END IF;
 
@@ -494,6 +516,124 @@ BEGIN
   END IF;
   SELECT count(*) INTO n FROM public.nurturing_opportunities WHERE linkedin_account_id::text = 'rm-un-1';
   IF n <> 2 THEN failures := failures || '[9. lignes de la colonne de type inattendu modifiées] '; END IF;
+
+  -- ===== 11. Aucune paire inscrite sans ligne ===========================================
+  -- 11a. Plus rien ne porte l'ancien identifiant : c'est ce que voit la seconde de deux conversions simultanées
+  -- (elle attend le verrou, la première a tout réécrit). Rien n'est inscrit : ni paire, ni sauvegarde, ni lot.
+  -- rm-li-m a été converti plus haut (lot 3) : plus aucune ligne ne le porte.
+  res := public.remap_provider_account_id(batch4, 'rm-li-m', 'acc_rm_li_m', 'linkedin', u_a);
+  IF (res ->> 'noop')::boolean IS NOT TRUE OR (res ->> 'recorded')::boolean IS NOT FALSE
+     OR jsonb_typeof(res -> 'batch_id') <> 'null' OR (res ->> 'total_rows')::bigint <> 0 THEN
+    failures := failures || format('[11. rien à convertir : réponse %s] ', res::text);
+  END IF;
+  res := public.remap_provider_account_id(batch4, 'rm-nulle-part', 'acc_nulle_part', 'linkedin', u_a);
+  IF (res ->> 'noop')::boolean IS NOT TRUE OR (res ->> 'recorded')::boolean IS NOT FALSE THEN
+    failures := failures || format('[11. identifiant inconnu : réponse %s] ', res::text);
+  END IF;
+  SELECT count(*) INTO n FROM public.account_id_remap WHERE batch_id = batch4;
+  SELECT count(*) INTO n2 FROM public.account_id_remap_backup WHERE batch_id = batch4;
+  IF n <> 0 OR n2 <> 0 THEN failures := failures || format('[11. un lot vide a été inscrit : %s paire(s), %s sauvegarde(s)] ', n, n2); END IF;
+  -- 11b. Une colonne seulement sautée (section 9) n'inscrit aucune paire : rien n'est sauvegardable, mais le
+  -- rapport garde les lignes sautées et la réponse n'est pas « noop ».
+  SELECT count(*) INTO n FROM public.account_id_remap WHERE old_id = 'rm-un-1';
+  IF n <> 0 THEN failures := failures || format('[11. une paire a été inscrite pour une colonne seulement sautée : %s] ', n); END IF;
+  res := public.remap_provider_account_id(batch4, 'rm-un-1', 'acc_rm_un_1', 'linkedin', u_a);
+  IF (res ->> 'noop')::boolean IS NOT FALSE OR (res ->> 'recorded')::boolean IS NOT FALSE
+     OR NOT (res -> 'columns') @> '[{"table": "nurturing_opportunities", "column": "linkedin_account_id", "skipped_rows": 2}]'::jsonb THEN
+    failures := failures || format('[11. colonne seulement sautée : réponse %s] ', res::text);
+  END IF;
+  SELECT count(*) INTO n FROM public.account_id_remap WHERE batch_id = batch4;
+  IF n <> 0 THEN failures := failures || '[11. colonne seulement sautée : paire inscrite] '; END IF;
+  -- 11c. Un lot sans ligne sauvegardée (inscrit à la main : la fonction n'en crée plus) ne se restaure pas : le
+  -- restaurer ferait croire que la conversion est défaite, et le marquer annulé la cacherait.
+  INSERT INTO public.account_id_remap (batch_id, old_id, new_id, kind, applied_by) VALUES (batch5, 'rm-vide', 'acc_rm_vide', 'linkedin', u_a);
+  d1 := pg_temp.rm_digest();
+  BEGIN
+    PERFORM public.rollback_provider_account_id_remap(batch5);
+    failures := failures || '[11. un lot sans ligne a été restauré] ';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'REMAP_BATCH_EMPTY' THEN failures := failures || format('[11. lot sans ligne : %s au lieu de REMAP_BATCH_EMPTY] ', v_hint); END IF;
+  END;
+  SELECT count(*) INTO n FROM public.account_id_remap WHERE batch_id = batch5 AND rolled_back_at IS NOT NULL;
+  IF n <> 0 THEN failures := failures || '[11. le refus a marqué le lot sans ligne comme annulé] '; END IF;
+  IF pg_temp.rm_digest() IS DISTINCT FROM d1 THEN failures := failures || '[11. le refus d''un lot sans ligne a écrit] '; END IF;
+  -- Un lot sans ligne, plus récent que lot 3, ne bloque pas sa restauration (il n'a rien pu écraser).
+  IF public.remap_newer_open_batch(batch3) IS NOT NULL THEN
+    failures := failures || '[11. un lot sans ligne bloque la restauration d''un lot plus ancien] ';
+  END IF;
+
+  -- ===== 12. Ordre des restaurations ======================================================
+  -- Le lot 3 (rm-li-m) est ouvert. Lot 6 (rm-li-a) puis lot 7 (rm-other) sont plus récents et réécrivent le
+  -- même tableau sender_accounts de la séquence.
+  da := pg_temp.rm_digest();
+  res := public.remap_provider_account_id(batch6, 'rm-li-a', 'acc_rm_li_a', 'linkedin', u_a);
+  IF (res ->> 'total_rows')::bigint < 10 THEN failures := failures || format('[12. lot 6 : %s lignes] ', res ->> 'total_rows'); END IF;
+  res := public.remap_provider_account_id(batch7, 'rm-other', 'acc_rm_other', 'linkedin', u_a);
+  IF (res ->> 'total_rows')::bigint <> 1 THEN failures := failures || format('[12. lot 7 : %s lignes au lieu de 1 (tableau sender_accounts)] ', res ->> 'total_rows'); END IF;
+  db := pg_temp.rm_digest();
+  IF db IS NOT DISTINCT FROM da THEN failures := failures || '[12. les lots 6 et 7 n''ont rien écrit] '; END IF;
+
+  -- Annuler un lot plus ancien alors qu'un plus récent est ouvert : refusé, rien n'est écrit, rien n'est marqué.
+  FOREACH b IN ARRAY ARRAY[batch3, batch6] LOOP
+    BEGIN
+      PERFORM public.rollback_provider_account_id_remap(b);
+      failures := failures || format('[12. le lot %s a été restauré alors qu''un lot plus récent est ouvert] ', right(b::text, 2));
+    EXCEPTION WHEN OTHERS THEN
+      GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+      IF v_hint IS DISTINCT FROM 'REMAP_BATCH_NEWER_OPEN' THEN
+        failures := failures || format('[12. lot %s : %s au lieu de REMAP_BATCH_NEWER_OPEN] ', right(b::text, 2), v_hint);
+      END IF;
+    END;
+  END LOOP;
+  IF pg_temp.rm_digest() IS DISTINCT FROM db THEN failures := failures || '[12. un refus d''ordre a écrit] '; END IF;
+  SELECT count(*) INTO n FROM public.account_id_remap WHERE batch_id IN (batch3, batch6, batch7) AND rolled_back_at IS NOT NULL;
+  IF n <> 0 THEN failures := failures || format('[12. un refus d''ordre a marqué %s paire(s) restaurée(s)] ', n); END IF;
+
+  -- La liste des lots dit la même chose : le plus récent d'abord, newer_open pour les lots 3 et 6 seulement.
+  SELECT bt.batch_id INTO b FROM public.remap_batches(10) bt LIMIT 1;
+  IF b IS DISTINCT FROM batch7 THEN failures := failures || '[12. remap_batches : le lot le plus récent n''est pas en tête] '; END IF;
+  FOR r IN SELECT * FROM public.remap_batches(10) LOOP
+    IF r.batch_id = batch7 AND (r.newer_open OR r.rolled_back OR r.rows_written <> 1 OR r.pairs <> 1) THEN
+      failures := failures || format('[12. remap_batches lot 7 : %s] ', r::text);
+    ELSIF r.batch_id = batch6 AND (NOT r.newer_open OR r.rolled_back OR r.rows_written < 10) THEN
+      failures := failures || format('[12. remap_batches lot 6 : %s] ', r::text);
+    ELSIF r.batch_id = batch5 AND (r.newer_open OR r.rolled_back OR r.rows_written <> 0) THEN
+      failures := failures || format('[12. remap_batches lot sans ligne : %s] ', r::text);
+    ELSIF r.batch_id = batch3 AND (NOT r.newer_open OR r.rolled_back OR r.rows_written <> 5) THEN
+      failures := failures || format('[12. remap_batches lot 3 : %s] ', r::text);
+    ELSIF r.batch_id = batch1 AND (r.newer_open OR NOT r.rolled_back) THEN
+      failures := failures || format('[12. remap_batches lot 1 (annulé) : %s] ', r::text);
+    END IF;
+  END LOOP;
+  SELECT count(*) INTO n FROM public.remap_batches(2);
+  IF n <> 2 THEN failures := failures || format('[12. remap_batches : limite ignorée (%s lots au lieu de 2)] ', n); END IF;
+
+  -- Dans l'ordre (le plus récent d'abord) : tout se restaure, aucune ligne « moved », le tableau est entier.
+  res := public.rollback_provider_account_id_remap(batch7);
+  IF (res ->> 'restored_rows')::bigint <> 1 OR (res ->> 'moved_rows')::bigint <> 0 THEN
+    failures := failures || format('[12. restauration du lot 7 : %s] ', res::text);
+  END IF;
+  BEGIN
+    PERFORM public.rollback_provider_account_id_remap(batch3);
+    failures := failures || '[12. le lot 3 a été restauré avant le lot 6] ';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'REMAP_BATCH_NEWER_OPEN' THEN failures := failures || format('[12. lot 3 avant lot 6 : %s] ', v_hint); END IF;
+  END;
+  res := public.rollback_provider_account_id_remap(batch6);
+  IF (res ->> 'moved_rows')::bigint <> 0 OR (res ->> 'restored_rows')::bigint < 10 THEN
+    failures := failures || format('[12. restauration du lot 6 : %s] ', res::text);
+  END IF;
+  IF pg_temp.rm_digest() IS DISTINCT FROM da THEN failures := failures || '[12. les valeurs d''avant les lots 6 et 7 ne sont pas rétablies] '; END IF;
+  res := public.rollback_provider_account_id_remap(batch3);
+  IF (res ->> 'moved_rows')::bigint <> 0 THEN failures := failures || format('[12. restauration du lot 3 : %s] ', res::text); END IF;
+  SELECT sender_accounts INTO sender_before FROM public.outreach_sequences WHERE id = seq1;
+  IF sender_before::text IS DISTINCT FROM '[{"label": "A", "account_id": "rm-li-a", "daily_limit": 50}, {"account_id": "rm-li-m", "daily_limit": 40}, {"account_id": "rm-other", "daily_limit": 10}, "rm-li-a"]' THEN
+    failures := failures || format('[12. tableau sender_accounts après toutes les restaurations : %s] ', sender_before::text);
+  END IF;
+  SELECT count(*) INTO n FROM public.account_id_remap WHERE batch_id IN (batch3, batch6, batch7) AND rolled_back_at IS NULL;
+  IF n <> 0 THEN failures := failures || format('[12. %s paire(s) encore ouvertes] ', n); END IF;
 
   IF failures <> '' THEN
     RAISE EXCEPTION 'account_remap_audit : %', failures;

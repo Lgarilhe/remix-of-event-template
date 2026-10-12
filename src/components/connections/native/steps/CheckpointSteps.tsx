@@ -72,7 +72,9 @@ function ResendButton({
   onResend: () => void;
 }) {
   const left = useSecondsLeft(sentAt);
-  const label = left > 0 ? CHECKPOINT.resendIn(left) : notification ? CHECKPOINT.resendNotification : CHECKPOINT.resend;
+  // Validation sur le téléphone : pas de code à renvoyer, le décompte parle de la notification.
+  const waiting = notification ? CHECKPOINT.resendNotificationIn(left) : CHECKPOINT.resendIn(left);
+  const label = left > 0 ? waiting : notification ? CHECKPOINT.resendNotification : CHECKPOINT.resend;
   return (
     <FooterButton type="button" variant="ghost" onClick={onResend} disabled={left > 0 || busy}>
       {label}

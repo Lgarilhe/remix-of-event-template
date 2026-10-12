@@ -16,6 +16,8 @@ export type RemapErrorCode =
   | 'invalid_input'
   | 'batch_unknown'
   | 'batch_already_rolled_back'
+  | 'batch_newer_open'
+  | 'batch_empty'
   | 'database';
 
 export interface DbError {
@@ -33,6 +35,8 @@ const MESSAGES: Record<RemapErrorCode, string> = {
   invalid_input: 'Les identifiants de ce compte sont invalides. Rien n\'a été modifié.',
   batch_unknown: 'Ce lot est introuvable.',
   batch_already_rolled_back: 'Ce lot a déjà été restauré.',
+  batch_newer_open: 'Une conversion plus récente n\'est pas annulée. Annulez d\'abord la plus récente, puis celle-ci.',
+  batch_empty: 'Cette conversion n\'a réécrit aucune ligne : il n\'y a rien à annuler.',
   database: 'La base de données a refusé l\'opération. Rien n\'a été modifié pour ce compte.',
 };
 
@@ -49,6 +53,8 @@ export function classifyDbError(error: DbError | null | undefined): RemapErrorCo
   if (hint === 'REMAP_CONCURRENT_CHANGE') return 'concurrent_change';
   if (hint === 'REMAP_BATCH_UNKNOWN') return 'batch_unknown';
   if (hint === 'REMAP_BATCH_ALREADY_ROLLED_BACK') return 'batch_already_rolled_back';
+  if (hint === 'REMAP_BATCH_NEWER_OPEN') return 'batch_newer_open';
+  if (hint === 'REMAP_BATCH_EMPTY') return 'batch_empty';
   if (hint.startsWith('REMAP_')) return 'invalid_input';
   if (hint === 'ENROLL_ACCOUNT_OF_OTHER_MEMBER') return 'enrollment_guard';
   if (message.includes('CROSS_TENANT_VIOLATION')) return 'cross_tenant';

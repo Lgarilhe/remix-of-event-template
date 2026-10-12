@@ -5,7 +5,8 @@
 
 import { deepStrictEqual, ok, strictEqual } from 'node:assert';
 import { V2_TRIGGER_EVENTS } from '../_shared/unipile/index.ts';
-import { APPLY_BUDGET_MS, handleRequest, skippedColumns, usageNotes, type HandlerDeps, type ProviderPort } from './handler.ts';
+import { APPLY_BUDGET_MS, handleRequest, heldUsage, loadDbAccounts, skippedColumns, usageNotes, type HandlerDeps, type ProviderPort } from './handler.ts';
+import { buildPlan } from './plan.ts';
 
 const ADMIN = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -88,7 +89,10 @@ const okRpc: RpcFn = (name) => {
       { table_name: 'inmail_queue', column_name: 'account_id', value: 'v1-gone-account-0042', rows_holding: 2 },
     ], error: null };
   }
-  if (name === 'remap_provider_account_id') return { data: { total_rows: 7 }, error: null };
+  if (name === 'remap_batches') {
+    return { data: [{ batch_id: BATCH, pairs: 2, rows_written: 10, applied_at: '2026-10-10T10:00:00Z', rolled_back: false, newer_open: false }], error: null };
+  }
+  if (name === 'remap_provider_account_id') return { data: { total_rows: 7, recorded: true, noop: false }, error: null };
   if (name === 'rollback_provider_account_id_remap') {
     return { data: {
       pairs: 2, restored_rows: 9, moved_rows: 1, still_new_rows: 3, still_new: [{ table: 'linkedin_action_log', column: 'account_id', rows: 3 }],
@@ -384,11 +388,7 @@ Deno.test('readiness : base illisible ou migration absente, signalées sans plan
 // ---------------------------------------------------------------------------
 
 Deno.test('remap_preview : paires, effectifs par table, notes, libellés masqués', async () => {
-  const rows: Rows = { ...TABLES, account_id_remap: [
-    { batch_id: BATCH, kind: 'linkedin', applied_at: '2026-10-10T10:00:00Z', rolled_back_at: null },
-    { batch_id: BATCH, kind: 'email', applied_at: '2026-10-10T10:00:01Z', rolled_back_at: null },
-  ] };
-  const s = setup({ rows });
+  const s = setup();
   const r = await quiet(() => call(s.deps, { action: 'remap_preview' }));
   strictEqual(r.status, 200);
   strictEqual(r.json.success, true);
@@ -408,10 +408,9 @@ Deno.test('remap_preview : paires, effectifs par table, notes, libellés masqué
   strictEqual(r.json.unmapped.length, 1);
   strictEqual(r.json.unmapped[0].label, 'P*** P***');
   strictEqual(r.json.previous_batches.length, 1);
-  strictEqual(r.json.previous_batches[0].pairs, 2);
-  strictEqual(r.json.previous_batches[0].rolled_back, false);
+  deepStrictEqual(r.json.previous_batches[0], { batch_id: BATCH, pairs: 2, rows: 10, applied_at: '2026-10-10T10:00:00Z', rolled_back: false, newer_open: false });
   const usageCalls = s.calls.filter((c) => c.name === 'provider_account_id_usage');
-  strictEqual(usageCalls.length, 3, 'un relevé par paire, aucun pour les comptes sans correspondance');
+  strictEqual(usageCalls.length, 4, 'un relevé par compte à convertir et un par compte sans correspondance');
   strictEqual(s.calls.filter((c) => c.name === 'remap_provider_account_id').length, 0, 'aucune écriture');
   strictEqual(typeof r.json.plan_fingerprint, 'string');
   ok(/^[0-9a-f]{64}$/.test(r.json.plan_fingerprint), 'empreinte SHA-256');
@@ -638,7 +637,7 @@ Deno.test('remap_apply : le budget de temps compte aussi les lectures du service
 Deno.test('remap_apply : les colonnes sautées avec des lignes (sans clé, type inattendu) sont rapportées', async () => {
   const rpc: RpcFn = (name, args) => {
     if (name === 'remap_provider_account_id') {
-      return { data: { total_rows: 3, columns: [
+      return { data: { total_rows: 3, recorded: true, columns: [
         { table: 'sequence_enrollments', column: 'account_id', rows: 3, status: 'remapped' },
         { table: 'chat_categories', column: 'account_id', rows: 0, skipped_rows: 4, status: 'no_primary_key' },
         { table: 'nurturing_opportunities', column: 'linkedin_account_id', rows: 0, skipped_rows: 2, status: 'unsupported_type' },
@@ -726,4 +725,171 @@ Deno.test('remap_rollback : lot inconnu 404, déjà restauré 409, autre refus 5
   strictEqual(r.status, 500);
   strictEqual(r.json.error_code, 'database');
   ok(!r.text.includes('acc_X'));
+});
+
+Deno.test('remap_rollback : un lot plus ancien refusé tant qu\'un lot plus récent n\'est pas annulé (409, phrase de l\'ordre)', async () => {
+  const s = setup({ rpc: () => ({ data: null, error: { code: '22023', hint: 'REMAP_BATCH_NEWER_OPEN', message: 'un lot plus recent n\'est pas annule acc_X' } }) });
+  const r = await quiet(() => call(s.deps, { action: 'remap_rollback', batch_id: BATCH, confirm: 'ANNULER' }));
+  strictEqual(r.status, 409);
+  strictEqual(r.json.success, false);
+  strictEqual(r.json.error_code, 'batch_newer_open');
+  ok(r.json.error.includes('Annulez d\'abord la plus récente'), r.json.error);
+  ok(!r.text.includes('acc_X'));
+});
+
+Deno.test('remap_rollback : un lot sans ligne réécrite est refusé (409, rien à annuler)', async () => {
+  const s = setup({ rpc: () => ({ data: null, error: { code: '22023', hint: 'REMAP_BATCH_EMPTY', message: 'lot sans ligne reecrite' } }) });
+  const r = await quiet(() => call(s.deps, { action: 'remap_rollback', batch_id: BATCH, confirm: 'ANNULER' }));
+  strictEqual(r.status, 409);
+  strictEqual(r.json.error_code, 'batch_empty');
+  ok(r.json.error.includes('rien à annuler'), r.json.error);
+});
+
+// ---------------------------------------------------------------------------
+// Répétition de la bascule : conversions simultanées, effectifs, libellés
+// ---------------------------------------------------------------------------
+
+Deno.test('remap_apply : la seconde de deux conversions simultanées ne trouve plus rien, aucun lot n\'est rendu', async () => {
+  // La base répond « noop » pour chaque compte (la première conversion a tout réécrit pendant l'attente du verrou).
+  const s = setup({ rpc: (name, args) => (name === 'remap_provider_account_id'
+    ? { data: { batch_id: null, recorded: false, noop: true, total_rows: 0, columns: [] }, error: null }
+    : okRpc(name, args)) });
+  const r = await applyWith(s.deps, { allow_unmapped: true });
+  strictEqual(r.status, 200);
+  strictEqual(r.json.success, true);
+  strictEqual(r.json.batch_id, null, 'aucun lot vide');
+  strictEqual(r.json.applied, 0);
+  strictEqual(r.json.failed, 0);
+  strictEqual(r.json.rows_total, 0);
+  strictEqual(r.json.incomplete, false);
+  deepStrictEqual(r.json.results, []);
+  strictEqual(s.calls.filter((c) => c.name === 'remap_provider_account_id').length, 3, 'chaque compte a été essayé');
+});
+
+Deno.test('remap_apply : un compte déjà converti par l\'autre demande sort du bilan, les autres restent dans le lot', async () => {
+  const s = setup({ rpc: (name, args) => {
+    if (name === 'remap_provider_account_id' && args.p_old === 'v1-li-1') {
+      return { data: { batch_id: null, recorded: false, noop: true, total_rows: 0, columns: [] }, error: null };
+    }
+    return okRpc(name, args);
+  } });
+  const r = await applyWith(s.deps, { allow_unmapped: true });
+  strictEqual(r.json.batch_id, BATCH);
+  strictEqual(r.json.applied, 2);
+  strictEqual(r.json.rows_total, 14);
+  strictEqual(r.json.results.length, 2);
+  ok(!r.json.results.some((x: { ref: string }) => x.ref === '…li-1'));
+});
+
+Deno.test('remap_apply : une base d\'avant les gardes (sans `recorded`) rend toujours le numéro du lot dès qu\'une ligne est écrite', async () => {
+  const s = setup({ rpc: (name, args) => (name === 'remap_provider_account_id' ? { data: { total_rows: 4 }, error: null } : okRpc(name, args)) });
+  const r = await applyWith(s.deps, { allow_unmapped: true });
+  strictEqual(r.json.batch_id, BATCH);
+  strictEqual(r.json.rows_total, 12);
+});
+
+Deno.test('remap_apply : tous les comptes en échec, aucun lot n\'existe : pas de numéro à annuler, les échecs sont rendus', async () => {
+  const s = setup({ rpc: (name, args) => (name === 'remap_provider_account_id'
+    ? { data: null, error: { code: '23505', hint: 'REMAP_CONFLICT', message: 'dup' } }
+    : okRpc(name, args)) });
+  const r = await applyWith(s.deps, { allow_unmapped: true });
+  strictEqual(r.json.success, false);
+  strictEqual(r.json.batch_id, null);
+  strictEqual(r.json.failed, 3);
+  strictEqual(r.json.results.length, 3);
+});
+
+Deno.test('remap_preview : les lots précédents disent les lignes réécrites et le lot plus récent encore ouvert', async () => {
+  const OLDER = '44444444-4444-4444-8444-444444444444';
+  const rows = [
+    { batch_id: BATCH, pairs: 1, rows_written: 5, applied_at: '2026-10-11T10:00:00Z', rolled_back: false, newer_open: false },
+    { batch_id: OLDER, pairs: 5, rows_written: 36, applied_at: '2026-10-11T09:00:00Z', rolled_back: false, newer_open: true },
+  ];
+  const s = setup({ rpc: (name, args) => (name === 'remap_batches' ? { data: rows, error: null } : okRpc(name, args)) });
+  const r = await quiet(() => call(s.deps, { action: 'remap_preview' }));
+  deepStrictEqual(r.json.previous_batches.map((b: { batch_id: string; rows: number; newer_open: boolean }) => [b.batch_id, b.rows, b.newer_open]),
+    [[BATCH, 5, false], [OLDER, 36, true]]);
+  strictEqual(r.json.previous_batches_error, false);
+  // Liste illisible (fonction absente, erreur) : annoncée, la simulation reste rendue.
+  const failing = setup({ rpc: (name, args) => (name === 'remap_batches' ? { data: null, error: { code: 'PGRST202', message: 'no function' } } : okRpc(name, args)) });
+  const f = await quiet(() => call(failing.deps, { action: 'remap_preview' }));
+  strictEqual(f.status, 200);
+  strictEqual(f.json.previous_batches_error, true);
+  deepStrictEqual(f.json.previous_batches, []);
+});
+
+Deno.test('usageNotes : une proposition qui porte le compte dans ses paramètres et son aperçu compte une fois', () => {
+  const both = usageNotes([
+    { table: 'agent_tool_executions', column: 'params', rows: 1, status: 'report_only' },
+    { table: 'agent_tool_executions', column: 'dry_run_result', rows: 1, status: 'report_only' },
+  ]);
+  strictEqual(both.length, 1);
+  ok(both[0].startsWith('1 proposition de l\'assistant en attente mentionne ce compte'), both[0]);
+  const three = usageNotes([
+    { table: 'agent_tool_executions', column: 'params', rows: 3, status: 'report_only' },
+    { table: 'agent_tool_executions', column: 'dry_run_result', rows: 3, status: 'report_only' },
+  ]);
+  ok(three[0].startsWith('3 propositions de l\'assistant en attente mentionnent ce compte'), three[0]);
+});
+
+Deno.test('remap_preview : un compte sans correspondance dit les lignes qu\'il garde sur l\'ancien identifiant', async () => {
+  const usage = [
+    { table_name: 'sequence_enrollments', column_name: 'account_id', rows_holding: 1, status: 'remap' },
+    { table_name: 'inmail_queue', column_name: 'account_id', rows_holding: 1, status: 'remap' },
+    { table_name: 'linkedin_action_log', column_name: 'account_id', rows_holding: 2, status: 'remap' },
+    { table_name: 'member_linkedin_accounts', column_name: 'linkedin_account_id', rows_holding: 1, status: 'remap' },
+    { table_name: 'webhook_event_log', column_name: 'account_id', rows_holding: 9, status: 'report_only' },
+    { table_name: 'chat_categories', column_name: 'account_id', rows_holding: 0, status: 'remap' },
+  ];
+  const s = setup({ rpc: (name, args) => (name === 'provider_account_id_usage' ? (args.p_old === 'v1-li-perdu' ? { data: usage, error: null } : { data: [], error: null }) : okRpc(name, args)) });
+  const r = await quiet(() => call(s.deps, { action: 'remap_preview' }));
+  strictEqual(r.status, 200);
+  strictEqual(r.json.unmapped.length, 1);
+  const lost = r.json.unmapped[0];
+  strictEqual(lost.label, 'P*** P***');
+  strictEqual(lost.ref, '…erdu');
+  strictEqual(lost.reason, 'not_in_service');
+  strictEqual(lost.usage_error, false);
+  // La liaison du compte, les journaux et les colonnes à zéro ne comptent pas : les données liées seulement.
+  strictEqual(lost.held_rows, 4);
+  deepStrictEqual(lost.usage.map((u: { table: string; rows: number }) => [u.table, u.rows]),
+    [['sequence_enrollments', 1], ['inmail_queue', 1], ['linkedin_action_log', 2]]);
+  strictEqual(r.json.unmapped_held_rows, 4);
+  strictEqual(r.json.unmapped_held_exact, true);
+  assertNoLeak(r.text);
+  ok(s.calls.some((c) => c.name === 'provider_account_id_usage' && c.args.p_old === 'v1-li-perdu'));
+  // Un relevé en échec : le compte le dit, le total devient un minimum.
+  const failing = setup({ rpc: (name, args) => (name === 'provider_account_id_usage' && args.p_old === 'v1-li-perdu'
+    ? { data: null, error: { code: 'XX000', message: 'boom v1-li-perdu' } } : okRpc(name, args)) });
+  const f = await quiet(() => call(failing.deps, { action: 'remap_preview' }));
+  strictEqual(f.json.unmapped[0].usage_error, true);
+  strictEqual(f.json.unmapped_held_exact, false);
+  ok(!f.text.includes('boom'));
+});
+
+Deno.test('heldUsage : liaison, journaux et colonnes à zéro sont écartés', () => {
+  deepStrictEqual(heldUsage([
+    { table: 'member_whatsapp_accounts', column: 'whatsapp_account_id', rows: 1, status: 'remap' },
+    { table: 'agent_tool_executions', column: 'params', rows: 2, status: 'report_only' },
+    { table: 'chat_categories', column: 'account_id', rows: 3, status: 'no_primary_key' },
+    { table: 'inmail_queue', column: 'account_id', rows: 0, status: 'remap' },
+  ]), [{ table: 'chat_categories', column: 'account_id', rows: 3, status: 'no_primary_key' }]);
+});
+
+Deno.test('libellé d\'un compte WhatsApp : le même avant et après que la page Connexions a réécrit son nom en numéro', async () => {
+  const service = [{ id: 'acc_WA1', provider: 'whatsapp', name: '+33612345678', metadata: { v1_account_id: 'v1-wa-1' } }];
+  const read = async (name: string) => {
+    const rows = { ...TABLES, member_whatsapp_accounts: [{ whatsapp_account_id: 'v1-wa-1', name, phone_number: '+33612345678' }] } as Rows;
+    const { admin } = fakeAdmin(rows, okRpc);
+    const accounts = await loadDbAccounts(admin);
+    return buildPlan(accounts ?? [], service).items.find((item) => item.kind === 'whatsapp')?.maskedLabel;
+  };
+  const before = await read('WhatsApp Camille');
+  const after = await read('+33612345678');
+  strictEqual(before, after);
+  strictEqual(after, 'numéro masqué');
+  // Sans numéro enregistré, le nom reste le libellé.
+  const { admin } = fakeAdmin({ ...TABLES, member_whatsapp_accounts: [{ whatsapp_account_id: 'v1-wa-2', name: 'WhatsApp Hugo', phone_number: null }] } as Rows, okRpc);
+  const named = (await loadDbAccounts(admin) ?? []).find((a) => a.kind === 'whatsapp');
+  strictEqual(named?.label, 'WhatsApp Hugo');
 });

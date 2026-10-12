@@ -27,7 +27,7 @@ import {
   userSafeMessage,
   type AccountOwnership,
 } from '../_shared/unipile/index.ts';
-import { ownerOnlyRefusal } from './account-rules.ts';
+import { collaboratorReadRefusal, ownerOnlyRefusal } from './account-rules.ts';
 import { handleGetChats, handleGetMessages, handleMarkAsRead, handleSyncChatHistory } from './chats.ts';
 import { handleListSentInvitations, handleWithdrawInvitation } from './invitations.ts';
 import { handleEndorseSkill, handleGetProfile, handleGetUserPosts } from './profile.ts';
@@ -78,11 +78,14 @@ Deno.serve(async (req) => {
       return json({ error: 'organization_id required' }, 400);
     }
     const admin = createClient(supabaseUrl, _serviceKey!);
+    // Rôle de l'appelant dans l'organisation, lu avec l'appartenance : il règle la lecture des comptes de l'équipe.
+    let callerRole: string | null = null;
     if (!isInternal) {
-      const { data: membership } = await admin.from('organization_members').select('id').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
+      const { data: membership } = await admin.from('organization_members').select('id, role').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
       if (!membership) {
         return json({ error: 'Forbidden' }, 403);
       }
+      callerRole = typeof membership.role === 'string' ? membership.role : null;
     }
 
     // --- Rate limiting: 60 req/min per user (skipped for internal service-role) ---
@@ -96,7 +99,7 @@ Deno.serve(async (req) => {
       if (allowed === false) {
         return json({
           success: false,
-          error: 'Rate limit exceeded',
+          error: 'Trop de demandes. Patientez quelques secondes.',
           errorType: 'RATE_LIMIT',
           retryAfter: 60,
         }, 429);
@@ -138,9 +141,11 @@ Deno.serve(async (req) => {
         error: "Ce compte LinkedIn n'est pas rattaché à votre organisation. Associez-le depuis Paramètres > Connecteurs.",
       }, 403);
     }
-    // Règle de sécurité (SEC-006) et non conséquence de l'API v2 : un membre n'envoie et ne retire une invitation
-    // que depuis le compte qu'il a relié, jamais depuis celui d'un collègue (voir account-rules.ts).
-    const refusal = ownerOnlyRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId });
+    // Règles de sécurité (SEC-006) et non conséquences de l'API v2 : un membre n'envoie et ne retire une invitation
+    // que depuis le compte qu'il a relié, et un collaborateur ne lit que ce compte, jamais celui d'un collègue
+    // (voir account-rules.ts).
+    const refusal = ownerOnlyRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId })
+      ?? collaboratorReadRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId, role: callerRole });
     if (refusal) return json(refusal.body, refusal.status);
 
     // The cron worker has already reserved the automatic quota. Fence again

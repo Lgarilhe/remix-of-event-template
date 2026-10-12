@@ -201,6 +201,56 @@ export function healthReason(health: HealthKey, channel: ConnectionChannel): str
   }
 }
 
+/**
+ * Cause précise d'un compte à reconnecter, ou d'un état qui n'a pas pu être lu. La
+ * classe de santé dit quoi faire, la cause dit pourquoi : une phrase par cause, jamais
+ * celle d'une autre (une session expirée n'est ni une panne du service, ni un
+ * identifiant à refaire, ni un compte retiré).
+ */
+export type AccountCause =
+  | 'session_expired'
+  | 'connection_error'
+  | 'authentication_partial'
+  | 'outdated_identifier'
+  | 'removed'
+  | 'unreadable';
+
+const REASON_BY_CAUSE: Record<AccountCause, Record<ConnectionChannel, string>> = {
+  session_expired: REASON_NEEDS_RECONNECT,
+  connection_error: {
+    linkedin: 'La connexion à LinkedIn rencontre un problème. Reconnectez le compte pour reprendre les envois.',
+    email: 'La connexion à votre messagerie rencontre un problème. Reconnectez-la pour la rétablir.',
+    whatsapp: 'La connexion à WhatsApp rencontre un problème. Reconnectez le compte pour la rétablir.',
+  },
+  authentication_partial: {
+    linkedin: 'Une partie de la connexion LinkedIn demande une nouvelle authentification. Reconnectez le compte pour reprendre les envois.',
+    email: 'Une partie de la connexion à votre messagerie demande une nouvelle authentification. Reconnectez-la pour la rétablir.',
+    whatsapp: 'Une partie de la connexion à WhatsApp demande une nouvelle authentification. Reconnectez le compte pour la rétablir.',
+  },
+  // Identifiant d'un ancien format : la session peut être saine, seule la liaison est à refaire.
+  outdated_identifier: {
+    linkedin: 'Cette connexion doit être refaite. Reconnectez votre compte LinkedIn pour la renouveler.',
+    email: 'Cette connexion doit être refaite. Reconnectez votre messagerie pour la renouveler.',
+    whatsapp: 'Cette connexion doit être refaite. Reconnectez votre compte WhatsApp pour la renouveler.',
+  },
+  // Compte retiré chez le prestataire : même phrase et même geste sur les trois canaux.
+  removed: {
+    linkedin: "Ce compte LinkedIn n'est plus disponible. Reconnectez-le : la nouvelle connexion remplacera celle-ci.",
+    email: "Cette messagerie n'est plus disponible. Reconnectez-la : la nouvelle connexion remplacera celle-ci.",
+    whatsapp: "Ce compte WhatsApp n'est plus disponible. Reconnectez-le : la nouvelle connexion remplacera celle-ci.",
+  },
+  unreadable: {
+    linkedin: "Konekt n'a pas pu lire l'état de ce compte pour le moment. Réessayez dans un instant.",
+    email: "Konekt n'a pas pu lire l'état de ce compte pour le moment. Réessayez dans un instant.",
+    whatsapp: "Konekt n'a pas pu lire l'état de ce compte pour le moment. Réessayez dans un instant.",
+  },
+};
+
+/** Phrase d'explication d'une cause, pour un canal. */
+export function causeReason(cause: AccountCause, channel: ConnectionChannel): string {
+  return REASON_BY_CAUSE[cause][channel];
+}
+
 export const ACTION_LABEL = {
   reconnect: 'Reconnecter',
   contact_support: 'Contacter le support',
@@ -525,6 +575,8 @@ export const CHECKPOINT = {
   resend: 'Renvoyer le code',
   resendNotification: 'Renvoyer la notification',
   resendIn: (seconds: number) => `Renvoyer le code dans ${seconds} s`,
+  /** Validation sur le téléphone : il n'y a pas de code à renvoyer, seulement la notification. */
+  resendNotificationIn: (seconds: number) => `Renvoyer la notification dans ${seconds} s`,
   resent: 'Code renvoyé.',
   anotherMethod: 'Essayer une autre méthode',
   noProduct: 'Choisissez au moins une option.',
@@ -861,8 +913,6 @@ export const LINKEDIN_CARD = {
   loadErrorKept: (name: string) => `Le compte ${name} reste relié à votre profil.`,
   loadErrorBody: 'Réessayez dans un instant.',
   notLinked: 'Connectez votre compte LinkedIn pour pouvoir effectuer des recherches et envoyer des messages.',
-  missingTitle: 'Compte LinkedIn introuvable',
-  missingBody: (name: string) => `Le compte ${name} n'est plus disponible. Connectez de nouveau votre compte LinkedIn : il remplacera celui-ci.`,
   availableOne: 'Compte disponible',
   availableMany: 'Comptes disponibles',
   availableHelp: "Ce compte est connecté dans votre organisation mais n'est relié à personne. S'il est le vôtre, rattachez-le. Sinon, connectez votre compte avec le bouton ci-dessus.",
@@ -884,11 +934,7 @@ export const EMAIL_CARD = {
   loading: 'Chargement de votre compte e-mail…',
   mappingErrorTitle: "Impossible de lire l'association de votre compte e-mail.",
   listErrorTitle: 'Impossible de charger vos comptes e-mail.',
-  checkErrorTitle: 'Impossible de vérifier votre compte e-mail pour le moment.',
   errorBody: 'Vérifiez votre connexion, puis réessayez.',
-  missingTitle: 'Compte e-mail introuvable',
-  missingBody: (address: string) => `Le compte ${address} n'est plus disponible. Connectez de nouveau votre messagerie : elle remplacera celui-ci.`,
-  keptBody: (address: string) => `Le compte ${address} reste relié à votre profil. Réessayez dans un instant.`,
   refreshAria: 'Actualiser la liste des comptes e-mail',
   unlinkTitle: 'Dissocier ce compte e-mail ?',
   unlinkBody: "L'adresse ne sera plus rattachée à votre profil Konekt. Votre boîte e-mail et ses messages ne sont pas touchés, et vous pourrez la relier de nouveau.",

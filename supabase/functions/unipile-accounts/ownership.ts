@@ -13,10 +13,13 @@ import { AccountNotOwnedError, assertAccountOwnedByOrg, isUnipileError } from '.
 
 export class HttpError extends Error {
   status: number;
+  /** Code lisible par l'écran, rendu en `error_code` quand il est donné. */
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -113,6 +116,30 @@ export async function getCallerOrgRole(adminClient: any, organizationId: string,
     .eq('user_id', userId)
     .maybeSingle();
   return (data as { role?: string } | null)?.role ?? null;
+}
+
+/**
+ * Lecture du contenu ou des données d'un compte (solde d'InMails, contrats, détail, photo d'un
+ * interlocuteur, invitations reçues), après `assertAccountInOrg` : un collaborateur ne lit que le compte
+ * qu'il a relié lui-même ; propriétaire, administrateur et membre lisent ceux de l'organisation. Un rôle
+ * absent, illisible ou inconnu est traité comme collaborateur (échec fermé). Même règle que la lecture
+ * des conversations de unipile-search (account-rules.ts, `collaboratorReadRefusal`).
+ */
+export async function assertCanReadAccount(
+  // deno-lint-ignore no-explicit-any
+  adminClient: any,
+  organizationId: string,
+  callerUserId: string,
+  ownership: AccountOwnership,
+): Promise<void> {
+  if (ownership.userId === callerUserId) return;
+  const role = await getCallerOrgRole(adminClient, organizationId, callerUserId);
+  if (role === 'owner' || role === 'admin' || role === 'member') return;
+  throw new HttpError(
+    403,
+    "Ce compte LinkedIn est relié par un autre membre de l'organisation. Vous ne pouvez consulter que votre propre compte.",
+    'account_not_yours',
+  );
 }
 
 /** Déconnexion, proxy, reconnexion : le propriétaire du compte ou un owner/admin de l'org. */

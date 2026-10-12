@@ -119,13 +119,19 @@ export const PREVIEW = {
   nothingNoAccounts: 'Aucun compte n’est relié en base.',
   nothingAllConverted: 'Tous les comptes sont déjà au nouveau format.',
   nothingNoMatch: 'Aucun compte n’a de correspondance dans le service.',
+  nothingRestConverted: 'Tous les comptes qui ont une correspondance sont déjà convertis.',
   truncated: 'La liste des comptes du service est tronquée. La conversion est refusée tant qu’elle est incomplète.',
   sharedTargets: (n: number) =>
     `${n} compte${n > 1 ? 's' : ''} du service ${n > 1 ? 'sont visés' : 'est visé'} par plusieurs anciens identifiants. C’est attendu pour une messagerie et son agenda, à vérifier sinon.`,
   usageUnread: 'Effectifs non lus',
   listTruncated: 'La liste est tronquée.',
   unmappedHeading: 'Comptes sans correspondance',
-  unmappedIntro: 'Ces comptes ne seront pas convertis. Leurs propriétaires devront les reconnecter.',
+  unmappedIntro: 'Ces comptes ne seront pas convertis. Leurs propriétaires devront les reconnecter. Les lignes qui leur sont liées restent sur l’ancien identifiant.',
+  heldNone: 'Aucune ligne liée à ce compte.',
+  heldUnread: 'Lignes liées non lues.',
+  /** Lignes qui restent sur l'ancien identifiant, par type de donnée (libellés de whereLabel). */
+  heldLine: (rows: number, parts: string[]) =>
+    `${rowsText(rows)} ${rows > 1 ? 'resteront' : 'restera'} sur l’ancien identifiant : ${parts.join(', ')}.`,
   pairsHeading: 'Comptes à convertir',
   orphansHeading: 'Anciens identifiants sans compte relié',
   orphansIntro: 'Ces identifiants figurent dans la base mais ne correspondent à aucun compte relié (compte reconnecté ou supprimé). Ils ne seront pas convertis et le code final ne les reconnaîtra pas.',
@@ -162,11 +168,87 @@ export function rowsText(n: number): string {
   return `${n} ligne${n > 1 ? 's' : ''}`;
 }
 
+/**
+ * Où se trouvent des lignes qui portent un identifiant de compte, dit pour le propriétaire : jamais le nom d'une
+ * table ni d'une colonne. Une table inconnue donne « autres données ».
+ */
+const WHERE_LABEL: Record<string, string> = {
+  'sequence_enrollments.assigned_sender_id': 'expéditeurs tirés des inscriptions de séquence',
+  sequence_enrollments: 'inscriptions de séquence',
+  sequence_steps: 'étapes de séquence',
+  outreach_sequences: 'rotations d’expéditeurs des séquences',
+  inmail_queue: 'file des InMails',
+  linkedin_action_log: 'registre des plafonds',
+  mission_conversations: 'conversations de mission',
+  candidate_action_messages: 'messages d’actions sur un candidat',
+  profile_enrichment_queue: 'file d’enrichissement des profils',
+  nurturing_opportunities: 'suggestions de relance',
+  sourcing_agents: 'agents de recherche continue',
+  chat_categories: 'catégories de conversations',
+  message_analysis_cache: 'analyses de messages',
+  internal_config: 'réglage de l’annuaire des entreprises',
+  member_calendar_accounts: 'liaison d’agenda',
+  member_whatsapp_accounts: 'liaison WhatsApp',
+  member_email_accounts: 'liaison de messagerie',
+  member_linkedin_accounts: 'liaison LinkedIn',
+};
+
+export function whereLabel(table: unknown, column?: unknown): string {
+  const t = typeof table === 'string' ? table : '';
+  const c = typeof column === 'string' ? column : '';
+  return WHERE_LABEL[`${t}.${c}`] ?? WHERE_LABEL[t] ?? 'autres données';
+}
+
+/** Première lettre en majuscule (début de ligne). */
+export function capitalize(text: string): string {
+  return text === '' ? text : text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** « inscriptions de séquence (1), file des InMails (1) » : les lignes d'un compte, par type de donnée, sans nom de table. */
+export function heldParts(held: ReadonlyArray<{ table: string; column: string; rows: number }>): string[] {
+  const byLabel = new Map<string, number>();
+  for (const row of held) {
+    const label = whereLabel(row.table, row.column);
+    byLabel.set(label, (byLabel.get(label) ?? 0) + row.rows);
+  }
+  return [...byLabel.entries()].map(([label, rows]) => `${label} (${rows})`);
+}
+
+/** Ligne d'un compte sans correspondance : ce qui reste sur son ancien identifiant. */
+export function heldText(row: { held: ReadonlyArray<{ table: string; column: string; rows: number }>; heldRows: number; heldUnread: boolean }): string {
+  if (row.heldUnread) return PREVIEW.heldUnread;
+  return row.heldRows > 0 ? PREVIEW.heldLine(row.heldRows, heldParts(row.held)) : PREVIEW.heldNone;
+}
+
+/** Phrase d'une simulation qui n'a aucun compte à convertir : la raison dépend de ce que la base contient. */
+export function nothingToConvertText(c: { total: number; already_v2: number }): string {
+  if (c.total === 0) return PREVIEW.nothingNoAccounts;
+  if (c.already_v2 === c.total) return PREVIEW.nothingAllConverted;
+  // Des comptes déjà convertis et d'autres sans correspondance : ceux qui ont une correspondance sont faits.
+  if (c.already_v2 > 0) return PREVIEW.nothingRestConverted;
+  return PREVIEW.nothingNoMatch;
+}
+
+/**
+ * Ce que la page propose pour un lot de la liste : déjà annulé, sans ligne réécrite (rien à annuler), à annuler
+ * après un lot plus récent (`blocked`), ou annulable. La base applique la même règle et refuse sinon.
+ */
+export function batchRollbackState(batch: { rolledBack: boolean; rows: number | null; newerOpen: boolean }): 'done' | 'empty' | 'blocked' | 'available' {
+  if (batch.rolledBack) return 'done';
+  if (batch.rows === 0) return 'empty';
+  return batch.newerOpen ? 'blocked' : 'available';
+}
+
 export const BATCHES = {
   heading: 'Conversions précédentes',
   applied: 'Appliquée',
   rolledBack: 'Annulée',
   pairs: (n: number) => `${n} compte${n > 1 ? 's' : ''}`,
+  rows: (n: number) => `${rowsText(n)} réécrite${n > 1 ? 's' : ''}`,
+  /** Un lot sans ligne réécrite n'a rien à annuler : pas de bouton. */
+  empty: 'Aucune ligne réécrite : rien à annuler.',
+  /** Un lot plus récent, non annulé, est à annuler avant celui-ci. */
+  blockedByNewer: 'Annulez d’abord la conversion plus récente.',
   unreadable: 'La liste des conversions précédentes n’a pas pu être lue.',
   rollbackButton: 'Annuler la conversion',
   rollbackAria: (id: string) => `Annuler la conversion du lot ${id}`,
@@ -191,6 +273,13 @@ export const APPLY = {
     `La dernière vérification signale ${n} point${n > 1 ? 's' : ''} bloquant${n > 1 ? 's' : ''}.`,
   allowUnmapped: (n: number) =>
     `Laisser ${n} compte${n > 1 ? 's' : ''} sans correspondance tel${n > 1 ? 's' : ''} quel${n > 1 ? 's' : ''}. ${n > 1 ? 'Ils devront' : 'Il devra'} être reconnecté${n > 1 ? 's' : ''}.`,
+  /** Lignes des comptes laissés tels quels, dites avant la case : elles restent sur l'ancien identifiant. */
+  unmappedHeld: (rows: number, exact: boolean) => {
+    if (rows === 0) {
+      return exact ? 'Aucune ligne n’est liée à ces comptes.' : 'Le nombre de lignes liées à ces comptes n’a pas pu être lu en entier.';
+    }
+    return `${exact ? '' : 'Au moins '}${rowsText(rows)} liée${rows > 1 ? 's' : ''} à ces comptes ${rows > 1 ? 'resteront' : 'restera'} sur l’ancien identifiant (détail dans la simulation).`;
+  },
   typeLabel: `Saisissez ${CONFIRM_WORD} pour confirmer.`,
   typePlaceholder: CONFIRM_WORD,
   cancel: 'Annuler',
@@ -227,6 +316,7 @@ export const ROLLBACK = {
   title: 'Annuler la conversion ?',
   lines: [
     'Les anciens identifiants du lot seront restaurés depuis la sauvegarde, pour toutes les organisations.',
+    'Si plusieurs conversions ont eu lieu, annulez la plus récente en premier.',
     'Une ligne modifiée depuis la conversion n’est pas écrasée. Une ligne créée depuis la conversion garde le nouvel identifiant.',
     'Tant que la conversion n’est pas refaite, les appels du code final échoueront sur les anciens identifiants.',
   ],
@@ -241,6 +331,8 @@ export const ROLLBACK = {
   moved: (n: number) => `${rowsText(n)} ${n > 1 ? 'avaient' : 'avait'} changé depuis la conversion : ${n > 1 ? 'elles n’ont' : 'elle n’a'} pas été restaurée${n > 1 ? 's' : ''}.`,
   stillNew: (n: number) =>
     `${rowsText(n)} créée${n > 1 ? 's' : ''} depuis la conversion ${n > 1 ? 'portent' : 'porte'} encore le nouvel identifiant : ${n > 1 ? 'elles ne sont pas restaurées' : 'elle n’est pas restaurée'}.`,
+  /** Où se trouvent les lignes restées au nouvel identifiant (libellés de whereLabel, avec leur effectif). */
+  stillNewWhere: (n: number, parts: string[]) => `${n > 1 ? 'Elles se trouvent' : 'Elle se trouve'} dans : ${parts.join(', ')}.`,
   failedTitle: 'L’annulation a échoué',
   /** Réponse perdue : on ne sait pas si l'annulation a eu lieu. */
   unknownTitle: 'Résultat inconnu',
@@ -264,6 +356,8 @@ export const ERROR_BY_CODE: Record<string, string> = {
   validation: 'Identifiant de lot invalide.',
   batch_unknown: 'Ce lot est introuvable.',
   batch_already_rolled_back: 'Ce lot a déjà été restauré.',
+  batch_newer_open: 'Une conversion plus récente n’est pas annulée. Annulez d’abord la plus récente, puis celle-ci.',
+  batch_empty: 'Cette conversion n’a réécrit aucune ligne : il n’y a rien à annuler.',
   unknown_action: 'Action inconnue.',
   server: 'L’opération a échoué. Réessayez.',
 };

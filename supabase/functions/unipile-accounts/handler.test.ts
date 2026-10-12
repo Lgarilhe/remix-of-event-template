@@ -866,7 +866,7 @@ Deno.test('stop_member_linkedin : les connexions en cours du membre sont annulé
 // inmail_balance, contracts, proxy, details
 // ---------------------------------------------------------------------------
 
-function ownedDb(): FakeDb {
+function ownedDb(role = 'admin'): FakeDb {
   return makeDb({
     member_linkedin_accounts: [
       { id: 'm1', organization_id: ORG, user_id: USER, linkedin_account_id: 'acc_own', linkedin_account_name: 'Claire' },
@@ -874,7 +874,7 @@ function ownedDb(): FakeDb {
       { id: 'm-foreign', organization_id: OTHER_ORG, user_id: STRANGER, linkedin_account_id: 'acc_foreign', linkedin_account_name: 'X' },
       { id: 'm-detail', organization_id: ORG, user_id: USER, linkedin_account_id: 'acc_detail', linkedin_account_name: 'Détail' },
     ],
-  });
+  }, role);
 }
 
 Deno.test('inmail_balance : la clé classic devient premium, une licence absente reste null', async () => {
@@ -1250,6 +1250,99 @@ Deno.test('get_attendee_picture : adresse de la photo de la conversation, jamais
       strictEqual((await call(ownedDb(), { action: 'get_attendee_picture', attendee_id: 'old' })).data.success, false);
       // Ce qui n'avait aucun contrôle d'appartenance en a un : le compte d'un autre espace est refusé.
       strictEqual((await call(ownedDb(), { action: 'get_attendee_picture', account_id: 'acc_foreign', chat_id: 'chat1' })).status, 403);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lecture des comptes de l'équipe : un collaborateur ne lit que le compte qu'il a relié (F9)
+// ---------------------------------------------------------------------------
+
+/** Les lectures qui rendent le contenu ou les données d'un compte, avec la route du service qu'elles appellent pour `account`. */
+const TEAM_READS: Array<{ action: string; body: (account: string) => Record<string, unknown> }> = [
+  { action: 'inmail_balance', body: (account_id) => ({ action: 'inmail_balance', account_id }) },
+  { action: 'list_contracts', body: (account_id) => ({ action: 'list_contracts', account_id }) },
+  { action: 'list_recruiter_contracts', body: (account_id) => ({ action: 'list_recruiter_contracts', account_id }) },
+  { action: 'get_account_details', body: (account_id) => ({ action: 'get_account_details', account_id }) },
+  { action: 'get_attendee_picture', body: (account_id) => ({ action: 'get_attendee_picture', account_id, chat_id: 'chat1' }) },
+  { action: 'list_invitations_received', body: (account_id) => ({ action: 'list_invitations_received', account_id }) },
+];
+
+function teamReadRoutes(): Record<string, Route> {
+  const routes: Record<string, Route> = {};
+  for (const account of ['acc_own', 'acc_peer']) {
+    routes[`GET /${account}/linkedin/inmail-credits`] = { body: { object: 'InmailCredits', credits: { classic: 5 } } };
+    routes[`GET /${account}/linkedin/contracts`] = { body: { object: 'AvailableContracts', contracts: [{ object: 'Contract', id: 'c1', name: 'A', product: 'recruiter', selected: true }] } };
+    routes[`GET /accounts/${account}`] = { body: li(account) };
+    routes[`GET /${account}/chats/chat1`] = { body: { id: 'chat1', type: '1to1', user: { id: 'ACoAAabc', public_picture_url: 'https://media.example/p.jpg' } } };
+    routes[`GET /${account}/users/me/relation-requests`] = { body: { data: [], next_cursor: null } };
+  }
+  return routes;
+}
+
+Deno.test('lectures des comptes de l équipe : un collaborateur est refusé sur le compte d un collègue, sans aucun appel au service', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(teamReadRoutes()));
+    try {
+      for (const read of TEAM_READS) {
+        const reply = await call(ownedDb('collaborator'), read.body('acc_peer'));
+        strictEqual(reply.status, 403, read.action);
+        strictEqual(reply.data.success, false, read.action);
+        strictEqual(reply.data.error_code, 'account_not_yours', read.action);
+        ok(/relié par un autre membre/.test(reply.data.error), reply.raw);
+        assertNoVendor(reply, read.action);
+      }
+      strictEqual(mock.calls.length, 0, 'aucun appel au service pour les refus');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('lectures des comptes de l équipe : un collaborateur lit le compte qu il a relié', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(teamReadRoutes()));
+    try {
+      for (const read of TEAM_READS) {
+        const reply = await call(ownedDb('collaborator'), read.body('acc_own'));
+        strictEqual(reply.status, 200, read.action);
+        strictEqual(reply.data.success, true, `${read.action} : ${reply.raw}`);
+      }
+      ok(mock.calls.length >= TEAM_READS.length, 'le service est appelé pour son propre compte');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('lectures des comptes de l équipe : propriétaire, administrateur et membre lisent le compte d un collègue comme avant', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(teamReadRoutes()));
+    try {
+      for (const role of ['owner', 'admin', 'member']) {
+        for (const read of TEAM_READS) {
+          const reply = await call(ownedDb(role), read.body('acc_peer'));
+          strictEqual(reply.status, 200, `${role} ${read.action}`);
+          strictEqual(reply.data.success, true, `${role} ${read.action} : ${reply.raw}`);
+        }
+      }
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('lectures des comptes de l équipe : un rôle inconnu est traité comme collaborateur, et le compte d une autre organisation reste refusé pour tous', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(teamReadRoutes()));
+    try {
+      for (const read of TEAM_READS) {
+        strictEqual((await call(ownedDb('viewer'), read.body('acc_peer'))).status, 403, `rôle inconnu ${read.action}`);
+        strictEqual((await call(ownedDb('owner'), read.body('acc_foreign'))).status, 403, `autre organisation ${read.action}`);
+      }
+      strictEqual(mock.calls.length, 0);
     } finally {
       mock.restore();
     }

@@ -15,6 +15,7 @@ import { BASE_KONEKT_QUERY_KEY } from '@/hooks/useBaseKonekt';
 import { toast } from 'sonner';
 import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
 import { sourcingSearchInputKey, type ExecutedSourcingSearch } from '@/lib/sourcingSearchLifecycle';
+import { readSearchFiltersNotice, type SearchFiltersNotice } from '@/lib/searchFilterNotice';
 
 const RESULTS_PER_BATCH = 25;
 
@@ -843,6 +844,8 @@ export function useLinkedInSearchActions(
     let latestTotal: number | null = null;
     let receivedPage = false;
     let exhausted = false;
+    // Filtres que la licence n'a pas appliqués : lus sur la première page d'une nouvelle recherche, gardés avec elle.
+    let filtersNotice: SearchFiltersNotice | null = null;
 
     try {
       const currentFilters = execution.filters;
@@ -915,6 +918,7 @@ export function useLinkedInSearchActions(
         const batchCursor: string | null = (data.cursor as string) || null;
         const fetchedTotal: number | null = typeof data.total === 'number' ? data.total : null;
         receivedPage = true;
+        if (!appendMode && round === 0) filtersNotice = readSearchFiltersNotice(data);
 
         if (fetchedTotal !== null) latestTotal = fetchedTotal;
         // Le quota de recherche LinkedIn (anti-ban) ne concerne QUE LinkedIn.
@@ -1020,7 +1024,7 @@ export function useLinkedInSearchActions(
 
       if (!isCurrent()) return;
       const noMoreResults = exhausted || !currentCursor;
-      setExecutedSearch(execution);
+      setExecutedSearch(filtersNotice ? { ...execution, filtersNotice } : execution);
       setCursor(currentCursor);
       if (!appendMode || latestTotal !== null) setTotal(latestTotal);
       setHasMoreResults(!noMoreResults);
@@ -1082,7 +1086,7 @@ export function useLinkedInSearchActions(
 
       // Une page déjà servie a été payée : on l'affiche avant le message.
       if (receivedPage) {
-        setExecutedSearch(execution);
+        setExecutedSearch(filtersNotice ? { ...execution, filtersNotice } : execution);
         setCursor(currentCursor);
         if (!appendMode || latestTotal !== null) setTotal(latestTotal);
         setHasMoreResults(!exhausted && !!currentCursor);
@@ -1170,7 +1174,7 @@ export function useLinkedInSearchActions(
         );
       } else if (/unexpected token|not valid json|<!doctype|<html/i.test(errorMessage || '')) {
         // Erreur de parsing brute (réponse HTML du provider) — jamais montrer ça à l'user
-        toast.error('Le service LinkedIn a renvoyé une réponse invalide. Réessaie dans quelques instants.', { id: 'search-error' });
+        toast.error('Le service LinkedIn a renvoyé une réponse invalide. Réessayez dans quelques instants.', { id: 'search-error' });
       } else {
         toast.error(errorMessage || "Erreur lors de la recherche", { id: "search-error" });
       }

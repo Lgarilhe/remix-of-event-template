@@ -1688,6 +1688,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           hasMoreResults={search.hasMoreResults}
           cursor={searchNeedsRerun ? null : search.cursor}
           total={search.total}
+          filtersNotice={search.executedSearch?.filtersNotice ?? null}
           selectedJob={search.selectedJob}
           selectedProfiles={search.selectedProfiles}
           jobScores={scoring.currentJobScores}

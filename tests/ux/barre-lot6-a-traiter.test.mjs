@@ -42,7 +42,7 @@ const {
   ACTIVITY_OPEN_STORAGE_KEY,
 } = await load('src/lib/sidebarSignals.ts');
 const { notificationOrgFilter, isInActiveOrg } = await load('src/lib/notificationKinds.ts');
-const { myLinkedInNeedsAction } = await load('src/lib/linkedinStatus.ts');
+const { myLinkedInOutage } = await load('src/lib/linkedinStatus.ts');
 
 const notificationsHook = read('src/hooks/sidebar/useSidebarNotifications.ts');
 const activityHook = read('src/hooks/sidebar/useSidebarActivity.ts');
@@ -280,14 +280,16 @@ test('B6-8 — notificationKinds : filtre d’organisation déplacé', () => {
 test('B6-17 — panne LinkedIn : liaisons, puis liste, puis statut enregistré', () => {
   const me = { user_id: 'u1', linkedin_account_id: 'a1', account_status: 'OK' };
   const base = { userId: 'u1', mappings: [me], mappingsLoaded: true, accounts: [], accountsLoaded: false };
-  assert.equal(myLinkedInNeedsAction({ ...base, mappings: [], mappingsLoaded: false }), null);
-  assert.equal(myLinkedInNeedsAction({ ...base, userId: null }), null);
-  assert.equal(myLinkedInNeedsAction({ ...base, mappings: [{ ...me, user_id: 'u2' }] }), false);
-  assert.equal(myLinkedInNeedsAction({ ...base, accounts: [{ id: 'a1', status: 'CREDENTIALS' }], accountsLoaded: true }), true);
-  assert.equal(myLinkedInNeedsAction({ ...base, accounts: [{ id: 'a1', status: 'OK' }], accountsLoaded: true }), false);
-  assert.equal(myLinkedInNeedsAction({ ...base, accounts: [], accountsLoaded: true }), true, 'compte disparu');
-  assert.equal(myLinkedInNeedsAction({ ...base, mappings: [{ ...me, account_status: 'CREDENTIALS' }] }), true);
-  assert.equal(myLinkedInNeedsAction({ ...base, mappings: [{ ...me, account_status: 'OK' }] }), false);
+  assert.equal(myLinkedInOutage({ ...base, mappings: [], mappingsLoaded: false }), null);
+  assert.equal(myLinkedInOutage({ ...base, userId: null }), null);
+  assert.equal(myLinkedInOutage({ ...base, mappings: [{ ...me, user_id: 'u2' }] }), false);
+  assert.equal(myLinkedInOutage({ ...base, accounts: [{ id: 'a1', status: 'CREDENTIALS' }], accountsLoaded: true }), 'reconnect');
+  assert.equal(myLinkedInOutage({ ...base, accounts: [{ id: 'a1', status: 'LOCKED' }], accountsLoaded: true }), 'locked');
+  assert.equal(myLinkedInOutage({ ...base, accounts: [{ id: 'a1', status: 'OK' }], accountsLoaded: true }), false);
+  assert.equal(myLinkedInOutage({ ...base, accounts: [], accountsLoaded: true }), 'reconnect', 'compte disparu');
+  assert.equal(myLinkedInOutage({ ...base, mappings: [{ ...me, account_status: 'CREDENTIALS' }] }), 'reconnect');
+  assert.equal(myLinkedInOutage({ ...base, mappings: [{ ...me, account_status: 'LOCKED' }] }), 'locked');
+  assert.equal(myLinkedInOutage({ ...base, mappings: [{ ...me, account_status: 'OK' }] }), false);
   assert.doesNotMatch(outageHook, /invokeEdgeFunction/);
   assert.doesNotMatch(outageHook, /unipile/i);
 });

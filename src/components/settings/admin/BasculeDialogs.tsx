@@ -27,12 +27,16 @@ interface ApplyDialogProps {
   accounts: number;
   rows: number;
   unmapped: number;
+  /** Lignes que les comptes sans correspondance gardent sur l'ancien identifiant, dites avant la case à cocher. */
+  unmappedRows: number;
+  /** Faux quand la liste est tronquée ou qu'un relevé a échoué : le nombre est un minimum. */
+  unmappedRowsExact: boolean;
   /** Points bloquants de la dernière vérification (0 si elle n'a pas eu lieu). */
   blocking: number;
   onConfirm: (allowUnmapped: boolean) => void;
 }
 
-export function ApplyDialog({ open, onOpenChange, accounts, rows, unmapped, blocking, onConfirm }: ApplyDialogProps) {
+export function ApplyDialog({ open, onOpenChange, accounts, rows, unmapped, unmappedRows, unmappedRowsExact, blocking, onConfirm }: ApplyDialogProps) {
   const [typed, setTyped] = useState('');
   const [allowUnmapped, setAllowUnmapped] = useState(false);
   const inputId = useId();
@@ -65,16 +69,19 @@ export function ApplyDialog({ open, onOpenChange, accounts, rows, unmapped, bloc
         </AlertDialogHeader>
 
         {unmapped > 0 && (
-          <div className="flex items-start gap-3">
-            <Checkbox
-              id={checkId}
-              checked={allowUnmapped}
-              onCheckedChange={(value) => setAllowUnmapped(value === true)}
-              className="mt-0.5"
-            />
-            <Label htmlFor={checkId} className="text-sm font-normal leading-snug">
-              {APPLY.allowUnmapped(unmapped)}
-            </Label>
+          <div className="space-y-2">
+            <p className="text-sm text-foreground-secondary">{APPLY.unmappedHeld(unmappedRows, unmappedRowsExact)}</p>
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id={checkId}
+                checked={allowUnmapped}
+                onCheckedChange={(value) => setAllowUnmapped(value === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor={checkId} className="text-sm font-normal leading-snug">
+                {APPLY.allowUnmapped(unmapped)}
+              </Label>
+            </div>
           </div>
         )}
 

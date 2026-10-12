@@ -37,6 +37,7 @@ import {
   type SearchInvoke,
   type SentInvitation,
 } from './linkedInExtrasApi';
+import { createSingleFlight } from './singleFlight';
 import {
   CONTRACTS_COPY,
   contractChangedText,
@@ -308,6 +309,8 @@ function ContractCard({ accountId, onChanged }: { accountId: string; onChanged?:
     staleTime: 60 * 1000,
   });
 
+  // Un seul « Utiliser » à la fois : un double clic ne choisit pas le contrat deux fois (deux appels, deux messages).
+  const once = useMemo(() => createSingleFlight(), []);
   const select = useMutation({
     mutationFn: async (contract: LinkedInContract) => {
       const result = await selectContract(accountsInvoke, accountId, contract.id);
@@ -381,7 +384,7 @@ function ContractCard({ accountId, onChanged }: { accountId: string; onChanged?:
                     aria-label={contractUseAriaLabel(name)}
                     disabled={select.isPending}
                     loading={select.isPending && select.variables?.id === contract.id}
-                    onClick={() => select.mutate(contract)}
+                    onClick={() => { void once(() => select.mutateAsync(contract).catch(() => undefined)); }}
                   >
                     {CONTRACTS_COPY.use}
                   </Button>

@@ -25,7 +25,32 @@ export const PASTE_URL_COPY = {
   replacedHint: 'Les filtres de même type ont été remplacés. Vérifiez-les, puis lancez la recherche.',
   warningsTitle: 'Non repris depuis l’adresse :',
   warningsHint: 'Ajoutez-les dans les filtres si besoin.',
+  recruiterFilters: 'Filtres de la recherche Recruiter : l’adresse ne les contient pas, LinkedIn les garde de son côté. Seuls les mots-clés peuvent être repris.',
 } as const;
+
+/**
+ * Phrase du serveur → phrase plus précise à l'écran ; les autres passent telles quelles.
+ * La clé est le texte exact de `supabase/functions/unipile-search/search-url.ts` (`recruiterWarnings`).
+ */
+const WARNING_REWRITES: Readonly<Record<string, string>> = {
+  'Filtres de la recherche Recruiter': PASTE_URL_COPY.recruiterFilters,
+};
+
+export function readableWarning(warning: string): string {
+  return Object.prototype.hasOwnProperty.call(WARNING_REWRITES, warning) ? WARNING_REWRITES[warning] : warning;
+}
+
+/**
+ * Nom d'un critère que l'adresse Classic ne porte que par son numéro : le nom n'est pas dans l'adresse et
+ * le numéro ne dit rien à la personne. Clé : critère de l'état de filtres.
+ */
+export const CHOSEN_ON_LINKEDIN: Readonly<Record<string, string>> = {
+  location: 'Lieu choisi sur LinkedIn',
+  company: 'Entreprise choisie sur LinkedIn',
+  past_company: 'Entreprise passée choisie sur LinkedIn',
+  industry: 'Secteur choisi sur LinkedIn',
+  school: 'École choisie sur LinkedIn',
+};
 
 /** Phrase de réussite : « 3 filtres repris de l’adresse. » */
 export function appliedFiltersText(count: number): string {

@@ -27,7 +27,7 @@ import {
 } from '@/components/connections/ConnectionParts';
 import { useHostedConnect } from '@/components/connections/useHostedConnect';
 import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
-import { offerLabelOf, sinceDate, viewOfHealth } from '@/components/connections/connectionView';
+import { offerLabelOf, sinceDate, viewOfAccount, viewOfHealth } from '@/components/connections/connectionView';
 import { cn } from '@/lib/utils';
 import { LinkedInSafetySettings, TimeZoneName } from './LinkedInSafetySettings';
 
@@ -44,11 +44,15 @@ const LinkedInExtras = lazy(() => import('@/components/connections/LinkedInExtra
  * dans NativeConnectSlot.
  *
  * Un geste par cause (src/components/connections/connectionView.ts) :
- * - à reconnecter : « Reconnecter » (même compte, même historique) ;
+ * - à reconnecter : « Reconnecter » (même compte, même historique), avec la phrase de
+ *   sa cause (session expirée, panne de connexion, authentification partielle,
+ *   identifiant à refaire) ;
  * - connexion limitée : rien, la reprise est automatique ;
  * - accès suspendu : « Contacter le support », se reconnecter n'y change rien ;
- * - état illisible : « Actualiser ».
- * Un compte relié qui a disparu se remplace par une nouvelle connexion.
+ * - état non lu chez le prestataire : « État à vérifier » et « Réessayer », jamais
+ *   « Actif » ni une offre devinée.
+ * Un compte relié qui a disparu se lit comme sur les deux autres cartes : « À
+ * reconnecter », et « Reconnecter » ouvre une nouvelle connexion qui le remplace.
  *
  * Liaison stricte par utilisateur (resolveMyLinkedInStatus). Liaison et
  * dissociation passent par le serveur (claim_linkedin_account,
@@ -73,7 +77,16 @@ export const MyLinkedInAccount = () => {
   });
   const myMapping = li.mapping;
   const myAccount = li.account;
-  const view = viewOfHealth(healthOfState(li.state), 'linkedin');
+  // Compte que le prestataire n'a pas répondu : la liste ne porte alors que le dernier état connu et une offre
+  // par défaut. Il s'affiche « État à vérifier », jamais « Actif » ni une offre qui n'a pas été lue.
+  const unverified = myAccount?.unverified === true;
+  const view = viewOfAccount({
+    health: healthOfState(li.state),
+    // Compte relié absent d'une liste reçue : il n'existe plus chez le prestataire (même état que sur les deux autres cartes).
+    status: li.state === 'missing' ? 'DELETED' : myAccount?.status,
+    accountId: myMapping?.linkedin_account_id,
+    unverified,
+  }, 'linkedin');
 
   // Compte en synchronisation ou en connexion : relecture de la liste toutes les 10 s
   // (deux minutes au plus) pour que « Actif » apparaisse sans recharger la page.
@@ -136,7 +149,7 @@ export const MyLinkedInAccount = () => {
   };
 
   const accountName = readableConnectionName(myAccount?.name || myMapping?.linkedin_account_name, 'linkedin');
-  const offer = offerLabelOf(myAccount?.subscriptions);
+  const offer = unverified ? null : offerLabelOf(myAccount?.subscriptions);
   const since = sinceDate(myMapping?.linked_at);
 
   return (
@@ -185,6 +198,7 @@ export const MyLinkedInAccount = () => {
                       hosted={hosted}
                       provider="linkedin"
                       accountId={myMapping.linkedin_account_id}
+                      startsNew={view.reconnect === 'new_link'}
                       label={view.actionLabel ?? 'Reconnecter'}
                       className="max-sm:flex-1"
                     />
@@ -193,7 +207,7 @@ export const MyLinkedInAccount = () => {
                   {view.action === 'refresh' && (
                     <Button variant="ghost" size="sm" onClick={handleRefreshAndLink} disabled={refreshing} className="max-sm:flex-1 max-md:h-11">
                       <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
-                      {CARD_COMMON.refresh}
+                      {view.actionLabel ?? CARD_COMMON.refresh}
                     </Button>
                   )}
                   <RemovalDialog
@@ -212,30 +226,53 @@ export const MyLinkedInAccount = () => {
               <NativeConnectSlot provider="linkedin" reconnectAccountId={myMapping.linkedin_account_id} />
             )}
           </>
-        ) : myMapping && !myAccount ? (
-          // Relié, compte absent de la liste : disparu (« missing ») ou liste non
-          // reçue (« load_error », panne passagère : aucun conseil de dissocier,
-          // mais Rafraîchir et Dissocier restent utilisables).
-          <div className="space-y-3">
-            {li.state === 'load_error' ? (
-              <LinkedInLoadError accountName={accountName} />
-            ) : (
-              <ConnectionNotice title={LINKEDIN_CARD.missingTitle}>
-                {LINKEDIN_CARD.missingBody(accountName)}
-              </ConnectionNotice>
-            )}
-            <div className="flex flex-wrap items-start gap-2">
-              {li.state === 'missing' && (
-                <HostedConnectButton provider="linkedin" label={connectLabel('linkedin')} variant="primary" className="max-sm:w-full" />
+        ) : myMapping && !myAccount && li.state === 'missing' ? (
+          // Relié, compte absent d'une liste reçue : il n'existe plus chez le prestataire. Même ligne, même
+          // phrase et même geste (« Reconnecter », qui ouvre une nouvelle connexion) que la messagerie et WhatsApp.
+          <>
+            <AccountRow
+              leading={<PersonAvatar name={accountName} src={null} size={40} />}
+              name={accountName}
+              view={view}
+              details={view.reason ? <DetailLine>{view.reason}</DetailLine> : undefined}
+              actions={(
+                <>
+                  <ReconnectButton
+                    hosted={hosted}
+                    provider="linkedin"
+                    accountId={myMapping.linkedin_account_id}
+                    startsNew={view.reconnect === 'new_link'}
+                    label={view.actionLabel ?? 'Reconnecter'}
+                    className="max-sm:flex-1"
+                  />
+                  {/* Relances mises en pause, InMails annulés : confirmation obligatoire */}
+                  <RemovalDialog
+                    title={LINKEDIN_CARD.unlinkTitle}
+                    body={LINKEDIN_CARD.unlinkMissingBody}
+                    triggerLabel={CARD_COMMON.unlink}
+                    confirmLabel={CARD_COMMON.unlink}
+                    disabled={isUnlinking}
+                    onConfirm={handleUnlink}
+                  />
+                </>
               )}
+            />
+            <HostedError hosted={hosted} />
+          </>
+        ) : myMapping && !myAccount ? (
+          // Relié, liste non reçue (« load_error », panne passagère : aucun conseil de dissocier,
+          // mais Réessayer et Dissocier restent utilisables).
+          <div className="space-y-3">
+            <LinkedInLoadError accountName={accountName} />
+            <div className="flex flex-wrap items-start gap-2">
               <Button variant="outline" size="sm" onClick={handleRefreshAndLink} disabled={refreshing} className="max-md:h-11">
                 <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
-                {li.state === 'load_error' ? CARD_COMMON.retry : CARD_COMMON.refreshAccounts}
+                {CARD_COMMON.retry}
               </Button>
               {/* Relances mises en pause, InMails annulés : confirmation obligatoire */}
               <RemovalDialog
                 title={LINKEDIN_CARD.unlinkTitle}
-                body={li.state === 'missing' ? LINKEDIN_CARD.unlinkMissingBody : LINKEDIN_CARD.unlinkBody}
+                body={LINKEDIN_CARD.unlinkBody}
                 triggerLabel={CARD_COMMON.unlink}
                 confirmLabel={CARD_COMMON.unlink}
                 disabled={isUnlinking}
@@ -306,7 +343,7 @@ export const MyLinkedInAccount = () => {
     </Card>
 
     {/* Invitations en attente et contrat LinkedIn (section chargée à la demande) */}
-    {myMapping && myAccount && li.isUsable && (
+    {myMapping && myAccount && li.isUsable && !unverified && (
       <Suspense fallback={null}>
         <LinkedInExtras
           accountId={myMapping.linkedin_account_id}

@@ -125,11 +125,11 @@ test('F-06 — Journal, e-mail et extension : une lecture ratée s’affiche en 
   assert.match(list, /Afficher tous les statuts/);
   // Une actualisation ratée garde la liste lue, et le dit.
   assert.match(src.journal, /\{isRefetchError && \([\s\S]{0,300}Actualisation impossible/);
-  // E-mail : une liste non reçue n'est plus un « connectez votre compte ».
-  const load = between(src.email, 'const loadEmailAccounts', 'useEffect(');
-  assert.match(load, /setListError\(true\);/);
-  assert.match(src.email, /\) : listError \? \([\s\S]{0,200}<ErrorState/);
-  assert.match(src.email, /useState\(true\);\s*const \[accountsLoaded/, 'chargement dès le montage');
+  // E-mail : une liste non reçue n'est plus un « connectez votre compte ». La liste est une requête partagée
+  // (useMemberEmailList, une seule lecture) : l'échec en est lu sur la requête.
+  assert.match(src.email, /const listFailed = list\.isError && !list\.data;/);
+  assert.match(src.email, /\) : listFailed \? \([\s\S]{0,200}<ErrorState/);
+  assert.match(src.email, /const initialLoad = !authReady \|\| mappingsLoading \|\| list\.isPending;/, 'chargement dès le montage');
   // Extension : erreur dans la carte, jamais un faux « aucun jeton ».
   const ext = between(src.extension, '{loading ? (', ') : activeTokens.length === 0 ? (');
   assert.match(ext, /loadError \? \(\s*<ErrorState/);
@@ -138,7 +138,7 @@ test('F-06 — Journal, e-mail et extension : une lecture ratée s’affiche en 
 // ---------------------------------------------------------------- F-07
 test('F-07 — état du compte LinkedIn : libellé et teinte tirés du même état', () => {
   assert.doesNotMatch(src.linkedin, /rawStatus/, 'le statut de la liaison ne décide plus du libellé');
-  assert.match(src.linkedin, /const view = viewOfHealth\(healthOfState\(li\.state\), 'linkedin'\);/);
+  assert.match(src.linkedin, /const view = viewOfAccount\(\{\s*health: healthOfState\(li\.state\),/);
   const row = between(src.linkedin, ') : myMapping && myAccount ? (', ') : myMapping && !myAccount ? (');
   assert.match(row, /<AccountRow[\s\S]*?view=\{view\}/);
   // Mot et pastille de la même classe de santé, dans la pièce commune
@@ -155,7 +155,7 @@ test('F-08 — téléphone : les actions du compte LinkedIn passent sous l’ide
   const row = between(src.parts, 'export function AccountRow', 'export function DetailLine');
   assert.match(row, /className="flex flex-col gap-3 rounded-lg bg-muted p-3 sm:flex-row sm:items-center sm:justify-between"/);
   const li = between(src.linkedin, ') : myMapping && myAccount ? (', ') : myMapping && !myAccount ? (');
-  assert.equal((li.match(/max-sm:flex-1/g) ?? []).length, 3, 'Reconnecter, Contacter le support et Actualiser en pleine largeur');
+  assert.equal((li.match(/max-sm:flex-1/g) ?? []).length, 4, 'Reconnecter, Contacter le support et Actualiser en pleine largeur, puis Reconnecter du compte retiré');
   assert.match(between(src.parts, 'export function RemovalDialog', 'interface ConnectButtonProps'), /max-sm:flex-1/, 'Dissocier en pleine largeur');
 });
 
@@ -318,7 +318,9 @@ test('F-25 — fuseaux par leur ville, états du compte e-mail en mots', () => {
   assert.doesNotMatch(src.safety, />Europe\/Paris<|>America\/New_York</);
   assert.match(src.linkedin, /fuseau <TimeZoneName timeZone=\{status\.timezone\} \/>/);
   assert.doesNotMatch(src.linkedin, /\(\{status\.timezone\}\)/);
-  assert.match(src.email, /viewOfHealth\(classifyConnectionHealth\(\{ status: myAccount\.status \}\), myProvider \?\? 'imap'\)/);
+  // L'état de chaque boîte se construit dans mailboxRows.ts : même classe de santé, phrase de sa cause.
+  assert.match(read('src/components/connections/mailboxRows.ts'), /viewOfAccount\(\s*\{\s*health: account \? classifyConnectionHealth\(\{ status: account\.status \}\)/);
+  assert.match(read('src/components/connections/mailboxRows.ts'), /provider \?\? 'imap',\s*\);/);
   assert.doesNotMatch(src.email, /function emailStateDisplay/, 'le libellé vient de connectionCopy');
   assert.doesNotMatch(src.email, /\{myAccount\.status\}|\{acc\.type\}|\(\$\{myMapping\.provider\}\)/, 'code brut à l’écran');
 });
@@ -342,7 +344,9 @@ test('F-66 — squelettes pour les blocs, confirmations destructives d’une seu
 test('F-21 — dissocier l’adresse e-mail passe par une confirmation', () => {
   const calls = [...src.email.matchAll(/handleUnlink/g)];
   assert.equal(calls.length, 2, 'définition et un seul appel');
-  assert.match(src.email, /<RemovalDialog[\s\S]*?disabled=\{isUnlinking\}[\s\S]*?onConfirm=\{handleUnlink\}/);
+  // Une confirmation par boîte reliée : la ligne reçoit l'état « en cours » et la fonction de dissociation de la carte.
+  assert.match(src.email, /<RemovalDialog[\s\S]*?disabled=\{unlinkDisabled\}[\s\S]*?onConfirm=\{\(\) => onUnlink\(myMapping\)\}/);
+  assert.match(src.email, /onUnlink=\{handleUnlink\}\s+unlinkDisabled=\{isUnlinking\}/);
   assert.match(src.parts, /<AlertDialogAction variant="destructive" className="max-md:h-11" onClick=\{onConfirm\}>/);
 });
 

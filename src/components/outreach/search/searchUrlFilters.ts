@@ -24,7 +24,7 @@ import {
   type LocationScope,
 } from '@/components/outreach/types';
 import { safeServerMessage } from '@/lib/connectionCopy';
-import { PASTE_URL_COPY, sourceKeptText } from './searchControlsCopy';
+import { CHOSEN_ON_LINKEDIN, PASTE_URL_COPY, readableWarning, sourceKeptText } from './searchControlsCopy';
 
 type Dict = Record<string, unknown>;
 
@@ -107,6 +107,23 @@ function items(raw: unknown): Array<{ id: string; name: string; source: Dict }> 
   return out;
 }
 
+/** Nom que le serveur donne à un élément dont l'adresse ne porte que le numéro : « Lieu n° 105015875 », « n° 12 ». */
+const NUMBER_ONLY_NAME = /^(?:\S+ )?n° ?\d+$/;
+
+/**
+ * Remplace ces noms par « Lieu choisi sur LinkedIn » (selon le critère), avec un rang quand il y en a
+ * plusieurs. Un nom lu dans l'adresse (Sales Navigator) n'est jamais touché.
+ */
+function readableNames<T extends { name: string }>(list: T[], key: keyof typeof CHOSEN_ON_LINKEDIN): T[] {
+  const numbered = list.filter((entry) => NUMBER_ONLY_NAME.test(entry.name)).length;
+  let rank = 0;
+  return list.map((entry) => {
+    if (!NUMBER_ONLY_NAME.test(entry.name)) return entry;
+    rank += 1;
+    return { ...entry, name: numbered > 1 ? `${CHOSEN_ON_LINKEDIN[key]} (${rank})` : CHOSEN_ON_LINKEDIN[key] };
+  });
+}
+
 const plainItems = (raw: unknown) => items(raw).map(({ id, name }) => ({ id, name }));
 
 const priorityItems = (raw: unknown, fallback: FilterPriority) =>
@@ -134,11 +151,11 @@ function readFilters(raw: Dict): Partial<LinkedInFiltersState> {
     const empty = Array.isArray(value) ? value.length === 0 : value === '';
     if (!empty) out[key] = value;
   };
-  set('location', locationItems(raw.location));
-  set('company', companyItems(raw.company));
-  set('past_company', plainItems(raw.past_company));
-  set('industry', plainItems(raw.industry));
-  set('school', priorityItems(raw.school, 'MUST_HAVE'));
+  set('location', readableNames(locationItems(raw.location), 'location'));
+  set('company', readableNames(companyItems(raw.company), 'company'));
+  set('past_company', readableNames(plainItems(raw.past_company), 'past_company'));
+  set('industry', readableNames(plainItems(raw.industry), 'industry'));
+  set('school', readableNames(priorityItems(raw.school, 'MUST_HAVE'), 'school'));
   set('job_title', priorityItems(raw.job_title, 'CAN_HAVE'));
   set('past_job_title', priorityItems(raw.past_job_title, 'CAN_HAVE'));
   set('function', plainItems(raw.function));
@@ -191,7 +208,7 @@ export function buildSearchUrlUpdate(parsed: ParsedSearchUrl, context: SearchUrl
   const read = readFilters(parsed.filters);
   if (parsed.keywords) read.keywords = parsed.keywords;
   const count = Object.keys(read).length;
-  const warnings = [...parsed.warnings];
+  const warnings = parsed.warnings.map(readableWarning);
   if (count === 0) return { update: {}, count, warnings };
 
   const reset: Partial<LinkedInFiltersState> = {};

@@ -152,7 +152,9 @@ export async function loadDbAccounts(admin: Admin): Promise<DbAccount[] | null> 
   }
   for (const row of whatsapp) {
     const id = str(row.whatsapp_account_id);
-    if (id) out.push({ kind: 'whatsapp', storedId: id, label: str(row.name) ?? str(row.phone_number), email: null });
+    // Le numéro d'abord : le nom du compte est réécrit par la page Connexions (il prend la valeur du service, le
+    // plus souvent le numéro), ce qui changerait le libellé montré entre la simulation et le résultat.
+    if (id) out.push({ kind: 'whatsapp', storedId: id, label: str(row.phone_number) ?? str(row.name), email: null });
   }
   for (const row of calendar) {
     const id = str(row.account_id);
@@ -287,7 +289,9 @@ export function usageNotes(usage: readonly UsageRow[]): string[] {
   if (rows('sourcing_agents', 'account_id') > 0) {
     notes.push('Un agent de recherche continue utilise ce compte : son contexte change, il faudra le recalibrer après la bascule.');
   }
-  const proposals = rows('agent_tool_executions');
+  // Une proposition porte le compte dans ses paramètres et dans son aperçu : une ligne compte une fois, pas une
+  // fois par colonne. Le plus grand des deux effectifs est exact quand elle les porte tous les deux (le cas courant).
+  const proposals = Math.max(rows('agent_tool_executions', 'params'), rows('agent_tool_executions', 'dry_run_result'));
   if (proposals > 0) {
     notes.push(`${proposals} proposition${proposals > 1 ? 's' : ''} de l'assistant en attente mentionne${proposals > 1 ? 'nt' : ''} ce compte : le compte d'envoi est relu à l'exécution, rien n'est réécrit.`);
   }
@@ -325,24 +329,32 @@ async function mapLimited<T, R>(items: readonly T[], limit: number, fn: (item: T
   return out;
 }
 
-async function previousBatches(admin: Admin) {
-  const { data, error } = await admin.from('account_id_remap')
-    .select('batch_id, kind, applied_at, rolled_back_at')
-    .order('applied_at', { ascending: false })
-    .limit(500);
-  if (error) return null;
-  const byBatch = new Map<string, { batch_id: string; pairs: number; applied_at: string; rolled_back: boolean }>();
-  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
-    const id = String(row.batch_id);
-    const known = byBatch.get(id);
-    if (known) {
-      known.pairs++;
-      if (!row.rolled_back_at) known.rolled_back = false;
-    } else {
-      byBatch.set(id, { batch_id: id, pairs: 1, applied_at: String(row.applied_at), rolled_back: Boolean(row.rolled_back_at) });
-    }
+interface BatchView {
+  batch_id: string;
+  pairs: number;
+  /** Lignes réécrites par le lot (sauvegardes) : 0 = rien à annuler. */
+  rows: number;
+  applied_at: string | null;
+  rolled_back: boolean;
+  /** Un lot plus récent, non annulé, a réécrit des lignes : celui-ci ne s'annule qu'après lui. */
+  newer_open: boolean;
+}
+
+/** Dix derniers lots, le plus récent d'abord. La règle d'ordre est celle de la restauration (une seule, côté base). */
+async function previousBatches(admin: Admin): Promise<BatchView[] | null> {
+  const { data, error } = await admin.rpc('remap_batches', { p_limit: 10 });
+  if (error) {
+    console.error('[unipile-migration] batches failed:', (error as DbError).code ?? '', (error as DbError).hint ?? '');
+    return null;
   }
-  return [...byBatch.values()].slice(0, 10);
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    batch_id: String(row.batch_id),
+    pairs: Number(row.pairs ?? 0),
+    rows: Number(row.rows_written ?? 0),
+    applied_at: row.applied_at ? String(row.applied_at) : null,
+    rolled_back: row.rolled_back === true,
+    newer_open: row.newer_open === true,
+  }));
 }
 
 interface OrphanView {
@@ -397,12 +409,34 @@ async function loadPlan(deps: HandlerDeps, admin: Admin): Promise<PlanContext | 
   return { plan: buildPlan(dbAccounts, service.accounts), service };
 }
 
+/** Comptes sans correspondance détaillés dans la simulation : au plus ce nombre, comme la liste de la vérification. */
+const UNMAPPED_SHOWN = 50;
+
+/** Une ligne de liaison (member_*) est le compte lui-même : ce qui compte pour le propriétaire, ce sont les données liées. */
+const isLinkTable = (table: string) => table.startsWith('member_');
+
+/**
+ * Lignes qui garderont l'ancien identifiant parce que le compte n'est pas converti : colonnes réécrites par la
+ * bascule (ou qu'elle ne sait pas réécrire), liaison du membre exclue. Les journaux et les propositions de
+ * l'assistant (état report_only) sont dits dans les notes, pas comptés ici.
+ */
+export function heldUsage(usage: readonly UsageRow[]): UsageRow[] {
+  return usage.filter((row) => row.rows > 0 && row.status !== 'report_only' && !isLinkTable(row.table));
+}
+
 export async function handlePreview(deps: HandlerDeps, admin: Admin): Promise<Response> {
   const loaded = await loadPlan(deps, admin);
   if (loaded instanceof Response) return loaded;
   const { plan, service } = loaded;
   const mappable = mappableItems(plan);
-  const usages = await mapLimited(mappable, USAGE_PARALLEL, (item) => readUsage(admin, item.oldId));
+  const unmappedAll = unmappedItems(plan);
+  const unmappedShown = unmappedAll.slice(0, UNMAPPED_SHOWN);
+  const [usages, unmappedUsages] = await Promise.all([
+    mapLimited(mappable, USAGE_PARALLEL, (item) => readUsage(admin, item.oldId)),
+    // Un compte sans correspondance qui a encore une liaison garde ses lignes sur l'ancien identifiant : le
+    // propriétaire doit savoir combien avant de décider de le laisser tel quel.
+    mapLimited(unmappedShown, USAGE_PARALLEL, (item) => readUsage(admin, item.oldId)),
+  ]);
   const pairs = mappable.map((item, index) => {
     const usage = usages[index];
     const nonzero = (usage ?? []).filter((row) => row.rows > 0);
@@ -414,6 +448,20 @@ export async function handlePreview(deps: HandlerDeps, admin: Admin): Promise<Re
       notes: usage ? usageNotes(usage) : [],
     };
   });
+  const unmapped = unmappedShown.map((item, index) => {
+    const usage = unmappedUsages[index];
+    const held = usage ? heldUsage(usage) : [];
+    return {
+      kind: item.kind,
+      label: item.maskedLabel,
+      ref: item.ref,
+      reason: item.reason,
+      usage: held,
+      usage_error: usage === null,
+      held_rows: held.reduce((sum, row) => sum + row.rows, 0),
+    };
+  });
+  const unmappedExact = unmappedAll.length === unmappedShown.length && unmapped.every((item) => !item.usage_error);
   const [batches, orphans] = await Promise.all([previousBatches(admin), readOrphans(admin)]);
   const data = planData(plan);
   return respond({
@@ -424,8 +472,12 @@ export async function handlePreview(deps: HandlerDeps, admin: Admin): Promise<Re
     service_accounts: plan.serviceAccounts,
     truncated: service.truncated,
     pairs,
-    unmapped: data.unmapped,
+    unmapped,
     unmapped_truncated: data.unmapped_truncated,
+    // Total des lignes que les comptes laissés tels quels gardent sur l'ancien identifiant ; faux quand la liste est
+    // tronquée ou qu'un relevé a échoué : le total est alors un minimum.
+    unmapped_held_rows: unmapped.reduce((sum, item) => sum + item.held_rows, 0),
+    unmapped_held_exact: unmappedExact,
     already_v2: plan.counts.all.already_v2,
     previous_batches: batches ?? [],
     previous_batches_error: batches === null,
@@ -524,6 +576,8 @@ export async function handleApply(deps: HandlerDeps, admin: Admin, userId: strin
   const batchId = deps.newBatchId();
   const results: PairResult[] = [];
   let remaining = 0;
+  // Un lot n'existe que si la base a inscrit au moins une paire : le numéro n'est rendu que dans ce cas.
+  let recorded = false;
   for (let index = 0; index < todo.length; index++) {
     if (deps.now() - startedAt > APPLY_BUDGET_MS) {
       remaining = todo.length - index;
@@ -541,7 +595,13 @@ export async function handleApply(deps: HandlerDeps, admin: Admin, userId: strin
       results.push({ ...who, status: 'failed', error_code: code, error: remapErrorMessage(code) });
       continue;
     }
-    const rows = Number((data as Record<string, unknown> | null)?.total_rows ?? 0);
+    const report = (data ?? {}) as Record<string, unknown>;
+    // Plus aucune ligne ne portait cet ancien identifiant (une autre conversion est passée avant, par exemple deux
+    // demandes simultanées) : rien n'a été écrit ni inscrit pour ce compte, il n'entre ni dans le lot ni dans le bilan.
+    if (report.noop === true) continue;
+    const rows = Number(report.total_rows ?? 0);
+    // Une base dont la fonction ne rend pas `recorded` (version d'avant les gardes) a inscrit la paire dès qu'elle a écrit.
+    if (report.recorded === true || (report.recorded === undefined && rows > 0)) recorded = true;
     const skipped = skippedColumns(data);
     results.push({ ...who, status: 'applied', rows, ...(skipped.length > 0 ? { skipped } : {}) });
   }
@@ -556,7 +616,7 @@ export async function handleApply(deps: HandlerDeps, admin: Admin, userId: strin
     success: failed === 0 && !incomplete,
     ...(failed > 0 ? { error_code: 'partial_failure', error: `${failed} compte${failed > 1 ? 's' : ''} en échec : rien n'a été modifié pour ${failed > 1 ? 'ceux-ci' : 'celui-ci'}.` } : {}),
     ...(incomplete ? { error_code: failed > 0 ? 'partial_failure' : 'time_budget', error: 'Le temps imparti est écoulé. Relancez la bascule pour traiter les comptes restants.' } : {}),
-    batch_id: batchId,
+    batch_id: recorded ? batchId : null,
     applied,
     failed,
     rows_total: rowsTotal,
@@ -584,7 +644,9 @@ export async function handleRollback(admin: Admin, userId: string, body: Record<
   if (error) {
     const code = classifyDbError(error as DbError);
     console.error('[unipile-migration] rollback failed:', code, (error as DbError).code ?? '');
-    const status = code === 'batch_unknown' ? 404 : code === 'batch_already_rolled_back' ? 409 : 500;
+    const status = code === 'batch_unknown' ? 404
+      : code === 'batch_already_rolled_back' || code === 'batch_newer_open' || code === 'batch_empty' ? 409
+      : 500;
     return respond({ success: false, error_code: code, error: remapErrorMessage(code) }, status);
   }
   const result = (data ?? {}) as Record<string, unknown>;

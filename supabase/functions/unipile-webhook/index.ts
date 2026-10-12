@@ -51,6 +51,8 @@ const corsHeaders = {
 const FAILED_EVENT_MARKER = 'processing_failed';
 /** Statuts d'une liaison déjà en panne : une nouvelle panne ne prévient pas une seconde fois (SEQ-208). */
 const ALREADY_BROKEN_STATUSES = new Set(['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DELETED', 'DISCONNECTED']);
+/** Un verrouillage ne prévient pas non plus une liaison déjà verrouillée (même règle : une fois par passage). */
+const NO_LOCK_NOTICE_STATUSES = new Set([...ALREADY_BROKEN_STATUSES, 'LOCKED']);
 
 // Timeout wrapper for the internal function calls (analyse, indexation)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -206,25 +208,83 @@ async function alertSiblingStopFailure(
   }
 }
 
-/** Notification « Compte LinkedIn déconnecté » (statut déconnecté ou en erreur) ou compte supprimé (`removed`). */
+/**
+ * Notification « Compte LinkedIn déconnecté » (statut déconnecté), « Problème de connexion LinkedIn »
+ * (`problem: 'error'`, statut en erreur), « Compte LinkedIn restreint » (`problem: 'locked'`, accès
+ * verrouillé : se reconnecter n'y change rien) ou compte supprimé (`removed`).
+ */
 function linkedinDisconnectedNotification(
   row: { user_id: string; organization_id: string; linkedin_account_name?: string | null },
   accountId: string,
-  options: { removed?: boolean } = {},
+  options: { removed?: boolean; problem?: 'error' | 'locked' } = {},
 ) {
   const label = `Votre compte LinkedIn${row.linkedin_account_name ? ` « ${row.linkedin_account_name} »` : ''}`;
+  let title = 'Compte LinkedIn déconnecté';
+  let body = `${label} n'est plus connecté. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`;
+  if (options.removed) {
+    body = `${label} a été supprimé du service de connexion : les envois qui en partaient sont arrêtés. Reliez-le de nouveau depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`;
+  } else if (options.problem === 'error') {
+    title = 'Problème de connexion LinkedIn';
+    body = `${label} rencontre un problème de connexion : les envois qui en partent sont en pause. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`;
+  } else if (options.problem === 'locked') {
+    title = 'Compte LinkedIn restreint';
+    body = `${label} est restreint par LinkedIn : les envois qui en partent sont en pause. Se reconnecter n'y change rien. Patientez, ou vérifiez l'état du compte directement sur LinkedIn : les envois reprendront d'eux-mêmes une fois la restriction levée.`;
+  }
   // Schéma notifications : body + read_at (NULL = non lue), pas message/read.
   return {
     user_id: row.user_id,
     organization_id: row.organization_id,
     type: 'linkedin_disconnected',
-    title: 'Compte LinkedIn déconnecté',
-    body: options.removed
-      ? `${label} a été supprimé du service de connexion : les envois qui en partaient sont arrêtés. Reliez-le de nouveau depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`
-      : `${label} n'est plus connecté. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`,
+    title,
+    body,
     link: '/settings?tab=account',
-    metadata: { linkedin_account_id: accountId },
+    metadata: {
+      linkedin_account_id: accountId,
+      ...(options.problem === 'error' ? { account_status: 'ERROR' } : {}),
+      ...(options.problem === 'locked' ? { account_status: 'LOCKED' } : {}),
+    },
   };
+}
+
+interface LinkedAccountRow {
+  user_id: string;
+  organization_id: string;
+  linkedin_account_name: string | null;
+  account_status: string | null;
+}
+
+const statusOfRow = (row: LinkedAccountRow) => String(row.account_status ?? '').toUpperCase();
+
+/**
+ * Liaisons LinkedIn d'un compte avec leur statut d'AVANT l'écriture, pour ne prévenir qu'au passage
+ * d'un compte en état de marche (même mécanisme que la déconnexion). Lecture ratée : aucune ligne et
+ * un avertissement, la notification est au mieux et ne fait jamais échouer l'événement.
+ */
+async function readLinkedAccountRows(supabase: SupabaseClient, accountId: string): Promise<LinkedAccountRow[]> {
+  try {
+    const { data, error } = await supabase
+      .from('member_linkedin_accounts')
+      .select('user_id, organization_id, linkedin_account_name, account_status')
+      .eq('linkedin_account_id', accountId);
+    if (error) console.warn('[unipile-webhook] lock: previous status lookup failed:', error);
+    return (data ?? []) as LinkedAccountRow[];
+  } catch (e) {
+    console.warn('[unipile-webhook] lock: previous status lookup failed:', e);
+    return [];
+  }
+}
+
+/** Prévient les membres dont le compte vient de passer LOCKED : les envois sont en pause, sans geste de reconnexion. */
+async function notifyAccountLocked(supabase: SupabaseClient, accountId: string, rows: LinkedAccountRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  try {
+    const { error } = await supabase.from('notifications').insert(
+      rows.map((row) => linkedinDisconnectedNotification(row, accountId, { problem: 'locked' })),
+    );
+    if (error) console.warn('[unipile-webhook] Could not create lock notifications:', error);
+  } catch (e) {
+    console.warn('[unipile-webhook] Error creating lock notifications:', e);
+  }
 }
 
 /**
@@ -627,7 +687,10 @@ export async function handleRequest(req: Request): Promise<Response> {
               .update({ account_status: newStatus })
               .eq('email_account_id', accId);
           } else {
-            await supabase
+            // Verrouillage : statut d'avant lu AVANT l'écriture, pour ne prévenir qu'au passage d'un
+            // compte en état de marche (une seule notification par passage, comme la déconnexion).
+            const lockedBefore = newStatus === 'LOCKED' ? await readLinkedAccountRows(supabase, accId) : [];
+            const { error: linkedinError } = await supabase
               .from('member_linkedin_accounts')
               .update({
                 account_status: newStatus,
@@ -636,10 +699,15 @@ export async function handleRequest(req: Request): Promise<Response> {
                 ...(newStatus === 'OK' ? { failure_reason: null } : {}),
               })
               .eq('linkedin_account_id', accId);
-            // DEGRADED, PARTIAL et LOCKED arrêtent les envois sans mettre les
-            // inscriptions en pause ni prévenir : le moteur attend le retour à OK.
+            if (linkedinError) console.warn('[unipile-webhook] status_updated: linkedin status write failed:', linkedinError);
+            // DEGRADED et PARTIAL arrêtent les envois sans mettre les inscriptions en pause ni
+            // prévenir (état de carte seulement) : le moteur attend le retour à OK. LOCKED les arrête
+            // aussi sans pause, mais le membre en est prévenu (aucun geste de reconnexion à faire).
             // Reconnexion par cookie ou par statut : les inscriptions mises en
             // pause pour compte déconnecté reprennent (idempotent).
+            if (newStatus === 'LOCKED' && !linkedinError) {
+              await notifyAccountLocked(supabase, accId, lockedBefore.filter((row) => !NO_LOCK_NOTICE_STATUSES.has(statusOfRow(row))));
+            }
             if (newStatus === 'OK') {
               await resumeEnrollmentsAfterReconnect(supabase, accId);
             }
@@ -712,7 +780,10 @@ export async function handleRequest(req: Request): Promise<Response> {
         // Find users linked to this account and create notifications
         try {
           if (newlyBroken.length > 0) {
-            const notifications = newlyBroken.map((u) => linkedinDisconnectedNotification(u, payload.account_id));
+            // Statut en erreur (ERROR) : « problème de connexion » ; déconnecté (CREDENTIALS) : « plus connecté ».
+            const notifications = newlyBroken.map((u) => linkedinDisconnectedNotification(
+              u, payload.account_id, reason === 'error' ? { problem: 'error' } : {},
+            ));
             const { error: notifError } = await supabase.from('notifications').insert(notifications);
             if (notifError) console.warn('[unipile-webhook] Could not create notifications:', notifError);
           }
@@ -724,15 +795,22 @@ export async function handleRequest(req: Request): Promise<Response> {
 
       // Accès au compte verrouillé puis déverrouillé (drapeau is_locked,
       // indépendant du statut). LOCKED bloque les envois comme tout statut
-      // différent de OK, sans pause ni notification : l'utilisateur n'a rien à
-      // faire. Le verrouillage ne touche qu'un compte OK (ou sans statut) et le
-      // déverrouillage ne relève que LOCKED : l'aller-retour est exact. Un
-      // compte déjà bloqué (CREDENTIALS, PARTIAL, DEGRADED…) garde son statut,
-      // sinon le déverrouillage le rendrait OK et les envois repartiraient.
+      // différent de OK, sans pause des inscriptions ; le membre en est prévenu
+      // une fois (notifyAccountLocked : se reconnecter n'y change rien, il doit
+      // patienter ou vérifier son compte). Le verrouillage ne touche qu'un
+      // compte OK (ou sans statut) et le déverrouillage ne relève que LOCKED :
+      // l'aller-retour est exact. Un compte déjà bloqué (CREDENTIALS, PARTIAL,
+      // DEGRADED…) garde son statut, sinon le déverrouillage le rendrait OK et
+      // les envois repartiraient ; il n'est pas prévenu non plus : son statut ne
+      // passe pas à LOCKED, rien n'empêcherait un événement répété de le prévenir
+      // à chaque fois.
       case 'account_locked':
       case 'account_unlocked': {
         const locking = payload.event === 'account_locked';
         const accId = payload.account_id;
+        // Statut d'avant lu AVANT l'écriture (même mécanisme que la déconnexion).
+        const lockedBefore = locking ? await readLinkedAccountRows(supabase, accId) : [];
+        let linkedinLocked = false;
         try {
           const linkedinUpdate = supabase
             .from('member_linkedin_accounts')
@@ -759,8 +837,13 @@ export async function handleRequest(req: Request): Promise<Response> {
           for (const { error } of results) {
             if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, error.message);
           }
+          linkedinLocked = locking && !results[0].error;
         } catch (e) {
           console.warn(`[unipile-webhook] ${payload.event} handler failed:`, e);
+        }
+        // Seules les liaisons que l'écriture vient de passer LOCKED (OK ou sans statut) sont prévenues.
+        if (linkedinLocked) {
+          await notifyAccountLocked(supabase, accId, lockedBefore.filter((row) => ['', 'OK'].includes(statusOfRow(row))));
         }
         break;
       }

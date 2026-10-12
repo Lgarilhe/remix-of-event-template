@@ -278,7 +278,7 @@ test('mise à jour : source indisponible sur le compte, la source en cours est g
   // Même source : rien à dire.
   const same = search.buildSearchUrlUpdate(parse(RECRUITER), { currentApi: 'recruiter', availableApis: ['recruiter'] });
   assert.equal(same.update.api, 'recruiter');
-  assert.deepEqual(same.warnings, ['Filtres de la recherche Recruiter']);
+  assert.deepEqual(same.warnings, [copy.PASTE_URL_COPY.recruiterFilters]);
 });
 
 test('mise à jour : adresse Recruiter, mots-clés seulement, les autres critères ne sont pas vidés', () => {
@@ -322,7 +322,7 @@ test('mise à jour : rien de lisible, rien n’est remplacé', () => {
   const { update, count, warnings } = search.buildSearchUrlUpdate(parse(empty), { currentApi: 'recruiter', availableApis: ALL_APIS });
   assert.equal(count, 0);
   assert.deepEqual(update, {});
-  assert.deepEqual(warnings, ['Filtres de la recherche Recruiter']);
+  assert.deepEqual(warnings, [copy.PASTE_URL_COPY.recruiterFilters]);
 });
 
 test('mise à jour : les valeurs mal formées sont écartées, jamais corrigées', () => {

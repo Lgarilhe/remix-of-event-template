@@ -13,14 +13,19 @@
  */
 
 import type { ConnectionHealth } from '@/lib/linkedinStatus';
+import { hasOutdatedAccountId } from '@/lib/accountIdFormat';
 import {
+  CARD_COMMON,
   HEALTH_LABEL,
   HEALTH_TONE,
   OFFER_LABEL,
   PROVIDER_CHANNEL,
+  causeReason,
   healthAction,
   healthActionLabel,
   healthReason,
+  type AccountCause,
+  type ConnectionChannel,
   type ConnectionProviderId,
   type HealthAction,
   type HealthTone,
@@ -36,6 +41,13 @@ export interface ConnectionView {
   action: HealthAction | null;
   /** Libellé du bouton du geste proposé, null sans geste. */
   actionLabel: string | null;
+  /** Cause précise quand elle change la phrase (compte à reconnecter, état non lu), sinon null. */
+  cause: AccountCause | null;
+  /**
+   * Ce que fait « Reconnecter » : 'in_place' renouvelle le compte relié, 'new_link' ouvre une
+   * nouvelle connexion parce que l'ancien compte n'existe plus chez le prestataire.
+   */
+  reconnect: 'in_place' | 'new_link';
 }
 
 /** Ce que la carte montre d'un état de santé, pour un fournisseur donné. */
@@ -48,7 +60,90 @@ export function viewOfHealth(health: ConnectionHealth, provider: ConnectionProvi
     reason: healthReason(health, PROVIDER_CHANNEL[provider]),
     action,
     actionLabel: action ? healthActionLabel(action, provider) : null,
+    cause: null,
+    reconnect: 'in_place',
   };
+}
+
+/** Ce que l'on sait d'un compte affiché sur une carte. */
+export interface AccountFacts {
+  /** Classe de santé déjà calculée (classifyConnectionHealth, healthOfState). */
+  health: ConnectionHealth;
+  /** Statut de la liste ou de la liaison (« CREDENTIALS », « PARTIAL »...) ; « DELETED » pour un compte retiré. */
+  status?: string | null;
+  /** Identifiant du compte tel qu'il est gardé : un ancien format dit que la connexion est à refaire. */
+  accountId?: string | null;
+  /** Compte que le prestataire n'a pas répondu : l'état reçu n'est qu'un dernier état connu, jamais affiché comme lu. */
+  unverified?: boolean;
+}
+
+/** Pourquoi un compte est à reconnecter, d'après son statut et son identifiant. */
+export function causeOfReconnect(facts: Pick<AccountFacts, 'status' | 'accountId'>): AccountCause {
+  const status = typeof facts.status === 'string' ? facts.status.trim().toUpperCase() : '';
+  if (status === 'DELETED') return 'removed';
+  if (hasOutdatedAccountId(facts.accountId)) return 'outdated_identifier';
+  if (status === 'PARTIAL') return 'authentication_partial';
+  if (status === 'ERROR' || status === 'ERRORED' || status === 'STOPPED' || status === 'PERMISSIONS') return 'connection_error';
+  return 'session_expired';
+}
+
+/**
+ * Ce que la carte montre d'un compte : la classe de santé, avec une phrase par cause.
+ * - état non lu : « État à vérifier » et « Réessayer », ni « Actif » ni offre devinés ;
+ * - à reconnecter : session expirée, panne de connexion, authentification partielle,
+ *   identifiant à refaire ou compte retiré, chacun avec sa phrase ; « Reconnecter » est
+ *   le seul geste, et il ouvre une nouvelle connexion quand le compte n'existe plus ;
+ * - tout le reste : la phrase de sa classe (viewOfHealth).
+ */
+export function viewOfAccount(facts: AccountFacts, provider: ConnectionProviderId): ConnectionView {
+  const channel = PROVIDER_CHANNEL[provider];
+  if (facts.unverified === true) {
+    return {
+      ...viewOfHealth('unknown', provider),
+      reason: causeReason('unreadable', channel),
+      actionLabel: CARD_COMMON.retry,
+      cause: 'unreadable',
+    };
+  }
+  const base = viewOfHealth(facts.health, provider);
+  if (facts.health !== 'needs_reconnect') return base;
+  const cause = causeOfReconnect(facts);
+  return {
+    ...base,
+    reason: causeReason(cause, channel),
+    cause,
+    reconnect: cause === 'removed' ? 'new_link' : 'in_place',
+  };
+}
+
+const isRemoved = (account: { status?: string | null }) => String(account.status ?? '').trim().toUpperCase() === 'DELETED';
+const addressOf = (account: { identifier?: string | null; name?: string | null }) =>
+  String(account.identifier ?? account.name ?? '').trim().toLowerCase();
+
+/**
+ * Comptes à lister sur une carte : un compte retiré chez le prestataire reste une ligne
+ * (à reconnecter), sauf quand un compte vivant le remplace : même adresse pour une
+ * messagerie, n'importe quel compte vivant pour WhatsApp (une seule ligne). Sans cela,
+ * l'ancienne liaison s'afficherait à côté de la nouvelle connexion.
+ */
+export function withoutSupersededRemoved<T extends { status?: string | null; identifier?: string | null; name?: string | null }>(
+  accounts: readonly T[],
+  channel: ConnectionChannel,
+): T[] {
+  const live = accounts.filter((account) => !isRemoved(account));
+  return accounts.filter((account) => {
+    if (!isRemoved(account)) return true;
+    if (channel === 'whatsapp') return live.length === 0;
+    const address = addressOf(account);
+    return address === '' || !live.some((other) => addressOf(other) === address);
+  });
+}
+
+/** Rang d'affichage : ce qui demande un geste d'abord, le reste ensuite (ordre d'origine conservé à rang égal). */
+export function attentionRank(view: Pick<ConnectionView, 'health'>): number {
+  if (view.health === 'needs_reconnect' || view.health === 'locked') return 0;
+  if (view.health === 'unknown' || view.health === 'limited') return 1;
+  return 2;
 }
 
 /** Pastille de l'état : une classe de fond par teinte (jetons du thème, jamais une couleur brute). */

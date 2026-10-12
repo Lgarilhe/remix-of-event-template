@@ -10,11 +10,18 @@ Deno.test('classifyDbError : un code par HINT connu', () => {
   strictEqual(classifyDbError({ hint: 'REMAP_CONCURRENT_CHANGE', code: '40001' }), 'concurrent_change');
   strictEqual(classifyDbError({ hint: 'REMAP_BATCH_UNKNOWN', code: 'P0002' }), 'batch_unknown');
   strictEqual(classifyDbError({ hint: 'REMAP_BATCH_ALREADY_ROLLED_BACK' }), 'batch_already_rolled_back');
+  strictEqual(classifyDbError({ hint: 'REMAP_BATCH_NEWER_OPEN', code: '22023' }), 'batch_newer_open');
+  strictEqual(classifyDbError({ hint: 'REMAP_BATCH_EMPTY', code: '22023' }), 'batch_empty');
   strictEqual(classifyDbError({ hint: 'REMAP_INVALID_NEW', code: '22023' }), 'invalid_input');
   strictEqual(classifyDbError({ hint: 'REMAP_KIND_UNKNOWN' }), 'invalid_input');
   strictEqual(classifyDbError({ hint: 'ENROLL_ACCOUNT_OF_OTHER_MEMBER', code: '42501' }), 'enrollment_guard');
   strictEqual(classifyDbError({ message: 'CROSS_TENANT_VIOLATION: linkedin_account_id x is already mapped', code: '42501' }), 'cross_tenant');
   strictEqual(classifyDbError({ code: '23505' }), 'conflict');
+});
+
+Deno.test('messages d\'ordre : on annule d\'abord la conversion la plus récente, un lot sans ligne n\'a rien à annuler', () => {
+  ok(/Annulez d'abord la plus récente/.test(remapErrorMessage('batch_newer_open')));
+  ok(/rien à annuler/.test(remapErrorMessage('batch_empty')));
 });
 
 Deno.test('classifyDbError : le reste est « database », sans texte brut', () => {
@@ -24,7 +31,7 @@ Deno.test('classifyDbError : le reste est « database », sans texte brut', () =
 });
 
 Deno.test('messages : français, neutres, sans identifiant ni nom de prestataire', () => {
-  const codes: RemapErrorCode[] = ['conflict', 'cross_tenant', 'enrollment_guard', 'concurrent_change', 'invalid_input', 'batch_unknown', 'batch_already_rolled_back', 'database'];
+  const codes: RemapErrorCode[] = ['conflict', 'cross_tenant', 'enrollment_guard', 'concurrent_change', 'invalid_input', 'batch_unknown', 'batch_already_rolled_back', 'batch_newer_open', 'batch_empty', 'database'];
   for (const code of codes) {
     const message = remapErrorMessage(code);
     ok(message.length > 10);

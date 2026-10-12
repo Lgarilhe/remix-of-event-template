@@ -1,6 +1,7 @@
 import type { LinkedInFiltersState } from '@/components/outreach/types';
 import { INITIAL_FILTERS } from '@/components/outreach/types';
 import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
+import type { SearchFiltersNotice } from '@/lib/searchFilterNotice';
 
 const filterSaveQueues = new Map<string, Promise<unknown>>();
 const localFilterSnapshots = new Map<string, { latestKey: string; keys: Set<string> }>();
@@ -57,6 +58,11 @@ export interface ExecutedSourcingSearch {
   inputKey: string;
   filters: LinkedInFiltersState;
   params: Record<string, unknown>;
+  /**
+   * Filtres que la licence du compte n'a pas appliqués (ou approchés), lus sur la première page de cette
+   * recherche. Vit avec la recherche : le cache de mission la garde et la rend avec les résultats.
+   */
+  filtersNotice?: SearchFiltersNotice;
 }
 
 export function sourcingSearchInputKey(scopeKey: string, filters: LinkedInFiltersState, augmentation: unknown): string {

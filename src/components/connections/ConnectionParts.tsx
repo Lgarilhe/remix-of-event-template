@@ -270,6 +270,7 @@ export function ReconnectButton({
   hosted,
   provider,
   accountId,
+  startsNew = false,
   label,
   returnTo,
   disabled,
@@ -278,6 +279,8 @@ export function ReconnectButton({
   hosted: UseHostedConnect;
   provider: ConnectionProviderId;
   accountId: string;
+  /** Le compte n'existe plus chez le prestataire : le geste ouvre une nouvelle connexion qui remplace la liaison. */
+  startsNew?: boolean;
   label: string;
   returnTo?: ReturnTarget;
   disabled?: boolean;
@@ -292,7 +295,7 @@ export function ReconnectButton({
       className={cn('max-md:h-11', className)}
       loading={mine}
       disabled={disabled || hosted.busy}
-      onClick={() => { void hosted.start({ provider, reconnectAccountId: accountId, returnTo }); }}
+      onClick={() => { void hosted.start({ provider, reconnectAccountId: startsNew ? null : accountId, returnTo }); }}
     >
       {!mine && <Plug aria-hidden="true" />}
       {hostedLabel(hosted, provider, label)}

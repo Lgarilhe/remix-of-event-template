@@ -33,6 +33,7 @@ import { readableAccountName } from "../_shared/connection-claim.ts";
 import {
   assertAccountInOrg,
   assertCanManageAccount,
+  assertCanReadAccount,
   assertOwnLinkedInAccount,
   getCallerOrgRole,
   HttpError,
@@ -873,7 +874,8 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           return json({ success: false, error: 'Account ID requis' }, 400);
         }
 
-        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
 
         let credits;
         try {
@@ -902,7 +904,8 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           return json({ success: false, error: 'Account ID requis' }, 400);
         }
 
-        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
 
         let contracts: Contract[];
         try {
@@ -1156,7 +1159,8 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         if (!account_id) {
           throw new HttpError(400, 'Account ID requis');
         }
-        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
 
         let invPage;
         try {
@@ -1265,7 +1269,8 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           throw new HttpError(400, 'Account ID requis');
         }
 
-        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
+        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
 
         let detail: V2Account;
         let detailContracts: Contract[] | null = null;
@@ -1309,7 +1314,8 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           return json({ success: false, error: 'Photo non disponible' });
         }
         const pictureAccount = await resolveActionAccountId(adminClient, organizationId, user.id, params.account_id);
-        await assertAccountInOrg(adminClient, organizationId, user.id, pictureAccount);
+        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, pictureAccount);
+        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
         try {
           const pictureAccountId = assertV2AccountId(pictureAccount);
           let pictureUrl: string | null = null;
@@ -1337,7 +1343,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
       return json({ success: false, error: error.message, error_code: error.errorCode });
     }
     if (error instanceof HttpError) {
-      return json({ success: false, error: error.message }, error.status);
+      return json({ success: false, error: error.message, ...(error.code ? { error_code: error.code } : {}) }, error.status);
     }
     // Échec du prestataire non traité par l'action : texte neutre, détail dans les journaux seulement.
     if (isUnipileError(error)) {

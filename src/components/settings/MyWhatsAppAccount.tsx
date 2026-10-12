@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
@@ -23,7 +24,8 @@ import {
 } from '@/components/connections/ConnectionParts';
 import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
 import { useHostedConnect } from '@/components/connections/useHostedConnect';
-import { viewOfHealth } from '@/components/connections/connectionView';
+import { viewOfAccount, withoutSupersededRemoved } from '@/components/connections/connectionView';
+import { createSingleFlight } from '@/components/connections/singleFlight';
 import { toast } from 'sonner';
 
 /**
@@ -36,16 +38,26 @@ import { toast } from 'sonner';
  *
  * « Déconnecter » retire le compte chez le prestataire : la ligne disparaît de la
  * liste et la reprise passe par une nouvelle connexion. « Reconnecter » ne
- * concerne qu'un compte dont la session a expiré (même compte, même historique).
+ * concerne qu'un compte à reconnecter (même compte, même historique).
+ *
+ * Un compte retiré chez le prestataire (autrement que par « Déconnecter ») se lit comme
+ * celui des deux autres cartes : « À reconnecter », même phrase, « Reconnecter » ouvre une
+ * nouvelle connexion. Une lecture ratée reste une erreur avec « Réessayer », jamais l'état
+ * d'un compte à relier.
  */
 export function MyWhatsAppAccount() {
   const { accounts, authReady, isPending, isError, isRefetchError, isFetching, refetch, disconnect } = useMemberWhatsAppAccounts();
   const hosted = useHostedConnect();
-  const availableAccounts = accounts.filter(account => account.status !== 'DELETED');
+  // Comptes déconnectés à l'instant par la personne : la liste les rend « retirés », la carte les oublie aussitôt.
+  const [justDisconnected, setJustDisconnected] = useState<ReadonlySet<string>>(() => new Set());
+  // Un seul « Déconnecter » à la fois : le second clic d'un double clic ne part pas.
+  const once = useMemo(() => createSingleFlight(), []);
+  const listedAccounts = withoutSupersededRemoved(accounts.filter(account => !justDisconnected.has(account.id)), 'whatsapp');
 
   const onDisconnect = async (accountId: string) => {
     try {
       await disconnect.mutateAsync(accountId);
+      setJustDisconnected(previous => new Set(previous).add(accountId));
       toast.success(WHATSAPP_CARD.disconnectedToast);
     } catch (error) {
       console.error('[MyWhatsAppAccount] déconnexion impossible :', error);
@@ -69,8 +81,11 @@ export function MyWhatsAppAccount() {
         ) : (
           <>
             {isRefetchError && <p role="status" className="text-sm text-danger">{CARD_COMMON.staleList}</p>}
-            {availableAccounts.map(account => {
-              const view = viewOfHealth(classifyConnectionHealth({ status: account.status }), 'whatsapp');
+            {listedAccounts.map(account => {
+              const view = viewOfAccount(
+                { health: classifyConnectionHealth({ status: account.status }), status: account.status, accountId: account.id },
+                'whatsapp',
+              );
               const name = readableConnectionName(account.identifier || account.name, 'whatsapp');
               return (
                 <AccountRow
@@ -90,28 +105,32 @@ export function MyWhatsAppAccount() {
                           hosted={hosted}
                           provider="whatsapp"
                           accountId={account.id}
+                          startsNew={view.reconnect === 'new_link'}
                           label={view.actionLabel ?? 'Reconnecter'}
                           disabled={disconnect.isPending}
                           className="max-sm:flex-1"
                         />
                       )}
                       {view.action === 'contact_support' && <SupportLink channel="whatsapp" className="max-sm:flex-1" />}
-                      <RemovalDialog
-                        title={DISCONNECT_WHATSAPP.title}
-                        body={DISCONNECT_WHATSAPP.body}
-                        triggerLabel={DISCONNECT_WHATSAPP.confirm}
-                        confirmLabel={DISCONNECT_WHATSAPP.confirm}
-                        disabled={disconnect.isPending || hosted.busy}
-                        icon={false}
-                        onConfirm={() => { void onDisconnect(account.id); }}
-                      />
+                      {/* Un compte retiré chez le prestataire n'a plus rien à déconnecter : seule la reconnexion a un sens. */}
+                      {view.cause !== 'removed' && (
+                        <RemovalDialog
+                          title={DISCONNECT_WHATSAPP.title}
+                          body={DISCONNECT_WHATSAPP.body}
+                          triggerLabel={DISCONNECT_WHATSAPP.confirm}
+                          confirmLabel={DISCONNECT_WHATSAPP.confirm}
+                          disabled={disconnect.isPending || hosted.busy}
+                          icon={false}
+                          onConfirm={() => { void once(() => onDisconnect(account.id)); }}
+                        />
+                      )}
                     </>
                   )}
                 />
               );
             })}
             <HostedError hosted={hosted} />
-            {availableAccounts.length === 0 && (
+            {listedAccounts.length === 0 && (
               <>
                 <p className="text-sm text-muted-foreground">{WHATSAPP_CARD.intro}</p>
                 <p className="text-xs text-muted-foreground">{WHATSAPP_CARD.privacy}</p>
