@@ -730,6 +730,70 @@ Deno.test('claim_linkedin_account : refus d un compte étranger, d un collègue,
   });
 });
 
+Deno.test('claim_linkedin_account : le droit de la plateforme ne vient que du secret (identifiant exact dans la liste) et ne contourne ni l espace étranger, ni le collègue, ni l appartenance', async () => {
+  const routes = {
+    'GET /accounts/acc_orphan': { body: li('acc_orphan', { name: 'Claire' }) },
+    'GET /accounts/acc_foreign': { body: li('acc_foreign', { name: 'Autre' }) },
+    'GET /accounts/acc_peer': { body: li('acc_peer', { name: 'Pierre' }) },
+  };
+  const base = () => makeDb({
+    member_linkedin_accounts: [
+      { id: 'm-foreign', organization_id: OTHER_ORG, user_id: STRANGER, linkedin_account_id: 'acc_foreign' },
+      { id: 'm-peer', organization_id: ORG, user_id: PEER, linkedin_account_id: 'acc_peer' },
+    ],
+  }, 'owner');
+  const hasOrphanLink = (db: FakeDb) => db.table('member_linkedin_accounts').some((r) => r.linkedin_account_id === 'acc_orphan');
+
+  // Le secret nomme un autre identifiant (ou un préfixe de celui de l'appelant), ou n'existe pas : même un propriétaire est refusé, le prestataire n'est pas consulté.
+  for (const secret of [PEER, USER.slice(0, 8), '', null]) {
+    await withEnv({ ...ENV, KONEKT_PLATFORM_ADMIN_USER_IDS: secret }, async () => {
+      const mock = withMockTransport(router(routes));
+      try {
+        const db = base();
+        const refused = await call(db, { action: 'claim_linkedin_account', account_id: 'acc_orphan' });
+        strictEqual(refused.status, 403, `secret ${JSON.stringify(secret)} : orphelin refusé`);
+        ok(!hasOrphanLink(db), `secret ${JSON.stringify(secret)} : aucun lien posé`);
+        strictEqual(mock.calls.length, 0, `secret ${JSON.stringify(secret)} : prestataire non consulté`);
+        assertNoVendor(refused);
+      } finally {
+        mock.restore();
+      }
+    });
+  }
+
+  // Le secret est une liste séparée par des virgules, espaces tolérés : l'appelant y figure, il relie l'orphelin et, pour un membre, le sien.
+  await withEnv({ ...ENV, KONEKT_PLATFORM_ADMIN_USER_IDS: ` ${PEER} , ${USER} ` }, async () => {
+    const mock = withMockTransport(router(routes));
+    try {
+      const db = base();
+      const claimed = await call(db, { action: 'claim_linkedin_account', account_id: 'acc_orphan' });
+      strictEqual(claimed.status, 200, JSON.stringify(claimed.data));
+      const row = db.table('member_linkedin_accounts').find((r) => r.linkedin_account_id === 'acc_orphan')!;
+      strictEqual(row.user_id, USER);
+      strictEqual(row.linked_by, USER);
+      ok(mock.calls.some((c) => c.path === '/accounts/acc_orphan'), 'le compte est lu chez le prestataire pour son nom et son statut');
+
+      // Pour un membre de l'organisation : lien posé pour lui, attribué à la plateforme.
+      const forPeer = base();
+      forPeer.table('member_linkedin_accounts').splice(1, 1);
+      const linked = await call(forPeer, { action: 'claim_linkedin_account', account_id: 'acc_orphan', user_id: PEER });
+      strictEqual(linked.status, 200, JSON.stringify(linked.data));
+      const peerRow = forPeer.table('member_linkedin_accounts').find((r) => r.linkedin_account_id === 'acc_orphan')!;
+      strictEqual(peerRow.user_id, PEER);
+      strictEqual(peerRow.linked_by, USER);
+
+      // Le droit de la plateforme ne couvre que les comptes sans liaison : espace étranger 403, collègue 409, hors organisation 404.
+      strictEqual((await call(base(), { action: 'claim_linkedin_account', account_id: 'acc_foreign' })).status, 403);
+      strictEqual((await call(base(), { action: 'claim_linkedin_account', account_id: 'acc_peer' })).status, 409);
+      const notMember = base();
+      strictEqual((await call(notMember, { action: 'claim_linkedin_account', account_id: 'acc_orphan', user_id: STRANGER })).status, 404);
+      ok(!hasOrphanLink(notMember), 'aucun lien pour quelqu un hors de l organisation');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
 Deno.test('claim_linkedin_account : l ancien compte cesse d envoyer avant le changement ; la plateforme relie un membre', async () => {
   await withEnv(ENV_PLATFORM, async () => {
     const db = makeDb({

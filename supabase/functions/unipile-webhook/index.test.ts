@@ -915,10 +915,21 @@ Deno.test('email.new sur une boîte reliée à aucune organisation : rien n\'est
     if (call.table === 'sequence_enrollments' && call.op === 'update') return { data: [{ id: 'enr-m' }] };
     return undefined;
   }, async ({ calls }) => {
-    strictEqual((await mod.handleRequest(post(URL_OK, replyMail('candidat@exemple.fr')))).status, 200);
+    // Décision de conception (bascule v2) : événement acquitté, rien à clore ; seul le journal de la fonction garde la trace pour le diagnostic.
+    const logged: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); };
+    try {
+      strictEqual((await mod.handleRequest(post(URL_OK, replyMail('candidat@exemple.fr')))).status, 200);
+    } finally {
+      console.log = originalLog;
+    }
     strictEqual(calls.filter((c) => c.table === 'sequence_email_tracking').length, 0);
     strictEqual(calls.filter((c) => c.table === 'sequence_enrollments').length, 0);
     strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 0);
+    strictEqual(logged.filter((l) => l.includes('[unipile-webhook][mail] Skipping - mailbox linked to no organisation')).length, 1,
+      'le cas est journalisé une fois pour le diagnostic');
+    strictEqual(calls.filter((c) => c.op !== 'select' && c.table !== 'rpc:record_webhook_event').length, 0, 'aucune écriture hors de la clé de dédoublonnage');
   });
 });
 

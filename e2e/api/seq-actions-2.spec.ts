@@ -63,6 +63,7 @@ import {
   callsOf,
   chatPosts,
   postJson,
+  rawWebhook,
   rand,
   routes,
   runCycle,
@@ -1049,6 +1050,59 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     expect(JSON.stringify(notes), 'aucun nom de prestataire').not.toMatch(/unipile/i);
   });
 
+  // claim-changement-compte (redelivery)
+  test('changement de compte dont l’arrêt des envois a échoué, événement redélivré : résultat stable, aucun rattachement tardif, une seule notification', async () => {
+    const { org, accountId: acc1 } = await sendingOrg('E2E A2 Changement compte échec redélivré');
+    track(org);
+    const oldLinkedAt = minutesFromNow(-30 * DAY);
+    await admin().from('member_linkedin_accounts').update({ linked_at: oldLinkedAt })
+      .eq('organization_id', org.orgId).eq('linkedin_account_id', acc1);
+    const inmail = await queueInMail(org.orgId, org.owner.userId, acc1, { scheduled_at: minutesFromNow(DAY) });
+    const acc2 = `acc_a2_new_${rand()}`;
+    const attemptId = await startHostedConnection(org.owner);
+    const noticesOf = async () => {
+      const { data } = await admin().from('notifications').select('id')
+        .eq('organization_id', org.orgId).eq('user_id', org.owner.userId).eq('title', 'Compte LinkedIn non rattaché');
+      return (data ?? []).length;
+    };
+    /** Tout ce qu'une redélivraison pourrait changer : liaison, InMail, tentative. */
+    const snapshot = async () => {
+      const links = await linkOf(org.orgId, org.owner.userId);
+      const { data: attempt } = await admin().from('connection_attempts').select('status, account_id, error_kind').eq('id', attemptId).single();
+      return { links: links.map((l) => ({ account: l.linkedin_account_id, linkedAt: new Date(l.linked_at!).getTime() })), inmail: (await inmailStatus(inmail)).status, attempt };
+    };
+
+    // 1re livraison : l'arrêt des envois de l'ancien compte échoue, la tentative est close en échec (définitif).
+    const delivered = v2.accountAdd({ accountId: acc2, state: attemptId });
+    const drop = failingTrigger('inmail_queue', 'UPDATE', org.orgId);
+    const first = await webhook(delivered);
+    expect(first.success, JSON.stringify(first)).toBe(true);
+    const afterFirst = await snapshot();
+    expect(afterFirst).toEqual({
+      links: [{ account: acc1, linkedAt: new Date(oldLinkedAt).getTime() }],
+      inmail: 'scheduled',
+      attempt: { status: 'failed', account_id: null, error_kind: 'claim_stop_failed' },
+    });
+    expect(await noticesOf(), 'une notification après la première livraison').toBe(1);
+
+    // La cause est levée : une redélivraison ne doit pas rattacher le compte après coup (la tentative est close en échec).
+    drop();
+
+    // 2e livraison, même enveloppe (même evt_) : dédoublonnée, rien n'est rejoué.
+    const same = await rawWebhook(delivered);
+    expect(same.status, JSON.stringify(same.body)).toBe(200);
+    expect(same.body.deduplicated, 'même enveloppe : événement déjà traité').toBe(true);
+    expect(await snapshot(), 'même enveloppe : état identique').toEqual(afterFirst);
+    expect(await noticesOf(), 'même enveloppe : pas de seconde notification').toBe(1);
+
+    // 3e livraison, autre enveloppe pour la même tentative (autre evt_) : refusée (tentative déjà close en échec), état identique.
+    // Le nombre de notifications n'est pas figé ici : le récepteur notifie chaque refus d'une tentative close (voir le rapport,
+    // unipile-webhook/index.ts, cas « refused » avec tentative), ce qui donne une seconde notification pour un nouvel evt_.
+    const other = await rawWebhook(v2.accountAdd({ accountId: acc2, state: attemptId }));
+    expect(other.status, JSON.stringify(other.body)).toBe(200);
+    expect(await snapshot(), 'autre enveloppe : état identique, aucun rattachement tardif').toEqual(afterFirst);
+  });
+
   // claim-droits
   test('« C’est mon compte » : autre espace 403, relié à un collègue 409, compte sans liaison refusé au membre comme à l’admin, liaison pour autrui réservée, cible hors organisation 404 ; son propre compte relié se confirme', async () => {
     const { org, accountId: ownerAccount } = await sendingOrg('E2E A2 Rattacher');
@@ -1087,6 +1141,10 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     const notInOrg = await claim(adminToken, { account_id: orphan, user_id: outsider.owner.userId });
     expect(notInOrg.status, JSON.stringify(notInOrg.body)).toBe(404);
 
+    // Décision de conception (clé du fournisseur globale) : seule la plateforme (KONEKT_PLATFORM_ADMIN_USER_IDS) relie un
+    // compte sans liaison. La pile locale ne pose pas ce secret (identifiants créés à l'exécution) : le rattachement réussi
+    // par la plateforme est couvert au niveau unitaire, supabase/functions/unipile-accounts/handler.test.ts
+    // (« claim_linkedin_account : refus d un compte étranger… » et « …le droit de la plateforme ne vient que du secret… »).
     const orphanByAdmin = await claim(adminToken, { account_id: orphan, user_id: member2.userId });
     expect(orphanByAdmin.status, JSON.stringify(orphanByAdmin.body)).toBe(403);
     expect(await linkOf(org.orgId, member2.userId)).toHaveLength(0);

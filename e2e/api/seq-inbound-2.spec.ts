@@ -625,20 +625,39 @@ test.describe('Réponse par e-mail', () => {
     expect((await exec(followA4)).status).toBe('scheduled');
 
     // 4. Boîte inconnue : acquittée, aucune inscription close (plus de repli sur le compte d'inscription en v2).
+    // Décision de conception de la bascule v2 (récepteur, unipile-webhook/index.ts, handleNewMail « Skipping - mailbox
+    // linked to no organisation ») : une boîte reliée à aucune organisation de Konekt n'a personne pour qui agir, et le
+    // rattachement par in_reply_to ou par adresse, indépendant de la boîte, clorait des inscriptions d'une autre
+    // organisation. L'événement est donc acquitté (200, jamais rejoué), sans rien écrire. En v1, le repli sur le compte
+    // d'inscription clôturait l'inscription ; ce comportement est volontairement abandonné.
     const unknownMailbox = `acc_mbx_inconnue_${r}`;
     const addr5 = `cinq.${r}@${domain}`;
     const a5 = await enroll(org, seqA2.sequenceId, org.owner.userId, unknownMailbox, { email_used: addr5, current_step_order: 1 });
     const b5 = await enroll(other, seqB.sequenceId, other.owner.userId, otherAccount, { email_used: addr5, current_step_order: 1 });
     const followA5 = await schedule(org, a5.enrollmentId, seqA2.steps[1], { scheduled_at: later });
     const followB5 = await schedule(other, b5.enrollmentId, seqB.steps[1], { scheduled_at: later });
-    await webhook(await mailReceived(unknownMailbox, null, addr5));
-    // v2 : une boîte reliée à aucune organisation de Konekt est acquittée sans rien lire ni clore (il n'y a personne
-    // pour qui agir, et un rattachement indépendant de la boîte clorait des inscriptions d'une autre organisation).
-    // L'ancien repli sur le compte d'inscription n'existe plus (unipile-webhook/index.test.ts, « email.new sur une boîte reliée à aucune organisation »).
+    const snapshot = async () => ({
+      a5: await enr(a5.enrollmentId), b5: await enr(b5.enrollmentId),
+      a5Execs: await execsOf(a5.enrollmentId), b5Execs: await execsOf(b5.enrollmentId),
+      notesA: (await notificationsOf(org.orgId)).map((n) => n.id).sort(), notesB: (await notificationsOf(other.orgId)).map((n) => n.id).sort(),
+      repliesA: (await analytics(seqA2.sequenceId)).replies, repliesB: (await analytics(seqB.sequenceId)).replies,
+    });
+    const before = await snapshot();
+    const unknownEvent = await mailReceived(unknownMailbox, null, addr5);
+    await webhook(unknownEvent);
     expect((await enr(a5.enrollmentId)).status, 'boîte inconnue : acquittée, aucune inscription close').toBe('active');
     expect((await exec(followA5)).status).toBe('scheduled');
     expect((await enr(b5.enrollmentId)).status, 'boîte inconnue : aucune inscription d’un autre compte').toBe('active');
     expect((await exec(followB5)).status).toBe('scheduled');
+    // Rien n'est écrit : ni inscription (updated_at compris), ni exécution, ni notification, ni réponse comptée.
+    expect(await snapshot(), 'boîte inconnue : aucune écriture, dans aucune organisation').toEqual(before);
+    // Acquitté pour de bon : la clé de dédoublonnage est gardée, donc le fournisseur ne rejoue pas (un rejeu serait refusé 500 avec purge de la clé).
+    const redelivered = await rawWebhook(unknownEvent);
+    expect(redelivered.status, JSON.stringify(redelivered.body)).toBe(200);
+    expect(redelivered.body.deduplicated, 'boîte inconnue : événement acquitté, rejeu dédoublonné').toBe(true);
+    expect(await snapshot(), 'boîte inconnue, rejeu : toujours aucune écriture').toEqual(before);
+    // Le récepteur ne journalise ce cas que dans les journaux de la fonction (console.log « mailbox linked to no organisation »),
+    // sans ligne en base : l'assertion de journal est au niveau unitaire (unipile-webhook/index.test.ts).
   });
 });
 
