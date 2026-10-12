@@ -196,3 +196,16 @@ Aucun test de contrat contre le vrai service n'existe dans le dépôt (recherche
 | 23 | Reprise d'un `we_` (point de réception) existant lors du premier `register` en production | Le `register` met à jour sur place le point de réception qui a la même adresse. |
 
 Le service est en phase bêta côté prestataire (plan de juillet, `AUDITS/UNIPILE_V2_MIGRATION_PLAN.md`) : un changement de contrat se corrige par un seul module (`normalize/*`, `errors.ts`, `webhooks.ts`) et par les fixtures de `tests/fixtures/unipile-v2/`.
+
+## 11. Défauts connus, non corrigés à la date de ce document
+
+Relevés dans le code du 12 octobre 2026 (le code d'application était figé pour la rédaction de ce document).
+
+1. **Une étape `profile_visit` consomme deux places du plafond quotidien de vues.** `process-sequences/index.ts` classe l'étape en `profile_view` dans le registre (la garde de quota, vers la ligne 2666), puis la branche v2 de `profile_visit` (vers la ligne 6322) journalise en plus la lecture du profil par `logLinkedInRead` avec la source `sequence_profile_read`, aussi de type `profile_view`. Avec un plafond de 25 vues, environ 12 visites passent au lieu de 25. L'ancien code journalisait une seule ligne. Mis en évidence par `e2e/api/seq-engine-1.spec.ts` (test « au plus 15 étapes invisibles... », rapport du groupe 5). Correction proposée : ne pas journaliser cette lecture (la garde couvre déjà l'étape), ou lui donner un type non compté.
+2. **`filters_dropped` et `filters_adjusted` ne sont lus par aucun écran** (aucune occurrence dans `src/`). Une recherche à la main qui utilise un filtre que la licence ne sait pas exprimer s'exécute sans lui, sans que la personne le voie. Seul l'agent de sourcing continu refuse (`FILTERS_UNSUPPORTED`).
+3. **Texte devenu faux** : `src/components/settings/ExtensionTokens.tsx` (ligne 230) promet que l'extension « reconnecte votre compte LinkedIn en un clic ».
+4. **Code mort de l'extension** : `RECONNECT_LINKEDIN` (`extensions/chrome/src/background/sw.ts`, `src/lib/konekt-api.ts`, `src/lib/config.ts`) et `storage.getLastReconnectAt`. Le paquet de l'extension n'a pas pu être compilé ni typé ici (pas de `node_modules`).
+5. **Adresse de support** : `SUPPORT_EMAIL` (`src/lib/connectionCopy.ts`) est une adresse personnelle.
+6. **Colonnes `organization_integrations.unipile_*`** : conservées, type `unipile_connected` encore déclaré dans `src/hooks/useOrganizationIntegrations.ts`. Migration de suppression à écrire après vérification qu'aucun lecteur ne reste.
+7. **Tests Deno hors CI** (partie 8).
+
