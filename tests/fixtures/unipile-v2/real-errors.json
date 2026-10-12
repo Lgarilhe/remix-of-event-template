@@ -1,0 +1,204 @@
+{
+  "_note": "Réponses réelles du service (application Development, aucun compte). Aucun secret, aucune donnée personnelle. Les cinq premières viennent d'un relevé sans clé valide dont l'en-tête req_id n'a pas été conservé.",
+  "captures": [
+    {
+      "name": "sans_cle",
+      "request": "GET /v2/accounts",
+      "status": 401,
+      "x_request_id": null,
+      "body": {
+        "object": "Error",
+        "status": 401,
+        "type": "api/missing_authorization",
+        "title": "API Key is missing in the request"
+      },
+      "source": "relevé sans clé, req_id non conservé"
+    },
+    {
+      "name": "cle_fausse",
+      "request": "GET /v2/accounts",
+      "status": 401,
+      "x_request_id": null,
+      "body": {
+        "object": "Error",
+        "status": 401,
+        "type": "api/invalid_credentials",
+        "title": "Invalid API Key"
+      },
+      "source": "relevé clé fausse, req_id non conservé"
+    },
+    {
+      "name": "cle_fausse_compte_inconnu",
+      "request": "GET /v2/acc_inexistant0000/chats",
+      "status": 401,
+      "x_request_id": null,
+      "body": {
+        "object": "Error",
+        "status": 401,
+        "type": "api/invalid_credentials",
+        "title": "Invalid API Key"
+      },
+      "source": "relevé clé fausse, req_id non conservé"
+    },
+    {
+      "name": "route_inconnue_sans_cle",
+      "request": "GET /v2/route-inconnue-essai",
+      "status": 404,
+      "x_request_id": null,
+      "body": {
+        "object": "Error",
+        "status": 404,
+        "type": "api/resource_not_found",
+        "title": "Route Not Found"
+      },
+      "source": "relevé sans clé, req_id non conservé"
+    },
+    {
+      "name": "route_inconnue_cle_fausse",
+      "request": "GET /v2/route-inconnue-essai",
+      "status": 404,
+      "x_request_id": null,
+      "body": {
+        "object": "Error",
+        "status": 404,
+        "type": "api/resource_not_found",
+        "title": "Route Not Found"
+      },
+      "source": "relevé clé fausse, req_id non conservé"
+    },
+    {
+      "name": "compte_inexistant",
+      "request": "GET /v2/acc_inexistant0000/chats",
+      "status": 404,
+      "x_request_id": "req-rcl",
+      "body": {
+        "object": "Error",
+        "status": 404,
+        "type": "api/resource_not_found",
+        "title": "Account not found",
+        "detail": "Account with given id acc_inexistant0000 not found",
+        "req_id": "req-rcl"
+      },
+      "source": "session"
+    },
+    {
+      "name": "auth_link_sans_parametre",
+      "request": "GET /v2/auth/link",
+      "status": 400,
+      "x_request_id": "req-iy",
+      "body": {
+        "object": "Error",
+        "type": "api/invalid_parameters",
+        "title": "Invalid params",
+        "status": 400,
+        "req_id": "req-iy",
+        "detail": "params/account_id : must match pattern \"^acc_(.*)$\""
+      },
+      "source": "session"
+    },
+    {
+      "name": "auth_link_corps_vide",
+      "request": "POST /v2/auth/link",
+      "status": 400,
+      "x_request_id": "req-jl",
+      "body": {
+        "object": "Error",
+        "type": "api/invalid_parameters",
+        "title": "Invalid body",
+        "status": 400,
+        "req_id": "req-jl",
+        "detail": "body : must have required property 'expires_on', body : must match a schema in anyOf"
+      },
+      "source": "session"
+    },
+    {
+      "name": "webhook_corps_incomplet",
+      "request": "POST /v2/webhooks/endpoints/",
+      "status": 400,
+      "x_request_id": "req-114p",
+      "body": {
+        "object": "Error",
+        "status": 400,
+        "type": "api/invalid_parameters",
+        "title": "Invalid body",
+        "detail": "body : must have required property 'trigger_events'",
+        "req_id": "req-114p"
+      },
+      "source": "session"
+    },
+    {
+      "name": "webhook_evenement_inconnu",
+      "request": "POST /v2/webhooks/endpoints/",
+      "status": 400,
+      "x_request_id": "req-kj",
+      "body": {
+        "object": "Error",
+        "type": "api/invalid_parameters",
+        "title": "Invalid body",
+        "status": 400,
+        "req_id": "req-kj",
+        "detail": "body/trigger_events/1 : must be equal to one of the allowed values"
+      },
+      "source": "session"
+    },
+    {
+      "name": "webhook_hote_non_resolu",
+      "request": "POST /v2/webhooks/endpoints/",
+      "status": 400,
+      "x_request_id": "req-115k",
+      "body": {
+        "object": "Error",
+        "status": 400,
+        "type": "api/invalid_parameters",
+        "title": "Invalid webhook endpoint URL",
+        "detail": "Webhook endpoint URL hostname could not be resolved.",
+        "req_id": "req-115k"
+      },
+      "source": "session"
+    },
+    {
+      "name": "webhook_deliveries_sans_endpoint",
+      "request": "GET /v2/webhooks/conversations/",
+      "status": 400,
+      "x_request_id": "req-119d",
+      "body": {
+        "object": "Error",
+        "type": "api/invalid_parameters",
+        "title": "Invalid querystring",
+        "status": 400,
+        "req_id": "req-119d",
+        "detail": "querystring : must have required property 'endpoint_id'"
+      },
+      "source": "session"
+    },
+    {
+      "name": "replay_evenement_inconnu",
+      "request": "POST /v2/webhooks/events/evt_inexistant0000/replay",
+      "status": 404,
+      "x_request_id": "req-80h",
+      "body": {
+        "object": "Error",
+        "status": 404,
+        "type": "api/resource_not_found",
+        "title": "Event not found",
+        "req_id": "req-80h"
+      },
+      "source": "session"
+    },
+    {
+      "name": "trop_de_requetes",
+      "request": "POST /v2/webhooks/endpoints/",
+      "status": 429,
+      "x_request_id": "req-10z",
+      "body": {
+        "object": "Error",
+        "status": 429,
+        "type": "api/too_many_requests",
+        "title": "Too many requests",
+        "detail": "Please retry later.",
+        "req_id": "req-10z"
+      },
+      "source": "session"
+    }
+  ]
+}
