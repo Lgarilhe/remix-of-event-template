@@ -57,6 +57,11 @@ jobs:
       # pour l'écriture groupée et l'écriture candidat par candidat.
       - name: Lot 5f-1 regression tests (inscription)
         run: node --test tests/c1/lot5f-inscription.test.mjs
+      # Refonte mission, lot 5f-3 : invitations reçues dans la messagerie,
+      # panneau de la mission sans l'onglet quand l'interrupteur des séquences
+      # est allumé.
+      - name: Lot 5f-3 regression tests (invitations)
+        run: node --test tests/ux/lot5f3-invitations.test.mjs
       # Agenda Outlook (lot I3), demande A : table member_calendar_accounts,
       # colonnes d'agenda des séances, effacement, purge et export RGPD.
       - name: Agenda Outlook, base de données et RGPD

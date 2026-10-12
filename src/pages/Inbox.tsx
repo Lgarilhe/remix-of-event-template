@@ -21,6 +21,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { responseFilterFromParam, responseFilterToParam, type ResponseFilter } from '@/lib/inboxThreadState';
 import { InboxDemo } from '@/components/outreach/inbox/InboxDemo';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { EmptyLinkedInAccountState } from '@/components/missions/EmptyLinkedInAccountState';
+import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 
 /**
  * Hauteur disponible sous le bord haut d'un élément : `100dvh` moins sa
@@ -55,6 +59,9 @@ function useAvailableHeight<T extends HTMLElement>() {
   return { ref, height: top === null ? undefined : `calc(100dvh - ${top}px)` };
 }
 
+type InboxView = 'conversations' | 'invitations';
+const INVITATIONS_PARAM = 'invitations';
+
 export default function Inbox() {
   const { accounts: rawAccounts, ready: accountsReady, loadError: accountsError, reload: reloadAccounts } = useLinkedInAccounts();
   const { organizationId } = useOrganization();
@@ -76,6 +83,19 @@ export default function Inbox() {
       if (param) next.set('onglet', param);
       else next.delete('onglet');
       return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // Lot 5f-3 : les invitations reçues vivent ici, à côté des conversations
+  // (/inbox?onglet=invitations). Les onglets de la liste (a-repondre...) restent
+  // ceux de MessagesInbox : l'onglet Invitations les remplace tant qu'il est ouvert.
+  const view: InboxView = searchParams.get('onglet') === INVITATIONS_PARAM ? 'invitations' : 'conversations';
+  const handleViewChange = useCallback((next: InboxView) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === 'invitations') params.set('onglet', INVITATIONS_PARAM);
+      else params.delete('onglet');
+      return params;
     }, { replace: true });
   }, [setSearchParams]);
 
@@ -144,8 +164,44 @@ export default function Inbox() {
       <SEOHead title="Messagerie | Konekt" description="Vos échanges LinkedIn, e-mail et WhatsApp avec les candidats" />
       <div ref={frameRef} className="min-h-0 overflow-hidden bg-background" style={height ? { height } : undefined}>
         {demo ? <InboxDemo onExit={() => setDemo(false)} /> : <div className="flex h-full min-h-0 flex-col">
-        <div className="flex shrink-0 justify-end border-b border-border px-3 py-1"><Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDemo(true)}>Voir la démo</Button></div>
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-1">
+          <SegmentedControl<InboxView>
+            variant="quiet"
+            aria-label="Messagerie"
+            value={view}
+            onValueChange={handleViewChange}
+            options={[{ value: 'conversations', label: 'Conversations' }, { value: 'invitations', label: 'Invitations' }]}
+          />
+          <Button variant="ghost" size="sm" className="min-h-11 md:min-h-8" onClick={() => setDemo(true)}>Voir la démo</Button>
+        </div>
         <div className="min-h-0 flex-1">
+        {view === 'invitations' ? (
+          <div className="h-full overflow-y-auto px-3 py-4 sm:px-5">
+            <div className="mx-auto max-w-3xl">
+              {accountsLoading ? (
+                <div className="space-y-3" role="status" aria-label="Chargement des invitations">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
+              ) : connectionsError ? (
+                <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger">
+                  <p>{connectionsError}</p>
+                  <Button type="button" size="sm" variant="outline" className="min-h-11 md:min-h-8" onClick={retryConnections}>Réessayer</Button>
+                </div>
+              ) : accounts.length === 0 ? (
+                <EmptyLinkedInAccountState message="Pour voir vos invitations, reliez d'abord un compte LinkedIn." />
+              ) : (
+                <InvitationsPanel
+                  accounts={accounts}
+                  selectedAccount={currentAccount}
+                  onAccountChange={setSelectedAccount}
+                  organizationId={organizationId || null}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
         <AttendeePicturesProvider organizationId={organizationId || null}>
           <MessagesInbox
             key={initialChatId ?? 'inbox'}
@@ -162,6 +218,7 @@ export default function Inbox() {
             fullHeight
           />
         </AttendeePicturesProvider>
+        )}
         </div>
         </div>}
       </div>

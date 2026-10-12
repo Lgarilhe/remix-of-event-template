@@ -144,7 +144,9 @@ Notion n'apparaît dans l'application que comme connecteur de l'assistant : une 
 /pipeline                → ATS page (kanban/table/timeline/analytics)
 /pipeline/scorecard/:candidateId → ScorecardFullPage (alias legacy /ats/scorecard/:candidateId)
 /candidates              → Redirects to /pipeline
-/inbox                   → Inbox
+/inbox                   → Inbox : conversations et, depuis le lot 5f-3 (12/10/2026), l'onglet Invitations (invitations LinkedIn reçues, accepter ou décliner), pour tous, sans
+                           interrupteur : /inbox?onglet=invitations (les onglets de la liste gardent a-repondre, a-relancer, en-attente). Interrupteur des séquences allumé,
+                           le panneau Prise de contact de la mission n'a plus l'onglet et ?outreach=invitations y mène ici ; éteint, le panneau provisoire garde son onglet.
 /calendar                → CalendarPage
 /tasks                   → TasksPage
 /sequences               → SequencesPage (lot 5c-2) : séquences de l'organisation, onglets ?onglet= (toutes, a-venir,

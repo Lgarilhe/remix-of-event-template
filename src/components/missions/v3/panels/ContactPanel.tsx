@@ -5,7 +5,7 @@
 // retire. MissionOutreach reste pour l'ancienne page.
 // En-tête : titre, poste et client ; pied collé en bas : comment contacter.
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Info, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +15,7 @@ import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { cn } from '@/lib/utils';
 import { useMissionV3 } from '../MissionV3Context';
 import { ArchivedNotice } from '../shell/ArchivedNotice';
@@ -31,6 +32,9 @@ const TABS: readonly { key: ContactTab; label: string }[] = [
 /** Paramètre d'onglet repris de l'ancienne vue Prise de contact. */
 const OUTREACH_PARAM = 'outreach';
 
+/** Lot 5f-3 : avec l'interrupteur des séquences allumé, les invitations reçues vivent dans la messagerie. */
+const INBOX_INVITATIONS_PATH = '/inbox?onglet=invitations';
+
 export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Element | null {
   const { project, isArchived } = useMissionV3();
   const { organizationId } = useOrganization();
@@ -42,9 +46,11 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   // Panneau plein écran (sous lg) : le bandeau « Réactiver » de la page est derrière lui, inerte.
   const fullscreen = useMediaQuery(PANEL_FULLSCREEN_QUERY);
 
-  const [tab, setTabState] = useState<ContactTab>(() =>
-    new URLSearchParams(location.search).get(OUTREACH_PARAM) === 'invitations' ? 'invitations' : 'sequences',
-  );
+  // Interrupteur éteint : le panneau provisoire garde son onglet Invitations.
+  const invitationsInPanel = !useSequencesBeta();
+  const tabs = invitationsInPanel ? TABS : TABS.filter((item) => item.key === 'sequences');
+  const asksInvitations = new URLSearchParams(location.search).get(OUTREACH_PARAM) === 'invitations';
+  const [tab, setTabState] = useState<ContactTab>(() => (asksInvitations && invitationsInPanel ? 'invitations' : 'sequences'));
 
   // L'onglet suit l'adresse (?outreach=invitations), par remplacement et sans
   // perdre le marqueur d'historique du panneau (Retour le ferme toujours).
@@ -64,17 +70,22 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
     event.preventDefault();
-    const next = TABS[(index + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length];
+    const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
     setTab(next.key);
     buttons.current[next.key]?.focus();
   };
+
+  // Un lien ?outreach=invitations (notification, favori) mène à la messagerie.
+  if (!invitationsInPanel && asksInvitations) return <Navigate to={INBOX_INVITATIONS_PATH} replace />;
 
   let body: JSX.Element;
   if (isArchived) {
     body = (
       <div className="px-4 py-4 sm:px-5">
         <ArchivedNotice
-          text="La prise de contact est fermée. Réactivez la mission pour gérer ses séquences et ses invitations."
+          text={invitationsInPanel
+            ? 'La prise de contact est fermée. Réactivez la mission pour gérer ses séquences et ses invitations.'
+            : 'La prise de contact est fermée. Réactivez la mission pour gérer ses séquences.'}
           withAction={fullscreen}
         />
       </div>
@@ -96,12 +107,13 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   } else {
     body = (
       <div className="flex min-h-0 flex-1 flex-col">
+        {tabs.length > 1 && (
         <div
           role="tablist"
           aria-label="Prise de contact"
           className="sticky top-0 z-10 flex shrink-0 gap-1 border-b border-border bg-background px-3 sm:px-4"
         >
-          {TABS.map((item, index) => {
+          {tabs.map((item, index) => {
             const selected = item.key === tab;
             return (
               <button
@@ -135,11 +147,12 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             );
           })}
         </div>
-        {/* Les deux onglets restent montés : changer d'onglet ne perd ni la liste ni un brouillon. */}
+        )}
+        {/* Les onglets restent montés : changer d'onglet ne perd ni la liste ni un brouillon. */}
         <div
-          role="tabpanel"
+          role={tabs.length > 1 ? 'tabpanel' : undefined}
           id={`${baseId}-panel-sequences`}
-          aria-labelledby={`${baseId}-tab-sequences`}
+          aria-labelledby={tabs.length > 1 ? `${baseId}-tab-sequences` : undefined}
           hidden={tab !== 'sequences'}
           className="min-w-0 px-4 py-4 sm:px-5"
         >
@@ -156,6 +169,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             />
           </SectionErrorBoundary>
         </div>
+        {invitationsInPanel && (
         <div
           role="tabpanel"
           id={`${baseId}-panel-invitations`}
@@ -172,6 +186,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             />
           </SectionErrorBoundary>
         </div>
+        )}
       </div>
     );
   }

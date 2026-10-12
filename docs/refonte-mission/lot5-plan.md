@@ -937,6 +937,8 @@ Tests. À écrire : `tests/ux/lot5f3-invitations.test.mjs` (onglet dans la messa
 
 Critère de fin. Invitations acceptées et refusées depuis la messagerie sur la stack locale ; panneau inchangé drapeau éteint.
 
+Réalisation (12/10/2026). `Inbox.tsx` porte l'onglet (contrôle « Conversations / Invitations » au-dessus de la messagerie, `?onglet=invitations`, comptes déjà filtrés sur celui de la personne, états chargement, erreur avec réessai et aucun compte). `ContactPanel.tsx` lit l'interrupteur : allumé, une seule rubrique (séquences, sans barre d'onglets) et `?outreach=invitations` mène à `/inbox?onglet=invitations` (`Navigate` en remplacement, après les hooks) ; éteint, rendu inchangé. `missionBeta.ts` n'est pas touché : sa conversion des anciennes adresses garde son test du lot 5h (aucune mention de l'interrupteur) et la redirection se fait dans le panneau. Le prestataire de test ne sert pas la liste des invitations reçues : `e2e/flows/seq-v2-invitations.spec.ts` simule la fonction des comptes dans le navigateur et relève les demandes d'acceptation et de refus. Tests : `tests/ux/lot5f3-invitations.test.mjs` (ajouté à la CI).
+
 Risques. Faibles.
 
 ### 5g. Un par un, formule gratuite (M)

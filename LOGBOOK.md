@@ -32,6 +32,18 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-12 — SHIP — Lot 5f-3 : invitations reçues dans la messagerie
+
+**Contexte** : dernier sous-lot du plan 5f. Les invitations LinkedIn reçues quittent le panneau de mission pour la messagerie.
+**Fait** : `/inbox` a un contrôle « Conversations / Invitations » (`?onglet=invitations`), pour tous, sans interrupteur ; l'onglet reprend `InvitationsPanel` avec le compte LinkedIn de la personne (jamais celui d'un collègue) et ses états (chargement, erreur avec réessai, aucun compte relié). Interrupteur des séquences allumé : le panneau Prise de contact de la mission n'a plus l'onglet Invitations (une seule rubrique, sans barre d'onglets) et `?outreach=invitations` mène à `/inbox?onglet=invitations`. Éteint : panneau provisoire inchangé.
+**Décision** : la redirection est dans `ContactPanel.tsx` et non dans `missionBeta.ts`, dont le test du lot 5h interdit toute mention de l'interrupteur. Les anciens liens et notifications `?tab=outreach&outreach=invitations` passent par la conversion existante puis par ce panneau.
+**Limite** : le prestataire de test ne sert pas la liste des invitations reçues. Le spec e2e simule la fonction des comptes dans le navigateur et relève les demandes d'acceptation et de refus ; aucun test n'a touché un vrai compte LinkedIn.
+**QA** : TypeScript 11 erreurs (base inchangée), build, `test:c1` 653, `test:ux` 2063 sur 2067 (les 4 rouges d'avant) plus 5 contrôles du nouveau `tests/ux/lot5f3-invitations.test.mjs` (ajouté à la CI). Nouveau `e2e/flows/seq-v2-invitations.spec.ts` : cinq parcours réussis (messagerie interrupteur allumé et éteint avec une invitation acceptée et une déclinée, panneau sans l'onglet et lien vers la messagerie, panneau provisoire éteint) ; le parcours du lien échoue quand la redirection est retirée.
+**Impact** : `src/pages/Inbox.tsx`, `ContactPanel.tsx`, tests, `ci.yml`, `CLAUDE.md`, plan. Aucune migration, aucune fonction serveur.
+**Refs** : `docs/refonte-mission/lot5-plan.md` section 5f-3, branche `claude/repository-audit-pcgg0y`.
+
+---
+
 ## 2026-10-12 — REFACTOR — Lot 5f-2a : règle Retenu à l'inscription
 
 **Contexte** : deuxième partie du lot 5f. Le plan demande qu'un candidat inscrit dans une séquence passe en Retenu, sans drapeau, pour tous les appelants d'`enrollCandidates`.
