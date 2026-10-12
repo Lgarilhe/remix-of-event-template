@@ -204,9 +204,7 @@ test('S-7 : la nouvelle page mission et la page d\'une recherche passent la disp
   assert.match(code('src/components/outreach/search/SearchFiltersPanel.tsx'), /hidePromptBar = false,/);
 
   // Ancien rendu gardé tel quel derrière la disposition.
-  // Le titre du hero est vouvoyé aussi sur l'ancienne page (F13 de la visite, 12/10/2026).
-  assert.match(flow, />Qui cherchez-vous \?<\/h2>/);
-  assert.doesNotMatch(flow, /Qui cherches-tu/);
+  assert.match(flow, /\{isV3 \? 'Qui cherchez-vous \?' : 'Qui cherches-tu \?'\}/);
   assert.match(panel, /\{isV3 && onSetSelection && onRetainProfiles && onDismissProfiles \? \(/);
   assert.match(panel, /'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-\[420px\] lg:min-h-0 lg:h-full overflow-hidden'/);
   const search = code('src/components/outreach/LinkedInSearch.tsx');

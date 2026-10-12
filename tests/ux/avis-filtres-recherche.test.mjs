@@ -1,6 +1,6 @@
 /**
  * Sourcing : avis sur les filtres que le compte LinkedIn n'a pas appliqués (visite du 12/10/2026, F10),
- * lien de recherche collé lisible (F15), vouvoiement des textes de recherche (F13).
+ * lien de recherche collé lisible (F15).
  *
  * F10 : `unipile-search` rend `filters_dropped` et `filters_adjusted` ; une ligne discrète au-dessus des
  *   résultats les dit. L'avis vit avec la recherche exécutée (`ExecutedSourcingSearch.filtersNotice`, déjà
@@ -8,7 +8,6 @@
  *   avec une nouvelle recherche qui n'écarte rien.
  * F15 : « Lieu n° 105015875 » devient « Lieu choisi sur LinkedIn » ; l'avertissement d'une adresse Recruiter
  *   dit ce qui n'est pas repris.
- * F13 : « Réessaie », « Qui cherches-tu ? ».
  *
  * Lancer : node --test tests/ux/avis-filtres-recherche.test.mjs
  */
@@ -322,26 +321,4 @@ test('lien collé : tous les textes ajoutés sont propres', () => {
   assert.match(server, /warnings\.add\('Filtres de la recherche Recruiter'\)/);
   // Le serveur écrit encore les noms « X n° id » que l'écran remplace.
   assert.match(server, /name: `Lieu n° \$\{id\}`/);
-});
-
-// ---------------------------------------------------------------------------
-// F13 : vouvoiement
-// ---------------------------------------------------------------------------
-
-test('vouvoiement : « Réessayez » et « Qui cherchez-vous ? » dans les textes de la recherche', () => {
-  const files = {
-    filters: 'src/components/outreach/search/generateFiltersFromJob.ts',
-    hero: 'src/components/sourcing/PromptSearchHero.tsx',
-    flow: 'src/components/outreach/search/SourcingFlow.tsx',
-    actions: 'src/hooks/useLinkedInSearchActions.ts',
-  };
-  const code = Object.fromEntries(Object.entries(files).map(([name, file]) => [name, stripComments(read(file))]));
-  assert.match(code.filters, /Aucun filtre n’a été appliqué\. Réessayez dans quelques instants\./);
-  assert.match(code.hero, /'Réessayez dans quelques secondes\.'/);
-  assert.match(code.flow, />Qui cherchez-vous \?<\/h2>/);
-  assert.match(code.actions, /réponse invalide\. Réessayez dans quelques instants\./);
-  for (const [name, src] of Object.entries(code)) {
-    assert.doesNotMatch(src, /Réessaie\b/, `${files[name]} : tutoiement`);
-    assert.doesNotMatch(src, /Qui cherches-tu/, `${files[name]} : tutoiement`);
-  }
 });

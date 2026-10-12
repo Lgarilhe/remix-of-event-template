@@ -130,7 +130,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
     } catch (error) {
       if (!isCurrent()) return;
       toast.error('La génération a échoué', {
-        description: error instanceof Error ? error.message : 'Réessayez dans quelques secondes.',
+        description: error instanceof Error ? error.message : 'Réessaie dans quelques secondes.',
       });
     } finally {
       if (isCurrent()) setGenerating(false);

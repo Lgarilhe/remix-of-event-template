@@ -1174,7 +1174,7 @@ export function useLinkedInSearchActions(
         );
       } else if (/unexpected token|not valid json|<!doctype|<html/i.test(errorMessage || '')) {
         // Erreur de parsing brute (réponse HTML du provider) — jamais montrer ça à l'user
-        toast.error('Le service LinkedIn a renvoyé une réponse invalide. Réessayez dans quelques instants.', { id: 'search-error' });
+        toast.error('Le service LinkedIn a renvoyé une réponse invalide. Réessaie dans quelques instants.', { id: 'search-error' });
       } else {
         toast.error(errorMessage || "Erreur lors de la recherche", { id: "search-error" });
       }

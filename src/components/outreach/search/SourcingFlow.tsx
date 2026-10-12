@@ -119,7 +119,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
       </div>
       )}
 
-      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">Qui cherchez-vous ?</h2>
+      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">{isV3 ? 'Qui cherchez-vous ?' : 'Qui cherches-tu ?'}</h2>
 
       <div className={cn(
         'relative w-full max-w-[640px] rounded-xl border bg-[var(--k-surface)] px-4 py-3.5 transition-[border-color,box-shadow] duration-150',
