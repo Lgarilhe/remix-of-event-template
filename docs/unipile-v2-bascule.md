@@ -1,7 +1,7 @@
 # Bascule vers la nouvelle connexion LinkedIn et messagerie (API v2) : guide du propriétaire
 
 Public : le propriétaire de Konekt, sans connaissance technique. Les étapes disent où cliquer et quoi coller.
-Version du code décrite : branche `ccr-6c73a178-thbl61`, jusqu'au commit `8269b17` (l'essentiel est dans `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`, `9c1f537`). Document rédigé le 12 octobre 2026, puis complété le même jour avec le relevé du tableau de bord du prestataire (partie 3.0) et les conclusions de la revue indépendante du port des tests.
+Version du code décrite : branche `ccr-6c73a178-thbl61`, jusqu'au commit `8269b17` (l'essentiel est dans `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`, `9c1f537`). Document rédigé le 12 octobre 2026, puis complété le même jour avec le relevé du tableau de bord du prestataire (partie 3.0), les conclusions de la revue indépendante du port des tests, la lecture du code déployé de `jarvis-whatsapp` (partie 3.3), les limites de débit (partie 3.4), le menu de liaison de comptes du tableau de bord (partie 4.5) et l'écran de consentement Google et Microsoft (décisions 24 et 25 de la partie 5).
 
 > **Ne fusionnez pas cette branche avant d'avoir lu ce guide en entier.**
 > La fusion déploie automatiquement toutes les fonctions du serveur (workflow GitHub existant) et le site. Le nouveau code n'accepte que les nouveaux identifiants de compte. Si vous fusionnez avant d'avoir posé les secrets (partie 3) et sans suivre l'ordre de la partie 6, la messagerie LinkedIn, les envois de séquences, les InMails et la recherche cessent de fonctionner, et les séquences en cours se mettent en pause toutes seules (motif « compte déconnecté »). Les données ne sont pas perdues, mais il faut ensuite tout remettre en route à la main.
@@ -31,7 +31,7 @@ Vérifié dans les fichiers du dépôt le 12 octobre 2026. Rien de ceci n'a ét�
 - Outil de bascule des identifiants : fonction `unipile-migration`, page `/settings/admin/bascule`, fonctions SQL de conversion et d'annulation, sauvegarde ligne par ligne.
 - Nouveautés utilisables après la bascule : recherche à partir d'une adresse de recherche LinkedIn collée, choix d'un projet Recruiter, choix du contrat (Recruiter ou Sales Navigator), liste des invitations envoyées avec retrait, journal des livraisons de notifications avec rejeu (administrateurs de la plateforme).
 - Lecture d'agenda : le module existe mais aucune fonction ne l'utilise encore. Rien à faire.
-- Anciennes clés : plus lues par aucune fonction du dépôt (`UNIPILE_API_KEY`, `UNIPILE_DSN`, clés par organisation). Une fonction qui n'est pas dans le dépôt, `jarvis-whatsapp`, peut encore les lire : voir 3.3.
+- Anciennes clés : plus lues par aucune fonction du dépôt (`UNIPILE_API_KEY`, `UNIPILE_DSN`, clés par organisation). Une fonction qui n'est pas dans le dépôt, `jarvis-whatsapp` (votre assistant WhatsApp personnel), les lit encore et appelle l'ancienne API : ses secrets restent donc en place, voir 3.3.
 - Défaut corrigé depuis la première version de ce guide : une étape de visite de profil ne consomme plus qu'une place du plafond quotidien de vues (commit `6c1598f`, voir la décision 17 de la partie 5).
 
 Ce qui n'est pas dans le code : une fenêtre où l'ancien et le nouvel identifiant seraient acceptés ensemble. Après la conversion, un ancien identifiant n'est plus reconnu nulle part. C'est pourquoi les envois automatiques doivent rester en pause pendant l'opération.
@@ -55,7 +55,15 @@ Dans « Konekt app / Production », qui est l'application réelle :
 - Les 4 points de réception sont actifs et sans nom : trois pointent vers l'hôte n8n du propriétaire, un vers le projet Supabase de Konekt. Ce dernier suit 23 événements, une liste plus ancienne que les 17 du code d'aujourd'hui.
 - Les liens d'aide, de confidentialité et de conditions sont vides partout. Aucun domaine personnalisé n'est vérifié nulle part.
 
+Autres pages relevées le même jour dans « Konekt app / Production » (lecture seule, à la main, sans passage par le code) :
+- Page « Rate limits » (limites de débit) : des valeurs recommandées sont affichées pour LinkedIn. Détail et conséquences en 3.4.
+- Page « OAuth configuration » : pour Google, la configuration par défaut utilise l'application Google du prestataire. Détail en décision 24 de la partie 5. La partie Microsoft n'a pas été regardée.
+- Page « Scopes » : vide. Les scopes servent à isoler comptes et clés par périmètre. Konekt n'en utilise pas et il ne faut en créer aucun pour cette bascule (voir `docs/unipile-v2-architecture.md`, partie 4, point 7).
+- Page « Accounts », menu de liaison d'un compte : trois entrées. Conseil en 4.5.
+
 La base de production de Konekt liste 5 comptes LinkedIn et 1 boîte e-mail. Il manque donc environ 3 comptes LinkedIn de Konekt dans l'application v2 (la page de bascule les liste, étape 7).
+
+**Les comptes ont été reliés de nouveau depuis juillet.** Les identifiants de compte vus dans le tableau de bord le 12 octobre 2026 (LinkedIn Laurent GARILHE, Outlook l.garilhe@konekt.fr, LinkedIn Guillaume Valladier, le numéro WhatsApp) ne sont pas ceux notés en juillet dans `AUDITS/UNIPILE_V2_MIGRATION_PLAN.md`. Ces comptes ont donc été reliés une nouvelle fois. Or la conversion retrouve un compte LinkedIn ou WhatsApp **uniquement** par l'ancien identifiant que le prestataire a gardé dans le compte v2 (`metadata.v1_account_id`), et une boîte e-mail par son adresse (`unipile-migration/plan.ts`, fonction `buildPlan`, vérifié). Un compte LinkedIn relié de nouveau n'a probablement plus cet ancien identifiant : il sera annoncé « Absent du service ». La boîte Outlook, elle, se retrouve par son adresse. Conséquence et marche à suivre aux étapes 7 et 8. Non vérifié : la présence ou l'absence de `metadata.v1_account_id` sur chacun de ces comptes (il faut un appel avec la clé, ou le tableau de bord de l'application, ou la page de bascule à l'étape 7).
 
 Ce qu'il en découle, et où c'est traité :
 
@@ -65,11 +73,15 @@ Ce qu'il en découle, et où c'est traité :
 | b | L'habillage de la page de connexion existe dans « Dashboard / Development » : à recopier vers « Konekt app / Production », liens à renseigner, résultat à regarder. | 4.1 |
 | c | Deux façons de lancer l'adresse de la page de connexion : domaine à votre marque, ou, d'abord, adresse du prestataire avec l'habillage. | 4.2 |
 | d | Le point de réception de Konekt (23 événements) se met à jour par l'enregistrement des notifications. Les trois points n8n ne sont jamais touchés. | étape 5 |
-| e | Une fonction `jarvis-whatsapp`, hors dépôt, peut utiliser l'ancienne clé : contrôle obligatoire avant de retirer les anciens secrets. | 3.3, étape 14 |
-| f | Comptes à reconnecter après la conversion : les deux affichés, plus environ 3 LinkedIn absents de la v2. | étape 7 |
-| g | Le numéro WhatsApp n'est pas un compte Konekt : aucune action de Konekt. | ci-dessous |
+| e | La fonction `jarvis-whatsapp`, hors dépôt, utilise l'ancienne clé et l'ancienne API (code déployé lu le 12 octobre 2026) : les anciens secrets restent en place tant qu'elle vit, et l'étape 14 devient conditionnelle. | 3.3, étape 14 |
+| f | Comptes à reconnecter après la conversion : les deux affichés, environ 3 LinkedIn absents de la v2, et probablement tout compte LinkedIn relié de nouveau depuis juillet (ligne k). | étape 7 |
+| g | Le numéro WhatsApp qui demande une authentification est celui qu'utilise Jarvis. Il n'est pas un compte Konekt : aucune action de Konekt. | ci-dessous, 3.3 |
+| h | Les limites de débit du prestataire (page « Rate limits ») peuvent bloquer des recherches et des lectures de profil dès 100 appels par jour et par compte. À régler avant le jour de la bascule. | 3.4, partie 7 |
+| i | L'écran de consentement Google, avec la configuration par défaut, affiche le nom du prestataire à la personne qui relie une boîte Gmail. | décisions 24 et 25, partie 5 |
+| j | Un compte relié depuis le tableau de bord du prestataire n'est pas rattaché par Konekt : à réserver au dépannage. | 4.5 |
+| k | Les comptes ont été reliés de nouveau depuis juillet : un compte LinkedIn probablement sans ancien identifiant sera annoncé « Absent du service ». | 3.0 ci-dessus, étapes 7 et 8 |
 
-Point g. Ce numéro n'a pas de ligne dans la table `member_whatsapp_accounts` : la conversion des identifiants ne le touche pas et aucune fonction de Konekt ne l'utilise. Il sert probablement à un autre outil, peut-être à Jarvis (hypothèse non vérifiée : les migrations `20260713153549_jarvis_whatsapp_foundation.sql` et `20260713154226_jarvis_kb_search_rpc.sql` décrivent un « Jarvis WhatsApp 24/7 » et une clé « Jarvis » existe dans l'application). Konekt n'a rien à faire pour ce compte. S'il faut le réauthentifier, c'est dans le tableau de bord du prestataire ou dans l'outil concerné, et c'est hors de cette bascule.
+Point g. Ce numéro n'a pas de ligne dans la table `member_whatsapp_accounts` (relevé du 12 octobre, base non interrogée par le code) : la conversion des identifiants ne le touche pas et aucune fonction de Konekt ne l'utilise. D'après la lecture du code déployé de `jarvis-whatsapp` faite le 12 octobre 2026 (voir 3.3), c'est le numéro de votre assistant WhatsApp personnel. Konekt n'a rien à faire pour ce compte et ne le reconnecte pas. L'authentification demandée dans le tableau de bord se traite dans le chantier séparé « porter Jarvis vers la nouvelle version » (3.3), et seulement sur votre décision. Non vérifié : si l'ancienne API sert encore ce numéro aujourd'hui, et ce que le prestataire fera de l'ancienne API après la bascule (architecture, partie 10, ligne 21).
 
 Les workflows n8n du propriétaire appellent aussi l'API du prestataire, avec leur propre clé de service. Ils sont hors du périmètre de cette bascule : Konekt ne les voit pas et ne les modifie pas.
 
@@ -106,18 +118,69 @@ Vous pouvez poser ces secrets **avant** la fusion : l'ancien code déployé aujo
 
 ### 3.3 Secrets à retirer à la fin (partie 6, étape 14)
 
-**Contrôle obligatoire avant de retirer `UNIPILE_API_KEY` et `UNIPILE_DSN` : la fonction `jarvis-whatsapp`.** Une fonction de ce nom existe dans le projet Supabase de production et n'est pas dans le dépôt (aucun dossier de ce nom sous `supabase/functions`, vérifié le 12 octobre 2026). Les migrations `20260713153549_jarvis_whatsapp_foundation.sql` et `20260713154226_jarvis_kb_search_rpc.sql` disent qu'elle écrit dans les tables `jarvis_*`. Elle peut lire l'ancienne clé du prestataire : non vérifié, personne n'a lu son code ici. Les secrets d'un projet Supabase sont communs à toutes ses fonctions, donc la retirer casserait la fonction sans aucune alerte dans Konekt.
-1. Supabase, menu « Edge Functions », ouvrez `jarvis-whatsapp`, puis son code (le libellé exact de l'onglet n'est pas vérifié).
-2. Cherchez les mots `UNIPILE` et `api/v1` dans tout le code de la fonction.
-3. Si l'un des quatre noms `UNIPILE_API_KEY`, `UNIPILE_DSN`, `UNIPILE_WEBHOOK_SECRET`, `SEQUENCE_WEBHOOK_SECRET` apparaît, ou si elle appelle `api/v1`, la fonction dépend de l'ancien service. Les secrets concernés **restent**, et la fonction doit être portée par ailleurs, hors de cette branche.
-4. Si rien n'apparaît, notez la date de ce contrôle dans `LOGBOOK.md`.
+**Les secrets `UNIPILE_API_KEY` et `UNIPILE_DSN` doivent rester dans Supabase tant que la fonction `jarvis-whatsapp` existe sous sa forme actuelle.** L'étape 14 en dépend.
 
-Tant que ce contrôle n'est pas fait et confirmé, les anciens secrets restent en place. D'après le relevé, les workflows n8n du propriétaire utilisent leur propre clé de service (partie 3.0) et non ces secrets Supabase : ils sont hors de ce contrôle.
+Ce que l'on sait de cette fonction. Elle est déployée dans le projet Supabase de production et n'est pas dans le dépôt (aucun dossier de ce nom sous `supabase/functions`, vérifié le 12 octobre 2026). Son code déployé a été lu en lecture seule le même jour, hors de ce dépôt : le code n'est pas relisible depuis le dépôt, ce qui suit vient de cette lecture. C'est votre assistant WhatsApp personnel, ce n'est pas du code du produit Konekt (les migrations `20260713153549_jarvis_whatsapp_foundation.sql` et `20260713154226_jarvis_kb_search_rpc.sql` parlent d'un « Jarvis WhatsApp 24/7 » et de tables `jarvis_*`). Elle :
+- lit les secrets `UNIPILE_API_KEY` et `UNIPILE_DSN` ;
+- appelle des chemins de l'ancienne API (`/api/v1/...`) ;
+- écrit dans une conversation WhatsApp fixe, désignée par son ancien identifiant de conversation ;
+- peut lire votre boîte e-mail par l'ancien identifiant de compte ;
+- reçoit ses notifications dans l'ancien format, par un jeton placé dans son adresse ;
+- contient en clair, dans son code, un jeton d'accès. La valeur n'est écrite nulle part dans ce guide, ne la copiez pas dans un message ni dans un document.
+
+Les secrets d'un projet Supabase sont communs à toutes les fonctions : retirer ces deux secrets casserait Jarvis sans aucune alerte dans Konekt.
+
+Ce que cela change pour la bascule :
+1. **Étape 14 conditionnelle.** Ne retirez `UNIPILE_API_KEY` et `UNIPILE_DSN` que le jour où Jarvis est porté vers la nouvelle version ou arrêté. Jusque-là, elles restent, et la page de vérification continue de les signaler « encore définis » : c'est attendu.
+2. **Deux autres secrets à ne pas retirer sans contrôle.** L'étape 14 retire aussi `UNIPILE_WEBHOOK_SECRET` et `SEQUENCE_WEBHOOK_SECRET`. Non vérifié : lequel des secrets Supabase, s'il y en a un, protège l'adresse de réception de Jarvis (la lecture dit seulement « un jeton dans l'adresse »). Demandez à l'ingénieur de relire le code de Jarvis pour ces deux noms avant de les retirer.
+3. **L'étape 13 ne doit pas toucher les notifications de Jarvis.** Elle supprime seulement celles de l'ancienne version qui pointent vers les fonctions `unipile-webhook` et `sequence-webhooks-handler`. Celle qui pointe vers `jarvis-whatsapp` reste.
+4. **Ne l'ajoutez pas au dépôt avant d'avoir décidé de la porter.** Le workflow de déploiement redéploie toute fonction qui a un dossier dans le dépôt, et toutes les fonctions quand le dossier partagé `_shared/` change (c'est le cas de cette fusion). Une copie de Jarvis dans le dépôt écraserait la version en production au moment de la fusion. Tant qu'elle n'y est pas, la fusion ne la touche pas (vérifié dans `.github/workflows/deploy-edge-functions.yml` : seuls les dossiers présents sont déployés).
+5. **Rien dans la conversion ne touche Jarvis.** Son numéro n'a pas de ligne dans la base de Konekt (partie 3.0, point g). Non vérifié : ce que le prestataire fait de l'ancienne API et de l'ancien compte après la bascule. Jarvis peut cesser de fonctionner de ce côté, indépendamment de Konekt.
+
+Deux chantiers distincts, hors de cette bascule :
+- **À faire avant tout, indépendamment du reste : le jeton en clair.** Demandez à l'ingénieur de le déplacer dans un secret Supabase (par exemple `JARVIS_ACCESS_TOKEN`, nom à choisir), de faire lire ce secret par la fonction, puis de **changer la valeur du jeton** : l'ancienne valeur est à considérer comme exposée, puisqu'elle figure dans le code de la fonction.
+- **Porter Jarvis vers la nouvelle version (seulement sur votre décision).** Cela demande : reconnecter le numéro WhatsApp dans le nouveau service par QR code (nouvel identifiant de compte, nouvel identifiant de conversation), réécrire les appels de Jarvis pour la v2, recevoir les notifications dans le nouveau format (`message.new`, enveloppe décrite dans `docs/unipile-v2-architecture.md`, partie 6), et refaire l'accès à votre boîte e-mail avec le nouvel identifiant. Le tableau de bord du prestataire est le bon endroit pour relier ce numéro, justement parce que Konekt ne doit pas le rattacher (voir 4.5). Quand ce chantier est fait, ajoutez la fonction au dépôt si vous le souhaitez, puis seulement retirez les anciens secrets (étape 14). Non essayé.
+
+Les workflows n8n du propriétaire utilisent leur propre clé de service (partie 3.0) et non ces secrets Supabase : ils sont hors de ce point.
 
 - `UNIPILE_API_KEY` et `UNIPILE_DSN` : plus lus par aucune fonction du dépôt. La page de vérification les signale « encore définis » tant qu'ils existent.
 - `UNIPILE_WEBHOOK_SECRET` : repli de `UNIPILE_V2_WEBHOOK_TOKEN`. Inutile dès que le jeton dédié est posé et que les notifications ont été réenregistrées (étape 5).
 - `SEQUENCE_WEBHOOK_SECRET` : plus lu par aucune fonction (recherche dans `supabase/functions` le 12 octobre).
 - Les colonnes `unipile_api_key`, `unipile_dsn`, `unipile_connected` de la table `organization_integrations` restent en base, sans lecteur côté serveur. Leur suppression est une migration à faire plus tard.
+
+### 3.4 Les limites de débit du prestataire (à régler avant le jour de la bascule)
+
+Pourquoi c'est important. Le prestataire applique des limites par compte et par route (une route = un type d'appel : lire un profil, envoyer une demande de relation, etc.), réglées par réseau (LinkedIn, e-mail...). Chaque route a ses propres compteurs pour chaque compte relié. Konekt lit beaucoup LinkedIn (recherches, lectures de profil pour la notation) et son moteur de séquences traite un refus pour limite comme un signal :
+
+| Ce que le prestataire répond | Genre d'erreur dans Konekt | Ce que fait Konekt |
+|---|---|---|
+| Un refus qui parle d'un quota (limite quotidienne ou hebdomadaire, invitations, InMails, crédits) | `provider_limit` | Le **compte est mis en pause** (`quota_paused_until` = maintenant + 16 heures) : plus aucun envoi de séquence, d'InMail ou d'enrichissement depuis ce compte pendant ce temps. L'usage enregistré du compte passe à 100 %. |
+| Un refus de débit générique (« trop de requêtes ») | `rate_limited` | Le compte **n'est pas** mis en pause. L'étape de séquence est reportée sans essai consommé : au prochain jour ouvré à 9 h (heure du membre), et à **lundi prochain à 9 h** pour une demande de relation. |
+| Dans les deux cas, pour une recherche ou une lecture lancée à la main | `rate_limited` ou `provider_limit` | Le membre voit « Limite LinkedIn atteinte. Espacez vos requêtes et réessayez plus tard. » |
+
+(Vérifié dans `supabase/functions/_shared/unipile/errors.ts`, fonction `classifyError` ; `process-sequences/index.ts`, fonctions `isRateLimitError` et `getRateLimitRetryDate`, et le traitement d'un résultat d'envoi refusé vers la ligne 3735 ; `_shared/linkedin-quotas.ts`, `recordUsageSignal` et `quotaPauseUntilTomorrow` ; `unipile-search/responses.ts`.) Le client de Konekt ne rejoue jamais un envoi refusé (demande non répétable) : le moteur le reporte. Non vérifié : le texte réel du refus du prestataire pour une limite de débit, donc dans quel genre il tombe. Il faut un appel réel pour le savoir.
+
+Ce que la page « Rate limits » affichait le 12 octobre 2026 pour LinkedIn, toutes valeurs étiquetées « recommended » (libellés tronqués sur la capture) :
+- toutes méthodes : 10 par minute et 100 par jour ;
+- lire une société et lire un utilisateur : 1 par seconde chacune ;
+- envoyer une demande de relation : 50 par jour ;
+- une autre route d'envoi : 1 par 10 secondes.
+
+Non vérifié : si ces valeurs sont déjà enregistrées et actives pour l'application, ou seulement proposées à l'écran. Non vérifié : si « toutes méthodes » s'applique à chaque route ou à l'ensemble du compte.
+
+Comparaison avec ce que Konekt fait. Plafonds par défaut de Konekt par compte et par jour (`DEFAULT_USER_QUOTAS` et `WEEKLY_INVITE_LIMIT` de `_shared/linkedin-quotas.ts`) : 80 actions visibles (invitations, messages, InMails, messages intelligents et validations de compétences cumulés), 100 lectures de profil, 100 recherches, 40 InMails, et 100 demandes de relation par semaine. Ces plafonds sont réduits à 25, 50 puis 75 % pendant les trois premières semaines d'un compte récent, et le code lit aussi des plafonds propres à chaque membre (fonction `getUserQuotas`) dont les valeurs de production n'ont pas été relevées. Le registre de Konekt ne compte que sept types d'action : il ne voit pas, par exemple, la liste des conversations ni l'aide à la saisie des filtres. Un compte qui atteint ses plafonds de Konekt dans la journée dépasse donc largement 100 appels. Le transport de Konekt n'a pas de limiteur de débit global (architecture, partie 1) : il se contente de reprendre 2 fois au plus un appel répétable (une lecture, par exemple) refusé en 429.
+
+Aucun chiffre recommandé n'est donné ici. Le bon réglage dépend de l'usage réel, et l'usage réel n'a pas pu être mesuré sans clé réelle. C'est à vous de choisir, avec ce que vous voyez à l'usage.
+
+1. Ouvrez le tableau de bord du prestataire, application « Konekt app / Production », page « Rate limits » (libellé du 12 octobre ; s'il a changé, cherchez « Rate limits »). Choisissez le réseau LinkedIn.
+2. Notez, pour chaque route, la valeur affichée et si elle est enregistrée ou seulement proposée. Recopiez le tout dans `LOGBOOK.md` avec la date, avant de changer quoi que ce soit.
+3. Limite « toutes méthodes » par jour : relevez-la **au-dessus de l'usage réel** d'un compte actif sur une journée de travail (recherches, lectures de profil pour la notation, messagerie, séquences). 100 appels par jour et par compte s'épuisent en une journée de recherche et de notation. Choisissez la valeur avec ce que vous attendez de vos membres les plus actifs, puis revoyez-la après les 24 premières heures.
+4. Limite « toutes méthodes » par minute et limites par seconde (lecture d'un utilisateur, d'une société) : laissez-les assez larges pour une recherche suivie de lectures de profil en rafale. Non vérifié : la cadence réelle des lectures de profil pendant une notation de masse.
+5. Actions risquées (demande de relation, envoi de message) : gardez des limites strictes. Mais une limite du prestataire plus basse que le plafond de Konekt devient le plafond réel : l'étape est alors reportée (à lundi pour une demande de relation) ou le compte mis en pause, au lieu d'être arrêtée proprement par Konekt. Exemple relevé : le prestataire propose 50 demandes de relation par jour, alors que Konekt autorise jusqu'à 80 actions visibles par jour, invitations comprises (et 100 invitations par semaine). Pour chaque route risquée, choisissez : soit relever la limite du prestataire au moins au niveau de Konekt, soit faire baisser le plafond de Konekt du membre concerné (demandez à l'ingénieur, l'endroit exact dans l'écran n'est pas vérifié). Dans les deux cas, notez le choix dans `LOGBOOK.md`.
+6. Enregistrez, puis relisez la page pour confirmer que les valeurs sont bien sauvegardées.
+7. Après la bascule, surveillez les refus pendant les 24 premières heures (partie 7, ligne « Refus pour limites »).
+
+Non vérifié : les libellés exacts de la page, la possibilité de modifier chaque valeur, et la prise en compte immédiate d'un changement.
 
 ---
 
@@ -172,11 +235,19 @@ Faites ce test après la fusion et avant d'annoncer la bascule à l'équipe.
 
 La page de vérification de la bascule signale un avertissement si le domaine configuré contient le nom du prestataire.
 
+### 4.5 Relier un compte depuis le tableau de bord du prestataire (secours seulement)
+
+Le 12 octobre 2026, la page « Accounts » du tableau de bord propose, pour relier un compte, trois entrées : « Quick Authentication » (pour tester), « Advanced Authentication » (réglages personnalisés : proxys, produits, scopes, partage avec des utilisateurs ; elle peut produire un lien à envoyer à une personne) et « Programmatic Integration » (documentation).
+
+**Pour un compte de Konekt, passez par Konekt : Paramètres, « Mon compte », « Connexions », « Continuer vers LinkedIn » (ou « Reconnecter »).** Raison, vérifiée dans le code : Konekt enregistre chaque connexion lancée chez lui (table `connection_attempts`) et c'est cette trace qui relie le compte au bon membre et à la bonne organisation. Un compte relié depuis le tableau de bord ne porte aucune tentative de Konekt. À sa réception, la notification est notée « No connection attempt for this event, nothing to link » (`unipile-webhook/index.ts`) : Konekt ne le rattache pas de lui-même. Le compte reste un compte non relié, que seul un administrateur de la plateforme peut rattacher ensuite (action `claim_linkedin_account`, refusée aux autres avant toute lecture chez le prestataire, `unipile-accounts/handler.ts`).
+
+Gardez donc le lien du tableau de bord pour un secours, par exemple si la page de connexion de Konekt est en panne, et prévenez l'ingénieur pour qu'il rattache le compte. Cette entrée convient en revanche pour un numéro qui n'est pas un compte Konekt, comme celui de Jarvis (3.3). Non vérifié : le détail de chaque entrée du menu (elles n'ont pas été essayées).
+
 ---
 
 ## 5. Décisions produit encore ouvertes
 
-Le code a pris une valeur par défaut pour chacune. Aucune ne bloque la bascule, mais lisez-les avant la fusion. Cochez votre choix. La liste compte 22 décisions ouvertes (1 à 16 et 18 à 23) et une décision réglée (17). La ligne 18 vient de la revue indépendante du port des tests e2e, les lignes 19 à 23 des revues du code de chaque lot.
+Le code a pris une valeur par défaut pour chacune. Aucune ne bloque la bascule, mais lisez-les avant la fusion. Cochez votre choix. La liste compte 24 décisions ouvertes (1 à 16 et 18 à 25) et une décision réglée (17). La ligne 18 vient de la revue indépendante du port des tests e2e, les lignes 19 à 23 des revues du code de chaque lot, les lignes 24 et 25 du relevé du tableau de bord (page « OAuth configuration »).
 
 | # | Sujet | Ce que fait le code aujourd'hui | Votre décision |
 |---|---|---|---|
@@ -203,6 +274,8 @@ Le code a pris une valeur par défaut pour chacune. Aucune ne bloque la bascule,
 | 21 | InMail d'un compte dégradé ou à reconnecter | La file d'InMails repousse un InMail dont le compte est dégradé, partiel ou verrouillé de 6 heures, et dont le compte est à reconnecter (ou dans un état inconnu) d'une heure. Aucun nombre maximal de tentatives n'est écrit (`process-inmail-queue/index.ts`, vers la ligne 951). L'InMail part dès que le compte est corrigé. | [ ] Garder  [ ] Ajouter un plafond de tentatives |
 | 22 | Conversion partielle | Si une colonne ne peut pas être réécrite (sans clé primaire, type inattendu en production), la conversion continue et le résultat est annoncé partiel, avec les colonnes concernées (`unipile-migration/handler.ts`). Elle ne s'arrête pas. | [ ] Garder  [ ] Refuser la conversion tant qu'une colonne est ignorée |
 | 23 | Enrichissement des contacts par le service de connexion | Reste en pause : la constante `ENRICHMENT_PAUSED` de `process-enrichment-queue/index.ts` vaut `true` (décision du propriétaire du 7 juillet 2026, après la suspension d'un compte, à ne lever que sur sa demande explicite d'après le commentaire du code). Les lignes en attente de la file reçoivent le nouvel identifiant de compte à la conversion. La limite proactive de 90 % n'existe plus : seule une limite signalée par le prestataire met le compte en pause. À trancher avant de lever la pause. | [ ] Garder la pause  [ ] Lever la pause après la bascule |
+| 24 | Écran de consentement Google et Microsoft | Relevé du 12 octobre 2026, page « OAuth configuration » : pour Google, la configuration par défaut utilise l'application Google du prestataire. La personne qui relie une boîte Gmail voit donc **le nom du prestataire** sur l'écran de consentement de Google. C'est, par construction, le seul endroit où ce nom reste visible aux utilisateurs, à part l'adresse de la page de connexion avec l'option A de la partie 4. L'option « Custom » permet d'utiliser une application Google à Konekt (son propre nom sur l'écran). Les permissions Gmail demandées par défaut sont listées sur cette page (par exemple lecture, modification, envoi, étiquettes) ; des permissions Gmail dites restreintes peuvent exiger une validation par Google et une évaluation de sécurité payante : non vérifié, ni le coût ni le délai. La partie Microsoft de la même page **n'a pas été regardée** : ouvrez-la et notez la même chose (nom affiché, option « Custom »). Une application Microsoft propre est en général plus simple à obtenir que celle de Google (non vérifié). Konekt propose bien Google et Outlook à la connexion, par le lien hébergé comme par la connexion directe (`unipile-accounts/connection.ts`). | [ ] Accepter à l'ouverture  [ ] Créer plus tard les applications Google et Microsoft de Konekt (Microsoft d'abord) |
+| 25 | Liste de permissions e-mail réduite (amélioration possible, non faite) | Le client commun sait demander une liste de permissions réduite pour la connexion directe Google ou Outlook (option `oauthScope` de `_shared/unipile/accounts.ts`, transmise sous `config.oauth_scope`, vérifié). Mais le parcours de connexion (`unipile-accounts/connection.ts`) ne la transmet pas, et le lien hébergé, qui est le parcours par défaut, n'a aucune option de ce genre dans le client (`buildHostedLinkBody`). Le service applique donc sa liste par défaut. Non vérifié : que le service accepte ce paramètre sur le lien hébergé, et quelle liste réduite suffirait aux fonctions e-mail de Konekt (envoi, lecture des réponses). | [ ] Garder la liste par défaut  [ ] Faire réduire la liste (travail de développeur, à essayer avec une vraie clé) |
 
 ---
 
@@ -221,6 +294,8 @@ Gardez ces ouvertures dans votre navigateur : GitHub (Pull Request et onglet Act
 Rollback de cette étape : aucun besoin, rien n'a changé.
 
 ### Étape 2. Secrets et domaine
+
+Avant cette étape, les limites de débit du prestataire doivent avoir été relevées et réglées (partie 3.4). Si ce n'est pas fait, faites-le d'abord.
 
 Posez les secrets de la partie 3.2, sauf `UNIPILE_V2_API_KEY` : ne la remplacez pas, elle est contrôlée à l'étape 6 (partie 3.1). Faites ensuite l'habillage de la page de connexion (4.1), puis choisissez l'option de la partie 4.2 :
 - option A : posez `CONNECTION_ALLOW_VENDOR_HOSTED_LINK` à `1` et ne posez pas `UNIPILE_HOSTED_DOMAIN` ;
@@ -303,12 +378,13 @@ Rollback : dans le même bloc, l'icône de corbeille supprime le point de récep
 ### Étape 7. Comptes absents du nouveau service
 
 1. Dans la même page, bloc « Comptes sans correspondance » : la liste donne, pour chaque compte de la base introuvable dans le nouveau service, le type, un libellé masqué et la raison (« Absent du service », « Plusieurs correspondances », « Type de compte différent »).
-2. Attendu d'après le relevé du 12 octobre (partie 3.0) : environ 3 comptes LinkedIn « Absent du service » (la base en liste 5, l'application v2 en a 2), et la boîte Outlook rapprochée par son adresse e-mail. Le rapprochement d'un compte LinkedIn se fait par l'ancien identifiant que le prestataire a gardé dans le compte v2 (`metadata.v1_account_id`) : non vérifié pour les deux comptes de l'application, et Guillaume Valladier était absent de la v2 en juillet. Si la page le range aussi dans « Absent du service », il rejoint les comptes à connecter à neuf. C'est la page qui fait foi : si elle affiche autre chose, suivez la page.
+2. Attendu d'après le relevé du 12 octobre (partie 3.0) : au moins 3 comptes LinkedIn « Absent du service » (la base en liste 5, l'application v2 en a 2), et la boîte Outlook rapprochée par son adresse e-mail. **Les deux comptes LinkedIn de l'application v2 risquent aussi d'y figurer.** Le rapprochement d'un compte LinkedIn se fait uniquement par l'ancien identifiant que le prestataire a gardé dans le compte v2 (`metadata.v1_account_id`). Les identifiants vus le 12 octobre n'étant pas ceux notés en juillet, ces comptes ont été reliés de nouveau, et un compte relié de nouveau n'a probablement plus cet ancien identifiant : la page le rangera dans « Absent du service », même s'il est opérationnel dans le tableau de bord. Même cas pour Guillaume Valladier, absent de la v2 en juillet. Non vérifié : la présence de `metadata.v1_account_id` sur chacun, c'est la page qui le montre. C'est la page qui fait foi : si elle affiche autre chose, suivez la page.
 3. Comptes à reconnecter après la conversion, chacun par son propriétaire : Paramètres, « Mon compte », « Connexions », carte du compte, bouton « Continuer vers LinkedIn » (ou « Reconnecter »). Le test de la partie 4.4 doit être fait avant.
-   - LinkedIn Guillaume Valladier : présent dans la v2 mais demande une authentification. Il se reconnecte avec « Reconnecter ». Une reconnexion garde le même compte (le lien est créé pour ce compte, événement `account.reconnect`) : non essayé.
+   - LinkedIn Guillaume Valladier : présent dans la v2 mais demande une authentification. Il se reconnecte avec « Reconnecter ». Une reconnexion garde le même compte (le lien est créé pour ce compte, événement `account.reconnect`) : non essayé. Si la page l'a rangé dans « Absent du service » (compte relié de nouveau, sans ancien identifiant), il se connecte à neuf comme les suivants.
    - Les 3 comptes LinkedIn de Konekt absents de la v2 : chacun se connecte par « Continuer vers LinkedIn » et reçoit un identifiant tout neuf. Tant qu'ils ne l'ont pas fait, leur ligne garde l'ancien identifiant et la page Connexions les affiche à reconnecter.
-   - LinkedIn Laurent GARILHE et Outlook l.garilhe@konekt.fr : opérationnels, rien à faire.
-   - Le numéro WhatsApp qui demande une authentification n'est pas un compte Konekt (aucune ligne en base) : aucune action de Konekt, voir le point g de la partie 3.0.
+   - **Tout compte LinkedIn que la page annonce « Absent du service », y compris LinkedIn Laurent GARILHE s'il y figure** : même marche. Son titulaire se reconnecte lui-même depuis Paramètres, « Mon compte », « Connexions », « Continuer vers LinkedIn ». Cela crée le lien directement avec le nouvel identifiant `acc_`, sans passer par la conversion. Ensuite, relancez « Vérifier », puis regardez la ligne de ce compte et la liste « Anciens identifiants sans compte relié » (étape 8) : les séquences, InMails programmés et compteurs restés sur l'ancien identifiant y apparaissent (point 4 ci-dessous). Ne passez pas par le lien du tableau de bord du prestataire (4.5). Variante à voir avec l'ingénieur : pour un compte déjà opérationnel dans le nouveau service, convertir l'ancien identifiant vers le nouveau par la fonction SQL (`docs/unipile-v2-architecture.md`, partie 7), ce qui évite une seconde connexion : non essayé.
+   - Outlook l.garilhe@konekt.fr : opérationnel et rapproché par son adresse e-mail, rien à faire si la page le confirme.
+   - Le numéro WhatsApp qui demande une authentification est celui de Jarvis, pas un compte Konekt (aucune ligne en base) : aucune action de Konekt, voir le point g de la partie 3.0 et la partie 3.3.
 4. Un compte reconnecté sous un nouvel identifiant garde ses séquences, ses InMails programmés et son historique de plafonds attachés à l'ancien : ils apparaissent ensuite dans la simulation sous « Anciens identifiants sans compte relié » et ne seront pas convertis. Les séquences concernées sont à relancer. Pour les conserver, l'ingénieur peut convertir l'ancien identifiant vers le nouveau avec la fonction SQL décrite dans `docs/unipile-v2-architecture.md`, partie 7. Demandez-le avant de relancer les séquences.
 5. Relancez « Vérifier » jusqu'à ce que la liste soit vide, ou que vous acceptiez de laisser les comptes restants tels quels (case à cocher à l'étape 9).
 
@@ -318,6 +394,7 @@ Rollback : dans le même bloc, l'icône de corbeille supprime le point de récep
 2. Lisez le tableau : par type de compte (LinkedIn, messagerie, WhatsApp) combien sont en base, déjà convertis, à convertir, non trouvés ; pour chaque compte à convertir, le nombre de lignes réécrites et les notes (agents à recalibrer, propositions de l'assistant, journaux non réécrits).
 3. Lisez « Anciens identifiants sans compte relié » : ce sont des identifiants que la conversion ne peut pas apparier.
 4. Un message « La liste des comptes du service est tronquée » interdit la conversion : prévenez l'ingénieur.
+5. Comptes reliés de nouveau depuis juillet (partie 3.0) : si la simulation annonce « non trouvés » pour des comptes LinkedIn que vous voyez opérationnels dans le tableau de bord, c'est le cas décrit à l'étape 7. La conversion ne les touche pas et ne les réécrit pas : leurs lignes gardent l'ancien identifiant tant que leur titulaire ne s'est pas reconnecté. Ne bloquez pas la conversion pour eux : cochez la case qui les laisse tels quels (étape 9), puis suivez la marche de l'étape 7.
 
 Rollback : aucun besoin, rien n'a été écrit.
 
@@ -363,16 +440,17 @@ Le nouveau code ne sait plus lister ni supprimer les notifications de l'ancienne
 1. Ouvrez le tableau de bord du prestataire de l'**ancienne** version (celui de vos clés v1).
 2. Section des notifications (« Webhooks »). Supprimez celles qui pointent vers `https://crckfywoyjxkawathdff.supabase.co/functions/v1/unipile-webhook` et vers `.../functions/v1/sequence-webhooks-handler`. L'adresse est déduite de la référence du projet Supabase. Les libellés de ce tableau de bord n'ont pas pu être vérifiés.
 3. Ne touchez pas au point de réception de Konekt dans la nouvelle version (mis à jour à l'étape 5), ni aux trois points de réception n8n : ils sont à vous et ne font pas partie de la bascule.
+4. Ne supprimez pas non plus, dans l'ancienne version, la notification qui pointe vers la fonction `jarvis-whatsapp`, ni l'ancienne clé ni l'ancien compte WhatsApp de Jarvis : tant que Jarvis n'est pas porté ou arrêté, il en dépend (partie 3.3).
 
 Rollback : impossible sans recréer les notifications à la main. Faites-le après la surveillance de 24 heures.
 
 ### Étape 14. Retirer les anciens secrets
 
-**Condition préalable : le contrôle de `jarvis-whatsapp` de la partie 3.3 est fait et confirmé. Sinon, ne supprimez rien dans cette étape : les anciens secrets restent tant que ce n'est pas confirmé.**
+**Cette étape est conditionnelle. La fonction `jarvis-whatsapp` (votre assistant WhatsApp personnel) lit `UNIPILE_API_KEY` et `UNIPILE_DSN` et appelle l'ancienne API (partie 3.3). Tant qu'elle n'est pas portée vers la nouvelle version ou arrêtée, ne supprimez ni `UNIPILE_API_KEY` ni `UNIPILE_DSN`. Passez à l'étape 15 : c'est le comportement attendu, la ligne « Anciennes clés du service » de la page de vérification reste « encore définis ».** Porter Jarvis est un chantier à part, à ouvrir seulement sur votre décision (partie 3.3).
 
-Page des secrets de la partie 3.2. Supprimez `UNIPILE_API_KEY` et `UNIPILE_DSN`. Supprimez aussi `UNIPILE_WEBHOOK_SECRET` et `SEQUENCE_WEBHOOK_SECRET`, à condition que `UNIPILE_V2_WEBHOOK_TOKEN` soit posé et que l'étape 5 ait été refaite depuis. Relancez « Vérifier » : la ligne « Anciennes clés du service » passe à « Retirés ».
+Une fois Jarvis porté ou arrêté, et seulement alors : page des secrets de la partie 3.2. Supprimez `UNIPILE_API_KEY` et `UNIPILE_DSN`. Supprimez aussi `UNIPILE_WEBHOOK_SECRET` et `SEQUENCE_WEBHOOK_SECRET`, à condition que `UNIPILE_V2_WEBHOOK_TOKEN` soit posé, que l'étape 5 ait été refaite depuis, et que l'ingénieur ait confirmé que Jarvis ne les lit pas (partie 3.3, point 2). Relancez « Vérifier » : la ligne « Anciennes clés du service » passe à « Retirés ».
 
-À partir d'ici, le retour en arrière n'est plus possible : on avance seulement.
+À partir de la suppression des secrets, le retour en arrière n'est plus possible : on avance seulement.
 
 ### Étape 15. Quand tout est stable
 
@@ -397,6 +475,12 @@ Faites noter les décisions de la partie 5 dans `LOGBOOK.md`. Supprimer les colo
 | Séquences | Envois, réponses, acceptations d'invitations | Mêmes volumes qu'avant. | Comparez avec la semaine précédente avant de conclure. |
 | Agents de sourcing | Erreur « contexte changé » (`CONTEXT_CHANGED`), texte « Recalibrez l’agent » ou « relancez le calibrage » | Attendu après la conversion. | Faites recalibrer l'agent (décision 7). |
 | Plafonds LinkedIn | Page Équipe, « Plafonds du jour » | Les compteurs repartent de leur historique (colonne convertie). | Si les compteurs repartent de zéro, un compte n'a pas été converti. |
+| Refus pour limites (partie 3.4), éditeur SQL | `select count(*) from public.search_failure_log where http_status = 429 and created_at > now() - interval '24 hours';` (recherches seulement, conservées 14 jours) | Aucun, ou très peu. | Plusieurs refus : relevez les limites du prestataire (partie 3.4) ou espacez les recherches. |
+| Refus pour limites, éditeur SQL | `select linkedin_account_id, quota_paused_until from public.member_linkedin_accounts where quota_paused_until > now();` | Aucune ligne. | Un compte est en pause pour la journée (genre `provider_limit`) : voir la partie 3.4 pour la cause probable. |
+| Refus pour limites, éditeur SQL | `select count(*) from public.sequence_step_executions where status = 'scheduled' and error_message like 'Rate limit (%';` | Zéro, ou peu. | Des étapes sont reportées pour limite de débit (genre `rate_limited`) : une demande de relation part reportée à lundi 9 h. |
+| Supabase, Edge Functions, `process-sequences`, Logs | `Rate limit for` et `pausing account` | Aucun. | Même lecture que ci-dessus. |
+
+Ces trois requêtes SQL et ces deux messages de journal viennent du code (colonnes et textes lus dans les migrations et les fonctions) ; elles n'ont pas été jouées sur la base de production. Compter les refus de cette façon ne voit pas toutes les lectures refusées (par exemple une lecture de profil pendant une notation), seulement les recherches, les pauses de compte et les étapes de séquence reportées. Les autres refus ne se lisent que dans les journaux des fonctions.
 
 Ce qui change dans les plafonds : la v2 ne donne plus de pourcentage d'usage. L'ancien arrêt à 90 % n'existe plus. Konekt compte lui-même ses envois, et met le compte en pause pour la journée si le prestataire dit qu'une limite est atteinte.
 
@@ -409,7 +493,7 @@ Ce qui change dans les plafonds : la v2 ne donne plus de pourcentage d'usage. L'
 | Avant l'étape 4 (rien fusionné) | Supprimer les secrets ajoutés par vous (jamais `UNIPILE_V2_API_KEY` si elle existait avant), réactiver les tâches planifiées si vous les aviez suspendues. | Aucun. |
 | Après la fusion, avant la conversion (étapes 4 à 8) | Annuler la fusion (« Revert »), attendre le redéploiement, réactiver les tâches planifiées. Le point de réception de Konekt existait avant la bascule (partie 3.0) : ne le supprimez que si l'ingénieur le demande. Les anciens secrets et les anciennes notifications existent encore. | Messagerie coupée pendant l'opération. |
 | Après la conversion (étape 9 à 12) | « Annuler la conversion » avec le numéro du lot, puis annuler la fusion, puis réactiver les moteurs. | Les lignes créées depuis la conversion gardent le nouvel identifiant. Le retour suppose que l'ancien compte du prestataire répond encore (non vérifié). |
-| Après l'étape 13 ou 14 | Aller de l'avant seulement. Corriger le problème, ne pas revenir. | Retour impossible sans recréer les notifications et les secrets à la main. Les secrets `UNIPILE_API_KEY` et `UNIPILE_DSN` ne se retirent qu'après le contrôle de `jarvis-whatsapp` (partie 3.3). |
+| Après l'étape 13 ou 14 | Aller de l'avant seulement. Corriger le problème, ne pas revenir. | Retour impossible sans recréer les notifications et les secrets à la main. Les secrets `UNIPILE_API_KEY` et `UNIPILE_DSN` ne se retirent qu'une fois `jarvis-whatsapp` porté ou arrêté (partie 3.3). |
 
 ---
 
@@ -425,7 +509,11 @@ Rien de ce code n'a été essayé contre le vrai service v2 : aucune clé n'éta
 - Les libellés exacts des réglages de la page de connexion et des clés dans le tableau de bord du prestataire.
 - L'application d'origine de la clé posée dans le secret `UNIPILE_V2_API_KEY`, et le comportement d'une clé de niveau compte (partie 3.1). Contrôle à l'étape 6.
 - L'adresse exacte du point de réception de Konekt qui existe déjà (23 événements), donc le fait que l'enregistrement le met à jour au lieu d'en créer un second (étape 5).
-- Le contenu de la fonction `jarvis-whatsapp` (partie 3.3) et le lien de cet outil avec le numéro WhatsApp qui demande une authentification (partie 3.0, point g).
+- Le contenu de la fonction `jarvis-whatsapp` : lu en lecture seule dans le projet de production le 12 octobre 2026 (elle lit `UNIPILE_API_KEY` et `UNIPILE_DSN`, appelle `/api/v1/...`, écrit dans une conversation fixe, peut lire votre boîte par l'ancien identifiant, reçoit l'ancien format de notification par un jeton d'adresse, et contient un jeton d'accès en clair). Cette lecture n'est pas rejouable depuis le dépôt. Restent non vérifiés : si l'ancienne API sert encore ce numéro aujourd'hui, ce que le prestataire fera de l'ancienne API après la bascule, et quel secret Supabase protège l'adresse de réception de Jarvis, s'il y en a un (partie 3.3, point 2).
+- Les limites de débit : valeurs de la page « Rate limits » (enregistrées ou seulement affichées, portée de « toutes méthodes »), texte réel du refus du prestataire pour une limite (donc le genre d'erreur, pause du compte ou report de l'étape), usage réel d'un compte sur une journée (partie 3.4).
+- Le menu de liaison de compte du tableau de bord (trois entrées) et la page « Scopes » : relevés à la main, aucune entrée essayée (partie 4.5).
+- L'écran de consentement Google et la partie Microsoft de la page « OAuth configuration » : Google relevé à la main, Microsoft non regardé ; exigences de validation de Google pour des permissions Gmail restreintes, coût et délai non connus (décisions 24 et 25).
+- La présence de `metadata.v1_account_id` sur les comptes reliés de nouveau depuis juillet, donc la liste exacte des comptes que la page annoncera « Absent du service » (étapes 7 et 8). Le fait que les identifiants ont changé depuis juillet vient de la comparaison à la main du tableau de bord avec `AUDITS/UNIPILE_V2_MIGRATION_PLAN.md` et n'a pas été recontrôlé par le code.
 - Le rapprochement des comptes LinkedIn et Outlook réels par `metadata.v1_account_id` ou par adresse (étape 7).
 - Le relevé de la partie 3.0 lui-même : fait à la main par le propriétaire le 12 octobre 2026, sans passage par le code.
 - La compatibilité des identifiants de projets Recruiter avec le filtre de recherche.
