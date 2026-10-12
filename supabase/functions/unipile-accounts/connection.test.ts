@@ -12,9 +12,7 @@ import {
   type ConnectionContext,
   connectionCapabilities,
   connectionStatus,
-  legacyHostedLink,
-  legacyNativeLinkedIn,
-  legacySolveCheckpoint,
+  connectWithCookie,
   resendConnection,
   startConnection,
 } from './connection.ts';
@@ -922,24 +920,6 @@ Deno.test('connection_start : la page de retour est un nom d une liste fermée, 
   });
 });
 
-Deno.test('hosted_auth_link : l ancien accueil (/onboarding) garde son retour, sans que l adresse envoyée soit utilisée', async () => {
-  await withEnv(ENV, async () => {
-    const mock = withMockTransport(router({ 'POST /auth/link': { body: { link: 'https://connect.konekt.test/x' } } }));
-    try {
-      const db = makeDb();
-      await legacyHostedLink(ctxOf(db), { providers: ['LINKEDIN'], success_redirect_url: 'https://preview-abc.vercel.app/onboarding?li=ok', failure_redirect_url: 'https://preview-abc.vercel.app/onboarding?li=ko' });
-      strictEqual(db.table('connection_attempts')[0].return_to, 'onboarding');
-      ok(!JSON.stringify(mock.calls[0].body).includes('preview-abc'));
-      // Une autre page, ou une adresse illisible : pas de page de retour.
-      const other = makeDb();
-      await legacyHostedLink(ctxOf(other), { success_redirect_url: 'https://evil.example/steal', failure_redirect_url: 'pas une adresse' });
-      strictEqual(other.table('connection_attempts')[0].return_to, null);
-    } finally {
-      mock.restore();
-    }
-  });
-});
-
 Deno.test('connection_start : un administrateur ne reconnecte pas le lien à ancien identifiant d un collègue, seul son propriétaire le peut', async () => {
   await withEnv(ENV, async () => {
     const rows = [{ id: 'm-peer', organization_id: ORG, user_id: PEER, linkedin_account_id: 'ancien-identifiant' }];
@@ -965,49 +945,10 @@ Deno.test('connection_start : un administrateur ne reconnecte pas le lien à anc
 });
 
 // ---------------------------------------------------------------------------
-// Legacy wrappers
+// connection_start, reconnexion WhatsApp
 // ---------------------------------------------------------------------------
 
-Deno.test('hosted_auth_link : renvoie l adresse, ignore les adresses de retour du navigateur', async () => {
-  await withEnv(ENV, async () => {
-    const db = makeDb();
-    const mock = withMockTransport(router({ 'POST /auth/link': { body: { link: 'https://connect.konekt.test/x' } } }));
-    try {
-      const url = await legacyHostedLink(ctxOf(db), {
-        providers: ['LINKEDIN'],
-        success_redirect_url: 'https://evil.example/steal',
-        failure_redirect_url: 'https://evil.example/steal',
-        org_name: 'Acme',
-      });
-      strictEqual(url, 'https://connect.konekt.test/x');
-      const body = mock.calls[0].body as any;
-      strictEqual(body.redirect_uri, 'https://app.konekt.test/settings/account/connections/retour');
-      ok(!JSON.stringify(body).includes('evil.example'));
-      ok(!JSON.stringify(body).includes('Acme'));
-      // Sans liste de fournisseurs : LinkedIn, comme avant.
-      await legacyHostedLink(ctxOf(makeDb()), {});
-      deepStrictEqual((mock.calls[1].body as any).providers, ['linkedin']);
-    } finally {
-      mock.restore();
-    }
-  });
-});
-
-Deno.test('hosted_auth_link : un seul compte à la fois, WhatsApp séparé', async () => {
-  await withEnv(ENV, async () => {
-    const mock = withMockTransport(router({}));
-    try {
-      await rejects(() => legacyHostedLink(ctxOf(makeDb()), { providers: ['WHATSAPP', 'LINKEDIN'] }), (e: unknown) => e instanceof HttpError && e.status === 400 && /WhatsApp/.test(e.message));
-      await rejects(() => legacyHostedLink(ctxOf(makeDb()), { providers: ['LINKEDIN', 'GOOGLE'] }), (e: unknown) => e instanceof HttpError && e.status === 400);
-      await rejects(() => legacyHostedLink(ctxOf(makeDb()), { providers: ['TWITTER'] }), (e: unknown) => e instanceof HttpError && e.status === 400);
-      strictEqual(mock.calls.length, 0);
-    } finally {
-      mock.restore();
-    }
-  });
-});
-
-Deno.test('hosted_auth_link : reconnexion WhatsApp du compte du membre, refus des comptes des collègues et orphelins', async () => {
+Deno.test('connection_start : reconnexion WhatsApp du compte du membre, refus des comptes des collègues et orphelins', async () => {
   await withEnv(ENV, async () => {
     const db = makeDb({
       member_whatsapp_accounts: [
@@ -1018,10 +959,10 @@ Deno.test('hosted_auth_link : reconnexion WhatsApp du compte du membre, refus de
     });
     const mock = withMockTransport(router({ 'POST /auth/link': { body: { link: 'https://connect.konekt.test/x' } } }));
     try {
-      await legacyHostedLink(ctxOf(db), { providers: ['WHATSAPP'], reconnect_account_id: 'acc_wa_own' });
+      await startConnection(ctxOf(db), { provider: 'whatsapp', mode: 'hosted', reconnect_account_id: 'acc_wa_own' });
       strictEqual((mock.calls[0].body as any).account_id, 'acc_wa_own');
       for (const id of ['acc_wa_peer', 'acc_wa_foreign', 'acc_wa_orphan']) {
-        await rejects(() => legacyHostedLink(ctxOf(db), { providers: ['WHATSAPP'], reconnect_account_id: id }), (e: unknown) => e instanceof HttpError && e.status === 403, id);
+        await rejects(() => startConnection(ctxOf(db), { provider: 'whatsapp', mode: 'hosted', reconnect_account_id: id }), (e: unknown) => e instanceof HttpError && e.status === 403, id);
       }
       strictEqual(mock.calls.length, 1);
     } finally {
@@ -1030,15 +971,18 @@ Deno.test('hosted_auth_link : reconnexion WhatsApp du compte du membre, refus de
   });
 });
 
+// ---------------------------------------------------------------------------
+// connect_cookie (contrat de l extension Chrome)
+// ---------------------------------------------------------------------------
+
 Deno.test('connect_cookie : sans le mode direct, message neutre vers la connexion standard', async () => {
   await withEnv({ ...ENV, CONNECTION_NATIVE_ENABLED: null }, async () => {
     const mock = withMockTransport(router({}));
     try {
       await rejects(
-        () => legacyNativeLinkedIn(ctxOf(makeDb()), 'cookie', { access_token: 'x', user_agent: UA }),
+        () => connectWithCookie(ctxOf(makeDb()), { access_token: 'x', user_agent: UA }),
         (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'feature_disabled' && /connexion standard/.test(e.message) && !/unipile/i.test(e.message),
       );
-      await rejects(() => legacySolveCheckpoint(ctxOf(makeDb()), { account_id: 'x', code: '1' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'feature_disabled');
       strictEqual(mock.calls.length, 0);
     } finally {
       mock.restore();
@@ -1046,7 +990,7 @@ Deno.test('connect_cookie : sans le mode direct, message neutre vers la connexio
   });
 });
 
-Deno.test('connect_cookie : contrat de l extension, { success, account_id, ... } ; solve_checkpoint ne prend que la poignée de la tentative', async () => {
+Deno.test('connect_cookie : contrat de l extension, { success, account_id, ... } ; la vérification passe par connection_checkpoint avec la poignée de la tentative', async () => {
   await withEnv(ENV, async () => {
     const db = makeDb();
     const mock = withMockTransport(router({
@@ -1054,26 +998,26 @@ Deno.test('connect_cookie : contrat de l extension, { success, account_id, ... }
       'POST /auth/checkpoint': { body: linkedinAccount() },
     }));
     try {
-      const started = await legacyNativeLinkedIn(ctxOf(db), 'cookie', { access_token: 'AQED', premium_token: 'li_a', user_agent: UA, country: 'fr' });
+      const started = await connectWithCookie(ctxOf(db), { access_token: 'AQED', premium_token: 'li_a', user_agent: UA, country: 'fr' });
       strictEqual(started.success, true);
       strictEqual(started.object, 'Checkpoint');
       deepStrictEqual(started.checkpoint, { type: 'OTP' });
       const handle = started.account_id as string;
       strictEqual(handle, db.table('connection_attempts')[0].id);
+      strictEqual(started.attempt_id, handle);
       const intent = mock.calls[0].body as any;
       strictEqual(intent.credentials.premium_access_token, 'li_a', 'le cookie premium n est plus perdu');
       deepStrictEqual(intent.config.auto_proxy_config, { country: 'FR' });
 
-      // Un identifiant de compte quelconque n'ouvre rien : l'ancien trou allowOrphan est fermé.
+      // Un identifiant de compte quelconque n'ouvre rien, ni la tentative d'un collègue.
       for (const forged of ['acc_li1', 'acc_other', 'ancien-id']) {
-        await rejects(() => legacySolveCheckpoint(ctxOf(db), { account_id: forged, code: '123456' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'attempt_not_found', forged);
+        await rejects(() => checkpointConnection(ctxOf(db), { attempt_id: forged, code: '123456' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'attempt_not_found', forged);
       }
-      await rejects(() => legacySolveCheckpoint(ctxOf(db, PEER), { account_id: handle, code: '123456' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'attempt_not_found');
+      await rejects(() => checkpointConnection(ctxOf(db, PEER), { attempt_id: handle, code: '123456' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'attempt_not_found');
 
-      const solved = await legacySolveCheckpoint(ctxOf(db), { account_id: handle, code: '123456' });
-      strictEqual(solved.success, true);
-      strictEqual(solved.object, 'Account');
-      strictEqual(solved.account_id, 'acc_li1');
+      const solved = await checkpointConnection(ctxOf(db), { attempt_id: handle, code: '123456' });
+      strictEqual(solved.kind, 'done');
+      strictEqual((solved as { account: { id: string } }).account.id, 'acc_li1');
     } finally {
       mock.restore();
     }
@@ -1084,8 +1028,8 @@ Deno.test('connect_cookie : un cookie sans agent utilisateur est refusé avant t
   await withEnv(ENV, async () => {
     const mock = withMockTransport(router({}));
     try {
-      await rejects(() => legacyNativeLinkedIn(ctxOf(makeDb()), 'cookie', { access_token: 'AQED' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'validation');
-      await rejects(() => legacyNativeLinkedIn(ctxOf(makeDb()), 'cookie', { user_agent: UA }), (e: unknown) => e instanceof ConnectionFailure && /li_at/.test(e.message));
+      await rejects(() => connectWithCookie(ctxOf(makeDb()), { access_token: 'AQED' }), (e: unknown) => e instanceof ConnectionFailure && e.errorCode === 'validation');
+      await rejects(() => connectWithCookie(ctxOf(makeDb()), { user_agent: UA }), (e: unknown) => e instanceof ConnectionFailure && /li_at/.test(e.message));
       strictEqual(mock.calls.length, 0);
     } finally {
       mock.restore();

@@ -4,8 +4,7 @@
  *   connection_capabilities, connection_start, connection_checkpoint,
  *   connection_resend, connection_status, connection_cancel
  *
- * plus the thin legacy wrappers (hosted_auth_link, connect_cookie,
- * connect_credentials, solve_checkpoint) that go through the same code.
+ * plus `connect_cookie`, the contract of the Chrome extension, which goes through the same code.
  *
  * Rules
  *  - The identity of a connection is its `connection_attempts` row (user, organisation,
@@ -97,7 +96,6 @@ import {
   ownedKindForProvider,
   parseStartRequest,
   parseWaitingStep,
-  returnTargetFromUrl,
   type StartRequest,
 } from './connection-steps.ts';
 import { assertAccountInOrg, assertCanManageAccount, HttpError } from './ownership.ts';
@@ -692,69 +690,28 @@ export async function cancelConnection(ctx: ConnectionContext, params: Record<st
 }
 
 // ---------------------------------------------------------------------------
-// Legacy wrappers
+// connect_cookie (Chrome extension contract)
 // ---------------------------------------------------------------------------
 
-const HOSTED_PROVIDERS: Record<string, ConnectionProvider> = {
-  linkedin: 'linkedin', whatsapp: 'whatsapp', google: 'google', outlook: 'outlook', imap: 'imap',
-};
-
-/** `hosted_auth_link`: a hosted connection; answers `{ success, url }`. The redirect URLs sent by old clients are ignored. */
-export async function legacyHostedLink(ctx: ConnectionContext, params: Record<string, unknown>): Promise<string> {
-  const requested = Array.isArray(params.providers) && params.providers.length > 0 ? params.providers : ['LINKEDIN'];
-  const providers = requested.map((p) => HOSTED_PROVIDERS[String(p).trim().toLowerCase()]);
-  if (providers.length !== 1 || !providers[0]) {
-    throw new HttpError(400, requested.some((p) => String(p).trim().toLowerCase() === 'whatsapp')
-      ? 'La connexion WhatsApp doit être ouverte séparément'
-      : 'Choisissez un seul compte à connecter');
-  }
-  const { next } = await startConnection(ctx, {
-    provider: providers[0],
-    mode: 'hosted',
-    // The old client sends the page it wants to come back to; only a name from the closed list
-    // survives (the redirect URL itself is still built by the server).
-    return_to: returnTargetFromUrl(params.success_redirect_url) ?? returnTargetFromUrl(params.failure_redirect_url) ?? undefined,
-    reconnect_account_id: typeof params.reconnect_account_id === 'string' && params.reconnect_account_id ? params.reconnect_account_id : undefined,
-  });
-  if (next.kind !== 'redirect') throw new ConnectionFailure('server', userSafeMessage('server'));
-  return next.url;
-}
-
-function legacyNativeResponse(started: { attemptId: string; next: ConnectionNext }): Record<string, unknown> {
+function cookieResponse(started: { attemptId: string; next: ConnectionNext }): Record<string, unknown> {
   const { attemptId, next } = started;
   if (next.kind === 'done') {
     return { success: true, object: 'Account', account_id: next.account.id, name: next.account.name, attempt_id: attemptId };
   }
-  // A step still open: the legacy handle of a pending account is the attempt id.
+  // A step still open: the handle of a pending account is the attempt id.
   const type = next.kind === 'checkpoint' ? next.type : next.kind === 'pending' ? 'LOADING' : 'QR_CODE';
   return { success: true, object: 'Checkpoint', account_id: attemptId, attempt_id: attemptId, checkpoint: { type } };
 }
 
-/** `connect_cookie` / `connect_credentials`: a native LinkedIn connection in the legacy response shape. */
-export async function legacyNativeLinkedIn(
-  ctx: ConnectionContext,
-  method: 'cookie' | 'credentials',
-  params: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+/** `connect_cookie`: a native LinkedIn connection from the session cookie, in the response shape the extension reads. */
+export async function connectWithCookie(ctx: ConnectionContext, params: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!nativeEnabled()) throw new ConnectionFailure('feature_disabled', NATIVE_DISABLED_MESSAGE);
-  const linkedin = method === 'cookie'
-    ? { method, access_token: params.access_token, premium_access_token: params.premium_token, user_agent: params.user_agent }
-    : { method, username: params.username, password: params.password, premium_access_token: params.premium_token, user_agent: params.user_agent };
   const started = await startConnection(ctx, {
     provider: 'linkedin',
     mode: 'native',
     reconnect_account_id: typeof params.reconnect_account_id === 'string' && params.reconnect_account_id ? params.reconnect_account_id : undefined,
     country: params.country,
-    linkedin,
+    linkedin: { method: 'cookie', access_token: params.access_token, premium_access_token: params.premium_token, user_agent: params.user_agent },
   });
-  return legacyNativeResponse({ attemptId: started.attempt.id, next: started.next });
+  return cookieResponse({ attemptId: started.attempt.id, next: started.next });
 }
-
-/** `solve_checkpoint`: `account_id` is the handle returned by the legacy start (the attempt id). */
-export async function legacySolveCheckpoint(ctx: ConnectionContext, params: Record<string, unknown>): Promise<Record<string, unknown>> {
-  if (!nativeEnabled()) throw new ConnectionFailure('feature_disabled', NATIVE_DISABLED_MESSAGE);
-  const attemptId = typeof params.account_id === 'string' ? params.account_id : '';
-  const next = await checkpointConnection(ctx, { attempt_id: attemptId, code: params.code });
-  return legacyNativeResponse({ attemptId, next });
-}
-

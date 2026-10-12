@@ -44,9 +44,7 @@ import {
   ConnectionFailure,
   connectionCapabilities,
   connectionStatus,
-  legacyHostedLink,
-  legacyNativeLinkedIn,
-  legacySolveCheckpoint,
+  connectWithCookie,
   rateLimit,
   resendConnection,
   startConnection,
@@ -575,52 +573,12 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         return json({ success: true });
       }
 
-      case 'hosted_auth_link': {
-        // Lien de connexion hébergé (LinkedIn, WhatsApp ou messagerie). Enveloppe de
-        // connection_start : l'adresse de retour est fixée par le serveur, celles que
-        // l'ancien client envoie (success_redirect_url, failure_redirect_url, org_name)
-        // sont ignorées, et la tentative créée porte l'utilisateur et l'organisation.
-        try {
-          const url = await legacyHostedLink(connection, params);
-          return json({ success: true, url });
-        } catch (e) {
-          if (e instanceof ConnectionFailure) return json({ success: false, error: e.message, error_code: e.errorCode });
-          throw e;
-        }
-      }
-
       case 'connect_cookie': {
-        // Connexion LinkedIn par cookie (extension Chrome, Mon compte LinkedIn). Enveloppe de
+        // Connexion LinkedIn par cookie (extension Chrome seulement). Enveloppe de
         // connection_start en mode direct ; sans le mode direct, message neutre vers la
         // connexion standard. Contrat de l'extension : { success, account_id, ... }.
         try {
-          return json(await legacyNativeLinkedIn(connection, 'cookie', params));
-        } catch (e) {
-          if (e instanceof ConnectionFailure) {
-            return json({ success: false, error: e.message, error_code: e.errorCode }, e.errorCode === 'validation' ? 400 : 200);
-          }
-          throw e;
-        }
-      }
-
-      case 'connect_credentials': {
-        // Identifiant et mot de passe LinkedIn : même enveloppe que connect_cookie.
-        try {
-          return json(await legacyNativeLinkedIn(connection, 'credentials', params));
-        } catch (e) {
-          if (e instanceof ConnectionFailure) {
-            return json({ success: false, error: e.message, error_code: e.errorCode }, e.errorCode === 'validation' ? 400 : 200);
-          }
-          throw e;
-        }
-      }
-
-      case 'solve_checkpoint': {
-        // Vérification (code) d'une connexion directe. `account_id` est la poignée rendue
-        // par connect_cookie / connect_credentials : l'identifiant de la tentative, qui
-        // appartient à l'appelant. Plus aucun identifiant de compte quelconque accepté.
-        try {
-          return json(await legacySolveCheckpoint(connection, params));
+          return json(await connectWithCookie(connection, params));
         } catch (e) {
           if (e instanceof ConnectionFailure) {
             return json({ success: false, error: e.message, error_code: e.errorCode }, e.errorCode === 'validation' ? 400 : 200);

@@ -19,7 +19,6 @@ import {
   pairingPhoneNumber,
   parseStartRequest,
   parseWaitingStep,
-  returnTargetFromUrl,
   scrubVendor,
   userAgentLooksValid,
 } from './connection-steps.ts';
@@ -152,15 +151,6 @@ Deno.test('hostedLinkAllowed : un domaine propre, ou le drapeau explicite des te
   ok(!hostedLinkAllowed(null, null));
   ok(!hostedLinkAllowed(null, '0'));
   ok(!hostedLinkAllowed(null, 'true'));
-});
-
-Deno.test('returnTargetFromUrl : seul le nom /onboarding est repris, quelle que soit l origine', () => {
-  strictEqual(returnTargetFromUrl('https://konekt-app-navy.vercel.app/onboarding?li=ok'), 'onboarding');
-  strictEqual(returnTargetFromUrl('https://preview-1.vercel.app/onboarding/?li=ko#x'), 'onboarding');
-  strictEqual(returnTargetFromUrl('http://localhost:5173/onboarding'), 'onboarding');
-  for (const other of ['https://evil.example/', 'https://x.test/onboarding/evil', 'https://x.test/settings', '/onboarding', 'pas une adresse', '', null, undefined, 42]) {
-    strictEqual(returnTargetFromUrl(other), null, String(other));
-  }
 });
 
 Deno.test('parseStartRequest : la page de retour est un nom d une liste fermée', () => {

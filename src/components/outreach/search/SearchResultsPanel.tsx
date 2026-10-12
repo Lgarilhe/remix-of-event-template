@@ -344,10 +344,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             _source: (profile as any)._source,
           } as LinkedInProfile;
           setDetailProfile(merged);
-          console.log('[SearchResults] Enriched Base Konekt profile via Unipile');
+          console.log('[SearchResults] Enriched Base Konekt profile via LinkedIn');
         }
       } catch (e) {
-        console.warn('[SearchResults] Unipile enrichment failed (non-blocking):', e);
+        console.warn('[SearchResults] LinkedIn enrichment failed (non-blocking):', e);
       } finally {
         setEnriching(false);
       }

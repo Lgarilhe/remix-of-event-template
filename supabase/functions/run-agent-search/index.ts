@@ -472,7 +472,7 @@ Deno.serve(async (req) => {
         // No keywords / no company-size / no industry hard filter here —
         // those over-filter; the scoring AI evaluates them post-search.
 
-        console.log(`[run-agent-search] Unipile search body:`, JSON.stringify(searchBody).slice(0, 500));
+        console.log(`[run-agent-search] LinkedIn search body:`, JSON.stringify(searchBody).slice(0, 500));
 
         if (cursor) searchBody.cursor = cursor;
 

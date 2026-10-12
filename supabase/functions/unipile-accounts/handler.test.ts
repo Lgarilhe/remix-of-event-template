@@ -1291,22 +1291,26 @@ Deno.test('connection_* par le gestionnaire : départ, statut, annulation, et re
   });
 });
 
-Deno.test('hosted_auth_link par le gestionnaire : { success, url } seulement', async () => {
+Deno.test('les anciens noms hosted_auth_link, connect_credentials et solve_checkpoint ne sont plus servis : réponse neutre, aucun appel au service', async () => {
   await withEnv(ENV, async () => {
-    const mock = withMockTransport(router({ 'POST /auth/link': { body: { link: 'https://connect.konekt.test/x' } } }));
+    const mock = withMockTransport(router({}));
     try {
-      const reply = await call(makeDb(), { action: 'hosted_auth_link', providers: ['LINKEDIN'], success_redirect_url: 'https://evil.example', failure_redirect_url: 'https://evil.example' });
-      deepStrictEqual(reply.data, { success: true, url: 'https://connect.konekt.test/x' });
-      ok(!JSON.stringify(mock.calls[0].body).includes('evil.example'));
-      const mixed = await call(makeDb(), { action: 'hosted_auth_link', providers: ['WHATSAPP', 'LINKEDIN'] });
-      strictEqual(mixed.status, 400);
+      const db = makeDb();
+      for (const action of ['hosted_auth_link', 'connect_credentials', 'solve_checkpoint']) {
+        const reply = await call(db, { action, providers: ['LINKEDIN'], username: 'a@b.fr', password: 'pw', account_id: 'acc_new', code: '123456' });
+        strictEqual(reply.status, 400, action);
+        deepStrictEqual(reply.data, { success: false, error: 'Action non reconnue' }, action);
+        assertNoVendor(reply);
+      }
+      strictEqual(mock.calls.length, 0);
+      strictEqual(db.table('connection_attempts').length, 0);
     } finally {
       mock.restore();
     }
   });
 });
 
-Deno.test('connect_cookie, connect_credentials, solve_checkpoint par le gestionnaire', async () => {
+Deno.test('connect_cookie par le gestionnaire (contrat de l extension), vérification par connection_checkpoint', async () => {
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
   await withEnv({ ...ENV, CONNECTION_NATIVE_ENABLED: null }, async () => {
     const reply = await call(makeDb(), { action: 'connect_cookie', access_token: 'AQED', user_agent: UA });
@@ -1321,16 +1325,16 @@ Deno.test('connect_cookie, connect_credentials, solve_checkpoint par le gestionn
       'POST /auth/checkpoint': { body: li('acc_new', { name: 'Claire' }) },
     }));
     try {
-      const started = await call(db, { action: 'connect_credentials', username: 'a@b.fr', password: 'pw' });
+      const started = await call(db, { action: 'connect_cookie', access_token: 'AQED', user_agent: UA });
+      strictEqual(started.data.success, true);
       strictEqual(started.data.object, 'Checkpoint');
       deepStrictEqual(started.data.checkpoint, { type: '2FA' });
       const bad = await call(db, { action: 'connect_cookie', user_agent: UA });
       strictEqual(bad.status, 400);
-      const forged = await call(db, { action: 'solve_checkpoint', account_id: 'acc_new', code: '123456' });
+      const forged = await call(db, { action: 'connection_checkpoint', attempt_id: 'acc_new', code: '123456' });
       strictEqual(forged.data.error_code, 'attempt_not_found');
-      const solved = await call(db, { action: 'solve_checkpoint', account_id: started.data.account_id, code: '123456' });
-      strictEqual(solved.data.object, 'Account');
-      strictEqual(solved.data.account_id, 'acc_new');
+      const solved = await call(db, { action: 'connection_checkpoint', attempt_id: started.data.account_id, code: '123456' });
+      strictEqual(solved.data.success, true);
       strictEqual(db.table('member_linkedin_accounts')[0].linkedin_account_id, 'acc_new');
     } finally {
       mock.restore();

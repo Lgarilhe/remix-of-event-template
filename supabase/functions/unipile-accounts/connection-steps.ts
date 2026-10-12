@@ -251,17 +251,6 @@ export function hostedLinkAllowed(domain: string | null, allowVendorHostEnv: str
   return domain !== null || allowVendorHostEnv === '1';
 }
 
-/** Name of a return target from an old client's `success_redirect_url` / `failure_redirect_url`, or `null`. */
-export function returnTargetFromUrl(value: unknown): ReturnTarget | null {
-  if (typeof value !== 'string') return null;
-  try {
-    const path = new URL(value).pathname.replace(/\/+$/, '');
-    return path === '/onboarding' ? 'onboarding' : null;
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Start request
 // ---------------------------------------------------------------------------

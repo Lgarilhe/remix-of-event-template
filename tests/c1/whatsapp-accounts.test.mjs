@@ -72,16 +72,14 @@ test('WhatsApp actions check ownership before any provider call, and never act f
   assert.match(read('supabase/functions/unipile-accounts/ownership.ts'), /ownership\.kind === 'whatsapp' && ownership\.userId !== callerUserId/);
 });
 
-test('hosted WhatsApp: one provider at a time, browser return addresses ignored', () => {
-  const connection = read('supabase/functions/unipile-accounts/connection.ts');
-  assert.match(connection, /La connexion WhatsApp doit être ouverte séparément/);
-  const hosted = caseBlock('hosted_auth_link').replace(/\/\/.*$/gm, '');
-  assert.doesNotMatch(hosted, /success_redirect_url|failure_redirect_url|org_name/, 'les adresses fournies par le navigateur ne sont jamais lues');
-  assert.match(hosted, /json\(\{ success: true, url \}\)/, 'seulement { success, url }');
+test('hosted WhatsApp: browser return addresses are never read, the old hosted actions are gone', () => {
+  const connection = read('supabase/functions/unipile-accounts/connection.ts').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(connection, /success_redirect_url|failure_redirect_url|org_name/, 'les adresses fournies par le navigateur ne sont jamais lues');
+  assert.match(connection, /const redirectUri = buildRedirectUri\(Deno\.env\.get\('APP_URL'\)\)/, 'adresse de retour fixée par le serveur');
+  assert.doesNotMatch(connection, /redirectUri\s*[:=]\s*(params|String\(params)/);
   assert.match(connection, /config\.whatsapp = \{ allow_methods: \['qr', 'pairing'\] \}/);
-  // Seul un NOM d'une liste fermée (onboarding) est déduit de l'ancienne adresse de retour, jamais l'adresse elle-même.
-  assert.match(connection, /return_to: returnTargetFromUrl\(params\.success_redirect_url\)/);
-  assert.doesNotMatch(connection.replace(/\/\/.*$/gm, ''), /redirectUri\s*[:=]\s*(params|String\(params)/);
+  assert.doesNotMatch(handler, /case 'hosted_auth_link'|case 'connect_credentials'|case 'solve_checkpoint'/, 'anciens noms retirés (réponse « Action non reconnue »)');
+  assert.match(handler, /case 'connect_cookie'/, 'contrat de l extension Chrome gardé');
 });
 
 test('email dissociation uses an exact owned binding without provider access or remote deletion', () => {

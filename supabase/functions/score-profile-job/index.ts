@@ -2886,12 +2886,12 @@ async function maybeEnrichProfile(
       // (l'enrichment est considéré "fait" mais sans consommer de quota natif
       // LinkedIn). Le caller incrémente dailyCount → on s'en fout, c'est pour
       // le quota Konekt (qui peut compter les hits cache séparément si besoin).
-      console.info(`[enrichment-cache] Skipped Unipile call for ${profile.name} (full cache hit)`);
+      console.info(`[enrichment-cache] Skipped LinkedIn call for ${profile.name} (full cache hit)`);
       return true;
     }
     // Cache hit partiel → on continue avec l'appel Unipile pour récupérer
     // ce qui manque, puis on update le cache à la fin.
-    console.info(`[enrichment-cache] Partial cache hit for ${profile.name}, fetching missing sections from Unipile`);
+    console.info(`[enrichment-cache] Partial cache hit for ${profile.name}, fetching missing sections from LinkedIn`);
   }
 
   const reasons: string[] = [];
