@@ -294,7 +294,10 @@ export function useLinkedInSearch({
     loadedFiltersKeyRef.current = sourcingSnapshotKey(INITIAL_FILTERS);
     filtersRef.current = INITIAL_FILTERS;
     searchDispatch({ type: 'RESET_SEARCH', scopeKey: projectScope });
-  }, [projectScope]);
+    // Reset before the component restores the next mission's cached view.
+    setStatusFilter('all');
+    setShowDismissed(false);
+  }, [projectScope, setStatusFilter, setShowDismissed]);
   useEffect(() => {
     // If cache was just hydrated, the in-memory filters are more recent than DB — skip
     if (cacheHydratedRef.current) {
@@ -704,15 +707,16 @@ export function useLinkedInSearch({
   const prevSelectedJobRef = useRef<string | null>(null);
   useEffect(() => {
     const jobId = selectedJob?.id || null;
-    if (!activeProject?.id && prevSelectedJobRef.current !== null && prevSelectedJobRef.current !== jobId) {
-      // Job actually changed → single batched reset (1 render instead of 8)
-      filtersRef.current = INITIAL_FILTERS;
-      pendingLocationRef.current = null;
-      searchDispatch({ type: 'RESET_SEARCH' });
-    }
+    const previousJobId = prevSelectedJobRef.current;
+    prevSelectedJobRef.current = jobId;
+    // Mission jobs are hydrated from their brief after cache restoration.
+    // Only a genuine standalone job change should reset the restored view.
+    if (activeProject?.id || previousJobId === null || previousJobId === jobId) return;
+    filtersRef.current = INITIAL_FILTERS;
+    pendingLocationRef.current = null;
+    searchDispatch({ type: 'RESET_SEARCH' });
     setStatusFilter('all');
     setShowDismissed(false);
-    prevSelectedJobRef.current = jobId;
   }, [selectedJob?.id, activeProject?.id, setStatusFilter, setShowDismissed]);
 
   // Clear filters — single batched dispatch (1 render instead of 8)

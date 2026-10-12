@@ -26,7 +26,7 @@ interface MissionSourcingProps {
 
 export const MissionSourcing = ({ project, layout = 'default', initialPhrase, startWithFilters }: MissionSourcingProps) => {
   const isV3 = layout === 'mission-v3';
-  const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
+  const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts({ selectionScope: project.id });
 
   const jd = (project.job_details || {}) as JobDetails;
   const briefCompletion = countBriefFields(jd);

@@ -68,6 +68,7 @@ const SCORING_FLOOR = ACTION_COSTS.scoring?.floor ?? 2;
  * recherche ; la Liste reste l'affichage par défaut.
  */
 export type SourcingView = 'triage' | 'compact' | 'detailed';
+export type SourcingResultGroup = SourcingGroup;
 const VIEW_OPTIONS: ReadonlyArray<{ value: SourcingView; label: string }> = [
   { value: 'triage', label: 'Tri' },
   { value: 'compact', label: 'Liste' },
@@ -148,6 +149,9 @@ export interface SourcingResultsV3Props {
   /** Affichage des profils à trier et son changement (choix gardé par SearchResultsPanel). */
   view?: SourcingView;
   onViewChange?: (view: SourcingView) => void;
+  /** Groupe repris par la recherche au retour sur cet écran. */
+  group?: SourcingResultGroup;
+  onGroupChange?: (group: SourcingResultGroup) => void;
   /** Tableau dense des profils à trier (affichage « Liste ») ; fourni par SearchResultsPanel. */
   renderCompact?: (args: { profiles: LinkedInProfile[]; allSelected: boolean; onToggleSelectAll: () => void }) => ReactNode;
   /** Fiche d'un profil (affichage « Détaillé ») ; fournie par SearchResultsPanel. */
@@ -161,9 +165,11 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     activeProject, chipsDirty, refineLoading, scrollAreaRef, onRerun, onLoadMore, onRefineSearch, onSetSelection,
     onToggleProfileSelection, onBatchScore, onRetainProfiles, onDismissProfiles, onRestoreCandidate, onOpenProfile,
     onOrderChange, onOpenInMail, onSequenceEnrollSuccess, renderCompact, renderCard, view = 'compact', onViewChange,
+    group, onGroupChange,
   } = props;
 
-  const [tab, setTab] = useState<SourcingGroup>('to_sort');
+  const [localGroup, setLocalGroup] = useState<SourcingResultGroup>('to_sort');
+  const tab = group ?? localGroup;
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const [scoringIds, setScoringIds] = useState<ReadonlySet<string>>(() => new Set());
   const [confirmAi, setConfirmAi] = useState(false);
@@ -277,7 +283,8 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
 
   const pickTab = (next: SourcingGroup) => {
     if (next === tab) return;
-    setTab(next);
+    if (group === undefined) setLocalGroup(next);
+    onGroupChange?.(next);
     wasConfirmingRef.current = false;
     setConfirmAi(false);
     if (selectedProfiles.size > 0) onSetSelection([]);

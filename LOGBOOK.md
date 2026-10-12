@@ -32,6 +32,25 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-12 — BUG — Retour au sourcing sans perdre l’écran configuré
+
+**Contexte** : quitter le sourcing puis revenir pouvait afficher l’accueil malgré les filtres préparés. Le compte LinkedIn revenait au compte présélectionné, et les groupes ou filtres d’affichage pouvaient être remplacés à la restauration. Le parcours de préparation a été reproduit en échec sur les composants initiaux.
+**Fait** : écran stable, filtres modifiés, fenêtre de configuration et groupe de résultats repris dans le cache de recherche. Hydratation après résolution du compte et des mémoires ; aucun écran de chargement interrompu restauré. Le choix du compte reste isolé par utilisateur, organisation et recherche, et revalidé parmi les comptes autorisés. Le nettoyage du défilement ne réécrit plus un ancien état de recherche. Les filtres d’affichage explicites ne sont plus remplacés par l’arrivée des profils ; les vrais changements de contexte ou de poste autonome réinitialisent leur état. Fermeture des filtres : focus rendu au contrôle disponible qui les a ouverts.
+**Impact** : sourcing des missions et recherches autonomes, vues actuelle et ancienne. Interfaces de filtres existantes ; aucun changement de schéma, de score ou d’appel serveur ajouté.
+**Validation** : build réussi ; onze diagnostics TypeScript hérités inchangés, lint sans aggravation et quinze compteurs design inchangés. Seize parcours navigateur sur les composants et hooks réels passent avec transports simulés ; comparaison des dix sources testées par SHA256. Trente profils notés en lots de 20 puis 10 : notes individuelles et sélection conservées après deux retours, sans nouvelle recherche ni notation. Tests comportementaux du choix de compte et de la restauration du hook réussis ; les régressions de préparation et d’affichage échouent sur le code initial.
+
+| Persona | Parcours de retour | Verdict |
+|---|---|---|
+| Guillaume | Trente notes, sélection, compte choisi, Retenus/Écartés, Shortlist et lot suivant repris sans nouvelle recherche | PASS |
+| Claire | Préparation avant première recherche et retour pendant le chargement des mémoires | PASS |
+| Théo | Sauvegarde lente, changement de mission/organisation/utilisateur, compte retiré et vraie révision de critères | PASS |
+| Sophie | 320/390 px, filtres conservés, ouverture/fermeture au clavier et focus rendu ; axe sans violation | PASS |
+
+**Limites** : reprise dans la session du navigateur, aucun sourcing ou modèle réel ni écriture en production. Les tentatives d’images externes du harnais sont interceptées et bloquées.
+**Refs** : branche `codex/fix-sourcing-return-20261012` ; `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-account-selection.test.mjs`, `tests/agent/sourcing-search-lifecycle.test.mjs`.
+
+---
+
 ## 2026-10-11 — SPEC — Rendez-vous : fiche candidat et grille préparée à la planification
 
 **Décision** : Laurent demande que le clic sur un rendez-vous ouvre la fiche candidat sur Évaluation, avec la grille préparée dès la planification et les crédits IA habituels. Les exemples reprennent le panneau candidat et le contenu de profil existant.
