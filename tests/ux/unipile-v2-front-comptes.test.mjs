@@ -26,7 +26,9 @@ test('Réactions, suppression de message et de conversation : la conversation et
 
   const inbox = code('src/components/outreach/MessagesInbox.tsx');
   // La conversation du message (fil fusionné) passe avant la conversation ouverte ; le compte est celui de la conversation.
-  assert.match(inbox, /chatId: message\?\.chat_id \|\| chat\.id, accountId: chat\.account_id \?\? selectedAccount/);
+  assert.match(inbox, /chatId: message\?\.chat_id \|\| chat\.id, accountId: chat\.account_id \|\| selectedAccount/);
+  // '' (conversation ouverte par lien direct) vaut « compte inconnu » : `||`, jamais `??`.
+  assert.match(inbox, /find\(c => c\.id === chatId\)\?\.account_id \|\| selectedAccount/);
   assert.match(inbox, /await deleteMessage\(messageId, ref\)/);
   assert.match(inbox, /await addReaction\(messageId, reaction, ref\)/);
   assert.match(inbox, /await deleteChat\(chatId, chatAccountId\)/);

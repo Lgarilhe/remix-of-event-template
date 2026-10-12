@@ -9,8 +9,8 @@
  *   webhook répond 500 (rejeu) ET le recruteur est prévenu, une seule fois ;
  *   sans séquence ni mission (InMails seuls), l'alerte ouvre la fiche du
  *   candidat (décision du 07/10/2026).
- * - 11 : format new_message sans indication d'expéditeur, vérification
- *   impossible : échec (500) et rejeu, rien n'est clos.
+ * - 11 : message sans indication d'expéditeur (`is_sender` absent), relecture
+ *   du message impossible ou muette : échec (500) et rejeu, rien n'est clos.
  * - 27 : un rendez-vous annule aussi les InMails en attente vers le candidat
  *   (calendly-webhook ; arrêt du moteur sur condition « rendez-vous pris »,
  *   en attente du correctif de process-sequences, hors de ce lot).
@@ -20,8 +20,10 @@
  *
  * Pannes simulées par un déclencheur temporaire posé par psql, limité aux
  * lignes du test et retiré en fin de test (même procédé que
- * seq-reply-replay.spec.ts). Réponses du faux prestataire scriptées par compte
- * seulement, jamais sur la clé '*'. Ignoré sans la stack locale.
+ * seq-reply-replay.spec.ts). Réponses du faux prestataire (API v2) scriptées par
+ * compte seulement, jamais sur la clé '*'. Les webhooks sont des enveloppes v2
+ * (`v2.messageNew`, `v2.emailNew`) remises avec le jeton `?v2_token=` ; la clé de
+ * dédoublonnage est `unipile:v2:<type>:<evt_...>`. Ignoré sans la stack locale.
  */
 import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
@@ -42,20 +44,22 @@ import {
 } from '../helpers/supabase-admin';
 import {
   ENGINE_SKIP_REASON,
-  WEBHOOK_SECRET,
+  callsOf,
   engineAvailable,
   enroll,
   messageSequence,
   minutesFromNow,
-  mockCalls,
-  postJson,
   rand,
+  rawWebhook,
+  routes,
   runCycle,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
+  type V2Envelope,
 } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
@@ -196,37 +200,48 @@ async function inmailRow(id: string) {
 const ts = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : NaN);
 
 // ─── Appels ─────────────────────────────────────────────────────────────────
-function rawWebhook(payload: Record<string, unknown>) {
-  return postJson('/functions/v1/unipile-webhook', payload, { 'unipile-auth': WEBHOOK_SECRET });
-}
-/** Message du candidat, format à plat (message_received), identifiant fixe pour le rejeu. */
+/** Message du candidat (enveloppe v2 message.new), identifiant d'événement fixe pour le rejeu. */
 function replyFrom(accountId: string, profileId: string, o: { chatId?: string } = {}) {
-  const messageId = `msg_dr_${rand()}${rand()}`;
-  return {
-    messageId,
-    eventKey: `unipile:message_received:${messageId}`,
-    payload: {
-      event: 'message_received',
-      account_id: accountId,
-      account_type: 'LINKEDIN',
-      chat_id: o.chatId ?? `chat_dr_${rand()}${rand()}`,
-      message_id: messageId,
-      message: 'Bonjour, désolé pour le délai, je suis intéressé',
-      sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate', attendee_name: 'Camille Martin' },
-    },
-  };
+  const event = v2.messageNew({
+    accountId,
+    chatId: o.chatId ?? `chat_dr_${rand()}${rand()}`,
+    messageId: `msg_dr_${rand()}${rand()}`,
+    senderId: profileId,
+    senderName: 'Camille Martin',
+    text: 'Bonjour, désolé pour le délai, je suis intéressé',
+  });
+  return { messageId: event.payload.id as string, eventKey: dedupKeyOf(event), payload: event };
 }
-/** Message au format new_message imbriqué ; `message` complète ou remplace les champs par défaut. */
-function newMessage(accountId: string, profileId: string, message: Record<string, unknown> = {}) {
-  const id = `m_dr_${rand()}${rand()}`;
-  return {
-    eventKey: `unipile:new_message:${id}`,
-    payload: {
-      event: 'new_message',
-      account_id: accountId,
-      data: { message: { id, chat_id: `chat_dr_${rand()}${rand()}`, sender: { provider_id: profileId }, ...message } },
-    },
-  };
+/** Clé de dédoublonnage d'une enveloppe : type v2 brut et identifiant d'événement. */
+const dedupKeyOf = (event: V2Envelope) => `unipile:v2:${event.type}:${event.id}`;
+/**
+ * Message sans indication d'expéditeur : `is_sender` retiré de la charge (et la conversation si `chatId`
+ * est `null`). Le récepteur relit alors le message auprès du fournisseur.
+ */
+function messageWithoutSender(accountId: string, profileId: string, o: { chatId?: string | null } = {}) {
+  const event = v2.messageNew({
+    accountId,
+    chatId: o.chatId ?? `chat_dr_${rand()}${rand()}`,
+    messageId: `m_dr_${rand()}${rand()}`,
+    senderId: profileId,
+    senderName: 'Camille Martin',
+  });
+  delete event.payload.is_sender;
+  if (o.chatId === null) delete event.payload.chat_id;
+  return { eventKey: dedupKeyOf(event), payload: event, chatId: event.payload.chat_id as string | undefined, messageId: event.payload.id as string };
+}
+/**
+ * Le message est lu deux fois (GET .../chats/{chat}/messages/{message}) : par la capture des actions candidat
+ * (servie normalement), puis par la vérification de l'expéditeur, qui échoue (`second: 'unavailable'`) ou ne dit pas
+ * qui a écrit le message (`second: 'without_sender'`, aucun `is_sender`).
+ */
+function senderReadRoutes(chatId: string, messageId: string, second: 'unavailable' | 'without_sender') {
+  return [
+    routes.message(chatId, { id: messageId, from: 'candidate' }, { times: 1 }),
+    second === 'unavailable'
+      ? routes.fail('getMessage', 'unavailable')
+      : routes.message(chatId, { id: messageId, from: 'candidate', withoutSender: true }),
+  ];
 }
 /** Rendez-vous signé (t=…,v1=HMAC(t.body)), candidat désigné par son URL de profil. */
 async function booking(linkedinUrl: string) {
@@ -349,7 +364,7 @@ test.describe('Décision 8 : réponse reçue après la dernière relance', () =>
   test('format new_message (is_sender faux) : même effet sur une inscription terminée', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E DR8 imbriqué');
     const s = await completedEnrollment(org, org.owner.userId, accountId);
-    const res = await rawWebhook(newMessage(accountId, s.profileId, { is_sender: false }).payload);
+    const res = await rawWebhook(replyFrom(accountId, s.profileId).payload);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const row = await enr(s.enrollmentId);
     expect(row.status).toBe('replied');
@@ -512,7 +527,7 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
 
   test('réponse par e-mail : même alerte à l’auteur de l’inscription quand l’arrêt de la sœur échoue', async () => {
     const s = await scene('E2E DR10 e-mail');
-    const mailbox = `mail_dr_${rand()}${rand()}`;
+    const mailbox = `acc_dr_${rand()}${rand()}`;
     const { error: mbErr } = await admin().from('member_email_accounts').insert({
       organization_id: s.org.orgId, user_id: s.org.owner.userId, linked_by: s.org.owner.userId,
       email_account_id: mailbox, email_address: 'recruteur@e2e.konekt.test', provider: 'GOOGLE',
@@ -522,18 +537,18 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
     await admin().from('sequence_enrollments').update({ email_used: email }).eq('id', s.e1.enrollmentId);
     failSiblingStop([s.e2.enrollmentId]);
 
+    // L'événement ne fait que nommer le courrier : l'application le relit sous le compte de la boîte.
     const emailId = `email_dr_${rand()}${rand()}`;
-    const res = await rawWebhook({
-      event: 'mail_received', account_id: mailbox, email_id: emailId, subject: 'Re: poste',
-      from_attendee: { identifier: email, display_name: 'Camille Martin' },
-      to_attendees: [{ identifier: 'recruteur@e2e.konekt.test', display_name: 'Recruteur' }],
-    });
+    await setMockMode(mailbox, { routes: [routes.email({ emailId, from: email, to: 'recruteur@e2e.konekt.test', subject: 'Re: poste' })] });
+    cleanups.push(() => setMockMode(mailbox, {}));
+    const mail = v2.emailNew({ accountId: mailbox, emailId, subject: 'Re: poste', from: email, to: 'recruteur@e2e.konekt.test', provider: 'google' });
+    const res = await rawWebhook(mail);
     expect(res.status, JSON.stringify(res.body)).toBe(500);
     expect((await enr(s.e1.enrollmentId)).status).toBe('replied');
     const alerts = await alertsOf(s.org.orgId);
     expect(alerts).toHaveLength(1);
     expect(alerts[0].user_id).toBe(s.org.owner.userId);
-    expect(alerts[0].metadata).toMatchObject({ source: ALERT_SOURCE, event_key: `unipile:mail_received:${emailId}` });
+    expect(alerts[0].metadata).toMatchObject({ source: ALERT_SOURCE, event_key: dedupKeyOf(mail) });
   });
 
   // Décision du 07/10/2026 : ni mission ni séquence, la fiche du candidat (l'écran Séquences ne le montre pas).
@@ -574,10 +589,7 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
     const senderId = newProfileId();
     // LinkedIn : l'expéditeur classique correspond à l'identifiant Recruiter des InMails.
     await setMockMode(accountId, {
-      routes: [{
-        method: 'GET', path: `^/api/v1/users/${senderId}$`, status: 200,
-        body: { object: 'UserProfile', provider: 'LINKEDIN', provider_id: senderId, id: recruiterId },
-      }],
+      routes: [routes.profile({ id: recruiterId, slug: `alias-${rand()}` }, { path: `/users/${senderId}$` })],
     });
     cleanups.push(() => setMockMode(accountId, {}));
     await inmail(org, accountId, recruiterId, { status: 'sent', sent_at: minutesFromNow(-DAY), scheduled_at: minutesFromNow(-DAY) });
@@ -600,10 +612,7 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
     const recruiterId = `AEMAAE2EDR${rand()}${rand()}`;
     const senderId = newProfileId();
     await setMockMode(accountId, {
-      routes: [{
-        method: 'GET', path: `^/api/v1/users/${senderId}$`, status: 200,
-        body: { object: 'UserProfile', provider: 'LINKEDIN', provider_id: senderId, id: recruiterId },
-      }],
+      routes: [routes.profile({ id: recruiterId, slug: `alias-${rand()}` }, { path: `/users/${senderId}$` })],
     });
     cleanups.push(() => setMockMode(accountId, {}));
     // Aucun InMail envoyé, aucune inscription : seule la ligne programmée porte cet alias.
@@ -633,36 +642,24 @@ test.describe('Décision 10 : 500 et alerte au recruteur', () => {
 test.describe('Décision 11 : expéditeur non vérifiable, échec et rejeu', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test('@critical vérification des participants impossible : 500, rien n’est clos, clé purgée ; le rejeu vérifié clôt normalement', async () => {
+  test('@critical relecture du message impossible : 500, rien n’est clos, clé purgée ; le rejeu vérifié clôt normalement', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E DR11 vérification');
-    // Identifiants propres (posés avant tout webhook) : l'appel des participants porte l'account_id.
-    await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
-    await setMockMode(accountId, {
-      routes: [
-        { method: 'GET', path: '^/$', status: 503, body: { status: 503, title: 'Service Unavailable' }, times: 1 },
-        {
-          method: 'GET', path: '^/$', status: 200, body: {
-            object: 'ChatAttendeeList', items: [
-              { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
-              { object: 'ChatAttendee', id: 'att_candidate', provider_id: 'ACoAAMOCKCANDIDATE', is_self: 0 },
-            ],
-          },
-        },
-      ],
-    });
-    cleanups.push(() => setMockMode(accountId, {}));
     const profileId = newProfileId();
     const e = await activeWithFollowUp(org, org.owner.userId, accountId, profileId);
 
-    const w = newMessage(accountId, profileId, { sender_attendee_id: 'att_candidate' });
+    // La relecture de vérification (GET .../messages/{id}) échoue en 503 tant que le test ne rend pas la main au fournisseur.
+    const w = messageWithoutSender(accountId, profileId);
+    await setMockMode(accountId, { routes: senderReadRoutes(w.chatId!, w.messageId, 'unavailable') });
+    cleanups.push(() => setMockMode(accountId, {}));
     const failed = await rawWebhook(w.payload);
     expect(failed.status, JSON.stringify(failed.body)).toBe(500);
-    expect((await mockCalls(accountId)).filter((c) => c.scripted).length, 'le 503 scripté a bien été servi').toBeGreaterThanOrEqual(1);
+    expect((await callsOf(accountId, 'getMessage')).filter((c) => c.status === 503).length, 'le 503 scripté a bien été servi').toBeGreaterThanOrEqual(1);
     expect(await dedupRows(w.eventKey), 'clé purgée').toBe(0);
     expect((await enr(e.enrollmentId)).status, 'rien de clos').toBe('active');
     expect((await exec(e.followUp)).status).toBe('scheduled');
     expect(await notificationsOf(org.orgId, 'new_message'), 'aucune notification').toEqual([]);
 
+    await setMockMode(accountId, {});
     const replay = await rawWebhook(w.payload);
     expect(replay.status, JSON.stringify(replay.body)).toBe(200);
     expect((await enr(e.enrollmentId)).status, 'expéditeur vérifié au rejeu').toBe('replied');
@@ -670,33 +667,36 @@ test.describe('Décision 11 : expéditeur non vérifiable, échec et rejeu', () 
     expect(await replies(e.sequenceId)).toBe(1);
   });
 
-  test('participants lus sans « soi » identifiable : 500 (rejeu), rien n’est clos ni compté', async () => {
+  test('message relu sans « soi » identifiable (aucun is_sender) : 500 (rejeu), rien n’est clos ni compté', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E DR11 sans soi');
-    // Réponse générique du faux prestataire : liste de participants vide.
-    await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock/e2e-dr-${rand()}` });
     const profileId = newProfileId();
     const e = await activeWithFollowUp(org, org.owner.userId, accountId, profileId);
-    const w = newMessage(accountId, profileId, { sender_attendee_id: 'att_candidate' });
-    const chatId = (w.payload.data.message as { chat_id: string }).chat_id;
+    const w = messageWithoutSender(accountId, profileId);
+    // La relecture de vérification répond, mais sans dire qui a écrit le message.
+    await setMockMode(accountId, { routes: senderReadRoutes(w.chatId!, w.messageId, 'without_sender') });
+    cleanups.push(() => setMockMode(accountId, {}));
 
     const res = await rawWebhook(w.payload);
     expect(res.status, JSON.stringify(res.body)).toBe(500);
-    const attendeeCalls = (await mockCalls()).filter((c) => c.method === 'GET' && c.path.includes(`/chats/${chatId}/attendees`));
-    expect(attendeeCalls.length, 'participants bien demandés').toBe(1);
+    const reads = (await callsOf(accountId, 'getMessage')).filter((c) => c.path.includes(`/chats/${w.chatId}/messages/`));
+    expect(reads.length, 'message lu par la capture puis relu pour la vérification').toBe(2);
     expect((await enr(e.enrollmentId)).status).toBe('active');
     expect((await exec(e.followUp)).status).toBe('scheduled');
     expect(await replies(e.sequenceId)).toBe(0);
     expect(await dedupRows(w.eventKey)).toBe(0);
   });
 
-  test('ni is_sender, ni conversation, ni participant expéditeur : 500, rien n’est écrit ; is_sender faux clôt toujours', async () => {
+  test('ni is_sender, ni conversation, ni indication à la relecture : 500, rien n’est écrit ; is_sender faux clôt toujours', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E DR11 champs absents');
     const profileId = newProfileId();
     const e = await activeWithFollowUp(org, org.owner.userId, accountId, profileId);
 
-    const noAttendee = newMessage(accountId, profileId);
-    const noChat = newMessage(accountId, profileId, { chat_id: undefined, sender_attendee_id: 'att_candidate' });
-    for (const [label, w] of [['sans participant expéditeur', noAttendee], ['sans conversation', noChat]] as const) {
+    // (a) conversation connue, mais la relecture du message ne dit pas qui l'a écrit ; (b) ni is_sender ni conversation à relire.
+    const noIndication = messageWithoutSender(accountId, profileId);
+    await setMockMode(accountId, { routes: senderReadRoutes(noIndication.chatId!, noIndication.messageId, 'without_sender') });
+    cleanups.push(() => setMockMode(accountId, {}));
+    const noChat = messageWithoutSender(accountId, profileId, { chatId: null });
+    for (const [label, w] of [['sans indication à la relecture', noIndication], ['sans conversation', noChat]] as const) {
       const res = await rawWebhook(w.payload);
       expect(res.status, `${label} : ${JSON.stringify(res.body)}`).toBe(500);
       expect(await dedupRows(w.eventKey), label).toBe(0);
@@ -705,7 +705,7 @@ test.describe('Décision 11 : expéditeur non vérifiable, échec et rejeu', () 
     expect((await exec(e.followUp)).status).toBe('scheduled');
     expect(await notificationsOf(org.orgId, 'new_message')).toEqual([]);
 
-    const explicit = await rawWebhook(newMessage(accountId, profileId, { is_sender: false }).payload);
+    const explicit = await rawWebhook(replyFrom(accountId, profileId).payload);
     expect(explicit.status, JSON.stringify(explicit.body)).toBe(200);
     expect((await enr(e.enrollmentId)).status, 'is_sender faux : réponse').toBe('replied');
   });

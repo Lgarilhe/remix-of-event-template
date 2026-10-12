@@ -19,10 +19,11 @@
  *   G. preuve d'envoi (« Contacté » puis « A répondu ») ; « Marquer comme
  *      répondu » avec deux missions.
  *
- * Réponses scriptées sans la clé '*' : les appels qui ne portent pas de compte
- * (participants, messages, conversation) passent par des identifiants propres
- * à l'organisation (unipile_dsn « unipile.mock?account_id=X&e2e= ») et des
- * routes `url` ; l'IA répond par marqueur (`ai_markers`).
+ * Réponses scriptées sans la clé '*' : le compte est dans le chemin des appels v2
+ * (/v2/{acc}/chats/...), les réponses se règlent donc par compte : le candidat
+ * d'une conversation (mode `candidate_provider_id`, lu par GET /chats/{id}), les
+ * messages (`routes.messages`) ; l'IA répond par marqueur (`ai_markers`).
+ * Les webhooks sont des enveloppes v2 (`v2.messageNew`, `v2.relationNew`).
  *
  * @critical
  */
@@ -46,6 +47,7 @@ import {
   CRON_SECRET,
   ENGINE_SKIP_REASON,
   callFunction,
+  callsOf,
   engineAvailable,
   enroll,
   messageSequence,
@@ -53,11 +55,13 @@ import {
   mockCalls,
   postJson,
   rand,
+  routes,
   runCycle,
   schedule,
   sendingOrg,
   sentInvites,
   setMockMode,
+  v2,
   webhook,
   type MockRoute,
 } from '../helpers/sequence-engine';
@@ -145,39 +149,26 @@ async function setIntegration(orgId: string, patch: Record<string, unknown>) {
   if (error) throw new Error(`organization_integrations: ${error.message}`);
 }
 /**
- * Identifiants LinkedIn propres à l'organisation : tout appel arrive sur « / »
- * avec account_id, et les routes `url` de ce compte s'appliquent.
+ * Candidat de la conversation lue chez le prestataire (GET /v2/{acc}/chats/{id} : autre participant
+ * d'une conversation à deux), avec au besoin des routes scriptées et des réponses d'IA par marqueur.
+ * Remis à zéro en fin de test.
  */
-async function ownVendorRoutes(org: TestOrg, accountId: string, routes: MockRoute[]) {
-  await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
-  await setMockMode(accountId, { routes });
+async function candidateChat(accountId: string, candidateId: string, extra: { routes?: MockRoute[]; ai_markers?: Record<string, string> } = {}) {
+  await setMockMode(accountId, { candidate_provider_id: candidateId, ...extra });
   cleanups.push(() => setMockMode(accountId, {}));
-}
-/** Participants d'une conversation : le compte (att_self) et le candidat. */
-function attendeesRoute(candidateId: string): MockRoute {
-  return {
-    method: 'GET', url: 'e2e=/api/v1/chats/[^/?]+/attendees', status: 200, body: {
-      object: 'ChatAttendeeList', items: [
-        { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
-        { object: 'ChatAttendee', id: 'att_cand', provider_id: candidateId, is_self: 0 },
-      ],
-    },
-  };
 }
 
 // ─── Événements ─────────────────────────────────────────────────────────────
-/** Message du candidat (ou du compte, attendeeId 'att_self'), format à plat. */
-function messageReceived(accountId: string, senderProviderId: string, o: { chatId?: string; messageId?: string; attendeeId?: string } = {}) {
-  return {
-    event: 'message_received', account_id: accountId, account_type: 'LINKEDIN',
-    chat_id: o.chatId ?? `chat_${rand()}`, message_id: o.messageId ?? `msg_${rand()}`,
-    message: 'Bonjour, avec plaisir',
-    sender: { attendee_provider_id: senderProviderId, attendee_id: o.attendeeId ?? 'att_candidate', attendee_name: 'Camille Martin' },
-  };
+/** message.new reçu du candidat (is_sender faux), enveloppe v2. */
+function messageReceived(accountId: string, senderProviderId: string, o: { chatId?: string; messageId?: string } = {}) {
+  return v2.messageNew({
+    accountId, chatId: o.chatId ?? `chat_${rand()}`, messageId: o.messageId ?? `msg_${rand()}`, senderId: senderProviderId,
+    text: 'Bonjour, avec plaisir', senderName: 'Camille Martin',
+  });
 }
-/** Message écrit depuis le compte (format new_message, is_sender vrai). */
+/** message.new écrit depuis le compte lui-même (is_sender vrai : téléphone, écho d'un envoi, note d'invitation). */
 function ownNewMessage(accountId: string, chatId: string, messageId = `m_${rand()}`) {
-  return { event: 'new_message', account_id: accountId, data: { message: { id: messageId, is_sender: true, chat_id: chatId } } };
+  return v2.messageNew({ accountId, chatId, messageId, isSender: true });
 }
 async function notificationsOf(orgId: string) {
   const { data } = await admin().from('notifications').select('id, user_id, type, metadata').eq('organization_id', orgId).eq('type', 'new_message');
@@ -274,10 +265,10 @@ test.describe('B. Message écrit hors Konekt', () => {
     const p = newProfileId();
     const onlyRetained = await row(org, p, m3, 'retained');
     const pToSort = await row(org, p, m1, 'to_sort');
-    await ownVendorRoutes(org, accountId, [attendeesRoute(p)]);
+    await candidateChat(accountId, p);
 
     const chat = `chat_${rand()}`;
-    await webhook(messageReceived(accountId, 'ACoAAMOCKME', { chatId: chat, attendeeId: 'att_self' }));
+    await webhook(ownNewMessage(accountId, chat));
 
     const s = await candidateRowState(onlyRetained);
     expect({ stage: s.general_stage, source: s.decision_source }, 'Retenu dans une seule mission : « Contacté »').toEqual({ stage: 'contacted', source: 'system' });
@@ -285,15 +276,19 @@ test.describe('B. Message écrit hors Konekt', () => {
     const links = await linksOf(org.orgId, p);
     expect(links.map((l) => ({ project: l.project_id, source: l.source, kind: l.last_send_kind, chat: l.chat_id })))
       .toEqual([{ project: m3, source: 'outside', kind: 'outside', chat }]);
-    const attendeeCalls = (await mockCalls(accountId)).filter((c) => String(c.query.e2e ?? '').endsWith(`/chats/${chat}/attendees`));
-    expect(attendeeCalls.length, 'participants lus une seule fois (vérification de l’expéditeur)').toBe(1);
+    // La v2 donne is_sender dans le message : plus de lecture des participants pour savoir qui écrit. La
+    // conversation est lue pour retrouver le candidat d'un fil non rattaché (une lecture) et par la capture
+    // des réponses aux actions candidat, propre à tout message reçu (une lecture de plus, aucune écriture ici).
+    const chatReads = (await callsOf(accountId, 'getChat')).filter((c) => c.path.endsWith(`/chats/${chat}`));
+    expect(chatReads.length, `deux lectures : la capture, puis le candidat du fil non rattaché (${JSON.stringify(chatReads.map((c) => c.path))})`).toBe(2);
+    expect(await callsOf(accountId, 'getParticipantsList'), 'participants jamais lus').toEqual([]);
 
     // Retenu dans deux missions : ambigu, rien.
     const two = newProfileId();
-    await setMockMode(accountId, { routes: [attendeesRoute(two)] });
+    await candidateChat(accountId, two);
     const twoA = await row(org, two, m1, 'retained');
     const twoB = await row(org, two, m2, 'retained');
-    await webhook(messageReceived(accountId, 'ACoAAMOCKME', { chatId: `chat_${rand()}`, attendeeId: 'att_self' }));
+    await webhook(ownNewMessage(accountId, `chat_${rand()}`));
     expect([await stage(twoA), await stage(twoB)], 'deux missions : rien').toEqual(['retained', 'retained']);
     expect(await linksOf(org.orgId, two)).toEqual([]);
   });
@@ -317,8 +312,11 @@ test.describe('B. Message écrit hors Konekt', () => {
     expect(after.last_mission_send_at, 'envoi attribué de M1 inchangé (décision 2)').toBe(aged.last_mission_send_at);
     expect(new Date(after.last_outbound_at!).getTime(), 'dernier message sortant daté').toBeGreaterThan(new Date(aged.last_outbound_at!).getTime());
     expect((await linksOf(org.orgId, p)).length, 'aucun lien outside').toBe(1);
-    // Candidat lu dans le lien : aucun appel des participants.
-    expect((await mockCalls()).filter((c) => c.method === 'GET' && c.path.includes(`/chats/${chat}/attendees`))).toEqual([]);
+    // Candidat lu dans le lien : la conversation n'est lue qu'une fois (la capture des réponses aux actions
+    // candidat, comme au premier test), jamais pour retrouver le candidat, et jamais ses participants.
+    const reads = (await mockCalls(accountId)).filter((c) => c.method === 'GET' && c.path.includes(`/chats/${chat}`));
+    expect(reads.filter((c) => c.op === 'getChat').length, JSON.stringify(reads.map((c) => c.op))).toBeLessThanOrEqual(1);
+    expect(reads.filter((c) => c.op === 'getParticipantsList')).toEqual([]);
 
     await webhook(messageReceived(accountId, p, { chatId: chat }));
     expect(await stage(r1), 'réponse : mission du fil').toBe('replied');
@@ -355,8 +353,8 @@ test.describe('B. Message écrit hors Konekt', () => {
     expect(engineLink!.enrollment_id).toBe(e.enrollmentId);
     expect(engineLink!.last_send_kind).toBe('message');
     expect(engineLink!.outbound_pending_at, 'marqueur posé avant le POST, jamais effacé').not.toBeNull();
-    expect(engineLink!.chat_id, 'conversation rendue par l’envoi').toMatch(/^chat_mock_/);
-    expect(engineLink!.last_outbound_message_id).toMatch(/^msg_mock_/);
+    expect(engineLink!.chat_id, 'conversation rendue par l’envoi').toMatch(/^CLASSIC_\d+-CHAT$/);
+    expect(engineLink!.last_outbound_message_id).toMatch(/^CLASSIC_\d+-MSG$/);
     await webhook(ownNewMessage(accountId, engineLink!.chat_id!));
     expect(await stage(q2), 'écho d’un envoi de moins de 10 min : rien').toBe('retained');
     expect((await linksOf(org.orgId, q)).filter((x) => x.source === 'outside')).toEqual([]);
@@ -387,22 +385,19 @@ test.describe('B. Message écrit hors Konekt', () => {
       .toEqual({ job: `project:${m1}`, by: org.owner.userId, stage: 'contacted', source: 'system' });
     await ageLink(invLink.id);
 
-    // Participants scriptés pour ce compte (identifiants propres à l'organisation).
-    // Le cycle du moteur a mis en cache l'absence d'identifiants propres pour 60 s
-    // (resolve-org-credentials, cache négatif) : on attend son expiration.
-    await ownVendorRoutes(org, accountId, [attendeesRoute(p)]);
-    await new Promise((resolve) => setTimeout(resolve, 61_000));
+    // Candidat de la conversation scripté pour ce compte (lu par GET /chats/{id}).
+    await candidateChat(accountId, p);
     // Acceptation, puis écho de la note sur la conversation créée.
-    await webhook({ event: 'new_relation', account_id: accountId, account_type: 'LINKEDIN', user_provider_id: p, user_full_name: 'Camille Martin', user_public_identifier: `camille-${rand()}` });
+    await webhook(v2.relationNew({ accountId, userId: p, name: 'Camille Martin', slug: `camille-${rand()}` }));
     const chat = `chat_${rand()}`;
-    await webhook(messageReceived(accountId, 'ACoAAMOCKME', { chatId: chat, attendeeId: 'att_self' }));
+    await webhook(ownNewMessage(accountId, chat));
     expect(await stage(r2), 'note d’invitation : M2 intacte').toBe('retained');
     const afterNote = await linksOf(org.orgId, p);
     expect(afterNote.map((l) => ({ project: l.project_id, chat: l.chat_id, source: l.source })), 'conversation complétée sur le lien de l’invitation')
       .toEqual([{ project: m1, chat, source: 'sequence' }]);
 
     // Réponse du candidat sur cette conversation.
-    await webhook(messageReceived(accountId, p, { chatId: chat, attendeeId: 'att_cand' }));
+    await webhook(messageReceived(accountId, p, { chatId: chat }));
     expect(await stage(created!.id), 'réponse dans la mission de l’invitation').toBe('replied');
     expect(await stage(r2)).toBe('retained');
   });
@@ -483,8 +478,8 @@ test.describe('D. Envois', () => {
     const [link] = await linksOf(org.orgId, p);
     expect({ project: link.project_id, source: link.source, kind: link.last_send_kind }).toEqual({ project: m1, source: 'manual', kind: 'message' });
     expect(link.outbound_pending_at, 'marqueur posé avant le POST (écho reconnu au webhook)').not.toBeNull();
-    expect(link.chat_id).toMatch(/^chat_mock_/);
-    expect(link.last_outbound_message_id).toMatch(/^msg_mock_/);
+    expect(link.chat_id).toMatch(/^CLASSIC_\d+-CHAT$/);
+    expect(link.last_outbound_message_id).toMatch(/^CLASSIC_\d+-MSG$/);
     const rows = await rowsOf(org.orgId, p);
     expect(rows.map((r) => ({ project: r.project_id, job: r.job_id, by: r.created_by, stage: r.general_stage, source: r.decision_source })))
       .toEqual([{ project: m1, job: `project:${m1}`, by: org.owner.userId, stage: 'contacted', source: 'system' }]);
@@ -727,16 +722,9 @@ test.describe('E. Rendez-vous Calendly', () => {
 test.describe('F. auto-analyze-message', () => {
   test.describe.configure({ mode: 'serial' });
 
-  function chatRoutes(candidateId: string, messages: Array<{ text: string; is_sender: boolean; timestamp: string }>): MockRoute[] {
-    return [
-      { method: 'GET', url: 'e2e=/api/v1/chats/[^/?]+/messages', status: 200, body: { object: 'MessageList', items: [...messages].reverse(), cursor: null } },
-      {
-        method: 'GET', url: 'e2e=/api/v1/chats/[^/?]+$', status: 200, body: {
-          object: 'Chat', attendee_provider_id: candidateId,
-          attendees: [{ is_self: true, provider_id: 'ACoAAMOCKME' }, { is_self: false, provider_id: candidateId, display_name: 'Camille Martin' }],
-        },
-      },
-    ];
+  /** Messages de la conversation, du plus récent au plus ancien (routes.messages). */
+  function chatRoutes(chatId: string, messages: Array<{ text: string; is_sender: boolean; timestamp: string }>): MockRoute[] {
+    return [routes.messages(chatId, messages.map((m) => ({ from: m.is_sender ? 'self' as const : 'candidate' as const, text: m.text, at: m.timestamp })))];
   }
   function analyze(org: TestOrg, accountId: string, chatId: string, senderId: string) {
     return postJson('/functions/v1/auto-analyze-message', { chat_id: chatId, account_id: accountId, sender_id: senderId, organization_id: org.orgId },
@@ -753,11 +741,9 @@ test.describe('F. auto-analyze-message', () => {
     const r2 = await row(org, p, m2, 'retained');
     const chat = `chat_${rand()}`;
     await konektSend(org, accountId, p, m1, { chatId: chat });
-    // Identifiants propres à l'organisation : conversation et messages scriptés pour ce compte.
-    await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
-    cleanups.push(() => setMockMode(accountId, {}));
-    await setMockMode(accountId, {
-      routes: chatRoutes(p, [
+    // Conversation et messages scriptés pour ce compte (le candidat est l'autre participant).
+    await candidateChat(accountId, p, {
+      routes: chatRoutes(chat, [
         { text: 'Bonjour, une mission pour vous', is_sender: true, timestamp: minutesFromNow(-5) },
         { text: `Oui, avec plaisir ${marker}`, is_sender: false, timestamp: minutesFromNow(1) },
       ]),
@@ -777,7 +763,7 @@ test.describe('F. auto-analyze-message', () => {
     const q1 = await row(org, q, m1, 'contacted');
     const chatQ = `chat_${rand()}`;
     await konektSend(org, accountId, q, m1, { chatId: chatQ });
-    await setMockMode(accountId, { routes: chatRoutes(q, [{ text: 'Ancien message', is_sender: false, timestamp: minutesFromNow(-3 * DAY) }]) });
+    await candidateChat(accountId, q, { routes: chatRoutes(chatQ, [{ text: 'Ancien message', is_sender: false, timestamp: minutesFromNow(-3 * DAY) }]) });
     const resQ = await analyze(org, accountId, chatQ, q);
     expect(resQ.status, JSON.stringify(resQ.body)).toBe(200);
     expect(await stage(q1), 'message antérieur au premier contact : rien').toBe('contacted');
@@ -796,19 +782,17 @@ test.describe('F. auto-analyze-message', () => {
     if (error) throw new Error(`gdpr_erasures: ${error.message}`);
     cleanups.push(() => admin().from('gdpr_erasures').delete().eq('id', (erasure as { id: string }).id));
     const chat = `chat_${rand()}`;
-    await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
-    cleanups.push(() => setMockMode(accountId, {}));
-    await setMockMode(accountId, {
-      routes: [attendeesRoute(p), ...chatRoutes(p, [
+    await candidateChat(accountId, p, {
+      routes: chatRoutes(chat, [
         { text: 'Bonjour, une mission pour vous', is_sender: true, timestamp: minutesFromNow(-3 * DAY) },
         { text: `Je reviens vers vous ${marker}`, is_sender: false, timestamp: minutesFromNow(0) },
-      ])],
+      ]),
       ai_markers: { [marker]: JSON.stringify({ intent: 'interested', confidence: 90, summary: `Résumé ${marker}` }) },
     });
     const before = await candidateRowState(r1);
 
     // Réponse au webhook, puis analyse sans le drapeau du webhook (pire cas : rattrapage demandé).
-    await webhook(messageReceived(accountId, p, { chatId: chat, attendeeId: 'att_cand' }));
+    await webhook(messageReceived(accountId, p, { chatId: chat }));
     const res = await analyze(org, accountId, chat, p);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     // L'analyse lancée sans attente par le webhook a eu le temps de finir.

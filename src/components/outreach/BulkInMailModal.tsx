@@ -75,6 +75,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Job } from '@/types/jobs';
 import { useInMailBalance } from '@/hooks/useInMailBalance';
+import { useSendLicence } from '@/hooks/useSendLicence';
+import { balanceKeyOf, subjectHelp, subjectRequired } from '@/lib/inmailLicence';
 import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { plural } from '@/lib/plural';
@@ -293,11 +295,16 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // InMail balance from real API
   const { balance, isLoading: isLoadingBalance, error: balanceError, refetch: refetchBalance, hasCredits, getCredits } = useInMailBalance(accountId);
 
-  // Recruiter credits (primary for InMails). Un destinataire déjà en relation
-  // reçoit un message gratuit (process-inmail-queue, network_distance 1) : il
-  // ne consomme pas de crédit. Les soldes Sales Navigator ou Premium ne sont
-  // pas additionnés : l'envoi passe par l'API Recruiter.
-  const recruiterCredits = getCredits('recruiter');
+  // Crédits de la licence qui enverra : la file envoie avec la licence ACTIVE du
+  // compte (Recruiter, Sales Navigator ou Classic, src/lib/inmailLicence.ts), et
+  // lit le solde de celle-là seulement. Un destinataire déjà en relation reçoit
+  // un message gratuit (process-inmail-queue, network_distance 1) : il ne
+  // consomme pas de crédit. Les soldes des autres licences ne sont pas additionnés.
+  // Licence inconnue (contrats illisibles) : le navigateur ne bloque pas, le
+  // serveur revérifie le solde avant chaque envoi.
+  const { licence: sendLicence, isResolving: isResolvingLicence } = useSendLicence(accountId);
+  const licenceCredits = sendLicence ? getCredits(balanceKeyOf(sendLicence)) : 0;
+  const needsSubject = sendLicence === null || subjectRequired(sendLicence);
   // Avant la génération (et pendant) : estimation sur tous les destinataires
   // visés. Une fois les messages générés : seuls ceux qui ont un message seront
   // planifiés, les crédits requis portent sur eux.
@@ -306,9 +313,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const freeMessageCount = billedRecipients.filter(r => queueNetworkDistance(r) === 1).length;
   const paidInMailCount = billedRecipients.length - freeMessageCount;
   const creditsNeeded = paidInMailCount;
-  const hasEnoughCredits = creditsNeeded === 0 || hasCredits('recruiter', creditsNeeded);
+  const hasEnoughCredits = creditsNeeded === 0
+    || !sendLicence
+    || hasCredits(balanceKeyOf(sendLicence), creditsNeeded);
   const creditsBreakdown = `${paidInMailCount} InMail${paidInMailCount > 1 ? 's' : ''} payant${paidInMailCount > 1 ? 's' : ''}, ${freeMessageCount} message${freeMessageCount > 1 ? 's' : ''} gratuit${freeMessageCount > 1 ? 's' : ''} (déjà en relation)`;
-  const isNearLimit = recruiterCredits > 0 && recruiterCredits <= 20; // Warning when less than 20 credits
+  const isNearLimit = licenceCredits > 0 && licenceCredits <= 20; // Warning when less than 20 credits
 
   // Get user's timezone
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -316,6 +325,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Current recipient
   const currentRecipient = recipients[currentRecipientIndex];
   const currentMessage = currentRecipient ? generatedMessages[currentRecipient.id] : null;
+  // Le destinataire affiché doit avoir un objet : licence Recruiter ou Sales
+  // Navigator, sauf s'il est déjà en relation (message gratuit sans objet).
+  const subjectIsRequired = subjectRequired(sendLicence)
+    && !(currentRecipient && queueNetworkDistance(currentRecipient) === 1);
 
   // Count how many messages are ready - only count messages for CURRENT recipients
   const currentRecipientIds = new Set(recipients.map(r => r.id));
@@ -663,7 +676,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
     // Check credit availability before queueing
     if (!hasEnoughCredits) {
-      toast.error(`Crédits InMail insuffisants (${recruiterCredits} restants, ${creditsNeeded} requis)`);
+      toast.error(`Crédits InMail insuffisants (${licenceCredits} restants, ${creditsNeeded} requis)`);
       return;
     }
 
@@ -682,6 +695,23 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         }
       : generatedMessages;
     if (messages !== generatedMessages) setGeneratedMessages(messages);
+
+    // Recruiter et Sales Navigator exigent un objet (la file refuserait l'InMail
+    // sans objet) ; Classic n'en a pas, son objet généré n'est pas montré. Un
+    // destinataire déjà en relation reçoit un message gratuit sans objet.
+    if (subjectRequired(sendLicence)) {
+      const missingSubject = recipients.filter(
+        r => messages[r.id] && queueNetworkDistance(r) !== 1 && messages[r.id].subject.trim() === '',
+      );
+      if (missingSubject.length > 0) {
+        // Le premier InMail à corriger s'affiche dans l'éditeur.
+        setCurrentRecipientIndex(recipients.indexOf(missingSubject[0]));
+        toast.error(missingSubject.length === 1
+          ? `Ajoutez un objet à l'InMail de ${missingSubject[0].name || 'ce candidat'} avant de planifier.`
+          : `Ajoutez un objet aux ${missingSubject.length} InMails sans objet avant de planifier.`);
+        return;
+      }
+    }
 
     setIsQueueing(true);
 
@@ -952,9 +982,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1">
-                    <Badge variant={!hasEnoughCredits ? 'danger' : isNearLimit ? 'warning' : 'muted'}>
-                      {plural(recruiterCredits, 'crédit InMail', 'crédits InMail')}
-                    </Badge>
+                    {sendLicence && (
+                      <Badge variant={!hasEnoughCredits ? 'danger' : isNearLimit ? 'warning' : 'muted'}>
+                        {plural(licenceCredits, 'crédit InMail', 'crédits InMail')}
+                      </Badge>
+                    )}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -983,7 +1015,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     <span>
                       {balanceError
                         ? "Le solde de crédits InMail n'a pas pu être lu. Actualisez le solde, puis réessayez."
-                        : `Crédits insuffisants (${recruiterCredits} restants, ${creditsNeeded} requis)`}
+                        : `Crédits insuffisants (${licenceCredits} restants, ${creditsNeeded} requis)`}
                     </span>
                   </div>
                 )}
@@ -1030,17 +1062,19 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   variant="primary"
                   size="lg"
                   onClick={handleGenerateAll}
-                  disabled={isGenerating || !hasEnoughCredits || !canSendInMails || !!accountBlockReason || duplicatesUnchecked || recipients.length === 0 || missionConfigStatus === 'loading' || missionConfigStatus === 'error'}
-                  loading={isGenerating || missionConfigStatus === 'loading'}
+                  disabled={isGenerating || isResolvingLicence || !hasEnoughCredits || !canSendInMails || !!accountBlockReason || duplicatesUnchecked || recipients.length === 0 || missionConfigStatus === 'loading' || missionConfigStatus === 'error'}
+                  loading={isGenerating || isResolvingLicence || missionConfigStatus === 'loading'}
                   className="w-full"
                 >
                   {isGenerating
                     ? `Génération ${generatingIndex + 1} sur ${recipients.length}…`
                     : !hasEnoughCredits
                       ? 'Crédits insuffisants'
-                      : missionConfigStatus === 'loading'
-                        ? 'Chargement des réglages de la mission…'
-                        : <>Générer {recipients.length} message{recipients.length > 1 ? 's' : ''}</>}
+                      : isResolvingLicence
+                        ? 'Vérification de votre compte LinkedIn…'
+                        : missionConfigStatus === 'loading'
+                          ? 'Chargement des réglages de la mission…'
+                          : <>Générer {recipients.length} message{recipients.length > 1 ? 's' : ''}</>}
                 </Button>
 
                 {/* Progression de la génération */}
@@ -1131,15 +1165,28 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                 {/* Objet et message (identifiants fixes : repères des parcours de bout en bout) */}
                 <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="subject" className="text-xs font-medium text-muted-foreground">Objet</Label>
-                    <Input
-                      id="subject"
-                      value={editingSubject}
-                      onChange={(e) => setEditingSubject(e.target.value)}
-                      placeholder="Objet de l'InMail"
-                    />
-                  </div>
+                  {needsSubject && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="subject" className="text-xs font-medium text-muted-foreground">Objet</Label>
+                      <Input
+                        id="subject"
+                        value={editingSubject}
+                        onChange={(e) => setEditingSubject(e.target.value)}
+                        placeholder="Objet de l'InMail"
+                        aria-required={subjectIsRequired || undefined}
+                        aria-describedby={subjectIsRequired && subjectHelp(sendLicence) ? 'subject-help' : undefined}
+                        error={subjectIsRequired && editingSubject.trim() === ''}
+                      />
+                      {subjectIsRequired && subjectHelp(sendLicence) && (
+                        <p
+                          id="subject-help"
+                          className={cn('text-xs', editingSubject.trim() === '' ? 'text-danger' : 'text-muted-foreground')}
+                        >
+                          {editingSubject.trim() === '' ? 'Ajoutez un objet pour pouvoir planifier. ' : ''}{subjectHelp(sendLicence)}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
@@ -1315,7 +1362,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               preview={firstReady && firstReadyMessage
                 ? {
                     candidateName: firstReady.name || 'ce candidat',
-                    items: [{ key: firstReady.id, label: 'InMail', subject: firstReadyMessage.subject || null, text: firstReadyMessage.message }],
+                    items: [{ key: firstReady.id, label: 'InMail', subject: needsSubject ? firstReadyMessage.subject || null : null, text: firstReadyMessage.message }],
                   }
                 : null}
             />

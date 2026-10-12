@@ -130,6 +130,8 @@ export interface Message {
   subject?: string;
   /** Type Unipile : MESSAGE | INMAIL | etc. */
   message_type?: string;
+  /** Conversation du message (rendue par le serveur) : un fil fusionné porte plusieurs conversations. */
+  chat_id?: string | null;
 }
 
 export interface SequenceEnrollmentInfo {

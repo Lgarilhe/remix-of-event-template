@@ -43,19 +43,19 @@ import {
 } from '../helpers/supabase-admin';
 import {
   ENGINE_SKIP_REASON,
-  WEBHOOK_SECRET,
   callFunction,
   engineAvailable,
   enroll,
   messageSequence,
   minutesFromNow,
-  postJson,
   rand,
+  rawWebhook as postWebhook,
   runCycle,
   runEngine,
   schedule,
   sendingOrg,
   sentTexts,
+  v2,
 } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
@@ -147,25 +147,23 @@ function logSince(offset: number): string {
 }
 
 // ─── Appels ─────────────────────────────────────────────────────────────────
-/** Webhook LinkedIn sans exigence de statut. */
+/** Webhook v2 (jeton ?v2_token=) sans exigence de statut : le helper `webhook` exige 200. */
 function rawWebhook(payload: Record<string, unknown>) {
-  return postJson('/functions/v1/unipile-webhook', payload, { 'unipile-auth': WEBHOOK_SECRET });
+  return postWebhook(payload);
 }
-/** Message du candidat, format à plat (message_received), identifiant de message fixe pour le rejeu. */
+/**
+ * Message du candidat : enveloppe message.new, identifiant d'événement evt_ fixe. Le rejeu poste la MÊME
+ * enveloppe (même `id`), comme le fournisseur ; la clé de dédoublonnage est `unipile:v2:message.new:<evt>`.
+ */
 function replyFrom(accountId: string, profileId: string) {
   const messageId = `msg_rr_${rand()}`;
+  const envelope = v2.messageNew({
+    accountId, chatId: `chat_rr_${rand()}`, messageId, senderId: profileId, senderName: 'Camille Martin', text: 'Bonjour, oui avec plaisir',
+  });
   return {
     messageId,
-    eventKey: `unipile:message_received:${messageId}`,
-    payload: {
-      event: 'message_received',
-      account_id: accountId,
-      account_type: 'LINKEDIN',
-      chat_id: `chat_rr_${rand()}`,
-      message_id: messageId,
-      message: 'Bonjour, oui avec plaisir',
-      sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate', attendee_name: 'Camille Martin' },
-    },
+    eventKey: `unipile:v2:message.new:${envelope.id}`,
+    payload: envelope as unknown as Record<string, unknown>,
   };
 }
 

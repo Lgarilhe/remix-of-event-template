@@ -266,6 +266,29 @@ export const routes = {
       .sort((x, y) => Date.parse(y.timestamp) - Date.parse(x.timestamp));
     return { method: 'GET', op: 'getMessagesList', path: `/chats/${escapeRe(encodeURIComponent(chatId))}/messages$`, body: { data }, ...extra };
   },
+  /**
+   * Un message relu (GET /v2/{acc}/chats/{chat}/messages/{id}, op getMessage). `withoutSender` retire `is_sender` :
+   * la relecture ne dit pas qui l'a écrit. Sans route, le faux fournisseur rend un message du candidat.
+   */
+  message(
+    chatId: string,
+    m: { id: string; from: 'candidate' | 'self'; text?: string; senderId?: string; withoutSender?: boolean },
+    extra: Partial<MockRoute> = {},
+  ): MockRoute {
+    const isSender = m.from === 'self';
+    const senderId = m.senderId ?? (isSender ? SELF_ID : CANDIDATE_ID);
+    const body: Record<string, unknown> = {
+      object: 'Message', id: m.id, text: m.text ?? 'Bonjour', sender_id: senderId, chat_id: chatId, timestamp: new Date().toISOString(),
+      is_sender: isSender, is_hidden: false, is_seen: false, is_delivered: true, is_deleted: false, is_edited: false, is_pinned: false,
+      is_event: false, is_mentionned: false, reactions_counter: [], provider: 'linkedin', attachments: [], hyperlinks: [],
+      sender: { object: 'User', id: senderId, type: 'individual', display_name: isSender ? 'Compte test' : 'Test Candidat' },
+      specifics: { type: 'MESSAGE' },
+    };
+    if (m.withoutSender) delete body.is_sender;
+    return {
+      method: 'GET', op: 'getMessage', path: `/chats/${escapeRe(encodeURIComponent(chatId))}/messages/${escapeRe(encodeURIComponent(m.id))}$`, body, ...extra,
+    };
+  },
   /** Profil lu (GET /v2/{acc}/users/{id}) : distance specifics.network_distance, jeton de visite. */
   profile(p: { distance?: string; id?: string; slug?: string; invitationPending?: boolean } = {}, extra: Partial<MockRoute> = {}): MockRoute {
     const id = p.id ?? CANDIDATE_ID;
@@ -281,9 +304,35 @@ export const routes = {
   inmailCredits(credits: { classic?: number; recruiter?: number; sales_navigator?: number }, extra: Partial<MockRoute> = {}): MockRoute {
     return { method: 'GET', op: 'getInmailCredits', body: { object: 'InmailCredits', credits }, ...extra };
   },
+  /**
+   * E-mail relu sous le compte de la boîte (GET /v2/{acc}/emails/{id}) : l'événement email.new ne fait que le nommer,
+   * l'application le relit pour connaître l'expéditeur et les destinataires. À poser sur le compte de la boîte,
+   * avec les mêmes adresses que `v2.emailNew`.
+   */
+  email(
+    e: { emailId: string; from: string; to: string; subject?: string; bodyPlain?: string; headers?: { name: string; value: string }[]; threadId?: string; at?: string },
+    extra: Partial<MockRoute> = {},
+  ): MockRoute {
+    const text = e.bodyPlain ?? 'Merci';
+    const body = {
+      object: 'Email', id: e.emailId, message_id: `<${e.emailId}@mock.invalid>`, thread_id: e.threadId ?? `thread_${e.emailId}`,
+      subject: e.subject ?? 'Re: Bonjour', body: `<p>${text}</p>`, body_plain: text, snippet: text, headers: e.headers ?? [],
+      from: [{ email: e.from }], to: [{ email: e.to }], cc: [], bcc: [], reply_to: [], date: e.at ?? new Date().toISOString(),
+      attachments: [], folders: ['INBOX'], is_unread: true,
+    };
+    return { method: 'GET', op: 'getEmail', path: `/emails/${escapeRe(encodeURIComponent(e.emailId))}$`, body, ...extra };
+  },
   /** Échec d'une opération avec un corps d'erreur nommé (PROVIDER_ERRORS). */
   fail(op: string, preset: keyof typeof PROVIDER_ERRORS | string, extra: Partial<MockRoute> = {}): MockRoute {
     return { op, preset, ...extra };
+  },
+  /**
+   * Échec de l'ouverture d'une nouvelle conversation, quelle que soit la route choisie par le moteur : par boîte
+   * (startChatFromInbox, /inboxes/{id}/chats/send) ou sans boîte (startChat, /chats/send). Un refus `validation` ou
+   * `not_found` de la route par boîte fait réessayer sans boîte (deux POST), les autres erreurs n'ont qu'un POST.
+   */
+  failNewChat(preset: keyof typeof PROVIDER_ERRORS | string, extra: Partial<MockRoute> = {}): MockRoute {
+    return { method: 'POST', path: '/chats/send$', preset, ...extra };
   },
 };
 

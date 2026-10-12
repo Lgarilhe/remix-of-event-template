@@ -8,14 +8,9 @@
  * (e2e/local-stack) ; LinkedIn est simulé par vendor-mock.mjs, qui journalise
  * chaque appel. Ignoré sans cette stack.
  *
- * Limite du faux prestataire : il rattache un appel à un compte par le
- * paramètre account_id. Deux appels du moteur n'en portent pas : la lecture
- * des messages d'une conversation (GET /chats/{id}/messages) et l'envoi dans
- * une conversation existante (POST /chats/{id}/messages). Pour scripter ces
- * réponses sans toucher à la clé '*', l'identifiant de conversation renvoyé
- * porte « ?account_id=<compte>&c= » : le moteur l'insère tel quel dans l'URL,
- * le faux prestataire lit alors le compte et le chemin devient
- * /api/v1/chats/<id>. Voir replyChat().
+ * Faux prestataire LinkedIn : API v2 uniquement (chemins /v2/{acc_...}/...), chaque appel
+ * porte le compte dans son chemin. Les conversations se scriptent par `routes.chatLookup` et
+ * `routes.messages`, les erreurs par `routes.fail` (voir e2e/helpers/sequence-engine.ts).
  *
  * `force: true` lève la fenêtre d'envoi (jours ouvrés 8 h-19 h).
  *
@@ -45,11 +40,14 @@ import {
   enroll,
   enrollmentRow,
   executionsOf,
+  isNewChat,
   messageSequence,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  recipientOf,
+  routes,
   runCycle,
   runEngine,
   schedule,
@@ -57,6 +55,7 @@ import {
   setMockMode,
   setPaidPlan,
   type MockCall,
+  type MockRoute,
 } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
@@ -136,22 +135,44 @@ async function postsOf(accountId: string): Promise<MockCall[]> {
   return (await mockCalls(accountId)).filter((c) => c.method === 'POST');
 }
 
-const isNewChatPost = (c: MockCall) => c.method === 'POST' && c.path === '/api/v1/chats';
+const isNewChatPost = isNewChat;
 
-/** Conversation scriptable pour le compte (voir l'en-tête du fichier). */
-function replyChat(accountId: string) {
-  const base = `chat${rand()}${rand()}`;
-  return { id: `${base}?account_id=${accountId}&c=`, path: `^/api/v1/chats/${base}$` };
+/** Conversation scriptable pour le compte : identifiant de conversation propre au test. */
+function replyChat(_accountId: string) {
+  return { id: `chat${rand()}${rand()}` };
 }
 
-const chatListRoute = (chatId: string) => ({
-  method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$',
-  body: { object: 'ChatList', items: [{ id: chatId }], cursor: null },
+/** Recherche de conversation du candidat (GET /users/{id}/chat) : une conversation. */
+const chatListRoute = (chatId: string): MockRoute => routes.chatLookup([chatId]);
+
+/** Messages de la conversation : une réponse du candidat à la date donnée. */
+const candidateReply = (chatId: string, at: string): MockRoute =>
+  routes.messages(chatId, [{ from: 'candidate', text: 'Oui, avec plaisir', at, id: `m_${rand()}` }]);
+
+/**
+ * Ouverture d'une nouvelle conversation retardée ou à corps imposé : la route par boîte (startChatFromInbox) ou sans
+ * boîte (startChat) selon le compte, d'où le chemin commun `/chats/send`.
+ */
+/**
+ * Lecture de la conversation du candidat refusée en 403 par le fournisseur pour une raison qui n'est pas l'état du
+ * compte (corps neutre : ni reconnexion, ni compte limité) : le candidat a bloqué le compte.
+ */
+const candidateBlockedRoute = (): MockRoute => ({
+  method: 'GET', op: 'getUserChat', status: 403, body: { status: 403, type: 'errors/forbidden', title: 'Forbidden', detail: 'Not allowed' },
 });
 
-const candidateReply = (at: string) => ({
-  object: 'MessageList', cursor: null,
-  items: [{ id: `m_${rand()}`, is_sender: 0, text: 'Oui, avec plaisir', timestamp: at }],
+/** Un message postérieur sans indicateur d'expéditeur (`is_sender` absent) : l'auteur reste indéterminé. */
+const undeterminedSenderMessages = (chatId: string): MockRoute => ({
+  method: 'GET', op: 'getMessagesList', path: `/chats/${chatId}/messages$`,
+  body: { data: [{
+    object: 'Message', id: `m_${rand()}`, text: '?', timestamp: minutesFromNow(-60), sender_id: 'att_x', chat_id: chatId,
+    is_hidden: false, is_deleted: false, is_event: false, provider: 'linkedin', attachments: [],
+  }] },
+});
+
+const newChatRoute = (extra: Partial<MockRoute>): MockRoute => ({
+  method: 'POST', path: '/chats/send$', status: 200,
+  body: { object: 'ChatStarted', chat_id: `chat_${rand()}`, message_id: `msg_${rand()}` }, ...extra,
 });
 
 /** Décalage de l'heure de Paris par rapport à UTC, en millisecondes, à un instant donné. */
@@ -240,10 +261,7 @@ test.describe('@critical Verrou global du moteur', () => {
   test('@critical deux cycles lancés en même temps : un seul traite le lot, l’autre répond lock_held, l’exécution ne part qu’une fois', async () => {
     const { org, accountId } = await sendingOrg('E2E E1 Verrou');
     track(org);
-    await setMockMode(accountId, { routes: [{
-      method: 'POST', path: '^/api/v1/chats$', status: 201, delay_ms: 4000,
-      body: { object: 'ChatStarted', chat_id: `chat_${rand()}`, message_id: `msg_${rand()}` },
-    }] });
+    await setMockMode(accountId, { routes: [newChatRoute({ delay_ms: 4000 })] });
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour verrou']);
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
     await waitLockFree();
@@ -704,7 +722,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
     const chat = replyChat(accountId);
     await setMockMode(accountId, { routes: [
       chatListRoute(chat.id),
-      { method: 'GET', path: chat.path, body: candidateReply(minutesFromNow(-60)) },
+      candidateReply(chat.id, minutesFromNow(-60)),
     ] });
 
     const profileId = `ACoAAE2E${rand()}${rand()}`;
@@ -745,7 +763,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
     const chat = replyChat(accountId);
     await setMockMode(accountId, { routes: [
       chatListRoute(chat.id),
-      { method: 'GET', path: chat.path, body: candidateReply(minutesFromNow(-60)) },
+      candidateReply(chat.id, minutesFromNow(-60)),
     ] });
     const main = await followUpSetup(org, accountId, { tracking_data: { re_enrolled_at: minutesFromNow(-30) } });
     const followUp = await schedule(org, main.enrollmentId, main.steps[1]);
@@ -763,7 +781,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
   test('@critical vérification de réponse en 5xx : rien ne part, +30 min et essai 1/3 ; après trois essais : échec « message non envoyé »', async () => {
     const { org, accountId } = await sendingOrg('E2E E1 RéponseInconnue');
     track(org);
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 500, body: { title: 'boom' } }] });
+    await setMockMode(accountId, { routes: [routes.fail('getUserChat', 'server_error')] });
     const first = await followUpSetup(org, accountId);
     const worn = await followUpSetup(org, accountId);
     const e1 = await schedule(org, first.enrollmentId, first.steps[1]);
@@ -790,7 +808,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
   test('@critical vérification de réponse en 403 (candidat qui a bloqué le compte) : pause « blocked_by_candidate », exécution gardée, rien ne part', async () => {
     const { org, accountId } = await sendingOrg('E2E E1 Bloqué');
     track(org);
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 403, body: { title: 'forbidden' } }] });
+    await setMockMode(accountId, { routes: [candidateBlockedRoute()] });
     const main = await followUpSetup(org, accountId);
     const e = await schedule(org, main.enrollmentId, main.steps[1]);
 
@@ -807,7 +825,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
   test('vérification de réponse sans réponse au bout de 15 s, ou message d’expéditeur indéterminé : comme un 5xx, rien ne part', async () => {
     const { org, accountId } = await sendingOrg('E2E E1 RéponseLente');
     track(org);
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 200, delay_ms: 16_000, body: { items: [] } }] });
+    await setMockMode(accountId, { routes: [routes.chatLookup([], { delay_ms: 16_000 })] });
     const slow = await followUpSetup(org, accountId);
     const eSlow = await schedule(org, slow.enrollmentId, slow.steps[1]);
 
@@ -817,8 +835,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
     await setMockMode(other.accountId, { routes: [
       chatListRoute(chat.id),
       // Message postérieur sans indicateur d'expéditeur, puis participants illisibles.
-      { method: 'GET', path: chat.path, times: 1, body: { object: 'MessageList', items: [{ id: `m_${rand()}`, text: '?', timestamp: minutesFromNow(-60), sender_attendee_id: 'att_x' }] } },
-      { method: 'GET', path: chat.path, status: 500, body: { title: 'boom' } },
+      undeterminedSenderMessages(chat.id),
     ] });
     const undetermined = await followUpSetup(other.org, other.accountId);
     const eUnd = await schedule(other.org, undetermined.enrollmentId, undetermined.steps[1]);
@@ -838,7 +855,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
   test('@critical étape sautée à la main pendant la vérification de réponse : le verrou « sending » échoue, rien ne part', async () => {
     const { org, accountId } = await sendingOrg('E2E E1 Optimiste');
     track(org);
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 200, delay_ms: 5000, times: 1, body: { items: [] } }] });
+    await setMockMode(accountId, { routes: [routes.chatLookup([], { delay_ms: 5000, times: 1 })] });
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance'], 2);
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     const twoDaysAgo = minutesFromNow(-2 * 24 * 60);
@@ -847,7 +864,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
     const followUp = await schedule(org, enrollmentId, steps[1]);
 
     const cycle = runCycle();
-    await until(() => mockCalls(accountId), (calls) => calls.some((c) => c.method === 'GET' && c.path.includes('/chat_attendees/')), 'vérification de réponse en cours');
+    await until(() => mockCalls(accountId), (calls) => calls.some((c) => c.op === 'getUserChat'), 'vérification de réponse en cours');
     const skip = await callFunction('process-sequences', token, { action: 'skip_execution', execution_id: followUp });
     expect(skip.status, JSON.stringify(skip.body)).toBe(200);
     await cycle;
@@ -869,7 +886,7 @@ test.describe('@critical Vérification de réponse avant relance', () => {
     const chat = replyChat(accountId);
     await setMockMode(accountId, { routes: [
       chatListRoute(chat.id),
-      { method: 'GET', path: chat.path, body: candidateReply(minutesFromNow(-30)) },
+      candidateReply(chat.id, minutesFromNow(-30)),
     ] });
     const profileId = `ACoAAE2E${rand()}${rand()}`;
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance'], 2);
@@ -898,10 +915,10 @@ test.describe('@critical Vérification de réponse avant relance', () => {
   test('@critical check_replies : lecture impossible (500) rien n’est décidé ; 403 pause « blocked_by_candidate »', async () => {
     const failing = await sendingOrg('E2E E1 CheckReplies 500');
     track(failing.org);
-    await setMockMode(failing.accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 500, body: { title: 'boom' } }] });
+    await setMockMode(failing.accountId, { routes: [routes.fail('getUserChat', 'server_error')] });
     const blocked = await sendingOrg('E2E E1 CheckReplies 403');
     track(blocked.org);
-    await setMockMode(blocked.accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 403, body: { title: 'forbidden' } }] });
+    await setMockMode(blocked.accountId, { routes: [candidateBlockedRoute()] });
     const setup = async (org: TestOrg, accountId: string) => {
       const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance'], 2);
       const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
@@ -1028,7 +1045,7 @@ test.describe('@critical Gate quota avant le verrou', () => {
     track(org);
     await setMockMode(accountId, {
       distance: 'SECOND_DEGREE',
-      routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', status: 503, body: { title: 'unavailable' } }],
+      routes: [routes.fail('getInmailCredits', 'unavailable')],
     });
     const { sequenceId, steps } = await seedSequence(org.orgId, org.owner.userId, [{ action_type: 'inmail' }, { action_type: 'message' }]);
     await admin().from('sequence_steps').update({ message_template: 'Bonjour InMail', subject_template: 'Échange' }).eq('id', steps[0].id);
@@ -1079,7 +1096,7 @@ async function lastCallScenario(prefix: string, mutate: (ctx: { enrollmentId: st
 /** Seul le premier message (inscription d'amorce) est parti ; rien vers le candidat ciblé. */
 function expectOnlyPrimerSent(s: Awaited<ReturnType<typeof lastCallScenario>>) {
   expect(s.posts, 'seul le premier message part').toHaveLength(1);
-  expect((s.posts[0].body as Record<string, unknown>).attendees_ids).toBe(s.primer.profileId);
+  expect(recipientOf(s.posts[0])).toBe(s.primer.profileId);
 }
 
 test.describe('@critical Dernier contrôle avant l’envoi', () => {
@@ -1160,7 +1177,7 @@ test.describe('@critical Issue de l’envoi', () => {
     const chat = replyChat(accountId);
     await setMockMode(accountId, { routes: [
       chatListRoute(chat.id),
-      { method: 'POST', path: chat.path, status: 502, body: { title: 'bad gateway' } },
+      routes.fail('sendMessage', 'bad_gateway'),
     ] });
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour 502']);
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
@@ -1177,13 +1194,11 @@ test.describe('@critical Issue de l’envoi', () => {
   });
 
   // issue-timeout
-  test('@critical POST d’envoi sans réponse au bout de 15 s : « Envoi incertain », jamais un second POST', async () => {
+  test('@critical POST d’envoi sans réponse au bout du délai de 30 s : « Envoi incertain », jamais un second POST', async () => {
     const { org, accountId } = await sendingOrg('E2E E1 Délai');
     track(org);
-    await setMockMode(accountId, { routes: [{
-      method: 'POST', path: '^/api/v1/chats$', status: 201, delay_ms: 16_000,
-      body: { object: 'ChatStarted', chat_id: `chat_${rand()}`, message_id: `msg_${rand()}` },
-    }] });
+    // API v2 : un envoi attend 30 s (délai « heavy » du client commun, 15 s en v1) avant de rendre un résultat incertain.
+    await setMockMode(accountId, { routes: [newChatRoute({ delay_ms: 32_000 })] });
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour délai', 'Relance']);
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
     const e = await schedule(org, enrollmentId, steps[0]);
@@ -1205,10 +1220,7 @@ test.describe('@critical Issue de l’envoi', () => {
     test(`@critical inscription passée « ${change} » pendant l’appel d’envoi : exécution « sent » avec motif, position avancée, rien de planifié`, async () => {
       const { org, accountId } = await sendingOrg(`E2E E1 Pendant ${change}`);
       track(org);
-      await setMockMode(accountId, { routes: [{
-        method: 'POST', path: '^/api/v1/chats$', status: 201, delay_ms: 6000,
-        body: { object: 'ChatStarted', chat_id: `chat_${rand()}`, message_id: `msg_${rand()}` },
-      }] });
+      await setMockMode(accountId, { routes: [newChatRoute({ delay_ms: 6000 })] });
       const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour pendant', 'Relance'], 2);
       const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
       const e = await schedule(org, enrollmentId, steps[0]);
@@ -1311,11 +1323,17 @@ test.describe('Sélection du cycle', () => {
     await runCycle();
 
     const statuses = async (rows: Array<{ id: string; scheduled_at: string }>) => {
-      const { data } = await admin().from('sequence_step_executions').select('id, status, scheduled_at').in('id', rows.map((r) => r.id));
-      return (data ?? []) as Array<{ id: string; status: string; scheduled_at: string }>;
+      const { data } = await admin().from('sequence_step_executions').select('id, status, scheduled_at, skip_reason, error_message').in('id', rows.map((r) => r.id));
+      return (data ?? []) as Array<{ id: string; status: string; scheduled_at: string; skip_reason: string | null; error_message: string | null }>;
     };
     const v = await statuses(visitExecs as Array<{ id: string; scheduled_at: string }>);
-    expect(v.filter((x) => x.status === 'sent'), '15 visites au plus dans le cycle').toHaveLength(15);
+    // Une étape de visite ne doit coûter qu'une place du plafond du jour (25 vues) : ni plus (APP_BUG connu : en v2 la lecture du
+    // profil qui donne le jeton de visite est journalisée en plus de l'étape), ni moins.
+    const { data: ledger } = await admin().from('linkedin_action_log').select('source, action_type').eq('account_id', accountId);
+    const ledgerBySource = Object.entries(((ledger ?? []) as Array<{ source: string; action_type: string }>)
+      .reduce<Record<string, number>>((acc, r) => ({ ...acc, [`${r.action_type}/${r.source}`]: (acc[`${r.action_type}/${r.source}`] ?? 0) + 1 }), {}));
+    expect.soft(v.filter((x) => x.status === 'sent'),
+      `15 visites au plus dans le cycle ; autres : ${JSON.stringify(v.filter((x) => x.status !== 'sent').map((x) => [x.status, x.skip_reason, x.error_message]))} ; ledger : ${JSON.stringify(ledgerBySource)}`).toHaveLength(15);
     const vLeft = v.filter((x) => x.status === 'scheduled');
     expect(vLeft).toHaveLength(5);
     const visitAt = new Map((visitExecs as Array<{ id: string; scheduled_at: string }>).map((r) => [r.id, new Date(r.scheduled_at).getTime()]));
@@ -1323,7 +1341,9 @@ test.describe('Sélection du cycle', () => {
     const c = await statuses(closedExecs as Array<{ id: string; scheduled_at: string }>);
     expect(c.filter((x) => x.status === 'cancelled'), '30 exécutions closes au plus dans le cycle').toHaveLength(30);
     expect(c.filter((x) => x.status === 'scheduled')).toHaveLength(5);
-    expect(await postsOf(accountId), 'aucun envoi visible').toEqual([]);
+    // API v2 : une visite est un appel explicite (POST /users/visit-profile), ce n'est plus une simple lecture : seuls les
+    // envois visibles (conversation, message, invitation) sont exclus.
+    expect((await postsOf(accountId)).filter((c) => c.op !== 'visitUserProfile'), 'aucun envoi visible').toEqual([]);
   });
 
   // selection-un-par-candidat

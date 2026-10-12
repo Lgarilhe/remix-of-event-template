@@ -34,12 +34,18 @@ import {
 import {
   CRON_SECRET,
   ENGINE_SKIP_REASON,
+  callsOf,
   engineAvailable,
   enroll,
+  inmailOf,
+  inviteNoteOf,
+  isChatMessage,
+  isNewChat,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  routes,
   runCycle,
   runEngine,
   schedule,
@@ -47,6 +53,7 @@ import {
   sentInvites,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
   type MockCall,
 } from '../helpers/sequence-engine';
@@ -202,7 +209,7 @@ async function enrollmentFull(id: string) {
   return data as { status: string; pause_reason: string | null; current_step_order: number; connection_status: string | null; assigned_sender_id: string | null };
 }
 
-const isChatPost = (c: MockCall) => c.method === 'POST' && (c.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(c.path));
+const isChatPost = (c: MockCall) => isNewChat(c) || isChatMessage(c);
 const bodyOf = (c: MockCall) => (typeof c.body === 'object' && c.body ? c.body : {}) as Record<string, unknown>;
 
 async function ledger(accountId: string): Promise<string[]> {
@@ -293,7 +300,7 @@ test.describe('@critical Étapes de connexion', () => {
     expect(await sentInvites(first.accountId), 'aucune invitation au candidat connecté').toHaveLength(0);
     const invites = await sentInvites(second.accountId);
     expect(invites).toHaveLength(1);
-    expect(bodyOf(invites[0]).message).toBe('Invit');
+    expect(inviteNoteOf(invites[0])).toBe('Invit');
     expect(await sentTexts(second.accountId), 'aucun message au non-connecté').toEqual([]);
     const afterBranch = await execs(eFirst.enrollmentId);
     expect(onStep(afterBranch, seqFirst.steps[2]), 'fin de la branche « Si connecté » : pas d\'invitation').toHaveLength(0);
@@ -332,10 +339,7 @@ test.describe('@critical Étapes de connexion', () => {
     await admin().from('sequence_enrollments').update({ status: 'paused', pause_reason: 'manual' }).eq('id', paused.enrollmentId);
 
     for (const who of [active, targeted, paused]) {
-      await webhook({
-        event: 'new_relation', account_id: accountId, account_type: 'LINKEDIN',
-        user_provider_id: who.profileId, user_full_name: 'Camille Martin', user_public_identifier: `camille-${rand()}`,
-      });
+      await webhook(v2.relationNew({ accountId, userId: who.profileId, name: 'Camille Martin', slug: `camille-${rand()}` }));
     }
     const rearmed = await execById(activeWait);
     expect(rearmed.status, 'webhook d\'acceptation : attente réarmée').toBe('scheduled');
@@ -451,7 +455,7 @@ test.describe('@critical Étapes de connexion', () => {
   // engine-check-connection-read-failure
   test('profil illisible : « Vérifier la connexion » ne choisit aucune branche, n\'écrit pas connection_status, réessaie à 30 min puis échoue après trois essais', async () => {
     const { org, accountId } = await newSendingOrg('E2E steps-1 profil illisible');
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/users/', status: 503, body: { status: 503 } }] });
+    await setMockMode(accountId, { routes: [routes.fail('getUserProfile', 'unavailable')] });
     const seq = await buildSequence(org, org.owner.userId, [
       { action_type: 'check_connection' },
       { action_type: 'message', message_template: 'Connecté' },
@@ -793,10 +797,10 @@ test.describe('Canaux et modes d\'envoi', () => {
     const posts = (await mockCalls(accountId)).filter(isChatPost);
     expect(posts.map((p) => bodyOf(p).text).sort()).toEqual(['Texte', 'Texte InMail']);
     for (const p of posts) {
-      expect(bodyOf(p)['linkedin[inmail]'], 'pas d\'InMail vers une relation directe').toBeUndefined();
+      expect(inmailOf(p), 'pas d\'InMail vers une relation directe').toBeNull();
       expect(bodyOf(p).subject).toBeUndefined();
     }
-    expect((await mockCalls(accountId)).filter((c) => c.path === '/api/v1/linkedin/inmail_balance'), 'aucun contrôle de solde').toEqual([]);
+    expect(await callsOf(accountId, 'getInmailCredits'), 'aucun contrôle de solde').toEqual([]);
     const log = await ledger(accountId);
     expect(log.filter((t) => t === 'message')).toHaveLength(2);
     expect(log).not.toContain('inmail');
@@ -809,9 +813,8 @@ test.describe('Canaux et modes d\'envoi', () => {
     await runCycle();
     const simple = (await mockCalls(accountId)).filter(isChatPost).filter((p) => bodyOf(p).text === 'Message simple');
     expect(simple).toHaveLength(1);
-    expect(bodyOf(simple[0])['linkedin[inmail]']).toBeUndefined();
-    expect(bodyOf(simple[0])['linkedin[api]']).toBeUndefined();
-    expect((await mockCalls(accountId)).filter((c) => c.path === '/api/v1/linkedin/inmail_balance')).toEqual([]);
+    expect(inmailOf(simple[0])).toBeNull();
+    expect(await callsOf(accountId, 'getInmailCredits')).toEqual([]);
   });
 
   // engine-inmail-second-degree
@@ -819,7 +822,7 @@ test.describe('Canaux et modes d\'envoi', () => {
     const { org, accountId } = await newSendingOrg('E2E steps-1 InMail 2e');
     await setMockMode(accountId, {
       distance: 'SECOND_DEGREE',
-      routes: [{ method: 'GET', path: 'inmail_balance', body: { object: 'InMailBalance', recruiter: 0, sales_navigator: 3, premium: 0 } }],
+      routes: [routes.inmailCredits({ classic: 0, recruiter: 0, sales_navigator: 3 })],
     });
     const inmail = await buildSequence(org, org.owner.userId, [
       { action_type: 'inmail', subject_template: 'Mission {{poste_recherche}}', message_template: 'Bonjour, une mission pourrait vous intéresser.' },
@@ -835,16 +838,15 @@ test.describe('Canaux et modes d\'envoi', () => {
     await runCycle();
     const posts = (await mockCalls(accountId)).filter(isChatPost);
     expect(posts).toHaveLength(2);
-    const bySubject = new Map(posts.map((p) => [String(bodyOf(p).subject), bodyOf(p)]));
+    const bySubject = new Map(posts.map((p) => [String(inmailOf(p)?.subject), inmailOf(p)]));
     for (const subject of ['Mission Développeur Go', 'Échange Développeur Go']) {
       const b = bySubject.get(subject);
       expect(b, `InMail « ${subject} »`).toBeDefined();
-      expect(b!['linkedin[inmail]']).toBe('true');
-      expect(b!['linkedin[api]']).toBe('sales_navigator');
+      expect(b!.kind).toBe('sales_navigator');
     }
     expect((await execById(x1)).final_subject).toBe('Mission Développeur Go');
     expect((await execById(x2)).final_subject).toBe('Échange Développeur Go');
-    expect((await mockCalls(accountId)).some((c) => c.path === '/api/v1/linkedin/inmail_balance'), 'solde contrôlé').toBe(true);
+    expect((await callsOf(accountId, 'getInmailCredits')).length > 0, 'solde contrôlé').toBe(true);
     const log = await ledger(accountId);
     expect(log.filter((t) => t === 'inmail'), 'comptés dans le plafond InMail').toHaveLength(2);
     expect(log).not.toContain('message');
@@ -856,11 +858,11 @@ test.describe('Canaux et modes d\'envoi', () => {
     const down = await newSendingOrg('E2E steps-1 InMail solde KO');
     await setMockMode(zero.accountId, {
       distance: 'SECOND_DEGREE',
-      routes: [{ method: 'GET', path: 'inmail_balance', body: { recruiter: 0, premium: 0, sales_navigator: 0 } }],
+      routes: [routes.inmailCredits({ classic: 0, recruiter: 0, sales_navigator: 0 })],
     });
     await setMockMode(down.accountId, {
       distance: 'SECOND_DEGREE',
-      routes: [{ method: 'GET', path: 'inmail_balance', status: 503, body: { status: 503 } }],
+      routes: [routes.fail('getInmailCredits', 'unavailable')],
     });
     const seqZero = await buildSequence(zero.org, zero.org.owner.userId, [
       { action_type: 'inmail', subject_template: 'Objet', message_template: 'Bonjour' },
@@ -904,7 +906,7 @@ test.describe('Canaux et modes d\'envoi', () => {
     const invited = await newSendingOrg('E2E steps-1 déjà invité');
     await setMockMode(invited.accountId, {
       distance: 'SECOND_DEGREE',
-      routes: [{ method: 'POST', path: '^/api/v1/users/invite$', status: 422, body: { detail: 'already_invited' } }],
+      routes: [routes.fail('createRelationRequest', 'already_invited')],
     });
     const mk = (org: TestOrg) => buildSequence(org, org.owner.userId, [
       { action_type: 'connection_request', message_template: 'Invitation' },

@@ -193,8 +193,13 @@ const nowIso = () => new Date().toISOString();
 const isProviderId = (id) => /^ACo/.test(id);
 const mockProviderId = (id) => (isProviderId(id) ? id : `ACoAAMOCK${id.replace(/[^a-zA-Z0-9]/g, '')}`);
 
+// Identifiant public d'un membre : 'test-candidat' pour le candidat par défaut, sinon propre à chaque identifiant
+// (comme l'ancien faux prestataire, qui rendait l'identifiant lui-même) : deux candidats d'un même test ne
+// partagent pas un identifiant public, ce qui les ferait rapprocher à tort par leur adresse de profil.
+const slugOfProviderId = (id) => (id === 'ACoAAMOCKCANDIDATE' ? 'test-candidat' : id.toLowerCase());
+
 function userLight(id, mode = {}, extra = {}) {
-  const slug = isProviderId(id) ? 'test-candidat' : id;
+  const slug = isProviderId(id) ? slugOfProviderId(id) : id;
   return {
     object: 'User', id: mockProviderId(id), type: 'individual', public_identifier: slug,
     display_name: 'Test Candidat', first_name: 'Test', last_name: 'Candidat',
@@ -206,7 +211,7 @@ function userLight(id, mode = {}, extra = {}) {
 function userProfile(userParam, mode, acc = null) {
   const me = userParam === 'me';
   const id = me ? mode.user_id ?? 'ACoAAMOCKME' : userParam;
-  const slug = isProviderId(id) ? (me ? 'compte-test' : 'test-candidat') : id;
+  const slug = isProviderId(id) ? (me ? 'compte-test' : slugOfProviderId(id)) : id;
   const visitToken = `vt_${rid(16)}`;
   if (acc) (accountRecord(acc).visit_tokens ??= new Set()).add(visitToken);
   const specifics = {

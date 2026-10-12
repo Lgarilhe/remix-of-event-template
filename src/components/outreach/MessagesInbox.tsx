@@ -199,7 +199,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
   };
 
   const handleDeleteChat = async (chatId: string) => {
-    const chatAccountId = inbox.chats.find(c => c.id === chatId)?.account_id ?? selectedAccount;
+    // '' (conversation ouverte par lien direct) vaut « compte inconnu » : repli sur le compte choisi.
+    const chatAccountId = inbox.chats.find(c => c.id === chatId)?.account_id || selectedAccount;
     const success = await deleteChat(chatId, chatAccountId);
     if (success) {
       inbox.removeChatFromList(chatId);
@@ -217,8 +218,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
   const messageChatRef = (messageId: string): MessageChatRef | null => {
     const chat = inbox.selectedChat;
     if (!chat) return null;
-    const message = inbox.messages.find(m => m.id === messageId) as ({ chat_id?: string | null } | undefined);
-    return { chatId: message?.chat_id || chat.id, accountId: chat.account_id ?? selectedAccount };
+    const message = inbox.messages.find(m => m.id === messageId);
+    return { chatId: message?.chat_id || chat.id, accountId: chat.account_id || selectedAccount };
   };
 
   const handleDeleteMessage = async (messageId: string) => {

@@ -1,12 +1,12 @@
 /**
  * Lot « reply-paths » du module séquences : une réponse du candidat, quel que
  * soit le chemin qui la voit, aboutit au même état. Quatre chemins :
- *   - le webhook LinkedIn (unipile-webhook, message_received) ;
+ *   - le webhook LinkedIn (unipile-webhook, enveloppe v2 message.new) ;
  *   - check_replies, la scrutation de secours du moteur (process-sequences) ;
  *   - la vérification de réponse avant une relance (cycle `process`) ;
  *   - « Marquer comme répondu » (action membre mark_replied).
  * Plus l'étape d'attente de réponse et la condition « Si pas de réponse »,
- * et la réponse par e-mail (mail_received).
+ * et la réponse par e-mail (enveloppe v2 email.new).
  *
  * Contrat : CLAUDE.md, section « Séquences : règles du moteur et de
  * l'interface » (clôture = annulation des étapes en attente, reprise jamais
@@ -24,11 +24,10 @@
  * src/hooks/useATSData.ts (computeEffectiveStage) : pipeline_stage explicite
  * prioritaire, sinon dérivée du statut.
  *
- * Harnais : le faux prestataire rattache un appel à un compte par le paramètre
- * account_id. La lecture des messages d'une conversation n'en porte pas :
- * l'identifiant de conversation renvoyé porte « /messages?account_id=<compte>&x= »,
- * que le moteur insère tel quel dans l'URL (même contournement que
- * seq-steps-2.spec.ts). Jamais la clé '*'.
+ * Harnais : le faux prestataire LinkedIn parle l'API v2 (e2e/local-stack/vendor-mock.mjs). Le
+ * fil du candidat se scripte par compte : `routes.chatLookup` (GET /v2/{acc}/users/{id}/chat)
+ * et `routes.messages` (GET .../chats/{id}/messages). Les réponses arrivent en enveloppes
+ * v2 (`v2.messageNew`, `v2.emailNew`). Jamais la clé '*'.
  *
  * `force: true` lève la fenêtre d'envoi (jours ouvrés 8 h-19 h).
  *
@@ -50,21 +49,22 @@ import {
 } from '../helpers/supabase-admin';
 import {
   ENGINE_SKIP_REASON,
-  WEBHOOK_SECRET,
   callFunction,
+  callsOf,
   engineAvailable,
   enroll,
   messageSequence,
   minutesFromNow,
-  mockCalls,
   postJson,
   rand,
+  rawWebhook,
+  routes,
   runCycle,
   runEngine,
   schedule,
   sendingOrg,
-  sentTexts,
   setMockMode,
+  v2,
   type MockRoute,
 } from '../helpers/sequence-engine';
 
@@ -163,8 +163,7 @@ async function repliesReceived(sequenceId: string): Promise<number> {
 
 /** Envois visibles (message, nouvelle conversation, invitation) partis de ce compte. */
 async function sendsOf(accountId: string) {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST'
-    && (c.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(c.path) || c.path === '/api/v1/users/invite'));
+  return callsOf(accountId, ['startChat', 'startChatFromInbox', 'sendMessage', 'createRelationRequest']);
 }
 
 // ─── Seeds ──────────────────────────────────────────────────────────────────
@@ -183,22 +182,14 @@ async function seedJcs(
 }
 
 /**
- * Fil LinkedIn scripté pour le compte : une conversation avec un message du
- * candidat (is_sender 0) daté `replyAt`. Voir l'en-tête pour le contournement.
+ * Fil LinkedIn scripté pour le compte : une conversation avec le candidat `profileId` et un message
+ * du candidat (is_sender faux) daté `replyAt`.
  */
-function replyRoutes(accountId: string, profileId: string, replyAt: string): MockRoute[] {
+function replyRoutes(profileId: string, replyAt: string): MockRoute[] {
   const chatId = `cRP${rand()}${rand()}`;
   return [
-    {
-      method: 'GET',
-      path: `^/api/v1/chat_attendees/${profileId}/chats$`,
-      body: { object: 'ChatList', items: [{ id: `${chatId}/messages?account_id=${encodeURIComponent(accountId)}&x=` }], cursor: null },
-    },
-    {
-      method: 'GET',
-      path: `^/api/v1/chats/${chatId}/messages$`,
-      body: { object: 'MessageList', items: [{ id: `m_${rand()}`, is_sender: 0, timestamp: replyAt, text: 'Oui, avec plaisir' }], cursor: null },
-    },
+    routes.chatLookup([chatId], { path: `/users/${profileId}/chat$` }),
+    routes.messages(chatId, [{ from: 'candidate', text: 'Oui, avec plaisir', at: replyAt }]),
   ];
 }
 
@@ -251,7 +242,7 @@ async function buildWorld(prefix: string, path: Path): Promise<World> {
   track(org, [member]);
   const acc2 = await seedLinkedInAccount(org.orgId, member.userId, `acc_${rand()}`, 'OK');
   const profileId = `ACoAAE2ERP${rand()}${rand()}`;
-  await setMockMode(acc1, { routes: replyRoutes(acc1, profileId, minutesFromNow(-60)) });
+  await setMockMode(acc1, { routes: replyRoutes(profileId, minutesFromNow(-60)) });
   const m1 = await seedMission(org.orgId, org.owner.userId, { name: `Mission M1 ${rand()}` });
   const m2 = await seedMission(org.orgId, org.owner.userId, { name: `Mission M2 ${rand()}` });
   const main = await followUpEnrollment(org, org.owner.userId, acc1, profileId, m1);
@@ -272,17 +263,16 @@ async function buildWorld(prefix: string, path: Path): Promise<World> {
 
 // ─── Déclencheurs ───────────────────────────────────────────────────────────
 
-/** Réponse LinkedIn reçue par webhook (format message_received). Renvoie le statut HTTP. */
+/** Réponse LinkedIn reçue par webhook (enveloppe v2 message.new). Renvoie le statut HTTP et le corps. */
 async function replyWebhook(accountId: string, profileId: string) {
-  return postJson('/functions/v1/unipile-webhook', {
-    event: 'message_received',
-    account_id: accountId,
-    account_type: 'LINKEDIN',
-    chat_id: `chat_${rand()}`,
-    message_id: `msg_${rand()}${rand()}`,
-    message: 'Bonjour, oui avec plaisir',
-    sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate', attendee_name: 'Camille Martin' },
-  }, { 'unipile-auth': WEBHOOK_SECRET });
+  return rawWebhook(v2.messageNew({
+    accountId,
+    chatId: `chat_${rand()}`,
+    messageId: `msg_${rand()}${rand()}`,
+    senderId: profileId,
+    senderName: 'Camille Martin',
+    text: 'Bonjour, oui avec plaisir',
+  }));
 }
 
 async function tokenOf(user: TestUser) {
@@ -434,7 +424,7 @@ test.describe('Réponse : autres inscriptions du candidat arrêtées sur tous le
       track(org, [member]);
       const acc2 = await seedLinkedInAccount(org.orgId, member.userId, `acc_${rand()}`, 'OK');
       const profileId = `ACoAAE2ERS${rand()}${rand()}`;
-      await setMockMode(acc1, { routes: replyRoutes(acc1, profileId, minutesFromNow(-60)) });
+      await setMockMode(acc1, { routes: replyRoutes(profileId, minutesFromNow(-60)) });
       const main = await followUpEnrollment(org, org.owner.userId, acc1, profileId, null);
       // E2 : identifiant Recruiter en profile_id, identifiant classique en provider_id.
       const s2 = await messageSequence(org, member.userId, ['Autre compte actif'], 2);
@@ -485,7 +475,7 @@ test.describe('@critical Chemins du moteur', () => {
     await cycleFor(w.step1Exec);
 
     expect(await sendsOf(w.acc1), 'aucune relance partie').toEqual([]);
-    const checked = (await mockCalls(w.acc1)).filter((c) => c.method === 'GET' && c.path === `/api/v1/chat_attendees/${w.profileId}/chats`);
+    const checked = (await callsOf(w.acc1, 'getUserChat')).filter((c) => c.path.endsWith(`/users/${w.profileId}/chat`));
     expect(checked.length, 'la vérification de réponse a bien interrogé le fil').toBeGreaterThan(0);
     expect((await enrollmentState(w.e1)).status).toBe('replied');
     const exec = await execState(w.step1Exec);
@@ -508,8 +498,8 @@ test.describe('@critical Chemins du moteur', () => {
     const pQuiet = `ACoAAE2ERQ${rand()}${rand()}`;
     // Réponse une heure avant maintenant (dernier envoi il y a deux jours) ;
     // contre-cas : message du candidat trois jours avant, donc avant le dernier envoi.
-    await setMockMode(replied.accountId, { routes: replyRoutes(replied.accountId, pReplied, minutesFromNow(-60)) });
-    await setMockMode(quiet.accountId, { routes: replyRoutes(quiet.accountId, pQuiet, minutesFromNow(-3 * 24 * 60)) });
+    await setMockMode(replied.accountId, { routes: replyRoutes(pReplied, minutesFromNow(-60)) });
+    await setMockMode(quiet.accountId, { routes: replyRoutes(pQuiet, minutesFromNow(-3 * 24 * 60)) });
     const a = await followUpEnrollment(replied.org, replied.org.owner.userId, replied.accountId, pReplied, null);
     const aExec = await schedule(replied.org, a.enrollmentId, a.steps[1], { scheduled_at: minutesFromNow(24 * 60) });
     const q = await followUpEnrollment(quiet.org, quiet.org.owner.userId, quiet.accountId, pQuiet, null);
@@ -559,7 +549,7 @@ test.describe('@critical Chemins du moteur', () => {
           const { org, accountId } = await sendingOrg('E2E RP messaged check');
           track(org);
           const p = `ACoAAE2ERM${rand()}${rand()}`;
-          await setMockMode(accountId, { routes: replyRoutes(accountId, p, minutesFromNow(-60)) });
+          await setMockMode(accountId, { routes: replyRoutes(p, minutesFromNow(-60)) });
           const m = await seedMission(org.orgId, org.owner.userId);
           const e = await followUpEnrollment(org, org.owner.userId, accountId, p, m);
           await schedule(org, e.enrollmentId, e.steps[1], { scheduled_at: minutesFromNow(24 * 60) });
@@ -574,7 +564,7 @@ test.describe('@critical Chemins du moteur', () => {
           const { org, accountId } = await sendingOrg('E2E RP messaged pré-envoi');
           track(org);
           const p = `ACoAAE2ERM${rand()}${rand()}`;
-          await setMockMode(accountId, { routes: replyRoutes(accountId, p, minutesFromNow(-60)) });
+          await setMockMode(accountId, { routes: replyRoutes(p, minutesFromNow(-60)) });
           const m = await seedMission(org.orgId, org.owner.userId);
           const e = await followUpEnrollment(org, org.owner.userId, accountId, p, m);
           const jcs = await seedJcs(org.orgId, org.owner.userId, m, p);
@@ -589,7 +579,7 @@ test.describe('@critical Chemins du moteur', () => {
           const { org, accountId } = await sendingOrg('E2E RP messaged attente');
           track(org);
           const p = `ACoAAE2ERM${rand()}${rand()}`;
-          await setMockMode(accountId, { routes: replyRoutes(accountId, p, minutesFromNow(-60)) });
+          await setMockMode(accountId, { routes: replyRoutes(p, minutesFromNow(-60)) });
           const m = await seedMission(org.orgId, org.owner.userId);
           const seq = await seedSequence(org.orgId, org.owner.userId, [{ action_type: 'message' }, { action_type: 'wait_reply', delay_days: 1 }]);
           await admin().from('outreach_sequences').update({ project_id: m }).eq('id', seq.sequenceId);
@@ -641,7 +631,7 @@ test.describe('@critical Chemins du moteur', () => {
       const other = await sendingOrg('E2E RP pipeline_stage check');
       track(other.org);
       const p = `ACoAAE2ERK${rand()}${rand()}`;
-      await setMockMode(other.accountId, { routes: replyRoutes(other.accountId, p, minutesFromNow(-60)) });
+      await setMockMode(other.accountId, { routes: replyRoutes(p, minutesFromNow(-60)) });
       const m = await seedMission(other.org.orgId, other.org.owner.userId);
       const e = await followUpEnrollment(other.org, other.org.owner.userId, other.accountId, p, m);
       await schedule(other.org, e.enrollmentId, e.steps[1], { scheduled_at: minutesFromNow(24 * 60) });
@@ -656,7 +646,7 @@ test.describe('@critical Chemins du moteur', () => {
       const other = await sendingOrg('E2E RP pipeline_stage attente');
       track(other.org);
       const p = `ACoAAE2ERK${rand()}${rand()}`;
-      await setMockMode(other.accountId, { routes: replyRoutes(other.accountId, p, minutesFromNow(-60)) });
+      await setMockMode(other.accountId, { routes: replyRoutes(p, minutesFromNow(-60)) });
       const m = await seedMission(other.org.orgId, other.org.owner.userId);
       const seq = await seedSequence(other.org.orgId, other.org.owner.userId, [{ action_type: 'message' }, { action_type: 'wait_reply', delay_days: 1 }]);
       const { enrollmentId } = await enroll(other.org, seq.sequenceId, other.org.owner.userId, other.accountId, { profile_id: p, job_id: m, current_step_order: 1 });
@@ -684,7 +674,7 @@ test.describe('@critical Chemins du moteur', () => {
     track(org, [member]);
     const acc2 = await seedLinkedInAccount(org.orgId, member.userId, `acc_${rand()}`, 'OK');
     const profileId = `ACoAAE2ERN${rand()}${rand()}`;
-    await setMockMode(accountId, { routes: replyRoutes(accountId, profileId, minutesFromNow(-60)) });
+    await setMockMode(accountId, { routes: replyRoutes(profileId, minutesFromNow(-60)) });
     const seq = await seedSequence(org.orgId, org.owner.userId, [
       { action_type: 'message' },
       { action_type: 'message', condition_type: 'if_no_response', delay_days: 2 },
@@ -701,7 +691,7 @@ test.describe('@critical Chemins du moteur', () => {
     await cycleFor(exec);
 
     expect(await sendsOf(accountId), 'la relance conditionnelle ne part pas').toEqual([]);
-    const checked = (await mockCalls(accountId)).filter((c) => c.method === 'GET' && c.path === `/api/v1/chat_attendees/${profileId}/chats`);
+    const checked = (await callsOf(accountId, 'getUserChat')).filter((c) => c.path.endsWith(`/users/${profileId}/chat`));
     expect(checked.length, 'la condition a bien interrogé le fil').toBeGreaterThan(0);
     const row = await enrollmentState(enrollmentId);
     // Relevé (sortie du test) : état de l'étape conditionnelle.
@@ -750,10 +740,10 @@ test.describe('Webhook de réponse : pipeline borné à la mission de l’inscri
   });
 
   // webhook-email-pipeline-borne-a-la-mission
-  isolated('webhook-email-pipeline-borne-a-la-mission', 'réponse par e-mail (mail_received) : inscription close, « Répondu » dans la mission de l’inscription seulement', async () => {
+  isolated('webhook-email-pipeline-borne-a-la-mission', 'réponse par e-mail (email.new) : inscription close, « Répondu » dans la mission de l’inscription seulement', async () => {
     const { org, accountId } = await sendingOrg('E2E RP e-mail');
     track(org);
-    const mailbox = `mail_${rand()}${rand()}`;
+    const mailbox = `acc_${rand()}${rand()}`;
     const { error: mbErr } = await admin().from('member_email_accounts').insert({
       organization_id: org.orgId, user_id: org.owner.userId, linked_by: org.owner.userId,
       email_account_id: mailbox, email_address: 'recruteur@e2e.konekt.test', provider: 'GOOGLE',
@@ -769,14 +759,11 @@ test.describe('Webhook de réponse : pipeline borné à la mission de l’inscri
     const j2 = await seedJcs(org.orgId, org.owner.userId, m2, profileId, 'messaged', 'Contacté');
     const before2 = await jcsRow(j2);
 
-    const res = await postJson('/functions/v1/unipile-webhook', {
-      event: 'mail_received',
-      account_id: mailbox,
-      email_id: `email_${rand()}${rand()}`,
-      subject: 'Re: poste de développeur',
-      from_attendee: { identifier: email, display_name: 'Camille Martin' },
-      to_attendees: [{ identifier: 'recruteur@e2e.konekt.test', display_name: 'Recruteur' }],
-    }, { 'unipile-auth': WEBHOOK_SECRET });
+    // L'événement ne fait que nommer le courrier : l'application le relit sous le compte de la boîte.
+    const emailId = `email_${rand()}${rand()}`;
+    const subject = 'Re: poste de développeur';
+    await setMockMode(mailbox, { routes: [routes.email({ emailId, from: email, to: 'recruteur@e2e.konekt.test', subject })] });
+    const res = await rawWebhook(v2.emailNew({ accountId: mailbox, emailId, subject, from: email, to: 'recruteur@e2e.konekt.test', provider: 'google' }));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
     expect((await enrollmentState(e.enrollmentId)).status, 'inscription close').toBe('replied');

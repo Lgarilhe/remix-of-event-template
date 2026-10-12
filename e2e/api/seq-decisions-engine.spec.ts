@@ -43,9 +43,11 @@ import {
   callFunction,
   engineAvailable,
   enroll,
+  isNewChat,
   minutesFromNow,
   mockCalls,
   rand,
+  routes,
   schedule,
   sendingOrg,
   sentInvites,
@@ -221,19 +223,15 @@ async function postsOf(accountId: string): Promise<MockCall[]> {
   return (await mockCalls(accountId)).filter((c) => c.method === 'POST');
 }
 
-/** Conversation scriptable pour le compte : identifiant qui transporte account_id dans l'URL du moteur. */
-function scriptedChat(accountId: string) {
-  const base = `chat${rand()}${rand()}`;
-  return { id: `${base}?account_id=${accountId}&c=`, path: `^/api/v1/chats/${base}$` };
+/** Conversation scriptable pour le compte : identifiant de conversation propre au test. */
+function scriptedChat(_accountId: string) {
+  return { id: `chat${rand()}${rand()}` };
 }
-const chatListRoute = (chatId: string): MockRoute => ({
-  method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$',
-  body: { object: 'ChatList', items: [{ id: chatId }], cursor: null },
-});
-const candidateReplyRoute = (chatPath: string, at: string): MockRoute => ({
-  method: 'GET', path: chatPath,
-  body: { object: 'MessageList', cursor: null, items: [{ id: `m_${rand()}`, is_sender: 0, text: 'Oui, avec plaisir', timestamp: at }] },
-});
+/** Recherche de conversation du candidat (GET /users/{id}/chat) : une conversation. */
+const chatListRoute = (chatId: string): MockRoute => routes.chatLookup([chatId]);
+/** Messages de la conversation : une réponse du candidat à la date donnée. */
+const candidateReplyRoute = (chatId: string, at: string): MockRoute =>
+  routes.messages(chatId, [{ from: 'candidate', text: 'Oui, avec plaisir', at, id: `m_${rand()}` }]);
 
 /** Date et heure murales dans un fuseau. */
 function localParts(d: Date | string, tz: string) {
@@ -282,7 +280,7 @@ test.describe('Décisions 1 et 2 : pannes passagères hors auto-pause', () => {
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
     ]);
     for (const acc of accounts) {
-      await mock(acc, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 502, body: { title: 'Bad Gateway' } }] });
+      await mock(acc, { routes: [routes.failNewChat('bad_gateway')] });
     }
     const enrs: string[] = [];
     for (let i = 0; i < 5; i++) enrs.push((await enroll(org, seq.sequenceId, users[i].userId, accounts[i])).enrollmentId);
@@ -296,7 +294,7 @@ test.describe('Décisions 1 et 2 : pannes passagères hors auto-pause', () => {
       expect(row.status).toBe('failed');
       expect(row.error_message ?? '').toMatch(new RegExp(`^${UNCERTAIN}`));
     }
-    for (const acc of accounts) expect((await postsOf(acc)).filter((c) => c.path === '/api/v1/chats'), 'un seul envoi par compte').toHaveLength(1);
+    for (const acc of accounts) expect((await postsOf(acc)).filter(isNewChat), 'un seul envoi par compte').toHaveLength(1);
     expect(await sequenceActive(seq.sequenceId), 'envois incertains : séquence toujours active').toBe(true);
     for (const id of enrs) {
       const enr = await enrollmentFull(id);
@@ -309,7 +307,7 @@ test.describe('Décisions 1 et 2 : pannes passagères hors auto-pause', () => {
 
   test('décision 2 : cinq « Vérifier la connexion » dont la lecture du profil reste impossible après trois essais : échecs, séquence active', async () => {
     const { org, accountId } = await sendingOrgTracked('E2E D2 Lecture profil');
-    await mock(accountId, { routes: [{ method: 'GET', path: '^/api/v1/users/', status: 503, body: { title: 'Service Unavailable' } }] });
+    await mock(accountId, { routes: [routes.fail('getUserProfile', 'unavailable')] });
     const seq = await insertSequence(org, org.owner.userId, [
       { action_type: 'check_connection' },
       { action_type: 'message', message_template: 'Relance', delay_days: 2 },
@@ -542,7 +540,9 @@ test.describe('Décisions 5 et 30 : boucle vers une étape déjà partie', () =>
 test.describe('Décision 7 : refus 403 à la vérification de réponse', () => {
   test('pause « blocked_by_candidate », l’étape gardée conserve sa date et son compteur d’essais', async () => {
     const { org, accountId } = await sendingOrgTracked('E2E D7 Bloqué');
-    await mock(accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 403, body: { title: 'forbidden' } }] });
+    // Refus 403 d'un candidat qui a bloqué le compte : sans mot de reconnexion (le corps du jeu d'erreurs `forbidden`
+    // dit « reconnect », que le client lit comme un compte déconnecté, pas comme un blocage).
+    await mock(accountId, { routes: [routes.fail('getUserChat', 'forbidden', { body: { status: 403, type: 'errors/forbidden', title: 'Forbidden' } })] });
     const { sequenceId, steps } = await insertSequence(org, org.owner.userId, [
       { action_type: 'connection_request' },
       { action_type: 'message', message_template: 'Relance', delay_days: 2 },
@@ -600,13 +600,13 @@ async function completedWithReply(
   await schedule(org, e.enrollmentId, seq.steps[0], { status: 'sent', scheduled_at: daysAgo(completedDaysAgo + 4), executed_at: daysAgo(completedDaysAgo + 4) });
   await schedule(org, e.enrollmentId, seq.steps[1], { status: 'sent', scheduled_at: daysAgo(completedDaysAgo + 1), executed_at: daysAgo(completedDaysAgo + 1) });
   const chat = scriptedChat(account);
-  await mock(account, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.path, daysAgo(1))] });
+  await mock(account, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.id, daysAgo(1))] });
   return e;
 }
 
-/** Lectures de conversations LinkedIn faites depuis ce compte. */
+/** Lectures de conversations LinkedIn faites depuis ce compte (recherche de la conversation, lecture des messages). */
 async function chatReads(accountId: string): Promise<number> {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'GET' && /\/chat/.test(c.path)).length;
+  return (await mockCalls(accountId)).filter((c) => c.method === 'GET' && (c.op === 'getUserChat' || c.op === 'getMessagesList')).length;
 }
 
 async function repliesCounted(sequenceId: string): Promise<number> {
@@ -629,7 +629,7 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
       await schedule(org, e.enrollmentId, seq.steps[0], { status: 'sent', scheduled_at: daysAgo(completedDaysAgo + 4), executed_at: daysAgo(completedDaysAgo + 4) });
       await schedule(org, e.enrollmentId, seq.steps[1], { status: 'sent', scheduled_at: daysAgo(completedDaysAgo + 1), executed_at: daysAgo(completedDaysAgo + 1) });
       const chat = scriptedChat(account);
-      await mock(account, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.path, daysAgo(Math.max(completedDaysAgo - 1, 0.5)))] });
+      await mock(account, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.id, daysAgo(Math.max(completedDaysAgo - 1, 0.5)))] });
       return e;
     };
     // Refonte mission, lot 0b : la réponse n'écrit que dans la mission de l'inscription.

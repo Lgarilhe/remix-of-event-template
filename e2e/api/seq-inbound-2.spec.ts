@@ -1,7 +1,7 @@
 /**
  * Lot « inbound-2 » du module séquences : événements entrants et contrôles de
- * fond. Connexion hosted_auth d'un compte LinkedIn (SEQ-041), réponse par
- * e-mail (SEQ-039), webhook historique des séquences, canaux fermés (D2),
+ * fond. Connexion d'un compte LinkedIn par lien d'authentification (SEQ-041), réponse par
+ * e-mail (SEQ-039), webhook de suivi des séquences, canaux fermés (D2),
  * rendez-vous Calendly (SEQ-008, SEQ-112), Stripe (signature, reprise, gate
  * du moteur), effacement RGPD (SEQ-055), check_replies et check_wait_events.
  *
@@ -12,10 +12,9 @@
  * (e2e/local-stack) ; LinkedIn, Stripe et l'IA sont simulés par
  * vendor-mock.mjs, qui journalise chaque appel. Ignoré sans cette stack.
  *
- * Réponses scriptées par compte seulement (jamais la clé '*') : la lecture des
- * messages d'une conversation ne porte pas d'account_id, l'identifiant de
- * conversation renvoyé par le faux prestataire embarque donc
- * « ?account_id=<compte>&c= » (même procédé que seq-engine-1).
+ * Réponses scriptées par compte seulement (jamais la clé '*') : `routes.chatLookup` et
+ * `routes.messages` du faux prestataire v2. Les événements du prestataire sont des
+ * enveloppes v2 (`v2.emailNew`, `v2.accountAdd`...), authentifiées par le jeton `?v2_token=`.
  */
 import { test, expect } from '@playwright/test';
 import { createHash, createHmac } from 'node:crypto';
@@ -38,20 +37,28 @@ import {
 import {
   ENGINE_SKIP_REASON,
   WEBHOOK_SECRET,
+  WEBHOOK_V2_TOKEN,
   CRON_SECRET,
+  callFunction,
+  callsOf,
   engineAvailable,
   enroll,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  rawWebhook,
+  routes,
   runCycle,
   runEngine,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
+  type MockRoute,
+  type V2Envelope,
 } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
@@ -224,14 +231,24 @@ async function rawPost(path: string, raw: string, headers: Record<string, string
   return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
 }
 /**
- * Retour du parcours hosted_auth, tel que le prestataire l'envoie : pas
- * d'en-tête d'authentification, `name` = état signé par unipile-accounts
- * (hosted_sig = HMAC(secret du webhook, name)), statut CREATION_SUCCESS.
+ * Tentative de connexion d'un membre (unipile-accounts, action connection_start, lien
+ * d'authentification) : la ligne connection_attempts porte le membre et l'organisation, son
+ * identifiant est le `state` que le prestataire renverra. `extra` : reconnect_account_id...
  */
-function hostedCallback(userId: string, orgId: string, accountId: string, status: 'CREATION_SUCCESS' | 'RECONNECTED' = 'CREATION_SUCCESS') {
-  const name = `user:${userId}|org:${orgId}|providers:LINKEDIN|expires:${Date.now() + 20 * 60_000}`;
-  const sig = createHmac('sha256', WEBHOOK_SECRET).update(name).digest('hex');
-  return rawPost(`/functions/v1/unipile-webhook?hosted_sig=${sig}`, JSON.stringify({ status, account_id: accountId, name }), { apikey: E2E.anonKey });
+async function startConnectionAttempt(org: TestOrg, user: TestUser, extra: Record<string, unknown> = {}): Promise<string> {
+  const res = await callFunction('unipile-accounts', await userToken(user), {
+    action: 'connection_start', organization_id: org.orgId, provider: 'linkedin', mode: 'hosted', ...extra,
+  });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+  return String(res.body.attempt_id);
+}
+/**
+ * Retour du parcours d'authentification, tel que le prestataire l'envoie : account.add (ou
+ * account.reconnect) avec le `state` de la tentative, authentifié par le jeton de l'URL.
+ */
+function hostedCallback(accountId: string, attemptId: string, kind: 'add' | 'reconnect' = 'add') {
+  return rawWebhook(kind === 'add' ? v2.accountAdd({ accountId, state: attemptId }) : v2.accountReconnect({ accountId, state: attemptId }));
 }
 /** Événement Stripe signé comme le fait Stripe (t=…,v1=HMAC(t.payload)). */
 function stripeEvent(event: Record<string, unknown>, sign: { secret?: string; t?: number } = {}) {
@@ -282,35 +299,32 @@ function rgpdErase(token: string, body: Record<string, unknown>, ip = randomIp()
   // est partagée avec les autres suites.
   return postJson('/functions/v1/rgpd-erase-contact', body, { Authorization: `Bearer ${token}`, 'x-forwarded-for': ip });
 }
-/** E-mail reçu sur une boîte connectée (format Unipile mail_received). */
-function mailReceived(accountId: string, from: string, o: { inReplyTo?: unknown; subject?: string; emailId?: string } = {}) {
-  return {
-    event: 'mail_received',
-    account_id: accountId,
-    email_id: o.emailId ?? `mail_${rand()}`,
-    subject: o.subject ?? 'Re: Une mission pour vous',
-    from_attendee: { display_name: 'Camille Martin', identifier: from },
-    to_attendees: [{ display_name: 'Recruteur', identifier: `recruteur.${rand()}@e2e.konekt.test` }],
-    ...(o.inReplyTo !== undefined ? { in_reply_to: o.inReplyTo } : {}),
-  };
+/**
+ * E-mail reçu sur une boîte connectée (enveloppe v2 email.new ; `inReplyTo` : valeur de l'en-tête In-Reply-To).
+ * L'événement ne fait que nommer le courrier : l'application le relit sous le compte de la boîte
+ * (GET /emails/{id}) pour connaître l'expéditeur et les destinataires, donc la lecture est scriptée avec
+ * les mêmes adresses. `address` : adresse de la boîte (celle de member_email_accounts), sinon quelconque.
+ */
+const mailboxRoutes = new Map<string, MockRoute[]>();
+async function mailReceived(
+  accountId: string, address: string | null, from: string, o: { inReplyTo?: string; subject?: string; emailId?: string } = {},
+): Promise<V2Envelope> {
+  const emailId = o.emailId ?? `mail_${rand()}`;
+  const subject = o.subject ?? 'Re: Une mission pour vous';
+  const to = address ?? `recruteur.${rand()}@e2e.konekt.test`;
+  const headers = o.inReplyTo !== undefined ? [{ name: 'In-Reply-To', value: o.inReplyTo }] : [];
+  const scripted = [...(mailboxRoutes.get(accountId) ?? []), routes.email({ emailId, from, to, subject, headers })];
+  mailboxRoutes.set(accountId, scripted);
+  await setMockMode(accountId, { routes: scripted });
+  cleanups.push(() => setMockMode(accountId, {}));
+  return v2.emailNew({ accountId, emailId, subject, from, to, headers, provider: 'google' });
 }
-/** Conversation du faux prestataire dont la lecture des messages porte l'account_id. */
-function replyChat(accountId: string) {
-  const base = `chat${rand()}${rand()}`;
-  return { id: `${base}?account_id=${accountId}&c=`, path: `^/api/v1/chats/${base}$` };
-}
-const chatListRoute = (chatId: string) => ({
-  method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$',
-  body: { object: 'ChatList', items: [{ id: chatId }], cursor: null },
-});
-const candidateReply = (at: string) => ({
-  object: 'MessageList', cursor: null,
-  items: [{ id: `m_${rand()}`, is_sender: 0, text: 'Oui, avec plaisir', timestamp: at }],
-});
 /** Le candidat a répondu à `at` : conversation et message scriptés sur ce compte. */
 async function scriptReply(accountId: string, at: string) {
-  const chat = replyChat(accountId);
-  await setMockMode(accountId, { routes: [chatListRoute(chat.id), { method: 'GET', path: chat.path, body: candidateReply(at) }] });
+  const chat = `chat${rand()}${rand()}`;
+  await setMockMode(accountId, {
+    routes: [routes.chatLookup([chat]), routes.messages(chat, [{ from: 'candidate', text: 'Oui, avec plaisir', at }])],
+  });
   cleanups.push(() => setMockMode(accountId, {}));
 }
 
@@ -345,12 +359,12 @@ async function withInternalConfig(key: string, run: () => Promise<void>) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Connexion hosted_auth d'un compte LinkedIn (SEQ-041)
+// Connexion d'un compte LinkedIn par lien d'authentification (SEQ-041)
 // ════════════════════════════════════════════════════════════════════════════
-test.describe('Connexion hosted_auth', () => {
+test.describe('Connexion par lien d’authentification', () => {
   test.describe.configure({ mode: 'serial' });
   // hosted-auth-rattachement (SEQ-041)
-  test('un nouveau compte connecté par hosted_auth est rattaché au membre ; l’ancien compte cesse d’envoyer avant le repointage et linked_at repart de zéro', async () => {
+  test('un nouveau compte connecté par lien d’authentification est rattaché au membre ; l’ancien compte cesse d’envoyer avant le repointage et linked_at repart de zéro', async () => {
     const { org } = await trackedSendingOrg('E2E inbound2 hosted');
     const { user: member, accountId: oldAccount } = await memberWithAccount(org);
     const oldLinkedAt = minutesFromNow(-30 * DAY);
@@ -377,7 +391,8 @@ test.describe('Connexion hosted_auth', () => {
     const execB = await schedule(org, b.enrollmentId, seq.steps[1], { scheduled_at: dueB });
     const before = Date.now();
 
-    const res = await hostedCallback(member.userId, org.orgId, newAccount);
+    const attemptId = await startConnectionAttempt(org, member);
+    const res = await hostedCallback(newAccount, attemptId);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
     const links = await linksOf(org.orgId, member.userId);
@@ -410,7 +425,8 @@ test.describe('Connexion hosted_auth', () => {
 
     // Reconnexion du même compte : l'ancienneté de la liaison est gardée.
     const linkedAt = (await linksOf(org.orgId, member.userId))[0].linked_at;
-    const again = await hostedCallback(member.userId, org.orgId, newAccount, 'RECONNECTED');
+    const reconnectAttempt = await startConnectionAttempt(org, member, { reconnect_account_id: newAccount });
+    const again = await hostedCallback(newAccount, reconnectAttempt, 'reconnect');
     expect(again.status, JSON.stringify(again.body)).toBe(200);
     const after = await linksOf(org.orgId, member.userId);
     expect(after).toHaveLength(1);
@@ -419,7 +435,7 @@ test.describe('Connexion hosted_auth', () => {
   });
 
   // hosted-auth-refus-propriete (compte d'un autre membre)
-  test('hosted_auth refusé pour un compte déjà relié à un autre membre : notification, ancien compte non arrêté, liaisons inchangées', async () => {
+  test('connexion par lien refusée pour un compte déjà relié à un autre membre : notification, ancien compte non arrêté, liaisons inchangées', async () => {
     const { org, accountId: ownerAccount } = await trackedSendingOrg('E2E inbound2 hosted membre');
     const { user: member, accountId: oldAccount } = await memberWithAccount(org);
     const seq = await insertSequence(org, member.userId, [
@@ -431,7 +447,7 @@ test.describe('Connexion hosted_auth', () => {
     const later = minutesFromNow(2 * DAY);
     const execA = await schedule(org, a.enrollmentId, seq.steps[1], { scheduled_at: later });
 
-    const res = await hostedCallback(member.userId, org.orgId, ownerAccount);
+    const res = await hostedCallback(ownerAccount, await startConnectionAttempt(org, member));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
     const notes = await notificationsOf(org.orgId, 'error');
@@ -448,8 +464,8 @@ test.describe('Connexion hosted_auth', () => {
   });
 
   // hosted-auth-refus-propriete (compte d'une autre organisation)
-  // décision produit en attente : après un rattachement hosted_auth refusé, ignorer le signal « connecté » (rien repris chez le titulaire) ou le traiter comme une reconnexion de son compte (liaison OK puis reprise).
-  test.fixme('hosted_auth refusé pour un compte relié à une autre organisation : notification, ancien compte non arrêté, et aucune inscription de l’autre organisation reprise', async () => {
+  // Après un rattachement par lien refusé, le signal « connecté » est ignoré (rien n'est repris chez le titulaire) : choix de la v2, que l'ancien test attendait comme décision produit.
+  test('connexion par lien refusée pour un compte relié à une autre organisation : notification, ancien compte non arrêté, et aucune inscription de l’autre organisation reprise', async () => {
     const { org } = await trackedSendingOrg('E2E inbound2 hosted org A');
     const { user: member, accountId: oldAccount } = await memberWithAccount(org);
     const other = track(await createOrg('agency', 'E2E inbound2 hosted org B'));
@@ -470,7 +486,7 @@ test.describe('Connexion hosted_auth', () => {
     const execB = await schedule(other, bPaused.enrollmentId, seqB.steps[1], { status: 'cancelled', skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON, scheduled_at: later });
     const execA = await schedule(org, a.enrollmentId, seqA.steps[1], { scheduled_at: later });
 
-    const res = await hostedCallback(member.userId, org.orgId, foreignAccount);
+    const res = await hostedCallback(foreignAccount, await startConnectionAttempt(org, member));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
     const notes = await notificationsOf(org.orgId, 'error');
@@ -485,7 +501,7 @@ test.describe('Connexion hosted_auth', () => {
     expect((await inmailStatus(inmailId)).status).toBe('scheduled');
     expect(await notificationsOf(other.orgId), 'rien chez l’autre organisation').toEqual([]);
 
-    // DÉFAUT hosted-auth-refus-reprend-autre-org : après le refus, resumeEnrollmentsAfterReconnect(account_id) reprend quand même les pauses « compte déconnecté » de l'autre organisation.
+    // Le refus ne reprend rien (v2 : resumeEnrollmentsAfterReconnect n'est appelée qu'après un rattachement réussi ou rejoué).
     const b = await enr(bPaused.enrollmentId);
     expect({ status: b.status, pause_reason: b.pause_reason }, 'inscription de l’autre organisation jamais reprise').toEqual({ status: 'paused', pause_reason: 'account_disconnected' });
     expect((await exec(execB)).status, 'étape de l’autre organisation jamais réarmée').toBe('cancelled');
@@ -498,14 +514,15 @@ test.describe('Connexion hosted_auth', () => {
 test.describe('Réponse par e-mail', () => {
   test.describe.configure({ mode: 'serial' });
   // mail-reponse-rattachement (SEQ-039, SEQ-211, SEQ-212, SEQ-115, SEQ-191)
-  test('une réponse e-mail clôt l’inscription par in_reply_to, sinon par adresse (casse ignorée, jokers échappés), toujours dans l’organisation de la boîte ; boîte inconnue : repli sur le compte', async () => {
+  test('une réponse e-mail clôt l’inscription par in_reply_to, sinon par adresse (casse ignorée, jokers échappés), toujours dans l’organisation de la boîte ; boîte inconnue : rien n’est clos', async () => {
     const { org, accountId: ownerAccount } = await trackedSendingOrg('E2E inbound2 mail A');
     const { accountId: memberAccount, user: member } = await memberWithAccount(org);
     const { org: other, accountId: otherAccount } = await trackedSendingOrg('E2E inbound2 mail B');
     const r = rand();
-    const mailbox = `mbx_${r}`;
+    const mailbox = `acc_mbx_${r}`;
+    const mailboxAddress = `recruteur.${r}@e2e.konekt.test`;
     const { error: mbxErr } = await admin().from('member_email_accounts').insert({
-      organization_id: org.orgId, user_id: org.owner.userId, email_account_id: mailbox, email_address: `recruteur.${r}@e2e.konekt.test`,
+      organization_id: org.orgId, user_id: org.owner.userId, email_account_id: mailbox, email_address: mailboxAddress,
       provider: 'GOOGLE', account_status: 'OK', linked_by: org.owner.userId,
     });
     if (mbxErr) throw new Error(mbxErr.message);
@@ -544,7 +561,7 @@ test.describe('Réponse par e-mail', () => {
     const followB1 = await schedule(other, b1.enrollmentId, seqB.steps[1], { scheduled_at: later });
     const followB1Other = await schedule(other, b1Other.enrollmentId, seqB.steps[1], { scheduled_at: later });
 
-    const firstMail = mailReceived(mailbox, replyFromOther, { inReplyTo: { message_id: messageId.slice(1, -1) } });
+    const firstMail = await mailReceived(mailbox, mailboxAddress, replyFromOther, { inReplyTo: messageId.slice(1, -1) });
     await webhook(firstMail);
 
     const rowA1 = await enr(a1.enrollmentId);
@@ -575,9 +592,9 @@ test.describe('Réponse par e-mail', () => {
     }
 
     // Réponse comptée une fois : même événement rejoué, puis second e-mail.
-    const replay = await webhook(firstMail);
+    const replay = await webhook(firstMail); // même enveloppe, même identifiant evt_ : dédoublonnée
     expect(replay).toEqual({ ok: true, deduplicated: true });
-    await webhook(mailReceived(mailbox, addrA1.toLowerCase(), { inReplyTo: messageId }));
+    await webhook(await mailReceived(mailbox, mailboxAddress, addrA1.toLowerCase(), { inReplyTo: messageId }));
     expect((await analytics(seqA1.sequenceId)).replies, 'réponse comptée une seule fois (SEQ-191)').toBe(1);
     expect(await notificationsOf(org.orgId, 'new_message')).toHaveLength(1);
     expect((await enr(b1.enrollmentId)).status, 'second e-mail : autre organisation toujours intacte').toBe('active');
@@ -589,7 +606,7 @@ test.describe('Réponse par e-mail', () => {
     const b2 = await enroll(other, seqB.sequenceId, other.owner.userId, otherAccount, { email_used: addrA2.toLowerCase(), current_step_order: 1 });
     const followA2 = await schedule(org, a2.enrollmentId, seqA2.steps[1], { scheduled_at: later });
     const followB2 = await schedule(other, b2.enrollmentId, seqB.steps[1], { scheduled_at: later });
-    await webhook(mailReceived(mailbox, addrA2.toUpperCase()));
+    await webhook(await mailReceived(mailbox, mailboxAddress, addrA2.toUpperCase()));
     expect((await enr(a2.enrollmentId)).status, 'repli par adresse, casse ignorée').toBe('replied');
     expect((await exec(followA2)).status).toBe('cancelled');
     expect((await enr(b2.enrollmentId)).status, 'même adresse dans une autre organisation : intacte').toBe('active');
@@ -600,23 +617,26 @@ test.describe('Réponse par e-mail', () => {
     const a4 = await enroll(org, seqA2.sequenceId, org.owner.userId, ownerAccount, { email_used: `cab1.${r}@${domain}`, current_step_order: 1 });
     const followA3 = await schedule(org, a3.enrollmentId, seqA2.steps[1], { scheduled_at: later });
     const followA4 = await schedule(org, a4.enrollmentId, seqA2.steps[1], { scheduled_at: later });
-    await webhook(mailReceived(mailbox, `c_1.${r}@${domain}`));
-    await webhook(mailReceived(mailbox, `c%1.${r}@${domain}`));
+    await webhook(await mailReceived(mailbox, mailboxAddress, `c_1.${r}@${domain}`));
+    await webhook(await mailReceived(mailbox, mailboxAddress, `c%1.${r}@${domain}`));
     expect((await enr(a3.enrollmentId)).status, '« _ » n’est pas un joker').toBe('active');
     expect((await enr(a4.enrollmentId)).status, '« % » n’est pas un joker').toBe('active');
     expect((await exec(followA3)).status).toBe('scheduled');
     expect((await exec(followA4)).status).toBe('scheduled');
 
-    // 4. Boîte inconnue : repli sur le compte d'inscription.
-    const unknownMailbox = `mbx_inconnue_${r}`;
+    // 4. Boîte inconnue : acquittée, aucune inscription close (plus de repli sur le compte d'inscription en v2).
+    const unknownMailbox = `acc_mbx_inconnue_${r}`;
     const addr5 = `cinq.${r}@${domain}`;
     const a5 = await enroll(org, seqA2.sequenceId, org.owner.userId, unknownMailbox, { email_used: addr5, current_step_order: 1 });
     const b5 = await enroll(other, seqB.sequenceId, other.owner.userId, otherAccount, { email_used: addr5, current_step_order: 1 });
     const followA5 = await schedule(org, a5.enrollmentId, seqA2.steps[1], { scheduled_at: later });
     const followB5 = await schedule(other, b5.enrollmentId, seqB.steps[1], { scheduled_at: later });
-    await webhook(mailReceived(unknownMailbox, addr5));
-    expect((await enr(a5.enrollmentId)).status, 'boîte inconnue : inscription du compte qui reçoit').toBe('replied');
-    expect((await exec(followA5)).status).toBe('cancelled');
+    await webhook(await mailReceived(unknownMailbox, null, addr5));
+    // v2 : une boîte reliée à aucune organisation de Konekt est acquittée sans rien lire ni clore (il n'y a personne
+    // pour qui agir, et un rattachement indépendant de la boîte clorait des inscriptions d'une autre organisation).
+    // L'ancien repli sur le compte d'inscription n'existe plus (unipile-webhook/index.test.ts, « email.new sur une boîte reliée à aucune organisation »).
+    expect((await enr(a5.enrollmentId)).status, 'boîte inconnue : acquittée, aucune inscription close').toBe('active');
+    expect((await exec(followA5)).status).toBe('scheduled');
     expect((await enr(b5.enrollmentId)).status, 'boîte inconnue : aucune inscription d’un autre compte').toBe('active');
     expect((await exec(followB5)).status).toBe('scheduled');
   });
@@ -628,7 +648,7 @@ test.describe('Réponse par e-mail', () => {
 test.describe('sequence-webhooks-handler', () => {
   test.describe.configure({ mode: 'serial' });
   // webhooks-handler-auth-ignores (SEQ-012)
-  test('sequence-webhooks-handler refuse sans secret (401) et ignore message_received, new_relation et mail_received (200, aucune écriture)', async () => {
+  test('sequence-webhooks-handler refuse sans jeton v2 valide (401, anciens en-têtes sans effet) et ignore message.new, relation.new et email.new (200, aucune écriture)', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound2 handler');
     const r = rand();
     const email = `camille.${r}@e2e.konekt.test`;
@@ -646,29 +666,31 @@ test.describe('sequence-webhooks-handler', () => {
     const relanceAt = minutesFromNow(2 * DAY);
     const relance = await schedule(org, enrollmentId, seq.steps[2], { scheduled_at: relanceAt });
 
-    const payloads: Record<string, Record<string, unknown>> = {
-      message_received: {
-        event: 'message_received', account_id: accountId, chat_id: `chat_${r}`, message_id: `msg_${r}`,
-        sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate' }, message: 'Oui',
-      },
-      new_relation: { event: 'new_relation', account_id: accountId, user_provider_id: profileId, user_full_name: 'Camille Martin' },
-      mail_received: {
-        event: 'mail_received', account_id: accountId, email_id: `mail_${r}`, subject: 'Re: Une mission',
-        from_attendee: { identifier: email }, to_attendees: [{ identifier: 'recruteur@e2e.konekt.test' }], in_reply_to: { message_id: messageId },
-      },
+    const payloads: Record<string, V2Envelope> = {
+      'message.new': v2.messageNew({ accountId, chatId: `chat_${r}`, messageId: `msg_${r}`, senderId: profileId, text: 'Oui' }),
+      'relation.new': v2.relationNew({ accountId, userId: profileId, name: 'Camille Martin' }),
+      'email.new': v2.emailNew({
+        accountId, emailId: `mail_${r}`, subject: 'Re: Une mission', from: email, to: 'recruteur@e2e.konekt.test',
+        headers: [{ name: 'In-Reply-To', value: messageId }], provider: 'google',
+      }),
     };
     const url = '/functions/v1/sequence-webhooks-handler';
-    for (const [label, headers] of [
-      ['sans en-tête', {}],
-      ['secret faux', { 'x-webhook-secret': 'faux' }],
-      ['secret du webhook LinkedIn', { 'x-webhook-secret': WEBHOOK_SECRET === SEQUENCE_WEBHOOK_SECRET ? 'faux' : WEBHOOK_SECRET }],
+    const post = (payload: V2Envelope, o: { token?: string | null; headers?: Record<string, string> } = {}) => {
+      const token = o.token === undefined ? WEBHOOK_V2_TOKEN : o.token;
+      return postJson(`${url}${token ? `?v2_token=${encodeURIComponent(token)}` : ''}`, payload, o.headers ?? {});
+    };
+    for (const [label, o] of [
+      ['sans jeton', { token: null }],
+      ['jeton faux', { token: 'invente' }],
+      ['ancien en-tête x-webhook-secret (secret des séquences), sans jeton', { token: null, headers: { 'x-webhook-secret': SEQUENCE_WEBHOOK_SECRET } }],
+      ['ancien en-tête unipile-auth (secret du webhook LinkedIn), sans jeton', { token: null, headers: { 'unipile-auth': WEBHOOK_SECRET } }],
     ] as const) {
-      const res = await postJson(url, payloads.message_received, headers as Record<string, string>);
+      const res = await post(payloads['message.new'], o);
       expect(res.status, `${label} : ${JSON.stringify(res.body)}`).toBe(401);
       expect(res.body).toEqual({ error: 'Unauthorized' });
     }
     for (const [event, payload] of Object.entries(payloads)) {
-      const res = await postJson(url, payload, { 'x-webhook-secret': SEQUENCE_WEBHOOK_SECRET });
+      const res = await post(payload);
       expect(res.status, `${event} : ${JSON.stringify(res.body)}`).toBe(200);
       expect(res.body, `${event} : accusé de réception seulement`).toEqual({ received: true });
     }
@@ -1199,7 +1221,7 @@ test.describe('check_replies', () => {
       return { org, accountId, enrollmentId, next: nextId };
     };
     const failing = await setup('E2E inbound2 CR 503', twoHoursAgo);
-    await setMockMode(failing.accountId, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$', status: 503, body: { title: 'Service Unavailable' } }] });
+    await setMockMode(failing.accountId, { routes: [routes.fail('getUserChat', 'unavailable', { method: 'GET' })] });
     cleanups.push(() => setMockMode(failing.accountId, {}));
     const recent = await setup('E2E inbound2 CR récent', minutesFromNow(-10));
     await scriptReply(recent.accountId, minutesFromNow(-5));
@@ -1367,7 +1389,7 @@ test.describe('check_wait_events', () => {
       const w3 = await exec(inactive.wait);
       expect(w3.status, 'séquence désactivée : attente jamais vérifiée').toBe('waiting_event');
       expect(ts(w3.updated_at), 'séquence désactivée : attente non touchée').toBe(ts(old));
-      const inactiveReads = (await mockCalls(inactive.accountId)).filter((c) => c.method === 'GET' && c.path.startsWith('/api/v1/users/'));
+      const inactiveReads = await callsOf(inactive.accountId, 'getUserProfile');
       expect(inactiveReads, 'séquence désactivée : aucune lecture de profil').toEqual([]);
 
       const again = await runEngine({ action: 'check_wait_events' });

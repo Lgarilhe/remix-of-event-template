@@ -208,7 +208,7 @@ test('5a — InMail groupé : case sur readyCount et premier InMail (objet et te
   assert.match(bulkInMail, /const withMessage = recipients\.filter\(r => generatedMessages\[r\.id\]\);/);
   assert.match(bulkInMail, /const recipientsConfirm = useRecipientsConfirm\(withMessage\.map\(r => r\.id\)\);/);
   assert.match(bulkInMail, /<RecipientsConfirm\s+count=\{readyCount\}/);
-  assert.match(bulkInMail, /label: 'InMail', subject: firstReadyMessage\.subject \|\| null, text: firstReadyMessage\.message/);
+  assert.match(bulkInMail, /label: 'InMail', subject: needsSubject \? firstReadyMessage\.subject \|\| null : null, text: firstReadyMessage\.message/);
   assert.match(bulkInMail, /duplicatesUnchecked \|\| recipientsConfirm\.blocked\}/);
   const queue = between(bulkInMail, 'const handleQueueAll = async () => {', 'setIsQueueing(true);');
   assert.match(queue, /if \(recipientsConfirm\.blocked\) return;/);

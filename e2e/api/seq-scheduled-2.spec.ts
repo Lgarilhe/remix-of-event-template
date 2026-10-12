@@ -45,11 +45,13 @@ import {
   ENGINE_SKIP_REASON,
   callFunction,
   engineAvailable,
+  isNewChat,
   messageSequence,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  recipientOf,
   sendingOrg,
   type MockCall,
 } from '../helpers/sequence-engine';
@@ -205,8 +207,7 @@ async function postsFrom(accountId: string): Promise<MockCall[]> {
 }
 
 async function newChatsTo(accountId: string, recipient: string): Promise<MockCall[]> {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats'
-    && (c.body as Json)?.attendees_ids === recipient);
+  return (await mockCalls(accountId)).filter((c) => isNewChat(c) && recipientOf(c) === recipient);
 }
 
 async function mappingIdOf(accountId: string): Promise<string> {

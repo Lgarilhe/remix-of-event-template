@@ -40,6 +40,7 @@ import {
 import {
   ENGINE_SKIP_REASON,
   callFunction,
+  callsOf,
   engineAvailable,
   enroll,
   messageSequence,
@@ -47,11 +48,15 @@ import {
   mockCalls,
   postJson,
   rand,
+  rawWebhook,
+  routes,
   runCycle,
   schedule,
   sendingOrg,
   sentInvites,
   sentTexts,
+  setMockMode,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -160,17 +165,17 @@ async function tokenOf(user: TestUser) {
 function engine(token: string, body: Record<string, unknown>) {
   return callFunction('process-sequences', token, body);
 }
-/** Message du candidat, format à plat (message_received) ; att_self = le compte lui-même pour le faux prestataire. */
-function replyFrom(accountId: string, profileId: string, o: { chatId?: string; messageId?: string; attendeeId?: string } = {}) {
-  return {
-    event: 'message_received',
-    account_id: accountId,
-    account_type: 'LINKEDIN',
-    chat_id: o.chatId ?? `chat_${rand()}${rand()}`,
-    message_id: o.messageId ?? `msg_${rand()}${rand()}`,
-    message: 'Bonjour, désolé pour le délai, je suis intéressé',
-    sender: { attendee_provider_id: profileId, attendee_id: o.attendeeId ?? 'att_candidate', attendee_name: 'Camille Martin' },
-  };
+/** Message du candidat (message.new v2) ; `own: true` : message écrit depuis le compte lui-même (is_sender vrai). */
+function replyFrom(accountId: string, profileId: string, o: { chatId?: string; messageId?: string; own?: boolean } = {}) {
+  return v2.messageNew({
+    accountId,
+    chatId: o.chatId ?? `chat_${rand()}${rand()}`,
+    messageId: o.messageId ?? `msg_${rand()}${rand()}`,
+    text: 'Bonjour, désolé pour le délai, je suis intéressé',
+    senderId: o.own ? undefined : profileId,
+    senderName: 'Camille Martin',
+    isSender: o.own === true,
+  });
 }
 /** Requête SQL en superutilisateur (état hérité impossible à créer par l'API). */
 function superSql(sql: string) {
@@ -370,7 +375,7 @@ isolated('completed-reply-siblings-before-end',
 
 // completed-own-message-ignored
 isolated('completed-own-message-ignored',
-  'message du recruteur envoyé depuis LinkedIn après la fin (is_sender vrai ou participant « soi ») : rien n’est compté ni notifié, les notifications de la conversation passent en lues',
+  'message du recruteur envoyé depuis LinkedIn après la fin (is_sender vrai) : rien n’est compté ni notifié, les notifications de la conversation passent en lues',
   async () => {
     const s = await completedScene('E2E late message du recruteur');
     const [chatA, chatB] = [`chat_${rand()}${rand()}`, `chat_${rand()}${rand()}`];
@@ -380,13 +385,10 @@ isolated('completed-own-message-ignored',
     ]).select('id');
     if (error || !seeded) throw new Error(`notifications: ${error?.message}`);
 
-    // (a) format new_message imbriqué, is_sender vrai.
-    await webhook({
-      event: 'new_message', account_id: s.accountId,
-      data: { message: { id: `m_${rand()}${rand()}`, is_sender: true, chat_id: chatA, sender: { provider_id: s.profileId } } },
-    });
-    // (b) format message_received, expéditeur = participant « soi » (att_self).
-    await webhook(replyFrom(s.accountId, s.profileId, { chatId: chatB, attendeeId: 'att_self' }));
+    // (a) is_sender vrai, l'expéditeur affiché est l'identifiant du candidat (is_sender décide).
+    await webhook(v2.messageNew({ accountId: s.accountId, chatId: chatA, messageId: `m_${rand()}${rand()}`, senderId: s.profileId, isSender: true }));
+    // (b) is_sender vrai, expéditeur = le compte lui-même.
+    await webhook(replyFrom(s.accountId, s.profileId, { chatId: chatB, own: true }));
 
     const row = await enr(s.enrollmentId);
     expect(row.status, 'inscription toujours terminée').toBe('completed');
@@ -401,21 +403,13 @@ isolated('completed-own-message-ignored',
 
 // completed-own-invite-note-ignored
 isolated('completed-own-invite-note-ignored',
-  'séquence terminée sur une invitation avec note : le message_received de notre propre note (participant « soi », ou « soi » introuvable) est ignoré, 200, rien n’est écrit',
+  'séquence terminée sur une invitation avec note : le message.new de notre propre note (is_sender vrai, ou is_sender absent relu chez le fournisseur) est ignoré, 200, rien n’est écrit ; relecture impossible : refusé pour rejeu, rien n’est écrit',
   async () => {
     const NOTE = 'Bonjour, ravi d’échanger sur votre parcours.';
     /** Séquence d'une seule invitation avec note, partie il y a trois jours, inscription terminée. */
-    const inviteScene = async (prefix: string, dsn?: string) => {
+    const inviteScene = async (prefix: string) => {
       const { org, accountId } = await sendingOrg(prefix);
       track(org);
-      if (dsn) {
-        // Identifiants propres posés AVANT tout webhook : la résolution des
-        // identifiants garde en cache l'absence de configuration d'une organisation.
-        const { error } = await admin().from('organization_integrations').upsert({
-          organization_id: org.orgId, unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: dsn,
-        }, { onConflict: 'organization_id' });
-        if (error) throw new Error(`organization_integrations: ${error.message}`);
-      }
       const { sequenceId, steps } = await seedSequence(org.orgId, org.owner.userId, [{ action_type: 'connection_request' }]);
       await admin().from('sequence_steps').update({ message_template: NOTE }).eq('id', steps[0].id);
       const completedAt = minutesFromNow(-DAY);
@@ -439,25 +433,39 @@ isolated('completed-own-invite-note-ignored',
       };
       return { accountId, profileId, check };
     };
-    const secret = { 'unipile-auth': process.env.E2E_UNIPILE_WEBHOOK_SECRET ?? '' };
+    /** Notre note telle que le fournisseur la livre, mais sans is_sender (charge mal formée : l'auteur reste à vérifier). */
+    const withoutSender = (accountId: string, chatId: string, messageId: string) => {
+      const event = v2.messageNew({ accountId, chatId, messageId, isSender: true, text: NOTE });
+      delete (event.payload as Record<string, unknown>).is_sender;
+      return event;
+    };
 
-    // (a) La note arrive avec l'expéditeur = notre participant (att_self).
+    // (a) La note arrive avec is_sender vrai (écrite depuis le compte lui-même).
     const a = await inviteScene('E2E late note soi');
-    const own = await postJson('/functions/v1/unipile-webhook', replyFrom(a.accountId, a.profileId, { attendeeId: 'att_self' }), secret);
+    const own = await rawWebhook(replyFrom(a.accountId, a.profileId, { own: true }));
     expect(own.status, JSON.stringify(own.body)).toBe(200);
-    await a.check('participant « soi »');
+    await a.check('is_sender vrai');
 
-    // (b) Participants sans « soi » identifiable : l'appel des participants,
-    // sur les identifiants propres de l'organisation, tombe sur la réponse
-    // générique du faux prestataire (items vides). Échec fermé : 200, rien d'écrit.
-    const b = await inviteScene('E2E late note sans soi', `unipile.mock/e2e-late-${rand()}`);
-    const chatId = `chat_${rand()}${rand()}`;
-    const unknown = await postJson('/functions/v1/unipile-webhook', replyFrom(b.accountId, b.profileId, { chatId }), secret);
-    expect(unknown.status, JSON.stringify(unknown.body)).toBe(200);
-    const attendeeCalls = (await mockCalls()).filter((c) => c.method === 'GET' && c.path.includes(`/chats/${chatId}/attendees`));
-    expect(attendeeCalls.map((c) => c.path), 'participants demandés sur les identifiants de l’organisation')
-      .toEqual([expect.stringMatching(/^\/e2e-late-[a-z0-9]+\/api\/v1\/chats\//)]);
-    await b.check('« soi » introuvable');
+    // (b) is_sender absent : le message est relu auprès du fournisseur, sous le compte, et c'est le nôtre.
+    const b = await inviteScene('E2E late note relue');
+    await setMockMode(b.accountId, { message_is_sender: true });
+    const chatB = `chat_${rand()}${rand()}`;
+    const messageB = `msg_${rand()}${rand()}`;
+    const reread = await rawWebhook(withoutSender(b.accountId, chatB, messageB));
+    expect(reread.status, JSON.stringify(reread.body)).toBe(200);
+    const readsB = await callsOf(b.accountId, 'getMessage');
+    // Relu au moins une fois (la vérification de l'auteur, puis la reconnaissance du message propre), toujours sous le compte.
+    expect(readsB.length, 'message relu chez le fournisseur').toBeGreaterThanOrEqual(1);
+    expect([...new Set(readsB.map((c) => c.path))], 'message relu sous le compte de l’inscription, jamais un autre')
+      .toEqual([`/v2/${b.accountId}/chats/${chatB}/messages/${messageB}`]);
+    await b.check('is_sender absent, relu : de nous');
+
+    // (c) is_sender absent et relecture impossible : échec fermé, la clé de dédoublonnage est libérée (500, rejeu), rien n'est écrit.
+    const c = await inviteScene('E2E late note illisible');
+    await setMockMode(c.accountId, { routes: [routes.fail('getMessage', 'server_error')] });
+    const unverifiable = await rawWebhook(withoutSender(c.accountId, `chat_${rand()}${rand()}`, `msg_${rand()}${rand()}`));
+    expect(unverifiable.status, JSON.stringify(unverifiable.body)).toBe(500);
+    await c.check('is_sender absent, relecture impossible');
   });
 
 // completed-reply-notification-per-org (SEQ-006)

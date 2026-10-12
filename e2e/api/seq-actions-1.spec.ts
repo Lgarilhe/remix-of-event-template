@@ -48,6 +48,7 @@ import {
   sendingOrg,
   sentTexts,
   setPaidPlan,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -647,7 +648,7 @@ test.describe('@critical « Dissocier » un compte LinkedIn', () => {
     await runCycle();
     expect(await sentTexts(acc), 'rien ne part au cycle suivant').toEqual([]);
 
-    await webhook({ AccountStatus: { account_id: acc, account_type: 'LINKEDIN', message: 'OK' } });
+    await webhook(v2.accountStatus(acc, 'running'));
     const e2After = await enrRow(e2.enrollmentId);
     expect(e2After.status, 'la reconnexion ne reprend pas un compte dissocié').toBe('paused');
     expect(e2After.pause_reason).toBe('manual');

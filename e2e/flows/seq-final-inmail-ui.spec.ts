@@ -173,7 +173,15 @@ async function openSearchResults(browser: Browser, ws: Workspace, profiles: Cand
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, accounts: [{ id: ws.accountId, account_status: 'OK', provider: 'LINKEDIN', name: 'E2E LinkedIn' }] }),
+        body: JSON.stringify({ success: true, accounts: [{ id: ws.accountId, account_status: 'OK', provider: 'LINKEDIN', name: 'E2E LinkedIn', subscriptions: { classic: true, recruiter: true, sales_navigator: false } }] }),
+      });
+    }
+    // Licence active du compte (InMail groupé) : contrat Recruiter sélectionné.
+    if (action === 'list_contracts') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, contracts: [{ id: 'contract-recruiter', name: 'Recruiter', product: 'recruiter', selected: true }] }),
       });
     }
     if (action === 'inmail_balance') {

@@ -31,6 +31,7 @@ import {
   schedule,
   sendingOrg,
   sentTexts,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -99,15 +100,14 @@ test.describe('@critical Scénarios moteur de séquences', () => {
     await schedule(org, enrollmentId, steps[0], { status: 'sent', scheduled_at: minutesFromNow(-2 * 24 * 60), executed_at: minutesFromNow(-2 * 24 * 60) });
     const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(24 * 60) });
 
-    await webhook({
-      event: 'message_received',
-      account_id: accountId,
-      account_type: 'LINKEDIN',
-      chat_id: `chat_${rand()}`,
-      message_id: `msg_${rand()}`,
-      message: 'Bonjour, oui avec plaisir',
-      sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate', attendee_name: 'Camille Martin' },
-    });
+    await webhook(v2.messageNew({
+      accountId,
+      chatId: `chat_${rand()}`,
+      messageId: `msg_${rand()}`,
+      senderId: profileId,
+      senderName: 'Camille Martin',
+      text: 'Bonjour, oui avec plaisir',
+    }));
 
     const enrollment = await enrollmentRow(enrollmentId);
     expect(enrollment.status, 'inscription « A répondu »').toBe('replied');
@@ -127,14 +127,14 @@ test.describe('@critical Scénarios moteur de séquences', () => {
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
     await schedule(org, enrollmentId, steps[0]);
 
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'CREDENTIALS' } });
+    await webhook(v2.accountStatus(accountId, 'disconnected'));
     await runCycle();
     expect(await sentTexts(accountId), 'rien ne part compte déconnecté').toEqual([]);
     const paused = await enrollmentRow(enrollmentId);
     expect(paused.status).toBe('paused');
     expect(paused.pause_reason).toBe('account_disconnected');
 
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'OK' } });
+    await webhook(v2.accountStatus(accountId, 'running'));
     const resumed = await enrollmentRow(enrollmentId);
     expect(resumed.status, 'reprise automatique à la reconnexion').toBe('active');
     const pending = (await executionsOf(enrollmentId)).filter((e) => e.status === 'scheduled');
@@ -154,13 +154,13 @@ test.describe('@critical Scénarios moteur de séquences', () => {
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
     await schedule(org, enrollmentId, steps[0]);
 
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'CREDENTIALS' } });
+    await webhook(v2.accountStatus(accountId, 'disconnected'));
     await runCycle();
     expect((await enrollmentRow(enrollmentId)).pause_reason).toBe('account_disconnected');
 
     // La séquence est désactivée pendant la panne, puis le compte revient.
     await admin().from('outreach_sequences').update({ is_active: false }).eq('id', sequenceId);
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'OK' } });
+    await webhook(v2.accountStatus(accountId, 'running'));
 
     const after = await enrollmentRow(enrollmentId);
     expect(after.status, 'pas de reprise sur une séquence désactivée').toBe('paused');
@@ -170,15 +170,15 @@ test.describe('@critical Scénarios moteur de séquences', () => {
     expect(await sentTexts(accountId)).toEqual([]);
   });
 
-  test('coupure brève : « CREDENTIALS » puis « OK » dans la même minute, le compte revient (format à plat)', async () => {
+  test('coupure brève : « CREDENTIALS » puis « OK » dans la même minute, le compte revient (enveloppes v2 account.status)', async () => {
     const { org, accountId } = await sendingOrg('E2E Coupure brève');
     orgsToDelete.push({ org, extra: [] });
     const readStatus = async () => (await admin().from('member_linkedin_accounts')
       .select('account_status').eq('linkedin_account_id', accountId).single()).data?.account_status;
 
-    await webhook({ event: 'account_status_updated', account_id: accountId, account_type: 'LINKEDIN', status: 'CREDENTIALS' });
+    await webhook(v2.accountStatus(accountId, 'disconnected'));
     expect(await readStatus()).toBe('CREDENTIALS');
-    const back = await webhook({ event: 'account_status_updated', account_id: accountId, account_type: 'LINKEDIN', status: 'OK' });
+    const back = await webhook(v2.accountStatus(accountId, 'running'));
     expect(back.deduplicated, 'le retour à OK n’est pas un doublon de la coupure').toBeUndefined();
     expect(await readStatus()).toBe('OK');
   });

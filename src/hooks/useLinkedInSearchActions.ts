@@ -1122,8 +1122,8 @@ export function useLinkedInSearchActions(
         // NEVER auto-retry on session conflicts
         toast.error(
           isStandaloneSearch
-            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.'
-            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.',
+            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si cela se répète, reconnectez-le dans Paramètres › Connexions.'
+            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si cela se répète, reconnectez votre compte dans Paramètres › Connexions.',
           {
             id: 'search-error',
             duration: 15000,
@@ -1150,12 +1150,12 @@ export function useLinkedInSearchActions(
         } else if (lowerErr.includes('rate') || lowerErr.includes('429')) {
           detail = 'Trop de requêtes LinkedIn. Patientez 5-10 min avant de relancer.';
         } else if (lowerErr.includes('credentials') || lowerErr.includes('expired')) {
-          detail = 'Session LinkedIn expirée. Reconnectez votre compte avec un nouveau cookie li_at.';
+          detail = 'Votre session a expiré. Reconnectez votre compte dans Paramètres › Connexions.';
         } else if (lowerErr.includes('not found') || lowerErr.includes('404')) {
-          detail = 'Compte LinkedIn introuvable. Reconnectez ou recréez le mapping.';
+          detail = 'Compte introuvable. Reconnectez votre compte dans Paramètres › Connexions.';
         }
 
-        toast.error(`Compte LinkedIn indisponible — ${detail}`, {
+        toast.error(`Compte LinkedIn indisponible. ${detail}`, {
           id: "search-error",
           duration: 15000,
           action: {
