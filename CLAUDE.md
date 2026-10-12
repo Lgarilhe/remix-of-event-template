@@ -498,7 +498,7 @@ Inbox:              auto-analyze-message, auto-categorize-chats, analyze-respons
 Email transactionnel: send-transactional-email, process-email-queue, handle-email-suppression, handle-email-unsubscribe
 Enrichment & sociétés: enrich-company, enrich-candidate-contact, get-enrichment-status, process-enrichment-queue,
                     resolve-pedigree-directory, refresh-pedigree-by-funding-stage
-LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
+LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks, unipile-migration (bascule des identifiants de compte v1 vers v2, administrateurs de la plateforme seulement, page /settings/admin/bascule)
 Missions / pipeline: add-to-shortlist, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
                     accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin, resolve-client-logo (logo du client enregistré dans le brief, copie dans org-logos/{org}/clients/, appelée à l'affichage de la liste et de la mission),
                     fetch-job-source (Brief IA : lit une offre, ou les offres d'une société, depuis une adresse web ; trois niveaux, interface publique d'un ATS (Greenhouse, Lever, Ashby, Recruitee), lecture directe avec données JobPosting, Firecrawl en secours ; garde SSRF dans `guard.ts`, aucun appel de modèle, aucun crédit débité ; LinkedIn jamais lu)
@@ -510,7 +510,7 @@ RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge (compte seu
 Photos:             capture-candidate-photos (copie privée des photos LinkedIn des candidats, cron toutes les 2 min, lot P)
 Suite d'entretien:  generate-interview-followup (rédaction du message au candidat et de la présentation au manager), send-candidate-email (envoi depuis la boîte reliée de la personne connectée)
 ```
-78 fonctions (2026-10-06, analyze-phone-call ajoutée par la téléphonie lot A5 ; 77 avec generate-interview-followup et send-candidate-email ajoutées par la suite d'entretien ; 75 avec draft-sequence ajoutée par le lot 5d-1 ; 74 au 2026-10-05, fetch-job-source ajoutée par le Brief IA ; 73 avec aircall-connect ajoutée par la téléphonie lot A1 ; 72 après resolve-client-logo puis capture-candidate-photos ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
+82 fonctions (2026-10-12, dossiers de `supabase/functions/` hors `_shared` ; unipile-migration ajoutée par la bascule Unipile v2, 81 avant elle) ; 78 au 2026-10-06 (analyze-phone-call ajoutée par la téléphonie lot A5 ; 77 avec generate-interview-followup et send-candidate-email ajoutées par la suite d'entretien ; 75 avec draft-sequence ajoutée par le lot 5d-1 ; 74 au 2026-10-05, fetch-job-source ajoutée par le Brief IA ; 73 avec aircall-connect ajoutée par la téléphonie lot A1 ; 72 après resolve-client-logo puis capture-candidate-photos ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
 
 ---
 
@@ -527,7 +527,11 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 |--------|---------------------------|
 | `ANTHROPIC_API_KEY` | **tous les appels AI** — le helper `_shared/call-claude.ts` est l'unique passerelle vers les LLM depuis la migration Lovable → Anthropic direct (2026-04-21). Ancien Lovable Gateway Gemini remplacé par Claude Haiku 4.5. Lu par 23 fonctions (2026-10-06) : ai-chat-completion, analyze-response, auto-analyze-message, auto-categorize-chats, detect-profile-fraud, draft-sequence (actions prepare et draft, lot 5e), enrich-company, generate-call-report, generate-client-competitors, generate-outreach-message, generate-reply-suggestions, generate-scorecard, generate-search-filters, ingest-user-file, live-coach, nl-filter-edit, process-sequences, refine-search-filters, retrieve-context, score-profile-job, search-agent-chat, sequence-send-email, text-action ; plus agent-tool-action et process-scheduled-actions via `_shared/agent-tools-mutations.ts` (import dynamique de call-claude.ts) |
 | `OPENAI_API_KEY` | generate-embedding, ingest-context, ingest-user-file, retrieve-context (embeddings seulement) |
-| `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
+| `UNIPILE_V2_API_KEY` | clé unique de l'API v2 (aucune clé ni DSN par organisation), lue à chaque appel par `_shared/unipile/config.ts` ; absente, tout appel au prestataire est refusé (`UnipileConfigError`, aucun repli). Utilisée par toutes les fonctions qui touchent LinkedIn, WhatsApp ou e-mail (via `_shared/unipile/`) |
+| `UNIPILE_V2_WEBHOOK_TOKEN` | jeton `?v2_token=` de l'adresse de réception des notifications : unipile-webhook, unipile-manage-webhooks, sequence-webhooks-handler (`_shared/unipile/webhooks.ts`). Absent, repli sur un dérivé de `UNIPILE_WEBHOOK_SECRET` ; aucun des deux : 503 |
+| `UNIPILE_HOSTED_DOMAIN` | nom de domaine à la marque (sans `https://`) des pages de connexion hébergées : unipile-accounts. Absent, la connexion hébergée est refusée (`config`), sauf `CONNECTION_ALLOW_VENDOR_HOSTED_LINK=1` (tests locaux, jamais en production) |
+| `CONNECTION_NATIVE_ENABLED` | `1` active les écrans de connexion directe de unipile-accounts (identifiants saisis dans Konekt). Laisser éteint tant que le parcours n'est pas validé avec un vrai compte |
+| `UNIPILE_API_KEY` + `UNIPILE_DSN` | **Retirés (bascule v2)** : plus lus par aucune fonction (`unipile-migration` ne lit que leur présence, contrôle « Anciennes clés du service »). À supprimer des secrets à la fin de la bascule, voir `docs/unipile-v2-bascule.md` |
 | `SB_SECRET_KEY` | clé service-role « nouveau format » : lue en priorité par `_shared/require-auth.ts` et par quasiment toutes les fonctions (`Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`). Si absente, repli sur `SUPABASE_SERVICE_ROLE_KEY` auto-provisionnée |
 | `ALLOWED_ORIGINS` | `_shared/cors.ts` (allowlist CORS, séparée par des virgules ; défaut = prod Vercel + localhost si absente) |
 | `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | **Retirés (décision 16)** : plus lus par aucune fonction depuis le retrait de la synchro Notion par clé API (étapes 1 et 2, 28 et 29/09/2026 ; process-sequences et calendly-webhook compris). À supprimer des secrets existants, inutiles sur un nouvel environnement. Seule la connexion Notion de l'assistant reste (`NOTION_TOKEN_ENCRYPTION_KEY`, `NOTION_ALLOWED_RETURN_ORIGINS`, plus bas) |
@@ -543,14 +547,13 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `CORESIGNAL_API_KEY` | coresignal-search (via `resolveCoresignalCredentials` de `_shared/resolve-org-credentials.ts`) |
 | `BETTERCONTACT_API_KEY` | enrich-candidate-contact, get-enrichment-status |
 | `BETTERCONTACT_CREDIT_COST_USD` | get-enrichment-status — prix d'un crédit fournisseur en dollars, pour renseigner `cost_usd` sur les débits d'enrichissement (sans jeton, le calcul par jetons donnerait zéro). Défaut 0.045, à remplacer par le tarif contracté |
-| `UNIPILE_V2_API_KEY` + `UNIPILE_V2_WEBHOOK_TOKEN` | `_shared/unipile-v2.ts` (importé par unipile-webhook, unipile-manage-webhooks) — API v2 activée seulement si la clé est posée |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
 | `AIRCALL_WEBHOOK_TOKEN` | **Retiré (téléphonie, lot A1)** : plus lu par aucune fonction, chaque liaison a son jeton propre (empreinte dans `telephony_connections`). À supprimer des secrets existants |
 | `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook (vérifie la signature), setup-calendly-webhook (la pose sur l'abonnement, refus s'il manque) |
-| `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, unipile-accounts, sequence-webhooks-handler, `_shared/unipile-v2.ts` |
-| `SEQUENCE_WEBHOOK_SECRET` | sequence-webhooks-handler |
+| `UNIPILE_WEBHOOK_SECRET` | repli seulement : `_shared/unipile/webhooks.ts` en dérive le jeton de réception quand `UNIPILE_V2_WEBHOOK_TOKEN` est absent. Inutile une fois le jeton dédié posé et les notifications réenregistrées |
+| `SEQUENCE_WEBHOOK_SECRET` | **Retiré (bascule v2)** : plus lu par aucune fonction ; sequence-webhooks-handler s'authentifie par le jeton `?v2_token=`. À supprimer des secrets existants |
 | `PROCESS_SEQUENCES_SECRET` | auth des crons : process-sequences, process-email-queue, process-inmail-queue, process-scheduled-actions, process-agent-tasks, process-enrichment-queue, agent-daily-digest, refresh-pedigree-by-funding-stage, resolve-pedigree-directory, capture-candidate-photos |
-| `KONEKT_PLATFORM_ADMIN_USER_IDS` | unipile-manage-webhooks (ids user séparés par des virgules ; sans ce secret, owner/admin de l'org suffit — SEC-031) |
+| `KONEKT_PLATFORM_ADMIN_USER_IDS` | ids user séparés par des virgules : unipile-migration (porte fermée sans ce secret), unipile-manage-webhooks (`list_deliveries` et `replay_event` fermés sans lui ; `register` et `delete` : sans lui owner/admin de l'org suffit — SEC-031), unipile-accounts (revendiquer un compte LinkedIn relié à personne), marketplace-admin, rgpd-erase-contact |
 | `NOTION_TOKEN_ENCRYPTION_KEY` | `_shared/notion-secret-crypto.ts` (chiffrement des tokens Notion ; importé par notion-mcp-oauth et `_shared/notion-mcp-connection.ts`) |
 | `NOTION_ALLOWED_RETURN_ORIGINS` | notion-mcp-oauth (origines de retour OAuth autorisées) |
 | `APP_URL` | agent-daily-digest, create-checkout-session, create-portal-session, notion-mcp-oauth, send-transactional-email, sequence-email-track, sequence-send-email, `_shared/agent-tools-mutations.ts` (= https://konekt-app-navy.vercel.app) |
@@ -685,10 +688,10 @@ await settleCredits(adminClient, {
 - **NEVER hardcode deprecated IDs** like `claude-sonnet-4-20250514`
 - Génération 5 (`claude-sonnet-5-5`, `claude-opus-5-5`) : température refusée (400), réflexion active par défaut, premier bloc de la réponse = `thinking`. Lire le bloc `type: "text"` (jamais `content[0]`), régler `output_config: { effort }`, laisser de la marge sur `max_tokens`. Modèle par défaut seulement pour `scoring` et `brief_analysis` (`autoDefault`) : ne jamais le poser sur une action partagée avec un appelant qui lit `content[0].text` (c'est le cas de `filter_generation`, utilisée par `nl-filter-edit`).
 
-### DSN format for Unipile
-- `resolveUnipileCredentials()` returns dsn WITH `https://` prefix
-- When constructing URLs: `const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : \`https://${creds.dsn}\``
-- NEVER do `https://${creds.dsn}` — causes double `https://`
+### Provider API v2 (replaces the DSN rules)
+- No DSN and no per-org credentials: the base URL is the constant `UNIPILE_BASE_URL` (`https://api.unipile.com/v2`), the key is `UNIPILE_V2_API_KEY`. `resolveUnipileCredentials` no longer exists.
+- NEVER build a provider URL by hand or call `fetch` toward it: go through `_shared/unipile/index.ts` (the only `fetch` is in `http.ts`; guard `tests/c1/unipile-client.test.mjs`).
+- Every account id is `acc_...` (`assertV2AccountId`); an id from a request must pass `assertAccountOwnedByOrg` before any call (the key is global to all tenants).
 
 ---
 
@@ -728,6 +731,8 @@ Sous le compte rendu de l'assistant d'entretien, `InterviewFollowUp` (`src/compo
 
 ### État et liaison LinkedIn
 Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes gardées en attente et ignorées par le moteur, InMails programmés annulés, compte retiré des rotations multi-expéditeurs ; helper `_shared/linkedin-sending-stop.ts`). Le même arrêt s'applique quand un membre change de compte et avant le retrait d'un membre (`unipile-accounts` action `stop_member_linkedin`, owner/admin).
+
+Connexion d'un compte (API v2) : actions `connection_*` de `unipile-accounts`, table `connection_attempts` (son `id` est le `state` envoyé au prestataire, 30 minutes), lien hébergé sur `UNIPILE_HOSTED_DOMAIN` par défaut, connexion directe derrière `CONNECTION_NATIVE_ENABLED`. `claim_linkedin_account` n'accepte plus un compte relié à personne, sauf pour un administrateur de la plateforme. Architecture : `docs/unipile-v2-architecture.md`. Bascule des identifiants et mise en production : `docs/unipile-v2-bascule.md` (page `/settings/admin/bascule`, `KONEKT_PLATFORM_ADMIN_USER_IDS`).
 
 ### Séquences : règles du moteur et de l'interface (audit 2026-09-25, `docs/audit-2026-09-25-sequences.md`)
 - **Pause** = `status 'paused'` + `pause_reason` ; les exécutions en attente (`scheduled`, `waiting_event`, `quota_blocked`) gardent leur date et le moteur les ignore. Aucune pause n'annule d'exécution, sauf celles que pose le moteur pour abonnement requis ou compte non rattaché : il annule l'étape courante avec la raison, et la reprise la réarme. Une clôture (réponse, désinscription, rebond, RDV, effacement RGPD) annule toutes les exécutions en attente, jamais `sending`.
@@ -848,81 +853,56 @@ Rappels API :
 
 ---
 
-## Unipile API (LinkedIn Integration)
+## Unipile API v2 (LinkedIn, WhatsApp, e-mail)
+
+Détails : `docs/unipile-v2-architecture.md` (développeurs), `docs/unipile-v2-bascule.md` (mise en production, propriétaire). Rien n'a été confronté à un vrai serveur v2 : liste à confirmer en partie 10 de l'architecture. Ne pas fusionner la branche de bascule avant le guide : la fusion déploie un code qui n'accepte que les identifiants `acc_...`.
 
 ### Architecture
 ```
-Frontend (invokeUnipile) → unipile-search edge function → Unipile API → LinkedIn
+Frontend (invokeUnipile) → unipile-search / unipile-accounts → _shared/unipile/ (http.ts, seul fetch) → https://api.unipile.com/v2 → LinkedIn / WhatsApp / boîte e-mail
 ```
-- Credentials per-org in `organization_integrations` table (unipile_api_key, unipile_dsn)
-- Fallback to env vars: `UNIPILE_API_KEY`, `UNIPILE_DSN`
-- Base URL: `https://{DSN}/api/v1`
-- Auth header: `X-API-KEY: {apiKey}`
-- All fetch calls use 15s timeout
+- Une clé globale `UNIPILE_V2_API_KEY` (en-tête `X-API-KEY`), ni DSN ni clé par organisation (colonnes `organization_integrations.unipile_*` conservées, sans lecteur)
+- Le compte est dans le chemin : `/v2/{acc_...}/...` ; `/v2/accounts`, `/v2/auth/*`, `/v2/webhooks/*` sont communs à l'application
+- Délai 15 s (30 s `heavy`) ; 2 reprises au plus, GET/PATCH/DELETE seulement (réseau, 429, 502 à 504) ; un envoi n'est jamais repris : délai ou 5xx = `uncertain`, jamais compté envoyé
+- Erreurs : genres fermés `ErrorKind`, texte français neutre `userSafeMessage`, le texte du prestataire n'est jamais rendu
 
-### LinkedIn API Types (Licenses)
-| License | API Value | Features |
-|---------|-----------|----------|
-| Classic | `classic` | Basic search, limited filters, no skills/role filter |
-| Recruiter | `recruiter` | Advanced search, Boolean keywords, role/skills/seniority, hiring projects, talent pools, spotlights |
-| Sales Navigator | `sales_navigator` | Account search, company filters, groups, past roles |
+### Licences LinkedIn
+| Licence | Recherche de personnes (`POST /{acc}/linkedin/...`) | Notes |
+|---------|------|-------|
+| Classic (`classic`) | `search/people` (curseur) | Recherche de base, filtres limités |
+| Recruiter (`recruiter`) | `recruiter/search/people` (curseur) | Mots-clés booléens, intitulé, compétences, séniorité, projets, spotlights |
+| Sales Navigator (`sales_navigator`) | `sales-navigator/search/people` (décalage, sans curseur) | Recherche de sociétés, filtres société |
+
+Licence déduite de `GET /{acc}/linkedin/contracts` (Classic toujours possible). Recruiter et Sales Navigator s'excluent sur un compte : `POST .../contracts/{id}/select` avant de chercher avec l'autre. Un filtre que la licence ne sait pas exprimer est rendu dans `filters_dropped`, un filtre approché dans `filters_adjusted` (`toKonektFilters`) ; l'agent de sourcing continu refuse plutôt que de chercher plus large (422 `FILTERS_UNSUPPORTED`). L'ancienne matrice des filtres par licence (colonne « Database » comprise) est retirée : lire `_shared/unipile/normalize/search.ts`.
 
 ### Main Actions (unipile-search edge function)
+**search** — corps compilé par licence (`_shared/unipile/normalize/search.ts`) → `{ success, results, cursor, total }` ; mots-clés Classic/Sales Navigator coupés à 200 caractères
+**search_from_url** (adresse de recherche collée), **list_recruiter_projects**, **list_sent_invitations**, **withdraw_invitation** (réservée au titulaire du compte)
+**get_profile** — `GET /{acc}/users/{ref}` + sections ; `ref` = nom court puis identifiant du prestataire ; `profile_url` accepté. Lire un profil n'est pas une visite : `visitProfile` est un appel explicite (étape `profile_visit`)
+**get_parameters** — paramètres de recherche par licence → `{ items: [{id, title}] }`
+**get_chats / get_messages** — par compte et par boîte (`inboxes`), dédoublonnés ; une conversation v2 ne porte pas son compte
+**send_message** — `POST /{acc}/chats/{chat}/messages/send` ou `POST /{acc}/chats/send` (nouvelle) ; InMail selon la licence (Recruiter : objet et signature, Sales Navigator : objet, Classic : crédit `classic`) ; réservée au titulaire du compte
+Compte : `unipile-accounts` (`connection_*`, `list`, `inmail_balance`, `list_contracts`, `select_contract`...) ; connexion hébergée par défaut, directe derrière `CONNECTION_NATIVE_ENABLED`
 
-**search** — `POST /linkedin/search?account_id={id}`
-- Accepts all LinkedIn filter params (keywords, location, role, skills, seniority, etc.)
-- Returns `{ success, results: LinkedInProfile[], cursor, total }`
-- Error `CONTENT_TOO_LARGE` if keywords >200 chars → auto-truncated
-- Auto-retry 3x on `multiple_sessions` error (0ms, 6s, 15s delays)
-
-**get_profile** — `GET /users/{profile_id}?account_id={id}`
-- Returns full profile (work_experience, education, skills, summary)
-- `profile_url` accepted as alternative → slug extracted
-- Profile data normalized (dates, network distance, Boolean flags)
-
-**get_parameters** — `GET /linkedin/search/parameters`
-- Autocomplete for filter values (location, company, school, skills...)
-- Params: `type`, `service` (RECRUITER/CLASSIC/SALES_NAVIGATOR), `keywords`
-- Returns `{ items: [{id, title}] }`
-
-**get_chats** — `GET /chats?account_id={id}`
-- Fetches from 3 folders in parallel: INBOX_LINKEDIN_CLASSIC, INBOX_LINKEDIN_RECRUITER, INBOX
-- Dedupes by chat ID, sorts newest first
-- Returns `{ chats, cursors, cursor }`
-
-**send_message** — `POST /chats/{chat_id}/messages` or `POST /chats` (new)
-- Multipart form-data format
-- InMail: set `is_inmail: true` + `subject` → uses `linkedin[api]: recruiter`
-
-**get_messages** — `GET /chats/{chat_id}/messages`
-- Returns `{ messages, cursor }`
-
-### Webhook Events (unipile-webhook)
-| Event | Action |
-|-------|--------|
-| `new_relation` | Update enrollment connection_status, resolve wait_connection step |
-| `message_received` | Mark enrollment as replied, cancel pending steps, auto-analyze |
-| `account_connected` | Update account_status → OK |
-| `account_disconnected` | Update status → CREDENTIALS, notify user |
-
-### Key Differences by License
-| Filter | Classic | Recruiter | Sales Nav | Database |
-|--------|---------|-----------|-----------|----------|
-| keywords | ✅ | ✅ | ✅ | ✅ (cleaned) |
-| location | IDs only | ID+priority+scope+radius | IDs | Names (normalized) |
-| role/job_title | ❌ | ✅ Boolean keywords | ✅ | ✅ person_titles |
-| skills | ❌ | ✅ ID+priority | ❌ | Text only |
-| seniority | Basic mapping | Full mapping + role injection | Full mapping | Apollo mapping |
-| company_keywords | ❌ | ✅ keywords+priority+scope | ❌ | ✅ q_organization_name |
-| degree | ❌ | ✅ include/exclude | ❌ | ❌ |
-| spotlight | ❌ | ✅ (OPEN_TO_WORK, ACTIVE_TALENT...) | ❌ | ❌ |
+### Webhook Events (unipile-webhook, jeton `?v2_token=`, 17 événements souscrits)
+| Event v2 | Action |
+|----------|--------|
+| `relation.new` | Update enrollment connection_status, resolve wait_connection step |
+| `message.new` | Mark enrollment as replied, cancel pending steps, auto-analyze ; message propre = `record_own_message` |
+| `email.new` | Réponse retrouvée par `in_reply_to` / `thread_id` |
+| `account.add`, `account.reconnect` | Claim de la tentative `connection_attempts` (`state`), reprise des inscriptions en pause |
+| `account.status.running`, `.degraded`, `.partial` | account_status → OK, DEGRADED, PARTIAL |
+| `account.status.disconnected`, `.errored` | account_status → CREDENTIALS, ERROR, notify user |
+| `account.locked`, `account.unlocked` | LOCKED, puis retour à OK |
+| `account.remove` | Compte supprimé chez le prestataire : délier et arrêter les envois (pas une déconnexion récupérable) |
 
 ### Error Handling
-- `429 RATE_LIMIT` → retry after 60s, toast "Trop de requêtes"
-- `400 CONTENT_TOO_LARGE` → auto-truncate keywords
-- `500 multiple_sessions` → auto-retry 3x
-- Network errors → French humanized messages
-- `CREDENTIALS` account status → prompt user to reconnect
+- `429` → reprises avec `Retry-After` (5 s au plus) sur les appels idempotents ; sur un envoi, refus sans reprise ; toast « Trop de requêtes »
+- `uncertain` (délai, 5xx, 2xx illisible sur un envoi) → ni enregistré comme envoyé ni renvoyé
+- `provider_limit` → compte en pause pour la journée ; le plafond vient du registre `linkedin_action_log` (la v2 ne donne plus de pourcentage d'usage)
+- `account_degraded` (DEGRADED, PARTIAL, LOCKED) → envois retenus 6 h, sans mise en pause des inscriptions
+- `CREDENTIALS` / `account_disconnected` (ou ancien identifiant non `acc_`) → inscriptions en pause `account_disconnected`, reconnexion demandée
+- Clé absente → `config` ; erreurs réseau → messages français humanisés
 
 ### Deployment Warning
 **Edge functions are auto-deployed** by `.github/workflows/deploy-edge-functions.yml` on push to `main` (changed functions only; `workflow_dispatch` accepts a name, a comma-separated list or `all`). Manual hotfix if needed:
