@@ -408,6 +408,13 @@ Deno.serve(async (req) => {
       gateAccountId = await resolveChatAccount(baseUrl, apiKey, organization_id, chatIdEncoded, orgAccountIds);
     }
 
+    // Correctif 4 (plan du lot 5) : destinataire d'un envoi et contrôle
+    // d'effacement avant le plafond LinkedIn (aucune place prise par un envoi
+    // refusé), le marqueur et le POST. Un refus lève UnipileInputError.
+    const sendRecipient = action === 'send_message'
+      ? await checkSendRecipient(baseUrl, apiKey, gateAccountId, params, String(organization_id))
+      : null;
+
     // ─── Gate quota LinkedIn (actions manuelles user) ─────────────────────
     // Conformité #260513-007211 : les vues de profil / recherches / envois
     // déclenchés depuis l'app comptent désormais dans le MÊME plafond que
@@ -474,7 +481,7 @@ Deno.serve(async (req) => {
           organizationId: String(organization_id),
           userId,
           isInternal,
-        });
+        }, sendRecipient);
       }
 
       case 'mark_as_read': {
@@ -1912,11 +1919,85 @@ async function fetchChatCandidate(baseUrl: string, apiKey: string, chatId: strin
   }
 }
 
-/** Envoi manuel à enregistrer : candidat, mission et auteur, résolus avant le POST. */
-interface ManualSendTarget {
+/** Destinataire d'un envoi, résolu et contrôlé avant le plafond LinkedIn, le marqueur et le POST. */
+interface SendRecipient {
   // deno-lint-ignore no-explicit-any
   admin: any;
   candidate: CandidateRef;
+}
+
+const SEND_ERASED_MESSAGE = "Ce candidat a demandé l'effacement de ses données : aucun message ne peut lui être envoyé.";
+const SEND_GDPR_UNVERIFIED_MESSAGE =
+  "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié : le message n'est pas parti. Réessayez dans un instant.";
+
+/**
+ * Correctif 4 (plan du lot 5) : destinataire d'un envoi et contrôle
+ * d'effacement, pour tout appelant (fiche, messagerie, fenêtre de message,
+ * assistant). Candidat : pour une conversation existante, celui du lien,
+ * sinon le participant de la conversation, même si recipient_id est fourni ;
+ * sinon recipient_id et recipient_profile_url. Candidat effacé (RGPD) dans
+ * l'organisation : refus 403
+ * CANDIDATE_ERASED. Registre illisible : refus 503 GDPR_UNVERIFIED (échec
+ * fermé, comme isGdprBlocked). Candidat inconnu (groupe, participants
+ * illisibles) : null, le message part sans enregistrement, comme avant.
+ */
+async function checkSendRecipient(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>,
+  organizationId: string,
+): Promise<SendRecipient | null> {
+  // Même conversation que celle de l'envoi : chat_id lu comme handleSendMessage
+  // le lit (unipileId : valeur non textuelle ou encodée ramenée à l'identifiant).
+  const chatId = params.chat_id ? decodeURIComponent(unipileId(params.chat_id, 'chat_id')) : null;
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+  );
+
+  // Avec chat_id, le message part dans la conversation et recipient_id ne sert
+  // pas au routage (handleSendMessage) : le destinataire est le participant de
+  // la conversation, quel que soit recipient_id, sinon un recipient_id choisi
+  // par l'appelant ferait passer l'envoi à un candidat effacé. recipient_id et
+  // recipient_profile_url seulement sans conversation, ou si son participant
+  // est inconnu.
+  let candidate = candidateRef({
+    ids: [sendText(params.recipient_id)],
+    profileUrl: sendText(params.recipient_profile_url),
+  });
+  if (chatId) {
+    candidate = (await linkedChatCandidate(admin, organizationId, accountId, chatId))
+      ?? (await fetchChatCandidate(baseUrl, apiKey, chatId))
+      ?? candidate;
+  }
+  if (candidate.ids.length === 0) {
+    console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
+    return null;
+  }
+
+  let erased: boolean;
+  try {
+    // Client esm.sh, type attendu npm : même API.
+    // deno-lint-ignore no-explicit-any
+    erased = await isCandidateErasedForOrg(admin as any, {
+      organizationId,
+      linkedinIds: candidate.ids,
+      linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
+    });
+  } catch (e) {
+    console.warn('[unipile-search] send_message: registre d\'effacement illisible, envoi refusé:', e instanceof Error ? e.message : e);
+    throw new UnipileInputError(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED');
+  }
+  if (erased) {
+    console.log('[unipile-search] send_message: candidat effacé, envoi refusé');
+    throw new UnipileInputError(SEND_ERASED_MESSAGE, 403, 'CANDIDATE_ERASED');
+  }
+  return { admin, candidate };
+}
+
+/** Envoi manuel à enregistrer : candidat, mission et auteur, résolus avant le POST. */
+interface ManualSendTarget extends SendRecipient {
   projectId: string | null;
   createdBy: string | null;
   source: 'manual' | 'assistant';
@@ -1924,24 +2005,23 @@ interface ManualSendTarget {
 }
 
 /**
- * Refonte mission, lot 0b-2a (S14), avant le POST : candidat, mission et
- * auteur de l'envoi, puis marqueur (record_candidate_outbound, p_pending) pour
- * que l'écho de ce message au webhook ne soit pas pris pour un message écrit
- * hors Konekt (décision 5a). Mission : project_id s'il a la forme d'un uuid
- * (préfixe project: accepté), sinon résolue par le serveur. Candidat :
- * recipient_id et recipient_profile_url ; pour une conversation existante,
- * celui du lien, sinon le participant de la conversation. source et
- * created_by ne sont lus que sur un appel interne (assistant). Candidat
- * effacé (RGPD) dans l'organisation, ou registre illisible : rien n'est
- * enregistré, le message part quand même. Au mieux : jamais d'erreur rendue.
+ * Refonte mission, lot 0b-2a (S14), avant le POST : mission et auteur de
+ * l'envoi, puis marqueur (record_candidate_outbound, p_pending) pour que
+ * l'écho de ce message au webhook ne soit pas pris pour un message écrit hors
+ * Konekt (décision 5a). Mission : project_id s'il a la forme d'un uuid
+ * (préfixe project: accepté), sinon résolue par le serveur. Candidat : celui
+ * de checkSendRecipient, déjà contrôlé (un candidat effacé ou un registre
+ * illisible refuse l'envoi avant le plafond LinkedIn, correctif 4) ; inconnu,
+ * rien n'est enregistré. source et created_by ne sont lus que sur un appel
+ * interne (assistant). Au mieux : jamais d'erreur rendue.
  */
 async function prepareManualSend(
-  baseUrl: string,
-  apiKey: string,
   accountId: string,
   params: Record<string, unknown>,
   ctx: SendContext,
+  recipient: SendRecipient | null,
 ): Promise<ManualSendTarget | null> {
+  if (!recipient) return null;
   try {
     const rawProjectId = params.project_id;
     const projectId = missionIdFrom(rawProjectId);
@@ -1949,39 +2029,7 @@ async function prepareManualSend(
       console.warn('[unipile-search] send_message: project_id ignoré (forme invalide)');
     }
     const chatId = sendText(params.chat_id);
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
-    );
-
-    let candidate = candidateRef({
-      ids: [sendText(params.recipient_id)],
-      profileUrl: sendText(params.recipient_profile_url),
-    });
-    if (candidate.ids.length === 0 && chatId) {
-      candidate = (await linkedChatCandidate(admin, ctx.organizationId, accountId, chatId))
-        ?? (await fetchChatCandidate(baseUrl, apiKey, chatId))
-        ?? candidate;
-    }
-    if (candidate.ids.length === 0) {
-      console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
-      return null;
-    }
-    try {
-      // Client esm.sh, type attendu npm : même API.
-      // deno-lint-ignore no-explicit-any
-      if (await isCandidateErasedForOrg(admin as any, {
-        organizationId: ctx.organizationId,
-        linkedinIds: candidate.ids,
-        linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
-      })) {
-        console.log('[unipile-search] send_message: candidat effacé, rien n\'est enregistré');
-        return null;
-      }
-    } catch (e) {
-      console.warn('[unipile-search] send_message: registre d\'effacement illisible, rien n\'est enregistré:', e instanceof Error ? e.message : e);
-      return null;
-    }
+    const { admin, candidate } = recipient;
 
     const internalCreatedBy = sendText(params.created_by);
     const target: ManualSendTarget = {
@@ -2061,6 +2109,7 @@ async function handleSendMessage(
   accountId: string,
   params: Record<string, unknown>,
   ctx: SendContext,
+  recipient: SendRecipient | null,
 ): Promise<Response> {
   const { chat_id, recipient_id, text, message, subject, is_inmail } = params;
   const messageText = (text || message) as string;
@@ -2108,7 +2157,7 @@ async function handleSendMessage(
 
   console.log('Send message URL:', url, 'is_inmail:', is_inmail);
 
-  const manualSend = await prepareManualSend(baseUrl, apiKey, accountId, params, ctx);
+  const manualSend = await prepareManualSend(accountId, params, ctx, recipient);
 
   const response = await fetchWithTimeout(url, {
     method: 'POST',

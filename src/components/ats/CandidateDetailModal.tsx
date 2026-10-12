@@ -56,6 +56,12 @@ interface CandidateDetailModalProps {
   /** Si true, auto-trigger la génération de scorecard à l'ouverture
    *  (utile pour le CTA "Préparer l'entretien" depuis le calendrier). */
   autoGenerateScorecard?: boolean;
+  autoOpenScorecard?: boolean;
+  autoStartCoaching?: boolean;
+  /** Entretien vérifié par le parcours qui ouvre la fiche. */
+  qualificationSessionId?: string | null;
+  /** Un entretien sans mission peut exister avant l'ajout de la personne au pipeline. */
+  pipelineAttached?: boolean;
   /** Étapes proposées dans le sélecteur de stage. Défaut : ATS_STAGES.
    *  Le pipeline mission passe ses colonnes (Sourcé/Contacté/steps/Embauché)
    *  pour que le changement d'étape reste cohérent avec son kanban. */
@@ -79,7 +85,7 @@ interface Reminder {
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
-  initialTab, autoGenerateScorecard, stageOptions,
+  initialTab, autoGenerateScorecard, autoOpenScorecard, autoStartCoaching, qualificationSessionId, pipelineAttached = true, stageOptions,
 }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -97,7 +103,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   // candidat contacté à la main.
   const accountId = fullProfile.accountId || myLinkedInAccountId || undefined;
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
-  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotLoading, setSnapshotLoading] = useState(!candidate.linkedinProfileData);
 
   // Mobile profile overlay : utile quand la modale rend le ProfileTab dans
   // un onglet (sur mobile l'écran est petit donc on l'ouvre full-screen).
@@ -114,6 +120,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   // Fetch LinkedIn snapshot si pas déjà sur le candidat
   useEffect(() => {
+    if (!organizationId) return;
     setProfileSnapshot(candidate.linkedinProfileData ?? null);
     if (candidate.linkedinProfileData) {
       setSnapshotLoading(false);
@@ -127,6 +134,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           .from('job_candidate_status')
           .select('linkedin_profile_data')
           .eq('candidate_id', candidate.candidateId)
+          .eq('organization_id', organizationId)
           .not('linkedin_profile_data', 'is', null)
           .order('updated_at', { ascending: false })
           .limit(1)
@@ -142,7 +150,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       }
     })();
     return () => { isMounted = false; };
-  }, [candidate.candidateId, candidate.linkedinProfileData]);
+  }, [candidate.candidateId, candidate.linkedinProfileData, organizationId]);
 
   const candidateWithProfileData: ATSCandidate = React.useMemo(() => ({
     ...candidate,
@@ -367,6 +375,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           fullProfile={fullProfile}
           onOpenMobileProfile={() => setMobileProfileOpen(true)}
           autoGenerate={autoGenerateScorecard}
+          profileLoading={snapshotLoading}
+          autoOpenFirst={autoOpenScorecard}
+          autoStartCoaching={autoStartCoaching}
+          qualificationSessionId={qualificationSessionId}
         />
       ),
     },
@@ -452,6 +464,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
     reminders, loading, activeRemindersCount, openAgent, organizationId, accountId, refreshInteractions,
+    autoGenerateScorecard, autoOpenScorecard, autoStartCoaching, qualificationSessionId, snapshotLoading,
   ]);
 
   return (
@@ -464,14 +477,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       onMessageSent={refreshInteractions}
       airtableMatch={fullProfile.airtableMatch}
       pipelineMeta={{
-        stage: candidate.stage,
+        stage: pipelineAttached ? candidate.stage : 'Hors pipeline',
         stageOptions: stageOptions ?? ATS_STAGES.map(s => ({ key: s.key, label: s.label })),
-        onStageChange: (newStage) => onStageChange(candidate.id, newStage),
+        onStageChange: pipelineAttached ? (newStage) => onStageChange(candidate.id, newStage) : undefined,
         score: candidate.score,
         // Pas de onScoreClick : la note de l'en-tête ouvre elle-même l'onglet Évaluation.
         tags: candidate.tags || [],
-        onTagsChange: (tags) => onTagsChange?.(candidate.id, tags),
-        onCreatePortalLink: handleCreatePortalLink,
+        onTagsChange: pipelineAttached ? (tags) => onTagsChange?.(candidate.id, tags) : undefined,
+        onCreatePortalLink: pipelineAttached ? handleCreatePortalLink : undefined,
         // Manual contacts : email/phone saisis par le recruteur (en plus
         // de ce que LinkedIn / enrichissement fournissent automatiquement).
         manualEmail: manualContacts?.email || null,

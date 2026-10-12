@@ -319,6 +319,14 @@ export const GDPR_ERASURE_SKIP_REASON = 'Effacement des données demandé : séq
  * porte ne peut plus être reprise ni relancée.
  */
 export const GDPR_ERASED_AT_KEY = 'gdpr_erased_at';
+/**
+ * Clés de sequence_enrollments.tracking_data qui copient un texte de message
+ * propre au candidat, retirées par l'effacement : message_overrides (aperçus
+ * validés ou retouchés à l'inscription, step_id → objet et texte). Les
+ * marqueurs relus par les contrôles (gdpr_erased_at, completion_reason,
+ * manual_stop) et les réglages sans texte (step_config_overrides) restent.
+ */
+export const GDPR_SCRUBBED_TRACKING_KEYS: readonly string[] = ['message_overrides'];
 
 export interface GdprErasureResult {
   success: boolean;
@@ -336,6 +344,8 @@ export interface GdprErasureResult {
   deletedCalls: number;
   /** Numéros dont les appels sont gardés parce qu'un autre candidat de l'organisation les porte aussi. */
   keptSharedNumbers: number;
+  /** Rappels et tâches (candidate_reminders) du candidat supprimés. */
+  deletedReminders: number;
 }
 
 /**
@@ -351,7 +361,8 @@ export interface GdprErasureResult {
  * Dans ce périmètre (SEQ-054) : les inscriptions actives ou en pause du
  * candidat passent en 'stopped' et leurs exécutions en attente sont annulées,
  * toutes ses inscriptions trouvées (terminées comprises) reçoivent le marqueur
- * durable tracking_data.gdpr_erased_at (D5 : ni reprise ni relance),
+ * durable tracking_data.gdpr_erased_at (D5 : ni reprise ni relance) et perdent
+ * les textes de messages retouchés pour lui (tracking_data.message_overrides),
  * ses InMails programmés sont annulés, l'adresse rejoint suppressed_emails
  * (reason 'unsubscribe'), puis nom, titre, adresse, téléphone et textes
  * envoyés sont effacés des lignes de séquence. Ses liens conversation–mission
@@ -360,8 +371,9 @@ export interface GdprErasureResult {
  * téléphoniques sont supprimés, avec leur transcription et leur analyse (lot A6), sauf
  * ceux d'un numéro qu'un autre candidat de l'organisation porte aussi. Ses séances de
  * qualification (rendez-vous lus dans un agenda ou pris par Calendly) sont supprimées,
- * avec les extraits de connaissance qui en sont tirés (agenda Outlook). Le succès n'est
- * renvoyé qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
+ * avec les extraits de connaissance qui en sont tirés (agenda Outlook), et ses rappels
+ * et tâches (candidate_reminders) aussi. Le succès n'est renvoyé qu'une fois toutes ces
+ * écritures faites ; chaque étape est rejouable.
  */
 export async function recordGdprErasure(
   supabase: SupabaseClient,
@@ -383,6 +395,7 @@ export async function recordGdprErasure(
     emailSuppressed: false,
     deletedCalls: 0,
     keptSharedNumbers: 0,
+    deletedReminders: 0,
   };
   const fail = (step: string, error: unknown): GdprErasureResult => {
     console.error(`[recordGdprErasure] ${step} failed:`, error);
@@ -560,6 +573,35 @@ export async function recordGdprErasure(
       .select('id');
     if (error) return fail('anonymisation des inscriptions', error);
     result.anonymizedEnrollments += (scrubbed ?? []).length;
+  }
+  // 7 bis. Textes de messages retouchés pour le candidat, copiés dans
+  //    tracking_data (GDPR_SCRUBBED_TRACKING_KEYS), retirés des inscriptions
+  //    trouvées à l'étape 2. Fusion ligne par ligne comme à l'étape 3 bis : les
+  //    marqueurs relus par les contrôles (gdpr_erased_at, completion_reason,
+  //    manual_stop) restent. Pas de rattrapage : une inscription effacée avant
+  //    cette étape n'est retrouvée que par son URL de profil (l'étape 7 a vidé
+  //    email_used), et celles d'un effacement par adresse seule gardent leurs
+  //    retouches jusqu'à une reprise de données à part.
+  for (let i = 0; i < allIds.length; i += 100) {
+    const { data: rows, error: readError } = await supabase
+      .from('sequence_enrollments')
+      .select('id, tracking_data')
+      .in('id', allIds.slice(i, i + 100));
+    if (readError) return fail('effacement des messages retouchés', readError);
+    for (const row of (rows ?? []) as Array<{ id: string; tracking_data: Record<string, unknown> | null }>) {
+      const tracking = row.tracking_data && typeof row.tracking_data === 'object' && !Array.isArray(row.tracking_data)
+        ? row.tracking_data
+        : null;
+      const texts = tracking ? GDPR_SCRUBBED_TRACKING_KEYS.filter((key) => key in tracking) : [];
+      if (!tracking || texts.length === 0) continue;
+      const next: Record<string, unknown> = { ...tracking };
+      for (const key of texts) delete next[key];
+      const { error } = await supabase
+        .from('sequence_enrollments')
+        .update({ tracking_data: next, updated_at: nowIso })
+        .eq('id', row.id);
+      if (error) return fail('effacement des messages retouchés', error);
+    }
   }
 
   // 8. Enrichissements (données de contact achetées), dans le périmètre.
@@ -836,6 +878,71 @@ export async function recordGdprErasure(
     addSessions(data);
   }
   const sessionList = [...sessionIds];
+
+  // 12 bis. Rappels et tâches (candidate_reminders), dans le périmètre : ils
+  //     portent le nom du candidat, l'intitulé de la mission et une note libre.
+  //     Trouvés par ses identifiants connus (inscriptions, lignes du pipeline,
+  //     coordonnées trouvées par l'adresse e-mail : ceux des actions de
+  //     l'étape 11, plus la forme « linkedin:{slug} » de l'extension Chrome)
+  //     et par ses séances trouvées ci-dessus (source_event_id), avant leur
+  //     suppression qui effacerait ce lien ; jamais par le nom affiché, qui
+  //     n'identifie personne. Un rappel sans organisation (l'extension Chrome
+  //     n'en écrit pas) n'est rattaché à celle de l'effacement que si son
+  //     auteur n'est membre que d'elle : sinon il peut venir d'une autre
+  //     organisation, et il est gardé.
+  const reminderIds = new Set<string>();
+  const orphanReminders = new Map<string, string>();
+  const collectReminders = (rows: unknown) => {
+    for (const r of (rows ?? []) as Array<{ id: string; organization_id: string | null; created_by: string | null }>) {
+      if (orgId === null || r.organization_id === orgId) reminderIds.add(r.id);
+      else if (r.organization_id === null && r.created_by) orphanReminders.set(r.id, r.created_by);
+    }
+  };
+  const reminderCandidateIds = [...new Set([...actionCandidateIds, ...(slug ? [`linkedin:${slug}`] : [])])];
+  const reminderLookups: Array<{ column: string; values: string[] }> = [
+    { column: 'candidate_id', values: reminderCandidateIds },
+    { column: 'source_event_id', values: sessionList },
+  ];
+  for (const lookup of reminderLookups) {
+    for (let i = 0; i < lookup.values.length; i += 100) {
+      let query = supabase
+        .from('candidate_reminders')
+        .select('id, organization_id, created_by')
+        .in(lookup.column, lookup.values.slice(i, i + 100))
+        .limit(5000);
+      if (orgId) query = query.or(`organization_id.eq.${orgId},organization_id.is.null`);
+      const { data, error } = await query;
+      if (error) return fail('lecture des rappels', error);
+      collectReminders(data);
+    }
+  }
+  if (orgId && orphanReminders.size > 0) {
+    const { data: memberships, error } = await supabase
+      .from('organization_members')
+      .select('user_id, organization_id')
+      .in('user_id', [...new Set(orphanReminders.values())]);
+    if (error) return fail('lecture des rappels', error);
+    const orgsByUser = new Map<string, Set<string>>();
+    for (const m of (memberships ?? []) as Array<{ user_id: string; organization_id: string }>) {
+      orgsByUser.set(m.user_id, (orgsByUser.get(m.user_id) ?? new Set<string>()).add(m.organization_id));
+    }
+    let kept = 0;
+    for (const [id, creator] of orphanReminders) {
+      const orgs = orgsByUser.get(creator);
+      if (orgs?.size === 1 && orgs.has(orgId)) reminderIds.add(id);
+      else kept += 1;
+    }
+    if (kept > 0) console.warn(`[recordGdprErasure] ${kept} rappel(s) sans organisation d'un membre d'autres organisations : gardés`);
+  }
+  const reminderList = [...reminderIds];
+  for (let i = 0; i < reminderList.length; i += 100) {
+    let deleteQuery = supabase.from('candidate_reminders').delete().in('id', reminderList.slice(i, i + 100));
+    if (orgId) deleteQuery = deleteQuery.or(`organization_id.eq.${orgId},organization_id.is.null`);
+    const { data: deleted, error } = await deleteQuery.select('id');
+    if (error) return fail('suppression des rappels', error);
+    result.deletedReminders += (deleted ?? []).length;
+  }
+
   for (let i = 0; i < sessionList.length; i += 100) {
     const batch = sessionList.slice(i, i + 100);
     let chunksQuery = supabase

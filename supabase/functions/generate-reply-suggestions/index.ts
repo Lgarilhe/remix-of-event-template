@@ -4,11 +4,49 @@ import { requireAuth } from "../_shared/require-auth.ts";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { DEFAULT_WRITING_STYLE, hasTutoiement, mergeStyle, styleFromLegacyTone, toneLines } from "../_shared/writing-style.ts";
 
 // Le modèle est écrit en dur dans les deux requêtes de ce fichier. Le garde et
 // le règlement doivent citer le même, sinon l'un estime au tarif d'un modèle
 // et l'autre débite à celui d'un autre.
 const REPLY_SUGGESTIONS_MODEL = "claude-sonnet-4-6";
+
+// Réponses proposées au candidat : toujours au vouvoiement, quel que soit le
+// ton choisi (même règle que les messages d'approche, lot 5e-2). La consigne
+// au modèle commence par cette obligation, et une suggestion qui tutoie est
+// écartée à la sortie (hasTutoiement), sans nouvel appel au modèle.
+const VOUVOIEMENT_RULE =
+  "OBLIGATION : vouvoyez le candidat dans chaque suggestion, quel que soit le ton demandé et même si le candidat tutoie. Les exemples qui tutoient se transposent au vouvoiement.";
+
+/** Réponses de secours, au vouvoiement : JSON illisible, ou toutes les suggestions du modèle écartées. */
+const FALLBACK_SUGGESTIONS = [
+  { text: "Merci pour votre retour !", type: "quick" },
+  { text: "Seriez-vous disponible pour un appel cette semaine ?", type: "standard" },
+  { text: "Merci pour ces informations. Je reste disponible si vous avez des questions.", type: "detailed" },
+];
+
+/**
+ * Texte qui tutoie le candidat. Noms propres connus masqués (« Bonjour Minh
+ * Tu », « la TU Munich ») ; adresses retirées avant le contrôle : le lien de
+ * rendez-vous porte des paramètres (« first_name=Tu ») qui ne s'adressent à personne.
+ */
+function tutoie(text: unknown, knownNames: string[]): boolean {
+  return hasTutoiement(String(text ?? "").replace(/https?:\/\/\S+/g, " "), knownNames);
+}
+
+/**
+ * Écarte les suggestions qui tutoient le candidat (tutoie). Toutes écartées :
+ * réponses de secours ; aucune suggestion du modèle : rien à remplacer.
+ */
+function keepVouvoiement<T extends { text?: unknown }>(
+  suggestions: T[],
+  knownNames: string[],
+): Array<T | (typeof FALLBACK_SUGGESTIONS)[number]> {
+  const kept = suggestions.filter((s) => !tutoie(s?.text, knownNames));
+  const dropped = suggestions.length - kept.length;
+  if (dropped > 0) console.warn(`[generate-reply-suggestions] ${dropped} suggestion(s) au tutoiement écartée(s)`);
+  return dropped > 0 && kept.length === 0 ? FALLBACK_SUGGESTIONS : kept;
+}
 
 // Timeout wrapper for fetch calls
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -294,11 +332,10 @@ const getToneInstructions = (tone?: AITone): string => {
 - Vocabulaire précis
 - Formules de politesse appropriées`;
     case 'casual':
-      return `TON: Décontracté et friendly
-- Tutoiement naturel
-- Style conversationnel et léger
-- Un emoji max autorisé
-- Ambiance startup / tech`;
+      // Ancien « Décontracté » : chaleureux au vouvoiement, comme
+      // styleFromLegacyTone (writing-style.ts), jamais le tutoiement.
+      return `TON: Chaleureux, au vouvoiement
+${toneLines(mergeStyle({ ...DEFAULT_WRITING_STYLE }, styleFromLegacyTone('casual'))).map((l) => `- ${l}`).join('\n')}`;
     case 'direct':
       return `TON: Direct et efficace
 - Phrases courtes et impactantes
@@ -437,8 +474,12 @@ Deno.serve(async (req) => {
       console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
     }
 
-    // Load AI context (Settings → Contexte IA)
-    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
+    // Load AI context (Settings → Contexte IA). Un ancien réglage « Tutoiement »
+    // est lu comme vouvoiement : il contredirait le vouvoiement imposé aux
+    // réponses proposées au candidat. Les autres tons des consignes s'appliquent
+    // toujours (ligne écrite par formatScope de _shared/ai-context.ts).
+    const aiContext = (await loadAndBuildAiContext(svc, { userId, orgId }))
+      .replace(/- Ton imposé : tutoiement/g, '- Ton imposé : vouvoiement');
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
@@ -533,7 +574,7 @@ Deno.serve(async (req) => {
     const calendlyContext = calendlyWithPrefill 
       ? `\n\n📅 LIEN CALENDLY DISPONIBLE: ${calendlyWithPrefill}
 Quand le candidat est intéressé, veut un call, ou montre une intention de RDV, INCLUS ce lien dans au moins une suggestion.
-Formule naturelle: "Voici un lien pour réserver un créneau qui te convient : ${calendlyWithPrefill}"` 
+Formule naturelle: "Voici un lien pour réserver un créneau qui vous convient : ${calendlyWithPrefill}"` 
       : '';
 
     if (context.detectedIntent) {
@@ -616,7 +657,9 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
       }
     }
 
-    const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
+    const prompt = `${VOUVOIEMENT_RULE}
+
+Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
 ${outreachContextBlock}
 PROFIL DU CANDIDAT:
 ${profileContext}
@@ -648,7 +691,8 @@ RÈGLES CRITIQUES POUR LES SUGGESTIONS:
 10. POSTURE: Tu es un connecteur humain, pas un expert technique. Tes suggestions doivent sonner comme un recruteur pragmatique.
 11. INTERDITS: superlatifs, flatterie, "a retenu mon attention", "impressionnant", "parfaitement", tirets, listes à puces
 12. Si le candidat pose une question factuelle (salaire, remote) et que l'info est dans le contexte → RÉPONDS FACTUELLEMENT
-13. Si l'info manque → suggère "Je vérifie ce point et je reviens vers toi" plutôt qu'inventer
+13. Si l'info manque → suggère "Je vérifie ce point et je reviens vers vous" plutôt qu'inventer
+14. Vouvoiement obligatoire dans chaque suggestion, jamais de tutoiement
 
 Réponds UNIQUEMENT en JSON valide:
 {
@@ -658,6 +702,21 @@ Réponds UNIQUEMENT en JSON valide:
     { "text": "Suggestion complète (~50 mots) avec question de qualification", "type": "detailed" }
   ]
 }`;
+
+    // Noms propres connus, masqués avant le contrôle du tutoiement des
+    // suggestions (prénom « Tu », école « TU Munich »…).
+    const knownNames = [
+      context.recipientName || '',
+      (context.recipientName || '').trim().split(/\s+/)[0] || '',
+      context.candidateName || '',
+      context.profileData?.currentCompany || '',
+      ...(context.profileData?.education || []),
+      ...(context.profileData?.pastPositions || []),
+      context.jobData?.client?.name || '',
+      context.jobContext?.company || '',
+      context.outreachClientName || '',
+      context.outreachConfig?.anonymized_alias || '',
+    ];
 
     let response: Response;
     response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
@@ -674,7 +733,7 @@ Réponds UNIQUEMENT en JSON valide:
         system: [
           { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
           ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
-          { type: "text", text: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown." },
+          { type: "text", text: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn, toujours au vouvoiement. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown." },
         ],
         messages: [
           { role: "user", content: prompt }
@@ -745,6 +804,9 @@ Réponds UNIQUEMENT en JSON valide:
         }
       }
 
+      // Vouvoiement : une suggestion qui tutoie est écartée, sans nouvel appel.
+      suggestions = keepVouvoiement(Array.isArray(suggestions) ? suggestions : [], knownNames);
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -767,7 +829,7 @@ Réponds UNIQUEMENT en JSON valide:
           body: JSON.stringify({
             model: REPLY_SUGGESTIONS_MODEL,
             max_tokens: 400,
-            system: [{ type: "text", text: "Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
+            system: [{ type: "text", text: VOUVOIEMENT_RULE + " Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
             messages: [{ role: "user", content: `Conversation:\n${conversationHistory}\n\nGénère 3 réponses.` }],
           }),
         }, 15000);
@@ -801,7 +863,10 @@ Réponds UNIQUEMENT en JSON valide:
             console.error('[generate-reply-suggestions] Retry credit settlement error:', e);
           }
           return new Response(
-            JSON.stringify({ success: true, suggestions: retryResult.suggestions || [] }),
+            JSON.stringify({
+              success: true,
+              suggestions: keepVouvoiement(Array.isArray(retryResult.suggestions) ? retryResult.suggestions : [], knownNames),
+            }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -810,11 +875,7 @@ Réponds UNIQUEMENT en JSON valide:
       return new Response(
         JSON.stringify({ 
           success: true,
-          suggestions: [
-            { text: "Merci pour ton retour !", type: "quick" },
-            { text: "Super, on se cale un call cette semaine ?", type: "standard" },
-            { text: "Merci pour ces infos. Je reste dispo si tu as des questions.", type: "detailed" }
-          ]
+          suggestions: FALLBACK_SUGGESTIONS,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

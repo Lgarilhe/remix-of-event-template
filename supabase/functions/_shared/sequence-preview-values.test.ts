@@ -59,6 +59,7 @@ function fakeClient(handlers: Record<string, Handler>) {
         eq(col: string, value: unknown) { q.filters[col] = value; return builder; },
         in(col: string, values: unknown[]) { q.filters[col] = values; return builder; },
         is(col: string, value: unknown) { q.filters[col] = value; return builder; },
+        ilike(col: string, pattern: unknown) { q.filters[col] = pattern; return builder; },
         or(expr: string) { q.or = expr; return builder; },
         limit() { return builder; },
         maybeSingle: () => answer(null),
@@ -230,6 +231,28 @@ Deno.test('seules les variables demandées sont rendues', async () => {
   // Les données absentes restent calculées sur toutes les variables du moteur.
   assert(result.candidates[0].missing.includes('type_contrat'));
   assert(!result.candidates[0].missing.includes('ma_signature'));
+});
+
+Deno.test('correctif 1 : client anonymisé, l’aperçu rend l’alias de {{client}} comme le moteur, jamais le nom réel', async () => {
+  const anonymizedMission: Handler = (q) => ({
+    data: q.filters.id === UUID_MISSION && q.filters.organization_id === UUID_ORG
+      ? {
+        name: 'Mission CDG',
+        job_details: { title: 'Contrôleur de gestion', client: { name: 'Globex' }, outreach_config: { anonymize_client: true, anonymized_alias: 'un groupe industriel' } },
+        calendly_link: null,
+        client_name: 'Globex',
+      }
+      : null,
+    error: null,
+  });
+  const row = enrollmentRow();
+  clearSenderCache();
+  const engine = await buildSequenceContext(world({ sourcing_projects: anonymizedMission }) as never, { enrollment: row, senderUserId: 'u-laurent' });
+  strictEqual(engine.client, 'un groupe industriel');
+  clearSenderCache();
+  const result = await buildPreviewValues(world({ sourcing_projects: anonymizedMission }) as never, audience(), [enrollmentItem(row)]);
+  strictEqual(result.candidates[0].values.client, 'un groupe industriel');
+  assert(!/globex/i.test(JSON.stringify(result)), 'le nom réel n’est dans aucune valeur de l’aperçu');
 });
 
 Deno.test('candidat pas encore inscrit : colonnes du navigateur, expéditeur = l’appelant', async () => {

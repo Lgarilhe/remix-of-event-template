@@ -19,6 +19,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { TablesInsert } from '@/integrations/supabase/types';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { ACTION_COSTS, estimateCredits, resolveModel } from '@/types/aiCredits';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -90,6 +93,8 @@ const LOCATION_PLACEHOLDERS: Record<LocationPreset, string> = {
 
 // Étapes enregistrées dans event_name ; mêmes libellés que le filtre « Étape »
 // de l'agenda (inferRound les reconnaît tous).
+const SCORECARD_CREDITS = estimateCredits('generate_scorecard', resolveModel(ACTION_COSTS.generate_scorecard.routingTier, null, null, 'generate_scorecard'));
+
 const ROUND_NAMES = ['Qualification', '1er entretien', '2e entretien', '3e entretien', 'Entretien final'];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -256,7 +261,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         }
       }
 
-      const insert: Record<string, unknown> = {
+      const insert: TablesInsert<'qualification_sessions'> = {
         organization_id: organizationId,
         created_by: user.id, // RLS-bound : qui a créé le RDV
         manager_id: managerId || user.id, // qui anime l'entretien (peut différer)
@@ -279,8 +284,19 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         if (selectedProject.job_id) insert.job_id = selectedProject.job_id;
       }
 
-      const { error } = await supabase.from('qualification_sessions').insert(insert as any);
+      const { data: session, error } = await supabase.from('qualification_sessions').insert(insert).select('id').single();
       if (error) throw error;
+
+      // The endpoint claims the preparation and responds before inference. Its
+      // failure never undoes an appointment that has already been saved.
+      try {
+        const { error: preparationError } = await invokeEdgeFunction('generate-scorecard', {
+          qualificationSessionId: session.id, organization_id: organizationId, background: true, planning: true,
+        });
+        if (preparationError) toast.warning('Entretien enregistré. La grille pourra être préparée depuis la fiche candidat.');
+      } catch {
+        toast.warning('Entretien enregistré. La grille pourra être préparée depuis la fiche candidat.');
+      }
 
       toast.success(
         pipelineRowCreated && !stageRefusal
@@ -297,7 +313,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       }
       resetForm();
       onOpenChange(false);
-    } catch (err: any) {
+    } catch (err) {
       console.error('[CreateEvent] error:', err);
       toast.error("L'entretien n'a pas pu être programmé. Vérifiez votre connexion, puis réessayez.");
     } finally {
@@ -460,6 +476,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             </div>
           </div>
 
+          <p className="px-6 pb-3 text-xs text-muted-foreground">La grille sera préparée automatiquement · environ {SCORECARD_CREDITS} crédits IA.</p>
           <DialogFooter className="shrink-0 border-t border-border px-6 py-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
               Annuler

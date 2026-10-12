@@ -31,17 +31,21 @@ interface Props {
   /** Si true, déclenche la génération de scorecard automatiquement à
    *  l'ouverture (utilisé par le CTA "Préparer l'entretien" du calendrier). */
   autoGenerate?: boolean;
+  profileLoading?: boolean;
+  autoOpenFirst?: boolean;
+  autoStartCoaching?: boolean;
+  qualificationSessionId?: string | null;
 }
 
 export const EvaluationTab: React.FC<Props> = ({
   candidate, candidateWithProfileData, enrichedProfile, fullProfile, onOpenMobileProfile,
-  autoGenerate,
+  autoGenerate, profileLoading, autoOpenFirst, autoStartCoaching, qualificationSessionId,
 }) => {
   const scoringCount = fullProfile.scoringHistory.length;
   return (
     <div className="space-y-8">
       {/* ═══ NOTE (si disponible) ═══ */}
-      {candidate.score != null && candidate.score > 0 && (
+      {!qualificationSessionId && candidate.score != null && candidate.score > 0 && (
         <ScoreSummary
           score={candidate.score}
           recommendation={candidate.recommendation || null}
@@ -50,12 +54,15 @@ export const EvaluationTab: React.FC<Props> = ({
       )}
 
       {/* ═══ SCORECARD (entretien) ═══ */}
-      <Section title="Scorecard d'entretien" hint="Évaluation manuelle après l'appel">
+      <Section title="Scorecard d'entretien" hint={qualificationSessionId ? 'Questions, notes et assistant pour cet entretien' : "Évaluation manuelle après l'appel"}>
         <ScorecardTab
-          candidate={candidate}
+          candidate={candidateWithProfileData}
           enrichedProfile={enrichedProfile}
           onOpenProfile={onOpenMobileProfile}
-          autoGenerate={autoGenerate}
+          autoGenerate={autoGenerate && !profileLoading}
+          autoOpenFirst={autoOpenFirst}
+          autoStartCoaching={autoStartCoaching}
+          qualificationSessionId={qualificationSessionId}
         />
       </Section>
 

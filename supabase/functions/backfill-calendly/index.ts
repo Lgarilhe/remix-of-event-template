@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startScheduledScorecard } from "../_shared/start-scheduled-scorecard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -189,6 +190,7 @@ Deno.serve(async (req) => {
           const { data } = await supabase
             .from('job_candidate_status')
             .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id, created_by')
+            .eq('organization_id', orgId)
             .ilike('linkedin_profile_url', `%${slug}%`)
             .order('updated_at', { ascending: false })
             .limit(1);
@@ -208,6 +210,7 @@ Deno.serve(async (req) => {
           .from('sourcing_projects')
           .select('job_title, client_name')
           .eq('id', candidateMatch.project_id)
+          .eq('organization_id', orgId)
           .single();
         if (project) {
           jobTitle = project.job_title;
@@ -215,21 +218,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Determine created_by
-      let createdBy = candidateMatch?.created_by || null;
-      if (!createdBy) {
-        const { data: anyProfile } = await supabase
-          .from('profiles')
-          .select('user_id')
-          .limit(1)
-          .single();
-        createdBy = anyProfile?.user_id || null;
-      }
-
-      if (!createdBy) {
-        errors++;
-        continue;
-      }
+      // The import is scoped to the authenticated organization and recruiter.
+      const createdBy = candidateMatch?.created_by || user.id;
 
       // Build scoring summary
       let scoringSummary: any = {};
@@ -248,7 +238,7 @@ Deno.serve(async (req) => {
       const status = eventStart < new Date() ? 'completed' : 'scheduled';
 
       // Create session
-      const { error: insertError } = await supabase
+      const { data: createdSession, error: insertError } = await supabase
         .from('qualification_sessions')
         .insert({
           calendly_event_id: calendlyEventId,
@@ -268,13 +258,15 @@ Deno.serve(async (req) => {
           project_id: projectId,
           scoring_summary: scoringSummary,
           status,
+          organization_id: orgId,
           created_by: createdBy,
-        });
+        }).select('id').single();
 
       if (insertError) {
         console.error(`[backfill] Error for event ${calendlyEventId}:`, insertError);
         errors++;
       } else {
+        if (status === 'scheduled' && createdSession) startScheduledScorecard(createdSession.id, orgId);
         created++;
         console.log(`[backfill] Created session for ${candidateMatch?.candidate_name || inviteeName} (${calendlyEventId})`);
       }

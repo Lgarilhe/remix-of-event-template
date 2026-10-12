@@ -692,6 +692,17 @@ const getMissionBrief: AgentTool = {
 };
 
 // ─── Tool — get_sequences_status ───────────────────────────────────────────
+
+/**
+ * Valeurs possibles de sequence_enrollments.job_id pour une mission : l'id de
+ * la mission, l'ancien id synthétique « project:{id} » et le job rattaché à la
+ * mission (copie de missionEnrollmentJobIds, src/lib/sequenceErrorMessages.ts :
+ * même périmètre que les écrans).
+ */
+function missionEnrollmentJobIds(missionId: string, projectJobId?: string | null): string[] {
+  return Array.from(new Set([missionId, `project:${missionId}`, projectJobId].filter((v): v is string => !!v)));
+}
+
 const getSequencesStatus: AgentTool = {
   name: 'get_sequences_status',
   description:
@@ -716,13 +727,22 @@ const getSequencesStatus: AgentTool = {
     const resolved = await resolveMissionRef(ctx, params);
     if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
     const missionId = resolved.id;
+    // Une inscription porte la mission sous plusieurs formes (id, « project:{id} »,
+    // job rattaché) : même périmètre que les écrans (missionEnrollmentJobIds).
+    const { data: missionJob, error: missionJobError } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('job_id')
+      .eq('id', missionId)
+      .maybeSingle();
+    if (missionJobError) return { success: false, error: missionJobError.message };
+    const jobIds = missionEnrollmentJobIds(missionId, (missionJob as { job_id?: string | null } | null)?.job_id);
     // Clé de service : l'organisation est filtrée ici, comme la RLS de
     // l'interface (job_id est un texte libre, sans lien avec l'organisation).
     const { data, error } = await ctx.adminClient
       .from('sequence_enrollments')
       .select('status, connection_status, replied_at, completed_at')
       .eq('organization_id', ctx.organizationId)
-      .eq('job_id', missionId)
+      .in('job_id', jobIds)
       .limit(1000);
     if (error) return { success: false, error: error.message };
     const rows = (data as Array<{ status: string; connection_status: string | null; replied_at: string | null; completed_at: string | null }> | null) ?? [];
@@ -1974,7 +1994,9 @@ const getOrgAnalytics: AgentTool = {
   name: 'get_org_analytics',
   description:
     "Tableau de bord cross-mission de l'organisation : nb total de missions par statut, " +
-    "pipeline agrégé par étape (tous candidats accessibles confondus), activité d'outreach " +
+    "pipeline agrégé par étape (étapes du Pipeline : À trier, Retenu, Contacté, A répondu, En entretien, " +
+    "Embauché, Écarté ; un candidat par mission, tous candidats accessibles confondus, profils jamais " +
+    "ouverts exclus), activité d'outreach " +
     "sur la période (séquences créées/actives, réponses, InMails envoyés/en attente), " +
     "entretiens (qualifications) et leurs verdicts, consommation de crédits IA. owner/admin/membre = " +
     "toute l'organisation ; collaborateur = ses missions (own + team). À utiliser pour « mes " +
@@ -2025,19 +2047,37 @@ const getOrgAnalytics: AgentTool = {
     if (missionIds) mq = mq.in('id', missionIds);
     const missionsP = mq.limit(500);
 
-    let pq = ctx.adminClient.from('job_candidate_status')
-      .select('pipeline_stage, project_id, created_by')
-      .eq('organization_id', ctx.organizationId);
+    // Étape générale (lot 0c) : mission_candidate_rows, une ligne par candidat
+    // et par mission (doublons réunis), profils jamais ouverts hors du Pipeline,
+    // comme get_my_missions et les écrans. Plus l'ancienne colonne pipeline_stage.
+    let pq = ctx.adminClient.from('mission_candidate_rows')
+      .select('general_stage, project_id, created_by')
+      .eq('organization_id', ctx.organizationId)
+      .eq('is_unopened', false);
     if (missionIds) {
       pq = pq.or(`created_by.eq.${ctx.userId},project_id.in.(${missionIds.join(',')})`);
     }
     const pipelineP = pq.limit(5000);
 
+    // Collaborateur : inscriptions de ses missions sous toutes les formes de
+    // job_id (id, « project:{id} », job rattaché), comme get_sequences_status.
+    let enrollmentJobIds: string[] | null = null;
+    if (missionIds) {
+      const { data: missionJobs, error: missionJobsError } = await ctx.adminClient
+        .from('sourcing_projects')
+        .select('id, job_id')
+        .eq('organization_id', ctx.organizationId)
+        .in('id', missionIds);
+      if (missionJobsError) return { success: false, error: missionJobsError.message };
+      const linkedJob = new Map(((missionJobs as Array<{ id: string; job_id: string | null }> | null) ?? []).map((r) => [r.id, r.job_id]));
+      enrollmentJobIds = [...new Set(missionIds.flatMap((id) => missionEnrollmentJobIds(id, linkedJob.get(id))))];
+    }
+
     let sq = ctx.adminClient.from('sequence_enrollments')
       .select('status, replied_at, job_id, created_at')
       .eq('organization_id', ctx.organizationId)
       .gte('created_at', fromIso);
-    if (missionIds) sq = sq.in('job_id', missionIds);
+    if (enrollmentJobIds) sq = sq.in('job_id', enrollmentJobIds);
     const seqP = sq.limit(2000);
 
     let iq = ctx.adminClient.from('inmail_queue')
@@ -2075,10 +2115,11 @@ const getOrgAnalytics: AgentTool = {
       missionsByStatus[k] = (missionsByStatus[k] || 0) + 1;
     }
 
-    const pRows = ((p.data as Array<{ pipeline_stage: string | null }> | null) ?? []);
-    const stages: Record<string, number> = {};
+    const pRows = ((p.data as Array<{ general_stage: string | null }> | null) ?? []);
+    // Même forme qu'avant ({ libellé: effectif }), sous les libellés de l'interface.
+    const stages: Record<string, number> = Object.fromEntries(GENERAL_STAGES.map((k) => [GENERAL_STAGE_LABEL[k], 0]));
     for (const r of pRows) {
-      const k = String(r.pipeline_stage || 'sans_étape');
+      const k = stageLabel(r.general_stage);
       stages[k] = (stages[k] || 0) + 1;
     }
 

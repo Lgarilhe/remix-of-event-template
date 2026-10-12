@@ -36,6 +36,9 @@ import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, type JobDetails } from '@/types/jo
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { aiRecommendationMeta, hiringVerdictMeta } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
+import { candidateFromUnassignedInterview, QUALIFICATION_CANDIDATE_FIELDS } from '@/lib/qualificationCandidate';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 type SidebarTab = 'candidate' | 'job';
 type MobilePane = 'sidebar' | 'scorecard';
@@ -102,6 +105,10 @@ export default function ScorecardFullPage() {
   // deux missions garde le poste, les étapes et la grille de celle-ci.
   const missionParam = missionIdOfJob(searchParams.get('mission')) ?? null;
   const sessionParam = missionIdOfJob(searchParams.get('session')) ?? null;
+  const { organizationId } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id;
+  const invalidInterviewLink = !!((searchParams.get('mission') && !missionParam) || (searchParams.get('session') && !sessionParam));
   const navigate = useNavigate();
   const location = useLocation();
   const sidebarId = useId();
@@ -121,10 +128,11 @@ export default function ScorecardFullPage() {
   const [jobDetails, setJobDetails] = useState<JobSidebarDetails | null>(null);
 
   useEffect(() => {
-    if (!candidateId) {
+    if (!candidateId || invalidInterviewLink) {
       setLoadState('not_found');
       return;
     }
+    if (!organizationId || !userId) return;
     let cancelled = false;
     const load = async () => {
       setLoadState('loading');
@@ -135,13 +143,36 @@ export default function ScorecardFullPage() {
         // suffit pas à rattacher la transcription au bon entretien.
         const { data: event, error: eventError } = await supabase
           .from('qualification_sessions')
-          .select('id, candidate_profile_id, project_id')
+          .select(QUALIFICATION_CANDIDATE_FIELDS)
           .eq('id', sessionParam)
           .eq('candidate_profile_id', candidateId)
+          .eq('organization_id', organizationId)
           .maybeSingle();
         if (cancelled) return;
         if (eventError || !event || (missionParam && event.project_id !== missionParam)) {
           setLoadState(eventError ? 'error' : 'not_found');
+          return;
+        }
+        if ((event.manager_id ?? event.created_by) !== userId) {
+          setLoadState('not_found');
+          return;
+        }
+        const unassigned = candidateFromUnassignedInterview(event);
+        if (unassigned) {
+          // Le plein écran conserve le rendez-vous sans mission, y compris si
+          // la personne figure par ailleurs dans le pipeline d'une autre mission.
+          const { data: profile } = await supabase.from('job_candidate_status')
+            .select('linkedin_profile_data')
+            .eq('candidate_id', candidateId)
+            .eq('organization_id', organizationId)
+            .not('linkedin_profile_data', 'is', null)
+            .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+          if (cancelled) return;
+          unassigned.linkedinProfileData = profile?.linkedin_profile_data ?? null;
+          setCandidate(unassigned);
+          setQualificationSessionId(sessionParam);
+          setJobDetails(null);
+          setLoadState('ready');
           return;
         }
         requestedMission = event.project_id ?? missionParam;
@@ -279,7 +310,7 @@ export default function ScorecardFullPage() {
     return () => {
       cancelled = true;
     };
-  }, [candidateId, missionParam, sessionParam, reloadTick]);
+  }, [candidateId, missionParam, sessionParam, organizationId, userId, invalidInterviewLink, reloadTick]);
 
   const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
     if (!candidate?.linkedinProfileData) return null;
@@ -745,6 +776,7 @@ export default function ScorecardFullPage() {
               enrichedProfile={enrichedProfile}
               onOpenProfile={showProfile}
               autoStartCoaching={autoCoaching}
+              autoGenerate={!!qualificationSessionId}
               autoOpenFirst
               onActiveEvaluationChange={setQuickEval}
               onRecordingChange={setRecording}
