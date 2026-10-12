@@ -31,20 +31,30 @@ function sourceFiles(dir) {
   for (const name of readdirSync(path.join(ROOT, dir))) {
     const rel = `${dir}/${name}`;
     if (statSync(path.join(ROOT, rel)).isDirectory()) out.push(...sourceFiles(rel));
-    else if (/\.(ts|tsx)$/.test(name) && rel !== 'src/integrations/supabase/types.ts') out.push(rel);
+    else if (/\.(ts|tsx|js|jsx|mjs)$/.test(name) && rel !== 'src/integrations/supabase/types.ts') out.push(rel);
   }
   return out;
 }
 
-/** Fichiers de src/ dont une requête sur `table` enchaîne tout de suite une écriture de la liste. */
-function writersOf(table, operations) {
-  const from = new RegExp(`\\.from\\(\\s*['"]${table}['"](?:\\s+as\\s+\\w+)?\\s*\\)`, 'g');
-  const write = new RegExp(`^\\s*\\.(${operations.join('|')})\\(`);
+const withoutComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+/**
+ * Fichiers de src/ qui ouvrent une requête sur `table` autrement que pour la
+ * lire ou la mettre à jour (`.select(`, `.update(`) : tout appel suivi d'autre
+ * chose (insertion, upsert, suppression, requête gardée dans une variable),
+ * et tout `.from(` dont l'argument est une constante qui désigne la table.
+ */
+function writersOf(table) {
   const files = [];
   for (const rel of sourceFiles('src')) {
-    const source = read(rel);
+    const source = withoutComments(read(rel));
+    if (!source.includes(table)) continue;
+    const aliases = [...source.matchAll(new RegExp(`const\\s+(\\w+)\\s*(?::[^=]+)?=\\s*['"\`]${table}['"\`]`, 'g'))].map((m) => m[1]);
+    const arg = `(?:['"\`]${table}['"\`]${aliases.map((a) => `|${a}`).join('')})`;
+    const from = new RegExp(`\\.from\\(\\s*${arg}(?:\\s+as\\s+[\\w.<>'"]+)*\\s*\\)`, 'g');
+    const readOrUpdate = /^\s*\.(select|update)\s*[<(]/;
     for (const match of source.matchAll(from)) {
-      if (write.test(source.slice(match.index + match[0].length, match.index + match[0].length + 80))) {
+      if (!readOrUpdate.test(source.slice(match.index + match[0].length, match.index + match[0].length + 80))) {
         files.push(rel);
         break;
       }
@@ -54,13 +64,11 @@ function writersOf(table, operations) {
 }
 
 test('5F1-S1 un seul fichier de src/ crée ou retire des inscriptions', () => {
-  assert.deepEqual(writersOf('sequence_enrollments', ['insert', 'upsert', 'delete']), [LIB]);
+  assert.deepEqual(writersOf('sequence_enrollments'), [LIB]);
 });
 
 test('5F1-S2 un seul fichier de src/ insère des exécutions d’étape', () => {
-  assert.deepEqual(writersOf('sequence_step_executions', ['insert', 'upsert']), [LIB]);
-  // La suppression d'une exécution n'a aucun écrivain navigateur.
-  assert.deepEqual(writersOf('sequence_step_executions', ['delete']), []);
+  assert.deepEqual(writersOf('sequence_step_executions'), [LIB]);
 });
 
 test('5F1-S3 la bibliothèque n’écrit rien dans le pipeline', () => {
@@ -87,6 +95,15 @@ test('5F1-S4 les deux fenêtres appellent la bibliothèque, chacune dans son mod
   assert.match(simple, /mode: 'batch',\s*firstStepTiming: 'business_hours',/);
   assert.match(preview, /mode: 'one_by_one',\s*firstStepTiming: 'raw',/);
   assert.match(preview, /messageOverridesFor: getMessageOverrides,\s*stepConfigOverrides: getStepConfigOverrides,/);
+  // Contrats côté fenêtre, repris ici parce que tests/ux n'est pas joué par la CI.
+  assert.match(simple, /outcome\.schedulingFailure\.rolledBack \? 'Inscription impossible' : 'Inscription incomplète'/);
+  assert.match(simple, /isOtherMemberAccountError\(outcome\.error\)/);
+  assert.match(preview, /isOtherMemberAccountError\(outcome\.error\)/);
+  assert.match(preview, /discardSessionPreviews\(outcome\.enrolledIds\)/);
+  for (const [name, source] of [['modale simple', simple], ['aperçu', preview]]) {
+    assert.match(source, /setRecentEnrollments\(outcome\.recentEnrollments\)/, name);
+    assert.match(source, /if \(outcome\.status === 'refused'\) \{\s*toast\.error\(outcome\.message\);\s*return;/, name);
+  }
   // Les gardes qui dépendent de l'écran restent dans les fenêtres, avant l'écriture.
   for (const source of [simple, preview]) {
     const body = source.slice(source.indexOf('const handleEnroll = async () => {'), source.indexOf('await enrollCandidates({'));
@@ -137,6 +154,7 @@ const lib = await loadLib();
  */
 function fakeClient(handle = () => undefined, { user = { id: 'user-1' } } = {}) {
   const calls = [];
+  const rpcCalls = [];
   const filters = (call) => ({
     select: (cols) => { call.cols = cols; return call.chain; },
   });
@@ -161,6 +179,8 @@ function fakeClient(handle = () => undefined, { user = { id: 'user-1' } } = {}) 
   const respond = (call) => {
     const scripted = handle(call);
     if (scripted !== undefined) return scripted;
+    // Comme PostgREST : sans .select() chaîné, une écriture ne rend aucune ligne.
+    if ((call.op === 'upsert' || call.op === 'delete') && call.cols === undefined) return { data: null, error: null };
     if (call.table === 'outreach_sequences') return { data: { is_active: true }, error: null };
     if (call.op === 'upsert') {
       const rows = Array.isArray(call.payload) ? call.payload : [call.payload];
@@ -177,9 +197,9 @@ function fakeClient(handle = () => undefined, { user = { id: 'user-1' } } = {}) 
   const supabase = {
     auth: { getUser: async () => ({ data: { user } }) },
     from,
-    rpc: async () => ({ data: [], error: null }),
+    rpc: async (fn, args) => { rpcCalls.push({ fn, args }); return { data: [], error: null }; },
   };
-  return { supabase, calls };
+  return { supabase, calls, rpcCalls };
 }
 
 const writes = (calls, table, op) => calls.filter((c) => c.table === table && c.op === op);
@@ -613,4 +633,128 @@ test('5F1-T2 chaque inscription tire sa première étape (test A/B en première 
     Math.random = realRandom;
   }
   assert.ok(seen.has('A:A') && seen.has('B:B'), `les deux variantes sont tirées : ${[...seen].join(', ')}`);
+});
+
+// ---------------------------------------------------------------- revue indépendante : contrôles ajoutés
+const KEYS = ['sequence_id','account_id','profile_id','profile_name','profile_headline','profile_url','job_id','job_title','created_by','user_timezone','current_step_order','status','network_distance','organization_id','provider_id','email_used','phone_used'];
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const expectedRow = (n) => ({
+  sequence_id: 'seq-1', account_id: 'acc-1', profile_id: `ACo${n}`, profile_name: `Candidat ${n}`, profile_headline: `Poste ${n}`,
+  profile_url: `https://www.linkedin.com/in/candidat-${n}`, job_id: MISSION, job_title: 'Poste cible', created_by: 'user-1', user_timezone: tz,
+  current_step_order: 0, status: 'active', network_distance: 'SECOND_DEGREE', organization_id: 'org-1',
+  provider_id: `ACw${n}`, email_used: `candidat${n}@exemple.fr`, phone_used: null,
+});
+const OPTS = { onConflict: 'sequence_id,profile_id', ignoreDuplicates: true };
+const oneByOne = { mode: 'one_by_one', messageOverridesFor: () => ({}), stepConfigOverrides: () => ({}) };
+
+test('5F1-R1 ligne d’inscription complète, identique dans les deux modes', async () => {
+  for (const extra of [{}, oneByOne]) {
+    const { supabase, calls } = fakeClient();
+    await lib.enrollCandidates(options(supabase, { candidates: [person(1), person(2)], ...extra }));
+    const rows = writes(calls, 'sequence_enrollments', 'upsert').flatMap((c) => (Array.isArray(c.payload) ? c.payload : [c.payload]));
+    assert.equal(rows.length, 2);
+    rows.forEach((r, i) => assert.deepEqual(r, expectedRow(i + 1), extra.mode ?? 'batch'));
+  }
+});
+
+test('5F1-R2 chaque écriture d’inscription porte onConflict + ignoreDuplicates et relit ses lignes (.select)', async () => {
+  const people = [person(1), person(2), person(3)];
+  const refuse = fakeClient((call) => {
+    if (call.table === 'sequence_enrollments' && call.op === 'upsert' && Array.isArray(call.payload)) return { data: null, error: { code: '23505', hint: 'ENROLLMENT_GDPR_ERASED' } };
+    return undefined;
+  });
+  await silent(() => lib.enrollCandidates(options(refuse.supabase, { candidates: people })));
+  const batch = fakeClient();
+  await lib.enrollCandidates(options(batch.supabase, { candidates: people }));
+  const single = fakeClient();
+  await lib.enrollCandidates(options(single.supabase, { candidates: people, ...oneByOne }));
+  for (const { calls } of [refuse, batch, single]) {
+    const upserts = writes(calls, 'sequence_enrollments', 'upsert');
+    assert.ok(upserts.length >= 1);
+    for (const u of upserts) {
+      assert.deepEqual(u.options, OPTS);
+      assert.equal(u.cols, 'id, profile_id');
+    }
+  }
+});
+
+test('5F1-R3 retrait vérifié : chaque suppression d’inscription relit les lignes retirées (.select)', async () => {
+  const fail = (call) => (call.table === 'sequence_step_executions' ? { error: { code: '42501' } } : undefined);
+  const batch = fakeClient(fail);
+  const b = await silent(() => lib.enrollCandidates(options(batch.supabase)));
+  assert.deepEqual(b.schedulingFailure, { rolledBack: true });
+  const single = fakeClient(fail);
+  await silent(() => lib.enrollCandidates(options(single.supabase, oneByOne)));
+  for (const { calls } of [batch, single]) {
+    const deletes = writes(calls, 'sequence_enrollments', 'delete');
+    assert.ok(deletes.length >= 1);
+    for (const d of deletes) assert.equal(d.cols, 'id');
+  }
+});
+
+test('5F1-R4 groupé : une sélection partiellement inscrite n’envoie à l’écriture que les nouveaux', async () => {
+  const people = [person(1), person(2), person(3), person(4)];
+  const existing = (p, status) => ({ profile_id: p.id, provider_id: p.provider_id, resolved_profile_id: null, profile_url: null, status, completed_at: new Date().toISOString(), replied_at: null, updated_at: new Date().toISOString() });
+  const { supabase, calls } = fakeClient((call) => (call.table === 'sequence_enrollments' && call.op === 'select'
+    ? { data: [existing(people[0], 'active'), existing(people[1], 'completed')], error: null } : undefined));
+  const out = await lib.enrollCandidates(options(supabase, { candidates: people }));
+  assert.deepEqual(writes(calls, 'sequence_enrollments', 'upsert')[0].payload.map((r) => r.profile_id), ['ACo3', 'ACo4']);
+  assert.equal(out.results.success, 2);
+  assert.equal(out.results.skipped, 1);
+  assert.equal(out.results.alreadyPassed, 1);
+  assert.deepEqual(writes(calls, 'sequence_step_executions', 'insert')[0].payload.map((e) => e.enrollment_id), ['enr-ACo3', 'enr-ACo4']);
+});
+
+test('5F1-R5 groupé : tous refusés par la base ou perdus à la course, aucune exécution écrite et aucun échec de planification', async () => {
+  const refused = fakeClient((call) => {
+    if (call.table !== 'sequence_enrollments' || call.op !== 'upsert') return undefined;
+    return { data: null, error: { code: '42501', hint: 'ENROLLMENT_GDPR_ERASED' } };
+  });
+  const a = await silent(() => lib.enrollCandidates(options(refused.supabase)));
+  assert.equal(a.results.gdprErased.length, 3);
+  assert.equal(a.schedulingFailure, undefined);
+  assert.equal(writes(refused.calls, 'sequence_step_executions', 'insert').length, 0);
+  const raced = fakeClient((call) => (call.table === 'sequence_enrollments' && call.op === 'upsert' ? { data: [], error: null } : undefined));
+  const b = await silent(() => lib.enrollCandidates(options(raced.supabase)));
+  assert.equal(b.schedulingFailure, undefined);
+  assert.equal(b.results.skipped, 3);
+  assert.equal(writes(raced.calls, 'sequence_step_executions', 'insert').length, 0);
+  assert.equal(writes(raced.calls, 'sequence_enrollments', 'delete').length, 0);
+});
+
+test('5F1-R6 mission : identifiant sans préfixe gardé, absence de mission = colonnes vides', async () => {
+  const plain = fakeClient();
+  await lib.enrollCandidates(options(plain.supabase, { job: { id: MISSION, title: 'T' } }));
+  assert.equal(writes(plain.calls, 'sequence_enrollments', 'upsert')[0].payload[0].job_id, MISSION);
+  const none = fakeClient();
+  await lib.enrollCandidates(options(none.supabase, { job: null }));
+  const row = writes(none.calls, 'sequence_enrollments', 'upsert')[0].payload[0];
+  assert.equal(row.job_id, undefined);
+  assert.equal(row.job_title, undefined);
+});
+
+test('5F1-R7 la bibliothèque n’appelle aucune fonction serveur (rpc) hors lectures d’anti-doublon', async () => {
+  for (const extra of [{}, oneByOne]) {
+    const { supabase, rpcCalls } = fakeClient();
+    await lib.enrollCandidates(options(supabase, { recentEnrollments: null, ...extra }));
+    assert.deepEqual(rpcCalls.map((c) => c.fn).filter((fn) => fn !== 'find_recent_org_contacts'), []);
+  }
+  assert.doesNotMatch(read(LIB), /\.rpc\(/);
+});
+
+test('5F1-R8 un par un : les réglages de délai sont relus pour chaque candidat', async () => {
+  const log = [];
+  const { supabase } = fakeClient();
+  await lib.enrollCandidates(options(supabase, { ...oneByOne, stepConfigOverrides: () => { log.push('config'); return {}; }, messageOverridesFor: (id) => { log.push(id); return {}; } }));
+  assert.deepEqual(log, ['ACo1', 'config', 'ACo2', 'config', 'ACo3', 'config']);
+});
+
+test('5F1-R9 anti-doublon relu sur toute la sélection, pas seulement les compatibles', async () => {
+  const all = [person(1), person(2), person(3), person(9)];
+  const seen = [];
+  const { supabase } = fakeClient();
+  const original = supabase.rpc;
+  supabase.rpc = async (fn, args) => { seen.push(JSON.stringify(args)); return original(fn, args); };
+  await lib.enrollCandidates(options(supabase, { allProfiles: all, candidates: all.slice(0, 3), recentEnrollments: null }));
+  assert.ok(seen.some((s) => s.includes('ACw9') || s.includes('candidat-9')), seen.join(' | '));
 });

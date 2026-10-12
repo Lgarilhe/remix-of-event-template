@@ -273,7 +273,7 @@ async function enrollBatch(
   results: EnrollResults,
   enrolledIds: string[],
 ): Promise<{ rolledBack: boolean } | undefined> {
-  const { supabase, sequence, organizationId } = ctx;
+  const { supabase, sequence } = ctx;
 
   // 1. Pré-contrôle : qui a déjà une inscription dans cette séquence ? La
   // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle ; sous
