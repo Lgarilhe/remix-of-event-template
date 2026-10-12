@@ -78,6 +78,7 @@ import { useInMailBalance } from '@/hooks/useInMailBalance';
 import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { plural } from '@/lib/plural';
+import { trackUsage } from '@/lib/usageEvents';
 
 interface Recipient {
   id: string;
@@ -749,6 +750,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         });
         return;
       }
+      // Mesure d'usage : InMails réellement planifiés par la file (nombre seulement).
+      trackUsage('Candidates Enrolled', { surface: 'inmail_groupe', count: queued });
       if (queued < items.length) {
         toast.warning(`${queued} InMail${queued > 1 ? 's' : ''} planifié${queued > 1 ? 's' : ''} sur ${items.length}`, {
           description: exclusions || 'Consultez la file d’attente pour vérifier les envois prévus.',

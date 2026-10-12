@@ -90,6 +90,7 @@ import { plural } from '@/lib/plural';
 import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
 import { serializeProfileForStorage } from '@/lib/serializeProfile';
+import { trackUsage } from '@/lib/usageEvents';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
@@ -890,6 +891,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       discardSessionPreviews(enrolledIds);
       setEnrollResults(results);
       if (results.success > 0) {
+        // Mesure d'usage : candidats réellement inscrits (nombre seulement).
+        trackUsage('Candidates Enrolled', { surface: 'preparation', count: results.success });
         toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });

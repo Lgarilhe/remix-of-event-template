@@ -156,6 +156,8 @@ test('front-editor-list-1 — désactivation : tout est en pause, is_active pass
     sequencePauseToastTitle: (n) => `Séquence mise en pause : ${candidats(n)} en pause.`,
     offerUndo: (options) => { undoToasts.push(options); },
     undoSequencePause: async (...args) => { undone.push(args); },
+    // Mesure d'usage de la pause de séquence (src/lib/usageEvents.ts), sans effet ici.
+    trackUsage: () => {},
   });
   await deactivate('seq-1');
   const seqUpdate = calls.find((c) => c.table === 'outreach_sequences');

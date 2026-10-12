@@ -22,6 +22,7 @@ import {
   type ResumeResponse,
 } from '@/lib/sequenceErrorMessages';
 import { rowToSequenceStep } from '@/components/outreach/sequence/sequenceGraph';
+import { trackUsage } from '@/lib/usageEvents';
 import type { Sequence, StopConditions, SenderAccountConfig } from '@/types/sequence';
 
 type SupabaseClient = typeof supabaseClient;
@@ -344,6 +345,8 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
       // Résultat réel, « Annuler » pendant que le toast est affiché.
       const shared = sequences.some(s => s.id === sequenceId && !s.project_id);
       const undoIds = pausedIds;
+      // Mesure d'usage : séquence mise en pause, avec ses candidats (nombre seulement).
+      trackUsage('Enrollment Paused', { scope: 'sequence', count: pausedCount });
       offerUndo({
         title: sequencePauseToastTitle(pausedCount),
         description: shared && pausedCount > 0
@@ -395,12 +398,15 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
         return;
       }
       setSequences(prev => prev.map(s => s.id === sequenceId ? { ...s, is_active: true } : s));
+      // Mesure d'usage : interrupteur remis, puis les candidats repris (nombre seulement).
       if (enrollmentIds.length === 0) {
+        trackUsage('Enrollment Undo', { gesture: 'pause_sequence', count: 0 });
         toast.success(PAUSE_UNDONE_MESSAGE);
         return;
       }
       const loadingId = toast.loading('Annulation de la pause…');
       const result = await resumeIds(enrollmentIds);
+      trackUsage('Enrollment Undo', { gesture: 'pause_sequence', count: result.counts.resumed });
       showSummary(summarizeUndoPause({ ...result, total: enrollmentIds.length }), loadingId);
     } catch (err) {
       console.error('Error undoing sequence pause:', err);

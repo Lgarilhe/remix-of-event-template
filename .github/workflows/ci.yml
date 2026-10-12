@@ -211,6 +211,14 @@ jobs:
       # invokeUnipile avec esbuild.
       - name: Envois manuels, refus d'un candidat effacé (correctif 4)
         run: node --test tests/ux/correctif4-ecrans.test.mjs
+      # Pilote des séquences : mesures d'usage (src/lib/usageEvents.ts). Liste
+      # fermée d'événements et de propriétés (catégories et nombres), appelée
+      # par chaque geste du pilote une fois réussi. Adresses envoyées réduites
+      # (src/lib/analytics.ts, SEC-043) : aucun jeton, identifiant, requête ni
+      # fragment ; variante manuelle du script seule chargée. Empaquette les
+      # modules avec esbuild.
+      - name: Mesures d'usage du pilote des séquences
+        run: node --test tests/ux/mesures-usage.test.mjs tests/ux/mesures-adresses.test.mjs
       - name: Agent de sourcing, contrôles et changements de contexte
         run: node --test tests/ux/continuous-sourcing-agent.test.mjs tests/ux/sourcing-agents-hub.test.mjs tests/ux/contraste-ecrans.test.mjs tests/ux/contraste-icones.test.mjs
       - name: Vite production build

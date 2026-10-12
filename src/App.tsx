@@ -23,7 +23,7 @@ import { clearOrgIdCache } from "@/lib/orgContext";
 import { clearOnboardingProgress } from "@/components/onboarding/onboardingStorage";
 import { clearAllEditorDrafts } from "@/lib/editorDraft";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
-import { loadAnalytics } from "@/lib/analytics";
+import { loadAnalytics, trackPageview } from "@/lib/analytics";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
@@ -79,6 +79,11 @@ const AppContent = () => {
   useEffect(() => {
     loadAnalytics();
   }, []);
+
+  // Page vue à chaque changement de chemin, adresse réduite (variante manuelle du script, SEC-043).
+  useEffect(() => {
+    trackPageview();
+  }, [location.pathname]);
 
   useEffect(() => {
     const tokenFromUrl = persistPreviewAccessToken(location.search);

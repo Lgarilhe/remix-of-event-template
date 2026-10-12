@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import { useWritingPreferences } from '@/hooks/useWritingPreferences';
 import { WritingSettingsLine, type WritingSettingsValue } from '@/components/ai/WritingSettingsLine';
 import { DEFAULT_AI_LEVEL, clampLevel, levelCredits, writingRefusalMessage } from '@/lib/writingStyle';
 import { proposeAiMessage } from './proposeAiMessage';
+import { trackUsage } from '@/lib/usageEvents';
 
 interface EditScheduledMessageModalProps {
   isOpen: boolean;
@@ -69,6 +70,8 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [proposing, setProposing] = useState(false);
+  // Mesure d'usage : le message enregistré est-il parti d'une proposition de l'IA ?
+  const proposalUsedRef = useRef(false);
   const subjectId = useId();
   const messageId = useId();
   const helpId = useId();
@@ -89,6 +92,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   const showsSubject = needsSubject || actionType === 'smart_message';
 
   useEffect(() => {
+    proposalUsedRef.current = false;
     if (execution) {
       // Même valeur que celle affichée dans le Journal : on corrige le message
       // qui partira, pas le modèle de l'étape.
@@ -110,6 +114,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       const proposal = await proposeAiMessage(execution.id, senderName, writing);
       setMessage(proposal.message);
       if (showsSubject && proposal.subject) setSubject(proposal.subject);
+      proposalUsedRef.current = true;
     } catch (err) {
       // Niveau refusé (plafond abaissé entre-temps) : réglages relus, le niveau affiché redescend.
       if (writingRefusalMessage(err)) void refetchWritingPrefs();
@@ -158,6 +163,8 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       }
 
       if (aiReview) {
+        // Mesure d'usage : message rédigé par l'IA relu et enregistré (catégorie seulement, jamais le texte).
+        trackUsage('AI Message Reviewed', { source: proposalUsedRef.current ? 'proposition_ia' : 'sans_proposition' });
         toast.success('Message relu', { description: 'Il partira au prochain passage, dans l’heure.' });
       } else {
         toast.success('Message mis à jour', { description: 'La nouvelle version partira à l’heure prévue.' });

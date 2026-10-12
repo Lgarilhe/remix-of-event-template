@@ -27,6 +27,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { trackUsage } from '@/lib/usageEvents';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -320,6 +321,8 @@ export const AgentActionsSettings = () => {
           );
           return;
         }
+        // Mesure d'usage : nom de l'outil et décision, jamais ses paramètres.
+        trackUsage('Assistant Proposal', { tool: row.tool_name, decision: action === 'approve' ? 'approuvee' : 'rejetee', surface: 'journal' });
         if (action === 'reject') {
           toast.success('Action rejetée');
         } else if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
@@ -437,6 +440,7 @@ export const AgentActionsSettings = () => {
           toast.error("La séquence n'a pas pu être ouverte dans l'éditeur. Réessayez dans un instant.");
           return;
         }
+        trackUsage('Assistant Proposal', { tool: row.tool_name, decision: 'reprise_editeur', surface: 'journal' });
         queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
         navigate(aiProposalSequencePath(row.id));
       } finally {
