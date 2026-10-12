@@ -10,7 +10,9 @@ Sur la branche `claude/repository-audit-pcgg0y` (pas sur `main`, voir plus bas) 
 - 5f-2a, la règle Retenu (`retainCandidates`), avec un e2e qui échoue sans elle ;
 - 5f-3, les invitations dans la messagerie, avec un e2e.
 
-Reste du plan 5f-2 : l'onglet « Contactés », l'onglet « Séquences » réordonné, la pastille de « Prise de contact », ContactFlow et ses points d'entrée, « Retenir sans contacter ».
+Livré le 12/10/2026 sur la même branche : 5f-2b, l'onglet « Contactés », l'onglet « Séquences » réordonné et la pastille de « Prise de contact » (décisions 1 et 2 ci-dessous, construites sur ma proposition).
+
+Reste du plan 5f-2 : ContactFlow et ses points d'entrée (5f-2c et 5f-2d), « Retenir sans contacter ».
 
 Le texte du plan (`lot5-plan.md`, 5f-2) cite une « spec-cible » (sections 2.6, 3.1 et 4) pour les textes des états vides et des erreurs. Ce fichier n'existe pas dans le dépôt (ni dans l'historique git, ni sur le disque). Sans lui, les textes et plusieurs règles ci-dessous sont des propositions de ma part.
 

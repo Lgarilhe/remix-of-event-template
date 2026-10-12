@@ -140,12 +140,12 @@ test('interrupteur allumé : le panneau de la mission n\'a plus l\'onglet Invita
   const { context } = await openContext(browser, ws, { legacy: false });
   const page = await context.newPage();
 
-  // Panneau ouvert : séquences seules, sans barre d'onglets.
+  // Panneau ouvert : Contactés et Séquences (lot 5f-2b), plus d'onglet Invitations.
   await page.goto(`/missions/${ws.missionId}?nouvelle-mission=1&panneau=contact`, { waitUntil: 'domcontentloaded' });
   const panel = page.getByTestId('mission-panel');
   await expect(panel.getByRole('heading', { name: 'Prise de contact' })).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByRole('tab', { name: 'Invitations' })).toHaveCount(0);
-  await expect(panel.getByRole('tablist')).toHaveCount(0);
+  await expect(panel.getByRole('tab')).toHaveText(['Contactés', 'Séquences']);
 
   // Ancien lien d'invitations : la messagerie, onglet Invitations.
   await page.goto(`/missions/${ws.missionId}?nouvelle-mission=1&panneau=contact&outreach=invitations`, { waitUntil: 'domcontentloaded' });

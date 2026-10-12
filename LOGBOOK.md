@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-12 — SHIP — Lot 5f-2b : onglet Contactés et pastille de Prise de contact
+
+**Contexte** : première part de la fin du lot 5f-2, en lecture seule, construite sur les propositions de `docs/refonte-mission/lot5f2b-conception.md` (la spec-cible citée par le plan n'existe pas dans le dépôt).
+**Fait** : le panneau Prise de contact a deux onglets quand l'interrupteur des séquences est allumé, « Contactés » puis « Séquences ». « Contactés » liste une ligne par candidat de la mission en quatre groupes (A répondu, Bloqués, En attente, Sans suite replié) avec le statut de `enrollmentStatusLine` et un geste : pause et arrêt du lot 5b avec « Annuler », lien vers la conversation, la page des connexions ou la page de la séquence. Il s'ouvre par défaut s'il a une ligne ; l'onglet suit `?outreach=contactes|sequences`. Le bouton « Prise de contact » du Pipeline porte une pastille : « 2 réponses » (`get_mission_attention`, votre compte), sinon « 1 bloqué », jamais de zéro. Interrupteur éteint : l'ancien panneau, sans pastille.
+**Trouvé en recette** : après « Mettre en pause », la ligne gardait « En cours » (la relecture n'était branchée que sur « Annuler ») ; corrigé et gardé par un test.
+**Visible pour tous au merge** : l'interrupteur est allumé par défaut, donc oui. Aucune écriture nouvelle, aucune migration, aucune fonction serveur.
+**QA** : TypeScript 11 erreurs (base inchangée), `test:c1` 653, nouveau `tests/ux/lot5f2b-contactes.test.mjs` (12 contrôles, 15 mutations toutes détectées), gardes 5F3-3 et 5c-2 adaptées. E2E locale : `seq-v2-contactes` (4 parcours) et `seq-v2-invitations` passent.
+**Impact** : `contactedGroups.ts`, `useMissionContacted.ts`, `ContactedList.tsx`, `useContactBadge.ts` (nouveaux) ; `ContactPanel.tsx`, `PipelineToolbar.tsx`, `PipelineScreen.tsx`, tests, `CLAUDE.md`, plan, CI.
+**Reste à faire** : `[ ]` 5f-2c (ContactFlow depuis le Pipeline) et 5f-2d (autres entrées), décisions 3 à 9 de la conception ; `[ ]` pousser 5f-1, 5f-2a, 5f-3 et 5f-2b sur `main` (refus du classeur d'actions le 12/10, phrase explicite attendue).
+**Refs** : branche `claude/repository-audit-pcgg0y`, `docs/refonte-mission/lot5-plan.md` section 5f-2.
+
+---
+
 ## 2026-10-12 — SHIP — Lot 5f-3 : invitations reçues dans la messagerie
 
 **Contexte** : dernier sous-lot du plan 5f. Les invitations LinkedIn reçues quittent le panneau de mission pour la messagerie.

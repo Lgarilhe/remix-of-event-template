@@ -44,15 +44,20 @@ test('5F3-2 l\'onglet n\'ouvre que le compte LinkedIn de la personne, avec ses �
 test('5F3-3 panneau Prise de contact : interrupteur allumé, plus d\'onglet Invitations et le lien mène à la messagerie', () => {
   assert.match(panel, /import \{ useSequencesBeta \} from '@\/hooks\/useSequencesBeta';/);
   assert.match(panel, /const INBOX_INVITATIONS_PATH = '\/inbox\?onglet=invitations';/);
-  assert.match(panel, /const invitationsInPanel = !useSequencesBeta\(\);/);
+  assert.match(panel, /const sequencesV2 = useSequencesBeta\(\);\s*const invitationsInPanel = !sequencesV2;/);
   assert.match(panel, /if \(!invitationsInPanel && asksInvitations\) return <Navigate to=\{INBOX_INVITATIONS_PATH\} replace \/>;/);
-  assert.match(panel, /const tabs = invitationsInPanel \? TABS : TABS\.filter\(\(item\) => item\.key === 'sequences'\);/);
-  // Une seule rubrique restante : pas de barre d'onglets, et l'onglet Invitations n'est pas monté.
-  assert.match(panel, /\{tabs\.length > 1 && \(\s*<div\s+role="tablist"/);
-  assert.match(panel, /\{invitationsInPanel && \(\s*<div\s+role="tabpanel"\s+id=\{`\$\{baseId\}-panel-invitations`\}/);
+  // Lot 5f-2b : deux onglets, Contactés et Séquences. L'onglet Invitations n'est monté que dans l'ancien panneau.
+  assert.match(panel, /const tabs = sequencesV2 \? TABS_V2 : TABS;/);
+  assert.match(panel, /const TABS_V2: readonly \{ key: ContactTab; label: string \}\[\] = \[\s*\{ key: 'contactes', label: 'Contactés' \},\s*\{ key: 'sequences', label: 'Séquences' \},\s*\];/);
+  const v2Branch = panel.slice(panel.indexOf('} else if (sequencesV2) {'), panel.indexOf('} else if (accountsLoading) {'));
+  assert.ok(v2Branch.length > 200, 'branche de l\'interrupteur allumé lue');
+  assert.doesNotMatch(v2Branch, /InvitationsPanel|panel-invitations/, 'pas d\'onglet Invitations interrupteur allumé');
+  const legacyBranch = panel.slice(panel.indexOf('} else if (accountsLoading) {'), panel.indexOf('const subtitle'));
+  assert.match(legacyBranch, /<InvitationsPanel/);
+  assert.match(legacyBranch, /id=\{`\$\{baseId\}-panel-invitations`\}/);
   // La redirection vient après tous les hooks du composant.
-  const hooksEnd = panel.lastIndexOf('useState<');
-  assert.ok(panel.indexOf('return <Navigate') > Math.max(hooksEnd, panel.lastIndexOf('useCallback(')), 'Navigate après les hooks');
+  const hooksEnd = Math.max(panel.lastIndexOf('useState<'), panel.lastIndexOf('useCallback('), panel.lastIndexOf('useMissionContactedView('));
+  assert.ok(panel.indexOf('return <Navigate') > hooksEnd, 'Navigate après les hooks');
 });
 
 test('5F3-4 interrupteur éteint : le panneau provisoire est inchangé', () => {
