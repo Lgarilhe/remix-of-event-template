@@ -862,6 +862,8 @@ Règle Retenu à l'inscription (sans drapeau, tous les appelants d'`enrollCandid
 - Comme `handleShortlist` (`EnrollmentPreviewModal.tsx:818-909`) : ligne À trier créée si le profil n'en a pas dans la mission, lecture des lignes sous les deux formes de `job_id`, puis `setCandidateStages(ids, 'retained')`, origine `user`, `p_from_stages` to_sort et rejected, surface `enrollment`. Aucun site d'upsert nouveau hors de ce chemin.
 - « Contacté » reste posé par le serveur au premier envoi.
 
+Réalisation de la règle Retenu, 5f-2a (12/10/2026, branche `claude/repository-audit-pcgg0y`). Écart au texte ci-dessus : elle ne vit pas dans `enrollCandidates.ts` même, que `tests/c1/lot5f-inscription.test.mjs` garde sans mot du pipeline et sans client global, mais dans `src/lib/retainCandidates.ts`, que `enrollCandidates` appelle après une inscription réussie (donc tous ses appelants, sans drapeau) et que `handleShortlist` appelle aussi : un seul site de création des lignes de mission. Étapes de départ de la règle : `to_sort` et `rejected` comme écrit ici ; « Présélectionner sans message » garde `RETAIN_FROM_STAGES` (avec `retained`, pour compter un déjà Retenu comme enregistré). Sans mission (`job` absent), rien n'est écrit. Les lignes sont lues et créées au nom de la personne qui inscrit (`created_by`), comme `handleShortlist` : un candidat déjà présent par un collègue reçoit sa propre ligne, point à reprendre avec la fusion des doublons du lot 4.
+
 Panneau `?panneau=contact&outreach=contactes|sequences` (drapeau allumé).
 - Deux onglets, « Contactés » et « Séquences ». « Contactés » s'ouvre par défaut s'il a une ligne (mesures du 24/09, conséquences 10 et 11).
 - Repères gardés : `data-panel="contact"` et le titre « Prise de contact ».

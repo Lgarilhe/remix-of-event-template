@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-12 — REFACTOR — Lot 5f-2a : règle Retenu à l'inscription
+
+**Contexte** : deuxième partie du lot 5f. Le plan demande qu'un candidat inscrit dans une séquence passe en Retenu, sans drapeau, pour tous les appelants d'`enrollCandidates`.
+**Fait** : `src/lib/retainCandidates.ts` crée la ligne de mission absente (profil entier, sans colonne d'étape) puis écrit l'étape par `setCandidateStages` (origine `user`, surface `enrollment`, étapes de départ `to_sort` et `rejected` : jamais de recul). `enrollCandidates` l'appelle après une inscription réussie, pour les seuls candidats réellement inscrits (ni lot retiré, ni refusé, ni déjà inscrit) et seulement avec une mission. « Présélectionner sans message » (`handleShortlist`) appelle le même module : un seul site de création des lignes de mission. Un échec de Retenu ne défait pas l'inscription : `retained: { saved, failed }` dans le résultat, toast d'avertissement et rafraîchissement des lectures d'étape dans les deux fenêtres.
+**Écart au plan** : la règle n'est pas dans `enrollCandidates.ts` mais dans un module appelé par lui, parce que `tests/c1/lot5f-inscription.test.mjs` garde ce fichier sans mot du pipeline et sans client global. Le plan ne citait pas ce test.
+**Visible pour tous au merge** : à l'inscription, les candidats passent en Retenu dans le Pipeline de la mission (voulu par le plan, sans drapeau). « Contacté » est posé par le serveur au premier envoi, après Retenu (vérifié en recette).
+**Point ouvert** : les lignes sont lues et créées au nom de la personne qui inscrit (`created_by`), comme `handleShortlist` ; un candidat déjà présent par un collègue reçoit sa propre ligne. À reprendre avec la fusion des doublons du lot 4.
+**QA** : TypeScript 11 erreurs (base inchangée), build, `test:c1` 653, `test:ux` 2063 sur 2067 (les 4 rouges d'avant). `tests/c1/lot5f-inscription.test.mjs` passe à 37 contrôles (cinq cas de la règle, garde statique 5F1-S6, client global remplacé par un enregistreur) ; trois tests de lecture de source adaptés (`seq-audit-f4a` SEQ-048, `photos-candidats`, `lot0c-socle-ecrans`). Nouveau `e2e/flows/seq-retenu.spec.ts` (deux parcours : À trier et sans ligne passent en Retenu, puis Contacté au premier envoi, origine system), qui échoue sans la règle. Recette locale des specs d'inscription : 96 réussies, 2 échecs (`seq-identity:337`, `seq-ui-1:938`), déjà en échec avant le lot 5f.
+**Impact** : `retainCandidates.ts` (nouveau), `enrollCandidates.ts`, `SequenceEnrollModal.tsx`, `EnrollmentPreviewModal.tsx`, `enrollmentHelpers.ts`, tests, `CLAUDE.md`, plan. Aucune migration, aucune fonction serveur.
+**Reste à faire** : `[ ]` panneau Prise de contact et ContactFlow (5f-2b), voir les questions au propriétaire ; `[ ]` 5f-3 ; `[ ]` pousser sur `main` (refus du classeur d'actions le 12/10, à confirmer par le propriétaire).
+**Refs** : commit 4be723ec sur `claude/repository-audit-pcgg0y`, `docs/refonte-mission/lot5-plan.md` section 5f-2.
+
+---
+
 ## 2026-10-12 — REFACTOR — Lot 5f-1 : un seul chemin d'inscription en séquence
 
 **Contexte** : la modale simple et la préparation avec aperçu écrivaient chacune les inscriptions et les premières exécutions, avec deux stratégies et des textes en double.
