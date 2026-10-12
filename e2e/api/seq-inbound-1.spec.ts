@@ -587,15 +587,14 @@ test.describe('Réponse du candidat', () => {
     expect((await enr(unknown.enrollmentId)).status, 'is_sender absent, message relu comme étant du compte : ignoré').toBe('active');
     expect((await exec(execUnknown)).status).toBe('scheduled');
 
-    // Chaque message.new passe par la capture des actions candidat : un message (getMessage) et sa conversation (getChat) lus au moins
-    // une fois (l'analyse du message, lancée en arrière-plan après une réponse, peut relire la conversation).
+    // Chaque message.new passe par la capture des actions candidat : un message (getMessage) et sa conversation (getChat) lus.
     const reads = await callsOf(accountId, ['getMessage', 'getChat', 'getParticipantsList']);
     const readsOf = (chat: string, op: string) => reads.filter((c) => c.op === op && c.path.includes(`/chats/${chat}`));
     expect(readsOf(chatTheirs, 'getMessage'), 'is_sender faux : aucune relecture de vérification (seule la capture lit)').toHaveLength(1);
     expect(reads.filter((c) => c.op === 'getParticipantsList'), 'les participants ne sont jamais demandés').toHaveLength(0);
     expect(readsOf(chatUnknown, 'getMessage'), 'is_sender absent : message relu en plus de la capture').toHaveLength(2);
     // Message propre (lot 0b, décision 5) : conversation sans lien, le candidat est lu une fois de plus (GET chat) pour le reconnaître, en plus de la capture ; aucune clôture.
-    expect(readsOf(chatMine, 'getChat').length, 'is_sender vrai : conversation lue pour reconnaître le candidat (message propre)').toBeGreaterThanOrEqual(2);
+    expect(readsOf(chatMine, 'getChat'), 'is_sender vrai : conversation lue deux fois, la capture puis le candidat du fil non rattaché (message propre), pas une de plus').toHaveLength(2);
   });
 
   // reponse-compte-rotation (SEQ-013)

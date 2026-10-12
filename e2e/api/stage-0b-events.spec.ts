@@ -315,7 +315,7 @@ test.describe('B. Message écrit hors Konekt', () => {
     // Candidat lu dans le lien : la conversation n'est lue qu'une fois (la capture des réponses aux actions
     // candidat, comme au premier test), jamais pour retrouver le candidat, et jamais ses participants.
     const reads = (await mockCalls(accountId)).filter((c) => c.method === 'GET' && c.path.includes(`/chats/${chat}`));
-    expect(reads.filter((c) => c.op === 'getChat').length, JSON.stringify(reads.map((c) => c.op))).toBeLessThanOrEqual(1);
+    expect(reads.filter((c) => c.op === 'getChat').length, JSON.stringify(reads.map((c) => c.op))).toBe(1);
     expect(reads.filter((c) => c.op === 'getParticipantsList')).toEqual([]);
 
     await webhook(messageReceived(accountId, p, { chatId: chat }));

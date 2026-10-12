@@ -454,8 +454,9 @@ isolated('completed-own-invite-note-ignored',
     const reread = await rawWebhook(withoutSender(b.accountId, chatB, messageB));
     expect(reread.status, JSON.stringify(reread.body)).toBe(200);
     const readsB = await callsOf(b.accountId, 'getMessage');
-    // Relu au moins une fois (la vérification de l'auteur, puis la reconnaissance du message propre), toujours sous le compte.
-    expect(readsB.length, 'message relu chez le fournisseur').toBeGreaterThanOrEqual(1);
+    // Exactement deux lectures du message : la capture des actions candidat (propre à tout message.new), puis la
+    // vérification de l'auteur d'un is_sender absent (unipile-webhook, « is_sender absent »). Une troisième serait une relecture inutile.
+    expect(readsB.length, 'message lu par la capture puis relu pour vérifier l’auteur').toBe(2);
     expect([...new Set(readsB.map((c) => c.path))], 'message relu sous le compte de l’inscription, jamais un autre')
       .toEqual([`/v2/${b.accountId}/chats/${chatB}/messages/${messageB}`]);
     await b.check('is_sender absent, relu : de nous');

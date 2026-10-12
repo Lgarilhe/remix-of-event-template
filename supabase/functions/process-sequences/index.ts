@@ -6316,10 +6316,12 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         // API v2 : lire un profil ne compte PLUS comme une visite. La visite est un
         // appel explicite, avec le jeton rendu par la lecture du profil
         // (specifics.notify_visit_token) : deux appels, la lecture (journalisée au
-        // ledger) puis la visite. Sans jeton aucune visite n'est possible : l'étape
-        // est sautée avec sa raison, jamais comptée comme faite.
-        const { logLinkedInRead } = await import('../_shared/linkedin-quotas.ts');
-        await logLinkedInRead(supabase, { accountId, organizationId: (enrollment.organization_id as string | null) ?? null, source: 'sequence_profile_read' });
+        // ledger par le gate) puis la visite. Sans jeton aucune visite n'est
+        // possible : l'étape est sautée avec sa raison, jamais comptée comme faite.
+        // Étape déjà journalisée en 'profile_view' par le gate (une visite = une
+        // place du plafond des vues de profil) : la lecture qui rend le jeton ne
+        // journalise pas une seconde ligne, sinon 25 vues ne permettraient que 12
+        // visites. Même règle que check_connection.
         try {
           const visitToken = notifyVisitToken(await getProfile(accountId, providerUserRef(enrollment, profileId)));
           if (!visitToken) {

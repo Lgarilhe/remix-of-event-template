@@ -181,6 +181,34 @@ Deno.test('profile_visit : visite non confirmée = échec relançable, pas compt
   });
 });
 
+Deno.test('profile_visit : une visite = une seule place du plafond des vues, la lecture du jeton n\'écrit aucune ligne au ledger', async () => {
+  // Le gate (checkQuotaForAction, hors de executeStepAction) journalise déjà la
+  // visite en 'profile_view'. Une seconde ligne écrite par la lecture qui rend le
+  // jeton faisait consommer deux places par visite (25 vues = 12 visites).
+  for (const scenario of ['visite faite', 'sans jeton', 'visite non confirmée'] as const) {
+    reset();
+    const supabase = fakeSupabase();
+    await withMockTransport((req) => {
+      if (req.path.endsWith('/users/visit-profile')) return jsonResponse({ object: scenario === 'visite faite' ? 'ProfileVisited' : 'Other' });
+      return jsonResponse(profileWith(scenario === 'sans jeton' ? { network_distance: 'SECOND_DEGREE' } : { notify_visit_token: 'tok_1' }));
+    }, async () => {
+      await m.executeStepAction('profile_visit', enrollment(), step(), {}, supabase);
+    });
+    const ledgerRows = supabase.inserts.filter((row: Record<string, unknown>) => 'action_type' in row);
+    deepStrictEqual(ledgerRows, [], `${scenario} : aucune ligne de ledger écrite par l'exécution de l'étape`);
+  }
+});
+
+Deno.test('check_connection : la lecture du profil n\'écrit aucune ligne au ledger (déjà journalisée par le gate)', async () => {
+  reset();
+  const supabase = fakeSupabase();
+  await withMockTransport(() => jsonResponse(profileWith({ network_distance: 'FIRST_DEGREE' })), async () => {
+    const result = await m.executeStepAction('check_connection', enrollment(), step(), {}, supabase);
+    strictEqual(result.success, true);
+  });
+  deepStrictEqual(supabase.inserts.filter((row: Record<string, unknown>) => 'action_type' in row), []);
+});
+
 // ─── Invitation ─────────────────────────────────────────────────────────────
 
 Deno.test('connection_request : demande de relation avec la note tronquée, connection_status = pending_invite', async () => {

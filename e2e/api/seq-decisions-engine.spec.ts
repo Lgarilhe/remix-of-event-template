@@ -604,9 +604,18 @@ async function completedWithReply(
   return e;
 }
 
-/** Lectures de conversations LinkedIn faites depuis ce compte (recherche de la conversation, lecture des messages). */
+/**
+ * Toute lecture de conversation LinkedIn faite depuis ce compte. Assertions négatives (RGPD : la conversation d'un
+ * candidat effacé n'est jamais relue) : on compte l'union des opérations de lecture de conversation du faux prestataire
+ * (routes de vendor-mock.mjs) ET tout GET dont le chemin désigne une conversation, pour qu'aucune lecture ne passe
+ * par une opération qu'une liste fermée aurait oubliée (même force que le /\/chat/ de la version 1).
+ */
+const CHAT_READ_OPS = new Set([
+  'getChat', 'getChatsList', 'getInboxChatsList', 'getUserChat', 'getMessagesList', 'getMessage', 'getParticipantsList',
+]);
 async function chatReads(accountId: string): Promise<number> {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'GET' && (c.op === 'getUserChat' || c.op === 'getMessagesList')).length;
+  return (await mockCalls(accountId)).filter((c) => c.method === 'GET'
+    && (CHAT_READ_OPS.has(String(c.op)) || /\/chats?\b|\/chat\b/.test(c.path))).length;
 }
 
 async function repliesCounted(sequenceId: string): Promise<number> {
@@ -706,6 +715,7 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
     const mk = await enrollmentFull(marked.enrollmentId);
     expect({ status: mk.status, replied_at: mk.replied_at, last_check_at: mk.last_check_at }, 'marqueur d’effacement : jamais sélectionnée')
       .toEqual({ status: 'completed', replied_at: null, last_check_at: null });
+    expect(await chatReads(accWitness), 'témoin de non-vacuité : le compteur voit les lectures d’un candidat non effacé').toBeGreaterThan(0);
     expect(await chatReads(accMarked), 'aucune lecture de la conversation d’un candidat effacé').toBe(0);
     const rg = await enrollmentFull(registry.enrollmentId);
     expect({ status: rg.status, replied_at: rg.replied_at }, 'registre : examinée, écartée').toEqual({ status: 'completed', replied_at: null });
@@ -765,6 +775,7 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
       expect({ status: row.status, replied_at: row.replied_at }, `${label} : l'ancienne inscription reste terminée`).toEqual({ status: 'completed', replied_at: null });
       expect(row.last_check_at, `${label} : examinée`).not.toBeNull();
     }
+    expect(await chatReads(accY), 'témoin de non-vacuité : le compteur voit la lecture du compte Y').toBeGreaterThan(0);
     expect(await chatReads(accX), 'compte X : conversation jamais relue pour l’ancienne inscription').toBe(0);
     expect(await chatReads(accZ), 'compte Z : conversation jamais relue pour l’ancienne inscription').toBe(0);
     expect((await enrollmentFull(e4.enrollmentId)).status, 'compte Y : la réponse revient à l’inscription ouverte').toBe('replied');

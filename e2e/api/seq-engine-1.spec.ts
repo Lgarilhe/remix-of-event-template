@@ -1327,12 +1327,12 @@ test.describe('Sélection du cycle', () => {
       return (data ?? []) as Array<{ id: string; status: string; scheduled_at: string; skip_reason: string | null; error_message: string | null }>;
     };
     const v = await statuses(visitExecs as Array<{ id: string; scheduled_at: string }>);
-    // Une étape de visite ne doit coûter qu'une place du plafond du jour (25 vues) : ni plus (APP_BUG connu : en v2 la lecture du
-    // profil qui donne le jeton de visite est journalisée en plus de l'étape), ni moins.
+    // Une étape de visite ne coûte qu'une place du plafond du jour (25 vues) : la lecture du profil qui donne le jeton de visite
+    // n'est pas journalisée en plus de l'étape. Le ledger est joint au message pour le diagnostic.
     const { data: ledger } = await admin().from('linkedin_action_log').select('source, action_type').eq('account_id', accountId);
     const ledgerBySource = Object.entries(((ledger ?? []) as Array<{ source: string; action_type: string }>)
       .reduce<Record<string, number>>((acc, r) => ({ ...acc, [`${r.action_type}/${r.source}`]: (acc[`${r.action_type}/${r.source}`] ?? 0) + 1 }), {}));
-    expect.soft(v.filter((x) => x.status === 'sent'),
+    expect(v.filter((x) => x.status === 'sent'),
       `15 visites au plus dans le cycle ; autres : ${JSON.stringify(v.filter((x) => x.status !== 'sent').map((x) => [x.status, x.skip_reason, x.error_message]))} ; ledger : ${JSON.stringify(ledgerBySource)}`).toHaveLength(15);
     const vLeft = v.filter((x) => x.status === 'scheduled');
     expect(vLeft).toHaveLength(5);
