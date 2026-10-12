@@ -1,0 +1,109 @@
+import { useSyncExternalStore } from 'react';
+import type { SourcingProject } from '@/hooks/useSourcingProjects';
+import type { FixtureState, FixtureWindow } from './types';
+
+// Only identity and remote data boundaries are simulated. The search screen,
+// React scheduler, cache, account selection and search actions remain real.
+const w = window as FixtureWindow;
+w.qaState ??= {};
+w.qaProjects ??= {};
+w.qaWrites ??= [];
+let version = 0;
+const listeners = new Set<() => void>();
+const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+const snapshot = () => version;
+const notify = () => { version++; listeners.forEach(fn => fn()); };
+w.qaPatch = patch => { Object.assign(w.qaState, patch); notify(); };
+w.qaSetProject = project => { w.qaProjects[project.id] = project; notify(); };
+export function useFixture(): FixtureState { useSyncExternalStore(subscribe, snapshot); return w.qaState; }
+const noop = () => {};
+const user = () => ({ id: w.qaState.userId ?? 'user-a', email: 'fixture@example.test', user_metadata: { full_name: 'Recruteur QA' } });
+const session = () => ({ access_token: 'fixture-only', user: user() });
+export const useAuthReady = () => { useFixture(); return { user: user(), session: session(), isReady: true }; };
+export const useAuth = useAuthReady;
+export const useOrganization = () => {
+  const state = useFixture();
+  const id = state.organizationId ?? 'org-a';
+  return { organizationId: id, orgType: state.orgType ?? 'agency', organization: { id, name: 'Organisation QA' }, isAdmin: !state.collaborator, isOwner: !state.collaborator, isCollaborator: !!state.collaborator, isLoading: false };
+};
+const allAccounts = [
+  { id: 'account-a', name: 'Compte Alice', status: 'OK', type: 'LINKEDIN', subscriptions: { recruiter: true }, connection_params: { im: { id: 'fixture-a' } } },
+  { id: 'account-b', name: 'Compte Béatrice', status: 'OK', type: 'LINKEDIN', subscriptions: { recruiter: true }, connection_params: { im: { id: 'fixture-b' } } },
+];
+export const useLinkedInAccounts = () => {
+  const state = useFixture();
+  return { accounts: state.accountIds ? allAccounts.filter(account => state.accountIds!.includes(account.id)) : allAccounts,
+    loading: state.accountsReady === false, ready: state.accountsReady !== false, reload: noop };
+};
+export const useMemberLinkedInAccounts = () => ({
+  getUserLinkedAccountId: () => 'account-a', isLoading: false, isReady: true, isError: false,
+  getMappingForAccount: (accountId: string) => ({ user_id: user().id, linkedin_account_id: accountId, account_status: 'OK' }),
+  mappings: [{ user_id: user().id, linkedin_account_id: 'account-a' }], refetch: noop,
+});
+export const useAgent = () => ({ openContextualAgent: noop });
+
+export const useAgentMemoryContext = () => {
+  const state = useFixture();
+  const ready = state.memoryReady !== false;
+  const memories = state.memoryRevision ? [{ id: 'memory-rule', version: state.memoryRevision, content: 'Connaissance métier', scope: 'organization', kind: 'preference', effects: ['search'], status: 'confirmed', updated_at: `2026-10-12T00:00:0${state.memoryRevision}Z` }] : [];
+  return { data: ready ? { memories, can_manage_org: true, can_manage_project: true } : undefined,
+    isSuccess: ready, isPending: !ready, isFetching: !ready, isError: false, refetch: noop };
+};
+export const useAgentMemoryProposals = () => ({ data: [], isPending: false, isError: false, refetch: noop });
+export const useAgentMemoryActions = () => ({ archiveMemory: noop, createMemory: noop, confirmProposal: noop, dismissProposal: noop });
+export const useAgentMemoryAutomation = () => ({ data: { mode: 'manual', version: 1, can_suggest: false, calibration_count: 0, suggestion_dismissed: false }, isPending: false, isError: false, isSaving: false, setMode: noop });
+
+const heldWrites: Array<() => void> = [];
+w.qaReleaseWrites = () => { heldWrites.splice(0).forEach(fn => fn()); };
+const updateProject = (payload: { id: string; filters_snapshot: Record<string, unknown> }) => {
+  w.qaWrites.push(structuredClone(payload));
+  return new Promise<SourcingProject>(resolve => {
+    const finish = () => {
+      const project = { ...w.qaProjects[payload.id], filters_snapshot: payload.filters_snapshot } as SourcingProject;
+      w.qaProjects[payload.id] = project;
+      notify(); resolve(project);
+    };
+    if (w.qaState.holdWrites) heldWrites.push(finish); else queueMicrotask(finish);
+  });
+};
+export const useSourcingProjects = () => ({ updateProject, projects: Object.values(w.qaProjects), findOrCreateForJob: noop });
+
+const statuses = new Map(Object.entries(w.qaStatuses ?? {}));
+const empty = new Set<string>();
+const batchSaveScores = async (rows: Array<{ id: string; name?: string; score: number; recommendation: string; scoringDetails?: Record<string, unknown>; linkedinProfileData?: unknown }>) => {
+  w.qaScoreWrites ??= [];
+  w.qaScoreWrites.push(structuredClone(rows));
+  for (const row of rows) statuses.set(row.id, {
+    candidate_id: row.id, candidate_name: row.name ?? row.id, status: 'scored',
+    score: row.score, recommendation: row.recommendation,
+    scoring_details: row.scoringDetails, linkedin_profile_data: row.linkedinProfileData,
+  });
+  notify();
+};
+export const useJobCandidateStatus = () => ({
+  statuses, treatedIds: empty, dismissedIds: empty, shortlistedIds: empty, messagedIds: empty,
+  getStatus: (id: string) => statuses.get(id), isLoading: false, batchDiscover: async () => {},
+  saveScore: async () => {}, batchSaveScores, updateStatus: async () => {},
+  batchUpdateStatus: async () => {}, markDiscovered: async () => {},
+});
+
+// Local Supabase double: no credentials, external URLs or production writes.
+function from(table: string) {
+  let single = false;
+  const chain: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'neq', 'in', 'is', 'not', 'order', 'limit', 'range', 'or', 'ilike', 'gte', 'lte', 'insert', 'update', 'upsert', 'delete', 'match']) chain[method] = () => chain;
+  chain.single = chain.maybeSingle = () => { single = true; return chain; };
+  chain.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve({ data: single ? null : [], error: null, count: 0 }).then(resolve, reject);
+  return chain;
+}
+export const supabase = {
+  from,
+  rpc: async (name: string) => ({ data: name === 'get_base_konekt_state' ? { is_enabled: false, plan_allows: false, included_remaining: 0, credits_per_search: 0 } : null, error: null }),
+  auth: { getUser: async () => ({ data: { user: user() } }), getSession: async () => ({ data: { session: session() } }), refreshSession: async () => ({ data: { session: session() } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: noop } } }) },
+  functions: { invoke: async (name: string, options: { body: unknown }) => {
+    const response = await fetch('/qa-api/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(options.body) });
+    return { data: await response.json(), error: response.ok ? null : new Error('Fixture refusée') };
+  } },
+  channel: () => ({ on() { return this; }, subscribe() { return this; } }), removeChannel: noop,
+  storage: { from: () => ({ getPublicUrl: () => ({ data: { publicUrl: '' } }) }) },
+};

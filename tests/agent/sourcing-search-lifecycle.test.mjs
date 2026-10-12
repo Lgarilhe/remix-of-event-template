@@ -24,10 +24,10 @@ function scheduler() {
     if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial };
     return [slots[i].value, value => { slots[i].value = typeof value === 'function' ? value(slots[i].value) : value; dirty = true; }];
   };
-  const effect = (fn, deps) => {
+  const effect = (fn, deps, phase) => {
     const i = index++;
     if (!slots[i]) slots[i] = {};
-    if (changed(slots[i].deps, deps)) scheduled.push({ slot: slots[i], fn, deps });
+    if (changed(slots[i].deps, deps)) scheduled.push({ slot: slots[i], fn, deps, phase });
   };
   const hooks = {
     useRef: value => { const i = index++; return slots[i] ??= { current: value }; },
@@ -43,8 +43,8 @@ function scheduler() {
       if (!slots[i]) slots[i] = action => set(previous => reducer(previous, action));
       return [value, slots[i]];
     },
-    useEffect: effect,
-    useLayoutEffect: effect,
+    useEffect: (fn, deps) => effect(fn, deps, 'passive'),
+    useLayoutEffect: (fn, deps) => effect(fn, deps, 'layout'),
   };
   return {
     hooks,
@@ -55,8 +55,12 @@ function scheduler() {
         assert.ok(++rounds < 50, 'hook scheduler did not settle');
         dirty = false; index = 0; render();
         const effects = scheduled.splice(0);
-        for (const { slot } of effects) slot.cleanup?.();
-        for (const { slot, fn, deps } of effects) { slot.deps = deps; slot.cleanup = fn(); }
+        // Cache restoration uses layout effects; mount effects must run after it.
+        for (const phase of ['layout', 'passive']) {
+          const current = effects.filter(effect => effect.phase === phase);
+          for (const { slot } of current) slot.cleanup?.();
+          for (const { slot, fn, deps } of current) { slot.deps = deps; slot.cleanup = fn(); }
+        }
       } while (dirty);
     },
     flush() { this.render(render); },
@@ -271,7 +275,7 @@ test('native geography keeps relocation-eligible and excluded-location results w
   assert.deepEqual(h.requests[0].location, plain(h.filters.location));
 });
 
-function persistenceHarness() {
+function persistenceHarness({ cachedView } = {}) {
   const react = scheduler(), writes = [], timers = new Map();
   let id = 0;
   const competitors = [];
@@ -295,7 +299,14 @@ function persistenceHarness() {
     filters_snapshot: { keywords: 'Python', last_manual_edit: '2026-10-01', suggestions: { alt_skills: ['Go'] } } };
   const { useLinkedInSearch } = load('@/hooks/useLinkedInSearch');
   let hook;
-  const render = () => { hook = useLinkedInSearch({ organizationId: 'org', userId: 'user', selectedAccount: null, activeProject: project }); };
+  const render = () => {
+    hook = useLinkedInSearch({ organizationId: 'org', userId: 'user', selectedAccount: null, activeProject: project });
+    react.hooks.useLayoutEffect(() => {
+      if (!cachedView) return;
+      hook.setStatusFilter(cachedView.statusFilter);
+      hook.setShowDismissed(cachedView.showDismissed);
+    }, []);
+  };
   react.render(render);
   return { writes, timers, get hook() { return hook; },
     refresh: () => react.render(render),
@@ -311,6 +322,41 @@ test('initial snapshot hydration is never rewritten as an edit', async () => {
   assert.equal(h.timers.size, 0);
   await tick();
   assert.equal(h.writes.length, 0);
+});
+
+test('a cached mission display filter survives mount and synthetic-job hydration', () => {
+  for (const statusFilter of ['dismissed', 'shortlisted']) {
+    const h = persistenceHarness({ cachedView: { statusFilter, showDismissed: true } });
+    assert.equal(h.hook.selectedJob.id, 'project:persistence-a');
+    assert.equal(h.hook.statusFilter, statusFilter);
+    assert.equal(h.hook.showDismissed, true);
+    h.refresh();
+    assert.equal(h.hook.statusFilter, statusFilter);
+    assert.equal(h.hook.showDismissed, true);
+    h.unmount();
+  }
+});
+
+test('an actual mission scope change resets display defaults before cache restoration', () => {
+  const h = persistenceHarness({ cachedView: { statusFilter: 'dismissed', showDismissed: true } });
+  h.changeProject({ id: 'display-next', name: 'Next Mission', job_details: { title: 'Data Engineer' }, filters_snapshot: {} });
+  assert.equal(h.hook.statusFilter, 'all');
+  assert.equal(h.hook.showDismissed, false);
+  h.unmount();
+});
+
+test('standalone display defaults reset only for a different selected job', () => {
+  const h = persistenceHarness();
+  h.changeProject(null);
+  h.hook.setSelectedJob({ id: 'standalone-a', title: 'First Job' }); h.refresh();
+  h.hook.setStatusFilter('dismissed'); h.hook.setShowDismissed(true); h.refresh();
+  h.hook.setSelectedJob({ id: 'standalone-a', title: 'First Job Updated' }); h.refresh();
+  assert.equal(h.hook.statusFilter, 'dismissed');
+  assert.equal(h.hook.showDismissed, true);
+  h.hook.setSelectedJob({ id: 'standalone-b', title: 'Second Job' }); h.refresh();
+  assert.equal(h.hook.statusFilter, 'all');
+  assert.equal(h.hook.showDismissed, false);
+  h.unmount();
 });
 
 test('functional edits update the request ref synchronously before React render', () => {
