@@ -1,30 +1,51 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { ErrorState } from '@/components/layout/ErrorState';
-import { AlertTriangle, ExternalLink, RefreshCw, Unlink } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import { useMemberEmailAccounts } from '@/hooks/useMemberEmailAccounts';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { classifyLinkedInStatus } from '@/lib/linkedinStatus';
-import { toast } from 'sonner';
+import { classifyConnectionHealth } from '@/lib/linkedinStatus';
+import {
+  ACTION_LABEL,
+  CARD_COMMON,
+  EMAIL_CARD,
+  HOSTED_BUTTON,
+  PROVIDER_NAME,
+  connectLabel,
+  startBody,
+  type ConnectionProviderId,
+} from '@/lib/connectionCopy';
+import {
+  AccountRow,
+  ConnectionNotice,
+  ConnectionSkeleton,
+  HostedError,
+  ReconnectButton,
+  RemovalDialog,
+  SupportLink,
+} from '@/components/connections/ConnectionParts';
+import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
+import { emailProviderOf, viewOfHealth } from '@/components/connections/connectionView';
+import { useHostedConnect } from '@/components/connections/useHostedConnect';
 import { cn } from '@/lib/utils';
 
 /**
  * Mon compte e-mail (Paramètres › Connexions, #email).
  *
+ * Connexion standard : « Connecter Gmail », « Connecter Outlook » et
+ * « Reconnecter » envoient l'onglet vers la page de connexion de la messagerie
+ * (même onglet, retour sur /settings/account/connections/retour). Plus de
+ * relecture toutes les 10 secondes : la page de retour suit la tentative.
+ *
  * Lot 12 du chantier design : une liste non reçue s'affiche en erreur avec
  * « Réessayer », jamais comme un compte à connecter (F-06) ; état et fournisseur
  * en mots, jamais le code du prestataire (F-25) ; dissociation confirmée (F-21).
+ * Un geste par cause, comme LinkedIn (src/components/connections/connectionView.ts).
  */
 
 interface EmailAccount {
@@ -35,39 +56,17 @@ interface EmailAccount {
   type?: string;
 }
 
-type Provider = 'GOOGLE' | 'OUTLOOK' | 'IMAP';
-
-/** Fournisseur d'un compte, en clair ; null pour un type inconnu (jamais le code brut). */
-function providerLabel(raw?: string | null): string | null {
-  const value = (raw ?? '').toUpperCase();
-  if (!value) return null;
-  if (value.includes('GOOGLE') || value.includes('GMAIL')) return 'Gmail';
-  if (value.includes('OUTLOOK') || value.includes('MICROSOFT') || value.includes('OFFICE')) return 'Outlook';
-  if (value.includes('IMAP') || value === 'MAIL') return 'IMAP';
-  return null;
-}
-
-/**
- * État d'un compte e-mail en mots. Le prestataire emploie les mêmes codes d'état
- * pour tous les comptes : même classement que LinkedIn (src/lib/linkedinStatus.ts).
- */
-function emailStateDisplay(status?: string | null): { label: string; dot: string; text: string } {
-  switch (classifyLinkedInStatus(status)) {
-    case 'connected': return { label: 'Actif', dot: 'bg-success', text: 'text-muted-foreground' };
-    case 'connecting': return { label: 'Connexion en cours…', dot: 'bg-info', text: 'text-muted-foreground' };
-    case 'needs_reconnect': return { label: 'Connexion expirée', dot: 'bg-danger', text: 'font-medium text-danger' };
-    default: return { label: 'État à vérifier', dot: 'bg-warning', text: 'font-medium text-warning' };
-  }
-}
+/** Les deux messageries qu'une personne peut connecter depuis cette carte. */
+const CONNECTABLE: ReadonlyArray<ConnectionProviderId> = ['google', 'outlook'];
 
 export const MyEmailAccount = () => {
-  const [generating, setGenerating] = useState<Provider | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   // Première lecture en cours dès le montage : pas de faux « connectez votre compte ».
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [listError, setListError] = useState(false);
+  const hosted = useHostedConnect();
   const {
     isLoading: mappingsLoading,
     isError: mappingsError,
@@ -76,12 +75,10 @@ export const MyEmailAccount = () => {
     isUnlinking,
     getMappingForUser,
   } = useMemberEmailAccounts();
-  const { organization, organizationId } = useOrganization();
+  const { organizationId } = useOrganization();
   // Utilisateur de la session partagée : prêt ou non, jamais un faux « non relié » en attendant.
   const { user, isReady: authReady } = useAuthReady();
   const currentUserId = user?.id ?? null;
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const previousCountRef = useRef<number>(0);
   const scopeKey = `${authReady}:${organizationId ?? ''}:${currentUserId ?? ''}`;
   const scopeRef = useRef({ key: scopeKey });
   if (scopeRef.current.key !== scopeKey) scopeRef.current = { key: scopeKey };
@@ -89,9 +86,8 @@ export const MyEmailAccount = () => {
   // Object identity also rejects late responses after an A → B → A switch.
   const isCurrentScope = useCallback(() => scopeRef.current === scope, [scope]);
 
-  // Fetch email accounts from Unipile. background : relecture de la détection
-  // automatique, dont un échec passager ne remplace pas l'écran par une erreur.
-  const loadEmailAccounts = useCallback(async (options?: { background?: boolean }) => {
+  // Lit les boîtes reliées à la personne dans l'organisation courante.
+  const loadEmailAccounts = useCallback(async () => {
     if (!authReady || !organizationId || !currentUserId || !isCurrentScope()) return null;
     setLoadingAccounts(true);
     try {
@@ -106,11 +102,11 @@ export const MyEmailAccount = () => {
         setListError(false);
         return data.accounts;
       }
-      if (!options?.background) setListError(true);
+      setListError(true);
     } catch (err) {
       if (!isCurrentScope()) return null;
       console.warn('Failed to load email accounts:', err);
-      if (!options?.background) setListError(true);
+      setListError(true);
     } finally {
       if (isCurrentScope()) setLoadingAccounts(false);
     }
@@ -121,101 +117,23 @@ export const MyEmailAccount = () => {
     setEmailAccounts([]);
     setAccountsLoaded(false);
     setListError(false);
-    setGenerating(null);
     setRefreshing(false);
     setLoadingAccounts(true);
-    previousCountRef.current = 0;
     if (!authReady || !organizationId || !currentUserId) return;
-    loadEmailAccounts().then(accounts => {
-      if (accounts) previousCountRef.current = accounts.length;
-    });
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    };
+    void loadEmailAccounts();
   }, [authReady, organizationId, currentUserId, loadEmailAccounts]);
-
-  // Stop polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
 
   const myMapping = currentUserId ? getMappingForUser(currentUserId) : null;
   const myAccount = myMapping
     ? emailAccounts.find(a => a.id === myMapping.email_account_id)
     : null;
 
-  // Start polling after hosted auth window opens — detect new account
-  const startPolling = useCallback(() => {
-    if (!isCurrentScope()) return;
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    let attempts = 0;
-    const maxAttempts = 30; // ~5 minutes (every 10s)
-    pollingRef.current = setInterval(async () => {
-      if (!isCurrentScope()) return;
-      attempts++;
-      if (attempts > maxAttempts) {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        pollingRef.current = null;
-        return;
-      }
-      try {
-        const accounts = await loadEmailAccounts({ background: true });
-        if (!isCurrentScope()) return;
-        if (accounts) await refetchMappings();
-        if (!isCurrentScope()) return;
-        if (accounts && accounts.length > previousCountRef.current) {
-          previousCountRef.current = accounts.length;
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          toast.success('Votre compte e-mail est connecté.');
-        }
-      } catch {
-        // ignore polling errors
-      }
-    }, 10000);
-  }, [loadEmailAccounts, refetchMappings, isCurrentScope]);
-
-  const handleConnect = async (provider: Provider) => {
-    if (!isCurrentScope()) return;
-    setGenerating(provider);
-    try {
-      const currentUrl = window.location.href;
-      const { data } = await invokeEdgeFunction<{ url?: string }>('unipile-accounts', {
-        action: 'hosted_auth_link',
-        organization_id: organizationId,
-        providers: [provider],
-        success_redirect_url: currentUrl,
-        failure_redirect_url: currentUrl,
-        org_name: organization?.name || undefined,
-      });
-      if (!isCurrentScope()) return;
-
-      if (data?.success && data.url) {
-        window.open(data.url, '_blank', 'noopener,noreferrer');
-        const providerName = provider === 'GOOGLE' ? 'Gmail' : provider === 'OUTLOOK' ? 'Outlook' : 'IMAP';
-        toast.info(`Une fenêtre de connexion ${providerName} s'est ouverte. Le compte sera détecté automatiquement.`);
-        // Start auto-polling to detect new account
-        startPolling();
-      } else {
-        throw new Error(data?.error || 'Erreur lors de la génération du lien');
-      }
-    } catch (e) {
-      if (isCurrentScope()) toast.error(e instanceof Error && e.message ? e.message : 'Erreur lors de la connexion');
-    } finally {
-      if (isCurrentScope()) setGenerating(null);
-    }
-  };
-
   const handleRefresh = async () => {
     if (!isCurrentScope()) return;
     setRefreshing(true);
     try {
-      const accounts = await loadEmailAccounts();
+      await loadEmailAccounts();
       if (!isCurrentScope()) return;
-      if (accounts) previousCountRef.current = accounts.length;
       await refetchMappings();
       await new Promise(r => setTimeout(r, 500));
     } finally {
@@ -239,140 +157,135 @@ export const MyEmailAccount = () => {
           onClick={handleRefresh}
           disabled={busy}
           className="max-md:h-11 max-md:w-11"
-          aria-label="Actualiser la liste des comptes e-mail"
+          aria-label={EMAIL_CARD.refreshAria}
         >
           <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>Actualiser</TooltipContent>
+      <TooltipContent>{CARD_COMMON.refresh}</TooltipContent>
     </Tooltip>
   );
   // Dissocier retire la liaison : confirmation, comme pour LinkedIn (F-21).
   const unlinkButton = (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="sm" disabled={isUnlinking} className="text-danger hover:text-danger max-sm:flex-1 max-md:h-11">
-          <Unlink aria-hidden="true" />
-          Dissocier
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Dissocier ce compte e-mail ?</AlertDialogTitle>
-          <AlertDialogDescription>
-            L'adresse ne sera plus rattachée à votre profil Konekt. Votre boîte e-mail et ses messages
-            ne sont pas touchés, et vous pourrez la relier de nouveau.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction onClick={handleUnlink} className="bg-destructive" disabled={isUnlinking}>
-            Dissocier
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <RemovalDialog
+      title={EMAIL_CARD.unlinkTitle}
+      body={EMAIL_CARD.unlinkBody}
+      triggerLabel={CARD_COMMON.unlink}
+      confirmLabel={CARD_COMMON.unlink}
+      disabled={isUnlinking}
+      onConfirm={handleUnlink}
+    />
   );
+
+  const hostedLabel = (provider: ConnectionProviderId, label: string) =>
+    hosted.provider === provider && hosted.phase === 'redirecting'
+      ? HOSTED_BUTTON.redirecting
+      : hosted.provider === provider && hosted.phase === 'starting'
+        ? HOSTED_BUTTON.starting
+        : label;
+  const connectErrorLine = <HostedError hosted={hosted} />;
   const connectButtons = (
-    <div className="flex flex-col gap-2 sm:flex-row">
-      {(['GOOGLE', 'OUTLOOK'] as const).map((provider) => (
-        <Button
-          key={provider}
-          variant="outline"
-          size="sm"
-          onClick={() => handleConnect(provider)}
-          loading={generating === provider}
-          disabled={generating !== null}
-          className="max-md:h-11 sm:flex-1"
-        >
-          {generating !== provider && <ExternalLink aria-hidden="true" />}
-          {provider === 'GOOGLE' ? 'Connecter Gmail' : 'Connecter Outlook'}
-        </Button>
-      ))}
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        {CONNECTABLE.map((provider) => (
+          <Button
+            key={provider}
+            variant="outline"
+            size="sm"
+            onClick={() => { void hosted.start({ provider }); }}
+            loading={hosted.busy && hosted.provider === provider}
+            disabled={hosted.busy}
+            className="max-md:h-11 sm:flex-1"
+          >
+            {!(hosted.busy && hosted.provider === provider) && <ExternalLink aria-hidden="true" />}
+            {hostedLabel(provider, connectLabel(provider))}
+          </Button>
+        ))}
+      </div>
+      {connectErrorLine}
     </div>
   );
 
   const initialLoad = !authReady || mappingsLoading || (!accountsLoaded && !listError);
-  const myState = myAccount ? emailStateDisplay(myAccount.status) : null;
-  const myProvider = providerLabel(myMapping?.provider);
+  const myProvider = emailProviderOf(myMapping?.provider);
+  const myView = myAccount
+    ? viewOfHealth(classifyConnectionHealth({ status: myAccount.status }), myProvider ?? 'imap')
+    : null;
+  const myAddress = myMapping?.email_address || myAccount?.identifier || myAccount?.name || '';
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <ChannelIcon channel="email" size="sm" decorative />
-          Mon compte e-mail
+          {EMAIL_CARD.title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {initialLoad ? (
-          <div role="status" className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 shrink-0 rounded-full" aria-hidden="true" />
-            <div className="flex-1 space-y-2" aria-hidden="true">
-              <Skeleton className="h-4 w-48 max-w-full" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-            <span className="sr-only">Chargement de votre compte e-mail…</span>
-          </div>
+          <ConnectionSkeleton label={EMAIL_CARD.loading} />
         ) : mappingsError ? (
           // Associations non lues : on ne sait pas si un compte vous est relié (F-06).
           <ErrorState
             variant="compact"
-            title="Impossible de lire l'association de votre compte e-mail."
-            description="Vérifiez votre connexion, puis réessayez."
+            title={EMAIL_CARD.mappingErrorTitle}
+            description={EMAIL_CARD.errorBody}
             onRetry={() => { void refetchMappings(); }}
           />
-        ) : myMapping && myAccount && myState ? (
-          <div className="flex flex-col gap-3 rounded-lg bg-muted p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-background" aria-hidden="true">
-                <ChannelIcon channel="email" size="md" decorative />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {myMapping.email_address || myAccount.identifier || myAccount.name}
-                </p>
-                <p className="flex flex-wrap items-center gap-x-1.5 text-xs">
-                  <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', myState.dot)} aria-hidden="true" />
-                  <span className={myState.text}>{myState.label}</span>
-                  {myProvider && <span className="text-muted-foreground">· {myProvider}</span>}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-              {refreshButton}
-              {unlinkButton}
-            </div>
+        ) : myMapping && myAccount && myView ? (
+          <div className="space-y-2">
+            <AccountRow
+              leading={(
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-background" aria-hidden="true">
+                  <ChannelIcon channel="email" size="md" decorative />
+                </span>
+              )}
+              name={myAddress}
+              view={myView}
+              inline={myProvider ? <span className="text-muted-foreground">· {PROVIDER_NAME[myProvider]}</span> : undefined}
+              details={myView.reason ? <p className="text-xs text-muted-foreground">{myView.reason}</p> : undefined}
+              actions={(
+                <>
+                  {myView.action === 'reconnect' && (
+                    <ReconnectButton
+                      hosted={hosted}
+                      provider={myProvider ?? 'imap'}
+                      accountId={myMapping.email_account_id}
+                      label={myView.actionLabel ?? ACTION_LABEL.reconnect}
+                      className="max-sm:flex-1"
+                    />
+                  )}
+                  {myView.action === 'contact_support' && <SupportLink channel="email" className="max-sm:flex-1" />}
+                  {refreshButton}
+                  {unlinkButton}
+                </>
+              )}
+            />
+            {connectErrorLine}
+            {/* Gmail et Outlook se reconnectent par le bouton ci-dessus ; seule une boîte à mot de passe a besoin de l'assistant. */}
+            {myView.action === 'reconnect' && (myProvider ?? 'imap') === 'imap' && (
+              <NativeConnectSlot provider="imap" reconnectAccountId={myMapping.email_account_id} />
+            )}
           </div>
         ) : myMapping && !myAccount ? (
           // Relié, compte absent de la liste : liste non reçue (panne) ou compte disparu.
           <div className="space-y-3">
-            {/* Même anatomie que l'état d'erreur du kit (ErrorState compact). */}
-            <div role="alert" className="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
-              <span
-                className={cn(
-                  'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
-                  listError ? 'bg-danger-muted text-danger' : 'bg-warning-muted text-warning',
-                )}
-              >
-                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-              </span>
-              <div className="min-w-0 text-sm">
-                <p className="font-semibold text-foreground">
-                  {listError ? 'Impossible de vérifier votre compte e-mail pour le moment.' : 'Compte e-mail introuvable'}
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  Le compte <span className="font-medium text-foreground">{myMapping.email_address || myMapping.email_account_id}</span>
-                  {listError
-                    ? ' reste relié à votre profil. Réessayez dans un instant.'
-                    : " n'est plus disponible. Dissociez-le puis connectez de nouveau votre messagerie."}
-                </p>
-              </div>
-            </div>
+            {listError ? (
+              <ConnectionNotice tone="danger" title={EMAIL_CARD.checkErrorTitle}>
+                {EMAIL_CARD.keptBody(myMapping.email_address || myMapping.email_account_id)}
+              </ConnectionNotice>
+            ) : (
+              <>
+                <ConnectionNotice title={EMAIL_CARD.missingTitle}>
+                  {EMAIL_CARD.missingBody(myMapping.email_address || myMapping.email_account_id)}
+                </ConnectionNotice>
+                {connectButtons}
+              </>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={handleRefresh} disabled={busy} className="max-md:h-11">
                 <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
-                {listError ? 'Réessayer' : 'Rafraîchir'}
+                {listError ? CARD_COMMON.retry : CARD_COMMON.refreshAccounts}
               </Button>
               {unlinkButton}
             </div>
@@ -381,22 +294,24 @@ export const MyEmailAccount = () => {
           // Liste non reçue : on ne sait pas quels comptes existent, seul « Réessayer » a un sens (F-06).
           <ErrorState
             variant="compact"
-            title="Impossible de charger vos comptes e-mail."
-            description="Vérifiez votre connexion, puis réessayez."
+            title={EMAIL_CARD.listErrorTitle}
+            description={EMAIL_CARD.errorBody}
             onRetry={() => { void handleRefresh(); }}
             retrying={busy}
           />
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Connectez votre compte e-mail pour envoyer des e-mails de prospection depuis vos séquences.
+              {startBody('google')}
             </p>
 
             {connectButtons}
+            <p className="text-xs text-muted-foreground">{HOSTED_BUTTON.help('google')}</p>
+            <NativeConnectSlot provider="google" />
 
             <Button variant="ghost" size="sm" className="max-md:h-11" onClick={handleRefresh} disabled={busy}>
               <RefreshCw className={cn(busy && 'animate-spin')} aria-hidden="true" />
-              Rafraîchir les comptes
+              {CARD_COMMON.refreshAccounts}
             </Button>
           </div>
         )}

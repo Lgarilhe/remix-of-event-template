@@ -2,8 +2,8 @@
  * Comparaison de deux chaînes à temps constant (anti timing attack sur un
  * secret ou une signature). Une comparaison `===` s'arrête au premier octet
  * différent : la durée de la réponse renseigne sur la longueur du préfixe
- * correct. Utilisée par unipile-webhook, calendly-webhook et
- * process-scheduled-actions.
+ * correct. Utilisée par unipile-webhook, calendly-webhook,
+ * process-scheduled-actions, process-sourcing-agents et capture-candidate-photos.
  */
 export function timingSafeEqual(a: string, b: string): boolean {
   const ab = new TextEncoder().encode(a);

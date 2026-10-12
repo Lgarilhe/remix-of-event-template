@@ -14,34 +14,118 @@
  *   normalement ramenés à OK par le webhook : acceptés par sécurité ;
  * - lus par le front sans producteur connu : CONNECTED, DISCONNECTED,
  *   RATE_LIMITED, CAPTCHA ;
- * - API v2 : DEGRADED, PARTIAL et LOCKED écrits par le webhook, et les
- *   statuts bruts du compte (running, errored, disconnected, degraded, partial)
- *   quand la liste passera en v2. PARTIAL (un produit, ex. Recruiter, à
- *   réauthentifier) demande une reconnexion ; DEGRADED (un produit en erreur
- *   de service) et LOCKED (accès suspendu) ne dépendent pas de l'utilisateur.
- * Module pur, sans import : testé par tests/ux/linkedin-status.test.mjs.
+ * - API v2 (statuts écrits par le webhook et la liste, voir le module de
+ *   statuts du client partagé) : OK, CREDENTIALS, ERROR, DEGRADED, PARTIAL et
+ *   LOCKED ; les statuts bruts du compte (running, errored, disconnected,
+ *   degraded, partial) sont acceptés par sécurité.
+ *
+ * Six classes de santé, communes aux trois canaux (contrat de connexion, § 4) :
+ * - connected (OK) ;
+ * - limited (DEGRADED seul) : un produit en erreur, nouvelle tentative
+ *   automatique, pas de bouton « Reconnecter ». PARTIAL (un produit demande une
+ *   nouvelle authentification) n'en fait pas partie : le serveur le dit
+ *   reconnectable et les envois restent arrêtés, donc needs_reconnect ;
+ * - locked (LOCKED) : accès suspendu, se reconnecter n'y change rien ;
+ * - needs_reconnect (CREDENTIALS, PARTIAL, ERROR et statuts proches) : « Reconnecter » ;
+ * - syncing : compte relié dont la première synchronisation est en cours ;
+ * - not_connected : aucun compte relié (état « not_linked » d'une carte).
+ * connecting (CONNECTING) et unknown (valeur absente ou nouvelle, jamais une
+ * panne) complètent la liste.
+ * Module pur, sans import : testé par tests/ux/linkedin-status.test.mjs et
+ * tests/ux/connexion-sante.test.mjs.
  */
-export type LinkedInHealth = 'connected' | 'connecting' | 'needs_reconnect' | 'unknown';
+export type ConnectionHealth =
+  | 'connected'
+  | 'syncing'
+  | 'connecting'
+  | 'limited'
+  | 'locked'
+  | 'needs_reconnect'
+  | 'not_connected'
+  | 'unknown';
+/** Classe d'un compte qui existe : tout sauf « not_connected ». */
+export type LinkedInHealth = Exclude<ConnectionHealth, 'not_connected'>;
 /** load_error : lecture ratée (liaisons, ou liste pour un utilisateur relié) sans donnée reçue à montrer. */
 export type MyLinkedInState = 'loading' | 'load_error' | 'not_linked' | 'missing' | LinkedInHealth;
 
 const CONNECTED = new Set(['OK', 'CONNECTED', 'RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS', 'RUNNING']);
 const CONNECTING = new Set(['CONNECTING']);
+const LIMITED = new Set(['DEGRADED']);
 const NEEDS_RECONNECT = new Set([
-  'CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA', 'ERRORED', 'PARTIAL',
+  'CREDENTIALS', 'PARTIAL', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA', 'ERRORED',
 ]);
+/** État de la première synchronisation (champ initial_sync_status de la liste) qui n'est pas terminé. */
+const SYNC_IN_PROGRESS = new Set(['PENDING', 'RUNNING', 'SYNCING']);
 
-/** UNKNOWN, PAUSED, RATE_LIMITED, DEGRADED, LOCKED, vide ou valeur nouvelle : 'unknown', jamais une panne. */
-export function classifyLinkedInStatus(raw: string | null | undefined): LinkedInHealth {
-  const s = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
-  if (CONNECTED.has(s)) return 'connected';
-  if (CONNECTING.has(s)) return 'connecting';
+export interface HealthInput {
+  /** Statut Konekt (OK, CREDENTIALS...) ou statut brut du compte. */
+  status: string | null | undefined;
+  /** Accès suspendu (champ is_locked de la liste) : l'emporte sauf sur une session à renouveler. */
+  isLocked?: boolean | null;
+  /** Première synchronisation (initial_sync_status) : un compte actif qui synchronise passe en « syncing ». */
+  sync?: string | null;
+}
+
+/**
+ * Classe de santé d'un compte, pour un canal quelconque. Une valeur absente ou
+ * nouvelle donne 'unknown', jamais une panne. Un compte à reconnecter le reste
+ * même verrouillé (la reconnexion est le seul geste utile) ; un compte actif
+ * verrouillé est 'locked' ; la synchronisation ne masque que l'état actif.
+ */
+export function classifyConnectionHealth(input: HealthInput): LinkedInHealth {
+  const s = typeof input.status === 'string' ? input.status.trim().toUpperCase() : '';
   if (NEEDS_RECONNECT.has(s)) return 'needs_reconnect';
+  if (s === 'LOCKED' || input.isLocked === true) return 'locked';
+  if (LIMITED.has(s)) return 'limited';
+  if (CONNECTING.has(s)) return 'connecting';
+  if (CONNECTED.has(s)) {
+    const sync = typeof input.sync === 'string' ? input.sync.trim().toUpperCase() : '';
+    return SYNC_IN_PROGRESS.has(sync) ? 'syncing' : 'connected';
+  }
   return 'unknown';
 }
 
+/** Statut seul, sans verrou ni synchronisation : ce que lisent les cartes et l'alerte de déconnexion. */
+export function classifyLinkedInStatus(raw: string | null | undefined): LinkedInHealth {
+  return classifyConnectionHealth({ status: raw });
+}
+
+/** Un compte qui peut envoyer : actif, ou actif et en première synchronisation. */
+export function isHealthUsable(health: ConnectionHealth): boolean {
+  return health === 'connected' || health === 'syncing';
+}
+
+/**
+ * Alerte de déconnexion : à lever quand un compte qui servait (ou tournait au ralenti)
+ * passe à « à reconnecter » ou « suspendu ». Une connexion limitée qui finit en
+ * panne alerte aussi : sans cela, la personne ignore que les envois se sont arrêtés.
+ * Un état inconnu ou en cours de connexion n'alerte jamais, ni un passage de
+ * « à reconnecter » à « suspendu » (déjà signalé).
+ */
+export function disconnectionAlertFor(previous: ConnectionHealth, next: ConnectionHealth): 'needs_reconnect' | 'locked' | null {
+  if (next !== 'needs_reconnect' && next !== 'locked') return null;
+  return previous === 'connected' || previous === 'syncing' || previous === 'limited' ? next : null;
+}
+
+/** Classe de santé d'un état de carte (chargement et lecture ratée : 'unknown', compte disparu : à reconnecter). */
+export function healthOfState(state: MyLinkedInState): ConnectionHealth {
+  switch (state) {
+    case 'not_linked': return 'not_connected';
+    case 'missing': return 'needs_reconnect';
+    case 'loading':
+    case 'load_error': return 'unknown';
+    default: return state;
+  }
+}
+
 export interface LinkedInMappingLike { user_id: string; linkedin_account_id: string; account_status?: string | null }
-export interface LinkedInAccountLike { id: string; status?: string | null }
+export interface LinkedInAccountLike {
+  id: string;
+  status?: string | null;
+  is_locked?: boolean | null;
+  /** Première synchronisation (champ initial_sync_status de la liste) : un compte actif qui synchronise est « syncing ». */
+  initial_sync_status?: string | null;
+}
 
 export interface MyLinkedInStatus<M, A> {
   state: MyLinkedInState;
@@ -49,6 +133,7 @@ export interface MyLinkedInStatus<M, A> {
   account: A | null;
   /** Statut du compte listé, sinon celui enregistré sur la liaison. */
   rawStatus: string | null;
+  /** Actif (ou actif en première synchronisation) : le compte peut servir. */
   isUsable: boolean;
   /** À reconnecter, ou compte disparu à dissocier. */
   needsAction: boolean;
@@ -74,13 +159,13 @@ export function resolveMyLinkedInStatus<M extends LinkedInMappingLike, A extends
   if (!userId) state = 'loading';
   else if (!mappingsLoaded) state = input.mappingsFailed ? 'load_error' : 'loading';
   else if (!mapping) state = 'not_linked';
-  else if (account) state = classifyLinkedInStatus(account.status);
+  else if (account) state = classifyConnectionHealth({ status: account.status, isLocked: account.is_locked, sync: account.initial_sync_status });
   else if (accountsLoaded) state = 'missing';
   else state = input.accountsFailed ? 'load_error' : 'loading';
   return {
     state, mapping, account,
     rawStatus: account?.status ?? mapping?.account_status ?? null,
-    isUsable: state === 'connected',
+    isUsable: state === 'connected' || state === 'syncing',
     needsAction: state === 'needs_reconnect' || state === 'missing',
   };
 }
@@ -92,7 +177,9 @@ export function channelStatusOf(state: MyLinkedInState): 'connected' | 'error' |
     case 'needs_reconnect':
     case 'missing': return 'error';
     case 'not_linked': return 'disconnected';
-    default: return 'connecting'; // loading, load_error, connecting, unknown : ni panne du compte ni succès
+    // loading, load_error, connecting, syncing, limited, locked, unknown : ni panne que
+    // « Reconnecter » répare, ni succès. Limitée : reprise automatique ; verrouillée : le support.
+    default: return 'connecting';
   }
 }
 

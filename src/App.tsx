@@ -38,6 +38,8 @@ const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
+// Retour d'une connexion de compte (adresse de retour posée par le serveur, voir unipile-accounts connection_start).
+const ConnectReturn = lazy(() => import("./pages/ConnectReturn"));
 // Mission (/missions/:id et ses écrans) : ancienne ou nouvelle page selon l'interrupteur (src/pages/MissionEntry.tsx).
 const MissionEntry = lazy(() => import("./pages/MissionEntry"));
 const Inbox = lazy(() => import("./pages/Inbox"));
@@ -203,6 +205,8 @@ const AppContent = () => {
               ProtectedRoute + OrganizationGuard restent pour la sécurité. */}
           <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
+          {/* Retour de connexion : avant /settings/*, dans la coquille de l'application mais hors de la navigation des Paramètres. Ne lit que ?state=. */}
+          <Route path="/settings/account/connections/retour" element={<ProtectedRoute><OrganizationGuard><AppLayout><ConnectReturn /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings/*" element={<LegacySettingsRedirect><ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute></LegacySettingsRedirect>} />
           {/* Tarifs : page publique (sans session ni organisation), la page gère elle-même l'état connecté */}
           <Route path="/pricing" element={<Pricing />} />

@@ -42,7 +42,9 @@ const unsubscribe = read('supabase/functions/handle-email-unsubscribe/index.ts')
 /** Corps du handler principal de sequence-send-email (après Deno.serve). */
 const sendHandler = sendEmail.slice(sendEmail.indexOf('Deno.serve('));
 /** Position de l'appel d'envoi réel dans le handler. */
-const sendCallIndex = sendHandler.indexOf('sendResult = await sendViaUnipile(');
+const sendCallIndex = sendHandler.indexOf('sendResult = await sendViaMailbox(');
+/** Envoi par le client partagé du service de connexion (module testé en Deno : sequence-email-send.test.ts). */
+const sendModule = read('supabase/functions/_shared/sequence-email-send.ts');
 
 const HUMAN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const SENT_AT = '2026-09-25T10:00:00.000Z';
@@ -50,8 +52,12 @@ const at = (ms) => Date.parse(SENT_AT) + ms;
 
 // ---------------------------------------------------------------- SEQ-005
 test('SEQ-005 — la preuve d’envoi est l’identifiant du fournisseur, jamais un identifiant inventé', () => {
-  assert.equal(providerMessageId({ object: 'EmailSent', provider_id: 'prov-1', tracking_id: 'trk-1' }), 'prov-1');
-  assert.equal(providerMessageId({ message_id: '<m@x>', provider_id: 'prov-1' }), '<m@x>');
+  // Réponse d'envoi de l'API v2 : { id, message_id? }. Le Message-ID (en-tête) d'abord, c'est lui qu'une réponse cite.
+  assert.equal(providerMessageId({ message_id: '<m@x>', id: 'em-1' }), '<m@x>');
+  assert.equal(providerMessageId({ message_id: null, id: 'em-1' }), 'em-1');
+  assert.equal(providerMessageId({ id: 'em-1' }), 'em-1');
+  // Les clés de l'ancienne API n'existent plus : elles ne font pas preuve.
+  assert.equal(providerMessageId({ object: 'EmailSent', provider_id: 'prov-1', tracking_id: 'trk-1', email_id: 'e-1' }), null);
   assert.equal(providerMessageId({}), null);
   assert.equal(providerMessageId(null), null);
   // Sans identifiant, un marqueur déterministe et non nul : la garde et la reprise le lisent.
@@ -79,11 +85,10 @@ test('SEQ-005 — après l’envoi : preuve écrite d’abord, statut ensuite, s
 });
 
 test('SEQ-005 — délai dépassé ou erreur serveur du fournisseur : envoi incertain, sans relance automatique', () => {
-  const fn = sendEmail.slice(sendEmail.indexOf('async function sendViaUnipile('), sendEmail.indexOf('// ============ SENDING MAILBOX'));
-  assert.match(fn, /res\.status >= 500\) return \{ success: false, error: 'send_uncertain' \}/);
-  assert.match(fn, /catch \(err\) \{[\s\S]*?error: 'send_uncertain'/);
-  // Une réponse illisible après acceptation reste un succès.
-  assert.match(fn, /res\.json\(\)\.catch\(\(\) => null\)/);
+  // Le client partagé range un délai, un 5xx et une réponse illisible en « incertain » ; l'envoi le rend tel quel.
+  assert.match(sendModule, /if \(outcome\.outcome === 'uncertain'\) return \{ success: false, error: 'send_uncertain' \}/);
+  assert.equal((sendModule.match(/await sendEmail\(/g) || []).length, 2, 'un seul nouvel essai, et seulement après un refus de l’expéditeur');
+  assert.match(sendModule, /if \(from && outcome\.outcome === 'refused' && outcome\.kind === 'validation'\)/);
   assert.doesNotMatch(sendEmail, /randomUUID\(\)\.slice/, 'plus d’identifiant de message aléatoire');
   assert.match(sendHandler, /sendResult\.error === 'send_uncertain'[\s\S]*?status: 'failed'/);
 });
@@ -175,11 +180,15 @@ test('SEQ-067 — boîte d’envoi déconnectée : refusée avant l’envoi, éc
 
   const resolver = sendEmail.slice(sendEmail.indexOf('async function resolveSendingMailbox('), sendEmail.indexOf('// ============ MAIN HANDLER'));
   // Boîte désignée directement : son état est lu dans la même requête.
-  assert.match(resolver, /from\('member_email_accounts'\)\.select\('email_account_id, user_id, account_status'\)/);
-  assert.match(resolver, /decision\.kind === 'mailbox'[\s\S]*?!isUsableMailboxStatus\(status\)\) return \{ kind: 'mailbox_disconnected'/);
+  // (l'adresse de la boîte est lue avec : le fournisseur l'exige à côté du nom affiché).
+  assert.match(resolver, /from\('member_email_accounts'\)\.select\('email_account_id, user_id, account_status, email_address'\)/);
+  assert.match(resolver, /decision\.kind === 'mailbox'[\s\S]*?return mailboxByStatus\(decision\.mailboxId, status,/);
   // Boîte du titulaire : même contrôle après pickMailbox.
   const afterPick = resolver.slice(resolver.indexOf('const mailboxId = pickMailbox(ownerRows);'));
-  assert.match(afterPick, /!isUsableMailboxStatus\(status\)\) return \{ kind: 'mailbox_disconnected', mailboxId, status \}/);
+  assert.match(afterPick, /return mailboxByStatus\(mailboxId, picked\?\.account_status \?\? null,/);
+  // Un état utilisable envoie, DEGRADED, PARTIAL et LOCKED reportent, tout autre état est à reconnecter.
+  const byStatus = sendEmail.slice(sendEmail.indexOf('function mailboxByStatus('), sendEmail.indexOf('/**\n * Boîte e-mail d\'envoi, résolue'));
+  assert.match(byStatus, /isUsableMailboxStatus\(status\)\) return usable;[\s\S]*?isLimitedMailboxStatus\(status\)\) return \{ kind: 'mailbox_limited'[\s\S]*?kind: 'mailbox_disconnected'/);
 
   const branch = sendHandler.indexOf("mailbox.kind === 'mailbox_disconnected'");
   assert.ok(branch > 0 && branch < sendCallIndex, 'refus avant l’appel au fournisseur');
@@ -188,6 +197,20 @@ test('SEQ-067 — boîte d’envoi déconnectée : refusée avant l’envoi, éc
   assert.match(branchBody, /\.in\('status', \['sending', 'scheduled'\]\)/);
   assert.match(branchBody, /return json\(\{ success: false, error: 'sender_mailbox_disconnected' \}\)/);
   assert.match(sendEmail, /SENDER_MAILBOX_DISCONNECTED_MESSAGE = "Boîte e-mail de l'expéditeur déconnectée : reconnectez-la dans Paramètres, Connexions\.";/);
+
+  // Boîte limitée (DEGRADED, PARTIAL, LOCKED) : ni échec ni pause, l'étape retrouve son attente 6 h plus tard.
+  const lStart = sendEmail.indexOf('function isLimitedMailboxStatus(');
+  const { isLimitedMailboxStatus } = await importTs(`${sendEmail.slice(lStart, sendEmail.indexOf('\n}\n', lStart) + 3)}\nexport { isLimitedMailboxStatus };`);
+  for (const limited of ['DEGRADED', 'PARTIAL', 'LOCKED', 'degraded']) assert.equal(isLimitedMailboxStatus(limited), true, limited);
+  for (const other of ['OK', 'CREDENTIALS', 'ERROR', '', null, undefined]) assert.equal(isLimitedMailboxStatus(other), false, String(other));
+  const hold = sendHandler.slice(sendHandler.indexOf('const holdForLimitedMailbox = async'), sendHandler.indexOf('const initialDecision'));
+  assert.match(hold, /status: 'scheduled',\s*scheduled_at: new Date\(Date\.now\(\) \+ LIMITED_MAILBOX_DEFER_MS\)\.toISOString\(\),\s*error_message: SENDER_MAILBOX_LIMITED_MESSAGE,/);
+  assert.match(hold, /return json\(\{ success: false, skipped: 'sender_mailbox_limited', error: 'sender_mailbox_limited' \}\)/);
+  assert.ok(!/status: 'failed'/.test(hold), 'une boîte limitée ne fait pas échouer l’étape');
+  const limitedBranch = sendHandler.indexOf("mailbox.kind === 'mailbox_limited'");
+  assert.ok(limitedBranch > 0 && limitedBranch < sendCallIndex, 'report avant l’appel au fournisseur');
+  // Refus de la boîte par le fournisseur lui-même (423) : même report, après l'envoi tenté.
+  assert.match(sendHandler, /sendResult\.error === 'sender_mailbox_limited'\) \{[\s\S]*?return await holdForLimitedMailbox\(/);
 });
 
 // ---------------------------------------------------------------- SEQ-107
@@ -196,18 +219,18 @@ test('SEQ-107 — échec d’envoi : \'failed\', jamais \'bounced\' deviné depu
   assert.doesNotMatch(sendEmail, /isBounce/);
   assert.doesNotMatch(afterSend, /status: [^,\n]*'bounced'/);
   const failBranch = afterSend.slice(afterSend.indexOf('} else if (isRateLimit) {'));
-  assert.match(failBranch, /\} else \{[\s\S]*?status: 'failed',\s*error_message: sendResult\.error,/);
+  assert.match(failBranch, /\} else \{[\s\S]*?status: 'failed',[\s\S]*?error_message: sendResult\.error === 'sender_mailbox_disconnected' \? SENDER_MAILBOX_DISCONNECTED_MESSAGE : sendResult\.error,/);
 });
 
 // ---------------------------------------------------------------- SEQ-012
-test('SEQ-012 — une réponse clôt aussi une inscription en pause', () => {
-  const mailReceived = webhooks.slice(webhooks.indexOf('async function handleMailReceived('), webhooks.indexOf('async function handleMailTracking('));
-  assert.match(mailReceived, /\.eq\('email_used', fromEmail\)\s*\.in\('status', \['active', 'paused'\]\)/);
-  assert.doesNotMatch(mailReceived, /\.eq\('status', 'active'\)/);
-
-  const reply = webhooks.slice(webhooks.indexOf('async function handleReply('), webhooks.indexOf('// ============ WEBHOOK HANDLERS'));
-  assert.match(reply, /status: 'replied',[\s\S]*?pause_reason: null,[\s\S]*?\.in\('status', \['active', 'paused'\]\)/);
-  assert.match(reply, /enrollment\.status !== 'active' && enrollment\.status !== 'paused'/);
+test('SEQ-012 — une réponse clôt aussi une inscription en pause (récepteur unique : unipile-webhook)', () => {
+  // Les anciens gestionnaires de réponse du récepteur du suivi (handleMailReceived, handleReply) étaient du
+  // code mort de l'ancienne génération : retirés. La clôture d'une réponse vit dans unipile-webhook.
+  assert.doesNotMatch(webhooks, /handleMailReceived|handleReply|handleMessageReceived|handleNewRelation/);
+  const unipile = read('supabase/functions/unipile-webhook/index.ts');
+  assert.match(unipile, /const OPEN_ENROLLMENT_STATUSES = \['active', 'paused'\];/);
+  const newMail = unipile.slice(unipile.indexOf('async function handleNewMail('), unipile.indexOf('async function markLastEmailExecutionBounced('));
+  assert.match(newMail, /status: 'replied',[\s\S]*?pause_reason: null,[\s\S]*?\.in\('status', OPEN_ENROLLMENT_STATUSES\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-039
@@ -220,25 +243,27 @@ test('SEQ-039 — in_reply_to est lu sous toutes ses formes', () => {
   assert.deepEqual(inReplyToCandidates(null), []);
   assert.deepEqual(inReplyToCandidates({}), []);
 
-  assert.doesNotMatch(webhooks, /payload\.in_reply_to as string/);
-  assert.match(webhooks, /inReplyToCandidates\(payload\.in_reply_to\)/);
-  assert.match(webhooks, /\.in\('email_message_id', inReplyTo\)/);
+  // La normalisation vit dans le récepteur unique des réponses e-mail (unipile-webhook).
+  const unipile = read('supabase/functions/unipile-webhook/index.ts');
+  assert.doesNotMatch(unipile, /payload\.in_reply_to as string/);
+  assert.match(unipile, /inReplyToCandidates\(payload\.in_reply_to\)/);
+  assert.match(unipile, /\.in\('email_message_id', repliedToIds\)/);
 });
 
 // ---------------------------------------------------------------- REV email-inbound-5
-test('email-inbound-5 — mail_received ignoré ici : unipile-webhook, filtré, est seul juge', () => {
+test('email-inbound-5 — email.new ignoré ici : unipile-webhook, filtré, est seul juge', () => {
   const main = webhooks.slice(webhooks.indexOf('Deno.serve('));
-  const start = main.indexOf("case 'mail_received':");
-  assert.ok(start > 0, 'le cas mail_received doit rester journalisé');
+  const start = main.indexOf("case 'email.new':");
+  assert.ok(start > 0, 'le cas email.new doit rester journalisé');
   const branch = main.slice(start, main.indexOf('break;', start));
   // Aucun rattachement ni clôture depuis ce handler (une absence du bureau
   // portant In-Reply-To passait l'inscription en « Répondu »).
   assert.doesNotMatch(branch, /handleMailReceived|handleReply/);
   assert.match(branch, /console\.warn\([^)]*handled by unipile-webhook/);
   assert.doesNotMatch(main, /await handleMailReceived\(/);
-  // Le suivi des ouvertures et des clics reste traité ici.
-  assert.match(main, /case 'mail_opened':\s*await handleMailTracking\(supabase, payload, 'open'\);/);
-  assert.match(main, /case 'mail_link_clicked':\s*await handleMailTracking\(supabase, payload, 'click'\);/);
+  // Le suivi des ouvertures et des clics reste traité ici (événements v2 tracking.*).
+  assert.match(main, /case 'tracking\.open':\s*case 'tracking\.click': \{/);
+  assert.match(main, /await handleMailTracking\(supabase, flat, event === 'tracking\.open' \? 'open' : 'click'\);/);
 
   // Côté unipile-webhook : rebonds et réponses automatiques écartés avant tout rattachement.
   const unipile = read('supabase/functions/unipile-webhook/index.ts');
@@ -371,9 +396,13 @@ test('SEQ-204 — clé de signature dédiée, liens déjà envoyés toujours val
 });
 
 test('SEQ-205 — plus de suivi natif du fournisseur en double', () => {
-  const payload = sendEmail.slice(sendEmail.indexOf('const payload: Record<string, unknown> = {'), sendEmail.indexOf('let res: Response;'));
-  assert.match(payload, /account_id: accountId,/);
-  assert.doesNotMatch(payload, /tracking_options\s*:/);
+  // Requête d'envoi de l'API v2 : le compte est dans l'adresse (pas dans le corps), le HTML dans `html`,
+  // et jamais de `tracking_options` : le pixel et les liens signés de Konekt restent le seul suivi.
+  const payload = sendModule.slice(sendModule.indexOf('const request = {'), sendModule.indexOf('const from = '));
+  assert.match(payload, /accountId: mail\.accountId,/);
+  assert.match(payload, /html: mail\.htmlBody,/);
+  assert.doesNotMatch(payload, /account_id|identifier|tracking_options/);
+  assert.doesNotMatch(sendModule.replace(/\/\/.*$/gm, ''), /tracking/, 'aucun suivi natif dans le code d’envoi');
 });
 
 // ---------------------------------------------------------------- Branding

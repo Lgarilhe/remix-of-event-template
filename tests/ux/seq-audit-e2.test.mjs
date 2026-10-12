@@ -35,7 +35,7 @@ const waitEvents = slice(engine, 'async function handleCheckWaitEvents', '// ===
 const phase1 = slice(waitEvents, '// Phase 1', '// Phase 2');
 const phase2 = slice(waitEvents, '// Phase 2');
 const condition = slice(engine, 'async function checkStepCondition', '// Force reschedule');
-const replyCheck = slice(engine, 'async function checkForReplyAfterDate', 'interface ChatAttendeeInfo');
+const replyCheck = slice(engine, 'async function checkForReplyAfterDate', 'async function checkMessagesForReply');
 const messagesCheck = slice(engine, 'async function checkMessagesForReply', 'async function checkHasProspectReplied');
 const prospectReplied = slice(engine, 'async function checkHasProspectReplied', 'interface QuotaCheckResult');
 const setLocalHour = slice(engine, 'function setLocalHour(', 'function getNextBusinessHourSlot');
@@ -92,7 +92,7 @@ test('SEQ-031 — attente sans wait_for_event : événement déduit du type d\'�
   assert.match(condition, /const eff = waitEvent \? 'wait_for_event'/);
   assert.match(condition, /if \(waitEvent === 'reply_received'\)/);
   // L'appel du moteur transmet le type d'étape.
-  assert.match(engine, /await checkStepCondition\([^;]*uCreds\.dsn, step\.action_type\)/);
+  assert.match(engine, /await checkStepCondition\([^;]*step\.condition_value, step\.action_type\)/);
   // Phase 2 : attente de réponse implicite vérifiée aussi.
   assert.match(phase2, /const forReply = waitsForReply\(step\)/);
   // Plus d'attente à vie : délai par défaut pour les attentes implicites.
@@ -160,7 +160,6 @@ test('SEQ-077 — lecture du profil en échec : nouvel essai, pas « non connect
   // getProfileInfo : échec = null, jamais mis en cache (contrat avec E3 :
   // readProfileForSend et check_connection reconnaissent null).
   const profileInfo = slice(engine, 'async function getProfileInfo', 'async function resolveProfileIdForChat');
-  assert.match(profileInfo, /if \(!r\.ok\) \{\s*console\.warn\([^;]*;\s*return null;/);
   assert.match(profileInfo, /catch \(err\) \{\s*console\.error\([^;]*;\s*return null;/);
 });
 
@@ -235,7 +234,7 @@ test('SEQ-102 — lectures de profil des conditions et du polling journalisées 
   assert.equal((condition.match(/await getProfileInfo\(/g) || []).length, 0, 'plus de lecture directe non journalisée dans les cas de connexion');
   assert.equal((condition.match(/await readProfile\(\)/g) || []).length, 4, 'if_connected, if_not_connected, wait_until_connected, connection_accepted');
   // Phase 2 de check_wait_events : même lecture journalisée.
-  assert.match(phase2, /await readProfileForSend\(supabase, enrollment, senderAccountFor\(enrollment, step\), enrollment\.profile_id, weCreds\.apiKey, weCreds\.dsn\)/);
+  assert.match(phase2, /await readProfileForSend\(supabase, enrollment, waitAccountId, enrollment\.profile_id\)/);
   assert.doesNotMatch(phase2, /await getProfileInfo\(/);
   // Connexion connue en base : attente franchie sans relecture (plus de boucle
   // réarmement phase 1 → lecture en échec → attente → réarmement).

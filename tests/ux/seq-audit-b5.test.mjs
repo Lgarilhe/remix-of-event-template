@@ -16,14 +16,15 @@ import { readFileSync } from 'node:fs';
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
 
 const webhook = read('supabase/functions/unipile-webhook/index.ts');
-const accounts = read('supabase/functions/unipile-accounts/index.ts');
+const accounts = read('supabase/functions/unipile-accounts/handler.ts');
 const calendly = read('supabase/functions/calendly-webhook/index.ts');
 const mutations = read('supabase/functions/_shared/agent-tools-mutations.ts');
 const contact = read('supabase/functions/_shared/get-or-fetch-contact.ts');
 const erase = read('supabase/functions/rgpd-erase-contact/index.ts');
 const purge = read('supabase/functions/rgpd-purge/index.ts');
 const scheduled = read('supabase/functions/process-scheduled-actions/index.ts');
-const v2 = read('supabase/functions/_shared/unipile-v2.ts');
+const v2 = read('supabase/functions/_shared/unipile/webhooks.ts');
+const claimSource = read('supabase/functions/_shared/connection-claim.ts');
 
 const sliceBetween = (src, start, end) => {
   const from = src.indexOf(start);
@@ -209,15 +210,17 @@ test('SEQ-039 — réponse e-mail : rattachée par le message d’origine, puis 
 test('SEQ-040 — erreurs de lecture ou d’écriture : levées pour un rejeu, plus avalées avec un 200', () => {
   assert.doesNotMatch(webhook, /if \(enrollError\) \{\s*console\.error\([^)]*\);\s*return;/);
   assert.doesNotMatch(webhook, /if \(enrErr\) \{\s*console\.error\([^)]*\);\s*return;/);
-  assert.match(newRelation, /if \(enrollError\) throw enrollError;/);
+  assert.match(newRelation, /if \(byId\.error\) throw byId\.error;/);
+  assert.match(newRelation, /if \(bySlug\.error\) throw bySlug\.error;/);
   assert.match(newMessage, /if \(exactError\) throw exactError;/);
   assert.match(newMessage, /if \(urlError\) throw urlError;/);
   for (const [name, body] of [['new_relation', newRelation], ['new_message', newMessage], ['mail', newMail], ['bounce', bounce]]) {
     assert.match(body, /if \(failures\.length > 0\) \{[\s\S]*?throw failures\[0\];/, `${name} : échec d'écriture non remonté`);
   }
-  // Vérification de l'expéditeur impossible : levée (rejeu), pas abandon.
-  assert.match(newMessage, /verificationUnavailable = new Error\(`attendee verification unavailable/);
-  assert.match(newMessage, /if \(verificationUnavailable\) \{[\s\S]*?throw /);
+  // Expéditeur non vérifiable (is_sender absent, message illisible chez le prestataire) : levée (rejeu), pas abandon.
+  assert.match(newMessage, /const fresh = await getMessage\(account_id, chatId, messageId\);/);
+  assert.match(newMessage, /if \(isSenderSelf === undefined && verificationUnavailable\) \{[\s\S]*?throw /);
+  assert.match(newMessage, /if \(isSenderSelf === undefined\) \{[\s\S]*?throw new Error\('new_message sender not verifiable/);
 });
 
 // ------------------------------------------------------------------ SEQ-041
@@ -228,9 +231,13 @@ test('SEQ-041 — changement de compte : l’ancien compte cesse d’envoyer ava
   assert.ok(stopAt < claim.indexOf(".upsert({"), 'arrêt après le repointage');
   assert.match(claim, /if \(previousAccountId && previousAccountId !== accountId\)/);
   assert.match(claim, /catch \(stopError\) \{[\s\S]*?throw new HttpError\(500,/);
-  const hosted = sliceBetween(webhook, "case 'account_connected': {", "case 'account_status_updated':");
-  const hostedStop = hosted.indexOf('await stopLinkedInAccountSending(supabase, {');
-  assert.ok(hostedStop > 0 && hostedStop < hosted.indexOf(".from('member_linkedin_accounts')\n                .upsert("));
+  // Rattachement par un lien d'authentification : le code partagé (connection-claim.ts) arrête l'ancien compte
+  // avant de repointer la liaison ; le récepteur l'appelle sans écrire la liaison lui-même.
+  const hosted = sliceBetween(claimSource, 'async function claimLinkedIn(', 'async function claimEmail(');
+  const hostedStop = hosted.indexOf('await stopLinkedInAccountSending(admin as never, { organizationId, accountId: previous });');
+  assert.ok(hostedStop > 0 && hostedStop < hosted.indexOf('.upsert({'), 'arrêt de l\'ancien compte avant le repointage');
+  assert.match(hosted, /catch \(stopError\) \{\s*return failure\('linkedin', 'stop_failed'/);
+  assert.match(webhook, /claimForAttempt\(supabase, \{ attemptId: payload\.state, account \}\)/);
 });
 
 // ------------------------------------------------------------------ SEQ-042
@@ -365,10 +372,12 @@ test('SEQ-111 — InMails « répondu » : seulement ceux du compte qui reçoit 
   // Une seule lecture (identifiant exact et alternatifs ensemble) : l'ancienne
   // seconde lecture, faite seulement sans résultat exact, laissait « envoyé »
   // un InMail adressé à l'autre identifiant (revue SEQ-110 / SEQ-212).
+  // La tranche va jusqu'à la notification : elle couvre aussi la lecture des InMails programmés de
+  // l'alerte « arrêt des soeurs », qui doit être limitée au même compte (avec l'organisation en plus).
   const inmail = sliceBetween(newMessage, "const { data: inmailRows", '// ── Create notification');
   const reads = inmail.match(/\.from\('inmail_queue'\)\s*\.select\(/g) ?? [];
-  const scoped = inmail.match(/\.from\('inmail_queue'\)\s*\.select\([^)]*\)\s*\.eq\('account_id', account_id\)/g) ?? [];
-  assert.equal(scoped.length, 1);
+  const scoped = inmail.match(/\.from\('inmail_queue'\)\s*\.select\([^)]*\)\s*(?:\.eq\('organization_id', [^)]*\)\s*)?\.eq\('account_id', account_id\)/g) ?? [];
+  assert.equal(scoped.length, 2);
   assert.equal(reads.length, scoped.length);
 });
 
@@ -405,8 +414,12 @@ test('SEQ-190 / SEQ-191 — garde de statut : réarmement et clôture conditionn
 });
 
 test('SEQ-208 / SEQ-210 / SEQ-211 / SEQ-212 / SEQ-213', () => {
-  assert.match(webhook, /\.filter\(\(row\) => row\.account_status === 'OK'\)/);
-  assert.doesNotMatch(v2, /"email\.new\.bounce"|"tracking\.open"|"tracking\.click"/);
+  // Notification de panne : seulement au passage d'un compte en état de marche à la panne.
+  assert.match(webhook, /\.filter\(\(row\) => !ALREADY_BROKEN_STATUSES\.has\(String\(row\.account_status \?\? ''\)\.toUpperCase\(\)\)\)/);
+  assert.match(webhook, /const ALREADY_BROKEN_STATUSES = new Set\(\['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DELETED', 'DISCONNECTED'\]\);/);
+  // Événements inscrits : ni rebond ni suivi natif tant que rien ne les traite.
+  const subscribed = sliceBetween(v2, 'export const V2_TRIGGER_EVENTS = [', '] as const;');
+  assert.doesNotMatch(subscribed, /'email\.new\.bounce'|'tracking\.open'|'tracking\.click'/);
   assert.doesNotMatch(webhook, /pipeline_stage: 'Pré-qualif'/);
   assert.match(newMail, /closeSiblingEnrollments\(/);
   assert.match(newMessage, /closeSiblingEnrollments\(/);

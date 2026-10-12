@@ -2,12 +2,10 @@
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
-
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
+import { resolveOrgIdFromUser } from "../_shared/resolve-org-credentials.ts";
+import { isUnipileConfigured, isUnipileError, userSafeMessage } from "../_shared/unipile/index.ts";
+import { distinctAccountIds, gateChatAccounts } from "./chat-accounts.ts";
+import { fetchChatMessages } from "./chat-messages.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,35 +24,6 @@ function normalizeCategory(value: unknown): ChatCategory | null {
   if (n === 'to_recontact') return 'to_recontact';
   if (n === 'no_response') return 'no_response';
   return null;
-}
-
-/**
- * Fetch the last N messages for a chat from Unipile.
- */
-async function fetchChatMessages(
-  chatId: string,
-  dsn: string,
-  apiKey: string,
-  limit = 6
-): Promise<Array<{ text: string; is_sender: boolean }>> {
-  try {
-    const url = `https://${dsn}/api/v1/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`;
-    const res = await fetchWithTimeout(url, {
-      headers: { 'X-API-KEY': apiKey, Accept: 'application/json' },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const items = Array.isArray(data) ? data : data?.items ?? data?.data ?? [];
-    return items
-      .map((m: any) => ({
-        text: (m.text || m.text_content || '').trim().slice(0, 300),
-        is_sender: Boolean(m.is_sender),
-      }))
-      .filter((m: any) => m.text.length > 0)
-      .reverse(); // chronological order
-  } catch {
-    return [];
-  }
 }
 
 async function callAi(prompt: string, settle?: { userId?: string | null }): Promise<string> {
@@ -122,6 +91,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Comptes des conversations : format courant et reliés à l'organisation
+    // active de la personne. La clé du service est commune à toutes les
+    // organisations : sans ce contrôle, un identifiant de conversation et de
+    // compte d'une autre organisation serait lu avec la clé partagée. Refus net
+    // avant toute lecture et tout débit.
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+    );
+    const failure = (status: number, error: string, errorCode: string) =>
+      new Response(JSON.stringify({ success: false, error, error_code: errorCode }), {
+        status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    const accountIds = distinctAccountIds(chats);
+    if (accountIds.length > 0) {
+      const refusal = await gateChatAccounts(admin as any, () => resolveOrgIdFromUser(user.id, admin as any), accountIds);
+      if (refusal) return failure(refusal.status, refusal.error, refusal.error_code);
+      // Clé de l'application absente : panne de configuration, dite sans nommer le service.
+      if (!isUnipileConfigured()) {
+        console.error('[auto-categorize-chats] provider key missing (UNIPILE_V2_API_KEY)');
+        return failure(500, userSafeMessage('config'), 'NOT_CONFIGURED');
+      }
+    }
+
     // Refus avant l'appel, et avant d'aller chercher les messages : sans
     // crédits, rien de ce qui suit n'a de raison de tourner. Un appel en
     // service-role est déjà rejeté plus haut (getUser échoue), donc aucun
@@ -134,24 +127,6 @@ Deno.serve(async (req) => {
     });
     if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
-    // Resolve Unipile credentials from org_integrations with env fallback
-    let UNIPILE_API_KEY: string;
-    let UNIPILE_DSN: string;
-    try {
-      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(user.id);
-      const creds = await resolveUnipileCredentials(orgId);
-      if (!creds) throw new Error('No Unipile credentials found');
-      UNIPILE_API_KEY = creds.apiKey;
-      UNIPILE_DSN = creds.dsn.replace(/^https?:\/\//, '');
-    } catch (e) {
-      const envKey = Deno.env.get('UNIPILE_API_KEY');
-      const envDsn = Deno.env.get('UNIPILE_DSN');
-      if (!envKey || !envDsn) throw new Error('Missing UNIPILE credentials');
-      UNIPILE_API_KEY = envKey;
-      UNIPILE_DSN = envDsn;
-    }
-
     // Fetch last messages for each chat in parallel (batches of 10)
     const chatMessages: Array<Array<{ text: string; is_sender: boolean }>> = new Array(chats.length);
     const batchSize = 10;
@@ -159,7 +134,10 @@ Deno.serve(async (req) => {
     for (let i = 0; i < chats.length; i += batchSize) {
       const batch = chats.slice(i, i + batchSize);
       const promises = batch.map((chat: any, bIdx: number) =>
-        fetchChatMessages(chat.id, UNIPILE_DSN, UNIPILE_API_KEY, 6).then((msgs) => {
+        (chat?.id && chat?.account_id
+          ? fetchChatMessages(chat.account_id, chat.id, 6)
+          : Promise.resolve([])
+        ).then((msgs) => {
           chatMessages[i + bIdx] = msgs;
         })
       );
@@ -178,7 +156,7 @@ Deno.serve(async (req) => {
 
         if (msgs.length === 0) {
           // Fallback to last_message from chat object
-          const lastMsg = (chat.last_message?.text || chat.last_message?.text_content || '').trim();
+          const lastMsg = (chat.last_message?.text || '').trim();
           const isSender = Boolean(chat.last_message?.is_sender);
           if (!lastMsg) return `[${i}] "${name}" | Pas de messages`;
           return `[${i}] "${name}" | ${isSender ? 'R' : 'C'}: "${lastMsg.slice(0, 250)}"`;
@@ -274,7 +252,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('Error in auto-categorize-chats:', error);
-    return new Response(JSON.stringify({ success: false, error: (error as Error).message }), {
+    // Message du service jamais relayé tel quel : texte neutre pour une erreur du client LinkedIn, phrase générique sinon.
+    const publicMessage = isUnipileError(error) ? error.message : 'Une erreur est survenue. Veuillez réessayer.';
+    return new Response(JSON.stringify({ success: false, error: publicMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

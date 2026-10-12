@@ -7,7 +7,8 @@
  * and sending via the organisation's connected email account.
  */
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
-import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
+import { isUnipileConfigured } from "../_shared/unipile/index.ts";
+import { sendViaMailbox, type EmailSendResult } from "../_shared/sequence-email-send.ts";
 import { interpolatePlaceholders, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
 import { gen5Params, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
@@ -16,13 +17,13 @@ import {
   enrollmentSendDecision,
   linkSigningSecret,
   pickMailbox,
-  providerMessageId,
   recipientList,
   resolveEmailSender,
   sentProofValue,
   signTrackedUrl,
 } from "../_shared/sequence-email-policy.mjs";
 
+// Appels internes uniquement (fonction de contexte) : jamais le fournisseur d'envoi.
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -42,10 +43,10 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 // accepte aussi la clé précédente, une rotation ne casse donc pas les liens
 // déjà envoyés.
 const LINK_SIGNING_SECRET = linkSigningSecret((key) => Deno.env.get(key));
-// Note : UNIPILE_API_KEY/UNIPILE_DSN ne sont plus utilisés en globals.
-// On résout les creds par organization via resolveUnipileCredentials() pour
-// supporter le multi-tenant proprement (chaque org peut avoir son propre
-// compte Unipile via organization_integrations).
+// Le service d'envoi est global (une seule clé côté serveur, lue par le client
+// partagé `_shared/unipile`). L'isolation entre organisations tient à la boîte :
+// elle est résolue dans l'organisation de l'inscription (resolveSendingMailbox),
+// jamais lue dans la requête.
 
 // Textes lus par le recruteur dans l'historique de la séquence (jamais de nom de fournisseur).
 const SENDER_NOT_IN_ORG_REASON = "Compte d'envoi non rattaché à l'organisation";
@@ -53,6 +54,9 @@ const NO_SENDER_MAILBOX_MESSAGE = "Aucune boîte e-mail n'est reliée pour l'exp
 const SENDER_MAILBOX_DISCONNECTED_MESSAGE = "Boîte e-mail de l'expéditeur déconnectée : reconnectez-la dans Paramètres, Connexions.";
 const SUPPRESSED_SKIP_REASON = 'Adresse bloquée pour les envois e-mail';
 const UNCERTAIN_SEND_MESSAGE = "Envoi incertain : vérifiez le dossier Envoyés de la boîte d'envoi avant de relancer.";
+const SENDER_MAILBOX_LIMITED_MESSAGE = "Boîte e-mail de l'expéditeur temporairement limitée : envoi reporté, reprise automatique.";
+// Boîte limitée : l'étape retrouve son attente plus tard, sans échec ni boucle horaire.
+const LIMITED_MAILBOX_DEFER_MS = 6 * 60 * 60 * 1000;
 
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -285,87 +289,14 @@ async function generateAiSnippet(
   }
 }
 
-// ============ EMAIL SENDING ============
-
-/**
- * Send email via Unipile API (primary method).
- * Uses the same Unipile infrastructure as LinkedIn messaging.
- * Requires an email account connected in Unipile (Gmail, Outlook, IMAP).
- */
-async function sendViaUnipile(
-  unipileApiKey: string,
-  unipileDsn: string,
-  accountId: string,
-  senderName: string,
-  to: string,
-  subject: string,
-  htmlBody: string,
-  cc?: string[],
-  bcc?: string[],
-): Promise<{ success: boolean; messageId?: string | null; error?: string }> {
-  if (!unipileApiKey || !unipileDsn) {
-    console.error('[sequence-send-email] Email provider not configured: missing API key or DSN for org');
-    return { success: false, error: 'email_provider_not_configured' };
-  }
-
-  const toRecipients = [{ display_name: '', identifier: to }];
-  const ccRecipients = (cc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
-  const bccRecipients = (bcc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
-
-  // Pas de suivi natif du fournisseur (tracking_options) : ses événements ne
-  // sont rattachés à rien, il doublait le pixel et chaque redirection de lien.
-  const payload: Record<string, unknown> = {
-    account_id: accountId,
-    subject,
-    body: htmlBody,
-    to: toRecipients,
-    ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
-    ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
-    ...(senderName ? { from: { display_name: senderName } } : {}),
-  };
-
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(`${unipileDsn}/api/v1/emails`, {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': unipileApiKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    // Délai dépassé ou coupure réseau pendant le POST : l'e-mail a pu partir.
-    // Jamais de relance automatique (double envoi), vérification manuelle.
-    console.error(`[sequence-send-email] Email provider error (issue inconnue):`, err);
-    return { success: false, error: 'send_uncertain' };
-  }
-
-  if (res.ok) {
-    // Envoi accepté : une réponse illisible ne doit pas le faire passer pour
-    // un échec. Identifiant réel du fournisseur, jamais un identifiant inventé.
-    const data = await res.json().catch(() => null);
-    const messageId = providerMessageId(data);
-    console.log(`[sequence-send-email] Unipile email sent: ${messageId ?? '(sans identifiant)'}`);
-    return { success: true, messageId };
-  }
-
-  const errorBody = await res.text().catch(() => '');
-  console.error(`[sequence-send-email] Email provider returned ${res.status}: ${errorBody}`);
-  // 5xx : le fournisseur a pu accepter l'e-mail avant d'échouer. Même règle
-  // que le délai dépassé : issue inconnue, pas de relance automatique.
-  if (res.status >= 500) return { success: false, error: 'send_uncertain' };
-  return { success: false, error: `email_send_failed_${res.status}` };
-}
-
 // ============ SENDING MAILBOX ============
 
 type SendingMailbox =
-  | { kind: 'ok'; mailboxId: string; senderUserId: string | null }
+  | { kind: 'ok'; mailboxId: string; senderUserId: string | null; emailAddress: string | null }
   | { kind: 'not_in_org' }
   | { kind: 'no_mailbox' }
   | { kind: 'mailbox_disconnected'; mailboxId: string; status: string | null }
+  | { kind: 'mailbox_limited'; mailboxId: string; status: string | null }
   | { kind: 'lookup_failed'; error: string };
 
 /**
@@ -379,6 +310,27 @@ function isUsableMailboxStatus(status: string | null | undefined): boolean {
   if (typeof status !== 'string' || !status.trim()) return true;
   const normalized = status.trim().toUpperCase();
   return normalized === 'OK' || normalized === 'CONNECTED';
+}
+
+/**
+ * Boîte limitée par le fournisseur (DEGRADED, PARTIAL, LOCKED) : rien ne part,
+ * mais ce n'est pas une boîte à reconnecter. L'étape est reportée, sans échec.
+ */
+function isLimitedMailboxStatus(status: string | null | undefined): boolean {
+  if (typeof status !== 'string') return false;
+  const normalized = status.trim().toUpperCase();
+  return normalized === 'DEGRADED' || normalized === 'PARTIAL' || normalized === 'LOCKED';
+}
+
+/** Sort de la boîte retenue selon son état : utilisable, limitée ou à reconnecter. */
+function mailboxByStatus(
+  mailboxId: string,
+  status: string | null,
+  usable: Extract<SendingMailbox, { kind: 'ok' }>,
+): SendingMailbox {
+  if (isUsableMailboxStatus(status)) return usable;
+  if (isLimitedMailboxStatus(status)) return { kind: 'mailbox_limited', mailboxId, status };
+  return { kind: 'mailbox_disconnected', mailboxId, status };
 }
 
 /**
@@ -398,11 +350,11 @@ async function resolveSendingMailbox(
   if (!orgId) return { kind: 'not_in_org' };
   const ids = [...new Set(candidates.filter((v): v is string => typeof v === 'string' && v.trim() !== '').map((v) => v.trim()))];
 
-  let emailAccounts: Array<{ email_account_id: string; user_id: string | null; account_status: string | null }> = [];
+  let emailAccounts: Array<{ email_account_id: string; user_id: string | null; account_status: string | null; email_address: string | null }> = [];
   let linkedinAccounts: Array<{ linkedin_account_id: string; user_id: string | null }> = [];
   if (ids.length > 0) {
     const [emailRes, linkedinRes] = await Promise.all([
-      supabase.from('member_email_accounts').select('email_account_id, user_id, account_status')
+      supabase.from('member_email_accounts').select('email_account_id, user_id, account_status, email_address')
         .eq('organization_id', orgId).in('email_account_id', ids),
       supabase.from('member_linkedin_accounts').select('linkedin_account_id, user_id')
         .eq('organization_id', orgId).in('linkedin_account_id', ids),
@@ -416,24 +368,27 @@ async function resolveSendingMailbox(
   const decision = resolveEmailSender({ candidates: ids, emailAccounts, linkedinAccounts, fallbackUserId });
   if (decision.kind === 'not_in_org') return { kind: 'not_in_org' };
   if (decision.kind === 'mailbox') {
-    const status = emailAccounts.find((row) => row.email_account_id === decision.mailboxId)?.account_status ?? null;
-    if (!isUsableMailboxStatus(status)) return { kind: 'mailbox_disconnected', mailboxId: decision.mailboxId, status };
-    return { kind: 'ok', mailboxId: decision.mailboxId, senderUserId: decision.ownerUserId };
+    const row = emailAccounts.find((r) => r.email_account_id === decision.mailboxId);
+    const status = row?.account_status ?? null;
+    return mailboxByStatus(decision.mailboxId, status, {
+      kind: 'ok', mailboxId: decision.mailboxId, senderUserId: decision.ownerUserId, emailAddress: row?.email_address ?? null,
+    });
   }
   if (!decision.ownerUserId) return { kind: 'no_mailbox' };
 
   const { data: ownerMailboxes, error: mailboxError } = await supabase
     .from('member_email_accounts')
-    .select('email_account_id, account_status')
+    .select('email_account_id, account_status, email_address')
     .eq('organization_id', orgId)
     .eq('user_id', decision.ownerUserId);
   if (mailboxError) return { kind: 'lookup_failed', error: mailboxError.message };
-  const ownerRows = (ownerMailboxes || []) as Array<{ email_account_id: string; account_status: string | null }>;
+  const ownerRows = (ownerMailboxes || []) as Array<{ email_account_id: string; account_status: string | null; email_address: string | null }>;
   const mailboxId = pickMailbox(ownerRows);
   if (!mailboxId) return { kind: 'no_mailbox' };
-  const status = ownerRows.find((row) => row.email_account_id === mailboxId)?.account_status ?? null;
-  if (!isUsableMailboxStatus(status)) return { kind: 'mailbox_disconnected', mailboxId, status };
-  return { kind: 'ok', mailboxId, senderUserId: decision.ownerUserId };
+  const picked = ownerRows.find((row) => row.email_account_id === mailboxId);
+  return mailboxByStatus(mailboxId, picked?.account_status ?? null, {
+    kind: 'ok', mailboxId, senderUserId: decision.ownerUserId, emailAddress: picked?.email_address ?? null,
+  });
 }
 
 // ============ MAIN HANDLER ============
@@ -560,6 +515,21 @@ Deno.serve(async (req) => {
       return json({ success: false, skipped: 'enrollment_inactive', error: 'enrollment_inactive', enrollment_status: enrollmentStatus ?? null });
     };
 
+    // Boîte limitée par le fournisseur (DEGRADED, PARTIAL, LOCKED) : rien ne part
+    // et rien ne se met en pause. L'étape retrouve son attente 6 h plus tard,
+    // sans échec ni boucle horaire ; l'inscription reste active.
+    const holdForLimitedMailbox = async (mailboxId: string, status: string | null): Promise<Response> => {
+      const { error: holdError } = await supabase.from('sequence_step_executions').update({
+        status: 'scheduled',
+        scheduled_at: new Date(Date.now() + LIMITED_MAILBOX_DEFER_MS).toISOString(),
+        error_message: SENDER_MAILBOX_LIMITED_MESSAGE,
+        channel: 'email',
+      }).eq('id', execution_id).in('status', ['sending', 'scheduled']);
+      if (holdError) console.error('[sequence-send-email] Failed to put execution back on hold (mailbox limited)', { error: holdError, execution_id });
+      console.warn(`[sequence-send-email] Sending mailbox ${mailboxId} of enrollment ${enrollment_id} is '${String(status)}' — step postponed, no send`);
+      return json({ success: false, skipped: 'sender_mailbox_limited', error: 'sender_mailbox_limited' });
+    };
+
     const initialDecision = enrollmentSendDecision(enrollment.status);
     if (initialDecision !== 'send') return await stopBeforeSend(initialDecision, enrollment.status);
 
@@ -656,6 +626,9 @@ Deno.serve(async (req) => {
       if (disconnectedError) console.error('[sequence-send-email] Failed to update execution status (mailbox disconnected)', { error: disconnectedError, execution_id });
       console.warn(`[sequence-send-email] Sending mailbox ${mailbox.mailboxId} of enrollment ${enrollment_id} is '${String(mailbox.status)}' — no send`);
       return json({ success: false, error: 'sender_mailbox_disconnected' });
+    }
+    if (mailbox.kind === 'mailbox_limited') {
+      return await holdForLimitedMailbox(mailbox.mailboxId, mailbox.status);
     }
     const emailAccountId = mailbox.mailboxId;
     // Expéditeur = titulaire de la boîte d'envoi, repli sur l'auteur de
@@ -777,12 +750,8 @@ Deno.serve(async (req) => {
       htmlBody = addTrackingPixel(htmlBody, trackingId, SUPABASE_URL);
     }
 
-    // 9. Send email via the connected email account (Unipile) — no global fallback
-    let sendResult: { success: boolean; messageId?: string | null; error?: string };
-
-    // Resolve Unipile credentials per organization (multi-tenant safe).
-    // Fallback automatique sur les env vars si pas de creds org-specific.
-    const unipileCreds = await resolveUnipileCredentials(orgId, supabase);
+    // 9. Send email via the connected email account (Gmail, Outlook, IMAP)
+    let sendResult: EmailSendResult;
 
     // Dernier contrôle juste avant l'envoi : une réponse du candidat, une pause
     // ou un arrêt a pu arriver pendant la préparation (SEQ-200).
@@ -811,23 +780,22 @@ Deno.serve(async (req) => {
       return json({ error: 'Failed to create email tracking record' }, 500);
     }
 
-    if (unipileCreds?.apiKey && unipileCreds?.dsn) {
-      // Primary: send via Unipile (same infra as LinkedIn — supports Gmail, Outlook, IMAP)
-      sendResult = await sendViaUnipile(
-        unipileCreds.apiKey,
-        unipileCreds.dsn,
-        emailAccountId,
+    if (isUnipileConfigured()) {
+      sendResult = await sendViaMailbox({
+        accountId: emailAccountId,
         senderName,
-        recipientEmail,
+        senderAddress: mailbox.emailAddress,
+        to: recipientEmail,
         subject,
         htmlBody,
         cc,
         bcc,
-      );
+      });
     } else {
-      // Pas d'identifiants d'envoi pour l'organisation : pas de repli global
-      // (l'ancien jeton Microsoft Graph unique pour toutes les organisations a été retiré).
-      console.error('[sequence-send-email] No email sending method available (no provider credentials)');
+      // Le service d'envoi n'est pas configuré sur le serveur : pas de repli
+      // global (l'ancien jeton Microsoft Graph unique pour toutes les
+      // organisations a été retiré).
+      console.error('[sequence-send-email] No email sending method available (service not configured)');
       sendResult = { success: false, error: 'no_email_method_available' };
     }
 
@@ -866,8 +834,12 @@ Deno.serve(async (req) => {
     } else {
       // Check if rate limited
       const errorStr = (sendResult.error || '').toLowerCase();
-      const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('throttl');
+      const isRateLimit = sendResult.rateLimited === true || errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('throttl');
 
+      if (sendResult.error === 'sender_mailbox_limited') {
+        // La boîte est limitée par le fournisseur : rien n'est parti, l'étape est reportée.
+        return await holdForLimitedMailbox(emailAccountId, 'LIMITED');
+      }
       if (sendResult.error === 'send_uncertain') {
         // Issue inconnue (délai dépassé, erreur serveur du fournisseur) :
         // échec sans relance automatique, à vérifier avant de relancer.
@@ -897,7 +869,8 @@ Deno.serve(async (req) => {
         // erreur renvoyée ici ne signale un rebond (SEQ-107).
         const { error: failUpdateError } = await supabase.from('sequence_step_executions').update({
           status: 'failed',
-          error_message: sendResult.error,
+          // Texte lisible pour une boîte à reconnecter ; sinon le code (email_send_failed_<code HTTP>).
+          error_message: sendResult.error === 'sender_mailbox_disconnected' ? SENDER_MAILBOX_DISCONNECTED_MESSAGE : sendResult.error,
           executed_at: new Date().toISOString(),
           channel: 'email',
         }).eq('id', execution_id);

@@ -22,11 +22,14 @@ export function enrollmentSendDecision(status) {
 
 // ───────────────────────────── Preuve d'envoi ─────────────────────────────
 
-const PROVIDER_ID_KEYS = ['message_id', 'provider_id', 'email_id', 'id', 'tracking_id'];
+// `message_id` : en-tête Message-ID du courrier (RFC 5322), celui que cite
+// l'en-tête In-Reply-To d'une réponse. `id` : identifiant du courrier chez le
+// fournisseur, repli quand l'en-tête n'a pas pu être relu après l'envoi.
+const PROVIDER_ID_KEYS = ['message_id', 'id'];
 
 /**
- * Identifiant du message renvoyé par le fournisseur après un envoi réussi.
- * Jamais d'identifiant inventé : null si la réponse n'en porte aucun.
+ * Identifiant du message d'un envoi réussi, à partir de { message_id, id }.
+ * Jamais d'identifiant inventé : null si aucun des deux n'est présent.
  * @param {unknown} data
  * @returns {string | null}
  */

@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
     const included = usage.included_remaining >= requestedUnits;
 
     // ── Cascade lookup PRE-BC : check RGPD + sources gratuites avant payer ──
-    // (Unipile contact_info, candidate_enrichments cache, job_candidate_status,
+    // (contact_info du profil LinkedIn, candidate_enrichments cache, job_candidate_status,
     //  airtable_candidates → si trouvé, on évite l'appel BC payant)
     // Registre des effacements illisible (décision 13) : refus clair, ni
     // enrichissement ni débit.

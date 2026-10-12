@@ -4,11 +4,26 @@ import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-i
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
 import { gen5Params, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import {
-  enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType,
+  enforceLinkedInAction, recordUsageSignal, type LinkedInActionType,
   ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON,
 } from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
-import { aiReviewRequired, AI_REVIEW_REQUIRED_MESSAGE, AI_REVIEW_DEFER_MS } from "../_shared/sequence-send-rules.ts";
+// Client unique du fournisseur (API v2) : clé globale, identifiants de compte
+// `acc_...`, erreurs neutres. Aucun appel au fournisseur hors de ce module.
+import {
+  assertV2AccountId, isUnipileConfigured, OutdatedAccountIdError, isV2AccountId, isUnipileError, describeForLog,
+  getProfile, getChatForUser, listMessages, getInmailCredits, pickInmailProduct, toNetworkDegree,
+  toKonektMessage, isCandidateReplyCandidate, type ErrorKind, type KonektMessage, type UserProfile,
+  // Envois, visite de profil, invitation, publications (passe S4-3).
+  sendMessage, sendRelationRequest, startChat, visitProfile, notifyVisitToken, listUserPosts, toKonektProfile, probeText,
+  type ChatLookupEntry, type InmailSpec, type KonektProfile, type LinkedInLicence, type SendOutcome, type UserRefInput,
+} from "../_shared/unipile/index.ts";
+// Premier message LinkedIn : boîte, licence et forme de l'InMail (partagé avec la file InMail).
+import { planInmail, startLinkedInChat } from "../_shared/sequence-linkedin-send.ts";
+import {
+  aiReviewRequired, AI_REVIEW_REQUIRED_MESSAGE, AI_REVIEW_DEFER_MS, accountSendGate,
+  LIMITED_ACCOUNT_DEFER_MS, LIMITED_ACCOUNT_MESSAGE, sendUncertainError, effectiveNetworkDistance,
+} from "../_shared/sequence-send-rules.ts";
 import {
   NUDGE_ACTION_TYPES, isNudgeable, decidePostSendRecheck, hasAlreadySentStep, VISIBLE_SEND_ACTIONS,
   isUncertainSendError, isEmailSentButNotRecorded, UNCERTAIN_SEND_MESSAGE, shouldCloseForNoPreviousMessage,
@@ -64,7 +79,7 @@ import {
   MIN_REMAINING_FOR_DB_WORK_MS, type ReplyCheckState,
 } from "../_shared/sequence-wait-rules.ts";
 import {
-  isConnectionWaitSatisfied, needsAttendeeResolution, nextWaitPageOffset, providerCallAllowed,
+  isConnectionWaitSatisfied, nextWaitPageOffset, providerCallAllowed,
   replyStateOfMessages, shouldReadNextWaitPage, unresolvedAttendees, WAIT_SCAN_PAGE_SIZE,
 } from "../_shared/sequence-wait-guards.ts";
 
@@ -75,9 +90,8 @@ const corsHeaders = {
 };
 
 // ============ ENV CONFIG ============
-const ENV_UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const ENV_UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-const ENV_UNIPILE_DSN = `https://${ENV_UNIPILE_DSN_RAW}`;
+// La clé du fournisseur LinkedIn n'est pas lue ici : le client partagé la lit à
+// chaque appel (aucune variable de module, aucune clé ni hôte par organisation).
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 
 // Statuts d'exécution non terminaux : une étape dans un de ces états est
@@ -110,47 +124,34 @@ const MEMBER_ACTIONS = new Set([
   'stop_enrollments', 'undo_stop_enrollments',
 ]);
 
-// Timeout wrapper for all external fetch calls (Unipile, Anthropic)
+// Timeout wrapper pour les appels HTTP internes (fonctions Supabase :
+// retrieve-context, sequence-send-email). Les appels au fournisseur LinkedIn
+// passent tous par le client partagé (_shared/unipile/), jamais par ici.
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
-// Per-org Unipile credential resolution.
+// Fournisseur LinkedIn : une clé globale à l'application, plus aucune clé ni
+// hôte par organisation. Conséquence (audit Opus 2026-05-07, réécrit pour la
+// v2) : le cloisonnement entre organisations ne repose plus que sur le
+// rattachement du compte d'envoi à l'organisation de l'inscription
+// (isSenderAccountLinked, SEQ-010). Tout identifiant de compte qui atteint le
+// client partagé doit venir d'une inscription déjà passée par ce contrôle, et
+// avoir le format `acc_...` (assertV2AccountId, voir la boucle du moteur).
 //
-// Audit Opus 2026-05-07 : le fallback ENV_UNIPILE_* est dangereux en
-// multi-tenant — si une org A ne configure pas ses propres credentials, on
-// peut interroger un compte LinkedIn appartenant à une autre org B. Pour
-// limiter le blast radius :
-//   - on log explicitement quand on utilise le fallback (pour surveiller)
-//   - on throw si orgId est manquant (legacy data) ET le fallback aussi absent
-//   - les callers doivent prévoir le cas où la résolution renvoie null
-//     (skip enrollment plutôt que cross-org leak silencieux).
-async function resolveUnipileCreds(
-  orgId: string | undefined,
-  sb: any,
-): Promise<{ apiKey: string; dsn: string; usedFallback: boolean }> {
-  if (orgId) {
-    try {
-      const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
-      const creds = await resolveUnipileCredentials(orgId, sb);
-      if (creds) {
-        const rawDsn = creds.dsn.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        return { apiKey: creds.apiKey, dsn: `https://${rawDsn}`, usedFallback: false };
-      }
-    } catch (e) {
-      console.warn(`[process-sequences] Org credential resolution failed for org=${orgId}, falling back to ENV:`, e);
-    }
+// Jeton d'erreur interne, jamais affiché : la boucle du moteur le rattrape et
+// écrit PROVIDER_UNAVAILABLE_MESSAGE ; isAccountDisconnectedError ne doit pas
+// le prendre pour un compte à reconnecter.
+const PROVIDER_NOT_CONFIGURED = 'provider_not_configured';
+
+/** Lève PROVIDER_NOT_CONFIGURED quand la clé du fournisseur manque sur le serveur. */
+function assertProviderConfigured(): void {
+  if (!isUnipileConfigured()) {
+    console.error('[process-sequences] Clé du fournisseur LinkedIn absente de la configuration du serveur');
+    throw new Error(PROVIDER_NOT_CONFIGURED);
   }
-  if (ENV_UNIPILE_API_KEY && ENV_UNIPILE_DSN_RAW) {
-    if (orgId) {
-      console.warn(`[process-sequences] Using ENV Unipile fallback for org=${orgId} (org has no creds configured)`);
-    }
-    return { apiKey: ENV_UNIPILE_API_KEY, dsn: ENV_UNIPILE_DSN, usedFallback: true };
-  }
-  console.error(`[process-sequences] No Unipile credentials available (orgId=${orgId || 'none'}, no ENV fallback)`);
-  throw new Error('unipile_credentials_unavailable');
 }
 
 // Fetch RAG context for a candidate from the Knowledge Lake
@@ -196,10 +197,14 @@ async function fetchRAGContext(
   }
 }
 
-// In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness
+// In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness.
+// Clé : `${accountId}:${référence du profil}` (accountId = `acc_...`, le même profil lu depuis deux
+// comptes n'a pas la même distance). Valeur : `network_distance` porte le jeton du fournisseur
+// (FIRST_DEGREE, SECOND_DEGREE, ...), jamais DISTANCE_n : les comparaisons du moteur
+// (isConnectionWaitSatisfied, si connecté) lisent ce jeton.
 const profileInfoCache = new Map<string, { network_distance?: string; provider_id?: string }>();
 
-console.log('[process-sequences] Config:', { hasDSN: !!ENV_UNIPILE_DSN, hasApiKey: !!ENV_UNIPILE_API_KEY });
+console.log('[process-sequences] Config:', { providerConfigured: isUnipileConfigured(), hasAnthropicKey: !!ANTHROPIC_API_KEY });
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -672,6 +677,11 @@ async function handleSkipExecution(supabase: any, executionId: string, callerUse
  * Le compte d'envoi est-il relié à l'organisation (compte LinkedIn ou boîte
  * e-mail d'un membre) ? null si la lecture échoue. Cache par appel ou par cycle.
  * SEQ-010 : un identifiant de compte d'une autre organisation ne sert jamais.
+ * Avec la clé globale du fournisseur (API v2), c'est la seule frontière entre
+ * organisations : à appeler avant toute lecture ou tout envoi qui prend un
+ * identifiant de compte dans une ligne d'inscription, d'étape ou de rotation.
+ * L'identifiant est comparé tel qu'il est stocké (`acc_...` après la reprise
+ * des identifiants).
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
@@ -1436,8 +1446,11 @@ async function replySinceStop(supabase: SupabaseClient, enr: StopEnrollmentRow, 
 /**
  * Cause de la pause d'avant l'arrêt encore présente (pauseCauseHolds) :
  * séquence relue avec l'inscription, compte d'envoi relu dans
- * member_linkedin_accounts (connecté si tous ses comptes trouvés sont 'OK'),
- * abonnement par le contrôle commun. Lecture impossible : présente.
+ * member_linkedin_accounts (la cause est levée quand aucun de ses comptes
+ * trouvés n'est à reconnecter : 'OK', ou limité par le fournisseur (DEGRADED,
+ * PARTIAL, LOCKED), état où le moteur n'envoie pas mais ne met plus en pause,
+ * voir accountSendGate), abonnement par le contrôle commun. Lecture
+ * impossible : présente.
  */
 async function undoPauseCauseHolds(supabase: SupabaseClient, enr: StopEnrollmentRow, orgId: string, reason: string): Promise<boolean> {
   if (!EVENT_LIFTED_PAUSE_REASONS.includes(reason)) return true;
@@ -1450,7 +1463,12 @@ async function undoPauseCauseHolds(supabase: SupabaseClient, enr: StopEnrollment
         .eq('organization_id', orgId).in('linkedin_account_id', accounts);
       if (error) console.error(`[undo_stop] état du compte de ${enr.id} illisible:`, error);
       const rows = (data ?? []) as Array<{ account_status: string | null }>;
-      if (!error && rows.length > 0) accountOk = rows.every((r) => r.account_status === 'OK');
+      if (!error && rows.length > 0) {
+        accountOk = rows.every((r) => {
+          const gate = accountSendGate(r.account_status);
+          return gate === 'send' || gate === 'limited';
+        });
+      }
     }
   } else if (reason === 'subscription_required') {
     try {
@@ -1627,8 +1645,10 @@ async function handleProcess(supabase: any, force = false) {
     // limite réelle d'exécution, sinon deux passages se chevauchent).
     const cycleDeadline = Date.now() + CYCLE_BUDGET_MS;
 
-    // Actions qui ne laissent AUCUNE trace visible côté candidat — retry
-    // toujours sans risque. Utilisé par le janitor ci-dessous ET le batching.
+    // Actions qui ne laissent AUCUN message côté candidat — retry toujours sans
+    // risque de doublon de message (profile_visit refait une visite, sans
+    // conséquence ; elle passe par l'appel de visite explicite du client).
+    // Utilisé par le janitor ci-dessous ET le batching.
     // Actions sans envoi visible par le candidat : elles ne consomment pas un
     // des 3 slots visibles du cycle. wait_reply / wait_profile_visit /
     // condition_branch en faisaient partie de fait mais étaient absents de la
@@ -1949,7 +1969,7 @@ async function handleProcess(supabase: any, force = false) {
     // de 5 à 3 pour rester dans le timeout Supabase 60s avec un jitter PAR action
     // (et plus PAR batch). Cron passe en parallèle à */5 min — débit final
     // 3 visibles × 12 cycles/h × 8h ouvrées ≈ 288/jour max, dans les limites
-    // Unipile (80-100 invitations + ~100 InMails recommandés).
+    // du fournisseur (80-100 invitations + ~100 InMails recommandés).
     // SEQ-187 : ce plafond de 3 s'applique désormais PAR compte d'envoi
     // (selectCycleBatch), plus au lot entier : une organisation qui inscrivait
     // 300 candidats d'un coup bloquait toutes les autres pendant des heures.
@@ -2395,21 +2415,26 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
-        // Resolve Unipile credentials per-org for this enrollment
+        // Fournisseur LinkedIn configuré sur le serveur ? (clé globale du client
+        // partagé : plus d'identifiants par organisation.)
         const enrollmentOrgId = enrollment.organization_id || enrollment.sequence?.organization_id;
-        // SEQ-192 : identifiants du fournisseur LinkedIn absents (secrets de la
-        // plateforme, intégration illisible). Ce n'est pas le compte de
-        // l'utilisateur : étape LinkedIn ou WhatsApp reportée d'une heure avec
-        // une raison claire (avant : « compte déconnecté », inscription en
-        // pause, y compris pour les e-mails). Une étape e-mail part sans eux
-        // (sequence-send-email a les siens) ; seules les lectures LinkedIn
-        // annexes (vérification de réponse, conditions) en sont privées.
-        let uCreds: { apiKey?: string; dsn?: string } = {};
+        // SEQ-192 : clé du fournisseur LinkedIn absente (secrets de la
+        // plateforme). Ce n'est pas le compte de l'utilisateur : étape LinkedIn
+        // ou WhatsApp reportée d'une heure avec une raison claire (avant :
+        // « compte déconnecté », inscription en pause, y compris pour les
+        // e-mails). Une étape e-mail part sans elle (sequence-send-email lit
+        // la sienne) ; seules les lectures LinkedIn annexes (vérification de
+        // réponse, conditions) en sont privées.
+        // providerConfigured (faux seulement pour une étape e-mail, les autres
+        // sont reportées ci-dessous) remplace l'ancien test sur les accès par organisation :
+        // les lectures LinkedIn annexes de la boucle ne sont faites que s'il est vrai.
+        let providerConfigured = true;
         try {
-          uCreds = await resolveUnipileCreds(enrollmentOrgId, supabase);
-        } catch (credsErr) {
+          assertProviderConfigured();
+        } catch (providerErr) {
+          providerConfigured = false;
           if (stepSendChannel(step) !== 'email') {
-            console.warn(`[process] Identifiants LinkedIn indisponibles pour ${enrollment.id} : étape reportée d'une heure`, credsErr);
+            console.warn(`[process] Fournisseur LinkedIn non configuré pour ${enrollment.id} : étape reportée d'une heure`, providerErr);
             await supabase.from('sequence_step_executions').update({
               scheduled_at: new Date(Date.now() + 3600_000).toISOString(),
               error_message: PROVIDER_UNAVAILABLE_MESSAGE,
@@ -2417,7 +2442,7 @@ async function handleProcess(supabase: any, force = false) {
             results.skipped++;
             continue;
           }
-          console.warn(`[process] Identifiants LinkedIn indisponibles pour ${enrollment.id} : e-mail envoyé sans lecture LinkedIn annexe`, credsErr);
+          console.warn(`[process] Fournisseur LinkedIn non configuré pour ${enrollment.id} : e-mail envoyé sans lecture LinkedIn annexe`, providerErr);
         }
 
         // Expéditeur au sens « variables du message » (buildSequenceContext).
@@ -2594,6 +2619,39 @@ async function handleProcess(supabase: any, force = false) {
           }
         }
 
+        // === FRONTIÈRE v2 : IDENTIFIANT DE COMPTE DU FOURNISSEUR ===
+        // Le client partagé n'adresse que des comptes `acc_...`. Un identifiant
+        // d'un autre format (ancienne version, resté en base faute de reprise)
+        // n'est jamais transmis au fournisseur : le compte est à reconnecter,
+        // traité comme un compte déconnecté (même pause, même reprise à la
+        // reconnexion), avec le texte neutre d'assertV2AccountId dans le journal.
+        // Contrôle placé APRÈS le rattachement à l'organisation (un compte
+        // étranger ne passe jamais) et AVANT toute lecture ou envoi. Étape
+        // e-mail : la boîte est contrôlée par sequence-send-email.
+        if (effectiveAccountId && stepSendChannel(step) !== 'email') {
+          try {
+            assertV2AccountId(effectiveAccountId);
+          } catch (idErr) {
+            if (!(idErr instanceof OutdatedAccountIdError)) throw idErr;
+            console.warn(`[process] ⛔ Compte d'envoi ${effectiveAccountId} au format obsolète : inscription ${enrollment.id} mise en pause (${ACCOUNT_DISCONNECTED_PAUSE_REASON}), aucun appel au fournisseur (${idErr.message})`);
+            const outdatedPause = await pauseActiveEnrollments(supabase, { id: enrollment.id }, ACCOUNT_DISCONNECTED_PAUSE_REASON);
+            if (outdatedPause.error || outdatedPause.count === 0) {
+              // Pause non posée (erreur ou inscription plus active) : l'étape
+              // reste en attente, relue dans une heure, jamais perdue.
+              if (outdatedPause.error) console.warn(`[process] Pause enrollment ${enrollment.id} failed (compte au format obsolète), reprogrammation horaire:`, outdatedPause.error);
+              await supabase.from('sequence_step_executions').update({
+                scheduled_at: new Date(Date.now() + 3600_000).toISOString(),
+              }).eq('id', exec.id).eq('status', 'scheduled');
+            } else {
+              await supabase.from('sequence_step_executions').update({
+                status: 'cancelled', skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON, updated_at: new Date().toISOString(),
+              }).eq('id', exec.id).eq('status', 'scheduled');
+            }
+            results.skipped++;
+            continue;
+          }
+        }
+
         // Mapping type de step → type du ledger LinkedIn (audit 2026-07, M4) :
         //  - 'profile_visit' (séquences) ≠ 'profile_view' (ledger) → les
         //    visites de profil n'étaient JAMAIS comptées contre le cap.
@@ -2663,8 +2721,29 @@ async function handleProcess(supabase: any, force = false) {
             .eq('linkedin_account_id', effectiveAccountId)
             .maybeSingle();
 
-          if (accountStatus && accountStatus.account_status !== 'OK') {
-            if (accountStatus.account_status === 'CREDENTIALS' || accountStatus.account_status === 'ERROR') {
+          // accountSendGate (même règle que isSendable du client partagé) :
+          //  - 'send' : OK, rien à faire ;
+          //  - 'disconnected' (CREDENTIALS, ERROR) : pause « compte déconnecté » ;
+          //  - 'limited' (DEGRADED, PARTIAL, LOCKED) : rien ne part, mais ni pause
+          //    d'inscription, ni échec, ni nouvel essai toutes les heures ;
+          //  - 'unavailable' (autre état hérité) : report d'une heure, comme avant.
+          const sendGate = accountSendGate(accountStatus?.account_status);
+          if (accountStatus && sendGate === 'limited') {
+            // Un compte limité se rétablit seul (ou par le support) : l'étape
+            // garde son statut 'scheduled', sa date avance de LIMITED_ACCOUNT_DEFER_MS
+            // (6 h) avec une raison lisible. Pas de retry_count, pas de pause,
+            // pas de compte en échec pour l'auto-pause de la séquence.
+            console.warn(`[process] ⏸️ Account ${effectiveAccountId} status is '${accountStatus.account_status}' (limité) : envoi reporté de 6 h, inscription ${enrollment.id} non mise en pause`);
+            await supabase.from('sequence_step_executions').update({
+              status: 'scheduled',
+              scheduled_at: new Date(Date.now() + LIMITED_ACCOUNT_DEFER_MS).toISOString(),
+              error_message: LIMITED_ACCOUNT_MESSAGE,
+            }).eq('id', exec.id).eq('status', 'scheduled');
+            results.skipped++;
+            continue;
+          }
+          if (accountStatus && sendGate !== 'send') {
+            if (sendGate === 'disconnected') {
               // Compte déconnecté (lot P0-D) : pause explicite de l'inscription
               // (pause_reason = account_disconnected) au lieu d'une
               // reprogrammation horaire sans fin ; le webhook account_connected
@@ -2708,7 +2787,7 @@ async function handleProcess(supabase: any, force = false) {
 
         // Type d'étape transmis : une attente sans wait_for_event attend
         // l'événement de son type (SEQ-031, lot E2).
-        const rawCondition = await checkStepCondition(step.condition_type, effectiveAccountId || enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value, uCreds.apiKey, uCreds.dsn, step.action_type);
+        const rawCondition = await checkStepCondition(step.condition_type, effectiveAccountId || enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value, step.action_type);
         // SEQ-077 : lecture du profil en échec pendant l'évaluation (délai,
         // 429, 5xx). Ce n'est ni « connecté » ni « non connecté » : l'étape est
         // encore 'scheduled', elle est retentée dans 30 min (retry_count), puis
@@ -2932,10 +3011,24 @@ async function handleProcess(supabase: any, force = false) {
             // SEQ-078 : trois issues. Un délai ou une panne du fournisseur ne vaut
             // plus « pas de réponse » (la relance partait après la réponse).
             let replyState: 'replied' | 'no_reply' | 'unknown' = 'no_reply';
-            if (!replyCheckAccountId || !uCreds.apiKey) {
+            // Compte interrogé : au format du fournisseur et relié à l'organisation
+            // (la boucle l'a déjà vérifié pour le compte d'envoi d'une étape
+            // LinkedIn). Une étape e-mail interroge le compte LinkedIn de
+            // l'inscription : s'il est d'un ancien format ou n'est plus relié,
+            // il n'y a rien à interroger, l'e-mail suit son cours.
+            const replyCheckAccess = replyCheckAccountId && providerConfigured
+              ? await providerAccountUsable(supabase, enrollmentOrgId, replyCheckAccountId, senderAccountCache)
+              : null;
+            if (!replyCheckAccountId || !providerConfigured
+              || (stepSendChannel(step) === 'email' && (replyCheckAccess === 'outdated' || replyCheckAccess === 'unlinked'))) {
               // Rien à interroger côté LinkedIn : inscription sans compte LinkedIn
-              // (e-mail seul) ou identifiants indisponibles pour une étape e-mail.
-              console.log(`[process] Vérification de réponse LinkedIn sans objet pour ${enrollment.id} (aucun compte ou identifiants LinkedIn)`);
+              // (e-mail seul), compte LinkedIn inutilisable pour une étape e-mail,
+              // ou fournisseur non configuré pour une étape e-mail.
+              console.log(`[process] Vérification de réponse LinkedIn sans objet pour ${enrollment.id} (aucun compte LinkedIn utilisable)`);
+            } else if (replyCheckAccess !== 'ok') {
+              // Rattachement du compte illisible (ou compte inutilisable sur une
+              // étape LinkedIn, déjà écarté plus haut) : on ne conclut pas.
+              replyState = 'unknown';
             } else {
               try {
                 replyState = normalizeReplyCheck(await checkForReplyAfterDate(
@@ -2945,11 +3038,9 @@ async function handleProcess(supabase: any, force = false) {
                   enrollment.profile_url,
                   enrollment.id,
                   supabase,
-                  uCreds.apiKey,
-                  uCreds.dsn
                 ));
               } catch (replyCheckErr) {
-                console.warn(`[process] Pre-send reply check failed:`, replyCheckErr);
+                console.warn(`[process] Pre-send reply check failed: ${describeForLog(replyCheckErr)}`);
                 replyState = 'unknown';
               }
             }
@@ -3161,8 +3252,6 @@ async function handleProcess(supabase: any, force = false) {
             supabase,
             ledgerActionType,
             effectiveAccountId || enrollment.account_id,
-            uCreds.apiKey,
-            uCreds.dsn,
             quotaUserId,
             enrollmentOrgId ?? null,
             // InMail ou message intelligent vers une relation directe : message
@@ -3246,7 +3335,7 @@ async function handleProcess(supabase: any, force = false) {
           // SEQ-074 : échéance du cycle transmise à la rédaction (la seconde
           // génération de correction n'est pas lancée faute de temps).
           const aiDiag: { reason?: string; deadlineMs: number } = { deadlineMs: cycleDeadline };
-          const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec, uCreds.apiKey, uCreds.dsn, aiDiag);
+          const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec, aiDiag);
           if (personalized) {
             finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject;
           } else {
@@ -3452,7 +3541,7 @@ async function handleProcess(supabase: any, force = false) {
         if (isLinkedInStyleSend) visibleSentByAccount.set(sendAccountKey, (visibleSentByAccount.get(sendAccountKey) ?? 0) + 1);
 
         const executeResult = await executeStepAction(effectiveActionType, enrollment, step,
-          { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase, uCreds.apiKey, uCreds.dsn);
+          { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
 
         if (executeResult.error === '__SKIP_UNSUPPORTED__') {
           console.warn(`[process] Action « ${effectiveActionType} » sautée — étape ${step.step_order} pour ${enrollment.profile_name}${executeResult.skipReason ? ` (${executeResult.skipReason})` : ''}`);
@@ -3474,6 +3563,12 @@ async function handleProcess(supabase: any, force = false) {
           // Special case: wait_connection — transition to waiting_event
           await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
           console.log(`[process] ${enrollment.profile_name} → waiting_event (wait_connection)`);
+          results.skipped++;
+        } else if (!executeResult.success && effectiveActionType === 'email' && executeResult.error === 'sender_mailbox_limited') {
+          // Boîte d'envoi limitée par le fournisseur : sequence-send-email n'a rien
+          // envoyé et a remis l'étape en attente (6 h, sans essai consommé). Ni
+          // échec, ni auto-pause de la séquence, ni pause d'inscription.
+          console.warn(`[process] Boîte e-mail limitée pour ${enrollment.id} : étape reportée par sequence-send-email, aucun échec compté`);
           results.skipped++;
         } else if (executeResult.success && effectiveActionType === 'email' && executeResult.skipped === 'suppressed') {
           // SEQ-188 : adresse désinscrite (liste de suppression) : rien n'est
@@ -3618,6 +3713,10 @@ async function handleProcess(supabase: any, force = false) {
           // Error handling: differentiate rate limits, account disconnections, and other retryable errors
           const currentRetryCount = exec.retry_count || 0;
           const errorStr = executeResult.error || '';
+          // Famille d'erreur du client partagé (ErrorKind), posée par
+          // executeStepAction quand le fournisseur a refusé ou n'a pas répondu
+          // clairement : elle commande le classement ci-dessous.
+          const errorKind = providerKindOf(executeResult);
           // Décision 3 : erreur antérieure à l'envoi (lecture du profil, solde
           // ou crédits InMail, objet manquant) : rien n'est parti, la place du
           // plafond est rendue. « Vérifier la connexion » garde la sienne : la
@@ -3625,11 +3724,15 @@ async function handleProcess(supabase: any, force = false) {
           if (effectiveActionType !== 'check_connection' && NOT_SENT_ERROR_RE.test(errorStr)) await releaseSlot();
 
           // Signal de limite "dure" côté fournisseur (quota réellement atteint,
-          // pas un 429 transitoire) → on met TOUT le compte en pause jusqu'à
+          // pas un 429 transitoire : le client partagé range ce cas dans la
+          // famille provider_limit) → on met TOUT le compte en pause jusqu'à
           // demain, pas seulement ce step, pour que tous les chemins d'envoi
-          // reculent. Conformité #260513-007211.
+          // reculent. Conformité #260513-007211. Le fournisseur ne renvoie plus
+          // de pourcentage d'usage : la pause proactive à 90 % est remplacée par
+          // le plafond du ledger (checkQuotaForAction) et par cette pause
+          // réactive.
           const limitedAccountId = effectiveAccountId || enrollment.account_id;
-          if (limitedAccountId && /limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorStr)) {
+          if (limitedAccountId && errorKind === 'provider_limit') {
             await recordUsageSignal(supabase, limitedAccountId, 100, enrollment.user_timezone);
           }
 
@@ -3652,7 +3755,7 @@ async function handleProcess(supabase: any, force = false) {
             // la reprise renvoyait l'e-mail (second message au candidat).
             console.warn(`[process] ⏳ E-mail ${exec.id} : issue de l'envoi inconnue (${errorStr}), tranché par le rattrapage avec la preuve d'envoi`);
             results.skipped++;
-          } else if (isUncertainSendError(errorStr, effectiveActionType)) {
+          } else if (errorKind === 'uncertain' || isUncertainSendError(errorStr, effectiveActionType)) {
             // SEQ-005 : 5xx ou délai APRÈS le POST d'envoi d'une action
             // visible. Le message a pu partir : aucune relance automatique
             // (avant, relance 30 min plus tard avec le même texte). Échec
@@ -3702,7 +3805,25 @@ async function handleProcess(supabase: any, force = false) {
             }
             console.warn(`[process] ⚠️ Boîte e-mail d'envoi déconnectée pour ${enrollment.id} : ${mailboxPause.count > 0 ? 'inscription en pause (send_failed)' : 'étape reportée d\'une heure'}`);
             results.skipped++;
-          } else if (isAccountDisconnectedError(errorStr)) {
+          } else if (errorKind === 'account_degraded') {
+            // Compte limité (DEGRADED, PARTIAL, LOCKED) détecté à l'envoi alors que
+            // l'état enregistré était encore OK : le fournisseur a refusé, rien
+            // n'est parti. Même règle que le contrôle préventif : ni pause
+            // d'inscription, ni échec, ni essai consommé, ni nouvelle tentative à
+            // l'heure ; l'étape repart 6 h plus tard avec son texte résolu, la
+            // place du plafond est rendue.
+            await releaseSlot();
+            await supabase.from('sequence_step_executions').update({
+              status: 'scheduled',
+              scheduled_at: new Date(Date.now() + LIMITED_ACCOUNT_DEFER_MS).toISOString(),
+              error_message: LIMITED_ACCOUNT_MESSAGE,
+              final_message: finalMessage || null,
+              final_subject: finalSubject || null,
+              ...(aiWillGenerate ? { tracking_data: withContentOrigin(exec.tracking_data, RESOLVED_CONTENT_ORIGIN) } : {}),
+            }).eq('id', exec.id).eq('status', 'sending');
+            console.warn(`[process] ⏸️ Compte limité pour ${enrollment.id} (${effectiveActionType}) : envoi reporté de 6 h, inscription non mise en pause — ${errorStr}`);
+            results.skipped++;
+          } else if (isAccountDisconnectedError(errorStr, errorKind)) {
             // SEQ-028 : compte déconnecté détecté à l'envoi (statut encore OK
             // en base). Même schéma que le contrôle préventif : pause
             // « compte déconnecté » posée d'abord, puis exécution annulée avec
@@ -3747,7 +3868,7 @@ async function handleProcess(supabase: any, force = false) {
             }).eq('id', exec.id).eq('status', 'sending');
             console.log(`[process] ⏸️ Crédits InMail épuisés pour ${enrollment.id} : étape bloquée jusqu'à la prochaine plage d'envoi`);
             results.quota_blocked++;
-          } else if (isRateLimitError(errorStr)) {
+          } else if (isRateLimitError(errorStr, errorKind)) {
             // Rate limit: NO retry counter increment, reschedule based on action type
             // SEQ-088 : erreur et mode réellement utilisé (InMail ou message
             // direct) transmis, fuseau d'envoi résolu (SEQ-197).
@@ -3764,7 +3885,7 @@ async function handleProcess(supabase: any, force = false) {
             }).eq('id', exec.id).eq('status', 'sending');
             console.log(`[process] ⏸️ Rate limit for ${enrollment.profile_name} (${step.action_type}), rescheduled to ${retryAt.toISOString()}`);
             results.retried++;
-          } else if (isRetryableError(errorStr) && currentRetryCount < MAX_RETRIES) {
+          } else if (isRetryableError(errorStr, errorKind) && currentRetryCount < MAX_RETRIES) {
             const retryAt = new Date(Date.now() + RETRY_DELAY_MS).toISOString();
             await supabase.from('sequence_step_executions').update({ 
               status: 'scheduled', 
@@ -3797,13 +3918,33 @@ async function handleProcess(supabase: any, force = false) {
         // repassée 'scheduled' (sinon renvoi). Contenu d'avant le verrou restauré.
         const catchActionType = (step?.action_type ?? '') as string;
         const RETRYABLE_FROM = ['scheduled', 'sending'];
-        if (isUncertainSendError(errorMsg, catchActionType)) {
+        // Famille d'erreur du client partagé quand l'exception en vient (le
+        // message d'une UnipileError est un texte neutre, sans mot-clé à chercher).
+        const caughtKind = providerKindOf(err);
+        if (caughtKind === 'provider_limit') {
+          // Même pause réactive du compte jusqu'à demain que pour un résultat d'envoi.
+          const caughtAccountId = enrollment ? senderAccountFor(enrollment, step) : '';
+          if (caughtAccountId) await recordUsageSignal(supabase, caughtAccountId, 100, enrollment?.user_timezone);
+        }
+        if (caughtKind === 'uncertain' || isUncertainSendError(errorMsg, catchActionType)) {
           // SEQ-005 : issue de l'envoi inconnue, pas de relance automatique.
           await supabase.from('sequence_step_executions').update({
             status: 'failed', error_message: UNCERTAIN_SEND_MESSAGE, executed_at: new Date().toISOString(),
           }).eq('id', exec.id).in('status', RETRYABLE_FROM);
           results.failed++;
-        } else if (isAccountDisconnectedError(errorMsg)) {
+        } else if (caughtKind === 'account_degraded') {
+          // Compte limité (DEGRADED, PARTIAL, LOCKED) : rien n'est parti ; report
+          // de 6 h sans pause, sans échec et sans essai consommé. La place du
+          // plafond est rendue, comme pour un résultat d'envoi refusé.
+          await releaseSlot();
+          await supabase.from('sequence_step_executions').update({
+            status: 'scheduled',
+            scheduled_at: new Date(Date.now() + LIMITED_ACCOUNT_DEFER_MS).toISOString(),
+            error_message: LIMITED_ACCOUNT_MESSAGE,
+            final_message: exec.final_message ?? null, final_subject: exec.final_subject ?? null,
+          }).eq('id', exec.id).in('status', RETRYABLE_FROM);
+          results.skipped++;
+        } else if (isAccountDisconnectedError(errorMsg, caughtKind)) {
           // SEQ-028 : même schéma que ci-dessus (pause « compte déconnecté »
           // d'abord, puis exécution annulée avec sa raison), hors échecs.
           const paused = enrollment?.id
@@ -3826,7 +3967,7 @@ async function handleProcess(supabase: any, force = false) {
             results.failed++;
           }
           console.warn(`[process] ⚠️ Account disconnected (in catch) for enrollment ${enrollment?.id} — paused (${ACCOUNT_DISCONNECTED_PAUSE_REASON}): ${errorMsg}`);
-        } else if (isRateLimitError(errorMsg)) {
+        } else if (isRateLimitError(errorMsg, caughtKind)) {
           const retryAt = getRateLimitRetryDate(catchActionType, resolvedSendTimezone || enrollment?.user_timezone || 'Europe/Paris', { error: errorMsg });
           await supabase.from('sequence_step_executions').update({
             status: 'scheduled',
@@ -3835,7 +3976,7 @@ async function handleProcess(supabase: any, force = false) {
             final_message: exec.final_message ?? null, final_subject: exec.final_subject ?? null,
           }).eq('id', exec.id).in('status', RETRYABLE_FROM);
           results.retried++;
-        } else if (isRetryableError(errorMsg) && currentRetryCount < MAX_RETRIES) {
+        } else if (isRetryableError(errorMsg, caughtKind) && currentRetryCount < MAX_RETRIES) {
           await supabase.from('sequence_step_executions').update({
             status: 'scheduled', retry_count: currentRetryCount + 1,
             error_message: `Retry ${currentRetryCount + 1}/${MAX_RETRIES}: ${errorMsg}`,
@@ -3953,6 +4094,8 @@ async function handleCheckReplies(supabase: any) {
   let notChecked = 0;
   // Toute inscription examinée, même écartée, passe en fin de rotation.
   const examinedIds: string[] = [];
+  // Rattachement des comptes d'envoi à l'organisation, lu une fois par passage.
+  const checkAccountCache = new Map<string, boolean>();
   const enrollments = activeEnrollments || [];
 
   for (const enrollment of enrollments) {
@@ -4017,10 +4160,24 @@ async function handleCheckReplies(supabase: any) {
     // est plus récente (sinon l'ancienne réponse le reclôturait aussitôt).
     const afterDate = replyReferenceDate(lastSentExec.executed_at, enrollment.tracking_data?.re_enrolled_at ?? null, Date.now());
 
-    const rCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
+    // Clé du fournisseur absente du serveur : le passage échoue comme avant
+    // (identifiants introuvables), le cron le voit.
+    assertProviderConfigured();
+    // Compte d'envoi au format du fournisseur et relié à l'organisation de
+    // l'inscription avant toute lecture (clé globale : seule frontière entre
+    // organisations). Sinon rien n'est décidé pour cette inscription.
+    const replyAccountId = senderAccountFor(enrollment);
+    const replyAccess = await providerAccountUsable(
+      supabase, enrollment.organization_id ?? enrollment.sequence?.organization_id ?? null, replyAccountId, checkAccountCache,
+    );
+    if (replyAccess !== 'ok') {
+      console.warn(`[checkReplies] Compte d'envoi inutilisable pour ${enrollment.id} (${replyAccess}) : réponse non vérifiée`);
+      checkFailed++;
+      continue;
+    }
     // Échéance transmise : chaque appel au fournisseur de la vérification est
     // soumis au budget, pas seulement le premier (REV engine-conditions-channels-11).
-    const replyState = await checkForReplyAfterDate(senderAccountFor(enrollment), enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, rCreds.apiKey, rCreds.dsn, deadline);
+    const replyState = await checkForReplyAfterDate(replyAccountId, enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, deadline);
     if (replyState === 'unknown') {
       // Lecture impossible : rien n'est décidé. La vérification avant envoi de
       // la prochaine relance reste le garde-fou (SEQ-078).
@@ -4300,7 +4457,7 @@ async function handleCheckWaitEvents(supabase: any) {
   try {
   const deadline = Date.now() + CHECK_PASS_BUDGET_MS;
   // Phase 1: Fast DB-only pass — immediately unblock candidates already marked as connected
-  // This runs every time without throttle since it doesn't call Unipile
+  // This runs every time without throttle since it doesn't call the provider
   // SEQ-085 : attentes de CONNEXION seulement. Une attente de réponse d'un
   // candidat connecté était réarmée à chaque passage puis réévaluée chez le
   // fournisseur (plusieurs appels, places du cycle d'envoi consommées).
@@ -4342,7 +4499,7 @@ async function handleCheckWaitEvents(supabase: any) {
     console.log(`[handleCheckWaitEvents] Fast-unblocked ${fastUnblocked} already-connected candidates`);
   }
 
-  // Phase 2: Throttled Unipile check for remaining waiting_event candidates
+  // Phase 2: Throttled provider check for remaining waiting_event candidates
   const MIN_INTERVAL_MS = 8 * 60 * 60 * 1000;
   const { data: lastRun } = await supabase
     .from('internal_config')
@@ -4385,6 +4542,8 @@ async function handleCheckWaitEvents(supabase: any) {
 
   let eventsTriggered = 0;
   let notChecked = 0;
+  // Rattachement des comptes d'envoi à l'organisation, lu une fois par passage.
+  const checkAccountCache = new Map<string, boolean>();
   const waits = waitingExecutions || [];
   for (let i = 0; i < waits.length; i++) {
     const exec = waits[i];
@@ -4405,7 +4564,7 @@ async function handleCheckWaitEvents(supabase: any) {
 
     let eventOccurred = false;
     if (forConnection && (enrollment.network_distance === 'FIRST_DEGREE' || enrollment.connection_status === 'connected')) {
-      // Use DB-stored network_distance first → avoids Unipile API call
+      // Use DB-stored network_distance first → avoids a provider call
       eventOccurred = true;
       console.log(`[handleCheckWaitEvents] DB hit: enrollment ${enrollment.id} already FIRST_DEGREE/connected`);
     } else {
@@ -4416,24 +4575,39 @@ async function handleCheckWaitEvents(supabase: any) {
         console.warn(`[handleCheckWaitEvents] Budget de temps atteint : ${notChecked} attente(s) reportée(s) au prochain passage`);
         break;
       }
-      const weCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
+      // Clé du fournisseur absente du serveur : le passage échoue comme avant.
+      assertProviderConfigured();
+      // Compte d'envoi au format du fournisseur et relié à l'organisation de
+      // l'inscription avant toute lecture ; sinon l'attente est replacée en
+      // fin de file sans décision.
+      const waitAccountId = senderAccountFor(enrollment, step);
+      const waitAccess = await providerAccountUsable(
+        supabase, enrollment.organization_id ?? null, waitAccountId, checkAccountCache,
+      );
+      if (waitAccess !== 'ok') {
+        console.warn(`[handleCheckWaitEvents] Compte d'envoi inutilisable pour ${enrollment.id} (${waitAccess}) : attente non vérifiée`);
+        await touchWait(exec.id);
+        continue;
+      }
       if (forConnection) {
         // SEQ-102 : lecture journalisée au ledger quand elle part chez LinkedIn.
-        const profile = await readProfileForSend(supabase, enrollment, senderAccountFor(enrollment, step), enrollment.profile_id, weCreds.apiKey, weCreds.dsn);
+        const profile = await readProfileForSend(supabase, enrollment, waitAccountId, enrollment.profile_id);
         eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
-        // Persist network_distance + provider_id to DB for future lookups
-        if (profile) {
-          await supabase.from('sequence_enrollments').update({
-            network_distance: profile.network_distance || null,
-            provider_id: profile.provider_id || null,
-          }).eq('id', enrollment.id);
+        // Distance et identifiant du fournisseur gardés pour les lectures
+        // suivantes. Une valeur absente de la lecture n'écrase jamais celle qui
+        // est déjà enregistrée (avant : null écrit par-dessus).
+        const profilePatch: Record<string, unknown> = {};
+        if (profile?.network_distance) profilePatch.network_distance = profile.network_distance;
+        if (profile?.provider_id) profilePatch.provider_id = profile.provider_id;
+        if (Object.keys(profilePatch).length > 0) {
+          await supabase.from('sequence_enrollments').update(profilePatch).eq('id', enrollment.id);
         }
       } else {
         // SEQ-084 : réponse postérieure au dernier envoi visible de l'inscription.
         const afterDate = await loadReplyReferenceDate(supabase, enrollment.id, enrollment);
         // Échéance transmise : chaque appel de la vérification est soumis au
         // budget (REV engine-conditions-channels-11).
-        eventOccurred = (await checkHasProspectReplied(senderAccountFor(enrollment, step), enrollment.profile_id, weCreds.apiKey, weCreds.dsn, afterDate, deadline)) === 'replied';
+        eventOccurred = (await checkHasProspectReplied(waitAccountId, enrollment.profile_id, afterDate, deadline)) === 'replied';
       }
     }
 
@@ -4588,13 +4762,46 @@ const RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes (for non-rate-limit retryab
 // Décision 9 : fenêtre de la scrutation de secours pour les inscriptions terminées.
 const RECENTLY_COMPLETED_REPLY_WINDOW_MS = 14 * 24 * 3600 * 1000;
 
-function isRateLimitError(error: string | undefined): boolean {
+/**
+ * Famille d'erreur du client partagé (ErrorKind) portée par une erreur levée
+ * (UnipileError) ou par un résultat d'envoi (`errorKind` de StepActionResult,
+ * posé par executeStepAction pour chaque appel refusé ou incertain). null pour
+ * une erreur du moteur lui-même (préfixes profile_read_unavailable,
+ * inmail_credits_exhausted, email_account_disconnected, réponse de
+ * sequence-send-email) : ces erreurs se lisent sur leur texte. Quand la famille
+ * est connue, elle l'emporte sur le texte : le texte du fournisseur n'est jamais
+ * relayé (français neutre), un mot-clé n'y est plus à chercher.
+ */
+function providerKindOf(source: unknown): ErrorKind | null {
+  if (isUnipileError(source)) return source.kind;
+  if (source && typeof source === 'object') {
+    const kind = (source as Record<string, unknown>).errorKind;
+    if (typeof kind === 'string' && PROVIDER_ERROR_KINDS.has(kind)) return kind as ErrorKind;
+  }
+  return null;
+}
+const PROVIDER_ERROR_KINDS = new Set<string>([
+  'auth', 'forbidden', 'not_found', 'rate_limited', 'validation', 'account_disconnected', 'account_degraded',
+  'provider_limit', 'uncertain', 'server', 'network', 'config',
+]);
+
+/**
+ * Limite du fournisseur (429, quota d'invitations ou de messages atteint) :
+ * l'étape est reportée au prochain créneau (getRateLimitRetryDate), sans
+ * essai consommé.
+ */
+function isRateLimitError(error: string | undefined, kind?: ErrorKind | null): boolean {
+  if (kind) return kind === 'rate_limited' || kind === 'provider_limit';
   if (!error) return false;
   const e = error.toLowerCase();
   return e.includes('429') || e.includes('rate limit') || e.includes('too many requests');
 }
 
-function isRetryableError(error: string | undefined): boolean {
+function isRetryableError(error: string | undefined, kind?: ErrorKind | null): boolean {
+  // Panne passagère du service ou du réseau : nouvel essai. Un compte limité
+  // (account_degraded), une demande invalide ou un refus ne se relancent pas
+  // à 30 minutes.
+  if (kind) return kind === 'server' || kind === 'network' || kind === 'auth' || kind === 'config';
   if (!error) return false;
   const e = error.toLowerCase();
   // Envoi à l'issue inconnue (5xx ou délai après le POST) : jamais de relance
@@ -4615,23 +4822,23 @@ function isRetryableError(error: string | undefined): boolean {
  * Ces erreurs ne sont PAS retry-ables : retry 3× ne va pas re-connecter
  * le compte. On préfère pauser l'enrollment et notifier l'utilisateur.
  */
-function isAccountDisconnectedError(error: string | undefined): boolean {
+function isAccountDisconnectedError(error: string | undefined, kind?: ErrorKind | null): boolean {
+  if (kind) return kind === 'account_disconnected';
   if (!error) return false;
   // Boîte e-mail d'envoi inutilisable (contrôle préalable de executeStepAction) :
   // pas un compte LinkedIn déconnecté, voir isMailboxDisconnectedError.
   if (isMailboxDisconnectedError(error)) return false;
   const e = error.toLowerCase();
-  // Identifiants de la plateforme absents (secrets, organization_integrations
-  // illisible) : ce n'est pas le compte de l'utilisateur, le reconnecter ne
-  // servirait à rien (SEQ-192).
-  if (e.includes('unipile_credentials_unavailable')) return false;
+  // Clé du fournisseur absente du serveur (PROVIDER_NOT_CONFIGURED) : ce n'est
+  // pas le compte de l'utilisateur, le reconnecter ne servirait à rien (SEQ-192).
+  if (e.includes('provider_not_configured')) return false; // PROVIDER_NOT_CONFIGURED
   return e.includes('credentials')
     || e.includes('account_disconnected')
     || e.includes('account not found')
     || e.includes('account is not connected')
     || e.includes('invalid credentials')
     || e.includes('unauthorized')
-    || (e.includes('401') && (e.includes('account') || e.includes('unipile')))
+    || (e.includes('401') && e.includes('account'))
     || e.includes('account_status')
     || e.includes('reconnect');
 }
@@ -4790,7 +4997,53 @@ function getNextBusinessHourSlot(timezone: string, startHour = 8, endHour = 19):
   }
 }
 
-async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string, apiKey?: string, dsn?: string): Promise<{ network_distance?: string; provider_id?: string } | null> {
+/**
+ * Compte interrogé par une lecture de fond hors de la boucle d'envoi
+ * (check_replies, check_wait_events, vérification de réponse d'une étape
+ * e-mail) : 'ok' s'il a le format du fournisseur (`acc_...`) ET s'il est relié
+ * à l'organisation de l'inscription (SEQ-010) ; 'outdated' (ancien format),
+ * 'unlinked' (compte d'une autre organisation ou dissocié) ou 'unknown'
+ * (lecture du rattachement impossible). Avec la clé globale du fournisseur, la
+ * boucle d'envoi fait ce contrôle pour son compte d'envoi : les lectures de
+ * fond le refont, aucun appel ne part sur un compte qui ne le passe pas.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function providerAccountUsable(supabase: any, orgId: string | null | undefined, accountId: string, cache: Map<string, boolean>): Promise<'ok' | 'outdated' | 'unlinked' | 'unknown'> {
+  if (!isV2AccountId(accountId)) return 'outdated';
+  const linked = await isSenderAccountLinked(supabase, orgId, accountId, cache);
+  if (linked === null) return 'unknown';
+  return linked ? 'ok' : 'unlinked';
+}
+
+/**
+ * Profil lu pour décider d'une condition ou d'un envoi. `network_distance` est
+ * le jeton du fournisseur (FIRST_DEGREE, SECOND_DEGREE, THIRD_DEGREE,
+ * OUT_OF_NETWORK, SELF), jamais DISTANCE_n ni un nombre : les comparaisons du
+ * moteur lisent ce jeton. `provider_id` est l'identifiant `id` du profil
+ * (l'ancien `provider_id` n'existe plus côté fournisseur).
+ */
+type ProfileInfo = {
+  network_distance?: string;
+  provider_id?: string;
+  public_identifier?: string;
+};
+
+/** Jeton de relation et identifiants d'un profil lu par le client partagé. */
+function profileInfoOf(profile: UserProfile): ProfileInfo {
+  // La distance est sous `specifics` ; la racine n'est lue qu'en tolérance.
+  const distance = toNetworkDegree(profile.specifics?.network_distance ?? profile.network_distance) ?? undefined;
+  return {
+    network_distance: distance,
+    provider_id: typeof profile.id === 'string' && profile.id !== '' ? profile.id : undefined,
+    public_identifier: typeof profile.public_identifier === 'string' && profile.public_identifier !== '' ? profile.public_identifier : undefined,
+  };
+}
+
+// Lecture du profil (GET /users/{id} du client partagé : silencieuse, elle
+// n'enregistre aucune visite ; la visite est l'étape profile_visit). null quand
+// la lecture échoue (jamais mis en cache) : l'appelant réessaie.
+async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string): Promise<ProfileInfo | null> {
   const cacheKey = `${accountId}::${profileId}`;
   const cached = profileInfoCache.get(cacheKey);
   if (cached) {
@@ -4798,62 +5051,54 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
     return cached;
   }
 
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
-
   try {
-    const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-    if (!r.ok) {
-      console.warn(`[getProfileInfo] API returned ${r.status} for profileId=${profileId}`);
-      return null;
-    }
-    const data = await r.json();
-    const rawDistance = data.network_distance;
-    console.log(`[getProfileInfo] profileId=${profileId} | network_distance=${rawDistance} | provider_id=${data.provider_id}`);
+    // Le client essaie le pseudo du profil (adresse du profil de l'inscription)
+    // puis l'identifiant, et passe à la forme suivante sur un refus « introuvable ».
+    const profile = await getProfile(accountId, { slug: profileId, profileUrl: enrollmentProfileUrl });
+    const info = profileInfoOf(profile);
+    console.log(`[getProfileInfo] profileId=${profileId} | network_distance=${info.network_distance} | provider_id=${info.provider_id}`);
 
-    // Normalize network_distance: some API modes return numeric (1) or different strings
-    if (rawDistance === 'FIRST_DEGREE' || rawDistance === 1 || rawDistance === '1' || rawDistance === 'DISTANCE_1') {
-      data.network_distance = 'FIRST_DEGREE';
-      profileInfoCache.set(cacheKey, data);
-      return data;
+    if (info.network_distance === 'FIRST_DEGREE') {
+      profileInfoCache.set(cacheKey, info);
+      return info;
     }
 
-    // If the profile ID is a Recruiter format (AE/AEM), the API may not return accurate network_distance.
-    // Try resolving via the profile slug for a more reliable check.
-    if (profileId.startsWith('AE') && rawDistance !== 'FIRST_DEGREE') {
+    // Identifiant Recruiter (AE/AEM) : la distance lue sur cet identifiant peut
+    // être inexacte. Relecture par le pseudo du profil pour un contrôle fiable.
+    if (profileId.startsWith('AE')) {
       let slug: string | null = null;
 
-      // Try extracting slug from enrollment profile URL
+      // Pseudo de l'adresse de profil de l'inscription
       if (enrollmentProfileUrl) {
         const match = enrollmentProfileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
         if (match) slug = match[1];
       }
 
-      // Try extracting slug from the recruiter profile's public_identifier
-      if (!slug) {
-        slug = data.public_identifier || data.public_id || null;
-      }
+      // Sinon l'identifiant public du profil Recruiter
+      if (!slug) slug = info.public_identifier || null;
 
       if (slug) {
         console.log(`[getProfileInfo] Recruiter ID detected, re-checking via slug: ${slug}`);
-        const slugRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-        if (slugRes.ok) {
-          const slugData = await slugRes.json();
-          const slugDistance = slugData.network_distance;
-          console.log(`[getProfileInfo] Slug resolution: network_distance=${slugDistance}`);
-          if (slugDistance === 'FIRST_DEGREE' || slugDistance === 1 || slugDistance === '1' || slugDistance === 'DISTANCE_1') {
-            slugData.network_distance = 'FIRST_DEGREE';
-            profileInfoCache.set(cacheKey, slugData);
-            return slugData;
+        try {
+          const slugInfo = profileInfoOf(await getProfile(accountId, slug));
+          console.log(`[getProfileInfo] Slug resolution: network_distance=${slugInfo.network_distance}`);
+          if (slugInfo.network_distance === 'FIRST_DEGREE') {
+            profileInfoCache.set(cacheKey, slugInfo);
+            return slugInfo;
           }
+        } catch (slugErr) {
+          // Refus net : on garde la première lecture. Panne passagère (délai,
+          // 429, 5xx) : pas de décision, l'appelant réessaie (SEQ-077).
+          if (isUnipileError(slugErr) && ['network', 'server', 'rate_limited', 'uncertain'].includes(slugErr.kind)) throw slugErr;
+          console.warn(`[getProfileInfo] Relecture par pseudo refusée pour ${slug}: ${describeForLog(slugErr)}`);
         }
       }
     }
 
-    profileInfoCache.set(cacheKey, data);
-    return data;
+    profileInfoCache.set(cacheKey, info);
+    return info;
   } catch (err) {
-    console.error(`[getProfileInfo] Error for profileId=${profileId}:`, err);
+    console.error(`[getProfileInfo] Error for profileId=${profileId}: ${describeForLog(err)}`);
     return null;
   }
 }
@@ -4861,55 +5106,46 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
 // deadline : échéance du contrôle de fond appelant ; faute de temps pour le
 // second appel, l'identifiant d'origine est rendu (l'appelant reteste
 // l'échéance et rend 'unknown').
-async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string, deadline?: number | null): Promise<string> {
-  // If it's a recruiter ID (AEM/AE), resolve to a slug or classic ID for chat API
+async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, deadline?: number | null): Promise<string> {
+  // Identifiant Recruiter (AEM/AE) : résolu en pseudo ou en identifiant classique pour les conversations
   if (!profileId.startsWith('AE')) return profileId;
 
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
-
   try {
-    // Try extracting slug from profile URL first
+    // Pseudo de l'adresse de profil d'abord
     let slug: string | null = null;
     if (profileUrl) {
       const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
       if (match && !match[1].startsWith('AE')) slug = match[1];
     }
 
-    // If no slug from URL, fetch profile to get public_identifier
+    // Sans pseudo dans l'adresse : lecture du profil pour son identifiant public
     if (!slug) {
-      const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      if (r.ok) {
-        const data = await r.json();
-        slug = data.public_identifier || data.public_id || null;
-        // Also try provider_id if it's a classic format
-        if (!slug && data.provider_id && !data.provider_id.startsWith('AE')) {
-          return data.provider_id;
-        }
+      const info = profileInfoOf(await getProfile(accountId, profileId));
+      slug = info.public_identifier || null;
+      // Identifiant du fournisseur au format classique, à défaut de pseudo
+      if (!slug && info.provider_id && !info.provider_id.startsWith('AE')) {
+        return info.provider_id;
       }
     }
 
     if (slug) {
       if (!providerCallAllowed(deadline, Date.now())) return profileId;
-      // Resolve slug to get the classic provider_id
-      const slugRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      if (slugRes.ok) {
-        const slugData = await slugRes.json();
-        if (slugData.provider_id && !slugData.provider_id.startsWith('AE')) {
-          console.log(`[resolveProfileIdForChat] Resolved ${profileId} -> ${slugData.provider_id} via slug ${slug}`);
-          // Persist resolved ID for future webhook matching
-          if (enrollmentId && supabase) {
-            await supabase.from('sequence_enrollments').update({ resolved_profile_id: slugData.provider_id }).eq('id', enrollmentId);
-          }
-          return slugData.provider_id;
+      // Le pseudo donne l'identifiant classique du profil
+      const slugInfo = profileInfoOf(await getProfile(accountId, slug));
+      if (slugInfo.provider_id && !slugInfo.provider_id.startsWith('AE')) {
+        console.log(`[resolveProfileIdForChat] Resolved ${profileId} -> ${slugInfo.provider_id} via slug ${slug}`);
+        // Identifiant résolu gardé pour la correspondance des webhooks
+        if (enrollmentId && supabase) {
+          await supabase.from('sequence_enrollments').update({ resolved_profile_id: slugInfo.provider_id }).eq('id', enrollmentId);
         }
+        return slugInfo.provider_id;
       }
-      // Use slug directly as fallback
+      // Pseudo utilisé tel quel en dernier recours
       console.log(`[resolveProfileIdForChat] Using slug ${slug} for ${profileId}`);
       return slug;
     }
   } catch (err) {
-    console.warn(`[resolveProfileIdForChat] Error resolving ${profileId}:`, err);
+    console.warn(`[resolveProfileIdForChat] Error resolving ${profileId}: ${describeForLog(err)}`);
   }
 
   return profileId;
@@ -4917,53 +5153,63 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
 
 /**
  * Le candidat a-t-il répondu après `afterDate` ? Trois issues (SEQ-078) :
- * 'replied' ; 'no_reply' (conversations lues sans réponse, ou aucun fil : 404) ;
+ * 'replied' ; 'no_reply' (conversations lues sans réponse, ou aucun fil) ;
  * 'unknown' (5xx, 429, délai dépassé, réponse illisible). Avant, tout échec
  * valait « pas de réponse » et la relance partait après la réponse.
- * HTTP 403 : le candidat a bloqué le compte. L'inscription encore active passe
+ * Refus 403 : le candidat a bloqué le compte. L'inscription encore active passe
  * en pause 'blocked_by_candidate' (SEQ-121) ; ses étapes en attente sont
  * gardées (contrat §1 : une pause ne les touche pas) et l'issue est
  * 'unknown' : rien n'est envoyé.
+ * Aucun fil avec ce candidat : liste vide (200) seulement. Un refus « introuvable »
+ * ou « invalide » (candidat non reconnu) est un doute : issue 'unknown'. Un 403 ne
+ * met en pause que s'il est de famille 'forbidden' (pas un compte limité).
  * deadline : échéance du contrôle de fond appelant (check_replies,
  * check_wait_events). La vérification enchaîne jusqu'à six appels au
  * fournisseur ; aucun ne part sans le temps de le terminer, l'issue est alors
  * 'unknown' (REV engine-conditions-channels-11). Sans échéance : inchangé.
  */
 // deno-lint-ignore no-explicit-any
-async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string, deadline?: number | null): Promise<ReplyCheckState> {
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, deadline?: number | null): Promise<ReplyCheckState> {
   const afterTimestamp = new Date(afterDate).getTime();
   if (!Number.isFinite(afterTimestamp)) return 'unknown';
 
-  // Conversations d'un identifiant ; status null = délai dépassé ou réseau.
-  const lookup = async (id: string): Promise<{ status: number | null; chats: { id: string }[] }> => {
+  // Conversations d'un identifiant (une par boîte du compte au plus) ;
+  // status null = délai dépassé, réseau ou référence non reconnue, sinon le code
+  // HTTP du fournisseur. API v2 : « aucun fil » est une liste vide (200) ; un
+  // refus « introuvable » ou « invalide » du client (toutes les formes de la
+  // référence refusées) veut dire que le candidat n'a pas été reconnu, pas qu'il
+  // n'a pas écrit : c'est un doute, jamais « pas de réponse » (la relance
+  // partirait après une vraie réponse).
+  const lookup = async (id: string): Promise<{ status: number | null; kind: ErrorKind | null; chats: { id: string }[] }> => {
     try {
-      const res = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${encodeURIComponent(id)}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      if (!res.ok) return { status: res.status, chats: [] };
-      const body = await res.json();
-      return { status: res.status, chats: Array.isArray(body?.items) ? body.items : [] };
+      const entries = await getChatForUser(accountId, { slug: id, profileUrl: profileUrl ?? undefined });
+      return { status: 200, kind: null, chats: entries.map((e) => ({ id: e.chat_id })) };
     } catch (e) {
-      console.warn(`[checkForReplyAfterDate] conversations illisibles pour ${id}:`, e);
-      return { status: null, chats: [] };
+      console.warn(`[checkForReplyAfterDate] conversations illisibles pour ${id}: ${describeForLog(e)}`);
+      if (!isUnipileError(e)) return { status: null, kind: null, chats: [] };
+      const notRecognised = e.kind === 'not_found' || e.kind === 'validation';
+      return { status: notRecognised ? null : e.status, kind: e.kind, chats: [] };
     }
   };
   const stateOf = async (r: { status: number | null; chats: { id: string }[] }): Promise<ReplyCheckState> => {
     const outcome = chatLookupOutcome(r.status);
-    if (outcome === 'ok') return await checkMessagesForReply(r.chats, afterTimestamp, effectiveApiKey, effectiveDsn, deadline);
+    if (outcome === 'ok') return await checkMessagesForReply(accountId, r.chats, afterTimestamp, deadline);
     return outcome === 'no_thread' ? 'no_reply' : 'unknown';
   };
   const outOfTime = () => !providerCallAllowed(deadline, Date.now());
 
   try {
     if (outOfTime()) return 'unknown';
-    // Resolve recruiter IDs to a format the chat API understands
-    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase, effectiveApiKey, effectiveDsn, deadline);
+    // Identifiant Recruiter résolu en un format que les conversations acceptent
+    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase, deadline);
     if (outOfTime()) return 'unknown';
     const primary = await lookup(resolvedId);
-    if (primary.status === 403) {
+    // Seul un refus « interdit » sans motif de compte dit que le candidat a
+    // bloqué le compte ; un 403 qui parle d'un compte déconnecté, limité ou
+    // restreint (kind account_*, provider_limit) est un doute, sans pause.
+    if (primary.status === 403 && primary.kind === 'forbidden') {
       if (enrollmentId && supabase) {
-        console.warn(`[checkForReplyAfterDate] Compte bloqué par le candidat (HTTP 403) : inscription ${enrollmentId} mise en pause`);
+        console.warn(`[checkForReplyAfterDate] Compte bloqué par le candidat (refus 403) : inscription ${enrollmentId} mise en pause`);
         const { error: pauseErr } = await supabase.from('sequence_enrollments').update({
           status: 'paused',
           pause_reason: 'blocked_by_candidate',
@@ -4980,115 +5226,45 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
     if (outOfTime()) return 'unknown';
     return combineReplyStates([primaryState, await stateOf(await lookup(profileId))]);
   } catch (e) {
-    console.warn('[checkForReplyAfterDate] vérification impossible:', e);
+    console.warn(`[checkForReplyAfterDate] vérification impossible: ${describeForLog(e)}`);
     return 'unknown';
   }
-}
-
-interface ChatAttendeeInfo {
-  ownIds: Set<string>;
-  otherIds: Set<string>;
-  resolved: boolean;
-}
-
-async function resolveAttendeeIds(chatId: string, apiKey?: string, dsn?: string): Promise<ChatAttendeeInfo> {
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
-  const result: ChatAttendeeInfo = { ownIds: new Set(['self']), otherIds: new Set(), resolved: false };
-  try {
-    const attRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': effectiveApiKey } });
-    if (!attRes.ok) {
-      console.warn(`[checkReplies] Attendees endpoint failed for chat ${chatId}: ${attRes.status}`);
-      return result;
-    }
-    const attData = await attRes.json();
-    const attendees = attData.items || attData || [];
-    const list = Array.isArray(attendees) ? attendees : [];
-    
-    // Log full attendee data for debugging
-    // deno-lint-ignore no-explicit-any
-    console.log(`[checkReplies] Chat ${chatId} attendees (${list.length}):`, list.map((a: any) => ({ 
-      id: a.id, provider_id: a.provider_id, is_self: a.is_self, role: a.role, display_name: a.display_name 
-    })));
-    
-    // deno-lint-ignore no-explicit-any
-    for (const att of list) {
-      const ids = [att.id, att.provider_id, att.attendee_id].filter(Boolean);
-      // is_self can be true/false/0/1/undefined — normalize carefully
-      const isSelf = att.is_self === true || att.is_self === 1 || att.role === 'self';
-      const isOther = att.is_self === false || att.is_self === 0;
-      if (isSelf) {
-        ids.forEach((id: string) => result.ownIds.add(id));
-      } else if (isOther) {
-        ids.forEach((id: string) => result.otherIds.add(id));
-      } else {
-        // Unknown — don't classify
-        console.log(`[checkReplies] Attendee ${att.id} has ambiguous is_self=${att.is_self}`);
-      }
-    }
-    
-    // In a 1-to-1 chat with 2 attendees, if we can't find is_self,
-    // but we know our account, we can infer: the attendee that ISN'T us is the other person.
-    // If NO attendee has is_self, use a different approach:
-    // Any message from an attendee in otherIds is a genuine reply.
-    // Any message from an attendee NOT in otherIds AND NOT in ownIds is ambiguous.
-    result.resolved = list.length > 0;
-    
-    console.log(`[checkReplies] Resolved for chat ${chatId}: ownIds=${JSON.stringify(Array.from(result.ownIds))}, otherIds=${JSON.stringify(Array.from(result.otherIds))}`);
-  } catch (e) {
-    console.warn(`[checkReplies] Failed to resolve attendees for chat ${chatId}:`, e);
-  }
-  return result;
 }
 
 // 'unknown' quand une conversation n'a pas pu être lue (délai, 5xx), qu'un
 // message postérieur à la référence reste d'expéditeur indéterminé, ou que
 // l'échéance est atteinte, et qu'aucune réponse n'a été trouvée ailleurs
 // (SEQ-078, REV engine-conditions-channels-1 et -11).
-async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number, apiKey?: string, dsn?: string, deadline?: number | null): Promise<ReplyCheckState> {
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+// Les messages du fournisseur portent toujours `is_sender` : l'expéditeur se lit
+// sur le message, les participants de la conversation ne sont plus relus. Ne
+// comptent pas comme une réponse les lignes d'événement (appel manqué,
+// participant ajouté...), masquées, supprimées, ni les invitations et les
+// refus ou acceptations d'InMail (isCandidateReplyCandidate, même règle que la
+// réception des messages par webhook). Un message sans `is_sender` reste
+// d'expéditeur indéterminé : issue 'unknown'.
+async function checkMessagesForReply(accountId: string, chats: { id: string }[], afterTimestamp: number, deadline?: number | null): Promise<ReplyCheckState> {
   let unreadable = false;
   for (const chat of chats) {
     if (!providerCallAllowed(deadline, Date.now())) return 'unknown';
-    // deno-lint-ignore no-explicit-any
-    let messages: any[];
+    let messages: KonektMessage[];
     try {
-      const msgRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      if (!msgRes.ok) {
-        if (chatLookupOutcome(msgRes.status) === 'unknown') unreadable = true;
-        continue;
-      }
-      const body = await msgRes.json();
-      messages = Array.isArray(body?.items) ? body.items : [];
+      const page = await listMessages(accountId, chat.id, { limit: 10 });
+      messages = page.items.map((raw) => toKonektMessage(raw, { accountId, chatId: chat.id }));
     } catch (e) {
-      console.warn(`[checkReplies] messages illisibles pour la conversation ${chat.id}:`, e);
-      unreadable = true;
+      console.warn(`[checkReplies] messages illisibles pour la conversation ${chat.id}: ${describeForLog(e)}`);
+      // Conversation introuvable : aucun fil à lire, pas un doute.
+      if (!(isUnipileError(e) && chatLookupOutcome(e.status) === 'no_thread')) unreadable = true;
       continue;
     }
-    // Expéditeur lu d'abord sur `is_sender` (champ du fournisseur, lu par tous
-    // les autres lecteurs de ce point d'accès), puis `is_sender_self`, puis les
-    // participants en repli. Avant, seul is_sender_self (absent de cette
-    // réponse) était lu : tout reposait sur les participants, et leur lecture
-    // en échec écartait chaque message, réponse du candidat comprise (« pas de
-    // réponse », la relance partait). Les participants ne sont plus lus que si
-    // un message postérieur à la référence n'a aucun indicateur.
-    let attendeeInfo: ChatAttendeeInfo = unresolvedAttendees();
-    if (needsAttendeeResolution(messages, afterTimestamp)) {
-      if (!providerCallAllowed(deadline, Date.now())) return 'unknown';
-      attendeeInfo = await resolveAttendeeIds(chat.id, effectiveApiKey, effectiveDsn);
-    }
-    const verdict = replyStateOfMessages(messages, afterTimestamp, attendeeInfo);
+    const verdict = replyStateOfMessages(messages.filter((m) => isCandidateReplyCandidate(m)), afterTimestamp, unresolvedAttendees());
     if (verdict.state === 'replied') {
-      // deno-lint-ignore no-explicit-any
-      console.log(`[checkReplies] Found ${verdict.replies.length} genuine reply(ies) in chat ${chat.id}:`, verdict.replies.map((m: any) => ({
-        id: m.id, is_sender: m.is_sender, is_sender_self: m.is_sender_self, sender_attendee_id: m.sender_attendee_id, type: m.type,
-        timestamp: m.timestamp || m.date
+      console.log(`[checkReplies] Found ${verdict.replies.length} genuine reply(ies) in chat ${chat.id}:`, verdict.replies.map((m) => ({
+        id: m.id, is_sender: m.is_sender, sender_id: m.sender_id, type: m.message_type, timestamp: m.timestamp,
       })));
       return 'replied';
     }
     if (verdict.state === 'unknown') {
-      // Expéditeur indéterminé (participants illisibles) : on ne conclut pas
+      // Expéditeur indéterminé (message sans `is_sender`) : on ne conclut pas
       // à l'absence de réponse.
       console.warn(`[checkReplies] ${verdict.undetermined} message(s) d'expéditeur indéterminé dans la conversation ${chat.id} : issue inconnue`);
       unreadable = true;
@@ -5100,9 +5276,9 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
 // Réponse du candidat postérieure à `afterDate` (date de référence de
 // loadReplyReferenceDate : dernier envoi visible, SEQ-084 ; repli 72 h).
 // deadline : échéance du contrôle de fond appelant (voir checkForReplyAfterDate).
-async function checkHasProspectReplied(accountId: string, profileId: string, apiKey?: string, dsn?: string, afterDate?: string | null, deadline?: number | null): Promise<ReplyCheckState> {
+async function checkHasProspectReplied(accountId: string, profileId: string, afterDate?: string | null, deadline?: number | null): Promise<ReplyCheckState> {
   const since = afterDate || replyReferenceDate(null, null, Date.now());
-  return await checkForReplyAfterDate(accountId, profileId, since, undefined, undefined, undefined, apiKey, dsn, deadline);
+  return await checkForReplyAfterDate(accountId, profileId, since, undefined, undefined, undefined, deadline);
 }
 
 /**
@@ -5149,9 +5325,7 @@ interface QuotaCheckResult {
 }
 
 // deno-lint-ignore no-explicit-any
-async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string, userId?: string | null, organizationId?: string | null, candidate?: { enrollment: Record<string, unknown>; profileId?: string | null } | null): Promise<QuotaCheckResult> {
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, userId?: string | null, organizationId?: string | null, candidate?: { enrollment: Record<string, unknown>; profileId?: string | null } | null): Promise<QuotaCheckResult> {
   try {
     // 0. InMail et smart_message vers une relation directe partent en message
     //    direct gratuit (même règle que executeStepAction, lecture du profil en
@@ -5164,24 +5338,32 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
       const rules = await import('../_shared/sequence-send-rules.ts');
       const candidateProfileId = (candidate.profileId || candidate.enrollment.profile_id || '') as string;
       const profile = candidateProfileId
-        ? await readProfileForSend(supabase, candidate.enrollment, accountId, candidateProfileId, apiKey, dsn)
+        ? await readProfileForSend(supabase, candidate.enrollment, accountId, candidateProfileId)
         : null;
       const firstDegree = rules.isFirstDegreeCandidate(candidate.enrollment, profile);
       ledgerActionType = rules.sendLedgerActionType(actionType, firstDegree);
       checkInMailBalance = !firstDegree;
     }
 
-    // 1. Solde InMail (Unipile) D'ABORD — fail-CLOSED, AVANT d'écrire au ledger
-    //    (un balance KO ne doit pas consommer un slot quota inutilement).
+    // 1. Solde InMail (fournisseur) D'ABORD — fail-CLOSED, AVANT d'écrire au
+    //    ledger (un balance KO ne doit pas consommer un slot quota inutilement).
+    //    Les crédits sont lus par licence (classic, recruiter, sales_navigator) ;
+    //    une licence que le compte n'a pas est absente, pas à zéro. L'InMail part
+    //    par la première licence qui a des crédits (pickInmailProduct : recruiter,
+    //    puis sales navigator, puis classic), la même règle que l'envoi
+    //    (executeStepAction) : un candidat qui passe ce contrôle a une licence
+    //    pour son InMail.
     if (checkInMailBalance) {
-      const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      if (!r.ok) {
-        console.warn(`[process] InMail balance check HTTP ${r.status} for account ${accountId}`);
+      let credits: Awaited<ReturnType<typeof getInmailCredits>>;
+      try {
+        credits = await getInmailCredits(accountId);
+      } catch (balanceErr) {
+        console.warn(`[process] InMail balance check failed for account ${accountId}: ${describeForLog(balanceErr)}`);
         return { allowed: false, reason: 'Contrôle des crédits InMail momentanément indisponible, nouvel essai prochainement', scope: 'infrastructure', ledgerActionType };
       }
-      const b = await r.json();
-      const total = (b.recruiter || 0) + (b.premium || 0) + (b.sales_navigator || 0);
-      if (total <= 0) return { allowed: false, reason: 'Crédits InMail épuisés', scope: 'inmail_credits', ledgerActionType };
+      if (pickInmailProduct({ premium: credits.classic, recruiter: credits.recruiter, sales_navigator: credits.sales_navigator }) === null) {
+        return { allowed: false, reason: 'Crédits InMail épuisés', scope: 'inmail_credits', ledgerActionType };
+      }
     }
 
     // 2. Gate ledger unifié (pause fournisseur + cap hebdo invitations + cap
@@ -5254,12 +5436,12 @@ async function releaseLedgerSlot(supabase: any, slot: LedgerSlot): Promise<void>
 // (mode Visuel, assistant) attend l'événement de son type au lieu d'être
 // franchie aussitôt (SEQ-031).
 // deno-lint-ignore no-explicit-any
-async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string, supabaseClient?: any, enrollmentId?: string, enrollment?: any, conditionValue?: string, apiKey?: string, dsn?: string, stepActionType?: string | null): Promise<boolean | 'wait' | 'retry'> {
+async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string, supabaseClient?: any, enrollmentId?: string, enrollment?: any, conditionValue?: string, stepActionType?: string | null): Promise<boolean | 'wait' | 'retry'> {
   const waitEvent = implicitWaitEvent({ wait_for_event: waitForEvent, action_type: stepActionType });
   const eff = waitEvent ? 'wait_for_event' : (conditionType || 'always');
   // Réponse postérieure au dernier envoi visible de l'inscription (SEQ-084).
   const replyState = async (): Promise<ReplyCheckState> => checkHasProspectReplied(
-    accountId, profileId, apiKey, dsn, await loadReplyReferenceDate(supabaseClient, enrollmentId, enrollment),
+    accountId, profileId, await loadReplyReferenceDate(supabaseClient, enrollmentId, enrollment),
   );
   // SEQ-102 : lecture du profil journalisée au ledger ('profile_view', sans
   // plafond) quand elle part vraiment chez LinkedIn (hors cache), via
@@ -5268,8 +5450,8 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
     ? readProfileForSend(supabaseClient, {
       profile_url: profileUrl,
       organization_id: enrollment?.organization_id ?? enrollment?.sequence?.organization_id ?? null,
-    }, accountId, profileId, apiKey, dsn)
-    : getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn);
+    }, accountId, profileId)
+    : getProfileInfo(accountId, profileId, profileUrl);
   // Connexion déjà connue en base (webhook d'acceptation, vérification de
   // connexion, polling) : une attente de connexion est franchie sans relire le
   // profil. Sinon une attente réarmée par la phase 1 de check_wait_events
@@ -5280,8 +5462,8 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
     case 'always': return true;
     // null quand la lecture échoue (jamais mis en cache) : ce n'est pas
     // « non connecté », on réessaie plus tard.
-    case 'if_connected': { const p = await readProfile(); if (!p) return 'retry'; return p.network_distance === 'FIRST_DEGREE'; }
-    case 'if_not_connected': { const p = await readProfile(); if (!p) return 'retry'; return p.network_distance !== 'FIRST_DEGREE'; }
+    case 'if_connected': { const p = await readProfile(); if (!p) return 'retry'; return effectiveNetworkDistance(enrollment ?? {}, p) === 'FIRST_DEGREE'; }
+    case 'if_not_connected': { const p = await readProfile(); if (!p) return 'retry'; return effectiveNetworkDistance(enrollment ?? {}, p) !== 'FIRST_DEGREE'; }
     case 'if_no_response': {
       const state = await replyState();
       if (state === 'unknown') return 'retry';
@@ -5893,10 +6075,15 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
  * Refonte mission, lot 0b-2a : chatId (conversation où le message est parti)
  * et messageId (identifiant rendu par l'envoi), pour le lien
  * conversation–mission et la reconnaissance de l'écho dans le webhook.
+ * API v2 : errorKind est la famille d'erreur du client partagé (ErrorKind) quand
+ * le fournisseur a refusé ou n'a pas répondu clairement. La boucle du moteur la
+ * lit (providerKindOf) avant tout texte : compte limité, compte à reconnecter,
+ * limite du réseau (pause du compte pour la journée), envoi incertain.
  */
 interface StepActionResult {
   success: boolean;
   error?: string;
+  errorKind?: ErrorKind;
   subject?: string;
   message?: string;
   needsInMail?: boolean;
@@ -5915,9 +6102,9 @@ interface StepActionResult {
  * (SEQ-102) mais ne doivent jamais bloquer l'envoi qu'elles préparent.
  */
 // deno-lint-ignore no-explicit-any
-async function readProfileForSend(supabase: any, enrollment: Record<string, unknown>, accountId: string, profileId: string, apiKey?: string, dsn?: string): Promise<Record<string, unknown> | null> {
+async function readProfileForSend(supabase: any, enrollment: Record<string, unknown>, accountId: string, profileId: string): Promise<Record<string, unknown> | null> {
   const wasCached = profileInfoCache.has(`${accountId}::${profileId}`);
-  const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined, apiKey, dsn);
+  const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
   if (!wasCached && accountId) {
     const { logLinkedInRead } = await import('../_shared/linkedin-quotas.ts');
     await logLinkedInRead(supabase, {
@@ -5928,15 +6115,112 @@ async function readProfileForSend(supabase: any, enrollment: Record<string, unkn
   }
   // getProfileInfo renvoie null (jamais mis en cache) quand la lecture échoue.
   if (!p || typeof p !== 'object') return null;
-  const rec = p as Record<string, unknown>;
-  if (rec.read_error || rec.error) return null;
-  return rec;
+  return p as Record<string, unknown>;
+}
+
+/**
+ * Référence du candidat pour le client partagé : l'identifiant de l'inscription
+ * (identifiant fournisseur ou pseudo), l'adresse de profil en second recours. Le
+ * client essaie les formes dans l'ordre et ne passe à la suivante que sur un
+ * refus « introuvable » ou « invalide » (rien n'a été fait).
+ */
+function providerUserRef(enrollment: Record<string, unknown>, profileId: string, classicId?: string | null): UserRefInput {
+  const url = typeof enrollment.profile_url === 'string' && enrollment.profile_url.trim() !== '' ? enrollment.profile_url : undefined;
+  return { slug: profileId, profileUrl: url, providerId: classicId || undefined };
+}
+
+/**
+ * Identifiant fournisseur classique (ACo/ADo) du candidat, quand il est connu :
+ * celui déjà résolu sur l'inscription, sinon celui que la lecture du profil
+ * vient de rendre. Un identifiant Recruiter (AE) n'en est pas un : le
+ * fournisseur ne le documente pas pour les écritures, il ne passe jamais devant.
+ * Donné en tête de la référence d'une invitation ou d'une nouvelle conversation
+ * (les écritures essaient l'identifiant fournisseur avant le pseudo), là où la
+ * v1 envoyait après avoir résolu l'identifiant Recruiter en identifiant classique.
+ */
+function classicProviderId(enrollment: Record<string, unknown>, readId?: unknown): string | null {
+  for (const candidate of [enrollment.resolved_profile_id, readId]) {
+    if (typeof candidate === 'string' && candidate.trim() !== '' && !candidate.startsWith('AE')) return candidate.trim();
+  }
+  return null;
+}
+
+// Refus d'un message dans la conversation existante qui prouvent qu'elle est
+// inutilisable et que rien n'est parti (avec allowsNewChatFallback sur le code
+// d'état) : seuls ceux-là autorisent un envoi dans une nouvelle conversation.
+const CHAT_FALLBACK_KINDS: readonly ErrorKind[] = ['validation', 'not_found', 'forbidden'];
+
+/**
+ * Conversation à réutiliser parmi celles que le fournisseur connaît avec le
+ * candidat (au plus une par boîte) : la première qui a un historique, sinon la
+ * première (« conversation unique », comme avant).
+ */
+function pickExistingChat(entries: readonly ChatLookupEntry[]): ChatLookupEntry | null {
+  return entries.find((entry) => entry.has_history !== false) ?? entries[0] ?? null;
+}
+
+/**
+ * Échec d'un envoi LinkedIn ou WhatsApp refusé ou d'issue inconnue. Rien n'est
+ * enregistré comme envoyé. Le texte rendu est neutre (code d'état seulement) :
+ * le corps du fournisseur reste dans les journaux. Les préfixes
+ * `linkedin_send_failed_`, `whatsapp_send_failed_` et `send_uncertain` sont lus
+ * par l'écran des erreurs de séquence et par isUncertainSendError.
+ */
+function failedSendResult(
+  outcome: Exclude<SendOutcome, { outcome: 'sent' }>,
+  channel: 'LinkedIn' | 'WhatsApp',
+  needsInMail?: boolean,
+): StepActionResult {
+  const err = outcome.error;
+  console.error(`[executeStepAction] ${channel} ${outcome.outcome === 'uncertain' ? 'envoi d\'issue inconnue' : 'envoi refusé'} : ${describeForLog(err)}`);
+  if (outcome.outcome === 'uncertain') {
+    // Délai, 5xx ou réponse illisible : le message a pu partir, aucune relance.
+    return { success: false, error: sendUncertainError(channel), errorKind: 'uncertain', needsInMail };
+  }
+  const prefix = channel === 'LinkedIn' ? 'linkedin_send_failed' : 'whatsapp_send_failed';
+  const code = err.status !== null ? `${prefix}_${err.status}` : prefix;
+  // Crédits InMail refusés par le réseau : le texte le dit pour que le report
+  // vise le mois suivant (rateLimitDeferral, isInMailCreditsError).
+  const creditsRefused = needsInMail === true && outcome.kind === 'provider_limit' && /credit/.test(probeText(err.debug.body));
+  return { success: false, error: `${code}: ${creditsRefused ? 'Crédits InMail épuisés' : err.message}`, errorKind: outcome.kind, needsInMail };
+}
+
+/**
+ * Nom affiché du membre qui envoie : il signe un InMail Recruiter. null quand
+ * il n'est pas renseigné ou illisible (même source que la file InMail).
+ */
+// deno-lint-ignore no-explicit-any
+async function senderSignatureFor(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>): Promise<string | null> {
+  try {
+    const { resolveSequenceSenderUserId } = await import('../_shared/sequence-sender.ts');
+    const userId = await resolveSequenceSenderUserId(supabase, enrollment, step as { sender_id?: string | null; action_type?: string | null; step_channel?: string | null });
+    if (!userId) return null;
+    const { data, error } = await supabase.from('profiles').select('display_name').eq('user_id', userId).maybeSingle();
+    if (error) {
+      console.warn('[executeStepAction] nom de signature illisible:', error.message);
+      return null;
+    }
+    const name = data?.display_name;
+    return typeof name === 'string' && name.trim() !== '' ? name.trim() : null;
+  } catch (e) {
+    console.warn('[executeStepAction] nom de signature illisible:', e);
+    return null;
+  }
+}
+
+/**
+ * Famille d'erreur à transmettre à la boucle pour une lecture ANTÉRIEURE à
+ * l'envoi (crédits InMail). Seuls un compte à reconnecter ou limité comptent :
+ * une limite d'API (429) sur cette lecture ne doit pas passer pour une limite
+ * d'envoi, l'erreur reste relançable par son préfixe.
+ */
+function preSendErrorKind(err: unknown): ErrorKind | undefined {
+  if (!isUnipileError(err)) return undefined;
+  return err.kind === 'account_disconnected' || err.kind === 'account_degraded' ? err.kind : undefined;
 }
 
 // deno-lint-ignore no-explicit-any
-async function executeStepAction(actionType: string, enrollment: Record<string, unknown>, step: Record<string, unknown>, execution: Record<string, unknown>, supabase: any, apiKey?: string, dsn?: string): Promise<StepActionResult> {
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+async function executeStepAction(actionType: string, enrollment: Record<string, unknown>, step: Record<string, unknown>, execution: Record<string, unknown>, supabase: any): Promise<StepActionResult> {
   const rules = await import('../_shared/sequence-send-rules.ts');
   try {
     // Use assigned_sender_id (from rotation) if available, otherwise original account_id
@@ -6010,13 +6294,13 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
       case 'wait_connection': return { success: false, error: '__WAIT_EVENT__' };
       case 'check_connection': {
         // Étape déjà journalisée en 'profile_view' par le gate : lecture directe.
-        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined, effectiveApiKey, effectiveDsn);
-        if (!p || (p as Record<string, unknown>).read_error) {
+        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
+        if (!p) {
           // Lecture en échec (délai, 429, 5xx) : ce n'est pas « non connecté ».
           // Ni écriture de connection_status ni branche : nouvel essai (SEQ-077).
           return { success: false, error: 'profile_read_unavailable: Lecture du profil LinkedIn momentanément indisponible, nouvel essai plus tard.' };
         }
-        const isConnected = rules.normalizeNetworkDistance(p.network_distance) === 'FIRST_DEGREE';
+        const isConnected = rules.effectiveNetworkDistance(enrollment, p) === 'FIRST_DEGREE';
         await supabase.from('sequence_enrollments').update({ connection_status: isConnected ? 'connected' : 'not_connected' }).eq('id', enrollment.id);
         const nextId = isConnected ? step.if_true_goto_step : step.if_false_goto_step;
         if (nextId) {
@@ -6029,179 +6313,175 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         return { success: true };
       }
       case 'profile_visit': {
-        // encodeURIComponent : sécurise les slugs avec caractères spéciaux (espaces,
-        // accents, /, ?). Sans ça, Unipile reçoit une URL malformée → erreur silencieuse.
-        const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(profileId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-        if (r.ok) {
-          await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
-          return { success: true };
+        // API v2 : lire un profil ne compte PLUS comme une visite. La visite est un
+        // appel explicite, avec le jeton rendu par la lecture du profil
+        // (specifics.notify_visit_token) : deux appels, la lecture (journalisée au
+        // ledger) puis la visite. Sans jeton aucune visite n'est possible : l'étape
+        // est sautée avec sa raison, jamais comptée comme faite.
+        const { logLinkedInRead } = await import('../_shared/linkedin-quotas.ts');
+        await logLinkedInRead(supabase, { accountId, organizationId: (enrollment.organization_id as string | null) ?? null, source: 'sequence_profile_read' });
+        try {
+          const visitToken = notifyVisitToken(await getProfile(accountId, providerUserRef(enrollment, profileId)));
+          if (!visitToken) {
+            console.warn(`[profile_visit] aucun jeton de visite pour ${String(enrollment.profile_name ?? enrollment.id)} : étape sautée`);
+            return { success: false, error: '__SKIP_UNSUPPORTED__', skipReason: "Visite impossible : LinkedIn n'a pas fourni de jeton de visite pour ce profil" };
+          }
+          if (await visitProfile(accountId, visitToken)) {
+            await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
+            return { success: true };
+          }
+          // Appel accepté mais visite non confirmée : relançable, jamais comptée.
+          return { success: false, error: 'Visite de profil non confirmée par LinkedIn : nouvel essai plus tard.', errorKind: 'server' };
+        } catch (visitErr) {
+          if (!isUnipileError(visitErr)) throw visitErr;
+          console.error(`[profile_visit] ${describeForLog(visitErr)}`);
+          // Préfixe `Profile visit <état>` lu par l'écran des erreurs de séquence.
+          return { success: false, error: visitErr.status !== null ? `Profile visit ${visitErr.status}: ${visitErr.message}` : visitErr.message, errorKind: visitErr.kind };
         }
-        const errBody = await r.text().catch(() => '');
-        return { success: false, error: `Profile visit ${r.status}: ${errBody || r.statusText}` };
       }
       case 'smart_message': case 'inmail': case 'message': {
         // Même règle de relation que le gate quota et la rédaction IA (lecture
         // en cache par compte et profil, degré enregistré en repli).
-        const p = await readProfileForSend(supabase, enrollment, accountId, profileId, effectiveApiKey, effectiveDsn);
+        const p = await readProfileForSend(supabase, enrollment, accountId, profileId);
         const isConnected = rules.isFirstDegreeCandidate(enrollment, p);
         const needsInMail = rules.sendsAsInMail(actionType, isConnected);
 
         // Un InMail part toujours avec un objet (décision produit : aucun objet
         // inventé). Report avec la raison, l'étape peut être complétée entre-temps.
+        // API v2 : l'InMail Classic n'a pas de champ objet (le client ne l'envoie
+        // pas), Recruiter et Sales Navigator l'exigent.
         if (needsInMail && !subj.trim()) {
           return { success: false, error: "inmail_subject_missing: Objet manquant pour un InMail : ajoutez un objet à l'étape.", needsInMail };
         }
 
-        // Resolve LinkedIn API mode: recruiter vs sales_navigator vs classic
-        // Based on which subscription has InMail credits available
-        let linkedinApiMode = 'classic';
+        // Licence de l'InMail, choisie à la création de la conversation d'après les
+        // crédits : Recruiter, puis Sales Navigator, puis Classic (même règle que
+        // le gate quota, pickInmailProduct). Chaque licence a sa forme d'InMail
+        // (planInmail : objet, et signature pour Recruiter).
+        let sendLicence: LinkedInLicence = 'classic';
+        let inmailSpec: InmailSpec | undefined;
         if (needsInMail) {
+          let credits: Awaited<ReturnType<typeof getInmailCredits>>;
           try {
-            const balRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-            if (balRes.ok) {
-              const bal = await balRes.json();
-              if ((bal.recruiter || 0) > 0) linkedinApiMode = 'recruiter';
-              else if ((bal.sales_navigator || 0) > 0) linkedinApiMode = 'sales_navigator';
-              else if ((bal.premium || 0) > 0) linkedinApiMode = 'classic';
-              else {
-                // Aucun crédit (le solde a baissé depuis le gate) : plus de pause
-                // muette de l'inscription (SEQ-121). Erreur relançable : au cycle
-                // suivant, le gate lit le même solde nul et passe l'exécution en
-                // 'quota_blocked' jusqu'au lendemain.
-                return { success: false, error: "inmail_credits_exhausted: Crédits InMail épuisés : l'envoi reprendra quand des crédits seront disponibles.", needsInMail };
-              }
-            } else {
-              // HTTP non-OK sur balance check : fail-CLOSED, report. Le code HTTP
-              // reste dans les logs : « 429 » dans l'erreur la ferait passer pour
-              // une limite d'envoi (report au mois suivant).
-              console.warn(`[executeStepAction] InMail balance check HTTP ${balRes.status} for account ${accountId}`);
-              return { success: false, error: 'inmail_balance_unavailable: Contrôle des crédits InMail momentanément indisponible, nouvel essai plus tard.', needsInMail };
-            }
-          } catch (e) {
-            // Erreur réseau/timeout : fail-CLOSED + retry naturel via process-sequences
-            console.warn(`[executeStepAction] InMail balance check error for account ${accountId}:`, e);
-            return { success: false, error: 'inmail_balance_unavailable: Contrôle des crédits InMail momentanément indisponible, nouvel essai plus tard.', needsInMail };
+            credits = await getInmailCredits(accountId);
+          } catch (balanceErr) {
+            // Erreur réseau/timeout/refus : fail-CLOSED + retry naturel via
+            // process-sequences. Le code d'état reste dans les journaux : « 429 »
+            // dans l'erreur la ferait passer pour une limite d'envoi.
+            console.warn(`[executeStepAction] InMail balance check error for account ${accountId}: ${describeForLog(balanceErr)}`);
+            return { success: false, error: 'inmail_balance_unavailable: Contrôle des crédits InMail momentanément indisponible, nouvel essai plus tard.', errorKind: preSendErrorKind(balanceErr), needsInMail };
           }
+          const product = pickInmailProduct({ premium: credits.classic, recruiter: credits.recruiter, sales_navigator: credits.sales_navigator });
+          if (product === null) {
+            // Aucun crédit (le solde a baissé depuis le gate) : plus de pause
+            // muette de l'inscription (SEQ-121). Erreur relançable : au cycle
+            // suivant, le gate lit le même solde nul et passe l'exécution en
+            // 'quota_blocked' jusqu'au lendemain.
+            return { success: false, error: "inmail_credits_exhausted: Crédits InMail épuisés : l'envoi reprendra quand des crédits seront disponibles.", needsInMail };
+          }
+          sendLicence = product;
+          const plan = planInmail(sendLicence, {
+            subject: subj,
+            signature: sendLicence === 'recruiter' ? await senderSignatureFor(supabase, enrollment, step) : null,
+          });
+          if (!plan.ok) {
+            // Rien n'est parti. Même code que l'objet manquant : relançable une
+            // fois le profil complété, place du plafond rendue (NOT_SENT_ERROR_RE).
+            return {
+              success: false,
+              error: plan.reason === 'signature_missing'
+                ? "inmail_subject_missing: Votre nom n'est pas renseigné dans votre profil : il signe l'InMail Recruiter. Complétez votre profil."
+                : "inmail_subject_missing: Objet manquant pour un InMail : ajoutez un objet à l'étape.",
+              needsInMail,
+            };
+          }
+          inmailSpec = plan.spec;
         }
 
-        console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | isConnected=${isConnected} | needsInMail=${needsInMail} | apiMode=${linkedinApiMode}`);
+        console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | isConnected=${isConnected} | needsInMail=${needsInMail} | licence=${sendLicence}`);
         
         // *** SINGLE THREAD LOGIC ***
         // Try to find an existing chat with this candidate to avoid creating duplicate threads
         let existingChatId: string | null = null;
         try {
-          const resolvedId = (enrollment as any).resolved_profile_id || profileId;
-          const chatsRes = await fetchWithTimeout(
-            `${effectiveDsn}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`,
-            { headers: { 'X-API-KEY': effectiveApiKey } }
-          );
-          if (chatsRes.ok) {
-            const chatsData = await chatsRes.json();
-            const chats = chatsData.items || [];
-            if (chats.length > 0) {
-              // Use the most recent chat (first in the list)
-              existingChatId = chats[0].id;
-              console.log(`[executeStepAction] Found existing chat ${existingChatId} with ${(enrollment as any).profile_name} (${chats.length} total chats)`);
-            }
-          } else if (resolvedId !== profileId) {
-            // Fallback: try with original profileId
-            const fallbackRes = await fetchWithTimeout(
-              `${effectiveDsn}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
-              { headers: { 'X-API-KEY': effectiveApiKey } }
-            );
-            if (fallbackRes.ok) {
-              const fallbackData = await fallbackRes.json();
-              const fallbackChats = fallbackData.items || [];
-              if (fallbackChats.length > 0) {
-                existingChatId = fallbackChats[0].id;
-                console.log(`[executeStepAction] Found existing chat ${existingChatId} via fallback ID`);
-              }
-            }
+          const resolvedId = ((enrollment as any).resolved_profile_id || profileId) as string;
+          let entries: ChatLookupEntry[];
+          try {
+            entries = await getChatForUser(accountId, resolvedId !== profileId ? resolvedId : providerUserRef(enrollment, profileId));
+          } catch (resolvedErr) {
+            if (resolvedId === profileId) throw resolvedErr;
+            // Identifiant résolu refusé : repli sur l'identifiant d'origine.
+            entries = await getChatForUser(accountId, providerUserRef(enrollment, profileId));
+          }
+          const existing = pickExistingChat(entries);
+          if (existing) {
+            existingChatId = existing.chat_id;
+            console.log(`[executeStepAction] Found existing chat ${existingChatId} with ${(enrollment as any).profile_name} (${entries.length} chat(s))`);
           }
         } catch (chatLookupErr) {
-          console.warn(`[executeStepAction] Chat lookup failed (will create new):`, chatLookupErr);
+          console.warn(`[executeStepAction] Chat lookup failed (will create new): ${describeForLog(chatLookupErr)}`);
         }
 
-        // POST d'envoi : une exception (délai dépassé, coupure) rend null, issue
-        // inconnue. Jamais de second envoi à l'aveugle (SEQ-005).
-        const postSend = async (url: string, body: FormData): Promise<Response | null> => {
-          try {
-            return await fetchWithTimeout(url, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body });
-          } catch (sendErr) {
-            console.error(`[executeStepAction] LinkedIn send request failed (issue inconnue):`, sendErr);
-            return null;
-          }
-        };
-        const newChatForm = () => {
-          const fd = new FormData();
-          fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
-          if (needsInMail) { fd.append('linkedin[api]', linkedinApiMode); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
-          return fd;
-        };
+        // Nouvelle conversation : boîte et forme d'InMail choisies d'après la
+        // licence (startLinkedInChat). Le client n'envoie jamais deux fois une
+        // même demande : une issue inconnue n'est pas rejouée (SEQ-005).
+        const startNewChat = (): Promise<SendOutcome> => startLinkedInChat({
+          accountId,
+          user: providerUserRef(enrollment, profileId, classicProviderId(enrollment, p?.provider_id)),
+          text: msg,
+          kind: needsInMail ? sendLicence : 'classic',
+          inmail: needsInMail ? inmailSpec : undefined,
+        });
 
-        // Refonte mission, lot 0b-2a : marqueur avant le POST (lien seul, sans
+        // Refonte mission, lot 0b-2a : marqueur avant l'envoi (lien seul, sans
         // « Contacté »), pour que le webhook reconnaisse l'écho de cet envoi
         // et ne le prenne pas pour un message écrit hors Konekt. Au mieux.
         await recordEngineSend(supabase, enrollment, {
           accountId, sendKind: needsInMail ? 'inmail' : 'message', pending: true, chatId: existingChatId,
         });
 
-        let r: Response | null;
+        let outcome: SendOutcome;
         // Conversation où part le message : l'existante, ou celle que crée l'envoi.
         let sentChatId: string | null = existingChatId;
         if (existingChatId) {
           // Send to existing chat thread — NO duplicate!
-          const fd = new FormData();
-          fd.append('text', msg);
-          r = await postSend(`${effectiveDsn}/api/v1/chats/${existingChatId}/messages`, fd);
+          outcome = await sendMessage({ accountId, chatId: existingChatId, text: msg });
           // Nouvelle conversation seulement si la conversation existante est
-          // inutilisable (400, 403, 404, 422 : rien n'est parti). Un 429 ou un
-          // 5xx ne relancent jamais un second POST : le 5xx a pu livrer le
-          // message, et en InMail un second crédit serait consommé.
-          if (r && !r.ok && rules.allowsNewChatFallback(r.status)) {
-            const firstBody = await r.text().catch(() => '');
-            console.warn(`[executeStepAction] Send to existing chat ${existingChatId} refused (${r.status}: ${firstBody}), falling back to new chat`);
+          // inutilisable (400, 403, 404, 422 : rien n'est parti). Une limite, un
+          // compte à reconnecter ou limité, un 429 ou un 5xx ne relancent jamais
+          // un second envoi : le 5xx a pu livrer le message, et en InMail un
+          // second crédit serait consommé.
+          if (outcome.outcome === 'refused' && CHAT_FALLBACK_KINDS.includes(outcome.kind)
+            && outcome.error.status !== null && rules.allowsNewChatFallback(outcome.error.status)) {
+            console.warn(`[executeStepAction] Send to existing chat ${existingChatId} refused (${describeForLog(outcome.error)}), falling back to new chat`);
             sentChatId = null;
-            r = await postSend(`${effectiveDsn}/api/v1/chats`, newChatForm());
+            outcome = await startNewChat();
           }
         } else {
           // No existing chat — create new one (first contact)
           console.log(`[executeStepAction] No existing chat found for ${(enrollment as any).profile_name}, creating new`);
-          r = await postSend(`${effectiveDsn}/api/v1/chats`, newChatForm());
+          outcome = await startNewChat();
         }
-        if (!r || !r.ok) {
-          const status = r ? r.status : null;
-          const e = r ? await r.text().catch(() => '') : '';
-          console.error(`[executeStepAction] LinkedIn provider ${status ?? 'sans réponse'}: ${e}`);
-          if (rules.classifySendStatus(status) === 'uncertain') {
-            return { success: false, error: rules.sendUncertainError('LinkedIn'), needsInMail };
-          }
-          // Garde le préfixe (classifiers existants) + ajoute le corps fournisseur
-          // pour que la détection de limite "dure" (limit_exceeded…) fonctionne.
-          return { success: false, error: `linkedin_send_failed_${status}: ${e}`, needsInMail };
-        }
-        // Le message est parti : le suivi (signal d'usage, statistiques) ne
-        // doit jamais transformer cet envoi en échec relancé (SEQ-005).
+        if (outcome.outcome !== 'sent') return failedSendResult(outcome, 'LinkedIn', needsInMail);
+
+        // Le message est parti : le suivi (statistiques) ne doit jamais
+        // transformer cet envoi en échec relancé (SEQ-005).
         // Lot 0b-2a : conversation et message rendus par l'envoi (nouvelle
-        // conversation : chat_id ; message dans une conversation : message_id).
-        let sentIds: { chat_id?: unknown; message_id?: unknown } = {};
+        // conversation : chat_id ; message dans une conversation : message_id,
+        // déjà ramené par le client à un identifiant unique ou null).
         try {
-          // Capte le signal usage fournisseur (% de proximité avec la limite LinkedIn)
-          // → pause proactive du compte à ≥90 %.
-          const sendBody = await r.json().catch(() => ({}));
-          await recordUsageSignal(supabase, accountId, parseUsagePct(sendBody), (enrollment as any).user_timezone);
-          if (sendBody && typeof sendBody === 'object') sentIds = sendBody;
           await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         } catch (trackErr) {
           console.error(`[executeStepAction] Suivi après envoi en échec (message parti) :`, trackErr);
         }
         return { success: true, message: msg, subject: needsInMail ? subj : undefined, needsInMail,
-          chatId: sentChatId ?? (typeof sentIds.chat_id === 'string' ? sentIds.chat_id : null),
-          messageId: typeof sentIds.message_id === 'string' ? sentIds.message_id : null };
+          chatId: sentChatId ?? outcome.chatId,
+          messageId: outcome.messageId };
       }
       case 'whatsapp_message': {
-        // Send WhatsApp message via Unipile — same API as LinkedIn (POST /api/v1/chats)
-        // Uses the WhatsApp account_id and the candidate's phone number as attendee
+        // Send WhatsApp message through the shared client — same API as LinkedIn
+        // (chat start or message in a chat). Uses the WhatsApp account_id and the
+        // candidate's phone number as attendee
         // La rotation des expéditeurs ne vaut que pour LinkedIn (SEQ-156) : le
         // compte tiré au sort n'est jamais utilisé comme compte WhatsApp.
         const whatsappAccountId = (step.sender_id || enrollment.account_id) as string;
@@ -6224,50 +6504,25 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           return { success: false, error: `Invalid phone number format: "${rawPhone}" (${digitsOnly.length} digits, need 8-15)` };
         }
 
+        // Compte d'envoi au format actuel (`acc_...`) : un ancien identifiant lève
+        // une erreur « compte à reconnecter » rattrapée plus bas.
+        const waAccountId = assertV2AccountId(whatsappAccountId);
+
         // Try to find existing WhatsApp chat
         let waExistingChatId: string | null = null;
         try {
-          const waChatsRes = await fetchWithTimeout(
-            `${effectiveDsn}/api/v1/chat_attendees/${phoneNumber}/chats?account_id=${whatsappAccountId}`,
-            { headers: { 'X-API-KEY': effectiveApiKey } }
-          );
-          if (waChatsRes.ok) {
-            const waChatsData = await waChatsRes.json();
-            if (waChatsData.items?.length > 0) {
-              waExistingChatId = waChatsData.items[0].id;
-              console.log(`[executeStepAction] Found existing WhatsApp chat ${waExistingChatId}`);
-            }
-          }
+          waExistingChatId = pickExistingChat(await getChatForUser(waAccountId, phoneNumber))?.chat_id ?? null;
+          if (waExistingChatId) console.log(`[executeStepAction] Found existing WhatsApp chat ${waExistingChatId}`);
         } catch { /* will create new */ }
 
-        let waR: Response | null = null;
-        const waFd = new FormData();
-        if (!waExistingChatId) {
-          waFd.append('account_id', whatsappAccountId);
-          waFd.append('attendees_ids', phoneNumber);
-        }
-        waFd.append('text', msg);
-        const waUrl = waExistingChatId
-          ? `${effectiveDsn}/api/v1/chats/${waExistingChatId}/messages`
-          : `${effectiveDsn}/api/v1/chats`;
+        const waOutcome: SendOutcome = waExistingChatId
+          ? await sendMessage({ accountId: waAccountId, chatId: waExistingChatId, text: msg })
+          : await startChat({ accountId: waAccountId, user: phoneNumber, text: msg });
+        // Refus ou issue inconnue : jamais enregistré comme envoyé, jamais rejoué (SEQ-005).
+        if (waOutcome.outcome !== 'sent') return failedSendResult(waOutcome, 'WhatsApp');
+        // Message parti : un suivi en échec ne doit jamais le faire passer pour un
+        // échec relancé (SEQ-005).
         try {
-          waR = await fetchWithTimeout(waUrl, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: waFd });
-        } catch (waErr) {
-          console.error(`[executeStepAction] WhatsApp send request failed (issue inconnue):`, waErr);
-        }
-        if (!waR || !waR.ok) {
-          const e = waR ? await waR.text().catch(() => '') : '';
-          console.error(`[executeStepAction] WhatsApp provider ${waR?.status ?? 'sans réponse'}: ${e}`);
-          // Délai dépassé ou 5xx : le message a pu partir, pas de relance automatique (SEQ-005).
-          if (rules.classifySendStatus(waR ? waR.status : null) === 'uncertain') {
-            return { success: false, error: rules.sendUncertainError('WhatsApp') };
-          }
-          return { success: false, error: `whatsapp_send_failed_${waR?.status}` };
-        }
-        // Message parti : un corps illisible ou un suivi en échec ne doit
-        // jamais le faire passer pour un échec relancé (SEQ-005).
-        try {
-          await waR.json().catch(() => null);
           await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         } catch (trackErr) {
           console.error(`[executeStepAction] Suivi après envoi WhatsApp en échec (message parti) :`, trackErr);
@@ -6280,7 +6535,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         // planifiée (SEQ-036). Degré lu en base, sinon sur le profil (en cache).
         const inviteProfile = enrollment.connection_status === 'connected'
           ? null
-          : await readProfileForSend(supabase, enrollment, accountId, profileId, effectiveApiKey, effectiveDsn);
+          : await readProfileForSend(supabase, enrollment, accountId, profileId);
         if (rules.isFirstDegreeCandidate(enrollment, inviteProfile)) {
           const { error: connErr } = await supabase.from('sequence_enrollments').update({ connection_status: 'connected' }).eq('id', enrollment.id);
           if (connErr) console.warn(`[connection_request] connection_status not saved for ${enrollment.id}:`, connErr.message);
@@ -6288,135 +6543,66 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           return { success: false, error: '__SKIP_UNSUPPORTED__', skipReason: rules.ALREADY_CONNECTED_SKIP_REASON };
         }
 
-        let providerId = profileId;
-        if (!profileId.startsWith('ACo') && !profileId.startsWith('ADo')) {
-          console.log(`[connection_request] Profile ID ${profileId} is not classic format, resolving...`);
-          let resolved = false;
-          // Lecture de profil pour la résolution : journalisée au ledger
-          // (SEQ-102). Une réponse 429, 5xx ou un délai marque l'échec comme
-          // passager : « introuvable » ne vaut que pour des réponses nettes.
-          let transientLookup = false;
-          const lookupUser = async (identifier: string, encode = true): Promise<Record<string, unknown> | null> => {
-            const { logLinkedInRead } = await import('../_shared/linkedin-quotas.ts');
-            await logLinkedInRead(supabase, { accountId, organizationId: (enrollment.organization_id as string | null) ?? null, source: 'sequence_profile_read' });
-            try {
-              const res = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encode ? encodeURIComponent(identifier) : identifier}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-              if (res.ok) return await res.json();
-              if (res.status === 429 || res.status >= 500) transientLookup = true;
-              return null;
-            } catch (lookupErr) {
-              console.warn(`[connection_request] profile lookup failed for ${identifier}:`, lookupErr);
-              transientLookup = true;
-              return null;
-            }
-          };
-
-          // Strategy 1: Extract slug from profile URL
-          const profileUrl = enrollment.profile_url as string | undefined;
-          if (profileUrl) {
-            const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
-            if (match) {
-              console.log(`[connection_request] Trying slug resolution: ${match[1]}`);
-              const pd = await lookupUser(match[1]) as { provider_id?: string } | null;
-              if (pd) {
-                if (pd.provider_id && (pd.provider_id.startsWith('ACo') || pd.provider_id.startsWith('ADo'))) {
-                  providerId = pd.provider_id;
-                  resolved = true;
-                  console.log(`[connection_request] Resolved via slug to: ${providerId}`);
-                }
-              }
-            }
-          }
-
-          // Strategy 2: Fetch recruiter profile to get public_identifier, then resolve
-          if (!resolved) {
-            console.log(`[connection_request] Trying recruiter profile resolution...`);
-            // deno-lint-ignore no-explicit-any
-            const recruiterProfile = await lookupUser(profileId, false) as Record<string, any> | null;
-            if (recruiterProfile) {
-              const publicId = recruiterProfile.public_identifier || recruiterProfile.public_id;
-              if (publicId) {
-                console.log(`[connection_request] Got public_identifier: ${publicId}, resolving classic ID...`);
-                const classicProfile = await lookupUser(publicId) as { provider_id?: string } | null;
-                if (classicProfile) {
-                  if (classicProfile.provider_id && (classicProfile.provider_id.startsWith('ACo') || classicProfile.provider_id.startsWith('ADo'))) {
-                    providerId = classicProfile.provider_id;
-                    resolved = true;
-                    console.log(`[connection_request] Resolved via recruiter profile to: ${providerId}`);
-                  }
-                }
-              }
-              // Strategy 3: Check if the recruiter profile itself has a member_urn or classic provider_id
-              if (!resolved && recruiterProfile.member_urn) {
-                const urnMatch = recruiterProfile.member_urn.match(/urn:li:fs_miniProfile:(.+)/);
-                if (urnMatch) {
-                  providerId = urnMatch[1];
-                  resolved = true;
-                  console.log(`[connection_request] Resolved via member_urn to: ${providerId}`);
-                }
-              }
-            }
-          }
-
-          if (!resolved) {
-            // Fail-CLOSED : jamais d'invitation avec un identifiant non résolu.
-            // Lecture passagèrement indisponible : nouvel essai. Profil vraiment
-            // introuvable : étape en échec avec sa raison, inscription laissée
-            // telle quelle (plus de pause sans raison, SEQ-121) ; l'échec est
-            // propre au candidat et ne doit pas désactiver la séquence.
-            if (transientLookup) {
-              console.warn(`[connection_request] Profile lookup unavailable for ${profileId} — retry later`);
-              return { success: false, error: 'profile_read_unavailable: Lecture du profil LinkedIn momentanément indisponible, nouvel essai plus tard.' };
-            }
-            console.warn(`[connection_request] Could not resolve classic ID for ${profileId}`);
-            return {
-              success: false,
-              error: "Profil LinkedIn introuvable : vérifiez l'adresse du profil dans la fiche du candidat.",
-              candidateError: true,
-            };
-          }
-
-          // Save resolved classic ID for future reply matching (webhook + checkReplies)
-          if (resolved && providerId !== profileId) {
-            await supabase.from('sequence_enrollments').update({ resolved_profile_id: providerId }).eq('id', enrollment.id);
-            console.log(`[connection_request] Saved resolved_profile_id: ${providerId}`);
-          }
+        // API v2 : plus de résolution en identifiant classique (ACo/ADo) par trois
+        // lectures de profil. L'invitation prend l'identifiant classique déjà
+        // connu (inscription ou lecture de profil ci-dessus), puis le pseudo et
+        // l'adresse de profil : le client essaie les formes dans cet ordre et ne
+        // passe à la suivante que sur un refus qui prouve que rien n'est parti.
+        // Un identifiant Recruiter (AE) seul ne sert qu'à défaut de tout autre.
+        // Identifiant lu sur le profil, gardé pour la correspondance des réponses
+        // (webhook + check_replies) quand l'inscription n'a pas un identifiant
+        // classique, comme le faisait la résolution.
+        const readProfileId = typeof inviteProfile?.provider_id === 'string' ? inviteProfile.provider_id : '';
+        if (readProfileId && readProfileId !== profileId && !profileId.startsWith('ACo') && !profileId.startsWith('ADo') && !readProfileId.startsWith('AE')) {
+          const { error: resolvedErr } = await supabase.from('sequence_enrollments').update({ resolved_profile_id: readProfileId }).eq('id', enrollment.id);
+          if (resolvedErr) console.warn(`[connection_request] resolved_profile_id not saved for ${String(enrollment.id)}:`, resolvedErr.message);
         }
-        const invitePayload: Record<string, string> = { account_id: accountId, provider_id: providerId };
+
         // LinkedIn invite note max ~300 chars. Use smartTruncate to cut at a
         // sentence boundary so we never send "Ça te par…" mid-word.
-        if (msg && msg.trim()) invitePayload.message = rules.smartTruncate(msg, 300);
-        // Refonte mission, lot 0b-2a : marqueur avant le POST (écho de la note
+        const note = msg && msg.trim() ? rules.smartTruncate(msg, 300) : undefined;
+        // Refonte mission, lot 0b-2a : marqueur avant l'envoi (écho de la note
         // d'invitation reconnu par le webhook à l'acceptation). Au mieux.
         await recordEngineSend(supabase, enrollment, { accountId, sendKind: 'invitation', pending: true });
-        let r: Response;
-        try {
-          r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
-        } catch (inviteErr) {
-          // Délai dépassé : l'invitation a pu partir, issue inconnue (SEQ-005).
-          console.error(`[connection_request] invite request failed (issue inconnue):`, inviteErr);
-          return { success: false, error: rules.sendUncertainError('LinkedIn') };
+        const invite = await sendRelationRequest({ accountId, user: providerUserRef(enrollment, profileId, classicProviderId(enrollment, readProfileId)), message: note });
+        if (invite.outcome === 'uncertain') {
+          // Délai, 5xx ou réponse illisible : l'invitation a pu partir, issue inconnue (SEQ-005).
+          console.error(`[connection_request] invitation d'issue inconnue : ${describeForLog(invite.error)}`);
+          return { success: false, error: rules.sendUncertainError('LinkedIn'), errorKind: 'uncertain' };
         }
-        if (!r.ok) {
-          const e = await r.text().catch(() => '');
+        if (invite.outcome === 'refused') {
+          const refusal = invite.error;
+          console.error(`[connection_request] invitation refusée : ${describeForLog(refusal)}`);
           // Déjà en relation ou déjà invité : rien à faire, l'étape est sautée
-          // au lieu d'échouer (et de mettre la séquence en pause).
-          const skipReason = rules.inviteRejectionSkipReason(r.status, e);
+          // au lieu d'échouer (et de mettre la séquence en pause). Le fournisseur
+          // ne publie pas ses codes d'erreur : la raison se lit dans le corps du
+          // refus (journaux seulement, jamais rendu à l'écran).
+          const skipReason = rules.inviteRejectionSkipReason(refusal.status ?? 0, probeText(refusal.debug.body));
           if (skipReason) {
-            console.log(`[connection_request] ${String(enrollment.profile_name ?? enrollment.id)} : ${skipReason} (${r.status}: ${e})`);
+            console.log(`[connection_request] ${String(enrollment.profile_name ?? enrollment.id)} : ${skipReason}`);
             const nextStatus = skipReason === rules.ALREADY_CONNECTED_SKIP_REASON ? 'connected' : 'pending_invite';
             const { error: statusErr } = await supabase.from('sequence_enrollments').update({ connection_status: nextStatus }).eq('id', enrollment.id);
             if (statusErr) console.warn(`[connection_request] connection_status not saved for ${enrollment.id}:`, statusErr.message);
             return { success: false, error: '__SKIP_UNSUPPORTED__', skipReason };
           }
-          return { success: false, error: `Invite ${r.status}: ${e}` };
+          if (invite.kind === 'not_found') {
+            // Profil vraiment introuvable (aucune forme de la référence acceptée) :
+            // étape en échec avec sa raison, inscription laissée telle quelle (plus
+            // de pause sans raison, SEQ-121) ; l'échec est propre au candidat et ne
+            // doit pas désactiver la séquence.
+            return {
+              success: false,
+              error: "Profil LinkedIn introuvable : vérifiez l'adresse du profil dans la fiche du candidat.",
+              candidateError: true,
+              errorKind: invite.kind,
+            };
+          }
+          // Préfixe `Invite <état>` lu par l'écran des erreurs de séquence.
+          return { success: false, error: refusal.status !== null ? `Invite ${refusal.status}: ${refusal.message}` : refusal.message, errorKind: invite.kind };
         }
         // Invitation partie : le suivi ne doit jamais la faire passer pour un
         // échec relancé (seconde invitation, SEQ-005).
         try {
-          // L'endpoint invite renvoie le champ `usage` (% du quota provider) → pause à ≥90 %.
-          const inviteBody = await r.json().catch(() => ({}));
-          await recordUsageSignal(supabase, accountId, parseUsagePct(inviteBody), (enrollment as any).user_timezone);
           await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
           const { error: pendingErr } = await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
           if (pendingErr) console.warn(`[connection_request] connection_status not saved for ${String(enrollment.id)}:`, pendingErr.message);
@@ -6425,7 +6611,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         }
         // Note réellement envoyée (tronquée à 300 caractères) : c'est elle que
         // le journal doit montrer, pas le texte complet (SEQ-096).
-        return { success: true, message: invitePayload.message };
+        return { success: true, message: note };
       }
       // Type d'action non implémenté (ex. wait_profile_visit persisté par le
       // builder) : sauter l'étape et poursuivre. En échec, l'enrollment était
@@ -6433,7 +6619,16 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
       // auto-pauser toute la séquence (BUG-025).
       default: return { success: false, error: '__SKIP_UNSUPPORTED__' };
     }
-  } catch (err) { return { success: false, error: err instanceof Error ? err.message : 'Failed' }; }
+  } catch (err) {
+    // Erreur du client partagé (compte à reconnecter, identifiant de compte
+    // ancien, clé absente du serveur, refus de lecture) : texte neutre et famille
+    // d'erreur, lue par la boucle du moteur avant tout texte.
+    if (isUnipileError(err)) {
+      console.error(`[executeStepAction] ${actionType} : ${describeForLog(err)}`);
+      return { success: false, error: err.message, errorKind: err.kind };
+    }
+    return { success: false, error: err instanceof Error ? err.message : 'Failed' };
+  }
 }
 
 /**
@@ -6757,36 +6952,98 @@ async function logAnalytics(supabase: any, sequenceId: string, field: string) {
   } catch (e) { console.error('Analytics error:', e); }
 }
 
+// ============ PROFIL POUR LE PROMPT ============
+
+/**
+ * Champs du profil que lit le prompt de rédaction, sous les noms qu'il attend
+ * (`first_name`, `name`, `headline`, `summary`, `work_experience`, `education`,
+ * `skills`). Les valeurs absentes sont omises : un titre `null` ne doit pas
+ * ressembler à un titre, ni une liste vide masquer la copie en base
+ * (`work_experience || experiences`). La relation reste le jeton du
+ * fournisseur (FIRST_DEGREE...).
+ */
+function promptProfileOf(profile: KonektProfile): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const put = (key: string, value: unknown) => {
+    if (value === null || value === undefined) return;
+    if (typeof value === 'string' && value.trim() === '') return;
+    if (Array.isArray(value) && value.length === 0) return;
+    out[key] = value;
+  };
+  put('first_name', profile.first_name);
+  put('name', profile.name);
+  put('headline', profile.headline);
+  put('summary', profile.summary);
+  put('network_distance', profile.network_degree);
+  put('provider_id', profile.provider_id);
+  put('public_identifier', profile.public_identifier);
+  put('work_experience', profile.work_experience);
+  put('education', profile.education);
+  put('skills', profile.skills);
+  return out;
+}
+
+/**
+ * Lecture du profil pour le prompt (identité, titre, À propos). Aucune section
+ * n'est demandée, comme avant : les expériences viennent de la copie en base.
+ * La lecture est journalisée au ledger. Quand c'est aussi celle que
+ * getProfileInfo aurait faite (identifiant non Recruiter, ou relation directe),
+ * elle alimente le cache du degré : l'envoi qui suit ne relit pas le profil. Un
+ * identifiant Recruiter (AE) garde sa relecture par pseudo dans getProfileInfo,
+ * sa distance lue sur cet identifiant pouvant être inexacte.
+ */
+// deno-lint-ignore no-explicit-any
+async function readProfileDetailForPrompt(supabase: any, enrollment: Record<string, unknown>, accountId: string, profileId: string): Promise<Record<string, unknown> | null> {
+  if (!accountId || !profileId) return null;
+  const { logLinkedInRead } = await import('../_shared/linkedin-quotas.ts');
+  await logLinkedInRead(supabase, {
+    accountId,
+    organizationId: (enrollment.organization_id as string | null) ?? null,
+    source: 'sequence_profile_read',
+  });
+  const profile = await getProfile(accountId, providerUserRef(enrollment, profileId));
+  const info = profileInfoOf(profile);
+  const cacheKey = `${accountId}::${profileId}`;
+  if (!profileInfoCache.has(cacheKey) && (!profileId.startsWith('AE') || info.network_distance === 'FIRST_DEGREE')) {
+    profileInfoCache.set(cacheKey, info);
+  }
+  return promptProfileOf(toKonektProfile(profile));
+}
+
 // ============ POSTS FETCHER ============
 
 async function fetchRecentPostsForSequence(
-  accountId: string, profileId: string, maxPosts = 3, maxAgeDays = 90, apiKey?: string, dsn?: string
+  accountId: string, profileId: string, maxPosts = 3, maxAgeDays = 90
 ): Promise<{ text: string; date: string; reactions?: number }[]> {
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
-  if (!effectiveDsn || !effectiveApiKey) return [];
+  if (!isUnipileConfigured()) return [];
   try {
-    const url = `${effectiveDsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=5`;
-    const response = await fetchWithTimeout(url, { headers: { 'X-API-KEY': effectiveApiKey, 'accept': 'application/json' } });
-    if (!response.ok) return [];
-    const data = await response.json();
-    const items = data?.items || data?.data || (Array.isArray(data) ? data : []);
+    // Publications créées ou partagées par le candidat (un repost porte
+    // `is_repost` ; son texte peut n'être que le commentaire de celui qui
+    // repartage, il passe le même filtre de longueur).
+    const page = await listUserPosts(accountId, profileId, { limit: 5 });
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - maxAgeDays);
     const posts: { text: string; date: string; reactions?: number }[] = [];
-    for (const post of items) {
-      const text = post.text || post.body || post.content || '';
+    for (const post of page.items) {
+      const text = typeof post.text === 'string' ? post.text : '';
       if (!text || text.length < 20) continue;
-      const postDate = post.created_at || post.date || post.timestamp || '';
+      const postDate = typeof post.created_at === 'string' ? post.created_at : '';
       if (postDate && new Date(postDate) < cutoff) continue;
+      const reactions = Array.isArray(post.reactions_counter)
+        ? post.reactions_counter.reduce((sum, r) => sum + (typeof r?.count === 'number' ? r.count : 0), 0)
+        : 0;
       posts.push({
         text: text.slice(0, 500),
         date: postDate ? new Date(postDate).toLocaleDateString('fr-FR') : 'récent',
-        reactions: post.reactions_count || post.likes_count || post.num_likes || undefined,
+        reactions: reactions || undefined,
       });
       if (posts.length >= maxPosts) break;
     }
     return posts;
-  } catch { return []; }
+  } catch (postsErr) {
+    // Lecture facultative : sans publications, le message se personnalise autrement.
+    console.warn(`[fetchRecentPostsForSequence] publications illisibles : ${describeForLog(postsErr)}`);
+    return [];
+  }
 }
 
 // ============ GUARDRAILS ============
@@ -6814,13 +7071,11 @@ function sanitizeSequenceMessage(message: string): string {
  * « Message IA non conforme »…), à afficher dans le journal.
  */
 // deno-lint-ignore no-explicit-any
-async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>, apiKey?: string, dsn?: string, diag?: { reason?: string; deadlineMs?: number }): Promise<{ message: string; subject?: string } | null> {
+async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>, diag?: { reason?: string; deadlineMs?: number }): Promise<{ message: string; subject?: string } | null> {
   if (!ANTHROPIC_API_KEY) {
     if (diag) diag.reason = 'Génération IA indisponible';
     return null;
   }
-  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
-  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   const rules = await import('../_shared/sequence-send-rules.ts');
   // Organisation de l'inscription : les lectures de données candidat et
   // mission y sont limitées (SEQ-053), et c'est elle qui paie les crédits IA.
@@ -6869,14 +7124,21 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       enrollment as { assigned_sender_id?: string | null; account_id?: string | null },
       step as { sender_id?: string | null },
     );
-    // Profil lu une seule fois : même lecture (en cache) que l'envoi qui suit,
-    // journalisée au ledger (SEQ-102).
+    // Profil lu pour le prompt (identité, titre, À propos), puis degré de
+    // relation par la lecture en cache que l'envoi réutilise ensuite, toutes
+    // deux journalisées au ledger (SEQ-102). Le degré (`liveProfile`) vient de
+    // readProfileForSend, jamais du profil du prompt : c'est lui qui décide
+    // InMail ou message direct, avec la même règle que l'envoi.
     // deno-lint-ignore no-explicit-any
-    const profilePromise: Promise<any> = readProfileForSend(supabase, enrollment, personalizationAccountId, enrollment.profile_id as string, effectiveApiKey, effectiveDsn).catch(() => null);
+    const profilePromise: Promise<any> = (async () => {
+      const detail = await readProfileDetailForPrompt(supabase, enrollment, personalizationAccountId, enrollment.profile_id as string).catch(() => null);
+      const live = await readProfileForSend(supabase, enrollment, personalizationAccountId, enrollment.profile_id as string).catch(() => null);
+      return { live, prompt: detail ? { ...detail, ...(live?.network_distance ? { network_distance: live.network_distance } : {}) } : live };
+    })();
     const postsPromise = (async () => {
       const { logLinkedInRead } = await import('../_shared/linkedin-quotas.ts');
       await logLinkedInRead(supabase, { accountId: personalizationAccountId, organizationId: scopeOrgId, source: 'sequence_posts_read' });
-      return fetchRecentPostsForSequence(personalizationAccountId, enrollment.profile_id as string, 3, 90, effectiveApiKey, effectiveDsn);
+      return fetchRecentPostsForSequence(personalizationAccountId, enrollment.profile_id as string, 3, 90);
     })();
 
     // Fetch job context from sourcing_projects.job_details (universal, not tied to any specific ATS)
@@ -6968,12 +7230,14 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       : Promise.resolve(null);
 
     // deno-lint-ignore no-explicit-any
-    let [profile, recentPosts, candidateHistory, ragContext] = await Promise.all([profilePromise, postsPromise, historyPromise, ragPromise]);
+    const [profileReads, recentPosts, candidateHistory, ragContext] = await Promise.all([profilePromise, postsPromise, historyPromise, ragPromise]);
+    // deno-lint-ignore no-explicit-any
+    let profile: any = profileReads.prompt;
     // Profil tel que lu chez LinkedIn (avant tout complément) : sert à décider
     // InMail ou message direct, avec la même règle que l'envoi (SEQ-095).
-    const liveProfile = profile;
+    const liveProfile = profileReads.live;
 
-    // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot.
+    // Fallback: if the profile read didn't return experiences, try to get them from the DB snapshot.
     // Uniquement le profil enregistré par l'organisation de l'inscription
     // (SEQ-053) : jamais celui capturé par une autre organisation.
     const hasExperiences = Array.isArray(profile?.work_experience || profile?.experiences || profile?.positions?.values) && (profile?.work_experience || profile?.experiences || profile?.positions?.values).length > 0;
@@ -6990,7 +7254,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         
         const snapshot = jcs?.[0]?.linkedin_profile_data;
         if (snapshot && typeof snapshot === 'object') {
-          // Merge snapshot data into profile, preserving any Unipile identity data
+          // Merge snapshot data into profile, preserving any identity data read from LinkedIn
           const snapshotExperiences = snapshot.work_experience || snapshot.experiences || snapshot.positions?.values || [];
           const snapshotEducation = snapshot.education || [];
           const snapshotSkills = snapshot.skills || [];

@@ -11,6 +11,7 @@ import { isCandidateReplyCandidate } from './normalize/messages.ts';
 import { isUnipileError } from './errors.ts';
 import { fixtures, jsonResponse, withMockTransport } from './testing.ts';
 import {
+  accountChannelOf,
   accountStatusOfEvent,
   createEndpoint,
   deleteEndpoint,
@@ -19,11 +20,14 @@ import {
   flattenEnvelope,
   getEndpoint,
   handlerNameOf,
+  isReceiverEndpoint,
   KNOWN_TRIGGER_EVENTS,
   listAllEndpoints,
   listDeliveries,
   listEndpoints,
   patchEndpoint,
+  planEndpointSync,
+  receiverEndpointUrl,
   redactWebhookUrl,
   replayEvent,
   resolveWebhookToken,
@@ -31,6 +35,7 @@ import {
   V2_TRIGGER_EVENTS,
   verifyWebhookRequest,
   webhookDedupKey,
+  webhookFallbackDedupKey,
 } from './webhooks.ts';
 
 const validation = (e: unknown) => isUnipileError(e) && e.kind === 'validation';
@@ -551,4 +556,91 @@ Deno.test('createEndpoint : l’URL porte le jeton, https obligatoire (http seul
     await createEndpoint({ url: 'http://127.0.0.1:8000/hook', triggerEvents: ['message.new'] });
     strictEqual(mock.calls.length, 2);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Lot S2 : relation sans personne, statut du compte, clé de repli, canal, plan d'enregistrement
+// ---------------------------------------------------------------------------
+
+Deno.test('flattenEnvelope : relation.new, l\'identifiant de la relation n\'est jamais pris pour celui de la personne', () => {
+  // Une UserRelation sans `user` : ni identifiant ni nom de personne, seulement l'id de la relation.
+  const orphan = flattenEnvelope(envelope('relation.new', { id: 'rel_9', object: 'UserRelation' }))!;
+  strictEqual(orphan.user_provider_id, undefined);
+  strictEqual(orphan.relation_id, 'rel_9');
+  // Une relation avec `user` : la personne vient de `user`, l'id de la relation est gardé à part.
+  const nested = flattenEnvelope(envelope('relation.new', {
+    id: 'rel_10', object: 'UserRelation', user: { id: 'ACoAAxxxxxx', public_identifier: 'jean-martin' },
+  }))!;
+  strictEqual(nested.user_provider_id, 'ACoAAxxxxxx');
+  strictEqual(nested.relation_id, 'rel_10');
+  strictEqual(nested.user_public_identifier, 'jean-martin');
+});
+
+Deno.test('flattenEnvelope : account.add garde le statut et le verrouillage de l\'Account', () => {
+  const add = flattenEnvelope(envelope('account.add', { id: ACC, status: 'running', is_locked: true, state: 'x' }))!;
+  strictEqual(add.provider_status, 'running');
+  strictEqual(add.is_locked, true);
+  const bare = flattenEnvelope(envelope('account.reconnect', { state: 'x' }))!;
+  strictEqual('provider_status' in bare, false);
+  strictEqual('is_locked' in bare, false);
+});
+
+Deno.test('webhookFallbackDedupKey : type brut, compte, référence de la charge et minute', () => {
+  const flat = flattenEnvelope(envelope('message.new', { id: 'M1', chat_id: 'C1' }, { id: 'pas-evt' }))!;
+  const at = Date.UTC(2026, 9, 11, 8, 0, 30);
+  strictEqual(webhookFallbackDedupKey(flat, at), `unipile:v2:message.new:${ACC}:M1:${Math.floor(at / 60000)}`);
+  // Même minute : même clé ; minute suivante : autre clé ; type différent : autre clé.
+  strictEqual(webhookFallbackDedupKey(flat, at + 10_000), webhookFallbackDedupKey(flat, at));
+  ok(webhookFallbackDedupKey(flat, at + 60_000) !== webhookFallbackDedupKey(flat, at));
+  const status = flattenEnvelope(envelope('account.status.degraded', {}, { id: 'pas-evt' }))!;
+  ok(webhookFallbackDedupKey(status, at).includes('account.status.degraded'));
+  // Sans compte ni référence : repère neutre.
+  strictEqual(webhookFallbackDedupKey({ v2_event: 'chat.update' }, 0), 'unipile:v2:chat.update:no-acc::0');
+});
+
+Deno.test('accountChannelOf : le fournisseur dit le canal', () => {
+  strictEqual(accountChannelOf('linkedin'), 'linkedin');
+  strictEqual(accountChannelOf('LinkedIn'), 'linkedin');
+  strictEqual(accountChannelOf('whatsapp'), 'whatsapp');
+  for (const provider of ['google', 'outlook', 'imap']) strictEqual(accountChannelOf(provider), 'email');
+  for (const other of ['telegram', 'instagram', 'mock', '', undefined, null, 4]) strictEqual(accountChannelOf(other), null);
+});
+
+Deno.test('receiverEndpointUrl : jeton encodé dans la requête, barre finale du projet retirée', () => {
+  strictEqual(
+    receiverEndpointUrl('https://project.supabase.co/', 'a b+c'),
+    'https://project.supabase.co/functions/v1/unipile-webhook?v2_token=a%20b%2Bc',
+  );
+  ok(receiverEndpointUrl('https://project.supabase.co', 'tok').length <= 255);
+});
+
+Deno.test('isReceiverEndpoint : même origine et même chemin, requête ignorée, autre fonction exclue', () => {
+  ok(isReceiverEndpoint(`${RECEIVER}?v2_token=abc`, RECEIVER));
+  ok(isReceiverEndpoint(`${RECEIVER}/`, RECEIVER));
+  ok(isReceiverEndpoint(RECEIVER, `${RECEIVER}?v2_token=zzz`));
+  ok(!isReceiverEndpoint('https://project.supabase.co/functions/v1/unipile-webhook-staging', RECEIVER));
+  ok(!isReceiverEndpoint('https://other.supabase.co/functions/v1/unipile-webhook', RECEIVER));
+  ok(!isReceiverEndpoint('https://project.supabase.co/functions/v1/sequence-webhooks-handler', RECEIVER));
+  ok(!isReceiverEndpoint('pas une url', RECEIVER));
+  ok(!isReceiverEndpoint(undefined, RECEIVER));
+});
+
+Deno.test('planEndpointSync : aucun point de terminaison, un seul, ou des doublons', () => {
+  const wanted = ['message.new', 'relation.new', 'email.new'];
+  const ep = (id: string, url: string, enabled: boolean, events: string[]) => ({ id, url, enabled, trigger_events: events });
+  // Rien chez nous (un autre récepteur ne compte pas) : création.
+  deepStrictEqual(planEndpointSync([ep('we_x', 'https://project.supabase.co/functions/v1/autre', true, wanted)], RECEIVER, wanted), { keepId: null, deleteIds: [] });
+  deepStrictEqual(planEndpointSync([], RECEIVER, wanted), { keepId: null, deleteIds: [] });
+  // Un seul : gardé, même sans jeton dans l'URL (il sera réécrit) ou incomplet.
+  deepStrictEqual(planEndpointSync([ep('we_a', RECEIVER, true, ['message.new'])], RECEIVER, wanted), { keepId: 'we_a', deleteIds: [] });
+  // Doublons : l'actif prime, puis celui qui couvre le plus d'événements voulus, puis le premier.
+  const plan = planEndpointSync([
+    ep('we_off', RECEIVER, false, wanted),
+    ep('we_few', RECEIVER, true, ['message.new']),
+    ep('we_many', `${RECEIVER}?v2_token=old`, true, wanted),
+    ep('we_other', 'https://project.supabase.co/functions/v1/autre', true, wanted),
+  ], RECEIVER, wanted);
+  deepStrictEqual(plan, { keepId: 'we_many', deleteIds: ['we_off', 'we_few'] });
+  // Égalité parfaite : le premier de la liste.
+  deepStrictEqual(planEndpointSync([ep('we_1', RECEIVER, true, wanted), ep('we_2', RECEIVER, true, wanted)], RECEIVER, wanted), { keepId: 'we_1', deleteIds: ['we_2'] });
 });

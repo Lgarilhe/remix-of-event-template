@@ -3,18 +3,16 @@
  * Reads per-org credentials from organization_integrations, falls back to Deno.env.
  *
  * Usage:
- *   import { resolveUnipileCredentials, resolveApolloCredentials, resolveCoresignalCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
+ *   import { resolveApolloCredentials, resolveCoresignalCredentials, resolveAnthropicCredentials, resolveOrgIdFromUser } from '../_shared/resolve-org-credentials.ts';
+ *
+ * LinkedIn / messagerie : plus de credentials par organisation. Le client commun
+ * (`_shared/unipile/index.ts`) lit une seule clé d'application (UNIPILE_V2_API_KEY).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 type SupabaseClient = ReturnType<typeof createClient>;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface UnipileCredentials {
-  apiKey: string;
-  dsn: string; // always https://... format
-}
 
 export interface ApolloCredentials {
   apiKey: string;
@@ -45,7 +43,6 @@ const NEGATIVE_TTL_MS = 60 * 1000;
 
 interface CacheEntry<T> { value: T | null; expiresAt: number }
 
-const unipileCache = new Map<string, CacheEntry<UnipileCredentials>>();
 const apolloCache = new Map<string, CacheEntry<ApolloCredentials>>();
 const coresignalCache = new Map<string, CacheEntry<CoresignalCredentials>>();
 const anthropicCache = new Map<string, CacheEntry<AnthropicCredentials>>();
@@ -67,7 +64,6 @@ function isNoRowError(error: { code?: string } | null): boolean {
 }
 
 export function clearCredentialCaches() {
-  unipileCache.clear();
   apolloCache.clear();
   coresignalCache.clear();
   anthropicCache.clear();
@@ -85,61 +81,6 @@ function getServiceClient(): SupabaseClient {
     );
   }
   return _svc;
-}
-
-// ─── Unipile ─────────────────────────────────────────────────────────────────
-
-function normalizeDsn(raw: string): string {
-  const cleaned = raw.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  return `https://${cleaned}`;
-}
-
-function unipileEnvironmentCredentials(): UnipileCredentials | null {
-  const envKey = Deno.env.get("UNIPILE_API_KEY");
-  const envDsn = Deno.env.get("UNIPILE_DSN");
-  return envKey && envDsn ? { apiKey: envKey, dsn: normalizeDsn(envDsn) } : null;
-}
-
-export async function resolveUnipileCredentials(
-  organizationId?: string | null,
-  supabaseClient?: SupabaseClient
-): Promise<UnipileCredentials | null> {
-  if (organizationId) {
-    const cached = cacheGet(unipileCache, organizationId);
-    // A negative entry means no org-specific credentials, not no usable
-    // environment connection. Every cached read must retain that fallback.
-    if (cached !== undefined) return cached ?? unipileEnvironmentCredentials();
-
-    try {
-      const sb = supabaseClient ?? getServiceClient();
-      const { data, error } = await sb
-        .from("organization_integrations")
-        .select("unipile_api_key, unipile_dsn, unipile_connected")
-        .eq("organization_id", organizationId)
-        .single();
-
-      if (data?.unipile_connected && data?.unipile_api_key && data?.unipile_dsn) {
-        const creds: UnipileCredentials = {
-          apiKey: data.unipile_api_key,
-          dsn: normalizeDsn(data.unipile_dsn),
-        };
-        console.log(`[resolve-creds] Using org-specific Unipile credentials for org ${organizationId}`);
-        cacheSet(unipileCache, organizationId, creds);
-        return creds;
-      }
-      if (!error || isNoRowError(error)) {
-        // Requête OK, pas de creds configurés → négatif légitime (TTL court).
-        cacheSet(unipileCache, organizationId, null);
-      } else {
-        // Erreur transitoire (blip DB) → ne PAS cacher, fallback ENV ponctuel.
-        console.warn(`[resolve-creds] Transient error resolving Unipile creds (not cached):`, error);
-      }
-    } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Unipile credentials (not cached):`, e);
-    }
-  }
-
-  return unipileEnvironmentCredentials();
 }
 
 // ─── Apollo ──────────────────────────────────────────────────────────────────

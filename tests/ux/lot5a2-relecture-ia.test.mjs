@@ -126,7 +126,8 @@ test('5a-2 — garde placée après aiWillGenerate, avant hasTimeToLock, checkQu
   assert.ok(at < engine.indexOf('const quotaCheck = await checkQuotaForAction('), 'avant checkQuotaForAction');
   assert.ok(at < engine.indexOf("status: 'sending',\n            // Fige le contenu"), 'avant le verrou');
   assert.ok(at < engine.indexOf('await generatePersonalizedMessage('), 'avant la rédaction (désormais injoignable)');
-  assert.match(engine, /import \{ aiReviewRequired, AI_REVIEW_REQUIRED_MESSAGE, AI_REVIEW_DEFER_MS \} from "\.\.\/_shared\/sequence-send-rules\.ts";/);
+  // Le même import porte aussi la porte de santé du compte (API v2) : on vérifie les trois noms de la garde.
+  assert.match(engine, /import \{[^}]*\baiReviewRequired\b[^}]*\bAI_REVIEW_REQUIRED_MESSAGE\b[^}]*\bAI_REVIEW_DEFER_MS\b[^}]*\} from "\.\.\/_shared\/sequence-send-rules\.ts";/);
 });
 
 test('5a-2 — branche de la garde : étape laissée programmée, +1 h, raison, comptée sautée ; ni pause, ni échec, ni essai, ni modèle', () => {

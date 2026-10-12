@@ -1,6 +1,7 @@
 // deno test --no-check supabase/functions/_shared/sequence-send-rules.test.ts
 import { deepStrictEqual as assertEquals, ok as assert } from "node:assert";
 import {
+  accountSendGate,
   AI_REVIEW_DEFER_MS,
   AI_REVIEW_REQUIRED_MESSAGE,
   aiReviewRequired,
@@ -10,13 +11,18 @@ import {
   detectSequenceViolations,
   directFollowUpType,
   directMessageActionTypes,
+  effectiveNetworkDistance,
   greetingFor,
   hasTimeForAiCorrection,
   inmailQueueRetry,
+  inmailRefusalPlan,
+  INMAIL_DISCONNECTED_MESSAGE,
   inviteRejectionSkipReason,
   isFirstDegreeCandidate,
   isSendUncertain,
   isUsableAiMessage,
+  LIMITED_ACCOUNT_DEFER_MS,
+  LIMITED_ACCOUNT_MESSAGE,
   sendLedgerActionType,
   sendsAsInMail,
   sendUncertainError,
@@ -45,6 +51,11 @@ Deno.test("SEQ-036/037/095 : degré de relation, mode d'envoi et type au ledger"
   assert(isFirstDegreeCandidate({ connection_status: "connected" }, { network_distance: "SECOND_DEGREE" }));
   assert(isFirstDegreeCandidate({ network_distance: "FIRST_DEGREE" }, null), "repli sur le degré enregistré si la lecture échoue");
   assert(!isFirstDegreeCandidate({ network_distance: "FIRST_DEGREE" }, { network_distance: "SECOND_DEGREE" }));
+  // Lecture réussie sans degré (specifics.network_distance est facultatif en v2) : le degré enregistré tranche.
+  assert(isFirstDegreeCandidate({ network_distance: "FIRST_DEGREE" }, { network_distance: undefined }));
+  assert(isFirstDegreeCandidate({ network_distance: "FIRST_DEGREE" }, {}));
+  assert(!isFirstDegreeCandidate({ network_distance: "SECOND_DEGREE" }, {}));
+  assert(!isFirstDegreeCandidate({}, {}), "aucune source : pas de relation directe");
   assert(!sendsAsInMail("smart_message", true));
   assert(sendsAsInMail("smart_message", false));
   assert(!sendsAsInMail("message", false));
@@ -59,6 +70,8 @@ Deno.test("SEQ-036 : refus d'invitation « déjà en relation / déjà invité �
   assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/already_invited_recently"}'), "Invitation déjà en attente");
   assertEquals(inviteRejectionSkipReason(400, "An invitation is already pending"), "Invitation déjà en attente");
   assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/cannot_resend_yet"}'), "Invitation déjà envoyée récemment");
+  // API v2 : la documentation décrit le refus par une phrase, pas par un code.
+  assertEquals(inviteRejectionSkipReason(422, "Trying to send a relation request to an existing relation"), "Déjà en relation : invitation inutile");
   assertEquals(inviteRejectionSkipReason(429, "already invited"), null);
   assertEquals(inviteRejectionSkipReason(503, "already invited"), null);
   assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/limit_exceeded"}'), null);
@@ -174,4 +187,47 @@ Deno.test("Lot 5a-2 : une étape IA ne part qu'avec un texte relu (retouche de l
   // Raison lisible, report d'une heure.
   assertEquals(AI_REVIEW_REQUIRED_MESSAGE, "Message rédigé par l'IA à relire avant l'envoi.");
   assertEquals(AI_REVIEW_DEFER_MS, 3_600_000);
+});
+
+// ─── API v2 : compte en état d'envoyer ──────────────────────────────────────
+
+Deno.test("accountSendGate : OK et liaison sans état envoient ; DEGRADED, PARTIAL, LOCKED ne bloquent que l'envoi", () => {
+  for (const s of ["OK", "ok", " OK ", null, undefined, "", "  "]) assertEquals(accountSendGate(s), "send", String(s));
+  for (const s of ["CREDENTIALS", "ERROR", "error"]) assertEquals(accountSendGate(s), "disconnected", s);
+  for (const s of ["DEGRADED", "PARTIAL", "LOCKED", "degraded"]) assertEquals(accountSendGate(s), "limited", s);
+  for (const s of ["STOPPED", "CONNECTING", "PAUSED"]) assertEquals(accountSendGate(s), "unavailable", s);
+  // Le report d'un compte limité n'est pas horaire.
+  assert(LIMITED_ACCOUNT_DEFER_MS > 60 * 60 * 1000);
+  assert(!/unipile|erreur|error/i.test(LIMITED_ACCOUNT_MESSAGE));
+});
+
+Deno.test("inmailRefusalPlan : compte à reconnecter ou limité = report sans échec, jamais un envoi perdu", () => {
+  assertEquals(inmailRefusalPlan("account_disconnected", 401, null), {
+    action: "defer", reason: "disconnected", message: INMAIL_DISCONNECTED_MESSAGE, delayMs: 3600_000,
+  });
+  assertEquals(inmailRefusalPlan("account_degraded", 423, null), {
+    action: "defer", reason: "limited", message: LIMITED_ACCOUNT_MESSAGE, delayMs: LIMITED_ACCOUNT_DEFER_MS,
+  });
+});
+
+Deno.test("inmailRefusalPlan : 429 = trois essais d'une heure, puis échec ; autre refus = échec avec le code HTTP", () => {
+  const first = inmailRefusalPlan("rate_limited", 429, null);
+  assertEquals(first.action, "retry");
+  if (first.action === "retry") assertEquals(first.attempt, 1);
+  const third = inmailRefusalPlan("provider_limit", 429, "Service LinkedIn momentanément indisponible, nouvel essai 2/3 dans 1 h");
+  assertEquals(third.action, "retry");
+  const spent = inmailRefusalPlan("rate_limited", 429, "Service LinkedIn momentanément indisponible, nouvel essai 3/3 dans 1 h");
+  assertEquals(spent.action, "fail");
+  assertEquals(inmailRefusalPlan("validation", 400, null), {
+    action: "fail", message: "Le service de connexion LinkedIn a refusé l'envoi (code 400)",
+  });
+  // Un quota hors 429 reste un échec : le compte est mis en pause par l'appelant.
+  assertEquals(inmailRefusalPlan("provider_limit", 403, null).action, "fail");
+});
+
+Deno.test("effectiveNetworkDistance : degré lu, sinon degré enregistré, sinon null", () => {
+  assertEquals(effectiveNetworkDistance({ network_distance: "FIRST_DEGREE" }, { network_distance: "SECOND_DEGREE" }), "SECOND_DEGREE");
+  assertEquals(effectiveNetworkDistance({ network_distance: 1 }, { network_distance: undefined }), "FIRST_DEGREE");
+  assertEquals(effectiveNetworkDistance({ network_distance: "FIRST_DEGREE" }, null), "FIRST_DEGREE");
+  assertEquals(effectiveNetworkDistance({}, {}), null);
 });

@@ -33,7 +33,13 @@ const dashboardPage = read('src/pages/Dashboard.tsx');
 const myAccount = read('src/components/settings/MyLinkedInAccount.tsx');
 const context = read('src/contexts/LinkedInAccountsContext.tsx');
 const memberHook = read('src/hooks/useMemberLinkedInAccounts.ts');
-const accountsFn = read('supabase/functions/unipile-accounts/index.ts');
+const copySrc = read('src/lib/connectionCopy.ts');
+const copy = await (async () => {
+  const { build } = await import('esbuild');
+  const out = await build({ entryPoints: [new URL('../../src/lib/connectionCopy.ts', import.meta.url).pathname], bundle: true, write: false, format: 'esm', logLevel: 'silent' });
+  return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
+})();
+const accountsFn = read('supabase/functions/unipile-accounts/handler.ts');
 const sendingStop = read('supabase/functions/_shared/linkedin-sending-stop.ts');
 
 /** Bloc d'un case du switch de unipile-accounts, jusqu'au case de même niveau suivant. */
@@ -53,8 +59,26 @@ test('R6 — statuts « actif » : OK et statuts d\'événement, sans tenir comp
 });
 
 test('R6 — statuts « à reconnecter »', () => {
-  for (const s of ['CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA', 'errored', 'disconnected', 'PARTIAL', 'partial']) {
+  for (const s of ['CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA', 'errored', 'disconnected']) {
     assert.equal(classifyLinkedInStatus(s), 'needs_reconnect', s);
+  }
+});
+
+test('contrat de connexion § 4 — DEGRADED : connexion limitée, jamais « à reconnecter »', () => {
+  for (const s of ['DEGRADED', 'degraded']) {
+    assert.equal(classifyLinkedInStatus(s), 'limited', s);
+  }
+});
+
+test('R1 — PARTIAL (un produit demande une authentification, reconnectable côté serveur) : à reconnecter', () => {
+  for (const s of ['PARTIAL', 'partial']) {
+    assert.equal(classifyLinkedInStatus(s), 'needs_reconnect', s);
+  }
+});
+
+test('contrat de connexion § 4 — LOCKED : accès suspendu, jamais « à reconnecter »', () => {
+  for (const s of ['LOCKED', 'locked']) {
+    assert.equal(classifyLinkedInStatus(s), 'locked', s);
   }
 });
 
@@ -63,7 +87,7 @@ test('R6 — CONNECTING : connexion en cours, jamais une panne', () => {
 });
 
 test('R6 — statut inconnu, vide ou nouveau : « unknown », jamais une panne', () => {
-  for (const s of ['UNKNOWN', 'PAUSED', 'RATE_LIMITED', 'DEGRADED', 'degraded', 'LOCKED', '', null, undefined, 'NOUVEAU']) {
+  for (const s of ['UNKNOWN', 'PAUSED', 'RATE_LIMITED', '', null, undefined, 'NOUVEAU']) {
     assert.equal(classifyLinkedInStatus(s), 'unknown', String(s));
   }
 });
@@ -170,8 +194,12 @@ test('R6 — sans liaison, « not_linked » même avant la liste (la liste n\'es
   assert.equal(r.state, 'not_linked');
 });
 
-test('R6 — channelStatusOf : les 8 états vers les 4 cartes du tableau de bord', () => {
+test('R6 — channelStatusOf : les états vers les 4 cartes du tableau de bord', () => {
   const table = {
+    // Connexion limitée et accès suspendu : ni succès ni panne que « Reconnecter » répare
+    limited: 'connecting',
+    locked: 'connecting',
+    syncing: 'connecting',
     connected: 'connected',
     needs_reconnect: 'error',
     missing: 'error',
@@ -202,14 +230,17 @@ test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp retiré'
   assert.match(dashboardTodo, /action=\{\{ label: 'Reconnecter', href: '\/settings\/account\/connections' \}\}/);
 });
 
-test('R6 — Mon compte LinkedIn : état partagé, formulaire qui ne se rouvre plus seul', () => {
+test('R6 — Mon compte LinkedIn : état partagé, un geste par cause, plus de formulaire de cookie', () => {
   assert.match(myAccount, /resolveMyLinkedInStatus\(/);
   assert.match(myAccount, /accountsLoaded: accountsReady/);
   assert.match(myAccount, /mappingsLoaded: mappingsReady/);
-  assert.match(myAccount, /canReconnect && reconnectOpen/);
+  // Connexion standard : « Reconnecter » seulement pour un compte à reconnecter, jamais pour une connexion limitée ou suspendue
+  assert.match(myAccount, /view\.action === 'reconnect' && \(\s*<ReconnectButton/);
+  assert.match(myAccount, /accountId=\{myMapping\.linkedin_account_id\}/);
+  assert.match(myAccount, /view\.action === 'contact_support' && <SupportLink channel="linkedin"/);
+  assert.doesNotMatch(myAccount, /ReconnectForm|connect_cookie|hosted_auth_link|li_at|User-Agent|userAgent/);
   assert.match(myAccount, /li\.state === 'loading'/, 'un état de chargement évite les faux « introuvable »');
   assert.doesNotMatch(myAccount, /\(myAccount as any\)\.status === 'OK'/);
-  assert.doesNotMatch(myAccount, /if \(myAccount && !isAccountHealthy && !reconnectOpen\)/);
   assert.doesNotMatch(myAccount, /Le mapping pointe vers/);
   assert.doesNotMatch(myAccount, /Rate limit/);
   assert.doesNotMatch(myAccount, /getMappingForUser/);
@@ -230,36 +261,42 @@ test('C8/C23 — Mon compte LinkedIn : lecture ratée affichée en erreur avec �
   assert.ok(noMapping.length > 0, 'branche d\'erreur sans liaison introuvable');
   assert.match(noMapping, /<LinkedInLoadError \/>/);
   assert.match(noMapping, /onClick=\{handleRetryLoad\}/);
-  assert.match(noMapping, /Réessayer/);
-  const retry = myAccount.slice(myAccount.indexOf('const handleRetryLoad'), myAccount.indexOf('// Auto-reload en mode include_org_accounts'));
+  assert.match(noMapping, /CARD_COMMON\.retry/);
+  const retry = myAccount.slice(myAccount.indexOf('const handleRetryLoad'), myAccount.indexOf('const unlinkedAccounts'));
   assert.match(retry, /refetchMappings\(\)/);
-  assert.match(retry, /reloadAccounts\(true\)/);
+  assert.match(retry, /reloadAccounts\(\)/);
+  assert.doesNotMatch(retry, /reloadAccounts\(true\)/, 'le serveur ne sert include_org_accounts qu\'à la plateforme');
   // Relié, liste non reçue : erreur (pas « introuvable »), Réessayer et Dissocier restent là
   const linked = myAccount.slice(
     myAccount.indexOf(') : myMapping && !myAccount ? ('),
     myAccount.indexOf('// Not linked (no mapping)'),
   );
   assert.match(linked, /li\.state === 'load_error' \? \(\s*<LinkedInLoadError accountName=/);
-  assert.match(linked, /\{li\.state === 'load_error' \? 'Réessayer' : 'Rafraîchir'\}/);
-  assert.match(linked, /onClick=\{handleUnlink\}/, 'Dissocier reste utilisable');
-  // Le message d'erreur est en français, sans nom de fournisseur
-  const notice = myAccount.slice(myAccount.indexOf('function LinkedInLoadError'), myAccount.indexOf(' * Mappe un statut'));
-  assert.match(notice, /Impossible de charger votre compte LinkedIn pour le moment\./);
-  assert.match(notice, /role="alert"/);
+  assert.match(linked, /\{li\.state === 'load_error' \? CARD_COMMON\.retry : CARD_COMMON\.refreshAccounts\}/);
+  assert.match(linked, /onConfirm=\{handleUnlink\}/, 'Dissocier reste utilisable');
+  // Un compte disparu se remplace par une nouvelle connexion (pas de « Reconnecter » sur un compte qui n'existe plus)
+  assert.match(linked, /li\.state === 'missing' && \(\s*<HostedConnectButton provider="linkedin" label=\{connectLabel\('linkedin'\)\}/);
+  // Le message d'erreur est en français, sans nom de fournisseur, dans un avis annoncé aux lecteurs d'écran
+  const notice = myAccount.slice(myAccount.indexOf('function LinkedInLoadError'), myAccount.indexOf('/** Heure locale'));
+  assert.match(notice, /<ConnectionNotice tone="danger" title=\{LINKEDIN_CARD\.loadErrorTitle\}>/);
+  assert.match(copySrc, /loadErrorTitle: 'Impossible de charger votre compte LinkedIn pour le moment\.'/);
+  assert.match(read('src/components/connections/ConnectionParts.tsx'), /role="alert" className="flex items-start gap-3 rounded-xl/);
   assert.doesNotMatch(notice, /Unipile/);
 });
 
-test('R6 — statusLabel n\'affiche jamais le code brut', () => {
-  const fn = myAccount.slice(myAccount.indexOf('function statusLabel'), myAccount.indexOf('function looksLikeUserAgent'));
-  assert.ok(fn.length > 0, 'statusLabel introuvable');
-  assert.doesNotMatch(fn, /default:\s*return status;/);
-  for (const code of ['PERMISSIONS', 'PAUSED', 'DISCONNECTED', 'UNKNOWN', 'RATE_LIMITED', 'RUNNING', 'ERRORED', 'PARTIAL', 'DEGRADED', 'LOCKED']) {
-    assert.match(fn, new RegExp(`case '${code}':`), code);
+test('R6 — l\'état d\'un compte s\'écrit en mots de Konekt, jamais avec le code brut', () => {
+  assert.doesNotMatch(myAccount, /function statusLabel|function accountStateDisplay/, 'le libellé vient de connectionCopy');
+  const labels = new Set(Object.values(copy.HEALTH_LABEL));
+  for (const code of ['OK', 'CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'PAUSED', 'DISCONNECTED', 'UNKNOWN', 'RATE_LIMITED', 'RUNNING', 'ERRORED', 'PARTIAL', 'DEGRADED', 'LOCKED', 'CAPTCHA', 'DELETED', 'CONNECTING', 'NOUVEAU_CODE', '', null]) {
+    const label = copy.HEALTH_LABEL[classifyLinkedInStatus(code)];
+    assert.ok(labels.has(label), String(code));
+    assert.notEqual(label, code, `le code ${code} n'est pas affiché tel quel`);
   }
 });
 
 test('R6 — contexte : liste « reçue » distincte de « tentée », liaisons relues, alerte limitée à mon compte', () => {
-  assert.match(context, /classifyLinkedInStatus\(/);
+  assert.match(context, /classifyConnectionHealth\(\{ status: acc\.status, isLocked: acc\.is_locked \}\)/);
+  assert.match(context, /readableConnectionName\(acc\.name, 'linkedin'\)/, 'le nom du compte dans l\'alerte ne laisse pas passer un état encodé');
   assert.match(context, /getUserLinkedAccountId/);
   assert.match(context, /ready: isReady && loadedOk/);
   assert.match(context, /invalidateQueries\(\{ queryKey: \['member-linkedin-accounts'\] \}\)/);
@@ -287,11 +324,24 @@ test('C8/C23 — contexte : un échec de lecture est exposé (loadError), effac�
 
 test('R6 — list : un refus du prestataire est une erreur, pas une liste vide', () => {
   const block = caseBlock('list');
-  const guard = block.indexOf('if (!response.ok)');
-  const firstJson = block.indexOf('await response.json()');
-  assert.ok(guard >= 0, 'garde response.ok absente');
-  assert.ok(firstJson > guard, 'la garde doit précéder la lecture du corps');
-  assert.match(block.slice(guard, firstJson), /throw new HttpError\(502,/);
+  // Un appel par compte relié (v2) : jamais une page de la liste globale prise pour la liste entière.
+  const reads = block.indexOf('reads = await mapWithLimit(orgRows, 4, readLinkedInLink)');
+  assert.ok(reads >= 0, 'lecture compte par compte absente');
+  // Un compte qui ne répond pas est rendu « non vérifié » ; si AUCUN n'a pu être lu, c'est une erreur 502.
+  const guard = block.indexOf('throw new HttpError(502,', reads);
+  assert.ok(guard > reads, 'aucun compte lisible = erreur 502, pas une liste vide');
+  assert.match(block.slice(reads, guard), /reads\.every\(\(r\) => r\.state === 'unverified'\)/);
+  assert.match(block, /La liste des comptes LinkedIn est momentanément indisponible/);
+  assert.match(block, /unverifiedLinkEntry\(read\.row\)/);
+  // Plus de réconciliation par nom : un homonyme d'une autre organisation serait relié à tort.
+  assert.doesNotMatch(block, /planReconcile|deadReads|repointed/);
+  assert.doesNotMatch(accountsFn, /planReconcile/);
+  // Les orphelins : réservés à la plateforme, comptes étrangers lus par pages.
+  assert.match(block, /includeOrgAccounts = params\?\.include_org_accounts === true && isPlatformAdmin\(user\.id\)/);
+  assert.match(block, /\.range\(offset, offset \+ FOREIGN_IDS_PAGE - 1\)/);
+  // Statut au vocabulaire Konekt, pas le mot brut du prestataire.
+  assert.doesNotMatch(block, /sources\b/);
+  assert.doesNotMatch(block, /premiumFeatures|connection_params/);
 });
 
 test('R6 — hook des liaisons : prêt seulement après une lecture réussie', () => {
@@ -321,13 +371,18 @@ test('R12 — le navigateur n\'écrit plus member_linkedin_accounts', () => {
   assert.match(memberHook, /isUnlinking: unlinkAccount\.isPending/);
 });
 
-test('R12 — claim_linkedin_account : droits, appartenance, type, garde des 30 minutes', () => {
+test('R12 — claim_linkedin_account : droits, appartenance, type, orphelin réservé à la plateforme', () => {
   const block = caseBlock('claim_linkedin_account');
   assert.match(block, /assertCanManageAccount\(/);
   assert.match(block, /lookupAccountOwnership\(/);
-  assert.match(block, /acc\?\.type !== 'LINKEDIN'/);
-  assert.match(block, /30 \* 60 \* 1000/);
-  assert.match(block, /callerRole !== 'owner' && callerRole !== 'admin'/);
+  assert.match(block, /acc\?\.provider !== 'linkedin'/);
+  assert.match(block, /mapAccountStatus\(acc\.status, acc\.is_locked === true\)/);
+  assert.match(block, /assertV2AccountId\(/);
+  // Un compte relié nulle part peut être la connexion en cours d'une autre organisation : ni membre ni
+  // administrateur d'organisation ne le revendiquent, et il n'est même pas lu chez le prestataire avant ce refus.
+  assert.match(block, /ownership\.mapped === 'none' && !isPlatformAdmin\(user\.id\)/);
+  assert.ok(block.indexOf("ownership.mapped === 'none'") < block.indexOf('await getAccount(accountId)'), 'refus avant toute lecture du compte');
+  assert.doesNotMatch(block, /30 \* 60 \* 1000|callerRole !== 'owner'/);
   assert.match(block, /\.select\('id, user_id, linkedin_account_id'\)/);
   assert.match(block, /linked\.length !== 1/);
 });
@@ -370,15 +425,21 @@ test('R12 — Mon compte LinkedIn : dissociation confirmée, un seul message, pa
   assert.doesNotMatch(myAccount, /relancez les séquences/);
   assert.doesNotMatch(myAccount, /close_session|closeSession/);
   assert.match(myAccount, /expectedAccountId: myMapping\.linkedin_account_id/);
-  // Chaque appel de handleUnlink passe par une AlertDialogAction
-  const calls = [...myAccount.matchAll(/onClick=\{handleUnlink\}/g)];
+  // Chaque appel de handleUnlink passe par la confirmation commune (AlertDialog, bouton destructif)
+  const calls = [...myAccount.matchAll(/onConfirm=\{handleUnlink\}/g)];
   assert.equal(calls.length, 2);
-  for (const m of calls) {
-    const before = myAccount.slice(Math.max(0, m.index - 80), m.index);
-    assert.match(before, /<AlertDialogAction\s*$/, 'Dissocier sans confirmation');
-  }
-  // Reconnexion par cookie : un seul appel serveur, plus de dissocier + lier
-  assert.match(myAccount, /linkAccountAsync\(\{ userId: currentUserId, linkedinAccountId: newAccountId, silent: true \}\)/);
+  const dialog = read('src/components/connections/ConnectionParts.tsx');
+  assert.match(dialog, /<AlertDialogAction variant="destructive" className="max-md:h-11" onClick=\{onConfirm\}>/);
+  assert.doesNotMatch(myAccount, /onClick=\{handleUnlink\}/, 'Dissocier sans confirmation');
+  // Rattacher un compte disponible : un appel serveur, jamais d'écriture directe
+  assert.match(myAccount, /linkAccount\(\{ userId: currentUserId, linkedinAccountId: accountId \}\)/);
   assert.doesNotMatch(myAccount, /unlinkAccount\(myMapping\.id\)/);
   assert.doesNotMatch(myAccount, /linkedinAccountName/);
+});
+
+test('F5 — pas de relecture automatique en mode include_org_accounts : le serveur la réserve à la plateforme', () => {
+  assert.doesNotMatch(myAccount, /Auto-reload en mode include_org_accounts/);
+  assert.doesNotMatch(myAccount, /useEffect\(\(\) => \{\s*if \(!myAccount && currentUserId && accounts\.length === 0\)/);
+  // Seul le bouton « Actualiser » (dépannage plateforme) demande les comptes sans propriétaire.
+  assert.equal((myAccount.match(/reloadAccounts\(true\)/g) ?? []).length, 1);
 });

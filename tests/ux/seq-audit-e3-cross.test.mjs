@@ -108,11 +108,11 @@ test('SEQ-067 — étape e-mail : même boîte que sequence-send-email, boîte d
 // ---------------------------------------------------------------- 2. SEQ-005 (E1a)
 test('SEQ-005 — après un POST d’envoi réussi, le suivi ne peut plus transformer l’envoi en échec', () => {
   const message = sliceBetween(executeStep, "case 'smart_message': case 'inmail': case 'message': {", "case 'whatsapp_message': {");
-  assert.match(message, /try \{\s*const sendBody = await r\.json\(\)\.catch\(\(\) => \(\{\}\)\);\s*await recordUsageSignal\([\s\S]*?await logAnalytics\([\s\S]*?\} catch \(trackErr\) \{[\s\S]*?\}\s*return \{ success: true, message: msg/);
+  assert.match(message, /if \(outcome\.outcome !== 'sent'\) return failedSendResult\(outcome, 'LinkedIn', needsInMail\);\s*try \{\s*await logAnalytics\([\s\S]*?\} catch \(trackErr\) \{[\s\S]*?\}\s*return \{ success: true, message: msg/);
   const whatsapp = sliceBetween(executeStep, "case 'whatsapp_message': {", "case 'connection_request': {");
-  assert.match(whatsapp, /try \{\s*await waR\.json\(\)\.catch\(\(\) => null\);\s*await logAnalytics\([\s\S]*?\} catch \(trackErr\) \{[\s\S]*?\}\s*return \{ success: true, message: msg \};/);
+  assert.match(whatsapp, /if \(waOutcome\.outcome !== 'sent'\) return failedSendResult\(waOutcome, 'WhatsApp'\);\s*try \{\s*await logAnalytics\([\s\S]*?\} catch \(trackErr\) \{[\s\S]*?\}\s*return \{ success: true, message: msg \};/);
   const invite = sliceBetween(executeStep, "case 'connection_request': {", "default: return { success: false, error: '__SKIP_UNSUPPORTED__' };");
-  assert.match(invite, /try \{\s*const inviteBody = await r\.json\(\)\.catch\(\(\) => \(\{\}\)\);[\s\S]*?connection_status: 'pending_invite'[\s\S]*?\} catch \(trackErr\) \{[\s\S]*?\}\s*return \{ success: true, message: invitePayload\.message \};/);
+  assert.match(invite, /try \{\s*await logAnalytics\([\s\S]*?connection_status: 'pending_invite'[\s\S]*?\} catch \(trackErr\) \{[\s\S]*?\}\s*return \{ success: true, message: note \};/);
 });
 
 // ---------------------------------------------------------------- 3. SEQ-074 (E1b)
@@ -159,7 +159,7 @@ test('SEQ-045 — relation directe : invitation sautée « Déjà en relation : 
   assert.equal(rules.isFirstDegreeCandidate({}, { network_distance: 'DISTANCE_1' }), true);
   const invite = sliceBetween(executeStep, "case 'connection_request': {", "default: return { success: false, error: '__SKIP_UNSUPPORTED__' };");
   const skipAt = invite.indexOf("return { success: false, error: '__SKIP_UNSUPPORTED__', skipReason: rules.ALREADY_CONNECTED_SKIP_REASON };");
-  assert.ok(skipAt > 0 && skipAt < invite.indexOf('/api/v1/users/invite'));
+  assert.ok(skipAt > 0 && skipAt < invite.indexOf('await sendRelationRequest('));
   // handleProcess passe l'étape en 'skipped' avec ce motif et poursuit.
   assert.match(sequences, /skip_reason: executeResult\.skipReason \|\|/);
 });

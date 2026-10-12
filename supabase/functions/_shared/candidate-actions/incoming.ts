@@ -4,19 +4,26 @@ import { sanitizeEmailBody } from '../email-tool-policy.mjs';
 import { resolveCandidateActionMessageScope } from './message-scope.ts';
 import { inReplyToCandidates } from '../sequence-email-policy.mjs';
 import { isCandidateErasedForOrg } from '../get-or-fetch-contact.ts';
-import { candidateActionEmailService, candidateActionPhone, candidateActionProviderCredentials, candidateActionProviderFetch } from './transport.ts';
+import { getChat, getEmail, getMessage, isUnipileError, toKonektChat, toKonektEmail, toKonektMessage } from '../unipile/index.ts';
+import { candidateActionEmailService, candidateActionPhone } from './transport.ts';
 
 type ActionClient = SupabaseClient;
 type Row = Record<string, unknown>;
 const rec = (value: unknown): Row => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
 const str = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const email = (value: unknown): string => { const text = str(value).toLowerCase(); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? text : ''; };
-const rows = (value: unknown): Row[] => { const list = Array.isArray(value) ? value : rec(value).items; return Array.isArray(list) ? list.map(rec) : []; };
 const escapeLike = (value: string): string => value.replace(/([%_\\])/g, '\\$1');
-const safePath = (id: string): string => {
+const safeId = (id: string): string => {
   if (!id || id.length > 512 || /[/\\?#]|\.\./.test(id)) throw new Error('Invalid incoming message identity');
-  return encodeURIComponent(id);
+  return id;
 };
+/** An incoming event is read inside the webhook delivery: a slow provider must fail the delivery (and replay it), not stall it. */
+const READ_BUDGET_MS = 4_000;
+function bounded<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Incoming provider read timed out')), READ_BUDGET_MS); });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
 
 interface BoundAccount { organization_id: string; user_id: string; account_id: string; address: string; channel: 'email' | 'linkedin' | 'whatsapp'; provider: string }
 interface MessageBinding { candidate_id: string; project_id: string | null; audience: 'candidate' | 'team'; action_plan_id?: string | null }
@@ -47,14 +54,31 @@ async function boundAccount(admin: ActionClient, accountId: string): Promise<Bou
   return membership.data ? account : null;
 }
 
+/**
+ * Journal rows of our own sends that a reply names. A reply carries the RFC Message-ID of the mail it answers,
+ * while the journal key is the provider's Email id: the RFC id of each send is kept in the receipt of its effect,
+ * so the effect ids matching the reply are the exact identity of the answered send.
+ */
+async function answeredEffectIds(admin: ActionClient, replyIds: string[]): Promise<Set<string>> {
+  if (!replyIds.length) return new Set();
+  const { data, error } = await admin.from('candidate_action_effects').select('id')
+    .in('result->providerReceipt->>message_id', replyIds).limit(20);
+  if (error) throw error;
+  return new Set((data ?? []).map((row: Row) => str(row.id)).filter(Boolean));
+}
+
 async function knownMessageBinding(admin: ActionClient, account: BoundAccount, counterpart: string, threadId: string | null, replyIds: string[]): Promise<MessageBinding | null | undefined> {
   const { data, error } = await admin.from('candidate_action_messages')
-    .select('candidate_id,project_id,audience,provider_message_id,provider_thread_id,action_plan_id,occurred_at')
+    .select('candidate_id,project_id,audience,provider_message_id,provider_thread_id,action_plan_id,effect_id,occurred_at')
     .eq('organization_id', account.organization_id).eq('owner_user_id', account.user_id)
     .eq('account_id', account.account_id).eq('channel', account.channel).eq('direction', 'outbound')
     .eq('counterpart', counterpart).order('occurred_at', { ascending: false }).limit(100);
   if (error) throw error;
-  const exactReplies = (data ?? []).filter((row: Row) => replyIds.includes(str(row.provider_message_id)));
+  let exactReplies = (data ?? []).filter((row: Row) => replyIds.includes(str(row.provider_message_id)));
+  if (!exactReplies.length && account.channel === 'email' && (data ?? []).length) {
+    const answered = await answeredEffectIds(admin, replyIds);
+    if (answered.size) exactReplies = (data ?? []).filter((row: Row) => answered.has(str(row.effect_id)));
+  }
   const matching = exactReplies.length ? exactReplies : (data ?? []).filter((row: Row) => !!threadId && row.provider_thread_id === threadId);
   if (!matching.length) return undefined;
   const scopes = new Set(matching.map((row: Row) => JSON.stringify([row.candidate_id, row.project_id ?? null, row.audience])));
@@ -112,24 +136,25 @@ export async function captureCandidateActionIncoming(admin: ActionClient, payloa
   const existing = await admin.from('candidate_action_messages').select('id,audience').eq('account_id', accountId).eq('provider_message_id', id).maybeSingle();
   if (existing.error) throw existing.error;
   if (existing.data) return { channel: account.channel, audience: existing.data.audience, captured: true };
-  const creds = await candidateActionProviderCredentials(admin, account.organization_id);
-  const path = account.channel === 'email' ? `/emails/${safePath(id)}?account_id=${encodeURIComponent(accountId)}` : `/messages/${safePath(id)}`;
-  const response = await candidateActionProviderFetch(creds, path, {}, 4_000);
-  if (!response.ok) throw new Error('Incoming provider message could not be read');
-  const message = rec(await response.json());
-  if (str(message.account_id) && message.account_id !== accountId) throw new Error('Incoming message belongs to another account');
-  const timestamp = str(message.date) || str(message.timestamp) || str(v2.timestamp);
-  if (!Number.isFinite(Date.parse(timestamp))) throw new Error('Incoming message without valid timestamp');
-  const threadId = str(message.thread_id) || str(message.chat_id) || str(payload.chat_id) || str(nested.chat_id) || str(v2.chat_id) || null;
+  // The account is the one the delivery names, proven bound to a member above; a v2 message or chat has no account of its own.
+  let threadId: string | null = null;
+  let timestamp: string;
+  let replyIdsSource: unknown;
+  let providerMessageId: string;
+  let subject: string | null = null;
   let counterpart: string;
   let sender: string;
   let recipient: string;
   let content: string;
   let direction: 'inbound' | 'outbound';
   if (account.channel === 'email') {
-    const from = email(rec(message.from_attendee).identifier);
-    const to = rows(message.to_attendees).map(row => email(row.identifier)).filter(Boolean);
-    const cc = rows(message.cc_attendees).map(row => email(row.identifier)).filter(Boolean);
+    const message = toKonektEmail(await bounded(getEmail(accountId, safeId(id))), { accountId, accountEmail: account.address });
+    timestamp = str(message.date) || str(v2.date);
+    if (!Number.isFinite(Date.parse(timestamp))) throw new Error('Incoming message without valid timestamp');
+    threadId = str(message.thread_id) || str(payload.thread_id) || null;
+    const from = email(message.from_attendee?.identifier);
+    const to = message.to_attendees.map(row => email(row.identifier)).filter(Boolean);
+    const cc = message.cc_attendees.map(row => email(row.identifier)).filter(Boolean);
     if (!account.address || !from || (from !== account.address && ![...to, ...cc].includes(account.address))) throw new Error('Incoming email mailbox identity cannot be verified');
     direction = from === account.address ? 'outbound' : 'inbound';
     // Multi-recipient sent email has no single candidate attribution.
@@ -138,38 +163,53 @@ export async function captureCandidateActionIncoming(admin: ActionClient, payloa
     sender = from;
     recipient = direction === 'inbound' ? account.address : counterpart;
     content = sanitizeEmailBody(message.body_plain, message.body, 12_000);
+    subject = str(message.subject) || null;
+    replyIdsSource = message.in_reply_to ?? payload.in_reply_to;
+    // One canonical id per mail, the provider's own Email id: the delivery and the journal of a send agree on it.
+    providerMessageId = str(message.provider_id) || id;
   } else {
-    if (!threadId || (message.is_sender !== true && message.is_sender !== false && message.is_sender !== 1 && message.is_sender !== 0)) throw new Error('Incoming chat direction cannot be verified');
-    const chatResponse = await candidateActionProviderFetch(creds, `/chats/${safePath(threadId)}`, {}, 4_000);
-    if (!chatResponse.ok) throw new Error('Incoming chat ownership cannot be verified');
-    const chat = rec(await chatResponse.json());
-    if (chat.account_id !== accountId || Number(chat.type) !== 0) return { channel: account.channel, audience: null, captured: false };
-    const attendeeResponse = await candidateActionProviderFetch(creds, `/chats/${safePath(threadId)}/attendees`, {}, 4_000);
-    if (!attendeeResponse.ok) throw new Error('Incoming chat attendee cannot be verified');
-    const other = rows(await attendeeResponse.json()).filter(row => row.is_self !== true && row.is_self !== 1 && row.role !== 'self');
-    if (other.length !== 1) return { channel: account.channel, audience: null, captured: false };
-    const identity = str(other[0].provider_id);
+    // A message is readable only inside its chat: the chat id comes from the delivery (envelope or flattened event).
+    const chatId = str(payload.chat_id) || str(nested.chat_id) || str(rec(rec(payload.data).chat).id) || str(v2.chat_id);
+    if (!chatId) throw new Error('Incoming chat direction cannot be verified');
+    const message = toKonektMessage(await bounded(getMessage(accountId, safeId(chatId), safeId(id))), { accountId, chatId });
+    timestamp = str(message.timestamp) || str(v2.timestamp);
+    if (!Number.isFinite(Date.parse(timestamp))) throw new Error('Incoming message without valid timestamp');
+    if (message.is_sender !== true && message.is_sender !== false) throw new Error('Incoming chat direction cannot be verified');
+    threadId = chatId;
+    // Read under this very account: a chat that is not the account's own does not answer, and the delivery is replayed.
+    let rawChat: unknown;
+    try { rawChat = await bounded(getChat(accountId, chatId)); }
+    catch (error) {
+      // A chat that definitively does not answer under this account (deleted, or an inbox the account cannot read) will never answer:
+      // replaying the delivery would loop for ever and block the reply handlers that run after this capture.
+      if (isUnipileError(error) && (error.kind === 'not_found' || error.kind === 'forbidden')) return { channel: account.channel, audience: null, captured: false };
+      throw error;
+    }
+    const chat = toKonektChat(rawChat, { accountId });
+    if (chat.type !== 0) return { channel: account.channel, audience: null, captured: false };
+    const identity = str(chat.attendees[0]?.provider_id) || str(chat.attendee_provider_id);
     counterpart = account.channel === 'whatsapp' ? candidateActionPhone(identity) : identity;
     if (!counterpart) throw new Error('Incoming chat attendee identity missing');
-    direction = message.is_sender === true || message.is_sender === 1 ? 'outbound' : 'inbound';
+    direction = message.is_sender ? 'outbound' : 'inbound';
     sender = direction === 'inbound' ? counterpart : account.address;
     recipient = direction === 'inbound' ? account.address : counterpart;
     content = str(message.text).slice(0, 12_000);
+    replyIdsSource = payload.in_reply_to;
+    providerMessageId = str(message.provider_id) || id;
   }
   // Attachment-only events are not invented text; a later real text event will be captured.
   if (!content) return { channel: account.channel, audience: null, captured: false };
-  const replyIds = inReplyToCandidates(message.in_reply_to ?? payload.in_reply_to);
+  const replyIds = inReplyToCandidates(replyIdsSource);
   const known = await knownMessageBinding(admin, account, counterpart, threadId, replyIds);
   const binding = known === undefined ? await contactBinding(admin, account, counterpart, threadId) : known;
   if (!binding) return { channel: account.channel, audience: null, captured: false };
   if (await isCandidateErasedForOrg(admin, { organizationId: account.organization_id, linkedinIds: [binding.candidate_id], emails: account.channel === 'email' && binding.audience === 'candidate' ? [counterpart] : [] })) return { channel: account.channel, audience: null, captured: false };
-  const providerMessageId = str(message.provider_id) || str(message.message_id) || id;
   const { error } = await admin.from('candidate_action_messages').upsert({
     organization_id: account.organization_id, candidate_id: binding.candidate_id, project_id: binding.project_id,
     owner_user_id: account.user_id, account_id: accountId, channel: account.channel,
     service: account.channel === 'email' ? candidateActionEmailService(account.provider) : account.channel,
     audience: binding.audience, direction, provider_message_id: providerMessageId, provider_thread_id: threadId,
-    counterpart, sender, recipient, subject: str(message.subject) || null, content,
+    counterpart, sender, recipient, subject, content,
     occurred_at: new Date(timestamp).toISOString(), action_plan_id: binding.action_plan_id ?? null,
     in_reply_to: replyIds[0] ?? null,
   }, { onConflict: 'account_id,provider_message_id', ignoreDuplicates: true });

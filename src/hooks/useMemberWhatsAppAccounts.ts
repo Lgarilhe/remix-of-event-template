@@ -24,8 +24,8 @@ export function useMemberWhatsAppAccounts() {
       const { data, error } = await invokeEdgeFunction<{ accounts: MemberWhatsAppAccount[] }>('unipile-accounts', {
         action: 'list_whatsapp', organization_id: organizationId,
       });
-      if (error || !data.success || !Array.isArray(data.accounts)) {
-        throw error ?? new Error(data.error || 'Impossible de lire vos comptes WhatsApp');
+      if (error || !data?.success || !Array.isArray(data.accounts)) {
+        throw error ?? new Error('Impossible de lire vos comptes WhatsApp');
       }
       return data.accounts;
     },
@@ -36,7 +36,7 @@ export function useMemberWhatsAppAccounts() {
       const { data, error } = await invokeEdgeFunction('unipile-accounts', {
         action: 'disconnect_whatsapp', organization_id: organizationId, account_id: accountId,
       });
-      if (error || !data.success) throw error ?? new Error(data.error || 'Impossible de déconnecter votre compte WhatsApp');
+      if (error || !data?.success) throw error ?? new Error('Impossible de déconnecter votre compte WhatsApp');
     },
     onSuccess: async () => {
       await Promise.all([

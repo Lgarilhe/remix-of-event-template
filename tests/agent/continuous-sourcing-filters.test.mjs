@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { bootModules } from './unipile-search-harness.mjs';
 
 const root = new URL('../../', import.meta.url);
 function compile(source, globals = {}, name = 'continuous-filter-test.ts') {
@@ -34,21 +35,11 @@ function rejects(snapshot, api, code, reason) {
   assert.throws(() => build(snapshot, api), error => error instanceof filters.ContinuousSearchFilterError
     && error.code === code && reason.test(error.message));
 }
-const providerSource = snippet('supabase/functions/unipile-search/index.ts', ['handleSearch', 'validateBooleanKeywords'])
-  + '\nexports.handleSearch = handleSearch;';
+// La requête du prestataire est celle que construit unipile-search (API v2, une requête par licence).
+const modules = await bootModules();
+const providerRequest = request => modules.compileSearchRequest(request);
 async function providerBody(request) {
-  let body;
-  const provider = compile(providerSource, {
-    ...boolean,
-    corsHeaders: {},
-    fetchWithTimeout: async (_url, options) => {
-      body = JSON.parse(options.body);
-      return new Response(JSON.stringify({ items: [], paging: { total_count: 0 } }), { status: 200 });
-    },
-  });
-  const response = await provider.handleSearch('https://local.invalid', 'fake-key', 'account', request);
-  assert.equal(response.status, 200);
-  return body;
+  return plain(providerRequest(request).compiled.body);
 }
 const frontend = compile(snippet('src/components/outreach/types.ts', ['INITIAL_FILTERS'])
   + '\n' + snippet('src/hooks/useLinkedInSearchActions.ts', ['buildSearchParams']));
@@ -65,7 +56,14 @@ test('reviewed basic filters have the same provider payload as interactive sourc
     network_distance: [1, 2], profile_language: ['fr'], company_headcount: ['C'],
     past_company: [{ id: '5678', name: 'Ancienne entreprise' }], past_job_title: [{ id: '901', name: 'Consultant', priority: 'DOESNT_HAVE' }],
   };
-  assert.deepEqual(await providerBody(build(saved)), await providerBody(ui(saved)));
+  // Le prestataire exige un nom pour un poste, une compétence ou une entreprise Recruiter. Le navigateur le
+  // donne (« Engineer »), le constructeur de l'agent continu ne donne que l'identifiant ('900') : la parité
+  // se juge hors libellés tant que ce constructeur ne les porte pas (demande faite à son propriétaire).
+  const labelFree = value => Array.isArray(value) ? value.map(labelFree)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.entries(value).filter(([key]) => !(key === 'name' && 'id' in value)).map(([key, v]) => [key, labelFree(v)]))
+      : value;
+  assert.deepEqual(labelFree(await providerBody(build(saved))), labelFree(await providerBody(ui(saved))));
 });
 
 test('raw AI experience stays calculated and never becomes native tenure', async () => {
@@ -74,6 +72,7 @@ test('raw AI experience stays calculated and never becomes native tenure', async
   const body = await providerBody(build(saved));
   assert.equal(body.tenure, undefined);
   assert.equal(body.years_of_experience, undefined);
+  assert.equal(body.years_in_current_company, undefined);
 });
 
 test('manual snapshots drop the same legacy generated XP and suggestions as the UI loader', async () => {
@@ -83,7 +82,7 @@ test('manual snapshots drop the same legacy generated XP and suggestions as the 
   const request = build(saved);
   assert.equal(request.years_of_experience, undefined);
   assert.equal(request.tenure, undefined);
-  assert.equal((await providerBody(request)).tenure, undefined);
+  assert.equal((await providerBody(request)).years_of_experience, undefined);
 });
 
 test('Recruiter keeps long reviewed Boolean queries intact through the provider boundary', async () => {
@@ -111,9 +110,9 @@ test('Recruiter keyword facets preserve long roles, companies and skills too', a
     skills: [{ keywords, priority: 'CAN_HAVE' }],
   };
   const body = await providerBody(build(saved));
-  assert.equal(body.role[0].keywords, keywords);
-  assert.equal(body.company[0].keywords, keywords);
-  assert.equal(body.skills[0].keywords, keywords);
+  assert.equal(body.job_title[0].name, keywords);
+  assert.equal(body.company[0].name, keywords);
+  assert.equal(body.skills[0].name, keywords);
 });
 
 test('manual metadata cannot activate an orphan radius or old sector suggestions', async () => {
@@ -135,9 +134,11 @@ test('manual metadata cannot activate an orphan radius or old sector suggestions
   const selected = { ...saved, location: [{ id: '106383538', priority: 'MUST_HAVE', scope: 'CURRENT' }],
     industry: [{ id: '96', priority: 'MUST_HAVE' }] };
   const body = await providerBody(build(selected));
-  assert.equal(body.location_within_area, 25);
+  // Le rayon autour d'un lieu n'existe plus dans la requête du prestataire : il est signalé à l'écran.
+  assert.equal(body.location_within_area, undefined);
+  assert.ok(providerRequest(build(selected)).dropped.some(d => d.filter === 'location_within_area'));
   assert.deepEqual(body.industry, { include: ['96'] });
-  assert.deepEqual(body.location, [{ id: '106383538', priority: 'MUST_HAVE', scope: 'CURRENT' }]);
+  assert.deepEqual(body.location, [{ id: '106383538', priority: 'MUST_HAVE', preferences: 'CURRENT' }]);
   rejects({ ...selected, location_within_area: 17 }, 'recruiter', 'filters_invalid', /rayon/i);
   rejects({ ...base, location_within_area: 25 }, 'recruiter', 'filters_unresolved', /lieu/);
   rejects({ ...base, industry_keywords: saved.industry_keywords }, 'recruiter', 'filters_unresolved', /secteurs/);
@@ -147,9 +148,9 @@ test('explicit native XP, employer tenure and role tenure retain distinct ranges
   const saved = { ...base, years_of_experience_min: 0, years_of_experience_max: 8,
     tenure_at_company_min: 1, tenure_at_company_max: 5, tenure_at_role_min: 0, tenure_at_role_max: 2 };
   const body = await providerBody(build(saved));
-  assert.deepEqual(body.tenure, { min: 0, max: 8 });
-  assert.deepEqual(body.tenure_in_company, { min: 1, max: 5 });
-  assert.deepEqual(body.tenure_in_position, { min: 0, max: 2 });
+  assert.deepEqual(body.years_of_experience, { min: 0, max: 8 });
+  assert.deepEqual(body.years_in_current_company, { min: 1, max: 5 });
+  assert.deepEqual(body.years_in_current_position, { min: 0, max: 2 });
 });
 
 test('company IDs and text exclusions survive together with all supported periods', async () => {
@@ -158,10 +159,11 @@ test('company IDs and text exclusions survive together with all supported period
       { keywords: 'Feeder', priority: 'MUST_HAVE', scope: 'PAST_NOT_CURRENT' }] };
   const request = build(saved);
   assert.equal(request.company_keywords, undefined, 'avoid the existing handler overwrite path');
-  assert.deepEqual((await providerBody(request)).company, [
-    { id: '1234', priority: 'MUST_HAVE', scope: 'CURRENT' },
-    { keywords: 'Client', priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' },
-    { keywords: 'Feeder', priority: 'MUST_HAVE', scope: 'PAST_NOT_CURRENT' },
+  const body = await providerBody(request);
+  assert.deepEqual(body.current_company, [{ id: '1234', priority: 'MUST_HAVE' }]);
+  assert.deepEqual(body.company, [
+    { name: 'Client', priority: 'DOESNT_HAVE', preferences: 'CURRENT_OR_PAST' },
+    { name: 'Feeder', priority: 'MUST_HAVE', preferences: 'PAST_NOT_CURRENT' },
   ]);
 });
 
@@ -171,17 +173,23 @@ test('role and location priorities and scopes are preserved instead of dropped',
     location: [{ id: '101', priority: 'CAN_HAVE', scope: 'OPEN_TO_RELOCATE_ONLY' },
       { id: '102', priority: 'DOESNT_HAVE', scope: 'CURRENT' }] };
   const body = await providerBody(build(saved));
-  assert.deepEqual(body.role, saved.role);
-  assert.deepEqual(body.location, saved.location);
+  assert.deepEqual(body.job_title, [
+    { name: 'Data Engineer', priority: 'CAN_HAVE', preferences: 'PAST' },
+    { name: 'Junior OR Intern', priority: 'DOESNT_HAVE', preferences: 'CURRENT' },
+  ]);
+  assert.deepEqual(body.location, [
+    { id: '101', priority: 'CAN_HAVE', preferences: 'OPEN_TO_RELOCATE_ONLY' },
+    { id: '102', priority: 'DOESNT_HAVE', preferences: 'CURRENT' },
+  ]);
 });
 
 test('native seniority reaches the provider even with an existing required role', async () => {
   const saved = { ...base, seniority: ['4', '6'], role: [{ keywords: 'Data Engineer', priority: 'MUST_HAVE', scope: 'CURRENT' }] };
   const body = await providerBody(build(saved));
-  assert.deepEqual(body.seniority, { include: ['senior', 'director'] });
-  assert.equal(body.role[0].keywords, 'Data Engineer');
+  assert.deepEqual(body.seniority, ['SENIOR', 'DIRECTOR']);
+  assert.equal(body.job_title[0].name, 'Data Engineer');
   assert.deepEqual((await providerBody(build({ ...base, seniority: ['5', '7', '8'] }, 'sales_navigator'))).seniority,
-    { include: ['experienced_manager', 'vice_president', 'cxo'] });
+    { include: ['EXPERIENCED_MANAGER', 'VICE_PRESIDENT', 'CXO'] });
   rejects({ ...base, seniority: ['4'] }, 'classic', 'filters_unsupported', /séniorité/i);
   rejects({ ...base, seniority: ['invalid'] }, 'recruiter', 'filters_invalid', /séniorité/i);
 });
@@ -193,13 +201,13 @@ test('Recruiter groups, degree, graduation, joined and viewed fields use handler
     hide_previously_viewed: 90, employment_type: ['FULL_TIME'],
     spoken_languages: [{ language: 'en', priority: 'MUST_HAVE', scope: 'PROFESSIONAL_WORKING' }] };
   const body = await providerBody(build(saved));
-  assert.deepEqual(body.groups, ['77']);
+  assert.deepEqual(body.group, ['77']);
   assert.deepEqual(body.degree, { include: ['101'], exclude: ['102'] });
   assert.deepEqual(body.graduation_year, { min: 2015, max: 2020 });
-  assert.deepEqual(body.recently_joined, [{ min: 0, max: 30 }]);
-  assert.deepEqual(body.hide_previously_viewed, { timespan: 90 });
+  assert.deepEqual(body.recently_joined, [{ max: 30 }]);
+  assert.deepEqual(body.hide_previously_viewed, { timespan: 'PAST_3_MONTHS' });
   assert.deepEqual(body.employment_type, ['FULL_TIME']);
-  assert.deepEqual(body.spoken_languages, saved.spoken_languages);
+  assert.deepEqual(body.spoken_language, [{ id: 'en', priority: 'MUST_HAVE', proficiency: 'PROFESSIONAL_WORKING' }]);
   rejects({ ...base, degree: [{ id: '3', priority: 'MUST_HAVE' }] }, 'recruiter', 'filters_unresolved', /diplômes/);
 });
 
@@ -207,8 +215,8 @@ test('contact and note activity preserves the selected period and UI default', a
   const saved = { keywords: 'Python', activity_messages: 'without_message', activity_messages_days: 90,
     activity_notes: 'with_note', activity_notes_days: 30 };
   assert.deepEqual((await providerBody(build(saved))).recruiting_activity, [
-    { id: 'messages', priority: 'DOESNT_HAVE', timespan: 90 },
-    { id: 'notes', priority: 'MUST_HAVE', timespan: 30 },
+    { type: 'messages', priority: 'DOESNT_HAVE', preferences: 'PAST_3_MONTHS' },
+    { type: 'notes', priority: 'MUST_HAVE', preferences: 'PAST_3_MONTHS' },
   ]);
   assert.deepEqual(build({ keywords: 'Python' }).recruiting_activity,
     [{ id: 'messages', priority: 'DOESNT_HAVE', timespan: 90 }]);
@@ -220,7 +228,7 @@ test('contact and note activity preserves the selected period and UI default', a
 
 test('Sales Navigator preserves exact allowed tenure buckets and never rounds silently', async () => {
   const body = await providerBody(build({ ...base, tenure_at_role_min: 3, tenure_at_role_max: 5 }, 'sales_navigator'));
-  assert.deepEqual(body.tenure_at_role, [{ min: 3, max: 5 }]);
+  assert.deepEqual(body.years_in_position, [{ min: 3, max: 5 }]);
   rejects({ ...base, tenure_at_role_min: 2, tenure_at_role_max: 4 }, 'sales_navigator', 'filters_unsupported', /ancienneté/);
 });
 
@@ -231,12 +239,14 @@ test('Classic uses its supported array facets and reviewed advanced keywords', a
     open_to: ['boardMember'] };
   const body = await providerBody(build(saved, 'classic'));
   assert.deepEqual(body.location, ['101']);
-  assert.deepEqual(body.company, ['102']);
+  assert.deepEqual(body.current_company, ['102']);
   assert.deepEqual(body.industry, ['103']);
   assert.deepEqual(body.past_company, ['104']);
   assert.deepEqual(body.school, ['105']);
   assert.deepEqual(body.advanced_keywords, { first_name: 'Alice', title: 'Engineer OR Ingénieur' });
-  assert.deepEqual(body.open_to, ['boardMember']);
+  // Le prestataire ne connaît que le bénévolat : « membre de conseil » est signalé à l'écran.
+  assert.equal(body.open_to, undefined);
+  assert.ok(providerRequest(build(saved, 'classic')).dropped.some(d => d.filter === 'open_to'));
 });
 
 test('unsupported constraints fail before a provider request with an actionable reason', () => {

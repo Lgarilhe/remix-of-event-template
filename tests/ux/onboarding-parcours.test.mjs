@@ -259,15 +259,26 @@ test('Fiche société : en arrière-plan, sans forcer le rafraîchissement', () 
 
 test('LinkedIn : même onglet, retour lu, liaison attendue côté serveur', () => {
   const lib = code('src/lib/onboarding/linkedin.ts');
-  assert.match(lib, /success_redirect_url: linkedInReturnUrl\('ok'\)/);
-  assert.match(lib, /failure_redirect_url: linkedInReturnUrl\('ko'\)/);
+  // Le serveur pose l'adresse de retour : plus aucune adresse envoyée par le navigateur, plus d'appel du lien ici
+  assert.doesNotMatch(lib, /success_redirect_url|failure_redirect_url|hosted_auth_link|invokeEdgeFunction/);
   const scene = code('src/components/onboarding/scenes/SceneLinkedIn.tsx');
-  assert.match(scene, /window\.location\.assign\(url\)/, 'un seul parcours en cours : pas de second onglet');
-  assert.doesNotMatch(scene, /window\.open/);
+  assert.match(scene, /hosted\.start\(\{ provider: 'linkedin', returnTo: 'onboarding', onLeave \}\)/, 'départ par la connexion standard, retour à l\'installation');
+  assert.doesNotMatch(scene, /window\.open|requestLinkedInConnectionUrl/);
+  // Même onglet : goToProvider, jamais une fenêtre ouverte après un appel
+  assert.match(code('src/components/connections/hostedConnect.ts'), /goToProvider\(result\.next\.url, deps\.navigate\)/);
+  assert.match(code('src/components/connections/connectionApi.ts'), /window\.location\.assign\(u\)/);
   assert.match(scene, /POLL_FOR_MS/, 'interrogation bornée dans le temps');
   assert.match(code('src/pages/Onboarding.tsx'), /get\('li'\)/);
+  // Le compte montré est celui de la personne (liaison stricte), pas le premier compte connecté de l'organisation
+  assert.match(code('src/pages/Onboarding.tsx'), /useMyLinkedInAccount\(\)/);
+  assert.doesNotMatch(code('src/pages/Onboarding.tsx'), /connectedAccounts\(accounts\)\[0\]/);
+  assert.match(code('src/components/connections/useMyLinkedInAccount.ts'), /resolveMyLinkedInStatus\(/);
   // L'état « connecté » vient de la liste des comptes et de leur statut, pas d'un simple compte listé.
   assert.match(lib, /classifyLinkedInStatus\([^)]*\) === 'connected'/);
+  // La page de retour reprend l'installation (?li=ok ou ?li=ko) quand la connexion en vient
+  const back = code('src/pages/ConnectReturn.tsx');
+  assert.match(back, /readReturnTarget\(attemptId\)/);
+  assert.match(code('src/components/connections/returnTarget.ts'), /pathname: '\/onboarding', search: ok \? '\?li=ok' : '\?li=ko'/);
 });
 
 test('Première recherche : une seule page, un seul appel, filtres relus sur la mission', () => {

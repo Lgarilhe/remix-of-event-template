@@ -11,7 +11,6 @@
  * - Connected calendars (member_calendar_accounts): member, provider, address and state, no provider identifier
  * - Phone calls (phone_calls, lot A1), their analyses (phone_call_insights) and transcriptions
  *   (phone_call_transcripts, lot A5, the most recent ones: the cap is reported in _meta)
- * - Messages sent (from Unipile logs if available)
  *
  * Only admins can trigger this export.
  */

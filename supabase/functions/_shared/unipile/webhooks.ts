@@ -550,9 +550,12 @@ function copyPayload(out: Record<string, unknown>, payload: Record<string, unkno
  *  - `message.receipt.read`: `message_id`, `data.message` {id, chat_id}, `data.chat`.
  *  - `message.reaction.new`: same plus `data.reaction`, `data.reaction_reason`.
  *  - `relation.new`: `user_provider_id`, `user_full_name`,
- *    `user_public_identifier`, `user_profile_url`.
+ *    `user_public_identifier`, `user_profile_url`, and `relation_id` for a
+ *    `UserRelation`. None of the `user_*` keys is set when a relation carries no
+ *    `user` (the id of the relation must not pass for the id of the person).
  *  - `account.add` / `account.reconnect`: `state`, `data` {name, account_type},
- *    `v1_account_id` when the payload carries `metadata.v1_account_id`.
+ *    `v1_account_id` when the payload carries `metadata.v1_account_id`,
+ *    `provider_status` and `is_locked` when the payload is an `Account`.
  *  - `account.initial_sync.*`: `sync_status`, `data` {name, account_type}.
  *  - `email.new`: `email_id`, `message_id` (RFC), `thread_id`, `from_attendee`,
  *    `to_attendees`, `cc_attendees`, `bcc_attendees`, `in_reply_to` (from the
@@ -629,11 +632,17 @@ export function flattenEnvelope(raw: unknown): Record<string, unknown> | null {
       break;
     }
     case 'relation.new': {
-      const user = isRecord(p.user) ? p.user : p;
-      out.user_provider_id = user.id;
-      out.user_full_name = user.display_name;
-      out.user_public_identifier = user.public_identifier;
-      out.user_profile_url = user.profile_url;
+      // A `UserRelation` carries the person in `user`; its own `id` is the id of the
+      // relation, never of the person, so it is not used as one. A payload that is
+      // the person itself (no `user`, not a relation) is read as is.
+      const user = isRecord(p.user) ? p.user : p.object === 'UserRelation' ? undefined : p;
+      if (p.object === 'UserRelation' && str(p.id)) out.relation_id = p.id;
+      if (user) {
+        out.user_provider_id = user.id;
+        out.user_full_name = user.display_name;
+        out.user_public_identifier = user.public_identifier;
+        out.user_profile_url = user.profile_url;
+      }
       break;
     }
     case 'account.add':
@@ -643,6 +652,10 @@ export function flattenEnvelope(raw: unknown): Record<string, unknown> | null {
       const metadata = isRecord(p.metadata) ? p.metadata : undefined;
       const v1 = str(metadata?.v1_account_id);
       if (v1) out.v1_account_id = v1;
+      // Status and lock flag of the account, when the payload is an `Account`: the
+      // claim stores `mapAccountStatus` of them (absent: a fresh account is operational).
+      if (str(p.status)) out.provider_status = p.status;
+      if (typeof p.is_locked === 'boolean') out.is_locked = p.is_locked;
       break;
     }
     case 'account.initial_sync.running':
@@ -687,4 +700,93 @@ export function webhookDedupKey(flat: Record<string, unknown>): string | null {
   const type = flat.v2_event;
   if (typeof id !== 'string' || !id.startsWith('evt_') || typeof type !== 'string' || type === '') return null;
   return `unipile:v2:${type}:${id}`;
+}
+
+/**
+ * Deduplication key for a flattened v2 event that carries no `evt_` id (a
+ * malformed delivery: the envelope id is always `evt_...`). Raw type, account,
+ * the best id of the payload and a one-minute bucket, so a retry within the
+ * minute collapses and two distinct events a minute apart do not.
+ */
+export function webhookFallbackDedupKey(flat: Record<string, unknown>, nowMs: number = Date.now()): string {
+  const type = typeof flat.v2_event === 'string' && flat.v2_event !== '' ? flat.v2_event : typeof flat.event === 'string' ? flat.event : 'unknown';
+  const account = typeof flat.account_id === 'string' && flat.account_id !== '' ? flat.account_id : 'no-acc';
+  const ref = [flat.message_id, flat.email_id, flat.user_provider_id, flat.sync_status, flat.account_status]
+    .find((value): value is string => typeof value === 'string' && value !== '') ?? '';
+  return `unipile:v2:${type}:${account}:${ref}:${Math.floor(nowMs / 60000)}`;
+}
+
+/** Channel of a connected account, from the provider carried by the envelope. `null` when it is none of the three. */
+export function accountChannelOf(provider: unknown): 'linkedin' | 'email' | 'whatsapp' | null {
+  const value = typeof provider === 'string' ? provider.trim().toLowerCase() : '';
+  if (value === 'linkedin') return 'linkedin';
+  if (value === 'whatsapp') return 'whatsapp';
+  if (value === 'google' || value === 'outlook' || value === 'imap') return 'email';
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Registration plan (pure)
+// ---------------------------------------------------------------------------
+
+/** Path of the receiver function, appended to the project URL. */
+export const RECEIVER_FUNCTION_PATH = '/functions/v1/unipile-webhook';
+
+/** URL of the receiver endpoint, with the delivery token in the query. */
+export function receiverEndpointUrl(projectUrl: string, token: string): string {
+  return `${projectUrl.replace(/\/+$/, '')}${RECEIVER_FUNCTION_PATH}?${WEBHOOK_TOKEN_PARAM}=${encodeURIComponent(token)}`;
+}
+
+/** Origin and path of a URL without trailing slash, query or fragment. `null` for a value that is not a URL. */
+function originAndPath(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when `endpointUrl` points at the receiver `receiverUrl`: same origin and
+ * same path, whatever the query. A longer path (`unipile-webhook-x`) is another
+ * function and does not match.
+ */
+export function isReceiverEndpoint(endpointUrl: unknown, receiverUrl: string): boolean {
+  if (typeof endpointUrl !== 'string') return false;
+  const a = originAndPath(endpointUrl);
+  const b = originAndPath(receiverUrl);
+  return a !== null && b !== null && a === b;
+}
+
+export interface EndpointSyncPlan {
+  /** The endpoint to keep and update in place, or `null` when there is none (create one). */
+  keepId: string | null;
+  /** Other endpoints of the same receiver, to delete. */
+  deleteIds: string[];
+}
+
+/**
+ * Which endpoint of the receiver to keep. A delivery can only authenticate when
+ * its URL carries the current token, which a read does not return, so the kept
+ * endpoint is always patched. Preference: an enabled endpoint, then the one
+ * that already has the most of the wanted events, then the first listed.
+ */
+export function planEndpointSync(
+  endpoints: readonly Pick<WebhookEndpoint, 'id' | 'url' | 'enabled' | 'trigger_events'>[],
+  receiverUrl: string,
+  wantedEvents: readonly string[],
+): EndpointSyncPlan {
+  const ours = endpoints.filter((endpoint) => isReceiverEndpoint(endpoint.url, receiverUrl));
+  if (ours.length === 0) return { keepId: null, deleteIds: [] };
+  const wanted = new Set(wantedEvents);
+  const covered = (endpoint: { trigger_events?: readonly string[] }) =>
+    (endpoint.trigger_events ?? []).filter((event) => wanted.has(event)).length;
+  let best = ours[0];
+  for (const endpoint of ours.slice(1)) {
+    const better = (endpoint.enabled === true && best.enabled !== true) ||
+      (endpoint.enabled === best.enabled && covered(endpoint) > covered(best));
+    if (better) best = endpoint;
+  }
+  return { keepId: best.id, deleteIds: ours.filter((endpoint) => endpoint.id !== best.id).map((endpoint) => endpoint.id) };
 }

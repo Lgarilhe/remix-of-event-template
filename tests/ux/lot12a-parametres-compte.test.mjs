@@ -43,6 +43,7 @@ const FILES = {
   linkedin: 'src/components/settings/MyLinkedInAccount.tsx',
   safety: 'src/components/settings/LinkedInSafetySettings.tsx',
   email: 'src/components/settings/MyEmailAccount.tsx',
+  parts: 'src/components/connections/ConnectionParts.tsx',
   notion: 'src/components/settings/NotionConnectorRow.tsx',
   connectors: 'src/components/settings/AssistantConnectorsCard.tsx',
   extension: 'src/components/settings/ExtensionTokens.tsx',
@@ -52,6 +53,7 @@ const FILES = {
   journal: 'src/components/settings/AgentActionsSettings.tsx',
 };
 const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(rel)]));
+const copySrc = read('src/lib/connectionCopy.ts');
 const CARDS = ['linkedin', 'safety', 'email', 'connectors', 'notion', 'extension', 'aiContext', 'templates', 'signatures', 'journal'];
 
 // ---------------------------------------------------------------- F-01
@@ -96,10 +98,8 @@ test('F-04 — titres en Instrument Sans ; chasse fixe réservée aux secrets et
   assert.match(src.shell, /<PageHeader title="Paramètres"/);
   assert.equal((src.shell.match(/<PageHeader title="Paramètres"/g) ?? []).length, 2, 'ordinateur et liste du téléphone');
   assert.doesNotMatch(src.shell, /text-2xl font-bold/);
-  // LinkedIn : seuls les deux champs de cookie (des secrets) sont en chasse fixe.
-  const monoInputs = [...src.linkedin.matchAll(/type="password"[\s\S]{0,260}?className=\{cn\('font-mono/g)];
-  assert.equal(monoInputs.length, 2);
-  assert.equal((src.linkedin.match(/font-mono/g) ?? []).length, 2, 'chasse fixe hors des cookies');
+  // LinkedIn : plus aucun champ de cookie (connexion standard), donc plus de chasse fixe dans la carte.
+  assert.equal((src.linkedin.match(/font-mono/g) ?? []).length, 0, 'chasse fixe hors des secrets');
   // Extension : le jeton à copier seulement, plus le préfixe ni les étapes.
   assert.equal((src.extension.match(/font-mono/g) ?? []).length, 1);
   assert.match(src.extension, /<code className="[^"]*font-mono[^"]*">\{justCreatedToken\}<\/code>/);
@@ -127,7 +127,7 @@ test('F-06 — Journal, e-mail et extension : une lecture ratée s’affiche en 
   assert.match(src.journal, /\{isRefetchError && \([\s\S]{0,300}Actualisation impossible/);
   // E-mail : une liste non reçue n'est plus un « connectez votre compte ».
   const load = between(src.email, 'const loadEmailAccounts', 'useEffect(');
-  assert.match(load, /if \(!options\?\.background\) setListError\(true\);/);
+  assert.match(load, /setListError\(true\);/);
   assert.match(src.email, /\) : listError \? \([\s\S]{0,200}<ErrorState/);
   assert.match(src.email, /useState\(true\);\s*const \[accountsLoaded/, 'chargement dès le montage');
   // Extension : erreur dans la carte, jamais un faux « aucun jeton ».
@@ -138,22 +138,25 @@ test('F-06 — Journal, e-mail et extension : une lecture ratée s’affiche en 
 // ---------------------------------------------------------------- F-07
 test('F-07 — état du compte LinkedIn : libellé et teinte tirés du même état', () => {
   assert.doesNotMatch(src.linkedin, /rawStatus/, 'le statut de la liaison ne décide plus du libellé');
-  assert.match(src.linkedin, /const stateDisplay = accountStateDisplay\(li\.state, myAccount\?\.status\);/);
-  const fn = between(src.linkedin, 'function accountStateDisplay', 'function statusLabel');
-  assert.match(fn, /case 'connected': return \{ label: 'Actif', tone: 'success' \};/);
-  assert.match(fn, /default: return \{ label: liveStatus \? statusLabel\(liveStatus\) : 'État à vérifier', tone: 'warning' \};/);
+  assert.match(src.linkedin, /const view = viewOfHealth\(healthOfState\(li\.state\), 'linkedin'\);/);
   const row = between(src.linkedin, ') : myMapping && myAccount ? (', ') : myMapping && !myAccount ? (');
-  assert.match(row, /STATE_DOT\[stateDisplay\.tone\]/);
-  assert.match(row, /STATE_TEXT\[stateDisplay\.tone\]\}>\{stateDisplay\.label\}/);
+  assert.match(row, /<AccountRow[\s\S]*?view=\{view\}/);
+  // Mot et pastille de la même classe de santé, dans la pièce commune
+  const state = between(src.parts, 'export function ConnectionStateLine', 'interface AccountRowProps');
+  assert.match(state, /TONE_DOT\[view\.tone\]/);
+  assert.match(state, /TONE_TEXT\[view\.tone\]\}>\{view\.label\}/);
+  assert.match(state, /aria-live="polite"/);
   assert.doesNotMatch(row, /isAccountHealthy \? 'Actif'/);
 });
 
 // ---------------------------------------------------------------- F-08
 test('F-08 — téléphone : les actions du compte LinkedIn passent sous l’identité, en pleine largeur', () => {
-  const row = between(src.linkedin, ') : myMapping && myAccount ? (', '{canReconnect && reconnectOpen && (');
+  // La ligne est commune aux trois canaux : identité en haut, gestes dessous sur téléphone.
+  const row = between(src.parts, 'export function AccountRow', 'export function DetailLine');
   assert.match(row, /className="flex flex-col gap-3 rounded-lg bg-muted p-3 sm:flex-row sm:items-center sm:justify-between"/);
-  assert.equal((row.match(/max-sm:flex-1/g) ?? []).length, 2, 'Reconnecter et Dissocier en pleine largeur');
-  assert.match(row, /<p className="truncate text-sm font-medium text-foreground">\{accountName\}<\/p>/);
+  const li = between(src.linkedin, ') : myMapping && myAccount ? (', ') : myMapping && !myAccount ? (');
+  assert.equal((li.match(/max-sm:flex-1/g) ?? []).length, 3, 'Reconnecter, Contacter le support et Actualiser en pleine largeur');
+  assert.match(between(src.parts, 'export function RemovalDialog', 'interface ConnectButtonProps'), /max-sm:flex-1/, 'Dissocier en pleine largeur');
 });
 
 // ---------------------------------------------------------------- F-09
@@ -231,13 +234,13 @@ test('F-15 — champs reliés à leur libellé, boutons icône nommés, bascules
     }
     assert.doesNotMatch(src[key], /<label\b/, `${FILES[key]} : libellé natif`);
   }
-  assert.match(src.email, /aria-label="Actualiser la liste des comptes e-mail"/);
+  assert.match(src.email, /aria-label=\{EMAIL_CARD\.refreshAria\}/);
+  assert.match(copySrc, /refreshAria: 'Actualiser la liste des comptes e-mail'/);
   // Journal : une bascule à libellé fixe (Toggle du kit, aria-pressed) au lieu d'« Inclure / Masquer ».
   assert.match(src.journal, /<Toggle[\s\S]*?pressed=\{includeReads\}[\s\S]*?Inclure les lectures\s*<\/Toggle>/);
   assert.doesNotMatch(src.journal, /'Masquer' : 'Inclure'|\{includeReads \? 'Masquer'/);
-  // Guides repliables : Collapsible du kit (aria-expanded), plus de <details>.
+  // Plus de guide repliable dans la carte LinkedIn (le cookie n'est plus demandé) : ni <details> ni <summary>.
   assert.doesNotMatch(src.linkedin, /<details|<summary/);
-  assert.match(src.linkedin, /<CollapsibleTrigger asChild>/);
 });
 
 // ---------------------------------------------------------------- F-17
@@ -258,7 +261,8 @@ test('F-18 — sous-surfaces arrondies dans les cartes, avatar rond', () => {
   assert.match(src.signatures, /<ul className="divide-y divide-border">\s*\{signatures\.map/);
   assert.match(src.signatures, /<li key=\{sig\.id\} className="flex items-start justify-between gap-2 py-3">/);
   assert.match(src.extension, /<li key=\{token\.id\} className="[^"]*rounded-lg border border-border/);
-  assert.match(between(src.linkedin, 'function AccountAvatar', 'type StateTone'), /rounded-full/);
+  assert.match(src.linkedin, /<PersonAvatar name=\{accountName\} src=\{myAccount\.profile_picture_url\} size=\{40\} \/>/, 'visage rond du kit');
+  assert.match(read('src/components/ui/person-avatar.tsx'), /rounded-full/);
 });
 
 // ---------------------------------------------------------------- F-19
@@ -314,7 +318,8 @@ test('F-25 — fuseaux par leur ville, états du compte e-mail en mots', () => {
   assert.doesNotMatch(src.safety, />Europe\/Paris<|>America\/New_York</);
   assert.match(src.linkedin, /fuseau <TimeZoneName timeZone=\{status\.timezone\} \/>/);
   assert.doesNotMatch(src.linkedin, /\(\{status\.timezone\}\)/);
-  assert.match(src.email, /function emailStateDisplay/);
+  assert.match(src.email, /viewOfHealth\(classifyConnectionHealth\(\{ status: myAccount\.status \}\), myProvider \?\? 'imap'\)/);
+  assert.doesNotMatch(src.email, /function emailStateDisplay/, 'le libellé vient de connectionCopy');
   assert.doesNotMatch(src.email, /\{myAccount\.status\}|\{acc\.type\}|\(\$\{myMapping\.provider\}\)/, 'code brut à l’écran');
 });
 
@@ -328,7 +333,7 @@ test('F-66 — squelettes pour les blocs, confirmations destructives d’une seu
     }
   }
   for (const key of ['linkedin', 'safety', 'email', 'extension', 'aiContext', 'templates', 'signatures', 'journal']) {
-    assert.match(src[key], /<Skeleton\b/, `${FILES[key]} : squelette au chargement`);
+    assert.match(src[key], /<Skeleton\b|<ConnectionSkeleton\b/, `${FILES[key]} : squelette au chargement`);
   }
   assert.match(src.shell, /<Skeleton className="mx-3 h-5 w-56 max-w-full" aria-hidden="true" \/>/);
 });
@@ -337,7 +342,8 @@ test('F-66 — squelettes pour les blocs, confirmations destructives d’une seu
 test('F-21 — dissocier l’adresse e-mail passe par une confirmation', () => {
   const calls = [...src.email.matchAll(/handleUnlink/g)];
   assert.equal(calls.length, 2, 'définition et un seul appel');
-  assert.match(src.email, /<AlertDialogAction onClick=\{handleUnlink\} className="bg-destructive" disabled=\{isUnlinking\}>/);
+  assert.match(src.email, /<RemovalDialog[\s\S]*?disabled=\{isUnlinking\}[\s\S]*?onConfirm=\{handleUnlink\}/);
+  assert.match(src.parts, /<AlertDialogAction variant="destructive" className="max-md:h-11" onClick=\{onConfirm\}>/);
 });
 
 // ---------------------------------------------------------------- Illustrations
@@ -347,13 +353,15 @@ test('Illustrations — « connexion » à la place d’une icône quand aucun c
   const raw = read(FILES.linkedin);
   const notLinked = between(raw, '// Not linked (no mapping)', '</CardContent>');
   // Jamais à côté de la liste des comptes disponibles : seulement quand il n'y en a aucun.
-  const withAccounts = between(notLinked, '{unlinkedAccounts.length > 0 ? (', ') : (');
+  const drawing = between(notLinked, '{unlinkedAccounts.length === 0 ? (', ') : (');
+  assert.match(drawing, /<Illustration name="connexion" size="md" tile=\{false\} \/>/, 'posé sur la carte des Paramètres : sans tuile');
+  const withAccounts = between(notLinked, ') : (', ')}');
   assert.doesNotMatch(withAccounts, /<Illustration/);
-  assert.match(withAccounts, /Comptes disponibles/);
-  const noAccount = between(notLinked, ') : (', 'Connecter mon LinkedIn');
-  // Posé sur la carte des Paramètres : sans tuile de surface carte (contraste v2, 01-direction.md § 8).
-  assert.match(noAccount, /<Illustration name="connexion" size="md" tile=\{false\} \/>/);
-  assert.match(notLinked, /Connectez votre compte LinkedIn pour pouvoir effectuer des recherches et envoyer des messages\./);
+  assert.match(between(notLinked, 'unlinkedAccounts.length > 0 &&', '</ul>'), /LINKEDIN_CARD\.availableMany/);
+  // Le bouton de connexion est toujours là : la liste des comptes disponibles n'est jamais le seul geste
+  assert.match(notLinked, /<HostedConnectButton provider="linkedin" label=\{connectLabel\('linkedin'\)\} help \/>/);
+  assert.ok(notLinked.indexOf('<HostedConnectButton') < notLinked.indexOf('unlinkedAccounts.length > 0 &&'), 'bouton avant la liste');
+  assert.match(copySrc, /notLinked: 'Connectez votre compte LinkedIn pour pouvoir effectuer des recherches et envoyer des messages\.'/);
   for (const key of Object.keys(FILES)) {
     if (key === 'linkedin') continue;
     assert.doesNotMatch(src[key], /<Illustration\b|illustration=/, `${FILES[key]} : une seule place dans la zone`);

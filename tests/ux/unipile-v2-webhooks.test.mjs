@@ -1,8 +1,7 @@
 /**
  * Webhooks de l'API v2 du service de connexion LinkedIn.
  *
- * V2_TRIGGER_EVENTS (supabase/functions/_shared/unipile/webhooks.ts, réexporté par
- * supabase/functions/_shared/unipile-v2.ts) part tel quel dans
+ * V2_TRIGGER_EVENTS (supabase/functions/_shared/unipile/webhooks.ts) part tel quel dans
  * `POST /v2/webhooks/endpoints/` : une seule valeur hors de l'enum
  * `trigger_events` et l'endpoint n'est pas créé. L'enum ci-dessous est recopié
  * de @unipile/sdk 2.48.0 (types.gen.d.ts, CreateWebhookEndpointData), relevé le
@@ -13,15 +12,17 @@
  * un événement inscrit et un `case` existant.
  *
  * Les faits sont gardés à deux endroits : le module partagé (liste, alias,
- * aplatissement, clé de dédoublonnage) et le récepteur (tables locales tant
- * qu'il en garde, `case` des handlers). Tests unitaires du module :
- * supabase/functions/_shared/unipile/webhooks.test.ts (deno test).
+ * aplatissement, clé de dédoublonnage) et le récepteur (`case` des handlers,
+ * lecture de la table partagée). Le récepteur n'a plus de table locale ni de
+ * chemin de l'ancienne génération. Tests unitaires du module :
+ * supabase/functions/_shared/unipile/webhooks.test.ts (deno test) ; du récepteur :
+ * supabase/functions/unipile-webhook/index.test.ts (deno test --no-check).
  *
  * Lancer : npm run test:ux
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { buildSync } from 'esbuild';
 
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
@@ -35,11 +36,9 @@ const load = async (rel) => {
   return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 };
 
-// Ancien chemin d'import (réexport de compatibilité) et module partagé.
-const compat = await load('supabase/functions/_shared/unipile-v2.ts');
+// Module partagé (le réexport de compatibilité unipile-v2.ts est supprimé).
 const shared = await load('supabase/functions/_shared/unipile/webhooks.ts');
-const { V2_TRIGGER_EVENTS, flattenV2WebhookEnvelope } = compat;
-const { KNOWN_TRIGGER_EVENTS, EVENT_ALIASES, STATUS_BY_EVENT, flattenEnvelope, webhookDedupKey } = shared;
+const { V2_TRIGGER_EVENTS, KNOWN_TRIGGER_EVENTS, EVENT_ALIASES, STATUS_BY_EVENT, flattenEnvelope, webhookDedupKey } = shared;
 
 const webhook = read('supabase/functions/unipile-webhook/index.ts');
 
@@ -146,7 +145,11 @@ test('v2 — le statut porté par le nom de l\'événement fait foi', () => {
     // La clé de dédoublonnage garde le nom v2 d'origine (running, degraded et partial partagent un alias).
     assert.match(webhook, /\$\{v2OriginEvent \|\| payload\.event\}/);
   } else {
-    assert.match(webhook, /STATUS_BY_EVENT\[/, 'le récepteur lit la table partagée');
+    // Le récepteur ne garde aucune table locale : le statut vient de l'aplatissement du module partagé
+    // (accountStatusOfEvent, verrouillage compris) et il l'écrit tel quel.
+    assert.match(webhook, /const newStatus = payload\.account_status;/, 'le récepteur lit le statut aplati');
+    assert.doesNotMatch(webhook, /V2_STATUS_BY_EVENT|V2_EVENT_ALIASES/);
+    assert.match(webhook, /handlerNameOf\(v2Event\)/, 'le récepteur nomme ses handlers par la table partagée');
   }
 });
 
@@ -223,7 +226,7 @@ const REAL_MESSAGE_NEW = {
 };
 
 test('v2 — enveloppe message.new réelle remise au format des handlers', () => {
-  const flat = flattenV2WebhookEnvelope(REAL_MESSAGE_NEW);
+  const flat = flattenEnvelope(REAL_MESSAGE_NEW);
   assert.equal(flat.event, 'message.new');
   assert.equal(flat.account_id, 'acc_01kyex2j0pexzt3v8prstne0ey');
   assert.equal(flat.account_type, 'linkedin');
@@ -240,14 +243,14 @@ test('v2 — enveloppe message.new réelle remise au format des handlers', () =>
 });
 
 test('v2 — message.new réel : la charge réelle n\'a pas de drapeau d\'événement, le message reste une réponse possible', () => {
-  const message = flattenV2WebhookEnvelope(REAL_MESSAGE_NEW).data.message;
+  const message = flattenEnvelope(REAL_MESSAGE_NEW).data.message;
   assert.equal(message.is_event, undefined);
   assert.equal(message.is_hidden, undefined);
   assert.equal(message.message_type, undefined);
 });
 
 test('v2 — message.new d\'une ligne système ou d\'une invitation garde ses drapeaux (jamais lue comme une réponse)', () => {
-  const flat = flattenV2WebhookEnvelope({
+  const flat = flattenEnvelope({
     ...REAL_MESSAGE_NEW,
     payload: { ...REAL_MESSAGE_NEW.payload, is_event: true, event_type: 9, is_hidden: true, specifics: { type: 'INVITATION' } },
   });
@@ -258,26 +261,26 @@ test('v2 — message.new d\'une ligne système ou d\'une invitation garde ses dr
 });
 
 test('v2 — account.status.running sur un compte verrouillé : account_status LOCKED, texte du fournisseur inchangé', () => {
-  const locked = flattenV2WebhookEnvelope({
+  const locked = flattenEnvelope({
     type: 'account.status.running', id: 'evt_s1', account_id: 'acc_x', payload: { status: 'running', is_locked: true },
   });
   assert.equal(locked.account_status, 'LOCKED');
   assert.equal(locked.status, 'running');
-  const free = flattenV2WebhookEnvelope({
+  const free = flattenEnvelope({
     type: 'account.status.running', id: 'evt_s2', account_id: 'acc_x', payload: { status: 'running', is_locked: false },
   });
   assert.equal(free.account_status, 'OK');
 });
 
 test('v2 — un corps v1 n\'est pas pris pour une enveloppe v2', () => {
-  assert.equal(flattenV2WebhookEnvelope({ event: 'message_received', chat_id: 'c', sender: {} }), null);
-  assert.equal(flattenV2WebhookEnvelope({ AccountStatus: { account_id: 'a', message: 'OK' } }), null);
-  assert.equal(flattenV2WebhookEnvelope(null), null);
-  assert.equal(flattenV2WebhookEnvelope({ type: 'message.new' }), null, 'sans payload');
+  assert.equal(flattenEnvelope({ event: 'message_received', chat_id: 'c', sender: {} }), null);
+  assert.equal(flattenEnvelope({ AccountStatus: { account_id: 'a', message: 'OK' } }), null);
+  assert.equal(flattenEnvelope(null), null);
+  assert.equal(flattenEnvelope({ type: 'message.new' }), null, 'sans payload');
 });
 
 test('v2 — statut de compte : nom d\'événement et fournisseur conservés', () => {
-  const flat = flattenV2WebhookEnvelope({
+  const flat = flattenEnvelope({
     type: 'account.status.partial', id: 'evt_1', account_id: 'acc_1', account_provider: 'linkedin', payload: { object: 'Account' },
   });
   assert.equal(flat.event, 'account.status.partial');
@@ -285,13 +288,15 @@ test('v2 — statut de compte : nom d\'événement et fournisseur conservés', (
   assert.equal(flat.account_type, 'linkedin');
 });
 
-test('v2 — le webhook lit l\'enveloppe aplatie', () => {
-  assert.match(webhook, /flatten(V2WebhookEnvelope|Envelope)\(rawPayload\) \?\? rawPayload/);
-  assert.match(webhook, /\.\.\.source,/);
+test('v2 — le webhook lit l\'enveloppe aplatie, et rien d\'autre', () => {
+  assert.match(webhook, /const flat = flattenEnvelope\(rawPayload\);\s*if \(!flat\) \{/);
+  assert.match(webhook, /\.\.\.\(flat as unknown as WebhookPayload\),/);
+  // Un corps qui n'est pas une enveloppe v2 est acquitté sans traitement : plus de repli sur l'ancienne forme.
+  assert.doesNotMatch(webhook, /\?\? rawPayload/);
 });
 
-test('v2 — l\'ancien chemin d\'import rend le même aplatissement que le module partagé', () => {
-  assert.deepEqual(flattenV2WebhookEnvelope(REAL_MESSAGE_NEW), flattenEnvelope(REAL_MESSAGE_NEW));
+test('v2 — le module d\'ancien nom de réexport est supprimé', () => {
+  assert.equal(existsSync(new URL('../../supabase/functions/_shared/unipile-v2.ts', import.meta.url)), false);
 });
 
 const envelope = (type, payload, extra = {}) => ({
@@ -330,4 +335,107 @@ test('v2 — message.receipt.read, message.reaction.new et account.initial_sync.
     assert.equal(sync.sync_status, status);
     assert.equal(sync.v2_event, `account.initial_sync.${status}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Gardes statiques : récepteur et gestion des webhooks en v2 seulement
+// ---------------------------------------------------------------------------
+
+const manage = read('supabase/functions/unipile-manage-webhooks/index.ts') + read('supabase/functions/unipile-manage-webhooks/handlers.ts');
+const sequenceHandler = read('supabase/functions/sequence-webhooks-handler/index.ts');
+const setupScript = read('scripts/setup-sequence-webhooks.ts');
+const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+const V1_RESIDUE = [
+  [/\/api\/v1/, '/api/v1'],
+  [/UNIPILE_DSN/, 'UNIPILE_DSN'],
+  [/UNIPILE_API_KEY/, 'UNIPILE_API_KEY'],
+  [/resolveUnipileCredentials/, 'resolveUnipileCredentials'],
+  [/organization_integrations/, 'organization_integrations'],
+  [/unipile_(api_key|dsn|connected)/, 'colonne unipile_*'],
+  [/\bdsn\b/i, 'variable dsn'],
+  [/hosted_sig|hmacSha256Hex|parseHostedAuthState|notify_url/, 'mécanisme de rappel hosted de l\'ancienne génération'],
+  [/X-API-KEY/i, 'appel direct au prestataire'],
+];
+
+test('v2 seulement — aucun reste de l\'ancienne génération dans les fichiers du lot', () => {
+  const files = {
+    'unipile-webhook': webhook, 'unipile-manage-webhooks': manage, 'sequence-webhooks-handler': sequenceHandler,
+    'setup-sequence-webhooks.ts': setupScript,
+  };
+  for (const [name, src] of Object.entries(files)) {
+    const code = codeOnly(src);
+    for (const [pattern, label] of V1_RESIDUE) assert.doesNotMatch(code, pattern, `${name} : ${label}`);
+    assert.doesNotMatch(code, /\bfetch\(\s*[`'"]https?:\/\/[^`'"]*unipile/i, `${name} : fetch direct vers le prestataire`);
+  }
+  assert.doesNotMatch(codeOnly(manage), /api_version|bootstrap-prod|EVENTS_PER_SOURCE|SOURCE_MAP|Unipile-Auth/);
+  assert.doesNotMatch(codeOnly(webhook), /message_received|mail\.received|new_email|account\.status_updated|\bAccountStatus\b|CREATION_SUCCESS/);
+});
+
+test('v2 seulement — le récepteur n\'authentifie que par le jeton de l\'URL, avant de lire le corps, sans 500 faute de secret historique', () => {
+  const handler = webhook.slice(webhook.indexOf('export async function handleRequest('));
+  const auth = handler.indexOf('await verifyWebhookRequest(req)');
+  const body = handler.indexOf('await req.json()');
+  assert.ok(auth > 0 && body > auth, 'authentification avant la lecture du corps');
+  assert.match(handler, /if \(!auth\.ok\) \{[\s\S]*?return json\(\{ error: 'Unauthorized' \}, auth\.status\);/);
+  assert.match(handler, /auth\.reason === 'not_configured'[\s\S]*?return json\(\{ error: 'Webhook not configured' \}, auth\.status\);/);
+  // L'en-tête de l'ancienne génération n'est lu que pour le diagnostic d'un refus.
+  const uses = [...webhook.matchAll(/LEGACY_AUTH_HEADER/g)].length;
+  assert.equal(uses, 2, 'déclaré puis lu dans describeRejectedDelivery seulement');
+  assert.doesNotMatch(webhook, /timingSafeEqual|WEBHOOK_SECRET/);
+  // Statuts : aucune réponse 500 posée par l'authentification.
+  assert.doesNotMatch(handler.slice(0, handler.indexOf('await req.json()')), /status: 500|, 500\)/);
+});
+
+test('v2 seulement — account.remove a son handler et ne passe pas par la déconnexion récupérable', () => {
+  const removed = webhook.slice(webhook.indexOf("case 'account_removed': {"), webhook.indexOf("case 'account_status_updated': {"));
+  assert.match(removed, /await handleAccountRemoved\(supabase, payload\);/);
+  assert.doesNotMatch(removed, /account_disconnected|CREDENTIALS/);
+  const body = webhook.slice(webhook.indexOf('async function handleAccountRemoved('), webhook.indexOf('async function handleNewRelation('));
+  assert.match(body, /mapAccountRemoved\(\)/);
+  assert.ok(body.indexOf('stopLinkedInAccountSending(') < body.indexOf(".from('member_linkedin_accounts')\n        .delete()"), 'arrêt des envois avant le retrait de la liaison');
+});
+
+test('v2 seulement — le rattachement d\'un compte passe par la tentative de connexion et le code partagé', () => {
+  const connected = webhook.slice(webhook.indexOf('async function handleAccountConnected('), webhook.indexOf('async function handleAccountRemoved('));
+  assert.match(connected, /claimForAttempt\(supabase, \{ attemptId: payload\.state, account \}\)/);
+  // L'organisation et le membre viennent de la tentative (claimForAttempt), jamais de la charge.
+  assert.doesNotMatch(connected, /payload\.(user_id|organization_id|name)\b/);
+  assert.doesNotMatch(webhook, /\.upsert\(\{[\s\S]{0,200}linkedin_account_id/, 'aucune écriture de liaison dans le récepteur');
+  assert.doesNotMatch(webhook, /\.from\('member_(email|whatsapp)_accounts'\)\s*\.(insert|upsert)/);
+});
+
+test('v2 seulement — les événements non vus sont journalisés et acquittés, jamais en erreur', () => {
+  const unseen = webhook.slice(webhook.indexOf('      default:\n        // Type non traité'));
+  assert.match(unseen, /Unseen event type, logged and acknowledged without action/);
+  assert.doesNotMatch(unseen.slice(0, unseen.indexOf('return json({ success: true })')), /throw|status: 4|status: 5/);
+  // La clé de dédoublonnage (donc la ligne webhook_event_log) est posée avant l'aiguillage.
+  assert.ok(webhook.indexOf("record_webhook_event") < webhook.indexOf('switch (payload.event) {'));
+  assert.match(webhook, /p_event_type: v2Event,/);
+  for (const name of ["'message_read'", "'message_reaction'", "'account_sync_completed'", "'account_sync_failed'"]) {
+    assert.match(webhook, new RegExp(`case ${name}:`), name);
+  }
+});
+
+test('v2 seulement — gestion des webhooks : lister, enregistrer (idempotent, PATCH), supprimer ; journal et rejeu réservés', () => {
+  const index = read('supabase/functions/unipile-manage-webhooks/index.ts');
+  assert.match(index, /const RESERVED_ACTIONS = new Set\(\['list_deliveries', 'replay_event'\]\);/);
+  assert.match(index, /error_code: 'not_implemented' \}, 501\)/);
+  assert.doesNotMatch(index, /listDeliveries|replayEvent/, 'réservés, pas implémentés ici');
+  const handlers = read('supabase/functions/unipile-manage-webhooks/handlers.ts');
+  assert.match(handlers, /await patchEndpoint\(plan\.keepId,/);
+  assert.match(handlers, /planEndpointSync\(listed\.items, receiverUrl, V2_TRIGGER_EVENTS\)/);
+  assert.match(handlers, /listAllEndpoints\(\)/, 'toutes les pages');
+  // Les mutations restent réservées aux administrateurs de la plateforme et aux owner/admin.
+  assert.match(index, /if \(action === 'register' \|\| action === 'delete'\) \{\s*const denied = platformAdminDenied\(userId\);/);
+  assert.match(index, /callerRole !== 'owner' && callerRole !== 'admin'/);
+});
+
+test('v2 seulement — le récepteur du suivi des e-mails s\'authentifie par le jeton et ne traite que tracking.*', () => {
+  const code = codeOnly(sequenceHandler);
+  assert.match(code, /await verifyWebhookRequest\(req\)/);
+  assert.doesNotMatch(code, /x-webhook-secret|SEQUENCE_WEBHOOK_SECRET|WEBHOOK_SECRET/);
+  assert.match(code, /case 'tracking\.open':\s*case 'tracking\.click': \{/);
+  for (const type of ['message.new', 'relation.new', 'email.new']) assert.match(code, new RegExp(`case '${type.replace('.', '\\.')}':`));
+  assert.doesNotMatch(code, /handleReply|handleMailReceived|handleMessageReceived|handleNewRelation|stopCompanyEnrollments/);
 });

@@ -18,7 +18,7 @@ const { code } = transformSync(`
   ${fn('alertSiblingStopFailure').getText(parsed)}
   export async function run(context) {
     const { supabase, failures, stopFailedOrgs, accountInMailsFailed, account_id, anchorRows,
-      inmailMatches, senderId, resolvedAltIds, payload, eventKey } = context;
+      inmailMatches, senderId, resolvedAltIds, message, eventKey } = context;
     ${failure.getText(parsed)}
   }
 `, { loader: 'ts', format: 'esm' });
@@ -53,7 +53,7 @@ function setup(rows = [], { lookupError, inmailMatches = [], anchorRows = [] } =
   const context = {
     supabase, failures: [failure], stopFailedOrgs: new Set(), accountInMailsFailed: true,
     account_id: 'account-a', anchorRows, inmailMatches, senderId: 'ACo-candidate',
-    resolvedAltIds: ['AEM-candidate'], payload: { sender: { attendee_name: 'Camille' } }, eventKey: 'event-1',
+    resolvedAltIds: ['AEM-candidate'], message: { sender: { name: 'Camille' } }, eventKey: 'event-1',
   };
   return { context, tables, failure, lookups: () => lookups };
 }

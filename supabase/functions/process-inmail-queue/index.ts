@@ -1,11 +1,19 @@
 ﻿// Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import {
-  enforceLinkedInAction, recordUsageSignal, parseUsagePct,
+  enforceLinkedInAction, recordUsageSignal,
   isWithinBusinessHours, nextBusinessHoursStart, ACCOUNT_DISCONNECTED_PAUSE_REASON,
 } from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
-import { inmailQueueRetry } from "../_shared/sequence-send-rules.ts";
+import {
+  accountSendGate, inmailRefusalPlan, INMAIL_DISCONNECTED_MESSAGE, LIMITED_ACCOUNT_DEFER_MS, LIMITED_ACCOUNT_MESSAGE,
+} from "../_shared/sequence-send-rules.ts";
+import { planInmail, resolveSendLicence, startLinkedInChat } from "../_shared/sequence-linkedin-send.ts";
+import { ledgerSlotSince, releaseLedgerSlotRow } from "../_shared/sequence-ledger-slot.ts";
+import {
+  describeForLog, getInmailCredits, isUnipileConfigured, isV2AccountId,
+  type InmailSpec, type LinkedInLicence,
+} from "../_shared/unipile/index.ts";
 import { siblingEnrollmentsFilter, siblingStopScope } from "../_shared/sequence-engine-rules.ts";
 import { isGdprErasedEnrollment } from "../_shared/sequence-resume.ts";
 import { isCandidateErasedForOrg, linkedInProfileSlug } from "../_shared/get-or-fetch-contact.ts";
@@ -16,13 +24,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
 
 // Sérialisation par compte (même garde-fou que process-enrichment-queue) :
 // ne jamais envoyer depuis un compte utilisé interactivement (recherche /
@@ -116,11 +117,6 @@ async function recordQueueSend(
 
 function textOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
-/** DSN sans schéma ni barre finale (les URL sont construites en https://${dsn}). */
-function bareDsn(raw: string): string {
-  return raw.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
 interface InMailQueueItem {
@@ -665,28 +661,22 @@ Deno.serve(async (req: Request) => {
         accountOwnerCache.set(key, link);
         return link;
       };
-      // Credentials LinkedIn de l'ORGANISATION DE L'ITEM (SEQ-199), cache par
-      // organisation et par run. Avant : organisation active du créateur, ou
-      // celle de l'appelant pour tous les items en mode manuel. DSN sans
-      // schéma, repli d'environnement compris (plus de double https://).
-      const credsCache = new Map<string, { apiKey: string; dsn: string } | null>();
-      const getCredsFor = async (orgId: string) => {
-        if (credsCache.has(orgId)) return credsCache.get(orgId)!;
-        let resolved: { apiKey: string; dsn: string } | null = null;
+      // Nom affiché du membre qui a relié le compte d'envoi : il signe un InMail
+      // Recruiter. Lu une fois par membre et par run ; vide si illisible.
+      const signatureCache = new Map<string, string | null>();
+      const getSignature = async (userId: string | null): Promise<string | null> => {
+        if (!userId) return null;
+        if (signatureCache.has(userId)) return signatureCache.get(userId) ?? null;
+        let name: string | null = null;
         try {
-          const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
-          const creds = await resolveUnipileCredentials(orgId);
-          if (creds) resolved = { apiKey: creds.apiKey, dsn: bareDsn(creds.dsn) };
+          const { data: profileRow } = await supabase.from("profiles").select("display_name").eq("user_id", userId).maybeSingle();
+          const value = (profileRow as { display_name?: string | null } | null)?.display_name;
+          name = typeof value === "string" && value.trim() !== "" ? value.trim() : null;
         } catch (e) {
-          console.warn("[process-inmail-queue] org credential resolution failed:", e);
+          console.warn("[process-inmail-queue] signature name unreadable:", e);
         }
-        if (!resolved) {
-          const envKey = Deno.env.get("UNIPILE_API_KEY");
-          const envDsn = Deno.env.get("UNIPILE_DSN");
-          if (envKey && envDsn) resolved = { apiKey: envKey, dsn: bareDsn(envDsn) };
-        }
-        credsCache.set(orgId, resolved);
-        return resolved;
+        signatureCache.set(userId, name);
+        return name;
       };
 
       // Dernier contrôle avant l'envoi, dans l'organisation de l'item (D5,
@@ -938,9 +928,16 @@ Deno.serve(async (req: Request) => {
         }
 
         // Conformité LinkedIn (warning #260513-007211) : vérifier le statut
-        // du compte LinkedIn AVANT d'envoyer. Si le compte est CREDENTIALS /
-        // ERROR / STOPPED, on ne peut pas envoyer — on reschedule à +1h plutôt
-        // que de tenter et accumuler des erreurs côté Unipile (pattern bot).
+        // du compte LinkedIn AVANT d'envoyer. Un compte qui n'est pas OK ne
+        // reçoit aucun envoi, plutôt que de tenter et d'accumuler des erreurs
+        // côté fournisseur (pattern bot). inmail_queue n'a ni statut 'paused'
+        // (contrainte CHECK) ni colonne pause_reason : l'item reste 'scheduled'
+        // avec la raison lisible et repart de lui-même.
+        //  - CREDENTIALS / ERROR : compte déconnecté (lot P0-D), +1 h, reprise
+        //    après la reconnexion ;
+        //  - DEGRADED / PARTIAL / LOCKED : compte limité, il se règle seul ou
+        //    par le support : +6 h, sans message d'erreur ni boucle horaire ;
+        //  - autre état hérité : +1 h.
         try {
           const { data: acctRow } = await supabase
             .from('member_linkedin_accounts')
@@ -949,30 +946,28 @@ Deno.serve(async (req: Request) => {
             .eq('linkedin_account_id', item.account_id)
             .maybeSingle();
           const status = acctRow?.account_status;
-          if (status && status !== 'OK') {
-            // CREDENTIALS / ERROR = compte déconnecté (lot P0-D) : même raison
-            // de pause que les inscriptions aux séquences. inmail_queue n'a ni
-            // statut 'paused' (contrainte CHECK) ni colonne pause_reason :
-            // l'item reste 'scheduled' avec la raison lisible et repart de
-            // lui-même au cycle qui suit la reconnexion.
-            const disconnected = status === 'CREDENTIALS' || status === 'ERROR';
-            console.warn(`[process-inmail-queue] account ${item.account_id} status=${status}: ${disconnected ? ACCOUNT_DISCONNECTED_PAUSE_REASON : 'rescheduling +1h'}`);
+          const gate = accountSendGate(status);
+          if (gate !== 'send') {
+            const delayMs = gate === 'limited' ? LIMITED_ACCOUNT_DEFER_MS : 60 * 60 * 1000;
+            console.warn(`[process-inmail-queue] account ${item.account_id} status=${status}: ${gate === 'disconnected' ? ACCOUNT_DISCONNECTED_PAUSE_REASON : gate === 'limited' ? 'limited, not sending' : 'rescheduling +1h'}`);
             await supabase
               .from('inmail_queue')
               .update({
                 status: 'scheduled',
-                scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-                error_message: disconnected
-                  ? 'Compte LinkedIn déconnecté : envoi en pause, reprise automatique après reconnexion'
-                  : `Compte LinkedIn non disponible (statut: ${status})`,
+                scheduled_at: new Date(Date.now() + delayMs).toISOString(),
+                error_message: gate === 'disconnected'
+                  ? INMAIL_DISCONNECTED_MESSAGE
+                  : gate === 'limited'
+                  ? LIMITED_ACCOUNT_MESSAGE
+                  : 'Compte LinkedIn momentanément indisponible, nouvel essai dans 1 h',
               })
               .eq('id', item.id);
-            results.push({ id: item.id, success: false, error: disconnected ? ACCOUNT_DISCONNECTED_PAUSE_REASON : `account status: ${status}` });
+            results.push({ id: item.id, success: false, error: gate === 'disconnected' ? ACCOUNT_DISCONNECTED_PAUSE_REASON : gate === 'limited' ? 'account limited' : `account status: ${status}` });
             continue;
           }
         } catch (statusErr) {
           // Si on ne peut pas lire le statut, on log mais on continue
-          // (fallback : Unipile rejettera de toute façon si le compte est down)
+          // (le fournisseur refusera de toute façon si le compte est à l'arrêt)
           console.warn(`[process-inmail-queue] could not read account_status for ${item.account_id}:`, statusErr);
         }
 
@@ -1000,9 +995,9 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        // Credentials LinkedIn de l'organisation de l'item (cache par run).
-        const creds = await getCredsFor(itemOrgId as string);
-        if (!creds) {
+        // Le service de connexion est global : sans sa clé sur le serveur, rien
+        // ne peut partir. L'item reste programmé et repart quand elle est posée.
+        if (!isUnipileConfigured()) {
           await supabase
             .from("inmail_queue")
             .update({
@@ -1015,53 +1010,89 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
+        // Un identifiant de compte ancien (pas de forme `acc_`) ne peut pas servir
+        // d'adresse chez le fournisseur : même traitement qu'un compte à
+        // reconnecter, l'item repart après la reconnexion ou la mise à jour des liaisons.
+        if (!isV2AccountId(item.account_id)) {
+          console.warn(`[process-inmail-queue] item ${item.id}: outdated account identifier — rescheduling +1h`);
+          await supabase
+            .from("inmail_queue")
+            .update({
+              status: "scheduled",
+              scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+              error_message: INMAIL_DISCONNECTED_MESSAGE,
+            })
+            .eq("id", item.id);
+          results.push({ id: item.id, success: false, error: ACCOUNT_DISCONNECTED_PAUSE_REASON });
+          continue;
+        }
+
         // Conformité LinkedIn : pour les InMails (degree 2+) on vérifie le
-        // solde Recruiter/Premium AVANT d'envoyer. Si solde = 0 ou check fail,
-        // on reschedule à +4h (fail-CLOSED) — éviter d'envoyer des InMails en
-        // aveugle qui retourneront 400 et créent un pattern d'erreurs détectable.
+        // solde de la licence qui enverra AVANT d'envoyer. Un InMail se crée avec
+        // la licence du compte (Classic, Recruiter ou Sales Navigator) : on lit
+        // les crédits de cette licence et de nulle autre. Si solde = 0 ou
+        // contrôle impossible, on reschedule (fail-CLOSED) : éviter d'envoyer des
+        // InMails en aveugle qui retourneraient 400 et créent un pattern
+        // d'erreurs détectable. Sont lues ici, sans rien écrire : la licence, la
+        // forme de l'InMail (objet, signature) et le solde.
         const isFirstDegreeMsg = item.network_distance === 1;
+        let sendLicence: LinkedInLicence = "classic";
+        let inmailSpec: InmailSpec | undefined;
         if (!isFirstDegreeMsg) {
+          let credits: number;
           try {
-            const balRes = await fetchWithTimeout(
-              `https://${creds.dsn}/api/v1/linkedin/inmail_balance?account_id=${encodeURIComponent(item.account_id)}`,
-              { headers: { "X-API-KEY": creds.apiKey } }
-            );
-            if (!balRes.ok) {
-              throw new Error(`balance check HTTP ${balRes.status}`);
-            }
-            const bal = await balRes.json();
-            const credits =
-              (typeof bal.recruiter === "number" ? bal.recruiter : 0) +
-              (typeof bal.premium === "number" ? bal.premium : 0) +
-              (typeof bal.sales_navigator === "number" ? bal.sales_navigator : 0);
-            if (credits <= 0) {
-              console.warn(`[process-inmail-queue] InMail balance = 0 for account ${item.account_id} — pausing item +4h`);
+            sendLicence = await resolveSendLicence(item.account_id);
+            const plan = planInmail(sendLicence, {
+              subject: item.subject,
+              signature: sendLicence === "recruiter" ? await getSignature(quotaUserId) : null,
+            });
+            if (!plan.ok) {
+              // Rien n'est parti : échec explicite, à corriger puis à replanifier.
               await supabase
                 .from("inmail_queue")
                 .update({
-                  status: "scheduled",
-                  scheduled_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-                  error_message: "Crédits InMail épuisés (re-essai dans 4h)",
+                  status: "failed",
+                  error_message: plan.reason === "subject_missing"
+                    ? "Objet manquant pour l'InMail : ajoutez un objet, puis replanifiez l'InMail."
+                    : "Votre nom n'est pas renseigné dans votre profil : il signe l'InMail Recruiter. Complétez votre profil, puis replanifiez l'InMail.",
                 })
-                .eq("id", item.id);
-              results.push({ id: item.id, success: false, error: "InMail balance = 0" });
+                .eq("id", item.id)
+                .in("status", ["scheduled", "pending"]);
+              results.push({ id: item.id, success: false, error: plan.reason });
               continue;
             }
+            inmailSpec = plan.spec;
+            const balance = await getInmailCredits(item.account_id, sendLicence);
+            // Une licence que le compte n'a pas est absente du solde : zéro crédit.
+            credits = balance[sendLicence] ?? 0;
           } catch (balErr) {
-            // fail-CLOSED : si le check fail, on reschedule à +30min plutôt
+            // fail-CLOSED : si le contrôle échoue, on reschedule à +30min plutôt
             // que d'envoyer en aveugle (pourrait être un compte déconnecté)
-            console.error(`[process-inmail-queue] InMail balance check failed (fail-closed):`, balErr);
+            console.error(`[process-inmail-queue] InMail balance check failed (fail-closed): ${describeForLog(balErr)}`);
             await supabase
               .from("inmail_queue")
               .update({
                 status: "scheduled",
                 scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
                 // Libellé fixe affiché dans la file : l'erreur brute (code HTTP,
-                // URL du fournisseur) reste dans le console.error ci-dessus.
+                // corps du fournisseur) reste dans le console.error ci-dessus.
                 error_message: "Contrôle des crédits InMail momentanément indisponible, nouvel essai dans 30 min",
               })
               .eq("id", item.id);
             results.push({ id: item.id, success: false, error: "balance check failed" });
+            continue;
+          }
+          if (credits <= 0) {
+            console.warn(`[process-inmail-queue] InMail balance = 0 (${sendLicence}) for account ${item.account_id} — pausing item +4h`);
+            await supabase
+              .from("inmail_queue")
+              .update({
+                status: "scheduled",
+                scheduled_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+                error_message: "Crédits InMail épuisés (re-essai dans 4h)",
+              })
+              .eq("id", item.id);
+            results.push({ id: item.id, success: false, error: "InMail balance = 0" });
             continue;
           }
         }
@@ -1070,10 +1101,14 @@ Deno.serve(async (req: Request) => {
         // Conformité #260513-007211 : les InMails/messages de la file autonome
         // comptent désormais dans le MÊME plafond journalier que les séquences.
         // Avant ce correctif, ce chemin ignorait totalement le cap → fuite.
+        // Place réservée par le gate : rendue si le fournisseur refuse l'envoi
+        // pour un compte à reconnecter ou limité et que l'item repart plus tard.
+        const slotActionType = isFirstDegreeMsg ? 'message' : 'inmail';
+        const slotSince = ledgerSlotSince(Date.now());
         {
           const gate = await enforceLinkedInAction(supabase, {
             accountId: item.account_id,
-            actionType: isFirstDegreeMsg ? 'message' : 'inmail',
+            actionType: slotActionType,
             // Plafond du titulaire du compte d'envoi (repli : auteur de l'item).
             userId: quotaUserId,
             // Sans organisation, getUserQuotas renvoie les défauts (80/j) et le
@@ -1123,133 +1158,108 @@ Deno.serve(async (req: Request) => {
           // Determine message type based on network distance
           // 1st degree = direct message, 2nd/3rd degree = InMail
           const isFirstDegree = isFirstDegreeMsg;
-          
-          // Validate profile ID format
-          // Unipile expects provider_id in URN format for Recruiter: AE... or ACo... etc.
-          // If it's a numeric ID, it's likely a Recruiter-internal member ID that won't work
+
+          // Format de l'identifiant du destinataire : l'identifiant fournisseur
+          // d'un résultat de recherche (AE... Recruiter, ACo... Classic). Un autre
+          // format est signalé sans bloquer : le fournisseur tranche.
           const profileId = item.recipient_profile_id;
           const isValidUrn = profileId && (
-            profileId.startsWith('AE') || 
-            profileId.startsWith('ACo') || 
-            profileId.startsWith('ACw') || 
+            profileId.startsWith('AE') ||
+            profileId.startsWith('ACo') ||
+            profileId.startsWith('ACw') ||
             profileId.startsWith('ADo')
           );
-          
+
           console.log(`Profile ID validation for ${item.recipient_name}:`, {
             profileId,
             isValidUrn,
             networkDistance: item.network_distance,
             isFirstDegree,
           });
-          
+
           if (!isValidUrn) {
             console.warn(`Invalid profile ID format for ${item.recipient_name}: ${profileId}. Expected URN format (AE..., ACo..., etc.)`);
           }
-          
-          const formData = new FormData();
-          formData.append("account_id", item.account_id);
-          formData.append("text", item.message);
-          formData.append("attendees_ids", profileId);
-          
-          if (isFirstDegree) {
-            // Direct message for 1st degree connections - no InMail needed
-            console.log(`Sending direct message to ${item.recipient_name} (1st degree)`);
-            formData.append("linkedin[api]", "recruiter");
-            // No inmail flag = regular message
-          } else {
-            // InMail for 2nd/3rd degree connections
-            console.log(`Sending InMail to ${item.recipient_name} (${item.network_distance || 'unknown'} degree)`);
-            formData.append("linkedin[api]", "recruiter");
-            formData.append("linkedin[inmail]", "true");
-            formData.append("subject", item.subject);
-          }
 
-          console.log(`Sending to Unipile:`, {
-            account_id: item.account_id,
-            attendees_ids: profileId,
-            isInMail: !isFirstDegree,
-            subject: !isFirstDegree ? item.subject : undefined,
-          });
+          console.log(isFirstDegree
+            ? `Sending direct message to ${item.recipient_name} (1st degree)`
+            : `Sending ${sendLicence} InMail to ${item.recipient_name} (${item.network_distance || 'unknown'} degree)`);
 
           // Marqueur d'envoi en cours (lot 0b-2a), au mieux.
           await recordQueueSend(supabase, item, itemOrgId as string, null);
 
-          let response: Response;
-          try {
-            response = await fetchWithTimeout(
-              `https://${creds.dsn}/api/v1/chats`,
-              {
-                method: "POST",
-                headers: {
-                  "X-API-KEY": creds.apiKey,
-                  "accept": "application/json",
-                },
-                body: formData,
-              }
-            );
-          } catch (netErr) {
-            // Délai dépassé ou coupure : l'InMail a pu partir. Jamais de
-            // relance automatique (double envoi, second crédit consommé).
-            console.error(`[process-inmail-queue] send request failed for item ${item.id} (issue inconnue):`, netErr);
-            throw new Error("Envoi incertain : le service LinkedIn n'a pas répondu. Vérifiez la conversation avant de replanifier l'InMail.");
+          // Un message direct part par la boîte Classic ; l'InMail, avec la forme
+          // de la licence du compte (lue plus haut). Jamais de nouvel essai ici :
+          // un envoi dont l'issue est incertaine (délai, 5xx, réponse illisible)
+          // a pu partir, et un second consommerait un second crédit.
+          const outcome = await startLinkedInChat({
+            accountId: item.account_id,
+            user: profileId,
+            text: item.message,
+            kind: isFirstDegree ? "classic" : sendLicence,
+            inmail: isFirstDegree ? undefined : inmailSpec,
+          });
+
+          if (outcome.outcome === "uncertain") {
+            console.error(`[process-inmail-queue] send outcome unknown for item ${item.id}: ${describeForLog(outcome.error)}`);
+            throw new Error("Envoi incertain : le service LinkedIn n'a pas confirmé l'envoi. Vérifiez la conversation avant de replanifier l'InMail.");
           }
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            // Provider hard-limit signals → pause the account for the day so
-            // every send path backs off (conformité #260513-007211).
-            if (/too_many_requests|limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorText)) {
-              await recordUsageSignal(supabase, item.account_id, 100, item.user_timezone);
-            }
+          if (outcome.outcome === "refused") {
             // Le corps brut du fournisseur reste dans les logs ; error_message
             // (affiché dans la file InMail) reçoit un libellé Konekt.
-            console.error(`[process-inmail-queue] LinkedIn provider ${response.status} for item ${item.id}: ${errorText}`);
-            // 429 : requête non traitée, nouvel essai dans 1 h, trois fois au
-            // plus (SEQ-103). Tout 5xx (503 compris) est incertain, comme dans
-            // le moteur (SEQ-005) : jamais renvoyé seul. Refus 4xx définitifs.
-            const retry = inmailQueueRetry(response.status, item.error_message ?? null);
-            if (retry.retry) {
+            console.error(`[process-inmail-queue] LinkedIn provider refused item ${item.id}: ${describeForLog(outcome.error)}`);
+            // Limite imposée par LinkedIn : le compte est mis en pause pour la
+            // journée, tous les chemins d'envoi s'en écartent (conformité
+            // #260513-007211). Seule la limite du réseau compte, pas le débit
+            // de l'API elle-même.
+            if (outcome.kind === "provider_limit") {
+              await recordUsageSignal(supabase, item.account_id, 100, item.user_timezone);
+            }
+            const plan = inmailRefusalPlan(outcome.kind, outcome.error.status, item.error_message ?? null);
+            if (plan.action === "retry" || plan.action === "defer") {
+              // Requête non traitée : l'item repart plus tard (429 : trois essais
+              // au plus, SEQ-103 ; compte à reconnecter ou limité : sans échec).
+              // Compte à reconnecter ou limité : rien n'est parti et l'item
+              // repasse le gate à chaque essai, sans plafond d'essais. La place
+              // du plafond est rendue, sinon chaque passage ajouterait une action
+              // fantôme aux plafonds du compte.
+              if (plan.action === "defer") {
+                await releaseLedgerSlotRow(supabase, {
+                  accountId: item.account_id, actionType: slotActionType, source: "inmail_queue", since: slotSince,
+                });
+              }
               await supabase
                 .from("inmail_queue")
                 .update({
                   status: "scheduled",
-                  scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-                  error_message: retry.message,
+                  scheduled_at: new Date(Date.now() + plan.delayMs).toISOString(),
+                  error_message: plan.message,
                 })
                 .eq("id", item.id)
                 .eq("status", "sending");
-              results.push({ id: item.id, success: false, error: `retry ${retry.attempt}` });
+              results.push({ id: item.id, success: false, error: plan.action === "retry" ? `retry ${plan.attempt}` : `account ${plan.reason}` });
               continue;
             }
-            if (retry.attempt > 0) throw new Error(retry.message);
-            if (response.status >= 500) {
-              throw new Error(`Envoi incertain (code ${response.status}) : vérifiez la conversation avant de replanifier l'InMail.`);
-            }
-            throw new Error(`Le service de connexion LinkedIn a refusé l'envoi (code ${response.status})`);
+            throw new Error(plan.message);
           }
-
-          // Capture the provider usage % (LinkedIn signals how close we are to
-          // its own limit) — proactively pauses the account at ≥90%.
-          let okBody: Record<string, unknown> | null = null;
-          try {
-            okBody = await response.json();
-            await recordUsageSignal(supabase, item.account_id, parseUsagePct(okBody), item.user_timezone);
-          } catch { /* response body is optional */ }
 
           // Mark as sent
           await supabase
             .from("inmail_queue")
-            .update({ 
-              status: "sent", 
+            .update({
+              status: "sent",
               sent_at: new Date().toISOString(),
               error_message: null,
             })
             .eq("id", item.id);
 
-          // Envoi réel (lot 0b-2a) : lien et « Contacté », au mieux.
+          // Envoi réel (lot 0b-2a) : lien et « Contacté », au mieux. Le premier
+          // identifiant de message, la réponse du fournisseur pouvant en porter
+          // une liste ou aucun.
           await recordQueueSend(supabase, item, itemOrgId as string, {
-            chatId: textOrNull(okBody?.chat_id),
-            messageId: textOrNull(okBody?.message_id),
+            chatId: textOrNull(outcome.chatId),
+            messageId: textOrNull(outcome.messageId),
           });
 
           results.push({ id: item.id, success: true });
