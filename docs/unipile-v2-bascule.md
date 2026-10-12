@@ -1,7 +1,7 @@
 # Bascule vers la nouvelle connexion LinkedIn et messagerie (API v2) : guide du propriétaire
 
 Public : le propriétaire de Konekt, sans connaissance technique. Les étapes disent où cliquer et quoi coller.
-Version du code décrite : branche `ccr-6c73a178-thbl61`, derniers commits `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`. Document rédigé le 12 octobre 2026.
+Version du code décrite : branche `ccr-6c73a178-thbl61`, commits `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`, `9c1f537`. Document rédigé le 12 octobre 2026.
 
 > **Ne fusionnez pas cette branche avant d'avoir lu ce guide en entier.**
 > La fusion déploie automatiquement toutes les fonctions du serveur (workflow GitHub existant) et le site. Le nouveau code n'accepte que les nouveaux identifiants de compte. Si vous fusionnez avant d'avoir posé les secrets (partie 3) et sans suivre l'ordre de la partie 6, la messagerie LinkedIn, les envois de séquences, les InMails et la recherche cessent de fonctionner, et les séquences en cours se mettent en pause toutes seules (motif « compte déconnecté »). Les données ne sont pas perdues, mais il faut ensuite tout remettre en route à la main.
@@ -45,7 +45,7 @@ Ce qui n'est pas dans le code : une fenêtre où l'ancien et le nouvel identifia
 2. Allez dans votre application, section des clés d'API (« API keys »), et créez une clé.
 3. Copiez-la dans un gestionnaire de mots de passe. Elle ne se réaffiche pas.
 
-Je n'ai pas pu vérifier les libellés exacts du tableau de bord du prestataire. Si un nom de menu diffère, cherchez « API keys ».
+Non vérifié : les libellés exacts du tableau de bord du prestataire. Si un nom de menu diffère, cherchez « API keys ».
 
 ### 3.2 Les secrets à poser dans Supabase
 
@@ -64,7 +64,7 @@ Section des secrets des Edge Functions (« Edge Function Secrets »). Pour chaqu
 
 Pour trouver votre identifiant utilisateur : Supabase, menu « Authentication », puis « Users », colonne identifiant (UID) de votre ligne. C'est une suite du type `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
 
-Vous pouvez poser ces secrets **avant** la fusion : l'ancien code déployé aujourd'hui ne s'en sert que pour enregistrer des notifications v2 sur demande. Je n'ai pas pu confirmer en production qu'ils n'ont aucun autre effet.
+Vous pouvez poser ces secrets **avant** la fusion : l'ancien code déployé aujourd'hui ne s'en sert que pour enregistrer des notifications v2 sur demande. Non confirmé en production : qu'ils n'ont aucun autre effet.
 
 ### 3.3 Secrets à retirer à la fin (partie 6, étape 14)
 
@@ -90,7 +90,7 @@ Demandez par écrit, ou cherchez dans son tableau de bord :
 ### 4.2 L'enregistrement DNS
 
 1. Connectez-vous là où est géré le domaine `konekt.fr` (votre registrar ou hébergeur DNS).
-2. Créez l'enregistrement exact donné par le prestataire (type, nom, valeur). Je ne connais pas le type à l'avance.
+2. Créez l'enregistrement exact donné par le prestataire (type, nom, valeur). Le type n'est pas connu à l'avance.
 3. Dans le tableau de bord du prestataire, lancez la vérification du domaine et attendez qu'elle réussisse. La propagation DNS peut prendre de quelques minutes à quelques heures (délai général des DNS, non mesuré ici).
 4. Posez ensuite le secret `UNIPILE_HOSTED_DOMAIN` avec ce nom de domaine.
 
@@ -180,9 +180,9 @@ Ce sont les tâches planifiées de la base. Elles parlent au prestataire ou lise
      'process-sourcing-agents'
    );
    ```
-4. Relancez la lecture de l'étape 1 : la colonne `active` doit afficher `f` (faux) partout.
+4. Relancez la requête de lecture du point 1 : la colonne `active` doit afficher `f` (faux) partout.
 
-Les noms de tâches viennent des migrations du dépôt. Je n'ai pas pu vérifier la base de production, ni la version de l'extension de planification qui y tourne. Si la commande `cron.alter_job` est refusée, demandez à l'ingénieur de suspendre les tâches d'une autre façon avant de continuer.
+Les noms de tâches viennent des migrations du dépôt. Non vérifiés : la base de production et la version de l'extension de planification qui y tourne. Si la commande `cron.alter_job` est refusée, demandez à l'ingénieur de suspendre les tâches d'une autre façon avant de continuer.
 
 Rollback : même commande avec `active := true`.
 
@@ -196,7 +196,7 @@ Rollback : même commande avec `active := true`.
    - Si « Deploy Supabase Migrations » échoue avec « Found local migration files to be inserted before the last migration on remote », relancez-le à la main avec l'option `repair_tracking` cochée (voir `CLAUDE.md`, section sur les migrations). Seul un développeur doit le faire.
 4. Attendez le déploiement du site (environ 2 minutes, selon `CLAUDE.md`).
 
-À partir d'ici et jusqu'à l'étape 9, la messagerie LinkedIn ne fonctionne pas : le code attend des identifiants `acc_` et la base contient encore les anciens. C'est normal. Avancez sans pause.
+À partir d'ici et jusqu'à l'étape 9, la messagerie LinkedIn ne fonctionne pas : le code attend des identifiants `acc_` et la base contient encore les anciens. C'est normal. Enchaînez les étapes 5 à 9 sans attendre.
 
 Rollback à ce stade : sur la Pull Request fusionnée, cliquez sur « Revert ». GitHub crée une Pull Request d'annulation. Fusionnez-la : les workflows redéploient les anciennes fonctions et l'ancien site. Les trois migrations restent en base, elles ajoutent seulement des tables et des fonctions. Ne réactivez les moteurs qu'après la fin du redéploiement. Gardez les anciens secrets et les anciennes notifications (étape 13) jusqu'à la fin de la surveillance : ils rendent ce retour possible.
 
@@ -246,7 +246,7 @@ Rollback : aucun besoin, rien n'a été écrit.
 6. Si la réponse n'arrive pas (message « Résultat inconnu »), ne relancez pas : lancez la simulation et regardez « Conversions précédentes ».
 7. La page refuse la conversion si la simulation n'est plus à jour (des comptes ont changé entre-temps) : relancez la simulation.
 
-Rollback : dans « Conversions précédentes », bouton « Annuler la conversion » sur le lot, puis tapez `ANNULER`. Les identifiants du lot sont restaurés depuis la sauvegarde, sauf pour une ligne modifiée depuis, et une ligne créée depuis la conversion garde le nouvel identifiant. Les appels du code final échouent alors sur les anciens identifiants : l'annulation sert à revenir en arrière avec le code précédent (voir l'étape 4). Ce retour suppose que l'ancien compte chez le prestataire fonctionne encore, ce que je n'ai pas pu vérifier.
+Rollback : dans « Conversions précédentes », bouton « Annuler la conversion » sur le lot, puis tapez `ANNULER`. Les identifiants du lot sont restaurés depuis la sauvegarde, sauf pour une ligne modifiée depuis, et une ligne créée depuis la conversion garde le nouvel identifiant. Les appels du code final échouent alors sur les anciens identifiants : l'annulation sert à revenir en arrière avec le code précédent (voir l'étape 4). Ce retour suppose que l'ancien compte chez le prestataire fonctionne encore, ce qui n'a pas pu être vérifié.
 
 ### Étape 10. Remettre les moteurs en marche
 
@@ -275,7 +275,7 @@ Voir la partie 7. Ne retirez ni les anciens secrets ni les anciennes notificatio
 
 Le nouveau code ne sait plus lister ni supprimer les notifications de l'ancienne version. Elles envoient maintenant vers l'adresse de réception avec l'ancien secret, qui est refusé (401).
 1. Ouvrez le tableau de bord du prestataire de l'**ancienne** version (celui de vos clés v1).
-2. Section des notifications (« Webhooks »). Supprimez celles qui pointent vers `https://crckfywoyjxkawathdff.supabase.co/functions/v1/unipile-webhook` et vers `.../functions/v1/sequence-webhooks-handler`. L'adresse est déduite de la référence du projet Supabase et je n'ai pas pu vérifier les libellés de ce tableau de bord.
+2. Section des notifications (« Webhooks »). Supprimez celles qui pointent vers `https://crckfywoyjxkawathdff.supabase.co/functions/v1/unipile-webhook` et vers `.../functions/v1/sequence-webhooks-handler`. L'adresse est déduite de la référence du projet Supabase. Les libellés de ce tableau de bord n'ont pas pu être vérifiés.
 3. Ne touchez pas au point de réception de la nouvelle version (créé à l'étape 5).
 
 Rollback : impossible sans recréer les notifications à la main. Faites-le après la surveillance de 24 heures.
@@ -327,7 +327,7 @@ Ce qui change dans les plafonds : la v2 ne donne plus de pourcentage d'usage. L'
 
 ## 9. Ce qui n'a pas pu être vérifié sans clé réelle
 
-Rien de ce code n'a été essayé contre le vrai service v2 : aucune clé n'était disponible, et l'outil d'appel direct est interdit. Les tests utilisent un faux prestataire écrit à partir de la spécification publiée. Ce qui suit est donc supposé et doit être confirmé par un essai réel (liste détaillée dans `docs/unipile-v2-architecture.md`, partie 10) :
+Rien de ce code n'a été essayé contre le vrai service v2 : aucune clé n'était disponible pour la rédaction de ce guide. Les tests utilisent un faux prestataire écrit à partir de la spécification publiée. Ce qui suit est donc supposé et doit être confirmé par un essai réel (liste détaillée dans `docs/unipile-v2-architecture.md`, partie 10) :
 
 - Les formats d'identifiants acceptés pour désigner une personne (nom court du profil, identifiant du prestataire, identifiant Recruiter commençant par `AE`).
 - Les corps des erreurs (mauvais mot de passe, code faux, limite atteinte, déjà en relation, déjà invité).

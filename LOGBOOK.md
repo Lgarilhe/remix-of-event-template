@@ -32,6 +32,24 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-12 — REFACTOR — Connexion LinkedIn, WhatsApp et e-mail : API v2 seule (branche non fusionnée)
+
+**Contexte** : le code appelait l'API v1 du prestataire (DSN et clé par organisation, `/api/v1` dans une quarantaine de fichiers). Périmètre de la branche `ccr-6c73a178-thbl61` : remplacer tous les appels par l'API v2, sans repli vers la v1, et garder tout nom de prestataire hors des textes lus par un utilisateur.
+**Fait** : un client unique `supabase/functions/_shared/unipile/` (transport, erreurs neutres, identifiants `acc_...`, garde d'appartenance à l'organisation, états de compte, notifications, normaliseurs) ; toutes les fonctions et les écrans migrés ; récepteur de notifications par jeton `?v2_token=` (17 événements) ; connexion par lien hébergé sur domaine à la marque (`connection_attempts`), connexion directe écrite mais éteinte ; fonction `unipile-migration`, page `/settings/admin/bascule` et migration de conversion des identifiants (simulation, une transaction par compte, sauvegarde, annulation) ; faux prestataire v2 et 39 specs d'API portées ; gardes statiques interdisant `/api/v1`, `UNIPILE_DSN` et tout `fetch` hors du transport ; documentation `docs/unipile-v2-bascule.md` (propriétaire) et `docs/unipile-v2-architecture.md` (développeurs) ; `CLAUDE.md` mis à jour (secrets, section API, 82 fonctions).
+**Décision** : pas de fenêtre à deux identifiants. Après la conversion, un ancien identifiant n'est reconnu nulle part : les moteurs planifiés restent en pause de la fusion à la fin de la conversion. La fusion déploie un code qui n'accepte que `acc_...` : ne pas fusionner avant d'avoir suivi le guide.
+**Raison** : la clé devient globale, l'isolation entre organisations repose sur `assertAccountOwnedByOrg` ; l'identifiant de compte est écrit dans dix-huit colonnes que la conversion réécrit.
+**Impact** : toutes les fonctions qui parlent au prestataire, le moteur de séquences, la file d'InMails, l'assistant, l'extension (reconnexion inactive), Paramètres › Connexions, 3 migrations. Aucun test n'a été joué contre le vrai service v2 (aucune clé).
+**Reste à faire** :
+- [ ] Essai avec une vraie clé hors production (`docs/unipile-v2-architecture.md`, partie 10) : formats d'identifiants de personnes, corps d'erreur, contenus de notifications, continuité des identifiants de conversation, projets Recruiter, connexion directe.
+- [ ] Domaine à la marque et vérification de la page hébergée (le contenu de la page ne se change pas depuis le code).
+- [ ] Secrets `UNIPILE_V2_API_KEY`, `UNIPILE_V2_WEBHOOK_TOKEN`, `UNIPILE_HOSTED_DOMAIN`, `KONEKT_PLATFORM_ADMIN_USER_IDS`, puis bascule dans l'ordre du guide, surveillance de 24 h, retrait des anciennes notifications et des anciens secrets.
+- [ ] 17 décisions produit (guide, partie 5), dont le retrait d'une invitation et l'étape d'attente, la recherche Recruiter par projet, l'adresse de support.
+- [ ] Défaut connu : une étape de visite de profil consomme deux places du plafond de vues (`process-sequences/index.ts`, branche v2 de `profile_visit`).
+- [ ] Tests Deno du client et de `unipile-migration` hors CI ; suppression des colonnes `organization_integrations.unipile_*`.
+**Refs** : commits `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`, `9c1f537` ; ancienne référence `61049f0` ; `AUDITS/UNIPILE_V2_MIGRATION_PLAN.md`.
+
+---
+
 ## 2026-10-09 — BUG — Génération des propositions candidat orientée vers un résultat vide
 
 **Contexte** : l’utilisateur constate systématiquement « Aucune nouvelle action à proposer ». L’instruction du modèle demandait littéralement un appel avec `{"plans":[]}`. Cinq générations récentes observées dans les journaux du 9 octobre renvoient chacune 33 tokens de sortie, cohérents avec ces réponses vides ; leur contenu n’est pas journalisé. Une autre perte est reproduite : la demande finale d’un message long disparaissait des extraits envoyés au modèle.
