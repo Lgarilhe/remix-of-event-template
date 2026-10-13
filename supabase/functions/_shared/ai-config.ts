@@ -375,6 +375,17 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "sourcing",
   },
+  // Un tour du brief vocal guidé (page Cadrage) : une réponse du recruteur lue,
+  // les champs du brief extraits, la question suivante choisie. Une dizaine de
+  // tours par poste. Modèle rapide : le recruteur attend la question suivante.
+  brief_interview: {
+    action: "brief_interview",
+    label: "Question du brief vocal",
+    floor: 1,
+    typicalTokens: 2_500,
+    routingTier: "fast",
+    category: "sourcing",
+  },
   refine_search: {
     action: "refine_search",
     label: "Affiner/élargir recherche",

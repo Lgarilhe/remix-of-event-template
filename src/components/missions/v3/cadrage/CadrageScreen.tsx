@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { useMissionV3 } from '../MissionV3Context';
 import type { CadrageSection } from '../types';
 import { CadrageReadOnlyBanner } from './CadrageReadOnlyBanner';
+import type { NewInterviewStep } from './BriefInterviewDialog';
 import { CadrageReadiness } from './CadrageReadiness';
 import { CriteriaSection } from './CriteriaSection';
 import { InterviewStepsSection } from './InterviewStepsSection';
@@ -82,7 +83,7 @@ function combinedStatus(a: JobDetailsSaveStatus, b: JobDetailsSaveStatus): JobDe
 
 export function CadrageScreen(): JSX.Element | null {
   const { project, location, canEditBrief, canEditProcess, goToScreen } = useMissionV3();
-  const { steps, loadingSteps, stepsError } = useMissionProcess(project.id);
+  const { steps, loadingSteps, stepsError, addStep } = useMissionProcess(project.id);
   const autosave = useJobDetailsAutosave(project, !canEditBrief);
   const link = useCalendlyLinkSave(project.id, !canEditBrief);
   const reduceMotion = useReducedMotion();
@@ -109,6 +110,21 @@ export function CadrageScreen(): JSX.Element | null {
     return () => window.cancelAnimationFrame(frame);
   }, [section, loadingSteps, reduceMotion]);
 
+  // Étapes citées au brief vocal. Ordre explicite et mémorisé : deux étapes créées
+  // d'affilée, avant que la liste ne soit relue, ne doivent pas prendre le même
+  // rang (contrainte d'unicité du rang par mission).
+  const lastStepOrder = useRef(0);
+  const addInterviewSteps = useCallback(
+    async (list: NewInterviewStep[]) => {
+      for (const step of list) {
+        const order = Math.max(lastStepOrder.current, 0, ...steps.map((s) => s.step_order)) + 1;
+        lastStepOrder.current = order;
+        await addStep({ name: step.name, duration_minutes: step.duration_minutes, step_order: order });
+      }
+    },
+    [steps, addStep],
+  );
+
   const { jd, updateField } = autosave;
   const status = combinedStatus(autosave.saveStatus, link.status);
   const retry = () => {
@@ -129,6 +145,8 @@ export function CadrageScreen(): JSX.Element | null {
         onRetry={retry}
         canDictate={canEditBrief}
         updateField={updateField}
+        stepNames={steps.map((s) => s.name)}
+        onAddSteps={canEditProcess ? addInterviewSteps : undefined}
         onContinue={() => goToScreen('sourcing')}
       />
 
