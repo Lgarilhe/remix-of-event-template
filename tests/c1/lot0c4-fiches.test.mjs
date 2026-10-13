@@ -95,7 +95,7 @@ test('0c-4 : CandidateDetailModal ne lit plus de notes de mission que rien n\'af
   assert.doesNotMatch(src, /\.eq\('job_id', candidate\.jobId\)/);
   assert.doesNotMatch(src, /projectNotes|setProjectNotes/, 'état écrit et jamais lu');
   assert.doesNotMatch(src, /from\('sourcing_projects'\)/, 'lecture inutile qui retardait la liste des notes');
-  assert.match(src, /\[candidate\.candidateId, interactionReload\]\);/);
+  assert.match(src, /\[candidate\.candidateId, organizationId, scopeKey, scope, interactionReload\]\);/);
   assert.match(src, /let cancelled = false/);
   assert.doesNotMatch(src, /recharge la page/i, 'vouvoiement');
 });

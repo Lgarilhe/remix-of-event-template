@@ -56,7 +56,7 @@ function ScopedCandidateSheet(props: Props) {
       <div className="mt-6 space-y-3">
         {record.isLoading && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />Ouverture de la fiche…</p>}
         {record.isError && <><p role="status" className="text-sm text-muted-foreground">Impossible de retrouver la fiche pour le moment.</p><Button variant="outline" className="min-h-11" aria-disabled={record.isFetching || undefined} onClick={() => { if (!record.isFetching) void record.refetch(); }}>{record.isFetching ? 'Chargement…' : 'Réessayer'}</Button></>}
-        {record.data?.requiresChoice && record.data.candidates.map(item => <Button key={item.id} variant="outline" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => { replacingSheet.current = true; setChosenId(item.id); }}>{item.missionName || item.jobTitle || 'Mission'} · {item.stage}</Button>)}
+        {record.data?.requiresChoice && record.data.candidates.map(item => <Button key={item.id} variant="ghost" className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border text-left hover:border-foreground" onClick={() => { replacingSheet.current = true; setChosenId(item.id); }}>{item.missionName || item.jobTitle || 'Mission'} · {item.stage}</Button>)}
       </div>
     </SheetContent>
   </Sheet>;
