@@ -238,7 +238,7 @@ test('R6 — Mon compte LinkedIn : état partagé, un geste par cause, plus de f
   // Connexion standard : « Reconnecter » seulement pour un compte à reconnecter, jamais pour une connexion limitée ou suspendue
   assert.match(myAccount, /view\.action === 'reconnect' && \(\s*<ReconnectButton/);
   assert.match(myAccount, /accountId=\{myMapping\.linkedin_account_id\}/);
-  assert.match(myAccount, /view\.action === 'contact_support' && <SupportLink channel="linkedin"/);
+  assert.doesNotMatch(myAccount, /contact_support|SupportLink/, 'un compte restreint n\'a pas de bouton : rien à faire dans Konekt');
   assert.doesNotMatch(myAccount, /ReconnectForm|connect_cookie|hosted_auth_link|li_at|User-Agent|userAgent/);
   assert.match(myAccount, /li\.state === 'loading'/, 'un état de chargement évite les faux « introuvable »');
   assert.doesNotMatch(myAccount, /\(myAccount as any\)\.status === 'OK'/);
@@ -305,7 +305,9 @@ test('R6 — l\'état d\'un compte s\'écrit en mots de Konekt, jamais avec le c
 
 test('R6 — contexte : liste « reçue » distincte de « tentée », liaisons relues, alerte limitée à mon compte', () => {
   assert.match(context, /classifyConnectionHealth\(\{ status: acc\.status, isLocked: acc\.is_locked \}\)/);
-  assert.match(context, /readableConnectionName\(acc\.name, 'linkedin'\)/, 'le nom du compte dans l\'alerte ne laisse pas passer un état encodé');
+  // Le texte de l'alerte vient de disconnectToast.ts, qui lit le nom par readableConnectionName
+  assert.match(context, /disconnectToastFor\(prev\.health, health, acc\)/);
+  assert.match(read('src/components/connections/disconnectToast.ts'), /readableConnectionName\(account\.name, 'linkedin'\)/, 'le nom du compte dans l\'alerte ne laisse pas passer un état encodé');
   assert.match(context, /getUserLinkedAccountId/);
   assert.match(context, /ready: isReady && loadedOk/);
   assert.match(context, /invalidateQueries\(\{ queryKey: \['member-linkedin-accounts'\] \}\)/);

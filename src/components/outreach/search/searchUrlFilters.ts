@@ -110,17 +110,40 @@ function items(raw: unknown): Array<{ id: string; name: string; source: Dict }> 
 /** Nom que le serveur donne à un élément dont l'adresse ne porte que le numéro : « Lieu n° 105015875 », « n° 12 ». */
 const NUMBER_ONLY_NAME = /^(?:\S+ )?n° ?\d+$/;
 
+/** Nom d'un critère sans libellé propre : jamais le numéro. */
+export const CHOSEN_FALLBACK = 'Critère choisi sur LinkedIn';
+
+/**
+ * Critères qu'une adresse Sales Navigator peut porter par leur seul numéro, en plus de ceux de
+ * `CHOSEN_ON_LINKEDIN` (adresse Classic). Clé : critère de l'état de filtres.
+ */
+export const CHOSEN_ON_LINKEDIN_SALES: Readonly<Record<string, string>> = {
+  job_title: 'Intitulé choisi sur LinkedIn',
+  past_job_title: 'Ancien intitulé choisi sur LinkedIn',
+  function: 'Fonction choisie sur LinkedIn',
+  company_location: 'Lieu du siège choisi sur LinkedIn',
+  groups: 'Groupe choisi sur LinkedIn',
+};
+
+/** Libellé d'un critère dont le nom est un numéro : celui du critère, sinon le libellé neutre. */
+export function chosenOnLinkedinLabel(key: string): string {
+  const own = (table: Readonly<Record<string, string>>) =>
+    Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+  return own(CHOSEN_ON_LINKEDIN) ?? own(CHOSEN_ON_LINKEDIN_SALES) ?? CHOSEN_FALLBACK;
+}
+
 /**
  * Remplace ces noms par « Lieu choisi sur LinkedIn » (selon le critère), avec un rang quand il y en a
  * plusieurs. Un nom lu dans l'adresse (Sales Navigator) n'est jamais touché.
  */
-function readableNames<T extends { name: string }>(list: T[], key: keyof typeof CHOSEN_ON_LINKEDIN): T[] {
+function readableNames<T extends { name: string }>(list: T[], key: string): T[] {
+  const label = chosenOnLinkedinLabel(key);
   const numbered = list.filter((entry) => NUMBER_ONLY_NAME.test(entry.name)).length;
   let rank = 0;
   return list.map((entry) => {
     if (!NUMBER_ONLY_NAME.test(entry.name)) return entry;
     rank += 1;
-    return { ...entry, name: numbered > 1 ? `${CHOSEN_ON_LINKEDIN[key]} (${rank})` : CHOSEN_ON_LINKEDIN[key] };
+    return { ...entry, name: numbered > 1 ? `${label} (${rank})` : label };
   });
 }
 
@@ -156,11 +179,11 @@ function readFilters(raw: Dict): Partial<LinkedInFiltersState> {
   set('past_company', readableNames(plainItems(raw.past_company), 'past_company'));
   set('industry', readableNames(plainItems(raw.industry), 'industry'));
   set('school', readableNames(priorityItems(raw.school, 'MUST_HAVE'), 'school'));
-  set('job_title', priorityItems(raw.job_title, 'CAN_HAVE'));
-  set('past_job_title', priorityItems(raw.past_job_title, 'CAN_HAVE'));
-  set('function', plainItems(raw.function));
-  set('company_location', plainItems(raw.company_location));
-  set('groups', plainItems(raw.groups));
+  set('job_title', readableNames(priorityItems(raw.job_title, 'CAN_HAVE'), 'job_title'));
+  set('past_job_title', readableNames(priorityItems(raw.past_job_title, 'CAN_HAVE'), 'past_job_title'));
+  set('function', readableNames(plainItems(raw.function), 'function'));
+  set('company_location', readableNames(plainItems(raw.company_location), 'company_location'));
+  set('groups', readableNames(plainItems(raw.groups), 'groups'));
   set('network_distance', (Array.isArray(raw.network_distance) ? raw.network_distance : [])
     .filter((n): n is number => n === 1 || n === 2 || n === 3));
   set('profile_language', (Array.isArray(raw.profile_language) ? raw.profile_language : [])

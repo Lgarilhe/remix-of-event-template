@@ -50,6 +50,8 @@ export interface LinkedInListEntry {
   is_locked: boolean;
   reconnectable: boolean;
   initial_sync_status: string | null;
+  /** Vrai quand le prestataire n'a pas répondu pour ce compte : statut et licences ne sont pas lus (écran : « État à vérifier »). */
+  unverified?: boolean;
 }
 
 /** List entry of a live v2 LinkedIn account. */
@@ -105,7 +107,9 @@ const KNOWN_STORED_STATUSES: readonly string[] = ['OK', 'CREDENTIALS', 'ERROR', 
 /**
  * Entry of a link whose account the provider did not answer for (rate limit, server error,
  * timeout): the last stored status, no picture, classic licence only. Not marked
- * reconnectable: nothing says the account needs it.
+ * reconnectable: nothing says the account needs it. `unverified: true` tells the screen that
+ * neither the status nor the licences were read, so it shows "à vérifier" instead of "Actif"
+ * and an invented licence.
  */
 export function unverifiedLinkEntry(row: {
   linkedin_account_id: string;
@@ -127,6 +131,7 @@ export function unverifiedLinkEntry(row: {
     is_locked: stored === 'LOCKED',
     reconnectable: false,
     initial_sync_status: null,
+    unverified: true,
   };
 }
 

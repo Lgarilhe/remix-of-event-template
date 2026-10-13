@@ -33,7 +33,7 @@ import { readableAccountName } from "../_shared/connection-claim.ts";
 import {
   assertAccountInOrg,
   assertCanManageAccount,
-  assertCanReadAccount,
+  assertCollaboratorUsesOwnAccount,
   assertOwnLinkedInAccount,
   getCallerOrgRole,
   HttpError,
@@ -127,7 +127,15 @@ async function readContracts(accountId: string): Promise<Contract[] | null> {
   return contracts;
 }
 
-type WhatsAppMappingRow = { id: string; whatsapp_account_id: string; name: string | null; phone_number: string | null; account_status: string | null };
+type WhatsAppMappingRow = {
+  id: string;
+  whatsapp_account_id: string;
+  name: string | null;
+  phone_number: string | null;
+  account_status: string | null;
+  /** Posé par « Déconnecter » seulement : la ligne est la pierre tombale d'une déconnexion voulue par le membre. */
+  removed_by_member_at?: string | null;
+};
 
 type LinkedInLinkRow = {
   id: string;
@@ -227,7 +235,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
 
     const { data: membership, error: membershipError } = await adminClient
       .from('organization_members')
-      .select('id')
+      .select('id, role')
       .eq('organization_id', organizationId)
       .eq('user_id', user.id)
       .maybeSingle();
@@ -244,6 +252,10 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
       });
       throw new HttpError(403, 'Accès non autorisé à cette organisation');
     }
+
+    // Un collaborateur n'utilise que le compte qu'il a relié lui-même, pour TOUTE action qui désigne un compte
+    // (lecture, geste au nom du compte, action à venir) : une règle générale, pas une liste d'actions (ownership.ts).
+    await assertCollaboratorUsesOwnAccount(adminClient, organizationId, user.id, typeof membership.role === 'string' ? membership.role : null, params);
 
     const connection: ConnectionContext = { admin: adminClient, organizationId, userId: user.id };
 
@@ -489,12 +501,16 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
       case 'list_whatsapp': {
         const { data: mappings, error } = await adminClient
           .from('member_whatsapp_accounts')
-          .select('id, whatsapp_account_id, name, phone_number, account_status')
+          // Toutes les colonnes : tant que la migration de `removed_by_member_at` n'est pas appliquée (déploiement des
+          // fonctions et des migrations en parallèle), la colonne manque et se lit simplement absente.
+          .select('*')
           .eq('organization_id', organizationId)
           .eq('user_id', user.id)
           .order('linked_at', { ascending: false });
         if (error) throw new HttpError(500, 'Impossible de lire vos comptes WhatsApp');
         // Exact owned IDs only: never list other members' or orphan accounts.
+        // Chaque entrée porte `removed_by_member` : vrai pour la pierre tombale d'une déconnexion voulue (l'écran la
+        // masque), faux pour un compte vivant et pour un compte disparu chez le prestataire (l'écran garde « À reconnecter »).
         const accounts = await Promise.all(((mappings ?? []) as WhatsAppMappingRow[]).map(async (mapping) => {
           let account;
           if (mapping.account_status === 'DELETED' || !isV2AccountId(mapping.whatsapp_account_id)) {
@@ -527,7 +543,10 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
             })
             .eq('id', mapping.id).eq('organization_id', organizationId).eq('user_id', user.id);
           if (updateError) throw new HttpError(500, 'Impossible de mettre à jour votre compte WhatsApp');
-          return account;
+          return {
+            ...account,
+            removed_by_member: account.status === 'DELETED' && mapping.removed_by_member_at != null,
+          };
         }));
         return json({ success: true, accounts });
       }
@@ -567,8 +586,11 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         }
         // Preserve ownership after revocation; an old ID cannot be claimed by a
         // different organization. DELETED requires a fresh create, not reconnect.
+        // `removed_by_member_at` distingue cette pierre tombale (geste voulu) d'un compte disparu chez le
+        // prestataire, que le webhook et « list_whatsapp » marquent aussi DELETED sans le poser.
+        const removedAt = new Date().toISOString();
         const { error: updateError } = await adminClient.from('member_whatsapp_accounts')
-          .update({ account_status: 'DELETED', updated_at: new Date().toISOString() })
+          .update({ account_status: 'DELETED', removed_by_member_at: removedAt, updated_at: removedAt })
           .eq('id', mapping.id).eq('organization_id', organizationId).eq('user_id', user.id);
         if (updateError) throw new HttpError(500, 'La connexion a été retirée mais son état reste à actualiser');
         return json({ success: true });
@@ -874,8 +896,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           return json({ success: false, error: 'Account ID requis' }, 400);
         }
 
-        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
-        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         let credits;
         try {
@@ -904,8 +925,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           return json({ success: false, error: 'Account ID requis' }, 400);
         }
 
-        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
-        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         let contracts: Contract[];
         try {
@@ -1159,8 +1179,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         if (!account_id) {
           throw new HttpError(400, 'Account ID requis');
         }
-        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
-        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         let invPage;
         try {
@@ -1269,8 +1288,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           throw new HttpError(400, 'Account ID requis');
         }
 
-        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
-        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
+        await assertAccountInOrg(adminClient, organizationId, user.id, account_id);
 
         let detail: V2Account;
         let detailContracts: Contract[] | null = null;
@@ -1314,8 +1332,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
           return json({ success: false, error: 'Photo non disponible' });
         }
         const pictureAccount = await resolveActionAccountId(adminClient, organizationId, user.id, params.account_id);
-        const readOwnership = await assertAccountInOrg(adminClient, organizationId, user.id, pictureAccount);
-        await assertCanReadAccount(adminClient, organizationId, user.id, readOwnership);
+        await assertAccountInOrg(adminClient, organizationId, user.id, pictureAccount);
         try {
           const pictureAccountId = assertV2AccountId(pictureAccount);
           let pictureUrl: string | null = null;

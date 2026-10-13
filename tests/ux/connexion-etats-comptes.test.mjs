@@ -10,11 +10,18 @@
  *   même façon sur les trois cartes, état non lu sans « Actif », liste e-mail partagée,
  *   gestes protégés contre le double clic.
  *
+ * Deuxième série (cartes) : pierre tombale WhatsApp d'une déconnexion voulue, carte e-mail
+ * (boîte nommée dans la confirmation et les boutons, « Réessayer » bloqué pendant la lecture,
+ * deux boîtes sans adresse connue, relecture à l'ouverture), compte restreint (même mot et
+ * même phrase que le bandeau, aucun bouton ni adresse), liste e-mail du tableau de bord partagée.
+ *
  * Lancer : node --test tests/ux/connexion-etats-comptes.test.mjs
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadTs, read, stripComments } from './connexion-helpers.mjs';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { loadTs, read, stripComments, ROOT } from './connexion-helpers.mjs';
 
 const copy = await loadTs('src/lib/connectionCopy.ts');
 const view = await loadTs('src/components/connections/connectionView.ts');
@@ -22,6 +29,7 @@ const rows = await loadTs('src/components/connections/mailboxRows.ts');
 const flight = await loadTs('src/components/connections/singleFlight.ts');
 const ids = await loadTs('src/lib/accountIdFormat.ts');
 const status = await loadTs('src/lib/linkedinStatus.ts');
+const freshness = await loadTs('src/components/connections/emailListFreshness.ts');
 
 const PROVIDERS = ['linkedin', 'whatsapp', 'google', 'outlook', 'imap'];
 const code = (f) => stripComments(read(f));
@@ -251,7 +259,7 @@ test('F5 — la carte e-mail liste toutes les boîtes de la personne, sans appel
 test('F16 — la liste e-mail est une requête partagée : plus d\'effet qui relit à chaque changement de contexte', () => {
   const card = code('src/components/settings/MyEmailAccount.tsx');
   assert.doesNotMatch(card, /invokeEdgeFunction|list_email|setLoadingAccounts|loadEmailAccounts/, 'la carte ne lit plus la liste elle-même');
-  assert.match(card, /const list = useMemberEmailList\(\);/);
+  assert.match(card, /const list = useMemberEmailList\(\{ rereadOnMount: true \}\);/);
   const hook = code('src/components/connections/useMemberEmailList.ts');
   assert.match(hook, /useQuery<MemberEmailListEntry\[\]>\(/);
   assert.match(hook, /export const MEMBER_EMAIL_LIST_KEY = \['member-email-accounts', 'list'\] as const;/);
@@ -364,4 +372,205 @@ test('F11 — « Utiliser » un contrat et « Déconnecter » WhatsApp passent p
   assert.match(wa, /const once = useMemo\(\(\) => createSingleFlight\(\), \[\]\);/);
   assert.match(wa, /onConfirm=\{\(\) => \{ void once\(\(\) => onDisconnect\(account\.id\)\); \}\}/);
   assert.doesNotMatch(wa, /onConfirm=\{\(\) => \{ void onDisconnect\(account\.id\); \}\}/);
+});
+
+// ================================================================== deuxième série (cartes)
+
+// ------------------------------------------------------------------ pierre tombale WhatsApp
+const WA = {
+  bye: { id: 'acc_bye', status: 'DELETED', identifier: '+33611111111', removed_by_member: true },
+  bye2: { id: 'acc_bye2', status: 'DELETED', identifier: '+33611111112', removed_by_member: true },
+  bye3: { id: 'acc_bye3', status: 'DELETED', identifier: '+33611111113', removed_by_member: true },
+  vanished: { id: 'acc_gone', status: 'DELETED', identifier: '+33622222222', removed_by_member: false },
+  legacy: { id: 'acc_old', status: 'DELETED', identifier: '+33633333333' },
+  live: { id: 'acc_live', status: 'OK', identifier: '+33644444444', removed_by_member: false },
+};
+/** Comptes listés par la carte WhatsApp, dans l'ordre de ses filtres. */
+const shownOnWhatsApp = (accounts) => view.withoutSupersededRemoved(view.withoutDeliberateDisconnects(accounts), 'whatsapp').map((a) => a.id);
+
+test('WhatsApp — la trace d\'une déconnexion voulue (removed_by_member vrai) est masquée, vrai, faux et champ absent', () => {
+  assert.deepEqual(view.withoutDeliberateDisconnects([WA.bye, WA.vanished, WA.legacy, WA.live]).map((a) => a.id), ['acc_gone', 'acc_old', 'acc_live']);
+  // Seul le booléen vrai masque : null, absent, texte ou nombre ne masquent rien
+  for (const odd of [null, undefined, 'true', 1, 'yes']) {
+    assert.equal(view.withoutDeliberateDisconnects([{ id: 'x', status: 'DELETED', removed_by_member: odd }]).length, 1, String(odd));
+  }
+  assert.deepEqual(view.withoutDeliberateDisconnects([]), []);
+});
+
+test('WhatsApp — après un rechargement, une déconnexion voulue ne laisse aucune ligne « À reconnecter »', () => {
+  // Trois « Déconnecter » successifs : trois traces, aucune ligne (avant : trois lignes identiques)
+  assert.deepEqual(shownOnWhatsApp([WA.bye, WA.bye2, WA.bye3]), []);
+  // La trace seule : la carte retrouve l'état « à connecter »
+  assert.deepEqual(shownOnWhatsApp([WA.bye]), []);
+  // Un compte disparu chez le prestataire (removed_by_member faux) ou d'une réponse sans le champ reste « À reconnecter »
+  assert.deepEqual(shownOnWhatsApp([WA.bye, WA.vanished]), ['acc_gone']);
+  assert.deepEqual(shownOnWhatsApp([WA.legacy]), ['acc_old']);
+  for (const gone of [WA.vanished, WA.legacy]) {
+    const v = view.viewOfAccount({ health: status.classifyConnectionHealth({ status: gone.status }), status: gone.status, accountId: gone.id }, 'whatsapp');
+    assert.equal(v.label, 'À reconnecter');
+    assert.equal(v.cause, 'removed');
+    assert.equal(v.action, 'reconnect');
+  }
+  // Un compte vivant remplace le disparu ; les traces ne reviennent pas
+  assert.deepEqual(shownOnWhatsApp([WA.bye, WA.bye2, WA.vanished, WA.live]), ['acc_live']);
+});
+
+test('WhatsApp — la carte masque les traces avant de juger les remplacements', () => {
+  const src = code('src/components/settings/MyWhatsAppAccount.tsx');
+  assert.match(src, /withoutSupersededRemoved\(\s*withoutDeliberateDisconnects\(accounts\)\.filter\(account => !justDisconnected\.has\(account\.id\)\),\s*'whatsapp',\s*\)/);
+  assert.match(src, /import \{ viewOfAccount, withoutDeliberateDisconnects, withoutSupersededRemoved \} from '@\/components\/connections\/connectionView';/);
+});
+
+// ------------------------------------------------------------------ carte e-mail : la boîte visée est nommée
+test('E-mail — la confirmation, le nom accessible des boutons et le message nomment la boîte', () => {
+  const addr = 'jean@exemple.fr';
+  assert.equal(copy.EMAIL_CARD.unlinkTitle(addr), 'Dissocier la boîte jean@exemple.fr ?');
+  assert.equal(copy.EMAIL_CARD.unlinkAria(addr), 'Dissocier la boîte jean@exemple.fr');
+  assert.equal(copy.EMAIL_CARD.reconnectAria(addr), 'Reconnecter la boîte jean@exemple.fr');
+  assert.equal(copy.EMAIL_CARD.retryAria(addr), 'Réessayer de lire la boîte jean@exemple.fr');
+  assert.equal(copy.EMAIL_CARD.unlinkedToast(addr), 'Boîte jean@exemple.fr dissociée');
+  // Le nom visible commence le nom accessible (« Dissocier », « Reconnecter ») : la commande vocale reste juste
+  assert.ok(copy.EMAIL_CARD.unlinkAria(addr).startsWith(copy.CARD_COMMON.unlink));
+  assert.ok(copy.EMAIL_CARD.reconnectAria(addr).startsWith(copy.ACTION_LABEL.reconnect));
+  assert.ok(copy.EMAIL_CARD.retryAria(addr).startsWith(copy.CARD_COMMON.retry));
+  // Deux boîtes : deux noms différents pour le même geste
+  assert.notEqual(copy.EMAIL_CARD.unlinkAria('a@x.fr'), copy.EMAIL_CARD.unlinkAria('b@x.fr'));
+});
+
+test('E-mail — chaque ligne passe l\'adresse de sa boîte à la confirmation et aux trois boutons', () => {
+  const card = code('src/components/settings/MyEmailAccount.tsx');
+  assert.match(card, /title=\{EMAIL_CARD\.unlinkTitle\(row\.address\)\}/);
+  assert.match(card, /triggerAriaLabel=\{EMAIL_CARD\.unlinkAria\(row\.address\)\}/);
+  assert.match(card, /ariaLabel=\{EMAIL_CARD\.reconnectAria\(row\.address\)\}/);
+  assert.match(card, /aria-label=\{EMAIL_CARD\.retryAria\(row\.address\)\}/);
+  assert.doesNotMatch(card, /EMAIL_CARD\.unlinkTitle\}/, 'plus de titre fixe');
+  const parts = code('src/components/connections/ConnectionParts.tsx');
+  assert.match(parts, /aria-label=\{triggerAriaLabel\}/);
+  assert.match(parts, /aria-label=\{mine \? undefined : ariaLabel\}/, 'pendant le départ, le libellé d\'attente reste le nom du bouton');
+});
+
+test('E-mail — « Réessayer » d\'une ligne attend la fin de la lecture en cours', () => {
+  const card = code('src/components/settings/MyEmailAccount.tsx');
+  assert.match(card, /const busy = list\.isFetching;/);
+  assert.match(card, /retryDisabled=\{busy\}/);
+  const row = card.slice(card.indexOf("view.action === 'refresh' && ("), card.indexOf('{extraAction}'));
+  assert.match(row, /disabled=\{retryDisabled\}/);
+  assert.match(row, /onClick=\{onRetry\}/);
+});
+
+// ------------------------------------------------------------------ deux boîtes sans adresse connue
+test('E-mail — deux boîtes dont l\'adresse est inconnue ne se masquent pas l\'une l\'autre', () => {
+  const m = (id, acc) => ({ id, email_account_id: acc, email_address: null, provider: 'OUTLOOK' });
+  const gone = { id: 'acc_a', status: 'DELETED', type: 'OUTLOOK' };
+  const live = { id: 'acc_b', status: 'OK', type: 'OUTLOOK' };
+  const built = rows.buildMailboxRows([m('m1', 'acc_a'), m('m2', 'acc_b')], [gone, live], false);
+  assert.deepEqual(built.map((r) => r.mapping.id), ['m1', 'm2'], 'la boîte retirée reste (à reconnecter ou à dissocier) à côté de la vivante');
+  assert.equal(built[0].view.label, 'À reconnecter');
+  assert.equal(built[0].address, 'Messagerie Outlook');
+  assert.equal(built[1].address, 'Messagerie Outlook');
+  assert.deepEqual(built.map((r) => r.identifier), ['', ''], 'un nom de repli ne prouve rien');
+  // Un nom d'ancienne connexion ne prouve rien non plus
+  const encoded = rows.buildMailboxRows(
+    [{ ...m('m3', 'acc_c'), email_address: 'user:abc|org:def' }, { ...m('m4', 'acc_d'), email_address: 'user:abc|org:def' }],
+    [{ id: 'acc_c', status: 'DELETED' }, { id: 'acc_d', status: 'OK' }],
+    false,
+  );
+  assert.equal(encoded.length, 2);
+  // Une adresse connue d'un côté seulement ne prouve rien : les deux restent
+  const oneKnown = rows.buildMailboxRows(
+    [{ ...m('m5', 'acc_e'), email_address: 'jean@exemple.fr' }, m('m6', 'acc_f')],
+    [{ id: 'acc_e', status: 'DELETED' }, { id: 'acc_f', status: 'OK' }],
+    false,
+  );
+  assert.equal(oneKnown.length, 2);
+  // Même adresse (casse comprise) chez une boîte vivante : la retirée est bien remplacée
+  const replaced = rows.buildMailboxRows(
+    [{ ...m('m7', 'acc_g'), email_address: 'Jean@Exemple.fr' }, { ...m('m8', 'acc_h'), email_address: 'jean@exemple.fr' }],
+    [{ id: 'acc_g', status: 'DELETED' }, { id: 'acc_h', status: 'OK' }],
+    false,
+  );
+  assert.deepEqual(replaced.map((r) => r.mapping.id), ['m8']);
+});
+
+// ------------------------------------------------------------------ liste e-mail relue à l'ouverture, une lecture par page
+test('F16 — la carte relit la liste à chaque ouverture, sauf quand une lecture vient d\'aboutir', () => {
+  const NOW = 1_000_000;
+  assert.equal(freshness.rereadOnMount(0, NOW), 'always', 'jamais lue : lue');
+  assert.equal(freshness.rereadOnMount(NOW - 60_000, NOW), 'always', 'lue il y a une minute (cache encore frais) : relue');
+  assert.equal(freshness.rereadOnMount(NOW - freshness.EMAIL_LIST_JUST_READ_MS - 1, NOW), 'always');
+  assert.equal(freshness.rereadOnMount(NOW - 800, NOW), false, 'lue par la barre latérale à l\'instant : un seul appel');
+  assert.equal(freshness.rereadOnMount(NOW - freshness.EMAIL_LIST_JUST_READ_MS + 1, NOW), false);
+  assert.ok(freshness.EMAIL_LIST_JUST_READ_MS <= 15_000, 'un délai court : l\'état se lit au moment de l\'afficher');
+  const hook = code('src/components/connections/useMemberEmailList.ts');
+  assert.match(hook, /retry: false,/, 'une lecture ratée s\'affiche tout de suite avec « Réessayer »');
+  assert.match(hook, /refetchOnMount: reread \? \(query\) => rereadOnMount\(query\.state\.dataUpdatedAt\) : true,/);
+  assert.match(hook, /rereadOnMount: reread = false, refetchInterval/);
+  assert.match(code('src/components/settings/MyEmailAccount.tsx'), /useMemberEmailList\(\{ rereadOnMount: true \}\)/);
+  assert.match(code('src/components/connections/emailListFreshness.ts'), /'always'/);
+});
+
+test('F16 — le tableau de bord et la barre latérale lisent la liste e-mail partagée : plus d\'appel propre', () => {
+  const hook = code('src/hooks/useDashboardConnections.ts');
+  assert.doesNotMatch(hook, /invokeEdgeFunction|list_email|loadEmailAccounts|setEmailAccounts|setEmailLoading|setInterval|useEffect|useState|useCallback/);
+  assert.match(hook, /import \{ useMemberEmailList, type MemberEmailListEntry \} from '@\/components\/connections\/useMemberEmailList';/);
+  assert.match(hook, /const EMAIL_REFRESH_MS = 5 \* 60 \* 1000;/, 'l\'actualisation de 5 minutes reste');
+  assert.match(hook, /const emailList = useMemberEmailList\(\{ refetchInterval: EMAIL_REFRESH_MS \}\);/);
+  assert.match(hook, /const emailAccounts = emailList\.data \?\? EMPTY_EMAIL_ACCOUNTS;/);
+  // Une seule fonction du navigateur appelle list_email : la requête partagée
+  const callers = [];
+  const walk = (dir) => readdirSync(join(ROOT, dir), { withFileTypes: true }).forEach((d) => {
+    const next = `${dir}/${d.name}`;
+    if (d.isDirectory()) walk(next);
+    else if (/\.(ts|tsx)$/.test(d.name) && /action: 'list_email'/.test(code(next))) callers.push(next);
+  });
+  walk('src');
+  assert.deepEqual(callers, ['src/components/connections/useMemberEmailList.ts']);
+});
+
+// ------------------------------------------------------------------ compte restreint : un mot, une phrase, aucun bouton
+const LOCKED_FRAGMENTS = [/restreint/i, /en pause/, /Se reconnecter n'y change rien/, /Patientez/, /directement/];
+const NOT_LOCKED = /suspendu|support|débloquer|écrivez|@/i;
+
+test('compte restreint — le mot et la phrase des cartes sont ceux du bandeau, de la barre latérale et de la notification', () => {
+  assert.equal(copy.HEALTH_LABEL.locked, 'Compte restreint');
+  for (const channel of ['linkedin', 'email', 'whatsapp']) {
+    const reason = copy.healthReason('locked', channel);
+    for (const re of LOCKED_FRAGMENTS) assert.match(reason, re, `${channel} : ${re}`);
+    assert.doesNotMatch(reason, NOT_LOCKED, channel);
+  }
+  assert.match(copy.healthReason('locked', 'linkedin'), /restreint par LinkedIn/);
+  assert.match(copy.healthReason('locked', 'linkedin'), /directement sur LinkedIn/);
+  assert.match(copy.healthReason('locked', 'whatsapp'), /restreint par WhatsApp/);
+  // Les autres surfaces disent la même chose (lecture des sources, sans les modifier)
+  const banner = read('src/components/dashboard/DashboardFocusPanel.tsx');
+  const sidebar = read('src/components/sidebar/todo/LinkedInOutageSection.tsx');
+  const webhook = read('supabase/functions/unipile-webhook/index.ts');
+  assert.match(banner, /title="Compte LinkedIn restreint"/);
+  assert.match(sidebar, /title: 'Compte LinkedIn restreint'/);
+  assert.match(webhook, /title = 'Compte LinkedIn restreint'/);
+  for (const [name, text] of [['bandeau', banner], ['notification', webhook]]) {
+    assert.match(text, /restreint/, name);
+    assert.match(text, /Patientez/, name);
+    assert.match(text, /directement sur LinkedIn/, name);
+  }
+  assert.match(webhook, /Se reconnecter n'y change rien/);
+});
+
+test('compte restreint — aucun bouton « Contacter le support », aucune adresse personnelle', () => {
+  for (const provider of PROVIDERS) {
+    const v = view.viewOfHealth('locked', provider);
+    assert.equal(v.label, 'Compte restreint', provider);
+    assert.equal(v.action, null, provider);
+    assert.equal(v.actionLabel, null, provider);
+    assert.equal(v.tone, 'danger', provider);
+  }
+  assert.equal(copy.healthAction('locked'), null);
+  assert.equal(view.cardAction(view.viewOfHealth('locked', 'linkedin'), false), null);
+  // La classe « restreint » l'emporte sur « actif » et reste neutre sur l'accueil
+  assert.equal(of('linkedin', 'LOCKED').label, 'Compte restreint');
+  assert.equal(view.viewOfAccount({ health: status.classifyConnectionHealth({ status: 'OK', isLocked: true }), status: 'OK' }, 'linkedin').label, 'Compte restreint');
+  for (const f of ['src/components/connections/ConnectionParts.tsx', 'src/components/settings/MyLinkedInAccount.tsx', 'src/components/settings/MyEmailAccount.tsx', 'src/components/settings/MyWhatsAppAccount.tsx']) {
+    assert.doesNotMatch(code(f), /SupportLink|contact_support|supportMailto|SUPPORT_EMAIL|mailto:/, f);
+  }
+  assert.doesNotMatch(read('src/lib/connectionCopy.ts'), /@konekt\.fr|Contacter le support|Ou écrivez/);
 });

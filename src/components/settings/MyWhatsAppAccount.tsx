@@ -20,11 +20,10 @@ import {
   HostedError,
   ReconnectButton,
   RemovalDialog,
-  SupportLink,
 } from '@/components/connections/ConnectionParts';
 import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
 import { useHostedConnect } from '@/components/connections/useHostedConnect';
-import { viewOfAccount, withoutSupersededRemoved } from '@/components/connections/connectionView';
+import { viewOfAccount, withoutDeliberateDisconnects, withoutSupersededRemoved } from '@/components/connections/connectionView';
 import { createSingleFlight } from '@/components/connections/singleFlight';
 import { toast } from 'sonner';
 
@@ -42,8 +41,9 @@ import { toast } from 'sonner';
  *
  * Un compte retiré chez le prestataire (autrement que par « Déconnecter ») se lit comme
  * celui des deux autres cartes : « À reconnecter », même phrase, « Reconnecter » ouvre une
- * nouvelle connexion. Une lecture ratée reste une erreur avec « Réessayer », jamais l'état
- * d'un compte à relier.
+ * nouvelle connexion. La trace d'un « Déconnecter » voulu (`removed_by_member`) n'est jamais
+ * affichée, après un rechargement non plus. Une lecture ratée reste une erreur avec
+ * « Réessayer », jamais l'état d'un compte à relier.
  */
 export function MyWhatsAppAccount() {
   const { accounts, authReady, isPending, isError, isRefetchError, isFetching, refetch, disconnect } = useMemberWhatsAppAccounts();
@@ -52,7 +52,12 @@ export function MyWhatsAppAccount() {
   const [justDisconnected, setJustDisconnected] = useState<ReadonlySet<string>>(() => new Set());
   // Un seul « Déconnecter » à la fois : le second clic d'un double clic ne part pas.
   const once = useMemo(() => createSingleFlight(), []);
-  const listedAccounts = withoutSupersededRemoved(accounts.filter(account => !justDisconnected.has(account.id)), 'whatsapp');
+  // Pierre tombale d'une déconnexion voulue (removed_by_member) : masquée. Un compte disparu chez le prestataire
+  // sans ce geste reste une ligne « À reconnecter ».
+  const listedAccounts = withoutSupersededRemoved(
+    withoutDeliberateDisconnects(accounts).filter(account => !justDisconnected.has(account.id)),
+    'whatsapp',
+  );
 
   const onDisconnect = async (accountId: string) => {
     try {
@@ -111,7 +116,6 @@ export function MyWhatsAppAccount() {
                           className="max-sm:flex-1"
                         />
                       )}
-                      {view.action === 'contact_support' && <SupportLink channel="whatsapp" className="max-sm:flex-1" />}
                       {/* Un compte retiré chez le prestataire n'a plus rien à déconnecter : seule la reconnexion a un sens. */}
                       {view.cause !== 'removed' && (
                         <RemovalDialog

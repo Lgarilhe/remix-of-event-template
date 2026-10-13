@@ -118,16 +118,16 @@ test('carte LinkedIn : limited et locked ne demandent pas d\'agir, needs_reconne
   assert.equal(reco.needsAction, true);
 });
 
-test('« À traiter » : à reconnecter et accès restreint comptent ; connexion limitée et PARTIAL (états de carte) non', () => {
+test('« À traiter » : à reconnecter, connexion partielle (PARTIAL) et accès restreint comptent ; connexion limitée (état de carte) non', () => {
   const input = (account_status, accounts) => ({
     userId: ME, mappings: [{ ...mapMoi, account_status }], mappingsLoaded: true, accounts, accountsLoaded: accounts.length > 0,
   });
-  assert.equal(myLinkedInOutage(input('PARTIAL', [])), false);
+  assert.equal(myLinkedInOutage(input('PARTIAL', [])), 'partial');
   assert.equal(myLinkedInOutage(input('DEGRADED', [])), false);
   assert.equal(myLinkedInOutage(input('LOCKED', [])), 'locked');
   assert.equal(myLinkedInOutage(input('CREDENTIALS', [])), 'reconnect');
   assert.equal(myLinkedInOutage(input('OK', [{ id: 'acc_moi', status: 'ERROR' }])), 'reconnect');
-  assert.equal(myLinkedInOutage(input('OK', [{ id: 'acc_moi', status: 'PARTIAL' }])), false);
+  assert.equal(myLinkedInOutage(input('OK', [{ id: 'acc_moi', status: 'PARTIAL' }])), 'partial');
 });
 
 test('tableau de bord : limited, locked et syncing restent neutres', () => {
@@ -146,14 +146,14 @@ test('chaque classe a un libellé et une teinte connus de Badge', () => {
   }
 });
 
-test('seuls needs_reconnect, not_connected, locked et unknown proposent un geste, et pas « Reconnecter » pour limited ni locked', () => {
+test('seuls needs_reconnect, not_connected et unknown proposent un geste : ni limited ni locked, et jamais « Reconnecter » pour eux', () => {
   assert.equal(copy.healthAction('limited'), null);
   assert.equal(copy.healthAction('connected'), null);
   assert.equal(copy.healthAction('syncing'), null);
   assert.equal(copy.healthAction('connecting'), null);
   assert.equal(copy.healthAction('needs_reconnect'), 'reconnect');
   assert.equal(copy.healthAction('not_connected'), 'connect');
-  assert.equal(copy.healthAction('locked'), 'contact_support');
+  assert.equal(copy.healthAction('locked'), null, 'compte restreint : rien à faire dans Konekt, ni bouton ni adresse');
   assert.equal(copy.healthAction('unknown'), 'refresh');
 });
 
@@ -167,12 +167,11 @@ test('ligne d\'explication : limited promet une nouvelle tentative, locked ne pa
   assert.equal(copy.HEALTH_LABEL.limited, 'Connexion limitée');
 });
 
-test('libellés d\'action : Connecter selon le fournisseur, Reconnecter, support, Actualiser', () => {
+test('libellés d\'action : Connecter selon le fournisseur, Reconnecter, Actualiser', () => {
   assert.equal(copy.healthActionLabel('connect', 'linkedin'), 'Connecter LinkedIn');
   assert.equal(copy.healthActionLabel('connect', 'google'), 'Connecter Gmail');
   assert.equal(copy.healthActionLabel('connect', 'imap'), 'Connecter une messagerie');
   assert.equal(copy.healthActionLabel('reconnect', 'whatsapp'), 'Reconnecter');
-  assert.equal(copy.healthActionLabel('contact_support', 'linkedin'), 'Contacter le support');
   assert.equal(copy.healthActionLabel('refresh', 'linkedin'), 'Actualiser');
 });
 
@@ -187,6 +186,8 @@ test('R8 — l\'alerte de déconnexion couvre aussi limited puis panne, jamais u
     assert.equal(disconnectionAlertFor(from, 'locked'), null, from);
   }
   const ctx = read('src/contexts/LinkedInAccountsContext.tsx');
-  assert.match(ctx, /disconnectionAlertFor\(prev\.health, health\)/);
+  // La décision est dans disconnectToast.ts : le contexte lui donne l'état d'avant et d'après
+  assert.match(ctx, /disconnectToastFor\(prev\.health, health, acc\)/);
+  assert.match(read('src/components/connections/disconnectToast.ts'), /disconnectionAlertFor\(previous, next\)/);
   assert.doesNotMatch(ctx, /prev\.health === 'connected'/);
 });

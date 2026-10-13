@@ -194,6 +194,7 @@ export default function Dashboard() {
           <DashboardFocusPanel
             isLoading={loading}
             linkedinIssue={linkedinOutage.kind === 'reconnect'}
+            linkedinPartial={linkedinOutage.kind === 'partial'}
             linkedinLocked={linkedinOutage.kind === 'locked'}
             unreadMessages={unreadMessages}
             unreadMessagesUnavailable={unreadMessagesUnavailable}

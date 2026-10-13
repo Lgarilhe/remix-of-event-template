@@ -56,6 +56,7 @@ Deno.test('projectLinkedInEntry : forme de l ancienne liste, statut au vocabulai
 
 Deno.test('outdatedLinkEntry : à reconnecter, aucun appel, jamais le nom qui porte l état', () => {
   const entry = outdatedLinkEntry({ linkedin_account_id: 'ancien-id', linkedin_account_name: 'user:abc|org:def' });
+  strictEqual('unverified' in entry, false, 'un compte lu ou à reconnecter ne porte pas le marqueur');
   strictEqual(entry.status, 'CREDENTIALS');
   strictEqual(entry.mapped, true);
   strictEqual(entry.name, 'Compte LinkedIn');
@@ -69,6 +70,8 @@ Deno.test('unverifiedLinkEntry : dernier état connu, jamais à reconnecter, ét
   strictEqual(entry.status, 'DEGRADED');
   strictEqual(entry.reconnectable, false);
   strictEqual(entry.profile_picture_url, null);
+  strictEqual(entry.unverified, true, 'le marqueur que l écran lit pour ne pas afficher « Actif » ni une licence inventée');
+  strictEqual(unverifiedLinkEntry({ linkedin_account_id: 'acc_x', account_status: 'WEIRD' }).unverified, true);
   strictEqual(unverifiedLinkEntry({ linkedin_account_id: 'acc_x', account_status: 'WEIRD' }).status, 'OK');
   strictEqual(unverifiedLinkEntry({ linkedin_account_id: 'acc_x', account_status: 'LOCKED' }).is_locked, true);
 });

@@ -128,7 +128,7 @@ export type HealthKey =
   | 'not_connected'
   | 'unknown';
 
-export type HealthAction = 'connect' | 'reconnect' | 'contact_support' | 'refresh';
+export type HealthAction = 'connect' | 'reconnect' | 'refresh';
 /** Teinte d'un badge d'état : les variantes de Badge (docs/design/01-direction.md, § 6). */
 export type HealthTone = 'success' | 'info' | 'warning' | 'danger' | 'muted';
 
@@ -137,7 +137,7 @@ export const HEALTH_LABEL: Record<HealthKey, string> = {
   syncing: 'Synchronisation en cours',
   connecting: 'Connexion en cours',
   limited: 'Connexion limitée',
-  locked: 'Accès suspendu',
+  locked: 'Compte restreint',
   needs_reconnect: 'À reconnecter',
   not_connected: 'Non connecté',
   unknown: 'État à vérifier',
@@ -154,13 +154,13 @@ export const HEALTH_TONE: Record<HealthKey, HealthTone> = {
   unknown: 'warning',
 };
 
-/** Seuls ces états proposent un geste : se reconnecter ne règle ni une limite ni une suspension. */
+/** Seuls ces états proposent un geste : se reconnecter ne règle ni une limite ni une restriction. */
 const HEALTH_ACTION: Record<HealthKey, HealthAction | null> = {
   connected: null,
   syncing: null,
   connecting: null,
   limited: null,
-  locked: 'contact_support',
+  locked: null,
   needs_reconnect: 'reconnect',
   not_connected: 'connect',
   unknown: 'refresh',
@@ -182,6 +182,17 @@ const REASON_NEEDS_RECONNECT: Record<ConnectionChannel, string> = {
   whatsapp: 'WhatsApp a fermé la session.',
 };
 
+/**
+ * Compte restreint par le service : mêmes mots que le bandeau du tableau de bord, la ligne d'« À traiter »
+ * et la notification (restreint, envois en pause, se reconnecter n'y change rien, patienter ou vérifier chez le
+ * service). Aucun bouton ni adresse à écrire : il n'y a rien à faire dans Konekt.
+ */
+const REASON_LOCKED: Record<ConnectionChannel, string> = {
+  linkedin: "Ce compte est restreint par LinkedIn : les envois qui en partent sont en pause. Se reconnecter n'y change rien. Patientez, ou vérifiez l'état du compte directement sur LinkedIn : les envois reprendront d'eux-mêmes une fois la restriction levée.",
+  email: "Cette messagerie est restreinte par son fournisseur : les envois qui en partent sont en pause. Se reconnecter n'y change rien. Patientez, ou vérifiez l'état de la boîte directement auprès de ce fournisseur : les envois reprendront d'eux-mêmes une fois la restriction levée.",
+  whatsapp: "Ce compte est restreint par WhatsApp : les envois qui en partent sont en pause. Se reconnecter n'y change rien. Patientez, ou vérifiez l'état du compte directement dans WhatsApp : les envois reprendront d'eux-mêmes une fois la restriction levée.",
+};
+
 const REASON_LIMITED: Record<ConnectionChannel, string> = {
   linkedin: "Nouvelle tentative automatique, rien à faire de votre côté. Les envois reprennent dès le retour à la normale.",
   email: 'Nouvelle tentative automatique, rien à faire de votre côté.',
@@ -194,7 +205,7 @@ export function healthReason(health: HealthKey, channel: ConnectionChannel): str
     case 'not_connected': return REASON_NOT_CONNECTED[channel];
     case 'needs_reconnect': return REASON_NEEDS_RECONNECT[channel];
     case 'limited': return REASON_LIMITED[channel];
-    case 'locked': return "L'accès à ce compte est suspendu. Se reconnecter n'y change rien : écrivez-nous pour le débloquer.";
+    case 'locked': return REASON_LOCKED[channel];
     case 'syncing': return 'Vos conversations arrivent. Vous pouvez continuer à travailler.';
     case 'unknown': return "Konekt n'a pas pu lire l'état de ce compte.";
     default: return '';
@@ -253,7 +264,6 @@ export function causeReason(cause: AccountCause, channel: ConnectionChannel): st
 
 export const ACTION_LABEL = {
   reconnect: 'Reconnecter',
-  contact_support: 'Contacter le support',
   refresh: 'Actualiser',
 } as const;
 
@@ -274,8 +284,12 @@ export const ALERT = {
   linkedinDisconnectedTitle: (name: string | null | undefined) => `${name?.trim() || 'Compte LinkedIn'} déconnecté`,
   linkedinCredentials: 'Votre session LinkedIn a expiré. Reconnectez le compte.',
   linkedinStopped: 'Le compte ne répond plus. Reconnectez-le pour reprendre les envois.',
-  linkedinLockedTitle: (name: string | null | undefined) => `${name?.trim() || 'Compte LinkedIn'} suspendu`,
-  linkedinLocked: "L'accès à ce compte est suspendu. Se reconnecter n'y change rien : écrivez-nous pour le débloquer.",
+  /** Une partie de la connexion demande une nouvelle authentification : même titre que le bandeau, même phrase que la carte. */
+  linkedinPartialTitle: 'Connexion LinkedIn partielle',
+  linkedinPartial: REASON_BY_CAUSE.authentication_partial.linkedin,
+  /** Compte restreint : même titre que le bandeau et la notification, même phrase que la carte, sans « Reconnecter ». */
+  linkedinLockedTitle: 'Compte LinkedIn restreint',
+  linkedinLocked: REASON_LOCKED.linkedin,
   reconnectAction: 'Reconnecter',
   seeAction: 'Voir',
 } as const;
@@ -858,22 +872,6 @@ export const DISCONNECT_WHATSAPP = {
 // Cartes de Connexions (Paramètres, Connexions), mode standard
 // ---------------------------------------------------------------------------
 
-/**
- * Adresse à laquelle écrire quand un compte est suspendu : l'application n'a pas
- * encore de canal d'assistance propre, l'adresse de contact de l'équipe sert de
- * repli (décision du propriétaire à confirmer).
- */
-export const SUPPORT_EMAIL = 'l.garilhe@konekt.fr';
-
-/** Devant l'adresse affichée sous « Contacter le support » (sans application de messagerie, le lien seul ne mène nulle part). */
-export const SUPPORT_WRITE_TO = 'Ou écrivez à';
-
-/** Lien « Contacter le support » : un message préparé qui nomme le canal concerné. */
-export function supportMailto(channel: ConnectionChannel): string {
-  const subject = channel === 'linkedin' ? 'Compte LinkedIn suspendu' : channel === 'whatsapp' ? 'Compte WhatsApp suspendu' : 'Messagerie suspendue';
-  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}`;
-}
-
 /** Bouton qui part vers la page de connexion : libellés d'attente et mot du départ. */
 export const HOSTED_BUTTON = {
   starting: 'Préparation…',
@@ -936,8 +934,14 @@ export const EMAIL_CARD = {
   listErrorTitle: 'Impossible de charger vos comptes e-mail.',
   errorBody: 'Vérifiez votre connexion, puis réessayez.',
   refreshAria: 'Actualiser la liste des comptes e-mail',
-  unlinkTitle: 'Dissocier ce compte e-mail ?',
+  /** La boîte visée est nommée : une personne qui en a plusieurs sait laquelle elle dissocie. */
+  unlinkTitle: (address: string) => `Dissocier la boîte ${address} ?`,
   unlinkBody: "L'adresse ne sera plus rattachée à votre profil Konekt. Votre boîte e-mail et ses messages ne sont pas touchés, et vous pourrez la relier de nouveau.",
+  unlinkedToast: (address: string) => `Boîte ${address} dissociée`,
+  /** Noms accessibles des gestes d'une ligne : identiques d'une boîte à l'autre sans l'adresse. */
+  unlinkAria: (address: string) => `Dissocier la boîte ${address}`,
+  reconnectAria: (address: string) => `Reconnecter la boîte ${address}`,
+  retryAria: (address: string) => `Réessayer de lire la boîte ${address}`,
   connectedToast: 'Votre compte e-mail est connecté.',
 } as const;
 

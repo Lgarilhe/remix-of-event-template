@@ -115,7 +115,7 @@ function allStrings() {
       const c = copy.checkpointCopy({ type, channel, platform }, p);
       out.push(c.heading, c.body, c.primary);
     }
-    for (const a of ['connect', 'reconnect', 'contact_support', 'refresh']) out.push(copy.healthActionLabel(a, p));
+    for (const a of ['connect', 'reconnect', 'refresh']) out.push(copy.healthActionLabel(a, p));
   }
   for (const h of HEALTHS) {
     out.push(copy.HEALTH_LABEL[h]);

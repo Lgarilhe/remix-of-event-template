@@ -118,28 +118,55 @@ export async function getCallerOrgRole(adminClient: any, organizationId: string,
   return (data as { role?: string } | null)?.role ?? null;
 }
 
+/** Rôles de l'organisation qui utilisent les comptes de l'équipe (organization_members.role). */
+const TEAM_READER_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
+
+/** Vrai pour un collaborateur, et pour tout rôle absent, illisible ou inconnu (échec fermé). */
+export function isCollaboratorRole(role: string | null | undefined): boolean {
+  return !TEAM_READER_ROLES.has(String(role ?? '').trim().toLowerCase());
+}
+
+/** Refus rendu à un collaborateur qui vise le compte d'un collègue (valable pour LinkedIn, e-mail et WhatsApp). */
+export const ACCOUNT_NOT_YOURS_MESSAGE =
+  "Ce compte est relié par un autre membre de l'organisation. Vous ne pouvez utiliser que votre propre compte.";
+
 /**
- * Lecture du contenu ou des données d'un compte (solde d'InMails, contrats, détail, photo d'un
- * interlocuteur, invitations reçues), après `assertAccountInOrg` : un collaborateur ne lit que le compte
- * qu'il a relié lui-même ; propriétaire, administrateur et membre lisent ceux de l'organisation. Un rôle
- * absent, illisible ou inconnu est traité comme collaborateur (échec fermé). Même règle que la lecture
- * des conversations de unipile-search (account-rules.ts, `collaboratorReadRefusal`).
+ * Paramètres du corps qui désignent un compte existant du prestataire. `account_id` est celui de toutes les
+ * actions sur un compte ; `reconnect_account_id` celui de la reconnexion (connection_start, connect_cookie).
  */
-export async function assertCanReadAccount(
+export const ACCOUNT_PARAM_KEYS: readonly string[] = ['account_id', 'reconnect_account_id'];
+
+/**
+ * Règle générale de l'usage des comptes de l'équipe : un collaborateur n'utilise que le compte qu'il a relié
+ * lui-même. Elle ne dépend d'AUCUNE action : toute requête qui désigne, dans `ACCOUNT_PARAM_KEYS`, un compte relié
+ * dans l'organisation à un autre membre est refusée (403, `error_code` account_not_yours), qu'il s'agisse d'une
+ * lecture, d'un geste fait au nom du compte, d'une action à venir ou d'un nom d'action inconnu. Propriétaire,
+ * administrateur et membre ne sont pas concernés. Un rôle absent ou inconnu est traité comme collaborateur.
+ *
+ * Un compte qui n'est relié à aucun membre de l'organisation (autre organisation, compte orphelin) n'est pas jugé
+ * ici : l'action le refuse par ses propres contrôles (`assertAccountInOrg`), et la revendication d'un compte
+ * orphelin par un administrateur de la plateforme (`claim_linkedin_account`) garde sa règle propre. Les actions qui
+ * ne désignent aucun compte existant (`list`, `connection_start` pour une nouvelle liaison, `list_email`,
+ * `list_whatsapp`, `unlink_*`) n'ont rien à juger. À appeler avant toute action, sur le rôle déjà lu avec l'appartenance.
+ */
+export async function assertCollaboratorUsesOwnAccount(
   // deno-lint-ignore no-explicit-any
   adminClient: any,
   organizationId: string,
   callerUserId: string,
-  ownership: AccountOwnership,
+  callerRole: string | null | undefined,
+  params: Record<string, unknown>,
 ): Promise<void> {
-  if (ownership.userId === callerUserId) return;
-  const role = await getCallerOrgRole(adminClient, organizationId, callerUserId);
-  if (role === 'owner' || role === 'admin' || role === 'member') return;
-  throw new HttpError(
-    403,
-    "Ce compte LinkedIn est relié par un autre membre de l'organisation. Vous ne pouvez consulter que votre propre compte.",
-    'account_not_yours',
-  );
+  if (!isCollaboratorRole(callerRole)) return;
+  for (const key of ACCOUNT_PARAM_KEYS) {
+    const raw = params?.[key];
+    const accountId = typeof raw === 'string' ? raw.trim() : '';
+    if (!accountId || accountId.length > 512) continue; // malformé : l'action le refuse (400)
+    const ownership = await lookupAccountOwnership(adminClient, organizationId, accountId);
+    if (ownership.mapped === 'org' && (ownership.userId === null || ownership.userId !== callerUserId)) {
+      throw new HttpError(403, ACCOUNT_NOT_YOURS_MESSAGE, 'account_not_yours');
+    }
+  }
 }
 
 /** Déconnexion, proxy, reconnexion : le propriétaire du compte ou un owner/admin de l'org. */

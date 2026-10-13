@@ -555,7 +555,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   return (
     <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
-      {hasSearched && <FiltersNoticeLines notice={filtersNotice} bordered={!isV3} />}
+      {hasSearched && !loading && <FiltersNoticeLines notice={filtersNotice} bordered={!isV3} />}
       {isV3 && onSetSelection && onRetainProfiles && onDismissProfiles ? (
         <SourcingResultsV3
           profiles={v3Profiles}

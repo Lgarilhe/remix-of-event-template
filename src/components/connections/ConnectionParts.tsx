@@ -26,7 +26,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { ACTION_LABEL, HOSTED_BUTTON, SUPPORT_EMAIL, SUPPORT_WRITE_TO, UNLINK, supportMailto, type ConnectionChannel, type ConnectionProviderId } from '@/lib/connectionCopy';
+import { HOSTED_BUTTON, UNLINK, type ConnectionProviderId } from '@/lib/connectionCopy';
 import { TONE_DOT, TONE_TEXT, type ConnectionView } from './connectionView';
 import { useHostedConnect, type UseHostedConnect } from './useHostedConnect';
 import type { ReturnTarget } from './returnTarget';
@@ -154,6 +154,7 @@ export function RemovalDialog({
   loading,
   onConfirm,
   icon = true,
+  triggerAriaLabel,
 }: {
   triggerLabel?: string;
   title: string;
@@ -163,6 +164,8 @@ export function RemovalDialog({
   loading?: boolean;
   onConfirm: () => void;
   icon?: boolean;
+  /** Nom accessible du bouton quand plusieurs lignes en portent un : il nomme le compte visé. */
+  triggerAriaLabel?: string;
 }) {
   return (
     <AlertDialog>
@@ -173,6 +176,7 @@ export function RemovalDialog({
           className="text-muted-foreground hover:text-danger max-sm:flex-1 max-md:h-11"
           disabled={disabled}
           loading={loading}
+          aria-label={triggerAriaLabel}
         >
           {icon && !loading && <Unlink aria-hidden="true" />}
           {triggerLabel}
@@ -272,6 +276,7 @@ export function ReconnectButton({
   accountId,
   startsNew = false,
   label,
+  ariaLabel,
   returnTo,
   disabled,
   className,
@@ -282,6 +287,8 @@ export function ReconnectButton({
   /** Le compte n'existe plus chez le prestataire : le geste ouvre une nouvelle connexion qui remplace la liaison. */
   startsNew?: boolean;
   label: string;
+  /** Nom accessible quand plusieurs lignes portent le même bouton : il nomme le compte visé. */
+  ariaLabel?: string;
   returnTo?: ReturnTarget;
   disabled?: boolean;
   className?: string;
@@ -295,6 +302,7 @@ export function ReconnectButton({
       className={cn('max-md:h-11', className)}
       loading={mine}
       disabled={disabled || hosted.busy}
+      aria-label={mine ? undefined : ariaLabel}
       onClick={() => { void hosted.start({ provider, reconnectAccountId: startsNew ? null : accountId, returnTo }); }}
     >
       {!mine && <Plug aria-hidden="true" />}
@@ -307,17 +315,4 @@ export function ReconnectButton({
 export function HostedError({ hosted }: { hosted: UseHostedConnect }) {
   if (!hosted.error) return null;
   return <p role="alert" className="text-sm text-danger">{hosted.error}</p>;
-}
-
-/** « Contacter le support » : un compte suspendu ne se débloque pas en se reconnectant. */
-export function SupportLink({ channel, className }: { channel: ConnectionChannel; className?: string }) {
-  return (
-    <div className={cn('flex flex-col items-start gap-1', className)}>
-      <Button asChild variant="outline" size="sm" className="max-md:h-11">
-        <a href={supportMailto(channel)}>{ACTION_LABEL.contact_support}</a>
-      </Button>
-      {/* L'adresse reste lisible et copiable : sans application de messagerie, le lien ne mène nulle part. */}
-      <span className="text-xs text-muted-foreground">{SUPPORT_WRITE_TO} <span className="select-all">{SUPPORT_EMAIL}</span></span>
-    </div>
-  );
 }

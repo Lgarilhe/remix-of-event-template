@@ -3,8 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
-import { classifyConnectionHealth, disconnectionAlertFor, type LinkedInHealth } from '@/lib/linkedinStatus';
-import { ALERT, readableConnectionName } from '@/lib/connectionCopy';
+import { classifyConnectionHealth, type LinkedInHealth } from '@/lib/linkedinStatus';
+import { disconnectToastFor } from '@/components/connections/disconnectToast';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -135,8 +135,10 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
   // Avant, chaque membre recevait celle des comptes de ses collègues (et des
   // orphelins listés en mode revendication), et UNKNOWN, STOPPED ou
   // PERMISSIONS passaient pour une panne dès la sortie de OK. Une connexion
-  // limitée (DEGRADED) se rétablit seule : pas d'alerte ; un accès
-  // suspendu (LOCKED) en a une, sans « Reconnecter ».
+  // limitée (DEGRADED) se rétablit seule : pas d'alerte ; une connexion partielle
+  // (PARTIAL) a la sienne, avec « Reconnecter » ; un compte restreint (LOCKED) en a
+  // une aussi, sans « Reconnecter ». Le texte vient de disconnectToastFor, qui lit
+  // la cause comme les cartes.
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const myAccountId = user?.id ? getUserLinkedAccountId(user.id) : null;
   const prevHealthRef = useRef<{ accountId: string; health: LinkedInHealth } | null>(null);
@@ -148,28 +150,16 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     const prev = prevHealthRef.current;
     prevHealthRef.current = { accountId: acc.id, health };
     if (prev?.accountId !== acc.id) return; // premier passage pour ce compte : pas d'alerte
-    const alert = disconnectionAlertFor(prev.health, health);
-    if (alert === 'needs_reconnect') {
-      const isCredentials = (acc.status || '').trim().toUpperCase() === 'CREDENTIALS';
-      toast.error(ALERT.linkedinDisconnectedTitle(readableConnectionName(acc.name, 'linkedin')), {
-        description: isCredentials ? ALERT.linkedinCredentials : ALERT.linkedinStopped,
-        duration: 12000,
-        action: {
-          label: ALERT.reconnectAction,
-          onClick: () => navigate('/settings/account/connections'),
-        },
-      });
-    } else if (alert === 'locked') {
-      // Accès suspendu : se reconnecter n'y change rien, donc pas de bouton « Reconnecter ».
-      toast.error(ALERT.linkedinLockedTitle(readableConnectionName(acc.name, 'linkedin')), {
-        description: ALERT.linkedinLocked,
-        duration: 12000,
-        action: {
-          label: ALERT.seeAction,
-          onClick: () => navigate('/settings/account/connections'),
-        },
-      });
-    }
+    const alert = disconnectToastFor(prev.health, health, acc);
+    if (!alert) return;
+    toast.error(alert.title, {
+      description: alert.description,
+      duration: 12000,
+      action: {
+        label: alert.actionLabel,
+        onClick: () => navigate('/settings/account/connections'),
+      },
+    });
   }, [accounts, myAccountId, navigate]);
 
   const contextValue = useMemo(() => ({

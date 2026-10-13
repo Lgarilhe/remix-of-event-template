@@ -213,15 +213,28 @@ test('avis : champ de ExecutedSourcingSearch, donc gardé par le cache de missio
   assert.match(search, /filtersNotice=\{search\.executedSearch\?\.filtersNotice \?\? null\}/);
 });
 
-test('avis : une ligne au-dessus des résultats, sur la nouvelle page comme sur l’ancienne, seulement après une recherche', () => {
+test('avis : une ligne au-dessus des résultats, sur la nouvelle page comme sur l’ancienne, seulement après une recherche et jamais pendant une nouvelle', () => {
   const panel = stripComments(read('src/components/outreach/search/SearchResultsPanel.tsx'));
-  assert.match(panel, /\{hasSearched && <FiltersNoticeLines notice=\{filtersNotice\} bordered=\{!isV3\} \/>\}\s*\n\s*\{isV3 && onSetSelection/);
+  assert.match(panel, /\{hasSearched && !loading && <FiltersNoticeLines notice=\{filtersNotice\} bordered=\{!isV3\} \/>\}\s*\n\s*\{isV3 && onSetSelection/);
   const line = stripComments(read('src/components/outreach/search/FiltersNoticeLines.tsx'));
   assert.match(line, /if \(lines\.length === 0\) return null;/);
   assert.match(line, /role="status"/);
   // Pas un toast : l'avis reste affiché avec les résultats.
   assert.doesNotMatch(line, /toast/);
   assert.doesNotMatch(line, VENDORS);
+});
+
+test('avis : masqué pendant une nouvelle recherche (loading), gardé pendant « Charger plus » (loadingMore seul)', () => {
+  // `loading` ne passe à vrai que pour une nouvelle recherche, `loadingMore` que pour « Charger plus ».
+  const hook = stripComments(read('src/hooks/useLinkedInSearchActions.ts'));
+  assert.match(hook, /if \(appendMode\) \{\s*setLoadingMore\(true\);\s*\} else \{\s*setLoading\(true\);\s*setLoadingMore\(false\);\s*\}/);
+  assert.equal((hook.match(/setLoading\(true\)/g) || []).length, 1);
+  // La ligne de l'avis suit `loading` et ne regarde pas `loadingMore`.
+  const panel = stripComments(read('src/components/outreach/search/SearchResultsPanel.tsx'));
+  const mounts = panel.split('\n').filter((l) => l.includes('<FiltersNoticeLines'));
+  assert.equal(mounts.length, 1, 'un seul endroit affiche l’avis');
+  assert.match(mounts[0], /hasSearched && !loading &&/);
+  assert.doesNotMatch(mounts[0], /loadingMore/);
 });
 
 // ---------------------------------------------------------------------------
@@ -289,7 +302,83 @@ test('lien collé : plusieurs éléments sans nom se distinguent par un rang, un
     warnings: [],
   }).update;
   assert.equal(sales.location[0].name, 'France');
-  assert.equal(sales.job_title[0].name, 'n° 9', 'un critère hors de la liste garde son nom');
+  // Un nom lu dans l'adresse n'est jamais touché, quel que soit le critère.
+  const named = update({
+    success: true,
+    kind: 'sales_navigator',
+    keywords: null,
+    filters: { job_title: [{ id: '9', name: 'Product Designer' }], function: [{ id: '8', name: 'Design' }] },
+    warnings: [],
+  }).update;
+  assert.equal(named.job_title[0].name, 'Product Designer');
+  assert.equal(named.function[0].name, 'Design');
+});
+
+test('lien collé : un nom réduit à un numéro est lisible pour tous les critères Sales Navigator, jamais le numéro', () => {
+  // Avant ce correctif, « n° 9 » restait à l'écran pour l'intitulé, la fonction, le lieu du siège et les groupes.
+  const { update: next } = update({
+    success: true,
+    kind: 'sales_navigator',
+    keywords: null,
+    filters: {
+      location: [{ id: '105015875', name: 'n° 105015875' }],
+      company: [{ id: '1441', name: 'n° 1441' }],
+      job_title: [{ id: '9', name: 'n° 9', priority: 'CAN_HAVE' }],
+      past_job_title: [{ id: '10', name: 'n° 10', priority: 'DOESNT_HAVE' }],
+      school: [{ id: '12', name: 'n° 12' }],
+      past_company: [{ id: '7', name: 'n° 7' }],
+      industry: [{ id: '4', name: 'n° 4' }],
+      function: [{ id: '8', name: 'n° 8' }],
+      company_location: [{ id: '5', name: 'n° 5' }],
+      groups: [{ id: '6', name: 'n° 6' }],
+    },
+    warnings: [],
+  });
+  assert.deepEqual(next.job_title, [{ id: '9', name: 'Intitulé choisi sur LinkedIn', priority: 'CAN_HAVE' }]);
+  assert.deepEqual(next.past_job_title, [{ id: '10', name: 'Ancien intitulé choisi sur LinkedIn', priority: 'DOESNT_HAVE' }]);
+  assert.deepEqual(next.function, [{ id: '8', name: 'Fonction choisie sur LinkedIn' }]);
+  assert.deepEqual(next.company_location, [{ id: '5', name: 'Lieu du siège choisi sur LinkedIn' }]);
+  assert.deepEqual(next.groups, [{ id: '6', name: 'Groupe choisi sur LinkedIn' }]);
+  const all = ['location', 'company', 'job_title', 'past_job_title', 'school', 'past_company', 'industry', 'function', 'company_location', 'groups']
+    .flatMap((key) => next[key].map((entry) => entry.name));
+  assert.equal(all.length, 10);
+  for (const name of all) {
+    assert.doesNotMatch(name, /n°|\d/, `numéro visible : ${name}`);
+    assertCleanText(name);
+  }
+  // Plusieurs éléments sans nom d'un même critère se distinguent par un rang.
+  const several = update({
+    success: true,
+    kind: 'sales_navigator',
+    keywords: null,
+    filters: { job_title: [{ id: '1', name: 'n° 1' }, { id: '2', name: 'Data Analyst' }, { id: '3', name: 'n° 3' }] },
+    warnings: [],
+  }).update;
+  assert.deepEqual(several.job_title.map((t) => t.name), [
+    'Intitulé choisi sur LinkedIn (1)', 'Data Analyst', 'Intitulé choisi sur LinkedIn (2)',
+  ]);
+});
+
+test('lien collé : un critère sans libellé propre prend « Critère choisi sur LinkedIn », le prototype n’est pas lu', () => {
+  assert.equal(urlFilters.CHOSEN_FALLBACK, 'Critère choisi sur LinkedIn');
+  assert.equal(urlFilters.chosenOnLinkedinLabel('seniority'), 'Critère choisi sur LinkedIn');
+  for (const key of ['constructor', '__proto__', 'toString', '']) {
+    assert.equal(urlFilters.chosenOnLinkedinLabel(key), 'Critère choisi sur LinkedIn', key);
+  }
+  // Les critères de l'adresse Classic gardent leur libellé, ceux de Sales Navigator ont le leur.
+  for (const key of Object.keys(copy.CHOSEN_ON_LINKEDIN)) assert.equal(urlFilters.chosenOnLinkedinLabel(key), copy.CHOSEN_ON_LINKEDIN[key]);
+  for (const key of Object.keys(urlFilters.CHOSEN_ON_LINKEDIN_SALES)) {
+    assert.equal(urlFilters.chosenOnLinkedinLabel(key), urlFilters.CHOSEN_ON_LINKEDIN_SALES[key]);
+  }
+  // Chaque critère que le serveur nomme par son numéro (SALES_TARGETS) a un libellé propre : le repli n'est qu'un filet.
+  const server = read('supabase/functions/unipile-search/search-url.ts');
+  const targets = server.slice(server.indexOf('const SALES_TARGETS'), server.indexOf('/** Libellés des types Sales Navigator'));
+  const keys = [...targets.matchAll(/key: '(\w+)'/g)].map((m) => m[1]);
+  assert.ok(keys.length >= 10, `${keys.length} critères lus`);
+  for (const key of keys) {
+    const own = Object.hasOwn(copy.CHOSEN_ON_LINKEDIN, key) || Object.hasOwn(urlFilters.CHOSEN_ON_LINKEDIN_SALES, key);
+    assert.ok(own, `« ${key} » n'a pas de libellé propre`);
+  }
 });
 
 test('lien collé : l’avertissement d’une adresse Recruiter dit ce qui n’est pas repris', () => {
@@ -315,7 +404,11 @@ test('lien collé : les autres avertissements du serveur passent tels quels', ()
 });
 
 test('lien collé : tous les textes ajoutés sont propres', () => {
-  for (const text of [copy.PASTE_URL_COPY.recruiterFilters, ...Object.values(copy.CHOSEN_ON_LINKEDIN)]) assertCleanText(text);
+  const texts = [
+    copy.PASTE_URL_COPY.recruiterFilters, ...Object.values(copy.CHOSEN_ON_LINKEDIN),
+    ...Object.values(urlFilters.CHOSEN_ON_LINKEDIN_SALES), urlFilters.CHOSEN_FALLBACK,
+  ];
+  for (const text of texts) assertCleanText(text);
   // Le texte du serveur reconnu est celui que le serveur écrit.
   const server = read('supabase/functions/unipile-search/search-url.ts');
   assert.match(server, /warnings\.add\('Filtres de la recherche Recruiter'\)/);

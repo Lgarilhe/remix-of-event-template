@@ -5,7 +5,9 @@
  * 2 canaux suivis :
  * - LinkedIn : le compte relié à l'utilisateur (member_linkedin_accounts),
  *   jamais celui d'un collègue ; état calculé par resolveMyLinkedInStatus
- * - Email (action 'list_email', liaison member_email_accounts)
+ * - Email (liste partagée useMemberEmailList, liaison member_email_accounts) :
+ *   la même requête que la carte de Connexions, donc une seule lecture par
+ *   chargement de page, relue toutes les 5 minutes
  * WhatsApp n'est pas suivi ici : sa liste est distincte (list_whatsapp) et aucun
  * écran n'en lisait l'état.
  *
@@ -22,12 +24,12 @@
  * séparée.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useMemberEmailAccounts } from '@/hooks/useMemberEmailAccounts';
+import { useMemberEmailList, type MemberEmailListEntry } from '@/components/connections/useMemberEmailList';
 import { useAuthReady } from '@/hooks/useAuthReady';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { resolveMyLinkedInStatus, channelStatusOf, classifyLinkedInStatus } from '@/lib/linkedinStatus';
 import { readableConnectionName } from '@/lib/connectionCopy';
 
@@ -59,43 +61,21 @@ const statusOfRaw = (raw: string | null | undefined): ConnectionStatus => {
   return channelStatusOf(classifyLinkedInStatus(raw));
 };
 
+/** Actualisation de la liste des boîtes e-mail (en parallèle de celle des comptes LinkedIn). */
+const EMAIL_REFRESH_MS = 5 * 60 * 1000;
+const EMPTY_EMAIL_ACCOUNTS: MemberEmailListEntry[] = [];
+
 export function useDashboardConnections(): DashboardConnections {
   const { isReady, user } = useAuthReady();
   const { accounts: unipileAccounts, loading: unipileLoading, ready: unipileReady } = useLinkedInAccounts();
   const { mappings: linkedinMappings, isReady: linkedinMappingReady, isLoading: linkedinMappingLoading } = useMemberLinkedInAccounts();
   const { getMappingForUser: getEmailMapping, isLoading: emailMappingLoading } = useMemberEmailAccounts();
 
-  // Les comptes e-mail viennent d'un appel distinct (list_email)
-  const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; name?: string; identifier?: string; status?: string }>>([]);
-  const [emailLoading, setEmailLoading] = useState(false);
-
-  const loadEmailAccounts = useCallback(async () => {
-    if (!isReady || !user) return;
-    setEmailLoading(true);
-    try {
-      const { data } = await invokeEdgeFunction('unipile-accounts', { action: 'list_email' });
-      if ((data as any)?.success && (data as any)?.accounts) {
-        setEmailAccounts((data as any).accounts);
-      }
-    } catch (err) {
-      console.warn('[useDashboardConnections] email fetch failed:', err);
-    } finally {
-      setEmailLoading(false);
-    }
-  }, [isReady, user]);
-
-  useEffect(() => {
-    void loadEmailAccounts();
-  }, [loadEmailAccounts]);
-
-  // Healthcheck refresh email accounts every 5 min (parallèle avec LinkedIn)
-  useEffect(() => {
-    if (!isReady || !user) return;
-    const interval = setInterval(() => {
-      void loadEmailAccounts();
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [isReady, user, loadEmailAccounts]);
+  // Les comptes e-mail viennent d'un appel distinct (list_email), partagé avec la carte de Connexions.
+  // Actualisation toutes les 5 minutes, en parallèle de celle de LinkedIn.
+  const emailList = useMemberEmailList({ refetchInterval: EMAIL_REFRESH_MS });
+  const emailAccounts = emailList.data ?? EMPTY_EMAIL_ACCOUNTS;
+  const emailLoading = emailList.isLoading;
 
   return useMemo<DashboardConnections>(() => {
     const userId = user?.id || null;

@@ -27,7 +27,7 @@ import {
   userSafeMessage,
   type AccountOwnership,
 } from '../_shared/unipile/index.ts';
-import { collaboratorReadRefusal, ownerOnlyRefusal } from './account-rules.ts';
+import { collaboratorOwnAccountRefusal, ownerOnlyRefusal } from './account-rules.ts';
 import { handleGetChats, handleGetMessages, handleMarkAsRead, handleSyncChatHistory } from './chats.ts';
 import { handleListSentInvitations, handleWithdrawInvitation } from './invitations.ts';
 import { handleEndorseSkill, handleGetProfile, handleGetUserPosts } from './profile.ts';
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       return json({ error: 'organization_id required' }, 400);
     }
     const admin = createClient(supabaseUrl, _serviceKey!);
-    // Rôle de l'appelant dans l'organisation, lu avec l'appartenance : il règle la lecture des comptes de l'équipe.
+    // Rôle de l'appelant dans l'organisation, lu avec l'appartenance : il règle l'usage des comptes de l'équipe.
     let callerRole: string | null = null;
     if (!isInternal) {
       const { data: membership } = await admin.from('organization_members').select('id, role').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
@@ -142,10 +142,10 @@ Deno.serve(async (req) => {
       }, 403);
     }
     // Règles de sécurité (SEC-006) et non conséquences de l'API v2 : un membre n'envoie et ne retire une invitation
-    // que depuis le compte qu'il a relié, et un collaborateur ne lit que ce compte, jamais celui d'un collègue
-    // (voir account-rules.ts).
+    // que depuis le compte qu'il a relié, et un collaborateur ne se sert, pour AUCUNE action, du compte d'un
+    // collègue (voir account-rules.ts : la règle ne liste pas d'actions, une action ajoutée plus tard est couverte).
     const refusal = ownerOnlyRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId })
-      ?? collaboratorReadRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId, role: callerRole });
+      ?? collaboratorOwnAccountRefusal({ isInternal, userId, accountOwnerId: ownership.userId, role: callerRole });
     if (refusal) return json(refusal.body, refusal.status);
 
     // The cron worker has already reserved the automatic quota. Fence again

@@ -155,7 +155,7 @@ test('F-08 — téléphone : les actions du compte LinkedIn passent sous l’ide
   const row = between(src.parts, 'export function AccountRow', 'export function DetailLine');
   assert.match(row, /className="flex flex-col gap-3 rounded-lg bg-muted p-3 sm:flex-row sm:items-center sm:justify-between"/);
   const li = between(src.linkedin, ') : myMapping && myAccount ? (', ') : myMapping && !myAccount ? (');
-  assert.equal((li.match(/max-sm:flex-1/g) ?? []).length, 4, 'Reconnecter, Contacter le support et Actualiser en pleine largeur, puis Reconnecter du compte retiré');
+  assert.equal((li.match(/max-sm:flex-1/g) ?? []).length, 3, 'Reconnecter et Actualiser en pleine largeur, puis Reconnecter du compte retiré');
   assert.match(between(src.parts, 'export function RemovalDialog', 'interface ConnectButtonProps'), /max-sm:flex-1/, 'Dissocier en pleine largeur');
 });
 

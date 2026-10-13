@@ -12,6 +12,9 @@
  *   - ARM-3 les deux tables ont la RLS active, aucune policy, aucun droit pour PUBLIC, anon ni
  *     authenticated ; les sept fonctions retirent EXECUTE à PUBLIC, anon et authenticated, le
  *     donnent à service_role, et les quatre SECURITY DEFINER fixent search_path ;
+ *   - ARM-3c la seconde migration (*_provider_account_id_remap_guards.sql, ordre des annulations et lot vide)
+ *     redéfinit les quatre fonctions, chacune avec REVOKE à PUBLIC, anon et authenticated et GRANT à
+ *     service_role, les SECURITY DEFINER avec search_path fixé, sans autre droit ni policy ;
  *   - ARM-4 la requête de contrôle est en lecture seule (aucune écriture, aucun appel aux
  *     fonctions de bascule) ;
  *   - ARM-5 l'audit SQL est câblé dans e2e.yml et vérifie l'ordre des écritures ;
@@ -128,6 +131,41 @@ test('ARM-3b la bascule est une seule transaction : aucun COMMIT ni ROLLBACK dan
   const text = sql().replace(/--.*$/gm, '');
   assert.doesNotMatch(text, /\bCOMMIT\b/);
   assert.doesNotMatch(text, /\bROLLBACK\b/);
+});
+
+const guardsFile = readdirSync(MIGRATIONS).filter((name) => /_provider_account_id_remap_guards\.sql$/.test(name));
+const guardsSql = () => read(join(MIGRATIONS, guardsFile[0]));
+
+test('ARM-3c la seconde migration redéfinit les quatre fonctions, fermées à PUBLIC, anon et authenticated, ouvertes à service_role', () => {
+  assert.equal(guardsFile.length, 1, `migrations trouvées : ${guardsFile.join(', ')}`);
+  assert.match(guardsFile[0], /^\d{14}_provider_account_id_remap_guards\.sql$/);
+  // Elle vient après la migration d'origine (même ordre que dans la base).
+  assert.ok(guardsFile[0] > migrationFile[0], 'la seconde migration doit être postérieure à la première');
+  const text = guardsSql().replace(/--.*$/gm, '');
+  const signatures = {
+    remap_newer_open_batch: 'remap_newer_open_batch(uuid)',
+    remap_batches: 'remap_batches(integer)',
+    remap_provider_account_id: 'remap_provider_account_id(uuid, text, text, text, uuid)',
+    rollback_provider_account_id_remap: 'rollback_provider_account_id_remap(uuid)',
+  };
+  // Les quatre fonctions sont (re)définies, une fois chacune, et il n'y en a pas d'autre sans garde ici.
+  const defined = [...text.matchAll(/CREATE (?:OR REPLACE )?FUNCTION public\.(\w+)\(/g)].map((m) => m[1]);
+  assert.deepEqual([...defined].sort(), Object.keys(signatures).sort(), 'fonctions définies par la seconde migration');
+  for (const [name, signature] of Object.entries(signatures)) {
+    assert.equal(defined.filter((d) => d === name).length, 1, `${name} : définie une seule fois`);
+    const escaped = signature.replace(/[()]/g, '\\$&');
+    assert.match(text, new RegExp(`REVOKE ALL ON FUNCTION public\\.${escaped} FROM PUBLIC, anon, authenticated;`), `${name} : REVOKE`);
+    assert.match(text, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${escaped} TO service_role;`), `${name} : GRANT`);
+    // Les SECURITY DEFINER fixent leur search_path (celle qui ne l'est pas, remap_newer_open_batch, le fixe aussi).
+    const start = text.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+    assert.ok(start > -1, `${name} : CREATE OR REPLACE FUNCTION introuvable`);
+    const header = text.slice(start, text.indexOf('AS $$', start));
+    assert.match(header, /SET search_path = public, pg_temp/, `${name} : search_path fixé`);
+    if (name !== 'remap_newer_open_batch') assert.match(header, /SECURITY DEFINER/, `${name} : SECURITY DEFINER`);
+  }
+  // Aucun droit donné à un autre rôle, aucune policy, aucune table touchée.
+  assert.doesNotMatch(text, /GRANT\b[^;]*\bTO\b[^;]*\b(PUBLIC|anon|authenticated)\b/i, 'droit accordé à un rôle client');
+  assert.doesNotMatch(text, /CREATE POLICY|CREATE TABLE|ALTER TABLE|DROP /i, 'la seconde migration ne touche ni table ni policy');
 });
 
 test('ARM-4 la requête de contrôle est en lecture seule', () => {

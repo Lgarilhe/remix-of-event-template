@@ -19,6 +19,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { transform } from 'esbuild';
 import { loadTs, read, ROOT, stripComments } from './connexion-helpers.mjs';
 
 const copy = await loadTs('src/components/settings/admin/basculeCopy.ts');
@@ -488,6 +489,30 @@ test('R1 : un lot plus ancien n\u2019a pas de bouton actif tant qu\u2019un lot p
   assert.match(panel, /state === 'empty' && <p[^>]*>\{BATCHES\.empty\}/);
   // La confirmation de l'annulation rappelle l'ordre.
   assert.ok(copy.ROLLBACK.lines.some((line) => /annulez la plus récente en premier/.test(line)));
+});
+
+test('R1 : le bouton refusé d\u2019un ancien lot se voit (estompé, sans changement au survol), sa phrase et son attribut restent', async () => {
+  // Le fichier se lit comme du TSX (un commentaire mal placé dans une expression JSX casse la page sans casser les regex).
+  await transform(SRC[`${ADMIN_DIR}/BasculePanel.tsx`], { loader: 'tsx' });
+  const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
+  // Le bouton de la liste des lots (celui qui porte le nom accessible du lot), pas celui du résultat de la conversion.
+  const button = panel.match(/<Button\s+variant="ghost"\s+size="sm"\s+className="([^"]+)"\s+aria-label=\{BATCHES\.rollbackAria\(batch\.batchId\)\}[^>]*>/);
+  assert.ok(button, 'bouton de la liste des lots introuvable');
+  const classes = button[1].split(/\s+/);
+  // Refusé : estompé, et le survol ne change ni le fond ni la couleur (le bouton actif passe au rouge au survol).
+  for (const cls of ['disabled:opacity-50', 'disabled:hover:bg-transparent', 'disabled:hover:text-muted-foreground']) {
+    assert.ok(classes.includes(cls), `classe absente : ${cls}`);
+  }
+  // L'état actif ne change pas : gris, rouge au survol, cible de 44 px sur téléphone.
+  for (const cls of ['text-muted-foreground', 'hover:text-danger', 'min-h-11', 'md:min-h-0']) {
+    assert.ok(classes.includes(cls), `classe active absente : ${cls}`);
+  }
+  // L'opacité seule ne suffit pas à un lecteur d'écran : l'attribut disabled et la phrase restent.
+  assert.match(button[0], /disabled=\{busy \|\| state === 'blocked'\}/);
+  assert.match(button[0], /aria-describedby=\{state === 'blocked' \? `batch-blocked-\$\{batch\.batchId\}` : undefined\}/);
+  assert.match(panel, /state === 'blocked' && \(\s*<p id=\{`batch-blocked-\$\{batch\.batchId\}`\}[^>]*>\{BATCHES\.blockedByNewer\}/);
+  // Seul ce bouton est estompé : le bouton d'annulation du résultat de la conversion garde le style des boutons discrets.
+  assert.equal((panel.match(/disabled:opacity-50/g) ?? []).length, 1);
 });
 
 test('R1 : le refus du serveur pour l\u2019ordre et pour un lot vide a sa phrase, sans résultat inconnu', async () => {

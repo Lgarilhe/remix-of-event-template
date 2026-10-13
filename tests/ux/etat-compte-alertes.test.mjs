@@ -4,9 +4,12 @@
  * d'« À traiter » (src/lib/linkedinStatus.ts, linkedInOutageKind et myLinkedInOutage).
  *
  * - à reconnecter (CREDENTIALS, ERROR et statuts proches, compte disparu) : bandeau « Reconnecter » ;
+ * - connexion partielle (PARTIAL : un produit demande une nouvelle authentification) : bandeau, ligne et
+ *   chiffre, avec « Reconnecter » et la phrase de la carte de connexion, mot pour mot (aussi celle de la
+ *   notification du récepteur d'événements) ;
  * - accès restreint (LOCKED, ou is_locked) : bandeau et ligne sans « Reconnecter » (se reconnecter n'y
  *   change rien) ;
- * - connexion limitée (DEGRADED) et PARTIAL : état de carte seulement, ni bandeau, ni ligne, ni chiffre.
+ * - connexion limitée (DEGRADED) seule : état de carte seulement, ni bandeau, ni ligne, ni chiffre.
  *   La classe de santé de la carte ne change pas (PARTIAL reste « à reconnecter » sur la carte).
  *
  * Lancer : node --test tests/ux/etat-compte-alertes.test.mjs
@@ -19,6 +22,10 @@ import { loadTs, read, ROOT } from './connexion-helpers.mjs';
 
 const status = await loadTs('src/lib/linkedinStatus.ts');
 const { linkedInOutageKind, myLinkedInOutage, classifyConnectionHealth, resolveMyLinkedInStatus } = status;
+const { todoCount } = await loadTs('src/lib/sidebarSignals.ts');
+const { causeReason } = await loadTs('src/lib/connectionCopy.ts');
+/** La phrase que la carte de connexion montre pour PARTIAL : bandeau, ligne et notification la reprennent. */
+const PARTIAL_SENTENCE = 'Une partie de la connexion LinkedIn demande une nouvelle authentification. Reconnectez le compte pour reprendre les envois.';
 
 // --------------------------------------------------------------------------- Prédicat pur
 test('linkedInOutageKind : à reconnecter pour CREDENTIALS, ERROR et statuts proches', () => {
@@ -34,8 +41,16 @@ test('linkedInOutageKind : LOCKED, ou is_locked sur un compte actif ou limité :
   assert.equal(linkedInOutageKind({ status: 'DEGRADED', isLocked: true }), 'locked');
 });
 
-test('linkedInOutageKind : DEGRADED et PARTIAL sont un état de carte, pas une panne à signaler', () => {
-  for (const s of ['DEGRADED', 'degraded', 'PARTIAL', 'partial', ' Partial ']) {
+test('linkedInOutageKind : PARTIAL est une connexion partielle, à reconnecter avec sa propre phrase', () => {
+  for (const s of ['PARTIAL', 'partial', ' Partial ']) {
+    assert.equal(linkedInOutageKind({ status: s }), 'partial', s);
+  }
+  // Comme la carte (needs_reconnect avant locked) : un PARTIAL verrouillé reste à reconnecter.
+  assert.equal(linkedInOutageKind({ status: 'PARTIAL', isLocked: true }), 'partial');
+});
+
+test('linkedInOutageKind : DEGRADED seul est un état de carte, pas une panne à signaler', () => {
+  for (const s of ['DEGRADED', 'degraded', ' Degraded ']) {
     assert.equal(linkedInOutageKind({ status: s }), null, s);
   }
 });
@@ -78,14 +93,14 @@ test('myLinkedInOutage : inconnu tant que les liaisons ne sont pas reçues, rien
   assert.equal(myLinkedInOutage({ ...withoutList('OK'), mappings: [{ ...mapping('CREDENTIALS'), user_id: 'u2' }] }), false);
 });
 
-test('myLinkedInOutage, liste des comptes reçue : à reconnecter, restreint, rien', () => {
+test('myLinkedInOutage, liste des comptes reçue : à reconnecter, partiel, restreint, rien', () => {
   assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'CREDENTIALS' })), 'reconnect');
   assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'ERROR' })), 'reconnect');
   assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'LOCKED' })), 'locked');
   assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'OK', is_locked: true })), 'locked');
   assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'OK' })), false);
   assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'DEGRADED' })), false);
-  assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'PARTIAL' })), false, 'PARTIAL : état de carte seulement');
+  assert.equal(myLinkedInOutage(withList({ id: 'a1', status: 'PARTIAL' })), 'partial');
   assert.equal(myLinkedInOutage(withList(null)), 'reconnect', 'compte disparu : à reconnecter');
 });
 
@@ -95,7 +110,7 @@ test('myLinkedInOutage, sans liste : le statut enregistré sur la liaison fait f
   assert.equal(myLinkedInOutage(withoutList('LOCKED')), 'locked');
   assert.equal(myLinkedInOutage(withoutList('OK')), false);
   assert.equal(myLinkedInOutage(withoutList('DEGRADED')), false);
-  assert.equal(myLinkedInOutage(withoutList('PARTIAL')), false);
+  assert.equal(myLinkedInOutage(withoutList('PARTIAL')), 'partial');
 });
 
 test('retour à OK : la panne disparaît quel que soit son genre (jamais au clic)', () => {
@@ -181,12 +196,27 @@ test('bandeau du tableau de bord : accès restreint, texturé comme l\'autre blo
   assert.doesNotMatch(html, /<ul|<li/, 'seul, le bandeau n\'ouvre pas de liste vide');
 });
 
-test('bandeau du tableau de bord : jamais les deux à la fois, et rien sans panne', () => {
+test('bandeau du tableau de bord : connexion partielle, texturé, phrase de la carte mot pour mot, avec « Reconnecter »', () => {
+  const html = focus({ linkedinPartial: true });
+  assert.match(html, /^<div class="[^"]*"><div class="konekt-card-tex konekt-card-tex--warm /);
+  assert.match(html, />Connexion LinkedIn partielle</);
+  assert.ok(html.includes(`>${PARTIAL_SENTENCE}<`), html);
+  assert.match(html, /href="\/settings\/account\/connections">Reconnecter</);
+  assert.doesNotMatch(html, /<ul|<li/, 'seul, le bandeau n\'ouvre pas de liste vide');
+  assert.equal(causeReason('authentication_partial', 'linkedin'), PARTIAL_SENTENCE, 'c\'est la phrase de la carte de connexion');
+});
+
+test('bandeau du tableau de bord : jamais deux à la fois (reconnexion, puis connexion partielle, puis restriction), et rien sans panne', () => {
   const both = focus({ linkedinIssue: true, linkedinLocked: true });
   assert.equal((both.match(/konekt-card-tex--warm/g) || []).length, 1, 'un seul bandeau');
   assert.match(both, />Compte LinkedIn à reconnecter</, 'la reconnexion l\'emporte');
   assert.doesNotMatch(both, /restreint/);
-  assert.doesNotMatch(focus({}), /konekt-card-tex|Compte LinkedIn/);
+  const partialAndLocked = focus({ linkedinPartial: true, linkedinLocked: true });
+  assert.equal((partialAndLocked.match(/konekt-card-tex--warm/g) || []).length, 1, 'un seul bandeau');
+  assert.match(partialAndLocked, />Connexion LinkedIn partielle</);
+  assert.doesNotMatch(partialAndLocked, /restreint/);
+  assert.equal((focus({ linkedinIssue: true, linkedinPartial: true }).match(/konekt-card-tex--warm/g) || []).length, 1);
+  assert.doesNotMatch(focus({}), /konekt-card-tex|Compte LinkedIn|Connexion LinkedIn/);
 });
 
 test('ligne d\'À traiter : à reconnecter garde son texte, restreint n\'invite pas à reconnecter', () => {
@@ -195,6 +225,11 @@ test('ligne d\'À traiter : à reconnecter garde son texte, restreint n\'invite 
   assert.match(reconnect, /Les envois sont en pause/);
   assert.match(reconnect, /href="\/settings\/account\/connections"/);
 
+  const partial = section('partial');
+  assert.match(partial, /Connexion LinkedIn partielle/);
+  assert.ok(partial.includes(PARTIAL_SENTENCE), partial);
+  assert.match(partial, /href="\/settings\/account\/connections"/);
+
   const locked = section('locked');
   assert.match(locked, /Compte LinkedIn restreint/);
   assert.match(locked, /Les envois sont en pause/);
@@ -202,6 +237,32 @@ test('ligne d\'À traiter : à reconnecter garde son texte, restreint n\'invite 
   assert.doesNotMatch(locked, /reconnecter/i);
 
   assert.equal(section(null), '', 'hors panne : rien');
+});
+
+// --------------------------------------------------------------------------- Bandeau, ligne et chiffre : d'accord
+test('bandeau, ligne d\'À traiter et chiffre disent la même chose pour chaque statut enregistré', () => {
+  const countFor = (outage) => todoCount({
+    replies: { status: 'ok', data: { candidates: [] } },
+    signals: { status: 'ok', data: { actions: [], plans: [] } },
+    forYouActionCount: { status: 'ok', data: 0 },
+    linkedinOutage: { status: 'ok', data: outage },
+  });
+  const cases = [
+    ['OK', {}, null], ['DEGRADED', {}, null], ['RUNNING', {}, null],
+    ['PARTIAL', {}, 'partial'], ['CREDENTIALS', {}, 'reconnect'], ['ERROR', {}, 'reconnect'],
+    ['LOCKED', {}, 'locked'], ['OK', { is_locked: true }, 'locked'],
+  ];
+  for (const [accountStatus, extra, expected] of cases) {
+    // Même chaîne que le hook : le genre vient du prédicat, `outage` est `kind !== null` (vérifié plus bas).
+    const kind = myLinkedInOutage(withList({ id: 'a1', status: accountStatus, ...extra })) || null;
+    assert.equal(kind, expected, `${accountStatus} ${JSON.stringify(extra)}`);
+    const banner = focus({ linkedinIssue: kind === 'reconnect', linkedinPartial: kind === 'partial', linkedinLocked: kind === 'locked' });
+    const row = section(kind);
+    const counted = countFor(kind !== null);
+    assert.equal(counted, kind === null ? 0 : 1, `${accountStatus} : le chiffre`);
+    assert.equal(/konekt-card-tex--warm/.test(banner), kind !== null, `${accountStatus} : le bandeau`);
+    assert.equal(row !== '', kind !== null, `${accountStatus} : la ligne`);
+  }
 });
 
 // --------------------------------------------------------------------------- Câblage : une seule source
@@ -215,6 +276,7 @@ test('tableau de bord et barre latérale lisent le même hook, donc le même pr�
   const dashboard = read('src/pages/Dashboard.tsx');
   assert.match(dashboard, /useLinkedInOutage\(\)/);
   assert.match(dashboard, /linkedinIssue=\{linkedinOutage\.kind === 'reconnect'\}/);
+  assert.match(dashboard, /linkedinPartial=\{linkedinOutage\.kind === 'partial'\}/);
   assert.match(dashboard, /linkedinLocked=\{linkedinOutage\.kind === 'locked'\}/);
   assert.doesNotMatch(dashboard, /connections\.linkedin\.status/, 'plus de seconde règle pour le bandeau');
 
@@ -223,12 +285,25 @@ test('tableau de bord et barre latérale lisent le même hook, donc le même pr�
   }
 });
 
+test('la notification du récepteur d\'événements dit la même chose que le bandeau et la ligne (titre et phrase de la carte)', () => {
+  const webhook = read('supabase/functions/unipile-webhook/index.ts');
+  const sentence = webhook.match(/const PARTIAL_CONNECTION_SENTENCE = '([^']+)';/);
+  assert.ok(sentence, 'constante de la phrase dans le récepteur');
+  assert.equal(sentence[1], PARTIAL_SENTENCE, 'le récepteur reprend la phrase de la carte mot pour mot');
+  assert.match(webhook, /title = 'Connexion LinkedIn partielle';/);
+  assert.match(webhook, /body = PARTIAL_CONNECTION_SENTENCE;/);
+  for (const file of ['src/components/dashboard/DashboardFocusPanel.tsx', 'src/components/sidebar/todo/LinkedInOutageSection.tsx']) {
+    assert.match(read(file), /Connexion LinkedIn partielle/, file);
+    assert.match(read(file), /causeReason\('authentication_partial', 'linkedin'\)/, `${file} : la phrase vient de la carte`);
+  }
+});
+
 test('textes : aucun nom de prestataire, pas de tiret cadratin, vouvoiement', () => {
   for (const file of ['src/components/dashboard/DashboardFocusPanel.tsx', 'src/components/sidebar/todo/LinkedInOutageSection.tsx', 'src/hooks/sidebar/useLinkedInOutage.ts']) {
     const src = read(file);
     assert.doesNotMatch(src, /unipile/i, file);
   }
-  for (const html of [focus({ linkedinLocked: true }), section('locked')]) {
+  for (const html of [focus({ linkedinLocked: true }), section('locked'), focus({ linkedinPartial: true }), section('partial')]) {
     assert.doesNotMatch(html, /—|unipile|Apollo|PDL/i);
     assert.doesNotMatch(html, /\b(tu|ton|ta|tes|toi)\b/i);
   }

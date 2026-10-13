@@ -30,19 +30,21 @@ test('un seul geste par cause : seul « à reconnecter » propose Reconnecter', 
     const gestes = Object.fromEntries(HEALTHS.map((h) => [h, view.viewOfHealth(h, p).action]));
     assert.deepEqual(gestes, {
       connected: null, syncing: null, connecting: null, limited: null,
-      locked: 'contact_support', needs_reconnect: 'reconnect', not_connected: 'connect', unknown: 'refresh',
+      locked: null, needs_reconnect: 'reconnect', not_connected: 'connect', unknown: 'refresh',
     }, p);
   }
 });
 
-test('connexion limitée : reprise automatique annoncée, aucun bouton ; accès suspendu : le support', () => {
+test('connexion limitée : reprise automatique annoncée, aucun bouton ; compte restreint : aucun bouton non plus', () => {
   const limited = view.viewOfHealth('limited', 'linkedin');
   assert.equal(limited.action, null);
   assert.equal(limited.actionLabel, null);
   assert.match(limited.reason, /Nouvelle tentative automatique/);
   assert.equal(limited.tone, 'warning');
   const locked = view.viewOfHealth('locked', 'linkedin');
-  assert.equal(locked.actionLabel, 'Contacter le support');
+  assert.equal(locked.label, 'Compte restreint');
+  assert.equal(locked.action, null);
+  assert.equal(locked.actionLabel, null);
   assert.match(locked.reason, /Se reconnecter n'y change rien/);
   assert.equal(locked.tone, 'danger');
   assert.equal(view.viewOfHealth('needs_reconnect', 'google').actionLabel, 'Reconnecter');
@@ -243,10 +245,15 @@ test('R7 — les capacités du serveur ne sont demandées que si l\'interrupteur
   assert.ok(hook.indexOf('const local = useConnectionNativeFlag()') < hook.indexOf('useConnectionCapabilities({ enabled: local })'));
 });
 
-test('R6 — « Contacter le support » montre aussi l\'adresse, lisible et copiable', () => {
+test('R6 — plus de bouton « Contacter le support » ni d\'adresse personnelle : un compte restreint n\'a rien à faire dans Konekt', () => {
   const parts = code('src/components/connections/ConnectionParts.tsx');
-  assert.match(parts, /<a href=\{supportMailto\(channel\)\}>/);
-  assert.match(parts, /\{SUPPORT_WRITE_TO\} <span className="select-all">\{SUPPORT_EMAIL\}<\/span>/);
+  assert.doesNotMatch(parts, /SupportLink|supportMailto|SUPPORT_EMAIL|SUPPORT_WRITE_TO|mailto:/);
+  for (const f of CARDS) assert.doesNotMatch(code(f), /SupportLink|contact_support/, f);
+  const text = read('src/lib/connectionCopy.ts');
+  assert.doesNotMatch(text, /SUPPORT_EMAIL|SUPPORT_WRITE_TO|supportMailto|contact_support|Contacter le support|Ou écrivez/);
+  assert.doesNotMatch(text, /@konekt\.fr/, 'aucune adresse personnelle dans les textes');
+  assert.equal(copy.SUPPORT_EMAIL, undefined);
+  assert.equal(copy.ACTION_LABEL.contact_support, undefined);
 });
 
 test('aucun texte brut du serveur ni d\'une exception dans les cartes', () => {
@@ -318,11 +325,15 @@ test('l\'ancien gestionnaire n\'est plus un écran : il ne garde que la lecture 
   assert.match(src, /export function applySubscriptionOverrides/);
 });
 
-test('l\'alerte de déconnexion nomme le compte sans état encodé et sépare suspendu de déconnecté', () => {
+test('l\'alerte de déconnexion nomme le compte sans état encodé et sépare restreint de déconnecté', () => {
+  // La décision et les textes sont dans disconnectToast.ts (testé par connexion-alerte-direct.test.mjs) ; le contexte les affiche
   const ctx = code('src/contexts/LinkedInAccountsContext.tsx');
-  assert.match(ctx, /readableConnectionName\(acc\.name, 'linkedin'\)/);
-  assert.match(ctx, /alert === 'locked'/);
-  assert.match(ctx, /label: ALERT\.seeAction/);
+  assert.match(ctx, /disconnectToastFor\(prev\.health, health, acc\)/);
+  assert.match(ctx, /label: alert\.actionLabel/);
+  const toast = code('src/components/connections/disconnectToast.ts');
+  assert.match(toast, /readableConnectionName\(account\.name, 'linkedin'\)/);
+  assert.match(toast, /alert === 'locked'/);
+  assert.match(toast, /actionLabel: ALERT\.seeAction/);
 });
 
 test('F8 — WhatsApp : retrait et actualisation restent bloqués pendant le départ vers la page de connexion', () => {

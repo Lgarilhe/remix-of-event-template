@@ -6,8 +6,8 @@
  * disent la même chose d'un même état.
  *
  * Règle des gestes : se reconnecter ne règle ni une connexion limitée (reprise
- * automatique) ni un accès suspendu (le support). Seul un compte à reconnecter
- * propose « Reconnecter ».
+ * automatique) ni un compte restreint par le service (rien à faire, patienter).
+ * Seul un compte à reconnecter propose « Reconnecter ».
  *
  * Testé par tests/ux/connexion-cartes.test.mjs.
  */
@@ -139,6 +139,19 @@ export function withoutSupersededRemoved<T extends { status?: string | null; ide
   });
 }
 
+/**
+ * Pierre tombale d'une déconnexion voulue : « Déconnecter » supprime le compte WhatsApp chez le prestataire et
+ * le serveur garde la ligne en DELETED, avec `removed_by_member` vrai (list_whatsapp). Elle n'a rien à montrer :
+ * la personne l'a voulu. Un compte disparu chez le prestataire sans son geste (`removed_by_member` faux) garde sa
+ * ligne « À reconnecter ». Tant que le serveur ne rend pas le champ (réponse d'une version plus ancienne), il est
+ * lu comme faux : rien n'est masqué à tort.
+ */
+export function withoutDeliberateDisconnects<T extends { status?: string | null; removed_by_member?: boolean | null }>(
+  accounts: readonly T[],
+): T[] {
+  return accounts.filter((account) => account.removed_by_member !== true);
+}
+
 /** Rang d'affichage : ce qui demande un geste d'abord, le reste ensuite (ordre d'origine conservé à rang égal). */
 export function attentionRank(view: Pick<ConnectionView, 'health'>): number {
   if (view.health === 'needs_reconnect' || view.health === 'locked') return 0;
@@ -187,7 +200,7 @@ export function sinceDate(iso: string | null | undefined): string | null {
  * - 'reconnect' : session ou accès à renouveler, même compte ;
  * - 'connect' : aucun compte, ou compte disparu chez le prestataire (une
  *   nouvelle connexion remplace la liaison) ;
- * - 'contact_support' / 'refresh' : suspendu, état illisible ;
+ * - 'refresh' : état illisible ;
  * - null : rien à faire de votre côté.
  */
 export function cardAction(view: ConnectionView, missing: boolean): HealthAction | null {

@@ -24,7 +24,6 @@ import {
   HostedError,
   ReconnectButton,
   RemovalDialog,
-  SupportLink,
 } from '@/components/connections/ConnectionParts';
 import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
 import { useHostedConnect, type UseHostedConnect } from '@/components/connections/useHostedConnect';
@@ -48,7 +47,8 @@ import { cn } from '@/lib/utils';
  * Toutes les boîtes reliées à la personne sont listées, chacune avec son état et ses
  * gestes (reconnecter, dissocier) : une seule boîte donne la même ligne compacte qu'avant,
  * et celle qui demande un geste passe devant (src/components/connections/mailboxRows.ts).
- * La liste du serveur est une requête partagée (useMemberEmailList), lue une fois.
+ * La liste du serveur est une requête partagée (useMemberEmailList), relue à chaque ouverture de la page.
+ * Chaque geste d'une ligne nomme sa boîte (confirmation et nom accessible) : plusieurs boîtes portent les mêmes boutons.
  */
 
 /** Les deux messageries qu'une personne peut connecter depuis cette carte. */
@@ -62,6 +62,7 @@ function MyMailbox({
   onUnlink,
   unlinkDisabled,
   onRetry,
+  retryDisabled,
 }: {
   row: MailboxRow;
   hosted: UseHostedConnect;
@@ -70,6 +71,8 @@ function MyMailbox({
   onUnlink: (mapping: MailboxMapping) => void;
   unlinkDisabled: boolean;
   onRetry: () => void;
+  /** Lecture de la liste en cours : « Réessayer » attend la fin au lieu d'en relancer une seconde. */
+  retryDisabled: boolean;
 }) {
   const { view } = row;
   const myMapping = row.mapping;
@@ -95,22 +98,30 @@ function MyMailbox({
                 accountId={myMapping.email_account_id}
                 startsNew={view.reconnect === 'new_link'}
                 label={view.actionLabel ?? ACTION_LABEL.reconnect}
+                ariaLabel={EMAIL_CARD.reconnectAria(row.address)}
                 className="max-sm:flex-1"
               />
             )}
-            {view.action === 'contact_support' && <SupportLink channel="email" className="max-sm:flex-1" />}
             {view.action === 'refresh' && (
-              <Button variant="outline" size="sm" onClick={onRetry} className="max-sm:flex-1 max-md:h-11">
-                <RefreshCw aria-hidden="true" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRetry}
+                disabled={retryDisabled}
+                aria-label={EMAIL_CARD.retryAria(row.address)}
+                className="max-sm:flex-1 max-md:h-11"
+              >
+                <RefreshCw className={cn(retryDisabled && 'animate-spin')} aria-hidden="true" />
                 {view.actionLabel ?? CARD_COMMON.refresh}
               </Button>
             )}
             {extraAction}
-            {/* Dissocier retire la liaison : confirmation, comme pour LinkedIn (F-21). */}
+            {/* Dissocier retire la liaison : confirmation qui nomme la boîte visée, comme pour LinkedIn (F-21). */}
             <RemovalDialog
-              title={EMAIL_CARD.unlinkTitle}
+              title={EMAIL_CARD.unlinkTitle(row.address)}
               body={EMAIL_CARD.unlinkBody}
               triggerLabel={CARD_COMMON.unlink}
+              triggerAriaLabel={EMAIL_CARD.unlinkAria(row.address)}
               confirmLabel={CARD_COMMON.unlink}
               disabled={unlinkDisabled}
               onConfirm={() => onUnlink(myMapping)}
@@ -140,7 +151,8 @@ export const MyEmailAccount = () => {
   const { user, isReady: authReady } = useAuthReady();
   const currentUserId = user?.id ?? null;
   // Boîtes de la personne dans l'organisation courante : la liste du serveur est lue une seule fois (requête partagée).
-  const list = useMemberEmailList();
+  // Relue à chaque ouverture de Connexions : l'état d'une boîte se lit au moment de l'afficher, comme LinkedIn et WhatsApp.
+  const list = useMemberEmailList({ rereadOnMount: true });
   const listFailed = list.isError && !list.data;
 
   const myMappings = useMemo<MailboxMapping[]>(
@@ -241,6 +253,7 @@ export const MyEmailAccount = () => {
                 onUnlink={handleUnlink}
                 unlinkDisabled={isUnlinking}
                 onRetry={handleRefresh}
+                retryDisabled={busy}
               />
             ))}
             {connectErrorLine}

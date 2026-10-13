@@ -208,7 +208,7 @@ Deno.test('list_whatsapp : lit seulement les identifiants du membre, vocabulaire
       const reply = await call(db, { action: 'list_whatsapp' });
       strictEqual(reply.status, 200);
       deepStrictEqual(mock.calls.map((c) => `${c.method} ${c.path}`), ['GET /accounts/acc_wa_own']);
-      deepStrictEqual(reply.data.accounts, [{ id: 'acc_wa_own', name: '+33 6 12 34 56 78', identifier: '+33612345678', status: 'OK', type: 'WHATSAPP' }]);
+      deepStrictEqual(reply.data.accounts, [{ id: 'acc_wa_own', name: '+33 6 12 34 56 78', identifier: '+33612345678', status: 'OK', type: 'WHATSAPP', removed_by_member: false }]);
       ok(!/private-proxy-pass|private-token|test-key|fixture-service/.test(reply.raw));
       strictEqual(db.table('member_whatsapp_accounts')[0].account_status, 'OK');
       strictEqual(db.table('member_whatsapp_accounts')[0].phone_number, '+33612345678');
@@ -225,7 +225,9 @@ Deno.test('list_whatsapp : un compte supprimé chez le service est marqué, un r
     try {
       const reply = await call(db, { action: 'list_whatsapp' });
       strictEqual(reply.data.accounts[0].status, 'DELETED');
+      strictEqual(reply.data.accounts[0].removed_by_member, false, 'disparu chez le service : l écran garde « À reconnecter »');
       strictEqual(db.table('member_whatsapp_accounts')[0].account_status, 'DELETED');
+      strictEqual(db.table('member_whatsapp_accounts')[0].removed_by_member_at ?? null, null, 'la lecture ne pose jamais la marque d un geste voulu');
     } finally {
       mock.restore();
     }
@@ -256,6 +258,7 @@ Deno.test('list_whatsapp : un compte dont l identifiant est ancien ou retiré n 
       const reply = await call(db, { action: 'list_whatsapp' });
       strictEqual(mock.calls.length, 0);
       deepStrictEqual(reply.data.accounts.map((a: any) => a.status).sort(), ['CREDENTIALS', 'DELETED']);
+      deepStrictEqual(reply.data.accounts.map((a: any) => a.removed_by_member), [false, false], 'ni l ancien identifiant ni un DELETED sans marque ne sont une déconnexion voulue');
     } finally {
       mock.restore();
     }
@@ -290,6 +293,8 @@ Deno.test('disconnect_whatsapp : supprime chez le service et garde la pierre tom
         strictEqual(reply.data.success, true, `missing=${missing}`);
         strictEqual(mock.calls[0].method, 'DELETE');
         strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')?.account_status, 'DELETED');
+        ok(typeof db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')?.removed_by_member_at === 'string', `missing=${missing} : la marque du geste voulu est posée`);
+        strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-peer')?.removed_by_member_at ?? null, null, 'le compte d un collègue n est pas touché');
         strictEqual(db.table('member_whatsapp_accounts').length, 3);
       } finally {
         mock.restore();
@@ -378,6 +383,65 @@ Deno.test('disconnect_whatsapp : un ancien identifiant n appelle pas le service,
       strictEqual(reply.data.success, true);
       strictEqual(mock.calls.length, 0);
       strictEqual(db.table('member_whatsapp_accounts')[0].account_status, 'DELETED');
+      ok(typeof db.table('member_whatsapp_accounts')[0].removed_by_member_at === 'string', 'un ancien identifiant retiré par le membre porte aussi la marque');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('WhatsApp : après « Déconnecter », list_whatsapp rend la pierre tombale avec removed_by_member vrai et n appelle pas le service ; un compte disparu chez le service reste faux', async () => {
+  await withEnv(ENV, async () => {
+    const db = makeDb({
+      member_whatsapp_accounts: [
+        { id: 'w-live', organization_id: ORG, user_id: USER, whatsapp_account_id: 'acc_wa_live', name: 'Actif', phone_number: '+33611111111', account_status: 'OK', linked_at: '2026-10-03T00:00:00Z' },
+        { id: 'w-vanish', organization_id: ORG, user_id: USER, whatsapp_account_id: 'acc_wa_vanish', name: 'Disparu', phone_number: '+33622222222', account_status: 'OK', linked_at: '2026-10-02T00:00:00Z' },
+        { id: 'w-bye', organization_id: ORG, user_id: USER, whatsapp_account_id: 'acc_wa_bye', name: 'Quitté', phone_number: '+33633333333', account_status: 'OK', linked_at: '2026-10-01T00:00:00Z' },
+      ],
+    });
+    const mock = withMockTransport(router({
+      'GET /accounts/acc_wa_live': { body: wa('acc_wa_live', { name: '+33 6 11 11 11 11' }) },
+      'GET /accounts/acc_wa_vanish': { status: 404, body: { message: 'gone' } },
+      'DELETE /accounts/acc_wa_bye': { body: { success: true } },
+    }));
+    try {
+      const gone = await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_bye' });
+      strictEqual(gone.data.success, true);
+      const before = mock.calls.length;
+      const first = await call(db, { action: 'list_whatsapp' });
+      const byId = Object.fromEntries(first.data.accounts.map((a: any) => [a.id, a]));
+      strictEqual(byId.acc_wa_live.removed_by_member, false);
+      strictEqual(byId.acc_wa_live.status, 'OK');
+      strictEqual(byId.acc_wa_vanish.status, 'DELETED');
+      strictEqual(byId.acc_wa_vanish.removed_by_member, false, 'compte disparu chez le service');
+      strictEqual(byId.acc_wa_bye.status, 'DELETED');
+      strictEqual(byId.acc_wa_bye.removed_by_member, true, 'déconnexion voulue');
+      ok(!mock.calls.slice(before).some((c) => c.path.includes('acc_wa_bye')), 'la pierre tombale n appelle pas le service');
+      // À chaque chargement suivant, le même résultat : la lecture ne perd ni ne pose la marque.
+      for (let i = 0; i < 3; i++) {
+        const again = await call(db, { action: 'list_whatsapp' });
+        const rows = Object.fromEntries(again.data.accounts.map((a: any) => [a.id, a.removed_by_member]));
+        deepStrictEqual(rows, { acc_wa_live: false, acc_wa_vanish: false, acc_wa_bye: true });
+      }
+      // Une ligne qui n a pas la colonne (migration pas encore appliquée) se lit comme « non voulue ».
+      const legacy = makeDb({ member_whatsapp_accounts: [{ id: 'w1', organization_id: ORG, user_id: USER, whatsapp_account_id: 'acc_wa_legacy', name: 'Ancien', phone_number: null, account_status: 'DELETED' }] });
+      strictEqual((await call(legacy, { action: 'list_whatsapp' })).data.accounts[0].removed_by_member, false);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('WhatsApp : retirer une ligne déjà disparue chez le service (« Déconnecter » sur un DELETED) pose la marque, sans appeler autre chose que la suppression', async () => {
+  await withEnv(ENV, async () => {
+    const db = makeDb({
+      member_whatsapp_accounts: [{ id: 'w1', organization_id: ORG, user_id: USER, whatsapp_account_id: 'acc_wa_vanish', name: 'Disparu', phone_number: null, account_status: 'DELETED' }],
+    });
+    const mock = withMockTransport(router({ 'DELETE /accounts/acc_wa_vanish': { status: 404, body: { message: 'gone' } } }));
+    try {
+      strictEqual((await call(db, { action: 'list_whatsapp' })).data.accounts[0].removed_by_member, false);
+      strictEqual((await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_vanish' })).data.success, true);
+      strictEqual((await call(db, { action: 'list_whatsapp' })).data.accounts[0].removed_by_member, true);
     } finally {
       mock.restore();
     }
@@ -628,7 +692,9 @@ Deno.test('list : un compte que le service ne renseigne pas n empêche pas les a
       deepStrictEqual(Object.keys(byId).sort(), ['acc_ok', 'acc_slow']);
       strictEqual(byId.acc_slow.status, 'DEGRADED');
       strictEqual(byId.acc_slow.reconnectable, false);
+      strictEqual(byId.acc_slow.unverified, true, 'compte non lu : l écran dit « État à vérifier », ni « Actif » ni une licence');
       strictEqual(byId.acc_ok.status, 'OK');
+      strictEqual('unverified' in byId.acc_ok, false, 'un compte lu ne porte pas le marqueur');
       assertNoVendor(reply);
       strictEqual(db.table('member_linkedin_accounts')[1].account_status, 'DEGRADED', 'la liaison n est pas modifiée');
     } finally {
@@ -1343,6 +1409,172 @@ Deno.test('lectures des comptes de l équipe : un rôle inconnu est traité comm
         strictEqual((await call(ownedDb('owner'), read.body('acc_foreign'))).status, 403, `autre organisation ${read.action}`);
       }
       strictEqual(mock.calls.length, 0);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Usage des comptes de l'équipe : règle générale, pour toute action qui désigne un compte (revue de sécurité 0 et 1)
+// ---------------------------------------------------------------------------
+
+/** Toutes les actions de la fonction qui désignent un compte existant, plus une action inventée : la règle ne les liste pas. */
+const ACCOUNT_USES: Array<{ action: string; body: (account: string) => Record<string, unknown> }> = [
+  ...TEAM_READS,
+  { action: 'handle_invitation_received', body: (account_id) => ({ action: 'handle_invitation_received', account_id, invitation_id: 'rr1', invitation_action: 'decline' }) },
+  { action: 'bulk_handle_invitations', body: (account_id) => ({ action: 'bulk_handle_invitations', account_id, invitations: [{ invitation_id: 'rr1', action: 'decline' }] }) },
+  { action: 'disconnect', body: (account_id) => ({ action: 'disconnect', account_id }) },
+  { action: 'select_contract', body: (account_id) => ({ action: 'select_contract', account_id, contract_id: 'c1' }) },
+  { action: 'update_proxy', body: (account_id) => ({ action: 'update_proxy', account_id, proxy_mode: 'country', proxy_country: 'FR' }) },
+  { action: 'add_reaction', body: (account_id) => ({ action: 'add_reaction', account_id, chat_id: 'chat1', message_id: 'msg1', reaction: 'like' }) },
+  { action: 'delete_message', body: (account_id) => ({ action: 'delete_message', account_id, chat_id: 'chat1', message_id: 'msg1' }) },
+  { action: 'delete_chat', body: (account_id) => ({ action: 'delete_chat', account_id, chat_id: 'chat1' }) },
+  { action: 'claim_linkedin_account', body: (account_id) => ({ action: 'claim_linkedin_account', account_id }) },
+  { action: 'connection_start (reconnexion)', body: (reconnect_account_id) => ({ action: 'connection_start', provider: 'linkedin', reconnect_account_id }) },
+  { action: 'connect_cookie (reconnexion)', body: (reconnect_account_id) => ({ action: 'connect_cookie', access_token: 'AQED', reconnect_account_id }) },
+  { action: 'une_action_ajoutee_plus_tard', body: (account_id) => ({ action: 'une_action_ajoutee_plus_tard', account_id }) },
+];
+
+function actingRoutes(): Record<string, Route> {
+  const routes = teamReadRoutes();
+  for (const account of ['acc_own', 'acc_peer']) {
+    routes[`POST /${account}/users/me/relation-requests/rr1/cancel`] = { body: { object: 'RelationRequestCanceled' } };
+    routes[`POST /${account}/users/me/relation-requests/rr1/accept`] = { body: { object: 'RelationRequestConfirmed' } };
+    routes[`POST /${account}/chats/chat1/messages/msg1/reactions`] = { body: { object: 'ReactionAdded' } };
+    routes[`DELETE /${account}/chats/chat1/messages/msg1`] = { status: 204, body: null };
+    routes[`DELETE /${account}/chats/chat1`] = { status: 204, body: null };
+  }
+  return routes;
+}
+
+const snapshotOf = (db: FakeDb) => JSON.stringify(['member_linkedin_accounts', 'member_email_accounts', 'member_whatsapp_accounts', 'connection_attempts'].map((t) => db.table(t)));
+
+Deno.test('usage des comptes de l équipe : un collaborateur est refusé sur le compte d un collègue pour TOUTE action, sans appel au service ni écriture', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const use of ACCOUNT_USES) {
+        const db = ownedDb('collaborator');
+        const before = snapshotOf(db);
+        const reply = await call(db, use.body('acc_peer'));
+        strictEqual(reply.status, 403, `${use.action} : ${reply.raw}`);
+        strictEqual(reply.data.success, false, use.action);
+        strictEqual(reply.data.error_code, 'account_not_yours', use.action);
+        strictEqual(reply.data.error, "Ce compte est relié par un autre membre de l'organisation. Vous ne pouvez utiliser que votre propre compte.", use.action);
+        assertNoVendor(reply, use.action);
+        strictEqual(snapshotOf(db), before, `${use.action} : aucune écriture`);
+      }
+      strictEqual(mock.calls.length, 0, 'aucun appel au service pour les refus');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('usage des comptes de l équipe : un collaborateur n est refusé sur aucune action pour le compte qu il a relié', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const use of ACCOUNT_USES) {
+        const reply = await call(ownedDb('collaborator'), use.body('acc_own'));
+        ok(reply.data.error_code !== 'account_not_yours', `${use.action} : ${reply.raw}`);
+      }
+      // Les gestes qui agissent au nom du compte vont jusqu au service pour son titulaire.
+      for (const action of ['handle_invitation_received', 'bulk_handle_invitations', 'add_reaction', 'delete_message', 'delete_chat']) {
+        const use = ACCOUNT_USES.find((u) => u.action === action)!;
+        const reply = await call(ownedDb('collaborator'), use.body('acc_own'));
+        strictEqual(reply.status, 200, `${action} : ${reply.raw}`);
+        strictEqual(reply.data.success, true, `${action} : ${reply.raw}`);
+      }
+      ok(mock.calls.some((c) => c.path.startsWith('/acc_own/')), 'le service est appelé pour son propre compte');
+      ok(!mock.calls.some((c) => c.path.startsWith('/acc_peer/')), 'jamais pour celui d un collègue');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('usage des comptes de l équipe : un collaborateur refusé pour un compte WhatsApp ou e-mail d un collègue, et jamais bloqué hors de ces comptes', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      const db = whatsappDb();
+      db.table('organization_members')[0].role = 'collaborator';
+      for (const body of [
+        { action: 'disconnect_whatsapp', account_id: 'acc_wa_peer' },
+        { action: 'get_account_details', account_id: 'acc_wa_peer' },
+        { action: 'get_account_details', account_id: 'acc_mail_peer' },
+        { action: 'inmail_balance', account_id: 'acc_mail_peer' },
+      ]) {
+        const reply = await call(db, body);
+        strictEqual(reply.status, 403, JSON.stringify(body));
+        strictEqual(reply.data.error_code, 'account_not_yours', JSON.stringify(body));
+        ok(!/LinkedIn/.test(reply.data.error), `message valable pour tout type de compte : ${reply.data.error}`);
+      }
+      strictEqual(mock.calls.length, 0);
+      // Sa propre boîte et les actions sans compte désigné restent servies.
+      const own = await call(db, { action: 'unlink_email_account', mapping_id: MAPPING, expected_account_id: 'acc_mail_own' });
+      strictEqual(own.data.success, true);
+      strictEqual((await call(db, { action: 'connection_capabilities' })).data.success, true);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('usage des comptes de l équipe : un rôle absent ou inconnu est un collaborateur, un compte d une autre organisation ou relié à personne garde le refus de son action', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      const noRole = ownedDb();
+      delete noRole.table('organization_members')[0].role;
+      strictEqual((await call(noRole, { action: 'handle_invitation_received', account_id: 'acc_peer', invitation_id: 'rr1', invitation_action: 'decline' })).data.error_code, 'account_not_yours');
+      strictEqual((await call(ownedDb('viewer'), { action: 'bulk_handle_invitations', account_id: 'acc_peer', invitations: [{ invitation_id: 'rr1', action: 'decline' }] })).data.error_code, 'account_not_yours');
+      // Autre organisation, compte relié à personne : ce n est pas à la règle générale de les juger, l action les refuse comme avant.
+      for (const account of ['acc_foreign', 'acc_orphan']) {
+        const reply = await call(ownedDb('collaborator'), { action: 'handle_invitation_received', account_id: account, invitation_id: 'rr1', invitation_action: 'decline' });
+        strictEqual(reply.status, 403, account);
+        ok(reply.data.error_code !== 'account_not_yours', `${account} : ${reply.raw}`);
+        ok(/pas rattaché/.test(reply.data.error), reply.raw);
+      }
+      strictEqual(mock.calls.length, 0);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('usage des comptes de l équipe : propriétaire, administrateur et membre agissent sur le compte d un collègue comme avant (invitations reçues comprises)', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const role of ['owner', 'admin', 'member']) {
+        const single = await call(ownedDb(role), { action: 'handle_invitation_received', account_id: 'acc_peer', invitation_id: 'rr1', invitation_action: 'decline' });
+        strictEqual(single.status, 200, `${role} : ${single.raw}`);
+        strictEqual(single.data.status, 'DECLINED', role);
+        const bulk = await call(ownedDb(role), { action: 'bulk_handle_invitations', account_id: 'acc_peer', invitations: [{ invitation_id: 'rr1', action: 'decline' }] });
+        strictEqual(bulk.status, 200, `${role} : ${bulk.raw}`);
+        deepStrictEqual(bulk.data.results, [{ invitation_id: 'rr1', status: 'DECLINED' }], role);
+      }
+      ok(mock.calls.filter((c) => c.path === '/acc_peer/users/me/relation-requests/rr1/cancel').length >= 6, 'le service reçoit les gestes sur le compte du collègue');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('usage des comptes de l équipe : la liste des comptes de l organisation reste rendue à un collaborateur (décision du propriétaire en attente)', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router({
+      'GET /accounts/acc_own': { body: li('acc_own') },
+      'GET /accounts/acc_peer': { body: li('acc_peer') },
+      'GET /accounts/acc_detail': { body: li('acc_detail') },
+    }));
+    try {
+      const reply = await call(ownedDb('collaborator'), { action: 'list' });
+      strictEqual(reply.status, 200);
+      ok(reply.data.accounts.some((a: any) => a.id === 'acc_peer'), reply.raw);
     } finally {
       mock.restore();
     }

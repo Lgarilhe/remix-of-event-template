@@ -166,23 +166,39 @@ const matchesOr = (filter, status) => filter.split(/,(?![^(]*\))/).some((clause)
   return not ? (status !== null && !hit) : hit;
 });
 
-test('v2 — verrouillage puis déverrouillage rend exactement le statut d\'avant', () => {
+test('v2 — verrouillage : LOCKED remplace OK, DEGRADED, PARTIAL, sans statut ou inconnu, jamais une panne à reconnecter ; le déverrouillage ne relève que LOCKED', () => {
   const start = webhook.indexOf("case 'account_locked':");
   assert.ok(start >= 0, 'case account_locked introuvable');
   const block = webhook.slice(start, webhook.indexOf('\n      default:', start));
   assert.match(block, /case 'account_unlocked':/);
-  const lockFilters = [...block.matchAll(/Update\.or\('([^']+)'\)/g)].map((m) => m[1]);
-  assert.equal(lockFilters.length, 3, 'garde sur LinkedIn, e-mail et WhatsApp');
-  assert.equal(new Set(lockFilters).size, 1, 'même garde sur les trois canaux');
-  assert.equal((block.match(/Update\.eq\('account_status', 'LOCKED'\)/g) || []).length, 3, 'déverrouillage limité à LOCKED');
+  // Un seul filtre pour account.locked et account.status.* avec is_locked, sur LinkedIn, e-mail et WhatsApp.
+  assert.equal((block.match(/LOCK_REPLACES_FILTER/g) || []).length, 3, 'garde sur LinkedIn, e-mail et WhatsApp (account.locked)');
+  const statusStart = webhook.indexOf("case 'account_status_updated':");
+  const statusBlock = webhook.slice(statusStart, webhook.indexOf("case 'account_disconnected':", statusStart));
+  assert.equal((statusBlock.match(/LOCK_REPLACES_FILTER/g) || []).length, 3, 'même garde sur les trois canaux (account.status.* avec is_locked)');
+  assert.equal((block.match(/\.eq\('account_status', 'LOCKED'\)/g) || []).length, 3, 'déverrouillage limité à LOCKED');
 
-  const lock = (status) => (matchesOr(lockFilters[0], status) ? 'LOCKED' : status);
+  // Le filtre est celui des statuts « pas déjà en panne à reconnecter, pas déjà verrouillé ».
+  const broken = webhook.match(/const ALREADY_BROKEN_STATUSES = new Set\(\[([^\]]+)\]\);/);
+  assert.ok(broken, 'liste des pannes à reconnecter introuvable');
+  assert.match(webhook, /const NO_LOCK_NOTICE_STATUSES = new Set\(\[\.\.\.ALREADY_BROKEN_STATUSES, 'LOCKED'\]\);/);
+  assert.match(webhook, /const LOCK_REPLACES_FILTER = statusNotIn\(NO_LOCK_NOTICE_STATUSES\);/);
+  assert.match(webhook, /const statusNotIn = \(statuses: Iterable<string>\) => `account_status\.is\.null,account_status\.not\.in\.\(\$\{\[\.\.\.statuses\]\.join\(','\)\}\)`;/);
+  const kept = [...broken[1].matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]).concat('LOCKED');
+  const filter = `account_status.is.null,account_status.not.in.(${kept.join(',')})`;
+
+  const lock = (status) => (matchesOr(filter, status) ? 'LOCKED' : status);
   const unlock = (status) => (status === 'LOCKED' ? 'OK' : status);
-  for (const status of ['OK', 'CREDENTIALS', 'ERROR', 'PARTIAL', 'DEGRADED', 'CONNECTING', 'STOPPED', 'PERMISSIONS']) {
-    assert.equal(unlock(lock(status)), status, `${status} → verrouillé → déverrouillé`);
+  for (const status of ['OK', 'DEGRADED', 'PARTIAL', 'CONNECTING', 'STOPPED', 'PAUSED', null]) {
+    assert.equal(lock(status), 'LOCKED', `${status} → verrouillé`);
   }
-  assert.equal(lock('OK'), 'LOCKED', 'un compte actif est bien bloqué');
-  assert.equal(lock(null), 'LOCKED', 'une liaison sans statut est bien bloquée');
+  for (const status of ['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DISCONNECTED', 'DELETED', 'LOCKED']) {
+    assert.equal(lock(status), status, `${status} garde son statut`);
+    assert.equal(unlock(lock(status)), status === 'LOCKED' ? 'OK' : status, `${status} → verrouillé → déverrouillé`);
+  }
+  // Conséquence décidée (12/10/2026) : un compte OK, DEGRADED ou PARTIAL verrouillé revient OK au déverrouillage ;
+  // DEGRADED et PARTIAL se rétablissent par leur propre événement de statut.
+  for (const status of ['OK', 'DEGRADED', 'PARTIAL', null]) assert.equal(unlock(lock(status)), 'OK', `${status} → verrouillé → déverrouillé`);
 });
 
 test('v2 — dédoublonnage : identifiant evt_ retenu seulement s\'il en a la forme', () => {

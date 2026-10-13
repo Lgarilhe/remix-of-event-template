@@ -134,7 +134,7 @@ test('un envoi par un membre ne part que du compte qu\'il a relié', async () =>
   assert.deepEqual(own.quotaCalls.map(call => [call.accountId, call.actionType, call.source]), [[ACCOUNT, 'message', 'manual_inbox']]);
 });
 
-test('un collaborateur ne lit que le compte qu\'il a relié ; propriétaire, administrateur et membre lisent celui d\'un collègue (F9)', async () => {
+test('un collaborateur ne se sert, pour aucune action, que du compte qu\'il a relié ; propriétaire, administrateur et membre se servent de celui d\'un collègue (F9)', async () => {
   const reads = [
     { action: 'get_chats' },
     { action: 'get_messages', chat_id: 'c1' },
@@ -198,10 +198,52 @@ test('un collaborateur ne lit que le compte qu\'il a relié ; propriétaire, adm
   internal.state.routes = routes;
   for (const body of reads) assert.equal((await internal.post(body, { bearer: 'service-key' })).status, 200, `interne ${body.action}`);
 
-  // Les actions qui se servent seulement du compte pour consulter LinkedIn restent hors de la règle de lecture.
-  const search = await boot({ member: { id: 'member-1', role: 'collaborator' }, linked: colleagueAccount });
-  search.state.routes = { ...routes, [`POST /${ACCOUNT}/linkedin/search/people`]: { body: { data: [] } } };
-  assert.equal((await search.post({ action: 'search', api: 'classic', keywords: 'Go' })).status, 200);
+  // La règle ne liste aucune action : recherche (y compris dans un projet Recruiter du collègue), paramètres de recherche
+  // (projets et recherches enregistrées du collègue), profil, publications, marquer lu, recommander une compétence,
+  // les écritures (leur règle propre garde son message) et une action qui n'existe pas encore sont toutes refusées.
+  const everyAction = [
+    { action: 'search', api: 'classic', keywords: 'Go' },
+    { action: 'search', api: 'recruiter', keywords: 'Go', recruiter_project_id: '777' },
+    { action: 'search_from_url', url: 'https://www.linkedin.com/search/results/people/?keywords=go' },
+    { action: 'get_parameters', type: 'PROJECT', service: 'RECRUITER' },
+    { action: 'get_parameters', type: 'SAVED_SEARCH', service: 'RECRUITER' },
+    { action: 'get_parameters', type: 'LEAD_LIST', service: 'SALES_NAVIGATOR' },
+    { action: 'get_profile', profile_url: 'https://www.linkedin.com/in/jean-dupont' },
+    { action: 'get_user_posts', user_id: 'ACoAAabc' },
+    { action: 'mark_as_read', chat_id: 'c1' },
+    { action: 'endorse_skill', user_id: 'ACoAAabc', skill_endorsement_id: 'sk1' },
+    { action: 'send_message', chat_id: 'c1', text: 'Bonjour' },
+    { action: 'withdraw_invitation', invitation_id: 'i1' },
+    { action: 'une_action_ajoutee_plus_tard' },
+  ];
+  const searchRoutes = { ...routes, [`POST /${ACCOUNT}/linkedin/search/people`]: { body: { data: [] } } };
+  const everything = await boot({ member: { id: 'member-1', role: 'collaborator' }, linked: colleagueAccount });
+  everything.state.routes = searchRoutes;
+  for (const body of everyAction) {
+    const refused = await everything.post(body);
+    assert.equal(refused.status, 403, `${body.action} ${JSON.stringify(body)}`);
+    assert.equal(refused.body.errorType, 'ACCOUNT_NOT_YOURS', body.action);
+    noVendor(refused.body);
+  }
+  assert.deepEqual(everything.provider, [], 'aucun appel au prestataire');
+  assert.deepEqual(everything.quotaCalls, [], 'aucune unité du plafond du collègue consommée');
+  // Message générique : il vaut aussi pour un compte qui n'est pas LinkedIn (le texte des écritures garde le sien).
+  const generic = await everything.post({ action: 'search', api: 'classic', keywords: 'Go' });
+  assert.equal(generic.body.error, 'Ce compte est relié par un autre membre de l\'organisation. Vous ne pouvez utiliser que votre propre compte.');
+
+  // Propriétaire, administrateur et membre cherchent avec le compte d'un collègue comme avant ; le collaborateur avec le sien.
+  for (const role of ['owner', 'admin', 'member']) {
+    const searcher = await boot({ member: { id: 'member-1', role }, linked: colleagueAccount });
+    searcher.state.routes = searchRoutes;
+    assert.equal((await searcher.post({ action: 'search', api: 'classic', keywords: 'Go' })).status, 200, role);
+  }
+  const ownSearch = await boot({ member: { id: 'member-1', role: 'collaborator' } });
+  ownSearch.state.routes = searchRoutes;
+  assert.equal((await ownSearch.post({ action: 'search', api: 'classic', keywords: 'Go' })).status, 200);
+  // Appel interne (clé de service) : jamais concerné.
+  const internalSearch = await boot({ linked: colleagueAccount });
+  internalSearch.state.routes = searchRoutes;
+  assert.equal((await internalSearch.post({ action: 'search', api: 'classic', keywords: 'Go' }, { bearer: 'service-key' })).status, 200);
 });
 
 test('le plafond LinkedIn de l\'utilisateur arrête la recherche avant tout appel au prestataire', async () => {

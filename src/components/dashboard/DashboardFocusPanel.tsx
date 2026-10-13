@@ -2,8 +2,9 @@
  * DashboardFocusPanel — le haut de « À faire » : ce qui attend une action.
  *
  * Une ligne par signal, seulement s'il demande quelque chose (design simplifié,
- * docs/design/06-simplicite.md) : compte LinkedIn à reconnecter, réponses à
- * lire, candidats qui attendent votre réponse, candidats qui n'avancent plus.
+ * docs/design/06-simplicite.md) : compte LinkedIn à reconnecter (ou connexion
+ * partielle, ou accès restreint), réponses à lire, candidats qui attendent
+ * votre réponse, candidats qui n'avancent plus.
  * Chaque ligne : une pastille d'icône (qui bouge quand quelque chose attend),
  * une phrase, les visages des personnes concernées, et un bouton discret où l'on agit.
  * Les lignes sont posées sur une carte ; la panne LinkedIn, qui arrête les envois,
@@ -24,6 +25,7 @@ import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { texturedCard } from '@/components/layout/texturedCard';
 import { plural } from '@/lib/plural';
+import { causeReason } from '@/lib/connectionCopy';
 
 export interface FocusPerson {
   name: string;
@@ -35,6 +37,8 @@ export interface FocusPerson {
 interface DashboardFocusPanelProps {
   /** Compte LinkedIn de l'utilisateur à reconnecter : les envois sont en pause. */
   linkedinIssue?: boolean;
+  /** Connexion LinkedIn partielle (un produit demande une nouvelle authentification) : envois en pause, « Reconnecter ». */
+  linkedinPartial?: boolean;
   /** Compte LinkedIn restreint par LinkedIn : envois en pause, se reconnecter n'y change rien (pas de bouton). */
   linkedinLocked?: boolean;
   /** Réponses de candidats comptées par la barre latérale ; null tant qu'inconnu. */
@@ -103,6 +107,7 @@ const UnknownRow: React.FC<{ title: string; unavailable: boolean }> = ({ title, 
 
 export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
   linkedinIssue = false,
+  linkedinPartial = false,
   linkedinLocked = false,
   unreadMessages,
   unreadMessagesUnavailable = false,
@@ -131,6 +136,14 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
       tile={<IconTile icon={Unplug} tone="default" size="lg" />}
       title="Compte LinkedIn à reconnecter"
       description="Les envois sont en pause jusqu'à la reconnexion."
+      action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
+      texture="warm"
+    />
+  ) : linkedinPartial ? (
+    <SignalRow
+      tile={<IconTile icon={Unplug} tone="default" size="lg" />}
+      title="Connexion LinkedIn partielle"
+      description={causeReason('authentication_partial', 'linkedin')}
       action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
       texture="warm"
     />

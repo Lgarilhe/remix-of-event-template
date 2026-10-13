@@ -23,7 +23,6 @@ import {
   HostedError,
   ReconnectButton,
   RemovalDialog,
-  SupportLink,
 } from '@/components/connections/ConnectionParts';
 import { useHostedConnect } from '@/components/connections/useHostedConnect';
 import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
@@ -48,7 +47,8 @@ const LinkedInExtras = lazy(() => import('@/components/connections/LinkedInExtra
  *   sa cause (session expirée, panne de connexion, authentification partielle,
  *   identifiant à refaire) ;
  * - connexion limitée : rien, la reprise est automatique ;
- * - accès suspendu : « Contacter le support », se reconnecter n'y change rien ;
+ * - compte restreint par LinkedIn : rien, les envois sont en pause et se reconnecter n'y change
+ *   rien (même phrase que le bandeau du tableau de bord et la notification) ;
  * - état non lu chez le prestataire : « État à vérifier » et « Réessayer », jamais
  *   « Actif » ni une offre devinée.
  * Un compte relié qui a disparu se lit comme sur les deux autres cartes : « À
@@ -203,7 +203,6 @@ export const MyLinkedInAccount = () => {
                       className="max-sm:flex-1"
                     />
                   )}
-                  {view.action === 'contact_support' && <SupportLink channel="linkedin" className="max-sm:flex-1" />}
                   {view.action === 'refresh' && (
                     <Button variant="ghost" size="sm" onClick={handleRefreshAndLink} disabled={refreshing} className="max-sm:flex-1 max-md:h-11">
                       <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />

@@ -49,8 +49,17 @@ export interface MailboxRow {
   view: ConnectionView;
   /** Statut de la liste, pour retirer une liaison retirée que la nouvelle connexion remplace. */
   status: string | null;
-  /** Même valeur que `address`, sous le nom que lit `withoutSupersededRemoved`. */
+  /**
+   * Adresse que lit `withoutSupersededRemoved` pour savoir si une boîte en remplace une autre : la vraie adresse
+   * e-mail, sinon vide. Un nom de repli (« Messagerie Outlook ») est le même pour deux boîtes qu'on ne sait pas
+   * nommer : il ne prouve jamais qu'elles se remplacent.
+   */
   identifier: string;
+}
+
+/** Vraie adresse e-mail lisible, pas le nom de repli ni un nom d'ancienne connexion. */
+function provableAddress(raw: unknown, readable: string): string {
+  return typeof raw === 'string' && raw.includes('@') && raw.trim() === readable ? readable : '';
 }
 
 export function buildMailboxRows(
@@ -72,8 +81,9 @@ export function buildMailboxRows(
       },
       provider ?? 'imap',
     );
-    const address = readableConnectionName(mapping.email_address || account?.identifier || account?.name, provider ?? 'imap');
-    return { key: mapping.id, mapping, address, provider, view, status, identifier: address };
+    const rawAddress = mapping.email_address || account?.identifier || account?.name;
+    const address = readableConnectionName(rawAddress, provider ?? 'imap');
+    return { key: mapping.id, mapping, address, provider, view, status, identifier: provableAddress(rawAddress, address) };
   });
   return withoutSupersededRemoved(rows, 'email')
     .map((row, index) => ({ row, index }))
