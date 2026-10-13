@@ -292,7 +292,7 @@ test('lien collé : plusieurs éléments sans nom se distinguent par un rang, un
     },
   });
   assert.deepEqual(next.location.map((l) => l.name), [
-    'Lieu choisi sur LinkedIn (1)', 'Paris', 'Lieu choisi sur LinkedIn (2)', 'Lieu choisi sur LinkedIn (3)',
+    'Lieu 1 · choisi sur LinkedIn', 'Paris', 'Lieu 2 · choisi sur LinkedIn', 'Lieu 3 · choisi sur LinkedIn',
   ]);
   const sales = update({
     success: true,
@@ -355,8 +355,44 @@ test('lien collé : un nom réduit à un numéro est lisible pour tous les crit�
     warnings: [],
   }).update;
   assert.deepEqual(several.job_title.map((t) => t.name), [
-    'Intitulé choisi sur LinkedIn (1)', 'Data Analyst', 'Intitulé choisi sur LinkedIn (2)',
+    'Intitulé 1 · choisi sur LinkedIn', 'Data Analyst', 'Intitulé 2 · choisi sur LinkedIn',
   ]);
+});
+
+test('lien collé : plusieurs éléments sans nom portent leur rang devant « choisi », il survit à la coupure de la pastille', () => {
+  // Trois intitulés sans nom se lisaient « Intitulé choisi sur LinkedIn… » une fois coupés par la pastille : le rang en fin de libellé
+  // disparaissait. Le rang suit maintenant le mot du critère, pour les dix critères que l'adresse peut porter par leur numéro.
+  const keys = ['location', 'company', 'past_company', 'industry', 'school', 'job_title', 'past_job_title', 'function', 'company_location', 'groups'];
+  const filters = Object.fromEntries(keys.map((key) => [key, [90011, 90012, 90013].map((id) => ({ id: String(id), name: `n° ${id}` }))]));
+  const { update: next } = update({ success: true, kind: 'sales_navigator', keywords: null, filters, warnings: [] });
+  // La pastille coupe vers 20 caractères dans les Options avancées (mesure du rejeu du 13/10/2026).
+  const VISIBLE = 20;
+  for (const key of keys) {
+    const names = next[key].map((entry) => entry.name);
+    assert.equal(names.length, 3, key);
+    names.forEach((name, index) => {
+      const rank = String(index + 1);
+      assert.match(name, /^\S.* [1-3] · choisie? sur LinkedIn$/, `${key} : ${name}`);
+      assert.equal(name.replace(/\D/g, ''), rank, `${key} : seul le rang est un chiffre, jamais l'identifiant (${name})`);
+      assert.ok(name.indexOf(rank) < VISIBLE, `${key} : le rang est coupé (${name})`);
+      assertCleanText(name);
+    });
+    assert.equal(new Set(names.map((name) => name.slice(0, VISIBLE))).size, 3, `${key} : pastilles identiques une fois coupées (${names.join(' | ')})`);
+  }
+  // Même règle pour les adresses Classic (lieu, entreprise, secteur, école) : « Lieu 1 · choisi sur LinkedIn ».
+  const classic = update({
+    ...CLASSIC,
+    filters: { api: 'classic', location: [{ id: '1', name: 'Lieu n° 1' }, { id: '2', name: 'Lieu n° 2' }], company: [{ id: '3', name: 'Entreprise n° 3' }, { id: '4', name: 'Entreprise n° 4' }] },
+  }).update;
+  assert.deepEqual(classic.location.map((l) => l.name), ['Lieu 1 · choisi sur LinkedIn', 'Lieu 2 · choisi sur LinkedIn']);
+  assert.deepEqual(classic.company.map((c) => c.name), ['Entreprise 1 · choisie sur LinkedIn', 'Entreprise 2 · choisie sur LinkedIn']);
+  // Un seul élément sans nom garde son libellé, sans rang.
+  const one = update({ success: true, kind: 'sales_navigator', keywords: null, filters: { job_title: [{ id: '9', name: 'n° 9' }] }, warnings: [] }).update;
+  assert.equal(one.job_title[0].name, 'Intitulé choisi sur LinkedIn');
+  // Tout libellé neutre se range sous la forme « Mot choisi(e) sur LinkedIn » que la règle relit, repli compris.
+  for (const label of [...Object.values(copy.CHOSEN_ON_LINKEDIN), ...Object.values(urlFilters.CHOSEN_ON_LINKEDIN_SALES), urlFilters.CHOSEN_FALLBACK]) {
+    assert.match(label, /^.+ choisie? sur LinkedIn$/, label);
+  }
 });
 
 test('lien collé : un critère sans libellé propre prend « Critère choisi sur LinkedIn », le prototype n’est pas lu', () => {

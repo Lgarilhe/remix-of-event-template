@@ -27,6 +27,31 @@ export type AccountKind = 'linkedin' | 'email' | 'whatsapp';
 
 export type AccountOwnership = { mapped: 'org' | 'foreign' | 'none'; userId: string | null; kind: AccountKind | null };
 
+// Écritures d'un uuid que la base lit comme le même identifiant : majuscules, accolades, tirets absents ou posés après
+// chaque groupe de quatre chiffres (uuid_in de Postgres). Un espace autour ou un caractère faux est refusé par la base.
+const UUID_SPELLING = /^(\{)?((?:[0-9a-f]{4}-?){7}[0-9a-f]{4})(\})?$/i;
+
+/**
+ * Forme canonique (minuscules, tirets 8-4-4-4-12) d'un uuid, sous toutes les écritures que la base accepte. Une valeur que
+ * la base refuserait (espaces autour, longueur ou caractère faux) et tout ce qui n'est pas un uuid sont rendus tels quels :
+ * rien n'est « réparé », la valeur reste refusée là où la base la lit. Les comparaisons de chaînes sur une organisation ou
+ * un titulaire de compte passent par ici (`sameId`), sinon la même organisation écrite en majuscules passe pour une autre
+ * et une règle posée sur cette comparaison est sautée.
+ */
+export function canonicalUuid(value: string): string {
+  if (typeof value !== 'string') return value;
+  const match = UUID_SPELLING.exec(value);
+  if (!match || Boolean(match[1]) !== Boolean(match[3])) return value;
+  const hex = match[2].replaceAll('-', '').toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Vrai quand les deux valeurs désignent le même identifiant ; un identifiant vide ou absent ne ressemble à rien. */
+export function sameId(a: unknown, b: unknown): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string' || a === '' || b === '') return false;
+  return canonicalUuid(a) === canonicalUuid(b);
+}
+
 /**
  * Appartenance d'un account_id (LinkedIn, e-mail ou WhatsApp) à l'organisation
  * appelante. La clé du prestataire est partagée entre les organisations : sans ce
@@ -51,8 +76,8 @@ export async function lookupAccountOwnership(adminClient: any, organizationId: s
       throw new HttpError(500, 'Impossible de vérifier ce compte pour le moment');
     }
     const rows = (data ?? []) as Array<{ organization_id: string; user_id: string | null }>;
-    const own = rows.find((r) => r.organization_id === organizationId);
-    if (own) return { mapped: 'org', userId: own.user_id ?? null, kind };
+    const own = rows.find((r) => sameId(r.organization_id, organizationId));
+    if (own) return { mapped: 'org', userId: own.user_id == null ? null : canonicalUuid(own.user_id), kind };
     if (rows.length > 0) foreign = true;
   }
   return { mapped: foreign ? 'foreign' : 'none', userId: null, kind: null };
@@ -82,7 +107,7 @@ export async function assertAccountInOrg(
   }
   const ownership = await lookupAccountOwnership(adminClient, organizationId, id);
   if (ownership.mapped !== 'org') throw new HttpError(403, "Ce compte n'est pas rattaché à votre organisation");
-  if (ownership.kind === 'whatsapp' && ownership.userId !== callerUserId) {
+  if (ownership.kind === 'whatsapp' && !sameId(ownership.userId, callerUserId)) {
     throw new HttpError(403, 'Ce compte WhatsApp appartient à un autre membre');
   }
   return ownership;
@@ -101,7 +126,7 @@ export async function assertOwnLinkedInAccount(
   accountId: unknown,
 ): Promise<AccountOwnership> {
   const ownership = await assertAccountInOrg(adminClient, organizationId, callerUserId, accountId);
-  if (ownership.kind !== 'linkedin' || ownership.userId !== callerUserId) {
+  if (ownership.kind !== 'linkedin' || !sameId(ownership.userId, callerUserId)) {
     throw new HttpError(403, "Cette action n'est possible que depuis votre propre compte LinkedIn");
   }
   return ownership;
@@ -163,7 +188,7 @@ export async function assertCollaboratorUsesOwnAccount(
     const accountId = typeof raw === 'string' ? raw.trim() : '';
     if (!accountId || accountId.length > 512) continue; // malformé : l'action le refuse (400)
     const ownership = await lookupAccountOwnership(adminClient, organizationId, accountId);
-    if (ownership.mapped === 'org' && (ownership.userId === null || ownership.userId !== callerUserId)) {
+    if (ownership.mapped === 'org' && !sameId(ownership.userId, callerUserId)) {
       throw new HttpError(403, ACCOUNT_NOT_YOURS_MESSAGE, 'account_not_yours');
     }
   }
@@ -178,7 +203,7 @@ export async function assertCanManageAccount(
   ownership: AccountOwnership,
 ): Promise<void> {
   if (ownership.mapped !== 'org') return; // rien à protéger : aucun propriétaire
-  if (ownership.userId === userId) return;
+  if (sameId(ownership.userId, userId)) return;
   if (ownership.kind === 'whatsapp') throw new HttpError(403, 'Seul le propriétaire peut gérer ce compte WhatsApp');
   const role = await getCallerOrgRole(adminClient, organizationId, userId);
   if (role === 'owner' || role === 'admin') return;

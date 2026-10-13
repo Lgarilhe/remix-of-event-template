@@ -9,6 +9,12 @@ export interface MemberWhatsAppAccount {
   identifier: string | null;
   status: string;
   type: 'WHATSAPP';
+  /**
+   * Vrai pour la trace d'un « Déconnecter » voulu (list_whatsapp) : la carte ne l'affiche jamais. Absent ou faux :
+   * compte disparu chez le prestataire, qui reste une ligne « À reconnecter ». La carte lit ce champ par ce type
+   * (withoutDeliberateDisconnects) : renommé côté serveur, il ne compile plus.
+   */
+  removed_by_member?: boolean;
 }
 
 /** Personal account API: no browser-side account claiming or shared sender. */

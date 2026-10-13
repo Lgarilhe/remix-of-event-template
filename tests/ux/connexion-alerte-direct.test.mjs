@@ -14,6 +14,9 @@
  * - DEGRADED n'en lève aucun (état de carte, reprise automatique) ;
  * - LOCKED : « Compte LinkedIn restreint », « Voir », ni support ni adresse.
  *
+ * Une entrée que le serveur n'a pas pu lire (`unverified`) ne lève rien et n'efface pas l'état retenu avant elle
+ * (toastStepFor) : un prestataire instable ne fait pas lever deux fois la même alerte.
+ *
  * Lancer : node --test tests/ux/connexion-alerte-direct.test.mjs
  */
 import test from 'node:test';
@@ -132,10 +135,66 @@ test('compte restreint — « Compte LinkedIn restreint », la phrase de la cart
   assert.equal(toastOn('LOCKED', 'LOCKED', ACC('LOCKED')), null, 'déjà signalé');
 });
 
+/** Suite de listes reçues par le contexte : les alertes levées, comme l'effet du contexte les calcule. */
+function polls(accounts) {
+  let memory = null;
+  const raised = [];
+  for (const account of accounts) {
+    const step = toastMod.toastStepFor(memory, account);
+    memory = step.memory;
+    if (step.toast) raised.push(step.toast.title);
+  }
+  return raised;
+}
+const withoutMarker = ({ unverified: _unverified, ...rest }) => rest;
+
+test('une lecture ratée entre deux lectures PARTIAL ne fait pas lever deux fois la même alerte', () => {
+  const sequence = [
+    ACC('OK'),
+    ACC('PARTIAL'),
+    // Prestataire instable : l'entrée porte le dernier statut enregistré (« OK », le webhook n'est pas passé) et le marqueur
+    ACC('OK', { unverified: true }),
+    ACC('PARTIAL'),
+  ];
+  assert.deepEqual(polls(sequence), ['Connexion LinkedIn partielle'], 'une seule alerte');
+  // Preuve que la suite compte : lue comme une entrée normale, la lecture ratée ferait lever l'alerte une seconde fois
+  assert.deepEqual(polls(sequence.map(withoutMarker)), ['Connexion LinkedIn partielle', 'Connexion LinkedIn partielle']);
+});
+
+test('une entrée non lue ne lève rien, quel que soit son dernier statut, et ne change pas la mémoire', () => {
+  for (const stored of ['OK', 'DEGRADED', 'CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED']) {
+    // Compte qui tournait, puis lecture ratée : pas d'alerte, même si le dernier statut enregistré est une panne
+    const step = toastMod.toastStepFor({ accountId: 'acc_abc', health: 'connected' }, ACC(stored, { unverified: true, is_locked: stored === 'LOCKED' }));
+    assert.equal(step.toast, null, stored);
+    assert.deepEqual(step.memory, { accountId: 'acc_abc', health: 'connected' }, `${stored} : la mémoire reste celle de la dernière vraie lecture`);
+  }
+  // Sans mémoire : la mémoire reste vide, et la première vraie lecture ne lève rien non plus
+  assert.equal(toastMod.toastStepFor(null, ACC('OK', { unverified: true })).memory, null);
+  assert.deepEqual(polls([ACC('CREDENTIALS', { unverified: true }), ACC('CREDENTIALS')]), [], 'premier passage pour ce compte : pas d\'alerte');
+  // Une lecture ratée après une alerte ne la rejoue pas à la lecture suivante, et une vraie reprise puis une nouvelle panne alerte de nouveau
+  assert.deepEqual(polls([ACC('OK'), ACC('CREDENTIALS'), ACC('OK', { unverified: true }), ACC('CREDENTIALS')]), ['Camille Martin déconnecté']);
+  assert.deepEqual(polls([ACC('OK'), ACC('PARTIAL'), ACC('OK'), ACC('PARTIAL')]), ['Connexion LinkedIn partielle', 'Connexion LinkedIn partielle'], 'une vraie reprise réarme l\'alerte');
+});
+
+test('le pas de l\'alerte garde le comportement connu : premier passage, changement de compte, verrou', () => {
+  const first = toastMod.toastStepFor(null, ACC('PARTIAL'));
+  assert.equal(first.toast, null, 'premier passage');
+  assert.deepEqual(first.memory, { accountId: 'acc_abc', health: 'needs_reconnect' });
+  // Un autre compte (relié entre-temps) : on repart de lui, sans alerte
+  const other = toastMod.toastStepFor({ accountId: 'acc_ancien', health: 'connected' }, ACC('CREDENTIALS'));
+  assert.equal(other.toast, null);
+  assert.equal(other.memory.accountId, 'acc_abc');
+  // Verrou posé sur un compte actif : alerte « restreint »
+  const locked = toastMod.toastStepFor({ accountId: 'acc_abc', health: 'connected' }, ACC('OK', { is_locked: true }));
+  assert.equal(locked.toast.title, 'Compte LinkedIn restreint');
+  assert.equal(locked.memory.health, 'locked');
+});
+
 test('le contexte affiche ce que la fonction décide, sans seconde copie des statuts', () => {
   const ctx = stripComments(read('src/contexts/LinkedInAccountsContext.tsx'));
-  assert.match(ctx, /import \{ disconnectToastFor \} from '@\/components\/connections\/disconnectToast';/);
-  assert.match(ctx, /const alert = disconnectToastFor\(prev\.health, health, acc\);\s*if \(!alert\) return;/);
+  assert.match(ctx, /import \{ toastStepFor, type ToastMemory \} from '@\/components\/connections\/disconnectToast';/);
+  assert.match(ctx, /const step = toastStepFor\(prevHealthRef\.current, acc\);\s*prevHealthRef\.current = step\.memory;\s*const alert = step\.toast;\s*if \(!alert\) return;/);
+  assert.doesNotMatch(ctx, /classifyConnectionHealth|disconnectToastFor\(/, 'la classe de santé et le texte ne sont plus lus dans le contexte');
   assert.match(ctx, /toast\.error\(alert\.title, \{\s*description: alert\.description,\s*duration: 12000,\s*action: \{\s*label: alert\.actionLabel,/);
   assert.doesNotMatch(ctx, /ALERT\.|isCredentials|'CREDENTIALS'|'PARTIAL'|toUpperCase\(\)/, 'le texte et les statuts ne sont plus lus dans le contexte');
   const mod = stripComments(read('src/components/connections/disconnectToast.ts'));

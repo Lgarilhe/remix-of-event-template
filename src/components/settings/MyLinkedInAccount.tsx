@@ -12,7 +12,7 @@ import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useLinkedInQuotaStatus, rampStageLabel } from '@/hooks/useLinkedInQuotaStatus';
 import { useAuthReady } from '@/hooks/useAuthReady';
-import { resolveMyLinkedInStatus, classifyLinkedInStatus, healthOfState } from '@/lib/linkedinStatus';
+import { resolveMyLinkedInStatus, classifyLinkedInStatus } from '@/lib/linkedinStatus';
 import { CARD_COMMON, LINKEDIN_CARD, connectLabel, readableConnectionName } from '@/lib/connectionCopy';
 import {
   AccountRow,
@@ -26,7 +26,14 @@ import {
 } from '@/components/connections/ConnectionParts';
 import { useHostedConnect } from '@/components/connections/useHostedConnect';
 import { NativeConnectSlot } from '@/components/connections/NativeConnectSlot';
-import { offerLabelOf, sinceDate, viewOfAccount, viewOfHealth } from '@/components/connections/connectionView';
+import {
+  licenceWasRead,
+  linkedInAccountFacts,
+  offerLabelOf,
+  sinceDate,
+  viewOfAccount,
+  viewOfHealth,
+} from '@/components/connections/connectionView';
 import { cn } from '@/lib/utils';
 import { LinkedInSafetySettings, TimeZoneName } from './LinkedInSafetySettings';
 
@@ -78,15 +85,12 @@ export const MyLinkedInAccount = () => {
   const myMapping = li.mapping;
   const myAccount = li.account;
   // Compte que le prestataire n'a pas répondu : la liste ne porte alors que le dernier état connu et une offre
-  // par défaut. Il s'affiche « État à vérifier », jamais « Actif » ni une offre qui n'a pas été lue.
-  const unverified = myAccount?.unverified === true;
-  const view = viewOfAccount({
-    health: healthOfState(li.state),
-    // Compte relié absent d'une liste reçue : il n'existe plus chez le prestataire (même état que sur les deux autres cartes).
-    status: li.state === 'missing' ? 'DELETED' : myAccount?.status,
-    accountId: myMapping?.linkedin_account_id,
-    unverified,
-  }, 'linkedin');
+  // par défaut. Il s'affiche « État à vérifier », jamais « Actif » ni une offre qui n'a pas été lue. Un statut déjà
+  // connu par webhook (CREDENTIALS, ERROR, PARTIAL, LOCKED) arrive sans ce marqueur : la carte montre alors cet état
+  // et son geste. Un compte relié absent d'une liste reçue n'existe plus chez le prestataire (même état que les deux autres cartes).
+  const facts = linkedInAccountFacts(li);
+  const unverified = facts.unverified === true;
+  const view = viewOfAccount(facts, 'linkedin');
 
   // Compte en synchronisation ou en connexion : relecture de la liste toutes les 10 s
   // (deux minutes au plus) pour que « Actif » apparaisse sans recharger la page.
@@ -149,7 +153,8 @@ export const MyLinkedInAccount = () => {
   };
 
   const accountName = readableConnectionName(myAccount?.name || myMapping?.linkedin_account_name, 'linkedin');
-  const offer = unverified ? null : offerLabelOf(myAccount?.subscriptions);
+  // Jamais une offre qui n'a pas été lue : ni état non lu, ni identifiant d'ancien format, ni compte dont les contrats ne se lisent pas.
+  const offer = licenceWasRead(facts) ? offerLabelOf(myAccount?.subscriptions) : null;
   const since = sinceDate(myMapping?.linked_at);
 
   return (

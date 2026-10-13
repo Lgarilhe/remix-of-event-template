@@ -48,7 +48,9 @@ import { cn } from '@/lib/utils';
  * gestes (reconnecter, dissocier) : une seule boîte donne la même ligne compacte qu'avant,
  * et celle qui demande un geste passe devant (src/components/connections/mailboxRows.ts).
  * La liste du serveur est une requête partagée (useMemberEmailList), relue à chaque ouverture de la page.
- * Chaque geste d'une ligne nomme sa boîte (confirmation et nom accessible) : plusieurs boîtes portent les mêmes boutons.
+ * Chaque geste d'une ligne nomme sa boîte (confirmation, nom accessible, message de succès) : plusieurs boîtes portent les
+ * mêmes boutons. Deux boîtes de même nom reçoivent un rang (mailboxRows.ts). Une relecture ratée garde la dernière liste
+ * reçue à l'écran avec le même avis que la carte WhatsApp (CARD_COMMON.staleList), jamais en silence.
  */
 
 /** Les deux messageries qu'une personne peut connecter depuis cette carte. */
@@ -68,7 +70,7 @@ function MyMailbox({
   hosted: UseHostedConnect;
   /** Bouton d'actualisation placé dans la ligne quand elle est seule. */
   extraAction?: ReactNode;
-  onUnlink: (mapping: MailboxMapping) => void;
+  onUnlink: (mapping: MailboxMapping, address: string) => void;
   unlinkDisabled: boolean;
   onRetry: () => void;
   /** Lecture de la liste en cours : « Réessayer » attend la fin au lieu d'en relancer une seconde. */
@@ -77,6 +79,8 @@ function MyMailbox({
   const { view } = row;
   const myMapping = row.mapping;
   const myProvider = row.provider;
+  // Le nom accessible commence par le mot affiché : « Réessayer » d'une lecture ratée, « Actualiser » sinon.
+  const refreshLabel = view.actionLabel ?? CARD_COMMON.refresh;
   return (
     <div className="space-y-2">
       <AccountRow
@@ -108,11 +112,11 @@ function MyMailbox({
                 size="sm"
                 onClick={onRetry}
                 disabled={retryDisabled}
-                aria-label={EMAIL_CARD.retryAria(row.address)}
+                aria-label={EMAIL_CARD.rowRefreshAria(refreshLabel, row.address)}
                 className="max-sm:flex-1 max-md:h-11"
               >
                 <RefreshCw className={cn(retryDisabled && 'animate-spin')} aria-hidden="true" />
-                {view.actionLabel ?? CARD_COMMON.refresh}
+                {refreshLabel}
               </Button>
             )}
             {extraAction}
@@ -124,7 +128,7 @@ function MyMailbox({
               triggerAriaLabel={EMAIL_CARD.unlinkAria(row.address)}
               confirmLabel={CARD_COMMON.unlink}
               disabled={unlinkDisabled}
-              onConfirm={() => onUnlink(myMapping)}
+              onConfirm={() => onUnlink(myMapping, row.address)}
             />
           </>
         )}
@@ -154,6 +158,8 @@ export const MyEmailAccount = () => {
   // Relue à chaque ouverture de Connexions : l'état d'une boîte se lit au moment de l'afficher, comme LinkedIn et WhatsApp.
   const list = useMemberEmailList({ rereadOnMount: true });
   const listFailed = list.isError && !list.data;
+  // Relecture ratée alors qu'une liste est déjà là : les boîtes gardent leur dernier état, dit comme sur la carte WhatsApp.
+  const listStale = list.isRefetchError;
 
   const myMappings = useMemo<MailboxMapping[]>(
     () => (currentUserId ? mappings.filter((m) => m.user_id === currentUserId) : []),
@@ -167,8 +173,8 @@ export const MyEmailAccount = () => {
   const handleRefresh = () => {
     void Promise.all([list.refetch(), refetchMappings()]);
   };
-  const handleUnlink = (mapping: MailboxMapping) => {
-    unlinkAccount({ mappingId: mapping.id, expectedAccountId: mapping.email_account_id });
+  const handleUnlink = (mapping: MailboxMapping, address: string) => {
+    unlinkAccount({ mappingId: mapping.id, expectedAccountId: mapping.email_account_id, address });
   };
 
   const busy = list.isFetching;
@@ -244,6 +250,7 @@ export const MyEmailAccount = () => {
           // Une ligne par boîte reliée, celle qui demande un geste d'abord. Liste non reçue : chaque ligne
           // dit « État à vérifier » avec « Réessayer », jamais un état deviné.
           <div className="space-y-3">
+            {listStale && <p role="status" className="text-sm text-danger">{CARD_COMMON.staleList}</p>}
             {rows.map((row) => (
               <MyMailbox
                 key={row.key}

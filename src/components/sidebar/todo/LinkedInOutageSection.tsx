@@ -1,7 +1,11 @@
 /**
  * Panne LinkedIn, en tête d'À traiter, sans titre de section (§4.0, D41).
  * Rouge permis : c'est une panne (D8). Compte 1 dans le chiffre (ligne en gras).
- * Connexion partielle (PARTIAL) : même ligne, avec la phrase de la carte de connexion.
+ * Connexion partielle (PARTIAL) : même ligne, dont le sous-titre dit le geste en quelques mots. La ligne
+ * n'a qu'une ligne de sous-titre dans la barre de 256 px (SidebarRow le coupe) : 30 caractères au plus
+ * (mesuré dans la colonne de 195 px : 29 tiennent, 36 sont coupés), sinon le geste n'apparaît qu'au survol,
+ * que le toucher n'a pas. La phrase entière de la carte de
+ * connexion reste au bandeau du tableau de bord et à la notification.
  * Compte restreint : même ligne, sans « reconnecter » (se reconnecter n'y change rien).
  * Hors panne et en chargement : rien (une ligne grise apparaîtrait pour
  * disparaître presque toujours). Lecture des liaisons en échec : une ligne
@@ -9,15 +13,17 @@
  */
 import { AlertTriangle } from 'lucide-react';
 import { useLinkedInOutage } from '@/hooks/sidebar/useLinkedInOutage';
-import { causeReason } from '@/lib/connectionCopy';
 import type { LinkedInOutageKind } from '@/lib/linkedinStatus';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
 
-/** Titre et sous-titre de la ligne selon le genre de panne (connexion partielle : la phrase de la carte). */
+/**
+ * Titre et sous-titre de la ligne selon le genre de panne. Le sous-titre tient sur une ligne de la barre
+ * latérale : 30 caractères au plus (garde : tests/ux/etat-compte-alertes.test.mjs).
+ */
 const ROW_COPY: Record<LinkedInOutageKind, { title: string; sub: string }> = {
   reconnect: { title: 'Compte LinkedIn à reconnecter', sub: 'Les envois sont en pause' },
-  partial: { title: 'Connexion LinkedIn partielle', sub: causeReason('authentication_partial', 'linkedin') },
+  partial: { title: 'Connexion LinkedIn partielle', sub: 'Reconnectez le compte' },
   locked: { title: 'Compte LinkedIn restreint', sub: 'Les envois sont en pause' },
 };
 

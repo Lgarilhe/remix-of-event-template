@@ -69,7 +69,7 @@ test('WhatsApp actions check ownership before any provider call, and never act f
   for (const name of ['disconnect', 'get_account_details']) {
     assert.ok(caseBlock(name).indexOf('assertAccountInOrg(') >= 0, `${name} : contrôle d'appartenance`);
   }
-  assert.match(read('supabase/functions/unipile-accounts/ownership.ts'), /ownership\.kind === 'whatsapp' && ownership\.userId !== callerUserId/);
+  assert.match(read('supabase/functions/unipile-accounts/ownership.ts'), /ownership\.kind === 'whatsapp' && !sameId\(ownership\.userId, callerUserId\)/);
 });
 
 test('hosted WhatsApp: browser return addresses are never read, the old hosted actions are gone', () => {

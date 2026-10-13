@@ -105,11 +105,22 @@ export function outdatedLinkEntry(row: { linkedin_account_id: string; linkedin_a
 const KNOWN_STORED_STATUSES: readonly string[] = ['OK', 'CREDENTIALS', 'ERROR', 'DEGRADED', 'PARTIAL', 'LOCKED'];
 
 /**
+ * Stored statuses a webhook has already told us about: the account needs a person (reconnect), is interrupted, only
+ * partly working or locked. When the provider cannot be read, these are shown as they are, with their matching action.
+ */
+const TOLD_STORED_STATUSES: readonly string[] = ['CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED'];
+
+/**
  * Entry of a link whose account the provider did not answer for (rate limit, server error,
- * timeout): the last stored status, no picture, classic licence only. Not marked
- * reconnectable: nothing says the account needs it. `unverified: true` tells the screen that
- * neither the status nor the licences were read, so it shows "à vérifier" instead of "Actif"
- * and an invented licence.
+ * timeout): the last stored status, no picture, classic licence only.
+ *
+ * `unverified: true` tells the screen that neither the status nor the licences were read, so it
+ * shows "à vérifier" instead of "Actif" and an invented licence. It is set only when the stored
+ * status says nothing (OK, DEGRADED, absent or unknown): nothing then says the account needs a
+ * reconnection, so it is not marked reconnectable either. When the stored status is CREDENTIALS,
+ * ERROR, PARTIAL or LOCKED, a webhook already told the truth: the entry carries that status and no
+ * marker (the key is absent), and is reconnectable exactly as a read account in that status would be,
+ * so the card shows the real state with its action instead of "État à vérifier".
  */
 export function unverifiedLinkEntry(row: {
   linkedin_account_id: string;
@@ -120,6 +131,7 @@ export function unverifiedLinkEntry(row: {
   const stored = typeof row.account_status === 'string' && KNOWN_STORED_STATUSES.includes(row.account_status)
     ? row.account_status as KonektAccountStatus
     : 'OK';
+  const told = TOLD_STORED_STATUSES.includes(stored);
   return {
     id: row.linkedin_account_id,
     name,
@@ -129,9 +141,9 @@ export function unverifiedLinkEntry(row: {
     profile_picture_url: null,
     subscriptions: { classic: true, recruiter: false, sales_navigator: false },
     is_locked: stored === 'LOCKED',
-    reconnectable: false,
+    reconnectable: isReconnectable(stored),
     initial_sync_status: null,
-    unverified: true,
+    ...(told ? {} : { unverified: true }),
   };
 }
 

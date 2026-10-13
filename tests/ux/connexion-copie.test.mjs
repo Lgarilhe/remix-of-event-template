@@ -144,6 +144,37 @@ test('aucun texte montrable avec tiret cadratin, emoji, mot de remplissage ni tu
   }
 });
 
+test('cartes e-mail — noms accessibles et toast de dissociation : mêmes règles de texte, nom accessible qui commence par le mot affiché', () => {
+  const addresses = ['jean@exemple.fr', 'Messagerie Outlook (2)', 'Messagerie (1)'];
+  const labels = [copy.CARD_COMMON.retry, copy.CARD_COMMON.refresh, copy.ACTION_LABEL.refresh];
+  const texts = [];
+  for (const label of labels) for (const address of addresses) {
+    const aria = copy.EMAIL_CARD.rowRefreshAria(label, address);
+    assert.ok(aria.startsWith(label), `${label} : ${aria}`);
+    assert.ok(aria.includes(address), aria);
+    texts.push(aria);
+  }
+  for (const address of [...addresses, undefined, null, '']) texts.push(copy.EMAIL_CARD.unlinkedToast(address));
+  assert.equal(copy.EMAIL_CARD.unlinkedToast('Messagerie Outlook (2)'), 'Boîte Messagerie Outlook (2) dissociée');
+  assert.equal(copy.EMAIL_CARD.unlinkedToast(), 'Compte e-mail dissocié');
+  for (const text of texts) {
+    assert.doesNotMatch(text, VENDORS, text);
+    assert.doesNotMatch(text, DASHES, text);
+    assert.doesNotMatch(text, EMOJI, text);
+    assert.doesNotMatch(text, FILLER, text);
+    assert.doesNotMatch(text, TUTOIEMENT, text);
+  }
+});
+
+test('l\'avis de relecture ratée, ses boutons et la ligne d\'offre : mêmes règles de texte', () => {
+  for (const text of [copy.CARD_COMMON.staleList, copy.CARD_COMMON.retry, copy.CARD_COMMON.refresh, copy.CARD_COMMON.offer(copy.OFFER_LABEL.classic)]) {
+    assert.doesNotMatch(text, VENDORS, text);
+    assert.doesNotMatch(text, DASHES, text);
+    assert.doesNotMatch(text, FILLER, text);
+    assert.doesNotMatch(text, TUTOIEMENT, text);
+  }
+});
+
 test('les noms de canaux sont ceux que la personne connaît', () => {
   assert.deepEqual(Object.values(copy.PROVIDER_NAME), ['LinkedIn', 'WhatsApp', 'Gmail', 'Outlook', 'Messagerie']);
 });

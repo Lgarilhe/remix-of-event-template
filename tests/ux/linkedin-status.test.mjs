@@ -304,9 +304,9 @@ test('R6 — l\'état d\'un compte s\'écrit en mots de Konekt, jamais avec le c
 });
 
 test('R6 — contexte : liste « reçue » distincte de « tentée », liaisons relues, alerte limitée à mon compte', () => {
-  assert.match(context, /classifyConnectionHealth\(\{ status: acc\.status, isLocked: acc\.is_locked \}\)/);
-  // Le texte de l'alerte vient de disconnectToast.ts, qui lit le nom par readableConnectionName
-  assert.match(context, /disconnectToastFor\(prev\.health, health, acc\)/);
+  // La classe de santé et le texte de l'alerte viennent de disconnectToast.ts (toastStepFor), qui lit le nom par readableConnectionName
+  assert.match(read('src/components/connections/disconnectToast.ts'), /classifyConnectionHealth\(\{ status: account\.status, isLocked: account\.is_locked \}\)/);
+  assert.match(context, /toastStepFor\(prevHealthRef\.current, acc\)/);
   assert.match(read('src/components/connections/disconnectToast.ts'), /readableConnectionName\(account\.name, 'linkedin'\)/, 'le nom du compte dans l\'alerte ne laisse pas passer un état encodé');
   assert.match(context, /getUserLinkedAccountId/);
   assert.match(context, /ready: isReady && loadedOk/);

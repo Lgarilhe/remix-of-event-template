@@ -133,8 +133,19 @@ export function chosenOnLinkedinLabel(key: string): string {
 }
 
 /**
- * Remplace ces noms par « Lieu choisi sur LinkedIn » (selon le critère), avec un rang quand il y en a
- * plusieurs. Un nom lu dans l'adresse (Sales Navigator) n'est jamais touché.
+ * Libellé d'un élément sans nom quand plusieurs du même critère en manquent : le rang suit le mot du critère
+ * (« Intitulé 1 · choisi sur LinkedIn »). La pastille coupe le texte par une ellipse ; un rang en fin de libellé
+ * disparaissait et les pastilles se lisaient toutes pareil. Le libellé du critère s'écrit « Mot choisi sur
+ * LinkedIn » (ou « choisie »), le mot et l'accord sont relus dans le libellé lui-même.
+ */
+function rankedLabel(label: string, rank: number): string {
+  const parts = /^(.+?) (choisie?) sur LinkedIn$/.exec(label);
+  return parts ? `${parts[1]} ${rank} · ${parts[2]} sur LinkedIn` : `${label} ${rank}`;
+}
+
+/**
+ * Remplace ces noms par « Lieu choisi sur LinkedIn » (selon le critère), avec un rang placé devant « choisi » quand
+ * il y en a plusieurs. Un nom lu dans l'adresse (Sales Navigator) n'est jamais touché.
  */
 function readableNames<T extends { name: string }>(list: T[], key: string): T[] {
   const label = chosenOnLinkedinLabel(key);
@@ -143,7 +154,7 @@ function readableNames<T extends { name: string }>(list: T[], key: string): T[] 
   return list.map((entry) => {
     if (!NUMBER_ONLY_NAME.test(entry.name)) return entry;
     rank += 1;
-    return { ...entry, name: numbered > 1 ? `${label} (${rank})` : label };
+    return { ...entry, name: numbered > 1 ? rankedLabel(label, rank) : label };
   });
 }
 

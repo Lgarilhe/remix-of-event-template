@@ -17,6 +17,13 @@
  * journal du faux prestataire et par linkedin_action_log, compte par compte.
  * La liste des comptes (action list) reste visible de toute l'équipe : le test ne garde que l'absence de contenu de conversation.
  *
+ * Écriture de l'uuid de l'organisation (revue de sécurité, 13/10/2026, problème 3 de la deuxième série) : la base lit les
+ * majuscules, les accolades et l'absence de tirets comme le même uuid ; la règle du collaborateur et le rattachement d'un compte
+ * ne doivent pas prendre l'organisation, ainsi écrite, pour une autre. Une écriture que la base refuse (espaces autour) reste refusée.
+ *
+ * Dernier état connu d'un compte que le prestataire ne renseigne pas (revue de l'écran, 13/10/2026) : un état que le webhook a déjà
+ * dit (à reconnecter, en panne, partiel, verrouillé) est rendu tel quel, sans le marqueur « à vérifier ».
+ *
  * Marque de déconnexion WhatsApp (revue de l'écran, 12/10/2026) : list_whatsapp rend `removed_by_member` vrai pour la pierre
  * tombale d'un « Déconnecter », faux pour un compte vivant et pour un compte disparu chez le prestataire (lecture ou webhook).
  *
@@ -300,6 +307,145 @@ test.describe('Lecture des comptes de l’équipe', () => {
     expect(limited!.body.errorType).toBe('RATE_LIMIT');
     expect(limited!.body.error).toBe('Trop de demandes. Patientez quelques secondes.');
     expect(JSON.stringify(limited!.body)).not.toMatch(/rate limit/i);
+  });
+});
+
+const mixedCase = (id: string) => id.split('').map((c, i) => (i % 2 ? c.toUpperCase() : c)).join('');
+
+/** Écritures du même uuid que la base accepte, sans la forme canonique (un uuid sans lettre n'a pas de majuscules : écartées). */
+function orgSpellings(orgId: string): Array<[string, string]> {
+  const all: Array<[string, string]> = [
+    ['majuscules', orgId.toUpperCase()],
+    ['casse mêlée', mixedCase(orgId)],
+    ['accolades', `{${orgId}}`],
+    ['sans tirets', orgId.replaceAll('-', '')],
+  ];
+  return all.filter(([, value]) => value !== orgId);
+}
+
+/** Écritures que la base refuse (22P02) : jamais lues comme l'organisation. */
+const orgPadded = (orgId: string): Array<[string, string]> => [
+  ['espace avant', ` ${orgId}`],
+  ['espace après', `${orgId} `],
+  ['espaces et tabulation', `  ${orgId}\t`],
+];
+
+/** Un échantillon de chaque famille d'actions, assez court pour tenir sous le plafond de 60 requêtes par minute de unipile-search. */
+const SPELLING_SAMPLE: Read[] = [
+  ...READS.filter((r) => r.fn === 'unipile-accounts'),
+  { fn: 'unipile-search', action: 'get_chats' },
+  { fn: 'unipile-search', action: 'get_parameters', extra: { type: 'PROJECT', service: 'RECRUITER' } },
+  { fn: 'unipile-search', action: 'send_message', extra: { chat_id: 'CLASSIC_1-CHAT', text: 'Bonjour' } },
+  { fn: 'unipile-accounts', action: 'une_action_ajoutee_plus_tard' },
+  { fn: 'unipile-accounts', action: 'disconnect' },
+];
+
+const readIn = (t: Team, orgId: string, token: string, r: Read, accountId: string) =>
+  callFunction(r.fn, token, { action: r.action, organization_id: orgId, account_id: accountId, ...r.extra });
+
+test.describe('Uuid de l’organisation écrit autrement', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test('@critical un collaborateur reste refusé sur le compte d’un collègue quelle que soit l’écriture de l’uuid de l’organisation, sans appel au prestataire ni unité du plafond', async () => {
+    const t = await team();
+    const token = await tokenOf(t.lea);
+    const callsBefore = (await mockCalls(t.accCamille)).length;
+    const quotaBefore = await quotaRows(t.accCamille);
+    const spellings = orgSpellings(t.org.orgId);
+    expect(spellings.length, 'au moins les accolades et l’absence de tirets').toBeGreaterThanOrEqual(2);
+    for (const [label, orgId] of spellings) {
+      // Cas de la revue : la reconnexion désigne le compte du collègue par reconnect_account_id seul.
+      for (const body of [
+        { action: 'connect_cookie', access_token: 'AQED', reconnect_account_id: t.accCamille },
+        { action: 'connection_start', provider: 'linkedin', reconnect_account_id: t.accCamille },
+      ]) {
+        const res = await callFunction('unipile-accounts', token, { organization_id: orgId, ...body });
+        expectRefused({ fn: 'unipile-accounts', action: body.action }, res, `${label} Léa sur Camille`);
+      }
+      for (const r of SPELLING_SAMPLE) expectRefused(r, await readIn(t, orgId, token, r, t.accCamille), `${label} Léa sur Camille`);
+    }
+    expect((await mockCalls(t.accCamille)).length, 'aucun appel pour le compte de Camille').toBe(callsBefore);
+    expect(await quotaRows(t.accCamille), 'aucune unité du plafond LinkedIn de Camille consommée').toBe(quotaBefore);
+  });
+
+  test('@critical un collaborateur se sert du compte qu’il a relié, un administrateur de celui d’un collègue, quelle que soit l’écriture de l’uuid de l’organisation', async () => {
+    const t = await team();
+    const leaToken = await tokenOf(t.lea);
+    const hugoToken = await tokenOf(t.hugo);
+    for (const [label, orgId] of orgSpellings(t.org.orgId)) {
+      for (const r of READS.filter((x) => x.fn === 'unipile-accounts' || x.action === 'get_chats')) {
+        const before = (await mockCalls(t.accLea)).length;
+        expectServed(r, await readIn(t, orgId, leaToken, r, t.accLea), `${label} Léa sur Léa`);
+        expect((await mockCalls(t.accLea)).length, `${label} ${r.action} : le prestataire est appelé pour son propre compte`).toBeGreaterThan(before);
+        const hugoBefore = (await mockCalls(t.accCamille)).length;
+        expectServed(r, await readIn(t, orgId, hugoToken, r, t.accCamille), `${label} Hugo (administrateur) sur Camille`);
+        expect((await mockCalls(t.accCamille)).length, `${label} ${r.action} : le prestataire est appelé`).toBeGreaterThan(hugoBefore);
+      }
+    }
+  });
+
+  test('un uuid d’organisation avec des espaces autour est refusé comme avant, pour un collaborateur comme pour un administrateur, sans rien lire ni écrire', async () => {
+    const t = await team();
+    const sample: Read[] = [
+      { fn: 'unipile-accounts', action: 'inmail_balance' },
+      { fn: 'unipile-accounts', action: 'une_action_ajoutee_plus_tard' },
+      { fn: 'unipile-search', action: 'get_chats' },
+    ];
+    for (const user of [t.lea, t.hugo]) {
+      const token = await tokenOf(user);
+      for (const [label, orgId] of orgPadded(t.org.orgId)) {
+        for (const r of sample) {
+          for (const accountId of [t.accCamille, user === t.lea ? t.accLea : t.accHugo]) {
+            const res = await readIn(t, orgId, token, r, accountId);
+            const where = `${label} ${user.email} ${r.fn}.${r.action} : ${JSON.stringify(res.body)}`;
+            expect(res.status, where).toBe(403);
+            expect(res.body.success === true, where).toBe(false);
+            expect(res.body.error_code, where).not.toBe('account_not_yours');
+            expect(JSON.stringify(res.body), where).not.toMatch(/unipile/i);
+          }
+        }
+        const reconnect = await callFunction('unipile-accounts', token, { organization_id: orgId, action: 'connect_cookie', access_token: 'AQED', reconnect_account_id: t.accCamille });
+        expect(reconnect.status, `${label} connect_cookie : ${JSON.stringify(reconnect.body)}`).toBe(403);
+      }
+    }
+    for (const accountId of [t.accCamille, t.accLea, t.accHugo]) expect(await mockCalls(accountId), `aucun appel pour ${accountId}`).toEqual([]);
+  });
+});
+
+test.describe('Liste des comptes : compte que le prestataire ne renseigne pas', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test('@critical le dernier état connu est rendu tel quel quand le webhook a déjà dit la vérité (sans « à vérifier »), les états sans gravité gardent le marqueur', async () => {
+    const org = await createOrg('agency', 'E2E liste non lue');
+    const stored = ['CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED', 'DEGRADED'] as const;
+    const members: Array<readonly [(typeof stored)[number], TestUser]> = [];
+    for (const status of stored) members.push([status, await addMember(org.orgId, 'member', `nl${status.toLowerCase()}`)] as const);
+    cleanups.push(() => deleteOrg(org, members.map(([, member]) => member)));
+    const readable = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_nl${rand()}`);
+    const accounts: Record<string, string> = {};
+    for (const [status, member] of members) {
+      accounts[status] = await seedLinkedInAccount(org.orgId, member.userId, `acc_nl${status.toLowerCase()}${rand()}`);
+      const { error } = await admin().from('member_linkedin_accounts').update({ account_status: status }).eq('linkedin_account_id', accounts[status]);
+      if (error) throw new Error(error.message);
+      // Le prestataire répond « trop de requêtes » pour la lecture de ce compte : il n'est pas lu, son dernier état est montré.
+      await setMockMode(accounts[status], { error: { ops: ['getAccount'], methods: ['GET'], preset: 'rate_limited' } });
+    }
+
+    const res = await callFunction('unipile-accounts', await tokenOf(org.owner), { action: 'list', organization_id: org.orgId });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.success).toBe(true);
+    const byId = Object.fromEntries((res.body.accounts as Array<Record<string, unknown>>).map((a) => [String(a.id), a]));
+    for (const status of ['CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED']) {
+      const entry = byId[accounts[status]];
+      expect(entry, status).toBeTruthy();
+      expect(entry.status, status).toBe(status);
+      expect('unverified' in entry, `${status} : le webhook a dit la vérité, pas de marqueur « à vérifier » : ${JSON.stringify(entry)}`).toBe(false);
+      expect(entry.reconnectable, `${status} : l’action Reconnecter suit l’état`).toBe(status !== 'LOCKED');
+    }
+    expect(byId[accounts.DEGRADED], JSON.stringify(byId[accounts.DEGRADED])).toMatchObject({ status: 'DEGRADED', unverified: true, reconnectable: false });
+    expect(byId[readable], 'un compte lu ne porte pas le marqueur').toMatchObject({ status: 'OK' });
+    expect('unverified' in byId[readable]).toBe(false);
+    expect(JSON.stringify(res.body)).not.toMatch(/unipile/i);
   });
 });
 

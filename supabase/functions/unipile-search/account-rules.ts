@@ -21,6 +21,29 @@
  * collaborateur : leur appelant a déjà borné le compte. Règle à confirmer par le propriétaire du produit.
  */
 
+// Écritures d'un uuid que la base lit comme le même identifiant : majuscules, accolades, tirets absents ou posés après
+// chaque groupe de quatre chiffres (uuid_in de Postgres). Un espace autour ou un caractère faux est refusé par la base.
+const UUID_SPELLING = /^(\{)?((?:[0-9a-f]{4}-?){7}[0-9a-f]{4})(\})?$/i;
+
+/**
+ * Forme canonique (minuscules, tirets 8-4-4-4-12) d'un uuid, sous toutes les écritures que la base accepte. Une valeur que
+ * la base refuserait et tout ce qui n'est pas un uuid sont rendus tels quels. Copie exacte de `canonicalUuid` de
+ * `unipile-accounts/ownership.ts` (une fonction ne dépend pas du dossier d'une autre) : un test garde les deux identiques.
+ */
+export function canonicalUuid(value: string): string {
+  if (typeof value !== 'string') return value;
+  const match = UUID_SPELLING.exec(value);
+  if (!match || Boolean(match[1]) !== Boolean(match[3])) return value;
+  const hex = match[2].replaceAll('-', '').toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Vrai quand les deux valeurs désignent le même identifiant ; un identifiant vide ou absent ne ressemble à rien. */
+export function sameId(a: unknown, b: unknown): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string' || a === '' || b === '') return false;
+  return canonicalUuid(a) === canonicalUuid(b);
+}
+
 /** Actions qui écrivent au nom du compte LinkedIn. */
 export const OWNER_ONLY_ACTIONS: ReadonlySet<string> = new Set(['send_message', 'withdraw_invitation']);
 
@@ -66,7 +89,7 @@ export function ownerOnlyRefusal(action: string, context: OwnerRuleContext): Ref
       }
       : null;
   }
-  if (context.accountOwnerId === context.userId) return null;
+  if (sameId(context.accountOwnerId, context.userId)) return null;
   return {
     status: 403,
     body: {
@@ -86,7 +109,7 @@ export function ownerOnlyRefusal(action: string, context: OwnerRuleContext): Ref
 export function collaboratorOwnAccountRefusal(context: RoleRuleContext): Refusal | null {
   if (context.isInternal) return null;
   if (!isCollaboratorRole(context.role)) return null;
-  if (context.userId !== '' && context.accountOwnerId === context.userId) return null;
+  if (sameId(context.accountOwnerId, context.userId)) return null;
   return {
     status: 403,
     body: { success: false, errorType: 'ACCOUNT_NOT_YOURS', error: ACCOUNT_NOT_YOURS_MESSAGE },

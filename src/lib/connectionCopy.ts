@@ -937,11 +937,18 @@ export const EMAIL_CARD = {
   /** La boîte visée est nommée : une personne qui en a plusieurs sait laquelle elle dissocie. */
   unlinkTitle: (address: string) => `Dissocier la boîte ${address} ?`,
   unlinkBody: "L'adresse ne sera plus rattachée à votre profil Konekt. Votre boîte e-mail et ses messages ne sont pas touchés, et vous pourrez la relier de nouveau.",
-  unlinkedToast: (address: string) => `Boîte ${address} dissociée`,
+  /** Succès d'une dissociation : la boîte est nommée quand on la connaît, sinon la phrase générale. */
+  unlinkedToast: (address?: string | null) => (address ? `Boîte ${address} dissociée` : 'Compte e-mail dissocié'),
   /** Noms accessibles des gestes d'une ligne : identiques d'une boîte à l'autre sans l'adresse. */
   unlinkAria: (address: string) => `Dissocier la boîte ${address}`,
   reconnectAria: (address: string) => `Reconnecter la boîte ${address}`,
-  retryAria: (address: string) => `Réessayer de lire la boîte ${address}`,
+  /**
+   * Le nom accessible du bouton qui relit l'état d'une boîte commence par le mot affiché sur le bouton
+   * (« Réessayer » d'une lecture ratée, « Actualiser » sinon) : la commande vocale reste juste.
+   */
+  rowRefreshAria: (label: string, address: string) => (
+    label === CARD_COMMON.retry ? `Réessayer de lire la boîte ${address}` : `${label} l'état de la boîte ${address}`
+  ),
   connectedToast: 'Votre compte e-mail est connecté.',
 } as const;
 

@@ -35,9 +35,11 @@ import {
   assertCanManageAccount,
   assertCollaboratorUsesOwnAccount,
   assertOwnLinkedInAccount,
+  canonicalUuid,
   getCallerOrgRole,
   HttpError,
   lookupAccountOwnership,
+  sameId,
 } from "./ownership.ts";
 import {
   cancelConnection,
@@ -137,6 +139,16 @@ type WhatsAppMappingRow = {
   removed_by_member_at?: string | null;
 };
 
+/**
+ * Vrai quand une écriture échoue parce qu'une colonne n'existe pas (encore) : PGRST204 (PostgREST, cache de schéma),
+ * 42703 (Postgres) ou un message qui nomme la colonne. Les fonctions et les migrations se déploient chacune de leur côté
+ * (deux workflows indépendants) : le code peut précéder sa colonne.
+ */
+function isMissingColumnError(error: unknown, column: string): boolean {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  return code === 'PGRST204' || code === '42703' || (typeof message === 'string' && message.includes(column));
+}
+
 type LinkedInLinkRow = {
   id: string;
   user_id: string;
@@ -213,7 +225,10 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
 
     const user = { id: auth.userId as string };
 
-    let organizationId = typeof requestedOrgId === 'string' ? requestedOrgId : null;
+    // L'uuid de l'organisation est lu sous une seule forme (minuscules, tirets) avant tout usage : la base accepte aussi les
+    // majuscules, les accolades et l'absence de tirets, et les comparaisons de chaînes plus bas (rattachement d'un compte,
+    // règle du collaborateur) ne doivent pas prendre la même organisation, écrite autrement, pour une autre.
+    let organizationId = typeof requestedOrgId === 'string' ? canonicalUuid(requestedOrgId) : null;
 
     if (!organizationId) {
       const { data: profile, error: profileError } = await adminClient
@@ -226,7 +241,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         throw new HttpError(400, 'Impossible de déterminer l’organisation active');
       }
 
-      organizationId = profile?.active_organization_id ?? null;
+      organizationId = typeof profile?.active_organization_id === 'string' ? canonicalUuid(profile.active_organization_id) : null;
     }
 
     if (!organizationId) {
@@ -589,9 +604,18 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         // `removed_by_member_at` distingue cette pierre tombale (geste voulu) d'un compte disparu chez le
         // prestataire, que le webhook et « list_whatsapp » marquent aussi DELETED sans le poser.
         const removedAt = new Date().toISOString();
-        const { error: updateError } = await adminClient.from('member_whatsapp_accounts')
+        let { error: updateError } = await adminClient.from('member_whatsapp_accounts')
           .update({ account_status: 'DELETED', removed_by_member_at: removedAt, updated_at: removedAt })
           .eq('id', mapping.id).eq('organization_id', organizationId).eq('user_id', user.id);
+        if (updateError && isMissingColumnError(updateError, 'removed_by_member_at')) {
+          // Fonction déployée avant la migration 20261012222732 (deux workflows indépendants) : le compte est déjà supprimé
+          // chez le prestataire, le membre ne doit pas recevoir une erreur pour un geste réussi. La pierre tombale est posée
+          // sans la marque ; tant que la colonne manque, la carte la montre « À reconnecter » au lieu de la masquer.
+          console.warn('[unipile-accounts] disconnect_whatsapp: removed_by_member_at missing (migration 20261012222732 not applied yet), tombstone written without the mark', { code: updateError.code });
+          ({ error: updateError } = await adminClient.from('member_whatsapp_accounts')
+            .update({ account_status: 'DELETED', updated_at: removedAt })
+            .eq('id', mapping.id).eq('organization_id', organizationId).eq('user_id', user.id));
+        }
         if (updateError) throw new HttpError(500, 'La connexion a été retirée mais son état reste à actualiser');
         return json({ success: true });
       }
@@ -646,10 +670,10 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         // membre de l'organisation.
         const accountId = assertV2AccountId(typeof params.account_id === 'string' ? params.account_id.trim() : params.account_id);
         const targetUserId = typeof params.user_id === 'string' && params.user_id.trim()
-          ? params.user_id.trim()
+          ? canonicalUuid(params.user_id.trim())
           : user.id;
 
-        if (targetUserId !== user.id) {
+        if (!sameId(targetUserId, user.id)) {
           await assertCanManageAccount(adminClient, organizationId, user.id, { mapped: 'org', userId: targetUserId, kind: 'linkedin' });
           if (!(await getCallerOrgRole(adminClient, organizationId, targetUserId))) {
             throw new HttpError(404, "Ce membre ne fait pas partie de l'organisation");
@@ -660,7 +684,7 @@ export async function handleRequest(req: Request, deps: HandlerDeps): Promise<Re
         if (ownership.mapped === 'foreign') {
           throw new HttpError(403, 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail');
         }
-        if (ownership.mapped === 'org' && ownership.userId !== targetUserId) {
+        if (ownership.mapped === 'org' && !sameId(ownership.userId, targetUserId)) {
           throw new HttpError(409, 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation');
         }
 

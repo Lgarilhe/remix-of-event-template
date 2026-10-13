@@ -138,7 +138,8 @@ test('F-06 — Journal, e-mail et extension : une lecture ratée s’affiche en 
 // ---------------------------------------------------------------- F-07
 test('F-07 — état du compte LinkedIn : libellé et teinte tirés du même état', () => {
   assert.doesNotMatch(src.linkedin, /rawStatus/, 'le statut de la liaison ne décide plus du libellé');
-  assert.match(src.linkedin, /const view = viewOfAccount\(\{\s*health: healthOfState\(li\.state\),/);
+  assert.match(src.linkedin, /const facts = linkedInAccountFacts\(li\);\s*const unverified = facts\.unverified === true;\s*const view = viewOfAccount\(facts, 'linkedin'\);/);
+  assert.match(read('src/components/connections/connectionView.ts'), /health: healthOfState\(li\.state\),/, 'la classe de santé vient de l\'état lu');
   const row = between(src.linkedin, ') : myMapping && myAccount ? (', ') : myMapping && !myAccount ? (');
   assert.match(row, /<AccountRow[\s\S]*?view=\{view\}/);
   // Mot et pastille de la même classe de santé, dans la pièce commune
@@ -345,7 +346,7 @@ test('F-21 — dissocier l’adresse e-mail passe par une confirmation', () => {
   const calls = [...src.email.matchAll(/handleUnlink/g)];
   assert.equal(calls.length, 2, 'définition et un seul appel');
   // Une confirmation par boîte reliée : la ligne reçoit l'état « en cours » et la fonction de dissociation de la carte.
-  assert.match(src.email, /<RemovalDialog[\s\S]*?disabled=\{unlinkDisabled\}[\s\S]*?onConfirm=\{\(\) => onUnlink\(myMapping\)\}/);
+  assert.match(src.email, /<RemovalDialog[\s\S]*?disabled=\{unlinkDisabled\}[\s\S]*?onConfirm=\{\(\) => onUnlink\(myMapping, row\.address\)\}/);
   assert.match(src.email, /onUnlink=\{handleUnlink\}\s+unlinkDisabled=\{isUnlinking\}/);
   assert.match(src.parts, /<AlertDialogAction variant="destructive" className="max-md:h-11" onClick=\{onConfirm\}>/);
 });

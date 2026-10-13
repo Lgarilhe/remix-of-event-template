@@ -329,19 +329,19 @@ function BatchesList({ preview, busy, onRollback }: { preview: Preview; busy: bo
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Badge variant={batch.rolledBack ? 'muted' : 'info'}>{batch.rolledBack ? BATCHES.rolledBack : BATCHES.applied}</Badge>
-                {/* Refusé (lot plus récent à annuler d'abord, ou action en cours) : le geste de retrait est déjà gris
-                    à l'état actif, donc estompé ici et sans changement au survol, pour ne pas ressembler à un bouton actif. */}
+                {/* Le geste de retrait est déjà gris à l'état actif et le désactivé n'a jamais d'opacité : un lot dont un
+                    lot plus récent n'est pas annulé le dit dans son libellé (« Annulez d'abord le lot plus récent »). */}
                 {(state === 'available' || state === 'blocked') && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="min-h-11 text-muted-foreground hover:text-danger disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground md:min-h-0"
-                    aria-label={BATCHES.rollbackAria(batch.batchId)}
+                    className="min-h-11 text-muted-foreground hover:text-danger disabled:hover:bg-transparent disabled:hover:text-muted-foreground md:min-h-0"
+                    aria-label={state === 'blocked' ? BATCHES.rollbackBlockedAria(batch.batchId) : BATCHES.rollbackAria(batch.batchId)}
                     aria-describedby={state === 'blocked' ? `batch-blocked-${batch.batchId}` : undefined}
                     disabled={busy || state === 'blocked'}
                     onClick={() => onRollback(batch.batchId)}
                   >
-                    {BATCHES.rollbackButton}
+                    {state === 'blocked' ? BATCHES.rollbackBlockedButton : BATCHES.rollbackButton}
                   </Button>
                 )}
               </div>

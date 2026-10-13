@@ -328,7 +328,7 @@ test('l\'ancien gestionnaire n\'est plus un écran : il ne garde que la lecture 
 test('l\'alerte de déconnexion nomme le compte sans état encodé et sépare restreint de déconnecté', () => {
   // La décision et les textes sont dans disconnectToast.ts (testé par connexion-alerte-direct.test.mjs) ; le contexte les affiche
   const ctx = code('src/contexts/LinkedInAccountsContext.tsx');
-  assert.match(ctx, /disconnectToastFor\(prev\.health, health, acc\)/);
+  assert.match(ctx, /toastStepFor\(prevHealthRef\.current, acc\)/);
   assert.match(ctx, /label: alert\.actionLabel/);
   const toast = code('src/components/connections/disconnectToast.ts');
   assert.match(toast, /readableConnectionName\(account\.name, 'linkedin'\)/);

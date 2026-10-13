@@ -7,6 +7,7 @@ import { deepStrictEqual, ok, strictEqual } from 'node:assert';
 import { FakeDb } from '../_shared/connection-claim.testing.ts';
 import { emptyResponse, fixtures, type MockHandler, type RecordedRequest, withMockTransport } from '../_shared/unipile/testing.ts';
 import { handleRequest } from './handler.ts';
+import { postgresUuidDb } from './postgres-uuid.testing.ts';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const OTHER_ORG = '22222222-2222-4222-8222-222222222222';
@@ -14,6 +15,7 @@ const USER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PEER = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const STRANGER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const MAPPING = '91111111-1111-4111-8111-111111111111';
+const ACCOUNT_NOT_YOURS = "Ce compte est relié par un autre membre de l'organisation. Vous ne pouvez utiliser que votre propre compte.";
 
 type Route = ((request: RecordedRequest) => ReturnType<MockHandler>) | { status?: number; body?: unknown };
 
@@ -390,6 +392,163 @@ Deno.test('disconnect_whatsapp : un ancien identifiant n appelle pas le service,
   });
 });
 
+/**
+ * Base dont une colonne n'existe pas encore (migration pas appliquée) : comme PostgREST, une écriture qui nomme la colonne
+ * répond une erreur et n'applique rien ; une lecture `select('*')` ne la voit simplement pas.
+ */
+function withoutColumn(
+  db: FakeDb,
+  table: string,
+  column: string,
+  error: { code?: string; message?: string } = { code: 'PGRST204', message: `Could not find the '${column}' column of '${table}' in the schema cache` },
+  /** Quand elle est donnée, toute écriture qui ne nomme pas la colonne échoue avec cette erreur (la nouvelle tentative aussi). */
+  otherWrites?: { code?: string; message?: string },
+): FakeDb {
+  const from = db.from.bind(db);
+  // deno-lint-ignore no-explicit-any
+  (db as any).from = (name: string) => {
+    const query = from(name);
+    if (name !== table) return query;
+    const update = query.update.bind(query);
+    query.update = (patch: Record<string, unknown>) => {
+      if (column in patch) db.failOn(table, 'update', error);
+      else if (otherWrites) db.failOn(table, 'update', otherWrites);
+      return update(patch);
+    };
+    return query;
+  };
+  return db;
+}
+
+/** Avertissements de la console pendant `run` (le texte de journal n'est jamais rendu à l'écran). */
+async function withWarnings<T>(run: (lines: string[]) => Promise<T>): Promise<T> {
+  const original = console.warn;
+  const lines: string[] = [];
+  console.warn = (...args: unknown[]) => { lines.push(args.map((a) => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')); };
+  try {
+    return await run(lines);
+  } finally {
+    console.warn = original;
+  }
+}
+
+const whatsappUpdates = (db: FakeDb) => db.calls.filter((c) => c.table === 'member_whatsapp_accounts' && c.op === 'update');
+
+Deno.test('disconnect_whatsapp : la migration de removed_by_member_at pas encore appliquée ne casse ni le geste ni la lecture, l ordre de déploiement est indifférent', async () => {
+  await withEnv(ENV, async () => {
+    const column = 'removed_by_member_at';
+    type Failure = { code?: string; message?: string };
+    // La colonne existe (migration appliquée d'abord) ou manque (fonction déployée d'abord) : même résultat pour le membre.
+    const scenarios: Array<[string, Failure | null]> = [
+      ['colonne présente', null],
+      ['colonne absente, PGRST204 (PostgREST)', { code: 'PGRST204', message: `Could not find the '${column}' column of 'member_whatsapp_accounts' in the schema cache` }],
+      ['colonne absente, 42703 (Postgres)', { code: '42703', message: `column "${column}" of relation "member_whatsapp_accounts" does not exist` }],
+      ['colonne absente, 42703 sans nom de colonne', { code: '42703', message: 'column does not exist' }],
+      ['colonne absente, message qui nomme la colonne', { code: '400', message: `Could not find the '${column}' column` }],
+      ['colonne absente, message seul', { message: `column member_whatsapp_accounts.${column} does not exist` }],
+    ];
+    for (const [scenario, failure] of scenarios) {
+      for (const providerGone of [false, true]) {
+        const label = `${scenario} / disparu chez le service=${providerGone}`;
+        const db = whatsappDb();
+        if (failure) withoutColumn(db, 'member_whatsapp_accounts', column, failure);
+        const mock = withMockTransport(router({
+          'DELETE /accounts/acc_wa_own': () => providerGone ? { status: 404, body: { message: 'gone' } } : { body: { success: true } },
+        }));
+        try {
+          await withWarnings(async (warnings) => {
+            const reply = await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_own' });
+            strictEqual(reply.status, 200, `${label} : ${reply.raw}`);
+            deepStrictEqual(reply.data, { success: true }, label);
+            assertNoVendor(reply, label);
+            strictEqual(mock.calls.filter((c) => c.method === 'DELETE').length, 1, `${label} : le compte est supprimé chez le service une seule fois`);
+            const row = db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')!;
+            strictEqual(row.account_status, 'DELETED', `${label} : la pierre tombale est posée`);
+            strictEqual(typeof row.updated_at, 'string', `${label} : updated_at écrit`);
+            strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-peer')?.account_status, 'OK', `${label} : le compte d un collègue n est pas touché`);
+            const writes = whatsappUpdates(db);
+            if (!failure) {
+              ok(typeof row.removed_by_member_at === 'string', `${label} : la marque est posée`);
+              strictEqual(writes.length, 1, `${label} : une seule écriture`);
+              strictEqual(warnings.length, 0, `${label} : rien à signaler`);
+            } else {
+              strictEqual(row.removed_by_member_at ?? null, null, `${label} : pas de colonne, pas de marque`);
+              strictEqual(writes.length, 2, `${label} : l écriture complète, puis une seule nouvelle tentative sans la colonne`);
+              ok(column in (writes[0].patch ?? {}), `${label} : la première écriture porte la marque`);
+              deepStrictEqual(Object.keys(writes[1].patch ?? {}).sort(), ['account_status', 'updated_at'], `${label} : la seconde ne porte que l état et la date`);
+              strictEqual(writes[1].patch?.account_status, 'DELETED', label);
+              const warned = warnings.filter((w) => w.includes('disconnect_whatsapp') && w.includes(column));
+              strictEqual(warned.length, 1, `${label} : un seul avertissement, qui nomme la cause : ${JSON.stringify(warnings)}`);
+            }
+            // La lecture ne dépend pas de la colonne : la pierre tombale est rendue DELETED, sans appel au service.
+            const before = mock.calls.length;
+            const listed = await call(db, { action: 'list_whatsapp' });
+            strictEqual(listed.status, 200, `${label} : ${listed.raw}`);
+            const tombstone = listed.data.accounts.find((a: any) => a.id === 'acc_wa_own');
+            strictEqual(tombstone.status, 'DELETED', label);
+            strictEqual(tombstone.removed_by_member, failure === null, `${label} : la marque de geste voulu n existe qu avec la colonne`);
+            ok(!mock.calls.slice(before).some((c) => c.path.includes('acc_wa_own')), `${label} : la pierre tombale n appelle pas le service`);
+          });
+        } finally {
+          mock.restore();
+        }
+      }
+    }
+    // list_whatsapp seul, sur une base sans la colonne : la lecture d un compte vivant fonctionne (select *).
+    const live = withoutColumn(whatsappDb(), 'member_whatsapp_accounts', column);
+    const mock = withMockTransport(router({ 'GET /accounts/acc_wa_own': { body: wa('acc_wa_own') } }));
+    try {
+      const listed = await call(live, { action: 'list_whatsapp' });
+      strictEqual(listed.status, 200, listed.raw);
+      deepStrictEqual(listed.data.accounts, [{ id: 'acc_wa_own', name: '+33 6 12 34 56 78', identifier: '+33612345678', status: 'OK', type: 'WHATSAPP', removed_by_member: false }]);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('disconnect_whatsapp : toute autre erreur d écriture garde le refus d avant, sans nouvelle tentative ; une seconde erreur après la colonne manquante aussi', async () => {
+  await withEnv(ENV, async () => {
+    const others: Array<[string, { code?: string; message?: string }]> = [
+      ['contrainte', { code: '23514', message: 'new row for relation "member_whatsapp_accounts" violates check constraint' }],
+      ['droit refusé', { code: '42501', message: 'permission denied for table member_whatsapp_accounts' }],
+      ['panne', { code: 'XX000', message: 'boom' }],
+    ];
+    for (const [label, error] of others) {
+      const db = whatsappDb();
+      db.failOn('member_whatsapp_accounts', 'update', error);
+      const mock = withMockTransport(router({ 'DELETE /accounts/acc_wa_own': { body: { success: true } } }));
+      try {
+        await withWarnings(async (warnings) => {
+          const reply = await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_own' });
+          strictEqual(reply.status, 500, `${label} : ${reply.raw}`);
+          strictEqual(reply.data.success, false, label);
+          strictEqual(reply.data.error, 'La connexion a été retirée mais son état reste à actualiser', label);
+          strictEqual(whatsappUpdates(db).length, 1, `${label} : une seule écriture`);
+          strictEqual(warnings.length, 0, `${label} : aucun avertissement de colonne`);
+          strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')?.account_status, 'OK', label);
+          assertNoVendor(reply, label);
+        });
+      } finally {
+        mock.restore();
+      }
+    }
+    // Colonne manquante, puis la nouvelle tentative échoue aussi : refus d'avant, deux écritures au plus.
+    const db = withoutColumn(whatsappDb(), 'member_whatsapp_accounts', 'removed_by_member_at', undefined, { code: 'XX000', message: 'boom' });
+    const mock = withMockTransport(router({ 'DELETE /accounts/acc_wa_own': { body: { success: true } } }));
+    try {
+      await withWarnings(async () => {
+        const reply = await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_own' });
+        strictEqual(reply.status, 500, reply.raw);
+        strictEqual(reply.data.error, 'La connexion a été retirée mais son état reste à actualiser');
+        strictEqual(whatsappUpdates(db).length, 2, 'une seule nouvelle tentative');
+      });
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
 Deno.test('WhatsApp : après « Déconnecter », list_whatsapp rend la pierre tombale avec removed_by_member vrai et n appelle pas le service ; un compte disparu chez le service reste faux', async () => {
   await withEnv(ENV, async () => {
     const db = makeDb({
@@ -697,6 +856,50 @@ Deno.test('list : un compte que le service ne renseigne pas n empêche pas les a
       strictEqual('unverified' in byId.acc_ok, false, 'un compte lu ne porte pas le marqueur');
       assertNoVendor(reply);
       strictEqual(db.table('member_linkedin_accounts')[1].account_status, 'DEGRADED', 'la liaison n est pas modifiée');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('list : un compte non lu dont le dernier état est mauvais le garde sans marqueur « à vérifier », les autres états l ont', async () => {
+  await withEnv(ENV, async () => {
+    const stored = ['CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED', 'DEGRADED', 'OK'];
+    const db = makeDb({
+      member_linkedin_accounts: [
+        { id: 'm0', organization_id: ORG, user_id: USER, linkedin_account_id: 'acc_ok', linkedin_account_name: 'Claire', account_status: 'OK' },
+        ...stored.map((status, i) => ({
+          id: `ms${i}`, organization_id: ORG, user_id: PEER, linkedin_account_id: `acc_slow_${status.toLowerCase()}`, linkedin_account_name: status, account_status: status,
+        })),
+      ],
+    });
+    const routes: Record<string, Route> = {
+      'GET /accounts/acc_ok': { body: li('acc_ok', { name: 'Claire' }) },
+      'GET /acc_ok/linkedin/contracts': { body: { contracts: [] } },
+      'GET /acc_ok/users/me': { body: { id: 'ACoAAok' } },
+    };
+    for (const status of stored) routes[`GET /accounts/acc_slow_${status.toLowerCase()}`] = { status: 429, body: { message: 'Too many requests' } };
+    const mock = withMockTransport(router(routes));
+    try {
+      const reply = await call(db, { action: 'list' });
+      strictEqual(reply.status, 200, reply.raw);
+      const byId = Object.fromEntries(reply.data.accounts.map((a: any) => [a.id, a]));
+      for (const status of ['CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED']) {
+        const entry = byId[`acc_slow_${status.toLowerCase()}`];
+        strictEqual(entry.status, status, `${status} : l état enregistré par le webhook est montré tel quel`);
+        strictEqual('unverified' in entry, false, `${status} : le webhook a dit la vérité, la carte n affiche pas « État à vérifier »`);
+        strictEqual(entry.reconnectable, status !== 'LOCKED', `${status} : l action Reconnecter suit l état`);
+        strictEqual(entry.is_locked, status === 'LOCKED', status);
+      }
+      for (const status of ['DEGRADED', 'OK']) {
+        const entry = byId[`acc_slow_${status.toLowerCase()}`];
+        strictEqual(entry.status, status, status);
+        strictEqual(entry.unverified, true, `${status} : état non lu, la carte dit « État à vérifier »`);
+        strictEqual(entry.reconnectable, false, status);
+      }
+      strictEqual('unverified' in byId.acc_ok, false, 'un compte lu ne porte pas le marqueur');
+      assertNoVendor(reply);
+      deepStrictEqual(db.table('member_linkedin_accounts').map((r) => r.account_status), ['OK', ...stored], 'aucune liaison modifiée');
     } finally {
       mock.restore();
     }
@@ -1575,6 +1778,175 @@ Deno.test('usage des comptes de l équipe : la liste des comptes de l organisati
       const reply = await call(ownedDb('collaborator'), { action: 'list' });
       strictEqual(reply.status, 200);
       ok(reply.data.accounts.some((a: any) => a.id === 'acc_peer'), reply.raw);
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Écriture de l'identifiant d'organisation (revue de sécurité, problème 3 de la deuxième série)
+// ---------------------------------------------------------------------------
+
+// Identifiants avec des lettres : en majuscules, ce n'est plus la même chaîne. La base les lit pareil (uuid).
+const LETTER_ORG = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+const mixedCase = (id: string) => id.split('').map((c, i) => (i % 2 ? c.toUpperCase() : c)).join('');
+const ORG_SPELLINGS: Array<[string, (id: string) => string]> = [
+  ['majuscules', (id) => id.toUpperCase()],
+  ['casse mêlée', mixedCase],
+  ['accolades', (id) => `{${id}}`],
+  ['sans tirets', (id) => id.replaceAll('-', '')],
+];
+/** Écritures que la base refuse (22P02) : jamais lues comme une organisation. */
+const ORG_PADDED: Array<[string, (id: string) => string]> = [
+  ['espace avant', (id) => ` ${id}`],
+  ['espace après', (id) => `${id} `],
+  ['espaces et tabulation', (id) => `  ${id}\t`],
+];
+
+/** L'équipe de `ownedDb`, dans une organisation dont l'uuid porte des lettres, lue comme Postgres lit un uuid. */
+function lettersDb(role: string): FakeDb {
+  const db = new FakeDb({
+    organization_members: [
+      { id: 'mem-user', organization_id: LETTER_ORG, user_id: USER, role },
+      { id: 'mem-peer', organization_id: LETTER_ORG, user_id: PEER, role: 'member' },
+    ],
+    member_linkedin_accounts: [
+      { id: 'm1', organization_id: LETTER_ORG, user_id: USER, linkedin_account_id: 'acc_own', linkedin_account_name: 'Claire' },
+      { id: 'm-peer', organization_id: LETTER_ORG, user_id: PEER, linkedin_account_id: 'acc_peer', linkedin_account_name: 'Pierre' },
+      { id: 'm-foreign', organization_id: OTHER_ORG, user_id: STRANGER, linkedin_account_id: 'acc_foreign', linkedin_account_name: 'X' },
+    ],
+    member_email_accounts: [],
+    member_whatsapp_accounts: [
+      { id: 'w-peer', organization_id: LETTER_ORG, user_id: PEER, whatsapp_account_id: 'acc_wa_peer', name: 'Collègue', phone_number: null, account_status: 'OK' },
+    ],
+    connection_attempts: [],
+  });
+  db.defaults('connection_attempts', () => ({ status: 'pending', intent_id: null, account_id: null, error_kind: null, created_at: new Date().toISOString(), completed_at: null }));
+  db.unique('connection_attempts', ['user_id', 'provider'], { where: (row) => row.status === 'pending' });
+  return postgresUuidDb(db);
+}
+
+const spellingSnapshot = (db: FakeDb) => JSON.stringify(['member_linkedin_accounts', 'member_email_accounts', 'member_whatsapp_accounts', 'connection_attempts'].map((t) => db.table(t)));
+
+Deno.test('organisation écrite autrement (majuscules, casse mêlée, accolades, sans tirets) : un collaborateur reste refusé sur le compte d un collègue, pour toute action', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const [label, spell] of ORG_SPELLINGS) {
+        for (const use of ACCOUNT_USES) {
+          const db = lettersDb('collaborator');
+          const before = spellingSnapshot(db);
+          const reply = await call(db, use.body('acc_peer'), { org: spell(LETTER_ORG) });
+          const where = `${label} / ${use.action} : ${reply.raw}`;
+          strictEqual(reply.status, 403, where);
+          strictEqual(reply.data.success, false, where);
+          strictEqual(reply.data.error_code, 'account_not_yours', where);
+          strictEqual(reply.data.error, ACCOUNT_NOT_YOURS, where);
+          assertNoVendor(reply, where);
+          strictEqual(spellingSnapshot(db), before, `${where} : aucune écriture`);
+        }
+        // Un compte WhatsApp d un collègue : même refus.
+        const wa = await call(lettersDb('collaborator'), { action: 'get_account_details', account_id: 'acc_wa_peer' }, { org: spell(LETTER_ORG) });
+        strictEqual(wa.status, 403, label);
+        strictEqual(wa.data.error_code, 'account_not_yours', label);
+      }
+      strictEqual(mock.calls.length, 0, 'aucun appel au service pour les refus');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('organisation écrite autrement : le compte qu un collaborateur a relié reste servi, comme avec l écriture canonique', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const [label, spell] of [['canonique', (id: string) => id] as [string, (id: string) => string], ...ORG_SPELLINGS]) {
+        for (const read of TEAM_READS) {
+          const reply = await call(lettersDb('collaborator'), read.body('acc_own'), { org: spell(LETTER_ORG) });
+          strictEqual(reply.status, 200, `${label} ${read.action} : ${reply.raw}`);
+          strictEqual(reply.data.success, true, `${label} ${read.action} : ${reply.raw}`);
+        }
+      }
+      ok(mock.calls.some((c) => c.path.startsWith('/acc_own/')));
+      ok(!mock.calls.some((c) => c.path.startsWith('/acc_peer/')), 'jamais le compte d un collègue');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('organisation écrite autrement : propriétaire, administrateur et membre se servent du compte d un collègue comme avec l écriture canonique, un compte étranger reste refusé', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const role of ['owner', 'admin', 'member']) {
+        for (const [label, spell] of [['canonique', (id: string) => id] as [string, (id: string) => string], ...ORG_SPELLINGS]) {
+          for (const read of TEAM_READS) {
+            const reply = await call(lettersDb(role), read.body('acc_peer'), { org: spell(LETTER_ORG) });
+            strictEqual(reply.status, 200, `${role} ${label} ${read.action} : ${reply.raw}`);
+            strictEqual(reply.data.success, true, `${role} ${label} ${read.action} : ${reply.raw}`);
+          }
+          const foreign = await call(lettersDb(role), { action: 'inmail_balance', account_id: 'acc_foreign' }, { org: spell(LETTER_ORG) });
+          strictEqual(foreign.status, 403, `${role} ${label} : compte d une autre organisation`);
+          // Un membre ne se sert pas du WhatsApp d un collègue, quelle que soit l écriture.
+          const wa = await call(lettersDb(role), { action: 'disconnect_whatsapp', account_id: 'acc_wa_peer' }, { org: spell(LETTER_ORG) });
+          strictEqual(wa.status, 403, `${role} ${label} : WhatsApp d un collègue`);
+        }
+      }
+      ok(mock.calls.some((c) => c.path.startsWith('/acc_peer/')), 'le service est appelé pour le compte du collègue');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('organisation avec des espaces autour : refusée comme la base la refuse, pour un collaborateur comme pour un administrateur, rien n est lu ni écrit', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router(actingRoutes()));
+    try {
+      for (const role of ['collaborator', 'admin', 'owner']) {
+        for (const [label, spell] of ORG_PADDED) {
+          for (const use of [...ACCOUNT_USES, ...TEAM_READS]) {
+            for (const account of ['acc_peer', 'acc_own']) {
+              const db = lettersDb(role);
+              const before = spellingSnapshot(db);
+              const reply = await call(db, use.body(account), { org: spell(LETTER_ORG) });
+              const where = `${role} ${label} ${use.action} ${account} : ${reply.raw}`;
+              strictEqual(reply.status, 403, where);
+              strictEqual(reply.data.success, false, where);
+              strictEqual(reply.data.error, 'Accès non autorisé à cette organisation', where);
+              strictEqual(spellingSnapshot(db), before, `${where} : aucune écriture`);
+            }
+          }
+        }
+      }
+      strictEqual(mock.calls.length, 0, 'aucun appel au service');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('organisation écrite autrement : l identifiant du titulaire demandé à claim_linkedin_account est lu de la même façon (aucun faux refus ni faux conflit)', async () => {
+  await withEnv(ENV, async () => {
+    const mock = withMockTransport(router({ 'GET /accounts/acc_own': { body: li('acc_own', { name: 'Claire' }) } }));
+    try {
+      const userSpellings: Array<[string, (id: string) => string]> = [['majuscules', (id) => id.toUpperCase()], ['casse mêlée', mixedCase]];
+      for (const [label, spell] of userSpellings) {
+        // Un membre relie SON compte en donnant son propre identifiant sous une autre écriture : c est lui-même, pas un autre membre.
+        const db = lettersDb('member');
+        const reply = await call(db, { action: 'claim_linkedin_account', account_id: 'acc_own', user_id: spell(USER) }, { org: LETTER_ORG });
+        strictEqual(reply.status, 200, `${label} : ${reply.raw}`);
+        strictEqual(reply.data.success, true, label);
+        const rows = db.table('member_linkedin_accounts').filter((r) => r.linkedin_account_id === 'acc_own');
+        strictEqual(rows.length, 1, `${label} : une seule liaison`);
+        strictEqual(rows[0].user_id, USER, `${label} : le titulaire est écrit sous sa forme canonique`);
+        // Il ne relie toujours pas un collègue, quelle que soit l écriture de son identifiant.
+        const other = await call(lettersDb('member'), { action: 'claim_linkedin_account', account_id: 'acc_peer', user_id: spell(PEER) }, { org: LETTER_ORG });
+        strictEqual(other.status, 403, label);
+      }
     } finally {
       mock.restore();
     }

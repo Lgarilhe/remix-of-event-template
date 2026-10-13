@@ -62,6 +62,30 @@ function provableAddress(raw: unknown, readable: string): string {
   return typeof raw === 'string' && raw.includes('@') && raw.trim() === readable ? readable : '';
 }
 
+const compareIds = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Deux boîtes qui portent le même nom (aucune adresse connue : « Messagerie Outlook » deux fois) s'écrivent
+ * « Messagerie Outlook (1) » et « Messagerie Outlook (2) » : la confirmation de dissociation, le toast et le nom
+ * accessible de chaque geste visent une boîte précise. Le nom de repli porte déjà le fournisseur. Le rang suit l'ordre
+ * de l'identifiant du compte, pas celui de la ligne : il ne change ni quand une boîte passe devant, ni à la relecture.
+ */
+function withDistinctNames(rows: readonly MailboxRow[]): MailboxRow[] {
+  const groups = new Map<string, MailboxRow[]>();
+  for (const row of rows) {
+    const key = row.address.trim().toLowerCase();
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const ranked = new Map<string, string>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    [...group]
+      .sort((a, b) => compareIds(a.mapping.email_account_id, b.mapping.email_account_id) || compareIds(a.key, b.key))
+      .forEach((row, index) => ranked.set(row.key, `${row.address} (${index + 1})`));
+  }
+  return rows.map((row) => (ranked.has(row.key) ? { ...row, address: ranked.get(row.key) as string } : row));
+}
+
 export function buildMailboxRows(
   mappings: readonly MailboxMapping[],
   accounts: readonly ListedMailbox[],
@@ -85,7 +109,7 @@ export function buildMailboxRows(
     const address = readableConnectionName(rawAddress, provider ?? 'imap');
     return { key: mapping.id, mapping, address, provider, view, status, identifier: provableAddress(rawAddress, address) };
   });
-  return withoutSupersededRemoved(rows, 'email')
+  return withDistinctNames(withoutSupersededRemoved(rows, 'email'))
     .map((row, index) => ({ row, index }))
     .sort((a, b) => attentionRank(a.row.view) - attentionRank(b.row.view) || a.index - b.index)
     .map(({ row }) => row);

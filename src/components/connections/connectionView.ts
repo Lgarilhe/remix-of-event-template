@@ -12,8 +12,9 @@
  * Testé par tests/ux/connexion-cartes.test.mjs.
  */
 
-import type { ConnectionHealth } from '@/lib/linkedinStatus';
+import { healthOfState, type ConnectionHealth, type MyLinkedInState } from '@/lib/linkedinStatus';
 import { hasOutdatedAccountId } from '@/lib/accountIdFormat';
+import type { MemberWhatsAppAccount } from '@/hooks/useMemberWhatsAppAccounts';
 import {
   CARD_COMMON,
   HEALTH_LABEL,
@@ -75,6 +76,25 @@ export interface AccountFacts {
   accountId?: string | null;
   /** Compte que le prestataire n'a pas répondu : l'état reçu n'est qu'un dernier état connu, jamais affiché comme lu. */
   unverified?: boolean;
+}
+
+/**
+ * Ce que la carte LinkedIn sait du compte de la personne, d'après la lecture de son état (resolveMyLinkedInStatus) :
+ * la classe de santé, le statut brut de l'entrée (ou « DELETED » pour un compte relié que la liste ne contient plus),
+ * l'identifiant gardé et le marqueur « non lu ». Un statut déjà connu par webhook (CREDENTIALS, ERROR, PARTIAL, LOCKED)
+ * arrive sans marqueur : la carte s'y fie et montre cet état avec son geste, comme le bandeau du tableau de bord.
+ */
+export function linkedInAccountFacts(li: {
+  state: MyLinkedInState;
+  account: { status?: string | null; unverified?: boolean } | null;
+  mapping: { linkedin_account_id: string } | null;
+}): AccountFacts {
+  return {
+    health: healthOfState(li.state),
+    status: li.state === 'missing' ? 'DELETED' : li.account?.status,
+    accountId: li.mapping?.linkedin_account_id,
+    unverified: li.account?.unverified === true,
+  };
 }
 
 /** Pourquoi un compte est à reconnecter, d'après son statut et son identifiant. */
@@ -146,7 +166,7 @@ export function withoutSupersededRemoved<T extends { status?: string | null; ide
  * ligne « À reconnecter ». Tant que le serveur ne rend pas le champ (réponse d'une version plus ancienne), il est
  * lu comme faux : rien n'est masqué à tort.
  */
-export function withoutDeliberateDisconnects<T extends { status?: string | null; removed_by_member?: boolean | null }>(
+export function withoutDeliberateDisconnects<T extends Pick<MemberWhatsAppAccount, 'removed_by_member'>>(
   accounts: readonly T[],
 ): T[] {
   return accounts.filter((account) => account.removed_by_member !== true);
@@ -206,6 +226,22 @@ export function sinceDate(iso: string | null | undefined): string | null {
 export function cardAction(view: ConnectionView, missing: boolean): HealthAction | null {
   if (missing) return 'connect';
   return view.action;
+}
+
+/** Classes de santé d'un compte dont le serveur lit les licences (compte actif, en première synchronisation ou ralenti). */
+const LICENCE_READ_HEALTH: ReadonlySet<ConnectionHealth> = new Set<ConnectionHealth>(['connected', 'syncing', 'limited']);
+
+/**
+ * Vrai quand la liste a vraiment lu les licences du compte. Sinon la ligne « Offre : LinkedIn Classic » serait inventée :
+ * le serveur met « classique » par défaut quand il n'a rien lu. C'est le cas d'un état non lu (marqueur), d'un
+ * identifiant d'ancien format (aucun appel) et d'un compte dont les contrats ne se lisent pas (CREDENTIALS, ERROR,
+ * restreint, en connexion, état inconnu). Une connexion partielle (PARTIAL) est aussi écartée : le serveur la lit, mais
+ * un dernier état connu PARTIAL arrive sous la même forme, sans marqueur, et rien ne distingue les deux.
+ */
+export function licenceWasRead(facts: Pick<AccountFacts, 'health' | 'accountId' | 'unverified'>): boolean {
+  if (facts.unverified === true) return false;
+  if (hasOutdatedAccountId(facts.accountId)) return false;
+  return LICENCE_READ_HEALTH.has(facts.health);
 }
 
 /** Offre LinkedIn du compte (la plus complète), en clair ; null quand la liste ne la donne pas. */

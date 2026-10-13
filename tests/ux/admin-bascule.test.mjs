@@ -478,7 +478,8 @@ test('R1 : un lot plus ancien n\u2019a pas de bouton actif tant qu\u2019un lot p
   assert.equal(state({ rolledBack: false, rows: 0, newerOpen: false }), 'empty');
   assert.equal(state({ rolledBack: true, rows: 5, newerOpen: false }), 'done');
   assert.equal(state({ rolledBack: false, rows: null, newerOpen: false }), 'available', 'lignes inconnues : le serveur décide');
-  assert.equal(copy.BATCHES.blockedByNewer, 'Annulez d\u2019abord la conversion plus récente.');
+  assert.equal(copy.BATCHES.blockedByNewer, 'Les conversions s\u2019annulent de la plus récente à la plus ancienne.');
+  assert.equal(copy.BATCHES.rollbackBlockedButton, 'Annulez d\u2019abord le lot plus récent');
   assert.equal(copy.BATCHES.empty, 'Aucune ligne réécrite : rien à annuler.');
   const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
   assert.match(panel, /const state = batchRollbackState\(batch\)/);
@@ -491,28 +492,33 @@ test('R1 : un lot plus ancien n\u2019a pas de bouton actif tant qu\u2019un lot p
   assert.ok(copy.ROLLBACK.lines.some((line) => /annulez la plus récente en premier/.test(line)));
 });
 
-test('R1 : le bouton refusé d\u2019un ancien lot se voit (estompé, sans changement au survol), sa phrase et son attribut restent', async () => {
+test('R1 : le bouton refusé d\u2019un ancien lot se lit sans opacité (son libellé dit quoi faire), sa raison et son attribut restent', async () => {
   // Le fichier se lit comme du TSX (un commentaire mal placé dans une expression JSX casse la page sans casser les regex).
   await transform(SRC[`${ADMIN_DIR}/BasculePanel.tsx`], { loader: 'tsx' });
   const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
   // Le bouton de la liste des lots (celui qui porte le nom accessible du lot), pas celui du résultat de la conversion.
-  const button = panel.match(/<Button\s+variant="ghost"\s+size="sm"\s+className="([^"]+)"\s+aria-label=\{BATCHES\.rollbackAria\(batch\.batchId\)\}[^>]*>/);
-  assert.ok(button, 'bouton de la liste des lots introuvable');
-  const classes = button[1].split(/\s+/);
-  // Refusé : estompé, et le survol ne change ni le fond ni la couleur (le bouton actif passe au rouge au survol).
-  for (const cls of ['disabled:opacity-50', 'disabled:hover:bg-transparent', 'disabled:hover:text-muted-foreground']) {
+  const open = panel.match(/<Button\s+variant="ghost"\s+size="sm"\s+className="([^"]+)"\s+aria-label=\{([^}]+)\}[^>]*?disabled=\{busy \|\| state === 'blocked'\}/);
+  assert.ok(open, 'bouton de la liste des lots introuvable');
+  const classes = open[1].split(/\s+/);
+  // Docs/design/01-direction.md, « Désactivé » : jamais d'opacité, ni sur ce bouton ni ailleurs dans le panneau.
+  assert.ok(!classes.some((cls) => /opacity/.test(cls)), `opacité sur le bouton refusé : ${open[1]}`);
+  assert.doesNotMatch(panel, /opacity/, 'opacité dans le panneau de la bascule');
+  // Libellé gris du geste de retrait, cible de 44 px sur téléphone, rouge au survol de l'état actif.
+  for (const cls of ['text-muted-foreground', 'hover:text-danger', 'min-h-11', 'md:min-h-0']) {
     assert.ok(classes.includes(cls), `classe absente : ${cls}`);
   }
-  // L'état actif ne change pas : gris, rouge au survol, cible de 44 px sur téléphone.
-  for (const cls of ['text-muted-foreground', 'hover:text-danger', 'min-h-11', 'md:min-h-0']) {
-    assert.ok(classes.includes(cls), `classe active absente : ${cls}`);
-  }
-  // L'opacité seule ne suffit pas à un lecteur d'écran : l'attribut disabled et la phrase restent.
-  assert.match(button[0], /disabled=\{busy \|\| state === 'blocked'\}/);
-  assert.match(button[0], /aria-describedby=\{state === 'blocked' \? `batch-blocked-\$\{batch\.batchId\}` : undefined\}/);
+  // Sans opacité, le refus se lit dans les mots : libellé et nom accessible propres au lot refusé, le nom contient le libellé affiché.
+  assert.equal(open[2].trim(), "state === 'blocked' ? BATCHES.rollbackBlockedAria(batch.batchId) : BATCHES.rollbackAria(batch.batchId)");
+  assert.match(panel, /\{state === 'blocked' \? BATCHES\.rollbackBlockedButton : BATCHES\.rollbackButton\}\s*<\/Button>/);
+  assert.ok(copy.BATCHES.rollbackBlockedAria('abcd-1234').includes(copy.BATCHES.rollbackBlockedButton), 'étiquette dans le nom accessible');
+  assert.ok(copy.BATCHES.rollbackBlockedAria('abcd-1234').includes('abcd-1234'));
+  assert.ok(copy.BATCHES.rollbackAria('abcd-1234').includes(copy.BATCHES.rollbackButton));
+  assert.notEqual(copy.BATCHES.rollbackBlockedButton, copy.BATCHES.rollbackButton);
+  // Le lecteur d'écran garde l'attribut disabled, le lien vers la raison et la phrase : la raison ne répète pas le libellé.
+  assert.match(panel, /<Button[^>]*?aria-describedby=\{state === 'blocked' \? `batch-blocked-\$\{batch\.batchId\}` : undefined\}[^>]*?disabled=\{busy \|\| state === 'blocked'\}/);
   assert.match(panel, /state === 'blocked' && \(\s*<p id=\{`batch-blocked-\$\{batch\.batchId\}`\}[^>]*>\{BATCHES\.blockedByNewer\}/);
-  // Seul ce bouton est estompé : le bouton d'annulation du résultat de la conversion garde le style des boutons discrets.
-  assert.equal((panel.match(/disabled:opacity-50/g) ?? []).length, 1);
+  assert.doesNotMatch(copy.BATCHES.blockedByNewer, /d\u2019abord/);
+  assert.equal(copy.BATCHES.blockedByNewer.split(/[.!?]/).filter(Boolean).length, 1, 'une phrase au plus');
 });
 
 test('R1 : le refus du serveur pour l\u2019ordre et pour un lot vide a sa phrase, sans résultat inconnu', async () => {

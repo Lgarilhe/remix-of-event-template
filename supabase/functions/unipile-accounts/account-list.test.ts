@@ -76,6 +76,35 @@ Deno.test('unverifiedLinkEntry : dernier état connu, jamais à reconnecter, ét
   strictEqual(unverifiedLinkEntry({ linkedin_account_id: 'acc_x', account_status: 'LOCKED' }).is_locked, true);
 });
 
+Deno.test('unverifiedLinkEntry : le marqueur seulement quand le dernier état connu ne dit rien (OK, DEGRADED ou absent)', () => {
+  // État absent, vide, inconnu ou sans gravité : le prestataire n'a pas répondu et rien ne dit que le compte va mal.
+  const quiet: Array<[string | null | undefined, string]> = [
+    ['OK', 'OK'], ['DEGRADED', 'DEGRADED'], [undefined, 'OK'], [null, 'OK'], ['', 'OK'], ['WEIRD', 'OK'], ['ok', 'OK'],
+  ];
+  for (const [stored, status] of quiet) {
+    const entry = unverifiedLinkEntry({ linkedin_account_id: 'acc_q', account_status: stored });
+    strictEqual(entry.unverified, true, `état gardé ${String(stored)} : marqueur posé`);
+    strictEqual(entry.status, status, `état gardé ${String(stored)}`);
+    strictEqual(entry.reconnectable, false, `état gardé ${String(stored)} : rien ne dit qu'il faut reconnecter`);
+  }
+  // Un webhook a déjà dit la vérité (à reconnecter, en panne, partiel, verrouillé) : la carte la montre avec son action,
+  // elle ne dit pas « État à vérifier ». Aucun marqueur, pas même `false`.
+  const bad: Array<[string, boolean]> = [['CREDENTIALS', true], ['ERROR', true], ['PARTIAL', true], ['LOCKED', false]];
+  for (const [stored, reconnectable] of bad) {
+    const entry = unverifiedLinkEntry({ linkedin_account_id: 'acc_b', linkedin_account_name: 'Claire Martin', account_status: stored });
+    strictEqual('unverified' in entry, false, `${stored} : aucun marqueur`);
+    strictEqual(entry.unverified, undefined, stored);
+    strictEqual(entry.status, stored, `${stored} : l'état enregistré est gardé`);
+    strictEqual(entry.is_locked, stored === 'LOCKED', stored);
+    strictEqual(entry.reconnectable, reconnectable, `${stored} : l'action Reconnecter suit l'état, comme pour un compte lu`);
+    strictEqual(entry.mapped, true, stored);
+    strictEqual(entry.id, 'acc_b', stored);
+    strictEqual(entry.profile_picture_url, null, stored);
+  }
+  // Le JSON envoyé à l'écran ne porte pas la clé non plus.
+  ok(!('unverified' in JSON.parse(JSON.stringify(unverifiedLinkEntry({ linkedin_account_id: 'acc_b', account_status: 'CREDENTIALS' })))));
+});
+
 Deno.test('hasCustomProxy : proxy personnalisé reconnu, proxy automatique ou absent non', () => {
   strictEqual(hasCustomProxy({ proxy: { country: 'FR', auto_proxy: false, host: 'p.example', port: 1080 } }), true);
   strictEqual(hasCustomProxy({ proxy: { country: null, auto_proxy: false } }), true);

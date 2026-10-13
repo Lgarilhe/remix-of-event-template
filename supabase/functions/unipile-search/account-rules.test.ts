@@ -8,12 +8,15 @@
 import { deepStrictEqual, ok, strictEqual } from 'node:assert';
 import {
   ACCOUNT_NOT_YOURS_MESSAGE,
+  canonicalUuid,
   collaboratorOwnAccountRefusal,
   isCollaboratorRole,
   ownerOnlyRefusal,
   OWNER_ONLY_ACTIONS,
   type RoleRuleContext,
+  sameId,
 } from './account-rules.ts';
+import { canonicalUuid as accountsCanonicalUuid, sameId as accountsSameId } from '../unipile-accounts/ownership.ts';
 
 const base = { isInternal: false, userId: 'u1' };
 const colleagueOf = (role: string | null | undefined): RoleRuleContext => ({ ...base, accountOwnerId: 'u2', role });
@@ -93,4 +96,73 @@ Deno.test('le message de l écriture refusée garde son texte propre (envoyer, r
     ownerOnlyRefusal('withdraw_invitation', colleagueOf('collaborator'))!.body.error,
     "Ce compte LinkedIn est relié par un autre membre de l'organisation. Retirez les invitations depuis votre propre compte.",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Identifiants : le même uuid écrit autrement est le même identifiant (revue de sécurité, problème 3 de la deuxième série)
+// ---------------------------------------------------------------------------
+
+const LEA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const CAMILLE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const ORG = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+const mixed = (id: string) => id.split('').map((c, i) => (i % 2 ? c.toUpperCase() : c)).join('');
+const SPELLINGS: Array<[string, (id: string) => string]> = [
+  ['canonique', (id) => id],
+  ['majuscules', (id) => id.toUpperCase()],
+  ['casse mêlée', mixed],
+  ['accolades', (id) => `{${id}}`],
+  ['sans tirets', (id) => id.replaceAll('-', '')],
+  ['tiret tous les quatre chiffres', (id) => id.replaceAll('-', '').match(/.{4}/g)!.join('-')],
+];
+// Écritures que la base refuse : rendues telles quelles, jamais prises pour l identifiant.
+const REFUSED: Array<[string, (id: string) => string]> = [
+  ['espace avant', (id) => ` ${id}`],
+  ['espace après', (id) => `${id} `],
+  ['saut de ligne', (id) => `${id}\n`],
+  ['coupé', (id) => id.slice(0, -1)],
+  ['accolade seule', (id) => `{${id}`],
+];
+
+Deno.test('canonicalUuid et sameId : toutes les écritures que la base accepte, rien de plus', () => {
+  for (const [label, spell] of SPELLINGS) {
+    strictEqual(canonicalUuid(spell(ORG)), ORG, label);
+    ok(sameId(spell(ORG), ORG), label);
+    ok(!sameId(spell(ORG), CAMILLE), label);
+  }
+  for (const [label, spell] of REFUSED) {
+    strictEqual(canonicalUuid(spell(ORG)), spell(ORG), label);
+    ok(!sameId(spell(ORG), ORG), label);
+  }
+  strictEqual(canonicalUuid('u1'), 'u1');
+  ok(sameId('u1', 'u1'));
+  ok(!sameId('', ''));
+  ok(!sameId(null, null));
+  ok(!sameId(LEA, null));
+  ok(!sameId(undefined, undefined));
+});
+
+Deno.test('les deux copies de canonicalUuid et sameId (unipile-search et unipile-accounts) rendent les mêmes résultats', () => {
+  const inputs = [
+    ...[ORG, LEA, CAMILLE].flatMap((id) => [...SPELLINGS, ...REFUSED].map(([, spell]) => spell(id))),
+    '', 'u1', 'U1', 'org-1', ' ', '{}', '{', 'g'.repeat(32), ORG.slice(0, 35), `${ORG}-`,
+  ];
+  for (const value of inputs) strictEqual(canonicalUuid(value), accountsCanonicalUuid(value), JSON.stringify(value));
+  for (const a of inputs.slice(0, 40)) for (const b of inputs.slice(0, 40)) strictEqual(sameId(a, b), accountsSameId(a, b), `${JSON.stringify(a)} ${JSON.stringify(b)}`);
+});
+
+Deno.test('compte relié par le même membre : reconnu quelle que soit l écriture de son identifiant, pour la règle du collaborateur et celle des écritures', () => {
+  for (const [label, spell] of SPELLINGS) {
+    const own = { isInternal: false, userId: spell(LEA), accountOwnerId: LEA };
+    strictEqual(collaboratorOwnAccountRefusal({ ...own, role: 'collaborator' }), null, `${label} : son compte, utilisateur écrit autrement`);
+    strictEqual(collaboratorOwnAccountRefusal({ isInternal: false, userId: LEA, accountOwnerId: spell(LEA), role: 'collaborator' }), null, `${label} : son compte, titulaire écrit autrement`);
+    for (const action of ['send_message', 'withdraw_invitation']) strictEqual(ownerOnlyRefusal(action, own), null, `${label} ${action}`);
+    // Un autre membre reste un autre membre, quelle que soit l écriture.
+    const colleague = { isInternal: false, userId: spell(LEA), accountOwnerId: spell(CAMILLE), role: 'collaborator' };
+    strictEqual(collaboratorOwnAccountRefusal(colleague)?.status, 403, `${label} : collègue`);
+    for (const action of ['send_message', 'withdraw_invitation']) strictEqual(ownerOnlyRefusal(action, colleague)?.status, 403, `${label} ${action} : collègue`);
+  }
+  // Une écriture que la base refuse n est pas le titulaire : jamais ouvert.
+  for (const [label, spell] of REFUSED) {
+    strictEqual(collaboratorOwnAccountRefusal({ isInternal: false, userId: spell(LEA), accountOwnerId: LEA, role: 'collaborator' })?.status, 403, label);
+  }
 });

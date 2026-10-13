@@ -186,8 +186,9 @@ test('R8 — l\'alerte de déconnexion couvre aussi limited puis panne, jamais u
     assert.equal(disconnectionAlertFor(from, 'locked'), null, from);
   }
   const ctx = read('src/contexts/LinkedInAccountsContext.tsx');
-  // La décision est dans disconnectToast.ts : le contexte lui donne l'état d'avant et d'après
-  assert.match(ctx, /disconnectToastFor\(prev\.health, health, acc\)/);
+  // La décision est dans disconnectToast.ts : le contexte lui donne l'état retenu et le compte listé
+  assert.match(ctx, /toastStepFor\(prevHealthRef\.current, acc\)/);
   assert.match(read('src/components/connections/disconnectToast.ts'), /disconnectionAlertFor\(previous, next\)/);
+  assert.match(read('src/components/connections/disconnectToast.ts'), /disconnectToastFor\(memory\.health, health, account\)/);
   assert.doesNotMatch(ctx, /prev\.health === 'connected'/);
 });

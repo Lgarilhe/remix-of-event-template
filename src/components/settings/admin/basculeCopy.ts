@@ -247,11 +247,14 @@ export const BATCHES = {
   rows: (n: number) => `${rowsText(n)} réécrite${n > 1 ? 's' : ''}`,
   /** Un lot sans ligne réécrite n'a rien à annuler : pas de bouton. */
   empty: 'Aucune ligne réécrite : rien à annuler.',
-  /** Un lot plus récent, non annulé, est à annuler avant celui-ci. */
-  blockedByNewer: 'Annulez d’abord la conversion plus récente.',
+  /** Raison, sous le bouton refusé d'un lot dont un lot plus récent n'est pas annulé (le bouton dit déjà quoi faire). */
+  blockedByNewer: 'Les conversions s’annulent de la plus récente à la plus ancienne.',
   unreadable: 'La liste des conversions précédentes n’a pas pu être lue.',
   rollbackButton: 'Annuler la conversion',
   rollbackAria: (id: string) => `Annuler la conversion du lot ${id}`,
+  /** Bouton refusé : il dit quoi faire, sans opacité (docs/design/01-direction.md, « Désactivé »). */
+  rollbackBlockedButton: 'Annulez d’abord le lot plus récent',
+  rollbackBlockedAria: (id: string) => `Annulez d’abord le lot plus récent pour annuler la conversion du lot ${id}`,
 } as const;
 
 export const APPLY = {

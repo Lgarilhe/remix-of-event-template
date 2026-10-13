@@ -27,7 +27,7 @@ import {
   userSafeMessage,
   type AccountOwnership,
 } from '../_shared/unipile/index.ts';
-import { collaboratorOwnAccountRefusal, ownerOnlyRefusal } from './account-rules.ts';
+import { canonicalUuid, collaboratorOwnAccountRefusal, ownerOnlyRefusal, sameId } from './account-rules.ts';
 import { handleGetChats, handleGetMessages, handleMarkAsRead, handleSyncChatHistory } from './chats.ts';
 import { handleListSentInvitations, handleWithdrawInvitation } from './invitations.ts';
 import { handleEndorseSkill, handleGetProfile, handleGetUserPosts } from './profile.ts';
@@ -71,7 +71,11 @@ Deno.serve(async (req) => {
       userId = user.id;
     }
 
-    const { action, account_id, organization_id, ...params } = await req.json();
+    const { action, account_id, organization_id: requestedOrganizationId, ...params } = await req.json();
+    // L'uuid de l'organisation est lu sous une seule forme (minuscules, tirets) avant tout usage : la base accepte aussi les
+    // majuscules, les accolades et l'absence de tirets, et la comparaison avec l'organisation de l'agent plus bas est une
+    // comparaison de chaînes.
+    const organization_id = typeof requestedOrganizationId === 'string' ? canonicalUuid(requestedOrganizationId) : requestedOrganizationId;
 
     // organization_id OBLIGATOIRE pour tous les modes, ET membership vérifié pour tout appel user.
     if (!organization_id) {
@@ -162,7 +166,7 @@ Deno.serve(async (req) => {
         });
         const agent = Array.isArray(data) ? data[0] : data;
         if (error || !agent || !params.continuous_context_key
-          || agent.organization_id !== organization_id || agent.created_by !== params.user_id
+          || !sameId(agent.organization_id, organization_id) || !sameId(agent.created_by, params.user_id)
           || agent.account_id !== accountIdRaw || agent.api !== params.api
           || agent.context_snapshot?.context_key !== params.continuous_context_key) {
           throw new UnipileInputError('L’agent a été interrompu. Aucune nouvelle consultation LinkedIn n’a été lancée.', 409, 'AGENT_LEASE_CHANGED');

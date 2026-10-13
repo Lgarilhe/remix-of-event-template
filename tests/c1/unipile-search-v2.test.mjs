@@ -107,7 +107,7 @@ test('UNS-5 le compte est contrôlé avant toute action et dans l\'ordre : forma
   assert.ok(index.indexOf('ownerOnlyRefusal(action') > owner && index.indexOf('ownerOnlyRefusal(action') < quota);
   const rules = read('account-rules.ts');
   assert.match(rules, /OWNER_ONLY_ACTIONS[^;]*'send_message'[^;]*'withdraw_invitation'/, 'actions réservées au compte propre');
-  assert.match(rules, /context\.accountOwnerId === context\.userId/);
+  assert.match(rules, /sameId\(context\.accountOwnerId, context\.userId\)/);
   // Aucun handler ne reçoit le compte brut de la requête.
   assert.doesNotMatch(index, /handle[A-Za-z]+\(\s*account_id\b/);
   assert.match(index, /!isUnipileConfigured\(\)/);
