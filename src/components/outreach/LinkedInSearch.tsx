@@ -31,6 +31,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
 import { SearchHero, SearchPlan, FilterChipBar, chipsFromUpdate, countFilterChips, type PlanChip, type PlanStage } from './search/SourcingFlow';
+import { SourcingSourcePicker } from './search/SourcingSourcePicker';
 import { SourcingTopBar } from '@/components/missions/v3/sourcing/SourcingTopBar';
 import { buildAugmentedJob, generateFiltersFromJob, readGeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
 import { nlFilterEdit } from './search/nlFilterEdit';
@@ -58,6 +59,7 @@ interface LinkedInSearchProps {
   searchSource?: 'linkedin' | 'database';
   /** Opens the contextual sourcing agent with brief pre-filled. */
   onOpenSearchAgent?: () => void;
+  onPrepareSearch?: (phrase: string, source: 'linkedin' | 'database') => void;
   /**
    * Nouvelle page mission (SourcingScreen seulement) : rangée « Affiner,
    * Filtres, Nouvelle recherche » et résultats en trois groupes. Défaut : le
@@ -203,6 +205,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onProjectChange,
   searchSource: initialSearchSource = 'linkedin',
   onOpenSearchAgent,
+  onPrepareSearch,
   layout = 'default',
   initialPhrase,
   startWithFilters,
@@ -281,13 +284,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } catch { /* noop */ }
   }, [scoringModelStorageKey]);
 
-  // Internal search source toggle (Apollo vs LinkedIn)
-  const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
+  // Keep the user's source on return, scoped to their account and organisation.
+  // An explicit validated launch always wins over this preference.
+  const sourcePreferenceKey = activeProject?.id && user?.id && organizationId
+    ? `konekt:sourcing-source:${user.id}:${organizationId}:${activeProject.id}` : null;
+  const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(() => {
+    if (initialPhrase?.trim()) return initialSearchSource;
+    try {
+      const saved = sourcePreferenceKey ? sessionStorage.getItem(sourcePreferenceKey) : null;
+      if (saved === 'database') return 'database';
+      if (saved === 'linkedin' && selectedAccount) return 'linkedin';
+    } catch { /* A storage restriction does not block sourcing. */ }
+    return initialSearchSource;
+  });
+  useEffect(() => {
+    if (sourcePreferenceKey) try { sessionStorage.setItem(sourcePreferenceKey, searchSource); } catch { /* noop */ }
+  }, [sourcePreferenceKey, searchSource]);
 
   // Handler to toggle search source — preserves common filters, swaps api type
   const handleSearchSourceChange = useCallback((source: 'linkedin' | 'database') => {
+    if (source === 'linkedin' && !selectedAccount) return;
     setSearchSource(source);
-  }, []);
+  }, [selectedAccount]);
 
   // Track previous search source to auto-relaunch search on toggle
   const prevSearchSourceRef = useRef(searchSource);
@@ -317,6 +335,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Main search state hook
   const search = useLinkedInSearch({
     organizationId,
+    searchSource,
     userId: user?.id ?? null,
     selectedAccount,
     activeProject,
@@ -537,7 +556,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Nouvelle page mission : clé à part, pour que l'ancienne page ne relise
   // jamais un état écrit par la nouvelle (sélection, vue, filtres d'affichage).
   const missionCacheKey = activeProject?.id && organizationId && user?.id && (searchSource === 'database' || selectedAccount)
-    ? `${isV3 ? 'mission-sourcing-v3' : 'mission-sourcing'}:${user.id}:${organizationId}:${activeProject.id}:${selectedAccount ?? 'database'}`
+    ? `${isV3 ? 'mission-sourcing-v3' : 'mission-sourcing'}:${user.id}:${organizationId}:${activeProject.id}:${searchSource}:${selectedAccount ?? 'database'}`
     : null;
   const cacheBriefKey = stableScoringContextKey({ details: activeProject?.job_details, description: activeProject?.description,
     title: activeProject?.job_title, name: activeProject?.name, clientName: activeProject?.client_name });
@@ -644,7 +663,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
     flowInitProjectRef.current = activeProject?.id ?? null;
-    initialPhraseDoneRef.current = true;
+    // A validated dialogue is a new explicit request, even if this mission
+    // already has a cached view. A plain return still restores without billing.
+    if (!initialPhrase?.trim()) initialPhraseDoneRef.current = true;
     startFiltersDoneRef.current = true;
     setFlowMode(cached.flowMode ?? (cached.hasSearched || cached.results.length > 0 ? 'results' : 'hero'));
     setFlowQuery(cached.flowQuery ?? '');
@@ -1400,11 +1421,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // « Générer les filtres et chercher » (l'écran de plan s'affiche).
   useEffect(() => {
     if (!isV3 || !initialPhrase?.trim() || initialPhraseDoneRef.current) return;
-    if (flowMode !== 'hero' || !search.selectedJob || search.loading || !memoryContextReady) return;
+    if (!search.selectedJob || search.loading || !memoryContextReady) return;
+    // Cache hydration can restore the previous API on the same render that
+    // exposes the new brief. Wait for source synchronisation before generating.
+    if (searchSource === 'database' && search.filters.api !== 'database') return;
+    if (searchSource === 'linkedin' && search.filters.api === 'database') return;
     if (!selectedAccount && searchSource !== 'database') return;
     initialPhraseDoneRef.current = true;
     void launchFlow(initialPhrase.trim());
-  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow, memoryContextReady]);
+  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, search.filters.api, selectedAccount, searchSource, launchFlow, memoryContextReady]);
 
   // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
   // aucune recherche : recherche directe, sans repasser par la génération IA
@@ -1570,6 +1595,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   return (
     <div className={cn('w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]', showBackdrop && 'relative konekt-on-backdrop')}>
       {showBackdrop && <PageBackdrop follow contained />}
+      {isV3 && <div className="relative mb-4 shrink-0"><SourcingSourcePicker source={searchSource}
+        onChange={handleSearchSourceChange} linkedinAvailable={!!selectedAccount} disabled={search.loading || flowMode === 'plan'} compact={flowMode === 'results'} /></div>}
       {activeProject && <SourcingMemoryNotice memories={memory.data?.memories ?? []} orgType={orgType}
         loading={memory.isPending || memory.isFetching} error={memory.isError} filtersOutdated={filtersOutdated}
         staleScoreCount={scoring.staleScoreCount} regenerating={regeneratingMemoryFilters}
@@ -1597,12 +1624,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           jobTitle={search.selectedJob?.title || activeProject.name}
           clientName={(search.selectedJob as any)?.client?.name || null}
           history={searchHistory.history}
-          onLaunch={launchFlow}
+          onLaunch={onPrepareSearch ? phrase => onPrepareSearch(phrase, searchSource) : launchFlow}
           onResumeHistory={resumeFromHistory}
-          onLaunchWithBriefFilters={briefFiltersReady ? launchWithBriefFilters : undefined}
+          onLaunchWithBriefFilters={onPrepareSearch ? () => onPrepareSearch('', searchSource) : briefFiltersReady ? launchWithBriefFilters : undefined}
           errorMessage={flowError}
           disabled={search.loading}
           variant={isV3 ? 'mission-v3' : 'default'}
+          guided={!!onPrepareSearch}
         />
       )}
       {activeProject && flowMode === 'plan' && (
@@ -1613,6 +1641,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           filterCount={countFilterChips(search.filters)}
           onRefine={refineByPhraseV3}
           onNewSearch={() => setFiltersOpen(true)}
+          onPrepare={onPrepareSearch ? () => onPrepareSearch('', searchSource) : undefined}
           disabled={search.loading}
         >
           <div className="flex flex-col gap-3">

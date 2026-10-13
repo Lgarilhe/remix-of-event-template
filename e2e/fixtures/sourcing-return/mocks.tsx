@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { SourcingProject } from '@/hooks/useSourcingProjects';
+import type { SourcingProject, UpdateProjectInput, CreateProjectInput } from '@/hooks/useSourcingProjects';
 import type { FixtureState, FixtureWindow } from './types';
 
 // Only identity and remote data boundaries are simulated. The search screen,
@@ -55,18 +55,27 @@ export const useAgentMemoryAutomation = () => ({ data: { mode: 'manual', version
 
 const heldWrites: Array<() => void> = [];
 w.qaReleaseWrites = () => { heldWrites.splice(0).forEach(fn => fn()); };
-const updateProject = (payload: { id: string; filters_snapshot: Record<string, unknown> }) => {
+const updateProject = (payload: UpdateProjectInput) => {
+  if (w.qaState.failSave) return Promise.reject(new Error('Enregistrement indisponible. Réessayez.'));
+  if (payload.expectedUpdatedAt && payload.expectedUpdatedAt !== w.qaProjects[payload.id]?.updated_at) return Promise.reject(new Error('Mission modifiée ailleurs.'));
   w.qaWrites.push(structuredClone(payload));
   return new Promise<SourcingProject>(resolve => {
     const finish = () => {
-      const project = { ...w.qaProjects[payload.id], filters_snapshot: payload.filters_snapshot } as SourcingProject;
+      const { expectedUpdatedAt: _expected, ...fields } = payload;
+      const project = { ...w.qaProjects[payload.id], ...fields, updated_at: new Date().toISOString() } as SourcingProject;
       w.qaProjects[payload.id] = project;
       notify(); resolve(project);
     };
     if (w.qaState.holdWrites) heldWrites.push(finish); else queueMicrotask(finish);
   });
 };
-export const useSourcingProjects = () => ({ updateProject, projects: Object.values(w.qaProjects), findOrCreateForJob: noop });
+const createProject = async (payload: CreateProjectInput) => {
+  if (w.qaState.failSave) throw new Error('Enregistrement indisponible. Réessayez.');
+  const project = { id: 'search-guided', organization_id: 'org-a', created_by: 'user-a', status: 'active', updated_at: new Date().toISOString(), filters_snapshot: {}, ...payload } as SourcingProject;
+  w.qaProjects[project.id] = project; notify(); return project;
+};
+export const useSourcingProjects = () => ({ updateProject, createProject, projects: Object.values(w.qaProjects), findOrCreateForJob: noop });
+export const useSourcingProject = (id?: string) => { useFixture(); return { data: id ? w.qaProjects[id] : undefined, isLoading: false, error: null }; };
 
 const statuses = new Map(Object.entries(w.qaStatuses ?? {}));
 const empty = new Set<string>();
@@ -90,15 +99,17 @@ export const useJobCandidateStatus = () => ({
 // Local Supabase double: no credentials, external URLs or production writes.
 function from(table: string) {
   let single = false;
+  let id = '';
   const chain: Record<string, unknown> = {};
   for (const method of ['select', 'eq', 'neq', 'in', 'is', 'not', 'order', 'limit', 'range', 'or', 'ilike', 'gte', 'lte', 'insert', 'update', 'upsert', 'delete', 'match']) chain[method] = () => chain;
+  chain.eq = (key: string, value: string) => { if (key === 'id') id = value; return chain; };
   chain.single = chain.maybeSingle = () => { single = true; return chain; };
-  chain.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve({ data: single ? null : [], error: null, count: 0 }).then(resolve, reject);
+  chain.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve({ data: table === 'sourcing_projects' && single ? w.qaProjects[id] ?? null : single ? null : [], error: null, count: 0 }).then(resolve, reject);
   return chain;
 }
 export const supabase = {
   from,
-  rpc: async (name: string) => ({ data: name === 'get_base_konekt_state' ? { is_enabled: false, plan_allows: false, included_remaining: 0, credits_per_search: 0 } : null, error: null }),
+  rpc: async (name: string) => ({ data: name === 'get_base_konekt_state' ? { enabled: !!w.qaState.baseEnabled, plan_allows: !!w.qaState.baseEnabled, included_remaining: 10, credits_per_search: 2 } : null, error: null }),
   auth: { getUser: async () => ({ data: { user: user() } }), getSession: async () => ({ data: { session: session() } }), refreshSession: async () => ({ data: { session: session() } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: noop } } }) },
   functions: { invoke: async (name: string, options: { body: unknown }) => {
     const response = await fetch('/qa-api/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(options.body) });

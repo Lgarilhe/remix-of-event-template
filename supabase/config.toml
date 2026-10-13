@@ -275,3 +275,6 @@ verify_jwt = false
 # Auth checked in the handler: user JWT, then the platform admin list (fail closed).
 [functions.unipile-migration]
 verify_jwt = false
+
+[functions.sourcing-interview]
+verify_jwt = false

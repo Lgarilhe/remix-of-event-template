@@ -1594,3 +1594,14 @@ Sur téléphone (390 px), la page passe de 2 013 à 1 614 px en colonnes, de 2 3
 ---
 
 *Ce fichier est lu par Claude Code en début de chaque conversation via la skill /status. Garder concis pour ne pas polluer le contexte.*
+
+
+## 2026-10-13 — Sourcing guidé depuis l’accueil et accès sans LinkedIn
+
+- Accueil : départ d’une recherche guidée, nouvelle recherche ou mission avec son cadrage complet. Dialogue partagé avec le sourcing des missions et l’ajustement depuis les résultats.
+- Brouillon explicite : échanges structurés, critères, importance, caractère éliminatoire et pondération globale à 100 %. Sauvegarde à la validation, refus des écrasements concurrents par contrôle de `updated_at`, conservation du texte sur erreur.
+- Nouvelle fonction `sourcing-interview` : utilisateur JWT et appartenance à l’organisation vérifiés, limitation de fréquence, garde de crédits avant modèle, sortie validée et décompte de l’appel. Aucune écriture de brief côté serveur. Nouvelle action IA `sourcing_interview`, palier rapide, 1 crédit minimum. Aucune migration.
+- Sans compte LinkedIn, la Base Konekt est proposée, avec ses prérequis de forfait/activation et une comparaison des données/actions disponibles. Les lieux restent textuels ; la tranche d’expérience appliquée au serveur n’est pas rejouée sur des aperçus sans dates.
+- Résultats : vue Tri par défaut sans préférence, consignes de décision et note manquante explicitée. Source et caches séparés, préférence conservée, validation explicite prioritaire sur une ancienne vue ; attente de synchronisation de l’API avant génération.
+- Validation : 55/55 tests navigateur (13 nouveaux et 42 de retour au sourcing), tests agents et C1 sans échec, build de production réussi, 11 diagnostics TypeScript hérités identiques à main, aucun diagnostic lint ni compteur design supplémentaire. La suite UX retrouve les quatre fichiers en échec sur main (`barre-lot56-coquille`, `fond-accueil`, `seq-audit-b5`, `seq-audit-f4b`). Les transports/base/modèle de la QA navigateur sont contrôlés ; aucun crédit de production consommé.
+- Recette réelle et comparaison des sources : `docs/audit-ux/2026-10-13-sourcing-guide-tests.md`. Lecture de production : aucune opération Base Konekt enregistrée, aucune clé par organisation ; la configuration globale serveur et un essai réel restent à vérifier avant ouverture aux testeurs.

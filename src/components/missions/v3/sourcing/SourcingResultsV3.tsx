@@ -425,6 +425,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
   return (
     <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
       {feedback}
+      {hasSearched && <p className="mb-3 text-sm text-muted-foreground">Ouvrez un profil pour vérifier son parcours, puis retenez-le ou écartez-le. La note IA aide au tri ; une information absente reste à vérifier.</p>}
       {/* Rangée B : une seule rangée, comme au Pipeline : puces d'état sans cadre et bascule d'affichage. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
         <div role="tablist" aria-label="Groupes de résultats" className="flex shrink-0 items-center gap-1">
@@ -681,7 +682,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                       {headline}
                     </td>
                     <td className="pr-3 text-right align-middle">
-                      {row.note !== null && row.note > 0 ? <ScorePill score={row.note} /> : null}
+                      {row.note !== null && row.note > 0 ? <ScorePill score={row.note} /> : <span className="text-xs text-muted-foreground">À noter</span>}
                     </td>
                     {tab === 'retained' ? (
                       <td className="pr-2 align-middle">

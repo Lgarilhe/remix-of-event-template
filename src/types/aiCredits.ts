@@ -132,6 +132,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   candidate_actions: { action: "candidate_actions", label: "Préparation des actions candidat", floor: 2, typicalTokens: 8_000, routingTier: "default", category: "qualification" },
   phone_call_analysis: { action: "phone_call_analysis", label: "Analyse d'un appel", floor: 1, typicalTokens: 6_000, routingTier: "fast", category: "qualification" },
   live_coaching: { action: "live_coaching", label: "Coaching en direct (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
+  sourcing_interview: { action: "sourcing_interview", label: "Cadrage guidé de la recherche", floor: 1, typicalTokens: 3000, routingTier: "fast", category: "sourcing", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   agent_search_calibration: { action: "agent_search_calibration", label: "Agent, calibrage de la recherche", floor: 3, typicalTokens: 3_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
   conversation_title: { action: "conversation_title", label: "Assistant, titre de conversation", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   intent_routing: { action: "intent_routing", label: "Assistant, routage d'intention", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },

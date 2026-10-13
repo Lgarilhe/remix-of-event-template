@@ -75,6 +75,7 @@ interface SearchHeroProps {
   disabled?: boolean;
   /** Nouvelle page mission : sans pastille de mission (le nom est dans l'en-tête), textes vouvoyés. */
   variant?: 'default' | 'mission-v3';
+  guided?: boolean;
 }
 
 const HERO_EXAMPLES = [
@@ -85,6 +86,7 @@ const HERO_EXAMPLES = [
 export const SearchHero: React.FC<SearchHeroProps> = ({
   jobTitle, clientName, history, onLaunch, onResumeHistory, onLaunchWithBriefFilters, errorMessage, disabled,
   variant = 'default',
+  guided = false,
 }) => {
   const isV3 = variant === 'mission-v3';
   const [value, setValue] = useState('');
@@ -140,7 +142,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (armed) onLaunch(value.trim()); } }}
             aria-label={isV3 ? 'Décrivez le profil recherché' : undefined}
             placeholder={isV3
-              ? "Décrivez le profil idéal : rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que vous pourrez modifier."
+              ? guided ? 'Décrivez le profil idéal. L’assistant vous aide à compléter le cadrage avant de chercher.' : "Décrivez le profil idéal : rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que vous pourrez modifier."
               : "Décris le profil idéal — rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que tu pourras piloter."}
             className={cn(
               'flex-1 min-w-0 resize-none border-0 bg-transparent p-0 text-base leading-relaxed text-[var(--k-text)] focus:outline-none min-h-[52px]',
@@ -152,7 +154,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         <div className="flex items-center gap-2.5 mt-1.5">
           {isV3 ? (
           <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-[var(--k-text-muted)]">
-            Entrée pour lancer
+            {guided ? 'Entrée pour préparer' : 'Entrée pour lancer'}
           </span>
           ) : (
           <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-2xs text-[var(--k-text-muted)]">
@@ -172,7 +174,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             className="ml-auto max-w-full max-sm:w-full max-sm:min-w-0 max-sm:h-auto max-sm:min-h-11 max-sm:whitespace-normal max-sm:py-2"
           >
             <svg viewBox="0 0 24 24" {...svgProps} strokeWidth={1.6} className="w-3.5 h-3.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
-            <span className="min-w-0">{!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : 'Générer les filtres et chercher'}</span>
+            <span className="min-w-0">{guided ? 'Préparer la recherche' : !armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : 'Générer les filtres et chercher'}</span>
           </Button>
           ) : (
           <button
@@ -222,7 +224,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         ou{' '}
         <button type="button" onClick={() => onLaunch('')} disabled={disabled}
           className="font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] underline underline-offset-4 decoration-[var(--k-hairline-focus)] max-sm:inline-block max-sm:py-3">
-          {onLaunchWithBriefFilters ? 'régénérer les filtres depuis le poste' : 'générer les filtres depuis le poste'}
+          {guided ? 'compléter le cadrage depuis le poste' : onLaunchWithBriefFilters ? 'régénérer les filtres depuis le poste' : 'générer les filtres depuis le poste'}
         </button>
         , sans rien écrire
       </p>
