@@ -3,9 +3,14 @@
  * séquence et de la carte « Maintenant » (interrupteur des séquences allumé, défaut).
  *
  *  1. Page séquence vers Pipeline : « Inscrire des candidats » mène à
- *     /missions/<mission>?sequence=<id> (sans panneau), le Pipeline annonce la séquence
- *     demandée, le panneau Contacter la choisit d'avance (la plus ancienne, pas la plus
- *     récente), l'inscription y va, et le paramètre `sequence` quitte l'adresse ;
+ *     /missions/<mission>?tab=pipeline&sequence=<id> (le lien sert aussi l'ancienne page), la
+ *     nouvelle page remplace l'adresse par /missions/<mission>?sequence=<id> (sans panneau), le
+ *     Pipeline annonce la séquence demandée (vue Liste seulement), le panneau Contacter la
+ *     choisit d'avance (la plus ancienne, pas la plus récente) et la retire aussitôt de l'adresse,
+ *     l'inscription y va ;
+ *  1 bis. la séquence demandée est consommée à l'ouverture : fermer le panneau puis cliquer de
+ *     nouveau « Contacter » propose la séquence la plus récente, l'adresse d'arrivée ne la
+ *     porte plus ;
  *  2. état vide de l'onglet Candidats : le lien a la même cible que celui de l'en-tête ;
  *  3. séquence demandée en pause : aucune séquence choisie, phrase explicite, pas
  *     d'« Inscrire », l'autre séquence reste choisissable (et inscrit) ;
@@ -251,10 +256,14 @@ test('Page séquence vers Pipeline : la séquence demandée (la plus ancienne) e
 
   // « Inscrire des candidats » de l'en-tête : le Pipeline de la mission, séquence demandée dans l'adresse.
   const enroll = page.getByRole('link', { name: 'Inscrire des candidats' });
-  await expect(enroll).toHaveAttribute('href', `/missions/${ws.missionId}?sequence=${old.id}`);
+  await expect(enroll).toHaveAttribute('href', `/missions/${ws.missionId}?tab=pipeline&sequence=${old.id}`);
   await enroll.click();
 
-  await expect(page).toHaveURL((url) => url.pathname === `/missions/${ws.missionId}` && url.searchParams.get('sequence') === old.id, { timeout: 30_000 });
+  // La nouvelle page remplace l'adresse : `tab` part, `sequence` reste.
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `/missions/${ws.missionId}` && url.searchParams.get('sequence') === old.id && !url.searchParams.has('tab'),
+    { timeout: 30_000 },
+  );
   expect(searchOf(page).has('panneau'), 'aucun panneau ouvert par le lien').toBe(false);
   expect(searchOf(page).has('contacter'), 'pas encore en mode Contacter').toBe(false);
   await waitPipeline(page);
@@ -276,8 +285,11 @@ test('Page séquence vers Pipeline : la séquence demandée (la plus ancienne) e
   await expect(picker(page)).toContainText(old.name, { timeout: 20_000 });
   await expect(picker(page)).not.toContainText(recent.name);
   await expect(flow(page).getByText(PREFERRED_MISSING)).toHaveCount(0);
-  // Le paramètre reste dans l'adresse tant que le mode Contacter est ouvert.
-  expect(searchOf(page).get('sequence')).toBe(old.id);
+  // Consommée à l'ouverture : la séquence demandée a quitté l'adresse (les autres paramètres restent), et le choix tient.
+  await expect(page).not.toHaveURL(/[?&]sequence=/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/contacter=1/);
+  await expect(picker(page)).toContainText(old.name);
+  await expect(flow(page).getByText(PREFERRED_MISSING)).toHaveCount(0);
 
   // « Inscrire 2 candidats » : dans l'ancienne séquence, aucune dans la récente.
   const submit = flow(page).getByRole('button', { name: /^Inscrire 2 candidats$/ });
@@ -295,6 +307,65 @@ test('Page séquence vers Pipeline : la séquence demandée (la plus ancienne) e
   await expect(page).not.toHaveURL(/[?&]sequence=/);
   await expect(page).not.toHaveURL(/contacter=1/);
   await expect(page.getByText(SEQUENCE_HINT, { exact: true })).toHaveCount(0);
+
+  // Fermer le panneau ramène l'adresse d'arrivée : la séquence demandée n'y revient pas, ni l'indication
+  // (les deux candidats inscrits ont quitté la sélection, rien n'est coché).
+  await panel(page).getByRole('button', { name: 'Fermer le panneau' }).click();
+  await expect(panel(page)).toHaveCount(0);
+  await expect(page).not.toHaveURL(/[?&]sequence=/, { timeout: 20_000 });
+  await expect(page.getByText(SEQUENCE_HINT, { exact: true })).toHaveCount(0);
+});
+
+test('Séquence demandée consommée à l\'ouverture : l\'indication reste en vue Liste, fermer le panneau puis cliquer de nouveau « Contacter » propose la plus récente', async ({ browser }) => {
+  const ws = await workspace('E2E entrées séquence consommée');
+  const old = await sequence(ws, { name: `Ancienne ${rand()}`, createdAt: '2026-09-01T10:00:00Z' });
+  const recent = await sequence(ws, { name: `Récente ${rand()}`, createdAt: '2026-10-01T10:00:00Z' });
+  const people = await Promise.all(['Alix', 'Basile'].map((first, i) => candidate(ws, `cand_use_${i}`, `${first} Consommée`)));
+
+  const page = await openSequencePage(browser, ws, old, `?depuis=mission:${ws.missionId}`);
+  await page.getByRole('link', { name: 'Inscrire des candidats' }).click();
+  await expect(page).toHaveURL((url) => url.pathname === `/missions/${ws.missionId}` && url.searchParams.get('sequence') === old.id, { timeout: 30_000 });
+  await waitPipeline(page);
+
+  // L'indication ne vaut que pour la vue Liste : le kanban « Par étape » n'a ni case ni barre d'actions.
+  const hint = page.getByText(SEQUENCE_HINT, { exact: true });
+  await expect(hint).toBeVisible({ timeout: 20_000 });
+  const views = page.getByRole('group', { name: 'Affichage' });
+  await views.getByRole('button', { name: 'Par étape' }).click();
+  await expect(page).toHaveURL(/[?&]vue=etapes(&|$)/);
+  await expect(hint).toHaveCount(0);
+  await views.getByRole('button', { name: 'Liste' }).click();
+  await waitPipeline(page);
+  await expect(hint).toBeVisible({ timeout: 20_000 });
+
+  // Première ouverture : la séquence demandée est choisie, puis quitte l'adresse.
+  await check(page, people[0].name).click();
+  await check(page, people[1].name).click();
+  await bar(page).getByRole('button', { name: 'Contacter', exact: true }).click();
+  await expect(panel(page)).toHaveAttribute('data-panel', 'contact');
+  await expect(flow(page)).toBeVisible({ timeout: 20_000 });
+  await expect(picker(page)).toContainText(old.name, { timeout: 20_000 });
+  await expect(page).not.toHaveURL(/[?&]sequence=/, { timeout: 20_000 });
+  await expect(picker(page)).toContainText(old.name);
+
+  // Fermer le panneau ramène l'adresse d'arrivée : elle ne porte plus la séquence demandée non plus.
+  await panel(page).getByRole('button', { name: 'Fermer le panneau' }).click();
+  await expect(panel(page)).toHaveCount(0);
+  await expect(page).not.toHaveURL(/panneau=|contacter=/);
+  await expect(page).not.toHaveURL(/[?&]sequence=/, { timeout: 20_000 });
+
+  // Rien n'est décoché : un nouveau « Contacter » ne repropose pas la séquence demandée, mais la plus récente.
+  await expect(bar(page)).toBeVisible();
+  await bar(page).getByRole('button', { name: 'Contacter', exact: true }).click();
+  await expect(panel(page)).toHaveAttribute('data-panel', 'contact');
+  await expect(flow(page)).toBeVisible({ timeout: 20_000 });
+  await expect(picker(page)).toContainText(recent.name, { timeout: 20_000 });
+  await expect(picker(page)).not.toContainText(old.name);
+  await expect(flow(page).getByText(PREFERRED_MISSING)).toHaveCount(0);
+  await expect(page).not.toHaveURL(/[?&]sequence=/);
+  // Aucune inscription n'a eu lieu pendant ce parcours.
+  expect(await enrollmentsOf(old.id)).toHaveLength(0);
+  expect(await enrollmentsOf(recent.id)).toHaveLength(0);
 });
 
 // ─── 2. État vide de l'onglet Candidats ─────────────────────────────────────
@@ -302,7 +373,7 @@ test('Page séquence vers Pipeline : la séquence demandée (la plus ancienne) e
 test('État vide de l\'onglet Candidats : le lien « Inscrire des candidats » a la même cible que celui de l\'en-tête', async ({ browser }) => {
   const ws = await workspace('E2E entrées état vide');
   const seq = await sequence(ws, { name: `Vide ${rand()}` });
-  const target = `/missions/${ws.missionId}?sequence=${seq.id}`;
+  const target = `/missions/${ws.missionId}?tab=pipeline&sequence=${seq.id}`;
 
   const page = await openSequencePage(browser, ws, seq, `?onglet=candidats&depuis=mission:${ws.missionId}`);
   await expect(page.getByRole('tab', { name: /Candidats/ })).toHaveAttribute('data-state', 'active');
@@ -316,7 +387,10 @@ test('État vide de l\'onglet Candidats : le lien « Inscrire des candidats » a
   for (const href of await links.evaluateAll((els) => els.map((el) => el.getAttribute('href')))) expect(href).toBe(target);
 
   await emptyLink.click();
-  await expect(page).toHaveURL((url) => url.pathname === `/missions/${ws.missionId}` && url.searchParams.get('sequence') === seq.id, { timeout: 30_000 });
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `/missions/${ws.missionId}` && url.searchParams.get('sequence') === seq.id && !url.searchParams.has('tab'),
+    { timeout: 30_000 },
+  );
   await waitPipeline(page);
   await expect(page.getByText(SEQUENCE_HINT, { exact: true })).toBeVisible({ timeout: 20_000 });
 });

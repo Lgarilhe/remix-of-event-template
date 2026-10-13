@@ -12,7 +12,10 @@
  *    reste coché : seuls les inscrits quittent la sélection ;
  *  - un clic dans la feuille n'ouvre pas la fiche du profil ;
  *  - interrupteur éteint : le menu « Séquence » d'avant, aucune feuille ;
- *  - recherche autonome (/sourcing/<id>) : même parcours.
+ *  - recherche autonome (/sourcing/<id>) : même parcours, sans mission : les séquences sont celles de
+ *    l'organisation et aucune porte « Rédiger une séquence pour cette mission » ;
+ *  - « Retenir sans contacter » depuis la feuille : la feuille reste ouverte, la barre de sélection ne
+ *    se met à jour qu'à sa fermeture.
  *
  * Harnais : stack locale (vraie base, vraies gardes, vraies fonctions serveur pour
  * l'aperçu : E2E_EDGE_FUNCTIONS=1). Sont simulés dans le navigateur la liste des
@@ -81,29 +84,40 @@ interface SeededSeq {
 }
 
 /**
- * Séquence active à une étape : invitation sans note (aucune génération par l'IA, aucun message à relire).
- * `projectId` nul : séquence de l'organisation, rattachée à aucune mission.
+ * Séquence active à une étape. `projectId` nul : séquence de l'organisation, rattachée à aucune mission.
+ * Par défaut : invitation sans note (aucune génération par l'IA, aucun message à relire).
  */
-async function invitationSequence(ws: Workspace, projectId: string | null = ws.projectId): Promise<SeededSeq> {
-  const name = `Entrées ${rand()}`;
+async function seedSequence(
+  ws: Workspace,
+  projectId: string | null,
+  step: Record<string, unknown>,
+  prefix: string,
+): Promise<SeededSeq> {
+  const name = `${prefix} ${rand()}`;
   const { data: seq, error } = await admin()
     .from('outreach_sequences')
     .insert({ name, organization_id: ws.org.orgId, created_by: ws.org.owner.userId, project_id: projectId, is_active: true })
     .select('id')
     .single();
-  if (error || !seq) throw new Error(`invitationSequence: ${error?.message}`);
+  if (error || !seq) throw new Error(`seedSequence: ${error?.message}`);
   const { error: stepErr } = await admin().from('sequence_steps').insert({
     sequence_id: seq.id,
     organization_id: ws.org.orgId,
     step_order: 0,
     condition_type: 'always',
     delay_days: 0,
-    action_type: 'connection_request',
-    message_template: null,
+    ...step,
   });
-  if (stepErr) throw new Error(`invitationSequence(étape): ${stepErr.message}`);
+  if (stepErr) throw new Error(`seedSequence(étape): ${stepErr.message}`);
   return { id: seq.id as string, name };
 }
+
+const invitationSequence = (ws: Workspace, projectId: string | null = ws.projectId): Promise<SeededSeq> =>
+  seedSequence(ws, projectId, { action_type: 'connection_request', message_template: null }, 'Entrées');
+
+/** Séquence dont le premier message est rédigé par l'IA : le flux ne l'inscrit pas, il propose « Relire les messages ». */
+const aiSequence = (ws: Workspace, projectId: string | null = ws.projectId): Promise<SeededSeq> =>
+  seedSequence(ws, projectId, { action_type: 'message', message_template: '', use_ai_personalization: true }, 'Rédigée');
 
 interface Candidate {
   id: string;
@@ -482,19 +496,69 @@ test('Recherche autonome : « Contacter » ouvre la feuille, une séquence de l\
   await expect(page.getByRole('button', { name: 'Contacter', exact: true })).toHaveCount(0);
 });
 
-// La demande attendait, pour une recherche autonome, une feuille « sans « cette mission » dans les textes » (flux hors mission).
-// Observé : la recherche est un projet (sourcing_projects, kind « search ») dont le poste synthétique s'appelle « project:<id> »
-// comme celui d'une mission ; le point d'entrée en tire donc un identifiant de mission (missionIdOf) et le sélecteur de séquence
-// propose « Rédiger une séquence pour cette mission » (SequencePicker, missionId non nul). Le mode « sans mission » du lot
-// (missionId et job nuls) n'est atteint que depuis la messagerie sans mission choisie et la fiche du Pipeline global.
-// Défaut de texte ou choix de conception : à trancher avant de retirer le fixme.
-test.fixme('Recherche autonome : aucun texte « cette mission » dans la feuille', async ({ browser }) => {
+// Une recherche autonome est un projet (sourcing_projects, kind « search ») dont le poste synthétique s'appelle « project:<id> »
+// comme celui d'une mission, mais ce n'est pas une mission : la feuille ne reçoit pas son identifiant (flux hors mission), donc
+// ni porte « Rédiger une séquence pour cette mission » ni séquences « de la mission ». Le poste est gardé : la règle Retenu écrit
+// toujours dans la recherche (voir le cas précédent).
+test('Recherche autonome : aucune porte « Rédiger une séquence pour cette mission », les séquences sont celles de l\'organisation', async ({ browser }) => {
   const ws = await workspace('E2E entrées recherche texte', 'search');
-  await invitationSequence(ws, null);
+  const seq = await invitationSequence(ws, null);
   const alix = candidateOf('A', 'Alix Texte');
   const page = await openStandaloneSearch(browser, ws, [alix]);
   await selectAndContactInSearch(page, [alix.name]);
+  await expect(flow(page)).not.toContainText('cette mission');
+
   await sheet(page).locator('[data-sequence-picker="ready"]').getByRole('button').click();
-  await expect(page.getByRole('menu')).not.toContainText('cette mission');
-  await expect(sheet(page)).not.toContainText('cette mission');
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: new RegExp(seq.name) })).toBeVisible();
+  await expect(menu).toContainText("Séquences de l'organisation");
+  await expect(menu).not.toContainText('Autres séquences');
+  await expect(menu).not.toContainText('cette mission');
+  await expect(page.getByRole('menuitem', { name: /Rédiger une séquence/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(flow(page)).not.toContainText('cette mission');
+});
+
+// ─── 6. « Retenir sans contacter » depuis la feuille ────────────────────────
+
+test('Recherche autonome : « Retenir sans contacter » laisse la feuille ouverte, la barre de sélection se met à jour à sa fermeture', async ({ browser }) => {
+  test.skip(process.env.E2E_EDGE_FUNCTIONS !== '1', 'draft-sequence (aperçu) absente : E2E_EDGE_FUNCTIONS=1');
+  const ws = await workspace('E2E entrées retenir', 'search');
+  const seq = await aiSequence(ws, null);
+  const alix = candidateOf('A', 'Alix Retenue');
+  const bruno = candidateOf('B', 'Bruno Retenu');
+  const page = await openStandaloneSearch(browser, ws, [alix, bruno]);
+  await selectAndContactInSearch(page, [alix.name, bruno.name]);
+
+  // Message rédigé par l'IA : aucune inscription directe, « Relire les messages » ouvre la fenêtre de relecture.
+  await sheet(page).locator('[data-sequence-picker="ready"]').getByRole('button').click();
+  await page.getByRole('menuitem', { name: new RegExp(seq.name) }).click();
+  await expect(flow(page).getByRole('button', { name: /^Inscrire/ })).toHaveCount(0);
+  await flow(page).getByRole('button', { name: /^Relire les messages \(2\)$/ }).click({ timeout: 30_000 });
+  const retain = page.getByRole('button', { name: 'Retenir sans contacter', exact: true });
+  await expect(retain).toBeEnabled({ timeout: 30_000 });
+  await retain.click();
+
+  // Les deux profils sont retenus dans la recherche, rien n'est inscrit, la fenêtre de relecture se ferme.
+  await expect.poll(async () => (await allRows(ws)).map((r) => `${r.candidate_id}|${r.job_id}|${r.general_stage}`).sort(), { timeout: 30_000 })
+    .toEqual([alix, bruno].map((c) => `${c.id}|project:${ws.projectId}|retained`).sort());
+  expect(await enrollmentsOf(seq.id)).toHaveLength(0);
+  await expect(retain).toHaveCount(0, { timeout: 20_000 });
+
+  // La feuille reste ouverte : l'hôte n'a pas relu ses statuts, donc n'a pas démonté la barre qui la porte.
+  await expect(sheet(page)).toBeVisible();
+  await expect(flow(page)).toBeVisible();
+  // Laisse le temps à une relecture des statuts d'arriver si elle partait (avant le correctif, elle fermait la feuille).
+  await page.waitForTimeout(2_500);
+  await expect(sheet(page)).toBeVisible();
+  // La barre est masquée aux technologies d'assistance par la feuille modale : le bouton se retrouve par son titre.
+  const barButton = page.locator('button[title="Inscrire dans une séquence"]');
+  await expect(barButton).toHaveCount(1);
+
+  // À la fermeture, l'hôte relit ses statuts : les deux profils ne sont plus à trier, la barre de sélection disparaît.
+  await sheet(page).getByRole('button', { name: 'Fermer le panneau' }).click();
+  await expect(sheet(page)).toHaveCount(0, { timeout: 20_000 });
+  await expect(barButton).toHaveCount(0, { timeout: 20_000 });
 });

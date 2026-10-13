@@ -239,7 +239,9 @@ test('5F2D-M9 InboxContactSheet : candidat sur valeurs simples, poste préfixé,
   assert.match(body, /notice=\{notice\}/);
   assert.match(body, /unverifiedRelationNotice\(steps, distance\)/);
   assert.match(body, /onEnrolled=\{\(\) => onEnrolled\(\)\}/);
-  assert.match(body, /above=\{/);
+  // Le choix de la mission reçoit l'état occupé de la feuille et se verrouille pendant l'écriture.
+  assert.match(body, /above=\{\(\{ busy \}\) => \(/);
+  assert.match(body, /disabled=\{busy\}/);
 
   // Le choix de la mission : mêmes id, classes et options que l'ancien dialogue, par le kit.
   assert.match(body, /<Label htmlFor="inbox-enroll-mission">Mission<\/Label>/);
@@ -467,11 +469,13 @@ test('5F2D-M12 mission choisie : identifiant nu pour le flux, poste préfixé «
   assert.equal(gone.job, null);
 });
 
-test('5F2D-M13 choix de la mission au-dessus du flux : mêmes options, « Sans mission » rend la chaîne vide', async (t) => {
+test('5F2D-M13 choix de la mission au-dessus du flux : mêmes options, « Sans mission » rend la chaîne vide, verrouillé pendant l\'écriture', async (t) => {
   if (!esbuild) return t.skip('esbuild absent');
   const kit = await loadSheet();
   const { value, calls } = props({ missionId: MISSIONS[0].id });
-  const above = sheetOf(kit.InboxContactSheet(value)).props.above;
+  const aboveProp = sheetOf(kit.InboxContactSheet(value)).props.above;
+  assert.equal(typeof aboveProp, 'function', 'une fonction : la feuille lui donne l\'état occupé');
+  const above = aboveProp({ busy: false });
   assert.ok(above, 'le choix est passé à la feuille');
 
   const label = find(above, (n) => n.type === 'Label');
@@ -479,6 +483,7 @@ test('5F2D-M13 choix de la mission au-dessus du flux : mêmes options, « Sans m
   assert.equal(textOf(label), 'Mission');
   const select = find(above, (n) => n.type === 'Select');
   assert.equal(select.props.value, MISSIONS[0].id);
+  assert.ok(!select.props.disabled, 'au repos, le choix est libre');
   const trigger = find(above, (n) => n.type === 'SelectTrigger');
   assert.equal(trigger.props.id, 'inbox-enroll-mission');
   assert.equal(trigger.props.className, 'max-md:h-11');
@@ -491,8 +496,14 @@ test('5F2D-M13 choix de la mission au-dessus du flux : mêmes options, « Sans m
   select.props.onValueChange(MISSIONS[1].id);
   assert.deepEqual(calls.mission, ['', MISSIONS[1].id]);
 
+  // Pendant l'écriture de l'inscription : la mission ne change plus (le poste de l'écriture en cours est celui de l'écran).
+  const busy = find(aboveProp({ busy: true }), (n) => n.type === 'Select');
+  assert.equal(busy.props.disabled, true, 'choix de la mission verrouillé pendant l\'écriture');
+  assert.equal(busy.props.value, MISSIONS[0].id, 'la valeur affichée ne bouge pas');
+  assert.equal(findAll(aboveProp({ busy: true }), (n) => n.type === 'SelectItem').length, 3, 'les options restent');
+
   // Sans mission, la valeur affichée est l'option « Sans mission ».
-  const none = sheetOf(kit.InboxContactSheet(props({ missionId: '' }).value)).props.above;
+  const none = sheetOf(kit.InboxContactSheet(props({ missionId: '' }).value)).props.above({ busy: false });
   assert.equal(find(none, (n) => n.type === 'Select').props.value, '__none__');
 });
 

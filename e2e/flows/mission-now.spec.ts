@@ -7,7 +7,8 @@
  *  1. mission neuve, poste décrit, aucun profil : « Chercher des profils » (rang 10) ;
  *  2. poste vide : « Décrire le poste » (rang 11) vers Cadrage ;
  *  3. retenus pas contactés : « Contacter les N » (envoi permis) ouvre le panneau Contacter sur les retenus cochés
- *     (lot 5f-2d ; interrupteur des séquences éteint : focus sur « Contacter » de la barre) ou « Voir les retenus »
+ *     (lot 5f-2d ; au delà de 400 retenus, le plafond est dit par un toast, visible au dessus du panneau plein écran
+ *     d'un téléphone ; interrupteur des séquences éteint : focus sur « Contacter » de la barre) ou « Voir les retenus »
  *     (formule gratuite) ;
  *  4. profils notés à trier : « Trier les N » ouvre À trier ;
  *  5. réponse non traitée sur votre compte : « Répondre » ouvre Échanges ; réponse d'un collègue : jamais un bouton ;
@@ -153,6 +154,36 @@ async function candidate(
 }
 
 const scored = (score = 70, recommendation: string | null = null): CandidateOptions => ({ score, recommendation });
+
+/**
+ * Séquence active de la mission, une étape message : sans elle le panneau Contacter ne liste pas les destinataires
+ * (il propose d'en rédiger une).
+ */
+async function missionSequence(ws: Workspace): Promise<string> {
+  const { data, error } = await admin()
+    .from('outreach_sequences')
+    .insert({
+      name: `Approche ${rand()}`,
+      organization_id: ws.org.orgId,
+      created_by: ws.org.owner.userId,
+      project_id: ws.missionId,
+      is_active: true,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`missionSequence: ${error?.message}`);
+  const { error: stepError } = await admin().from('sequence_steps').insert({
+    sequence_id: data.id,
+    organization_id: ws.org.orgId,
+    step_order: 0,
+    condition_type: 'always',
+    delay_days: 0,
+    action_type: 'message',
+    message_template: 'Bonjour {{firstName}}, une mission pour vous.',
+  });
+  if (stepError) throw new Error(`missionSequence(étape): ${stepError.message}`);
+  return data.id as string;
+}
 
 // ─── Navigateur ─────────────────────────────────────────────────────────────
 
@@ -335,6 +366,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
 
   test('3a. retenus pas contactés, envoi permis : « Contacter les N » coche les retenus et ouvre le panneau Contacter', async ({ browser }) => {
     const ws = await workspace('E2E now 3a');
+    await missionSequence(ws);
     await candidate(ws, 'Rita Retenue', 'retained');
     await candidate(ws, 'Remi Retenu', 'retained');
     await candidate(ws, 'Carl Contacte', 'contacted');
@@ -403,6 +435,58 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await expect(panel(page)).toHaveCount(0);
     const contactInBar = bar.getByRole('button', { name: /^Contacter/ }).first();
     await expect(contactInBar).toBeFocused({ timeout: 10_000 });
+  });
+
+  test('3a-ter. plus de 400 retenus, téléphone : « Contacter les N » ouvre le panneau avec 400 cochés, et un toast dit le plafond au dessus du panneau', async ({ browser }) => {
+    test.setTimeout(240_000);
+    const ws = await workspace('E2E now 3a ter');
+    // 401 retenus : lignes insérées par lots (À trier), puis passées à Retenu par le geste serveur (200 au plus par appel).
+    const total = 401;
+    const ids: string[] = [];
+    for (let from = 0; from < total; from += 200) {
+      const rows = Array.from({ length: Math.min(200, total - from) }, (_, i) => ({
+        organization_id: ws.org.orgId,
+        project_id: ws.missionId,
+        job_id: `project:${ws.missionId}`,
+        candidate_id: `cand_cap_${from + i}`,
+        created_by: ws.org.owner.userId,
+        candidate_name: `Retenu numéro ${from + i}`,
+        linkedin_profile_url: `https://www.linkedin.com/in/cand-cap-${from + i}`,
+      }));
+      const { data, error } = await admin().from('job_candidate_status').insert(rows).select('id');
+      if (error || !data) throw new Error(`retenus (insertion) : ${error?.message}`);
+      ids.push(...data.map((row) => row.id as string));
+    }
+    for (let from = 0; from < ids.length; from += 200) {
+      const { error } = await admin().rpc('set_candidate_stages', {
+        p_ids: ids.slice(from, from + 200), p_stage: 'retained', p_source: 'user', p_organization_id: ws.org.orgId,
+      });
+      if (error) throw new Error(`retenus (étape) : ${error.message}`);
+    }
+
+    const page = await openAs(browser, ws, { viewport: { width: 390, height: 844 }, phone: true });
+    await openPipeline(page, ws);
+    const card = nowCard(page);
+    await expect(card).toContainText(`${total} candidats retenus attendent un premier message.`, { timeout: 30_000 });
+    await card.getByRole('button', { name: `Contacter les ${total}`, exact: true }).click();
+
+    // Le panneau plein écran s'ouvre sur 400 retenus cochés (le plafond d'une sélection groupée).
+    await expect(page).toHaveURL(/[?&]contacter=1(&|$)/, { timeout: 60_000 });
+    await expect(panel(page)).toHaveAttribute('data-panel', 'contact');
+    await expect(page.locator('[data-contact-flow]')).toBeVisible({ timeout: 60_000 });
+    await expect(panel(page).getByRole('heading', { name: 'Contacter 400 candidats' })).toBeVisible({ timeout: 30_000 });
+
+    // La note du plafond est derrière le panneau : un toast la dit, et il est bien au dessus de lui.
+    const sentence = `400 retenus sur ${total} sont cochés : une sélection groupée est limitée à 400.`;
+    const toast = page.locator('[data-sonner-toast]').filter({ hasText: sentence });
+    await expect(toast).toBeVisible({ timeout: 15_000 });
+    const box = await toast.boundingBox();
+    expect(box, 'toast mesurable').not.toBeNull();
+    const onTop = await page.evaluate(
+      ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[data-sonner-toast]'),
+      { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 },
+    );
+    expect(onTop, 'le toast recouvre le panneau').toBe(true);
   });
 
   test('3b. retenus pas contactés, formule gratuite : « Voir les retenus » filtre la liste, aucune impasse', async ({ browser }) => {

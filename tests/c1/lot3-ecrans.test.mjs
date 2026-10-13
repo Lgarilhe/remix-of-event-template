@@ -104,7 +104,7 @@ test('lot 3 écrans : « Trier » efface la vue et l\'étape avant d\'ouvrir la 
 test('lot 3 écrans : « Contacter les N » filtre sur Retenu, coche les retenus, puis ouvre le panneau Contacter (éteint : focus sur « Contacter » de la barre)', () => {
   const src = code(SCREEN);
   assert.match(src, /useMissionCandidateRows\(project\.id, RETAINED_FILTER,/);
-  assert.match(src, /const contactRetained = useCallback\(\(\) => \{\s*setParams\(\{ \[V3_PARAM\.stage\]: 'retained', \[V3_PARAM\.view\]: null \}\);\s*setSelectionNote\(null\);\s*setContactRequest\(true\);/);
+  assert.match(src, /const contactRetained = useCallback\(\(\) => \{\s*setParams\(\{ \[V3_PARAM\.stage\]: 'retained', \[V3_PARAM\.view\]: null \}\);\s*setSelectionNote\(null\);\s*retainedReached\.current = false;\s*setContactRequest\(true\);/);
   // Les retenus ne sont lus qu'à la demande : pas de page lue à chaque arrivée ni à chaque retour de focus.
   assert.match(src, /enabled: contactRequest && counts !== null && counts\.retained > 0/);
   // La sélection est posée après le changement de filtre (qui la vide).
@@ -115,7 +115,7 @@ test('lot 3 écrans : « Contacter les N » filtre sur Retenu, coche les retenus
   // au moins un retenu) ; éteint, ou rien de coché, l'ancien geste : le focus va au « Contacter » de la barre.
   assert.doesNotMatch(src, /openContactPanel\(\)/);
   assert.match(src, /const \{ openContactFlow \} = ctx;/);
-  assert.match(src, /setSelection\(new Map\(picked\.map[\s\S]*?\);\s*setSelectionNote\([\s\S]*?\);\s*if \(sequencesV2 && picked\.length > 0\) openContactFlow\(\);\s*else setFocusContact\(picked\.length > 0\);/);
+  assert.match(src, /setSelection\(new Map\(picked\.map[\s\S]*?setSelectionNote\([\s\S]*?\);\s*if \(sequencesV2 && picked\.length > 0\) openContactFlow\(\);\s*else setFocusContact\(picked\.length > 0\);/);
   assert.match(src, /\[data-bulk-bar\] button/);
   assert.match(src, /startsWith\('Contacter'\)/);
   // Plafond et échec de lecture dits à l'écran, jamais en silence.

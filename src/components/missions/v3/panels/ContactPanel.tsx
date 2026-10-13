@@ -62,8 +62,9 @@ const CONTACT_PARAM = 'contacter';
 /**
  * Lot 5f-2d : `?sequence=<id>`, séquence demandée par la page de cette séquence (« Inscrire des candidats »).
  * Paramètre local de la mission, comme `contacter` : hors de V3_PARAM et des paramètres de panneau. Il
- * n'ouvre rien à lui seul (le Pipeline l'annonce), il est transmis à ContactFlow en mode Contacter, et
- * retiré dès que ce mode est quitté (choix d'un onglet, « Voir les contactés », fin d'inscription).
+ * n'ouvre rien à lui seul (le Pipeline l'annonce). Il est consommé à l'ouverture du mode Contacter : lu une
+ * fois à la création du panneau (état local, stable pendant sa vie), transmis à ContactFlow, et retiré de
+ * l'adresse aussitôt, par remplacement. Jamais relu ensuite (le retrait de setTab ne fait que le garantir).
  */
 const SEQUENCE_PARAM = 'sequence';
 
@@ -93,7 +94,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   const asksInvitations = outreachParam === 'invitations';
   // Mode Contacter : interrupteur allumé, mission en cours, adresse en `?contacter=1`.
   const asksFlow = sequencesV2 && !isArchived && new URLSearchParams(location.search).get(CONTACT_PARAM) === '1';
-  const preferredSequenceId = new URLSearchParams(location.search).get(SEQUENCE_PARAM) || null;
+  const [preferredSequenceId] = useState<string | null>(() => new URLSearchParams(location.search).get(SEQUENCE_PARAM) || null);
   // Choix de la personne ou de l'adresse (?outreach=contactes|sequences). Sans lui,
   // interrupteur allumé : « Contactés » s'ouvre s'il a une ligne, sinon « Séquences ».
   const [chosen, setChosen] = useState<ContactTab | null>(() => {
@@ -129,7 +130,8 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
       setChosen(next);
       const current = locationRef.current;
       const params = new URLSearchParams(current.search);
-      // Choisir un onglet quitte le mode Contacter, et avec lui la séquence demandée.
+      // Choisir un onglet quitte le mode Contacter. La séquence demandée est déjà partie de l'adresse (effet
+      // ci-dessous), la retirer ici ne fait que le garantir.
       params.delete(SEQUENCE_PARAM);
       params.delete(CONTACT_PARAM);
       if (!sequencesV2 && next === 'sequences') params.delete(OUTREACH_PARAM);
@@ -161,6 +163,19 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
     [setSelection, setTab],
   );
   const onLeave = useCallback(() => setTab('contactes'), [setTab]);
+  // Consommation de la séquence demandée : dès que le mode Contacter est ouvert, elle quitte l'adresse (remplacement,
+  // état de navigation et autres paramètres gardés). Déclaré avant l'effet de rechargement ci-dessous : si les deux
+  // naviguent au montage, le dernier (qui retire aussi le mode) l'emporte. Sans `sequence` dans l'adresse, rien ne bouge,
+  // donc pas de boucle quand la navigation relance l'effet.
+  useEffect(() => {
+    if (!asksFlow) return;
+    const current = locationRef.current;
+    const params = new URLSearchParams(current.search);
+    if (!params.has(SEQUENCE_PARAM)) return;
+    params.delete(SEQUENCE_PARAM);
+    const query = params.toString();
+    navigate(`${current.pathname}${query ? `?${query}` : ''}`, { replace: true, state: current.state });
+  }, [asksFlow, navigate]);
   // Rechargement : la sélection n'est qu'en mémoire, `?contacter=1` seul ne la rend pas.
   // Au montage, sans sélection, le panneau s'ouvre sur « Contactés » (jamais ensuite : vider la
   // sélection panneau ouvert laisse l'état vide de ContactFlow).

@@ -218,7 +218,9 @@ export function ContactFlow({
   // Séquence : la plus récente de la mission est choisie d'avance, sauf choix de la personne encore proposé.
   // Séquence demandée par l'adresse (page d'une séquence) : choisie d'avance ; absente du menu (en pause, sans
   // étape, hors de la vue), elle n'est jamais remplacée en silence par une autre : aucune séquence choisie.
-  const sequencesRead = useContactSequences(missionId);
+  // Le constat « absente » ne se fait que sur une liste à jour : pendant la relecture d'une liste gardée en
+  // cache, la séquence peut y arriver, et rien n'est dit.
+  const sequencesRead = useContactSequences();
   const menu = useMemo(() => missionSequenceMenu(sequencesRead.sequences, missionId), [sequencesRead.sequences, missionId]);
   const [chosenSequenceId, setChosenSequenceId] = useState<string | null>(preferredSequenceId);
   const selected = useMemo(() => {
@@ -233,7 +235,7 @@ export function ContactFlow({
   const preferredMissing = !!preferredSequenceId
     && chosenSequenceId === preferredSequenceId
     && !selected
-    && sequencesRead.status === 'ready';
+    && sequencesRead.settled;
 
   const stepsRead = useSequenceSteps(selectedId);
   const rawSteps = stepsRead.steps;
@@ -737,8 +739,8 @@ export function ContactFlow({
         {overflow > 0 && (
           <p className="text-xs text-muted-foreground">
             {`${CONTACT_FLOW_MAX} candidats au plus par inscription : ${overflow > 1
-              ? `les ${plural(overflow, 'autre')} restent sélectionnés`
-              : "l'autre reste sélectionné"}.`}
+              ? `les ${plural(overflow, 'autre')} ne sont pas inclus dans cette inscription`
+              : "l'autre n'est pas inclus dans cette inscription"}.`}
           </p>
         )}
       </div>

@@ -21,6 +21,12 @@ import type { SequenceEnrollJob } from '@/components/outreach/SequenceEnrollButt
 import { ContactFlow } from './ContactFlow';
 import type { FlowCandidate, FlowNotice } from './types';
 
+/**
+ * Contenu entre l'en-tête et le flux. Une fonction reçoit l'état occupé (inscription en cours d'écriture) :
+ * ce qui change le contexte du flux (la mission, par exemple) doit alors se verrouiller.
+ */
+export type ContactFlowSheetAbove = ReactNode | ((state: { busy: boolean }) => ReactNode);
+
 export interface ContactFlowSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -29,7 +35,7 @@ export interface ContactFlowSheetProps {
   /** Poste et client, ou « Hors mission » ; absent : une phrase pour les lecteurs d'écran. */
   subtitle?: string | null;
   /** Entre l'en-tête et le flux (choix de la mission de la messagerie). */
-  above?: ReactNode;
+  above?: ContactFlowSheetAbove;
   missionId: string | null;
   job: SequenceEnrollJob | null;
   /** Figés par l'appelant à l'ouverture. */
@@ -70,6 +76,8 @@ export function ContactFlowSheet({
   useEffect(() => {
     if (!open) setBusy(false);
   }, [open]);
+
+  const aboveContent = typeof above === 'function' ? above({ busy }) : above;
 
   // Jamais de fermeture pendant l'écriture.
   const guard = (next: boolean) => {
@@ -117,7 +125,7 @@ export function ContactFlowSheet({
             </Button>
           </SheetClose>
         </div>
-        {above && <div className="shrink-0 border-b border-border px-4 py-3 sm:px-5">{above}</div>}
+        {aboveContent && <div className="shrink-0 border-b border-border px-4 py-3 sm:px-5">{aboveContent}</div>}
         {/* C'est ce conteneur qui défile : le pied de ContactFlow est collé en bas et a besoin d'un ancêtre qui défile. */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <SectionErrorBoundary fallbackTitle="Le panneau Contacter n'a pas pu s'afficher">

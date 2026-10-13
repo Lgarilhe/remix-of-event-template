@@ -129,14 +129,16 @@ export function InboxContactSheet({
       open={open}
       onOpenChange={onOpenChange}
       title={SHEET_TITLE}
-      above={
+      above={({ busy }) => (
         // Mission de rattachement : contexte donné à l'IA et suivi dans le pipeline de la mission.
-        // « Sans mission » ne bloque rien.
+        // « Sans mission » ne bloque rien. Verrouillé pendant l'écriture : changer la mission en plein
+        // envoi afficherait une autre mission que celle de l'inscription.
         <div className="space-y-1.5">
           <Label htmlFor="inbox-enroll-mission">Mission</Label>
           <Select
             value={missionId || NO_MISSION}
             onValueChange={(value) => onMissionChange(value === NO_MISSION ? '' : value)}
+            disabled={busy}
           >
             <SelectTrigger id="inbox-enroll-mission" className="max-md:h-11">
               <SelectValue />
@@ -151,7 +153,7 @@ export function InboxContactSheet({
             </SelectContent>
           </Select>
         </div>
-      }
+      )}
       missionId={missionKey}
       job={job}
       candidates={candidates}

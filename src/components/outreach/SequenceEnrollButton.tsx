@@ -1,5 +1,6 @@
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,12 +32,52 @@ import { SEQUENCES_PLAN_REQUIRED_MESSAGE } from './enrollment-preview/enrollment
 import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { profilesToFlowCandidates } from '@/components/sequences/contact/flowCandidates';
 import type { FlowCandidate } from '@/components/sequences/contact/types';
+import type { ContactFlowSheetProps } from '@/components/sequences/contact/ContactFlowSheet';
+import type { SourcingProject } from '@/hooks/useSourcingProjects';
 
 // La feuille du flux d'inscription ne se charge qu'à l'ouverture : elle reste hors des lots
 // de la messagerie, du Pipeline et de la recherche.
-const ContactFlowSheet = lazy(() =>
-  import('@/components/sequences/contact/ContactFlowSheet').then((m) => ({ default: m.ContactFlowSheet })),
-);
+//
+// Après un déploiement, un onglet resté ouvert demande un fichier qui n'existe plus et le chargement
+// échoue. Cette erreur ne doit ni faire tomber l'écran (la barrière d'erreur de la section remplacerait
+// toute la recherche) ni rester collée au bouton (React garde la promesse rejetée) : le chargeur rend
+// alors un composant qui ferme la feuille, prévient la personne une seule fois, et prépare un chargeur
+// neuf pour l'ouverture suivante. Toute autre erreur remonte comme avant.
+const SHEET_LOAD_ERROR = "La prise de contact n'a pas pu s'ouvrir. Rechargez la page, puis réessayez.";
+
+const CHUNK_ERROR_NEEDLES = [
+  'Failed to fetch dynamically imported module',
+  'Importing a module script failed',
+  'error loading dynamically imported module',
+  'Failed to load module script',
+  'ChunkLoadError',
+];
+
+const isChunkLoadError = (error: unknown): boolean => {
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? '');
+  return CHUNK_ERROR_NEEDLES.some((needle) => text.includes(needle));
+};
+
+function SheetLoadFailure({ onOpenChange }: Pick<ContactFlowSheetProps, 'onOpenChange'>): null {
+  useEffect(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+  return null;
+}
+
+function loadContactFlowSheet(): Promise<{ default: ComponentType<ContactFlowSheetProps> }> {
+  return import('@/components/sequences/contact/ContactFlowSheet')
+    .then((m) => ({ default: m.ContactFlowSheet as ComponentType<ContactFlowSheetProps> }))
+    .catch((error: unknown) => {
+      if (!isChunkLoadError(error)) throw error;
+      console.error('[SequenceEnrollButton] feuille de contact non chargée', error);
+      ContactFlowSheet = lazy(loadContactFlowSheet);
+      toast.error(SHEET_LOAD_ERROR, { id: 'contact-flow-sheet-load' });
+      return { default: SheetLoadFailure };
+    });
+}
+
+let ContactFlowSheet = lazy(loadContactFlowSheet);
 
 interface SequenceOption {
   id: string;
@@ -385,8 +426,19 @@ const LegacySequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
  * Interrupteur des séquences allumé (lot 5f-2d) : le même bouton ouvre le flux d'inscription du
  * panneau Contacter dans une feuille latérale, au lieu du menu. Les profils sont figés à
  * l'ouverture : une sélection qui change pendant que la feuille est ouverte ne modifie pas la
- * liste montrée, et la feuille reste rendue même si la sélection tombe à vide. Le plan et le
- * compte d'envoi sont jugés par le flux lui-même.
+ * liste montrée. Le plan et le compte d'envoi sont jugés par le flux lui-même.
+ *
+ * Le bouton rend la feuille même si sa sélection tombe à vide, mais c'est l'hôte qui monte le
+ * bouton, et plusieurs hôtes le démontent dès que les statuts changent. C'est pourquoi un « Retenir
+ * sans contacter » (onChanged) ne prévient l'hôte qu'à la fermeture de la feuille : le prévenir
+ * aussitôt relirait les statuts, la sélection tomberait à vide, et le bouton partirait avec la
+ * feuille sous les mains de la personne. Une inscription (onEnrolled) prévient l'hôte tout de suite,
+ * la feuille se ferme d'elle-même juste après.
+ *
+ * Une recherche autonome (sourcing_projects.kind « search ») a un poste « project:<id> » comme une
+ * mission mais n'est pas une mission : la feuille n'en reçoit pas l'identifiant (ni porte de
+ * rédaction « pour cette mission », ni séquences de la mission), le poste reste transmis pour la
+ * règle Retenu. Le type du projet est lu dans le cache déjà rempli par l'écran, sans requête.
  */
 const ContactFlowEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   selectedProfiles,
@@ -398,7 +450,12 @@ const ContactFlowEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   className,
 }) => {
   const [frozen, setFrozen] = useState<{ candidates: FlowCandidate[]; overflow: number } | null>(null);
-  const missionId = missionIdOf(selectedJob);
+  const changedWhileOpen = useRef(false);
+  const queryClient = useQueryClient();
+  const jobMissionId = missionIdOf(selectedJob);
+  const isStandaloneSearch = jobMissionId !== null
+    && queryClient.getQueryData<SourcingProject | null>(['sourcing-project', jobMissionId])?.kind === 'search';
+  const missionId = isStandaloneSearch ? null : jobMissionId;
 
   return (
     <>
@@ -422,15 +479,25 @@ const ContactFlowEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
             <ContactFlowSheet
               open
               onOpenChange={(open) => {
-                if (!open) setFrozen(null);
+                if (open) return;
+                setFrozen(null);
+                if (changedWhileOpen.current) {
+                  changedWhileOpen.current = false;
+                  onSuccess?.([]);
+                }
               }}
               missionId={missionId}
               job={selectedJob ?? null}
               candidates={frozen.candidates}
               overflow={frozen.overflow}
               accountId={accountId}
-              onEnrolled={(handledIds) => onSuccess?.(handledIds)}
-              onChanged={() => onSuccess?.([])}
+              onEnrolled={(handledIds) => {
+                changedWhileOpen.current = false;
+                onSuccess?.(handledIds);
+              }}
+              onChanged={() => {
+                changedWhileOpen.current = true;
+              }}
             />
           </Suspense>
         </span>

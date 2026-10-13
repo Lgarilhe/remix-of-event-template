@@ -334,7 +334,7 @@ const FLOW_STUBS = {
   './RecipientGroups': markers('RecipientGroups'),
   './SequencePicker': markers('SequencePicker'),
   './useContactEligibility': 'export const useContactEligibility = () => globalThis.__cf.eligibility;',
-  './useContactSequences': 'export const useContactSequences = (missionId) => { globalThis.__cf.calls.sequences.push(missionId); return globalThis.__cf.sequencesRead; };',
+  './useContactSequences': 'export const useContactSequences = (...args) => { globalThis.__cf.calls.sequences.push(args); return globalThis.__cf.sequencesRead; };',
   './useSequenceSteps': "export const useSequenceSteps = (sequenceId) => { globalThis.__cf.calls.steps.push(sequenceId); return sequenceId ? globalThis.__cf.stepsRead : { steps: null, status: 'loading', refetch() {} }; };",
 };
 
@@ -375,7 +375,7 @@ function scenario(overrides = {}) {
     subscription: { effectivePlanId: 'solo', isLoading: false, isLoadingError: false },
     accounts: { selectedAccount: 'acc_own', accountsLoading: false },
     sendingAccount: { blockReason: null, belongsToOtherMember: false },
-    sequencesRead: { sequences: [SEQ('seq-1')], status: 'ready', refetch: () => { calls.refetch += 1; } },
+    sequencesRead: { sequences: [SEQ('seq-1')], status: 'ready', settled: true, refetch: () => { calls.refetch += 1; } },
     stepsRead: { steps: [STEP], status: 'ready', refetch() {} },
     eligibility: {
       status: 'ready',
@@ -436,7 +436,7 @@ test('5F2D-G1 rowId nul : « Inscrire » rend l\'identifiant du profil, avec une
   if (!esbuild) return t.skip('esbuild absent');
 
   // Sans ligne : hors mission, sans poste ; la séquence est choisie à la main.
-  let cf = scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', refetch() {} } });
+  let cf = scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', settled: true, refetch() {} } });
   let { instance, log } = mountFlow({ missionId: null, job: null, candidates: [candidate('p1', { rowId: null }), candidate('p2', { rowId: null })] });
   assert.equal(pickerOf(instance).props.selectedId, null, 'hors mission, aucune séquence présélectionnée');
   assert.equal(buttonStarting(instance.tree, 'Inscrire'), undefined, 'sans séquence, pas de pied');
@@ -499,7 +499,7 @@ test('5F2D-G2 rowId nul : la fenêtre « Relire les messages » rend aussi l\'id
 
   // Deux candidats sans ligne, l'un entré dans la séquence pendant la fenêtre.
   let cf = scenario({
-    sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', refetch() {} },
+    sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', settled: true, refetch() {} },
     blockingResult: { blocking: new Set(['p2']) },
   });
   const changes = [];
@@ -560,7 +560,7 @@ test('5F2D-G2 rowId nul : la fenêtre « Relire les messages » rend aussi l\'id
 test('5F2D-G3 job nul : le titre du poste n\'est jamais lu ; avec un poste, son titre est transmis à l\'aperçu', async (t) => {
   if (!esbuild) return t.skip('esbuild absent');
 
-  let cf = scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', refetch() {} } });
+  let cf = scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', settled: true, refetch() {} } });
   const { instance } = mountFlow({ missionId: null, job: null, candidates: [candidate('p1', { rowId: null })] });
   assert.ok(instance.tree, 'le rendu ne lève rien sans poste');
   assert.ok(cf.calls.previewValues.length > 0);
@@ -585,9 +585,9 @@ test('5F2D-G3 job nul : le titre du poste n\'est jamais lu ; avec un poste, son 
 test('5F2D-G4 missionId nul : séquences lues sans mission, « Ouvrir la séquence » mène à l\'onglet des candidats sans « & » orphelin', async (t) => {
   if (!esbuild) return t.skip('esbuild absent');
 
-  let cf = scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', refetch() {} } });
+  let cf = scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', settled: true, refetch() {} } });
   let { instance } = mountFlow({ missionId: null, job: null, candidates: [candidate('p1', { rowId: null })] });
-  assert.equal(cf.calls.sequences.at(-1), null, 'useContactSequences reçoit missionId nul');
+  assert.deepEqual(cf.calls.sequences.at(-1), [], 'useContactSequences ne reçoit aucune mission : la lecture est la même partout');
   assert.equal(pickerOf(instance).props.missionId, null, 'SequencePicker aussi');
   await choose(instance, 'seq-1');
   buttonStarting(instance.tree, 'Inscrire').props.onClick();
@@ -600,13 +600,14 @@ test('5F2D-G4 missionId nul : séquences lues sans mission, « Ouvrir la séquen
   // Dans la mission : l'adresse du lot 5f-2c, depuis la mission.
   cf = scenario();
   ({ instance } = mountFlow());
+  assert.deepEqual(cf.calls.sequences.at(-1), [], 'dans la mission non plus : le choix par mission est fait par le menu');
   buttonStarting(instance.tree, 'Inscrire').props.onClick();
   await settle();
   cf.calls.announce[0].context.onOpenSequence();
   assert.deepEqual(cf.calls.navigate, [`/sequences/seq-1?depuis=mission:${MISSION}&onglet=candidats`]);
 
   // Un identifiant de séquence est encodé comme partout ailleurs.
-  cf = scenario({ sequencesRead: { sequences: [SEQ('a b', { project_id: null })], status: 'ready', refetch() {} } });
+  cf = scenario({ sequencesRead: { sequences: [SEQ('a b', { project_id: null })], status: 'ready', settled: true, refetch() {} } });
   ({ instance } = mountFlow({ missionId: null, job: null, candidates: [candidate('p1', { rowId: null })] }));
   await choose(instance, 'a b');
   buttonStarting(instance.tree, 'Inscrire').props.onClick();
@@ -795,7 +796,7 @@ test('5F2D-G11 notice : texte fixe ou calculé sur les étapes de la séquence c
 
   // La fonction ne s'appelle pas tant que les étapes ne sont pas lues (aucune séquence choisie hors mission).
   const calledWith = [];
-  scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', refetch() {} } });
+  scenario({ sequencesRead: { sequences: [SEQ('seq-1', { project_id: null })], status: 'ready', settled: true, refetch() {} } });
   ({ instance } = mountFlow({ missionId: null, job: null, candidates: [candidate('p1', { rowId: null })], notice: (steps) => { calledWith.push(steps); return 'Avertissement'; } }));
   assert.deepEqual(calledWith, []);
   assert.deepEqual(notes(instance.tree), []);
@@ -820,12 +821,12 @@ test('5F2D-G12 séquence demandée : choisie d\'avance, et absente du menu elle 
   const older = SEQ('seq-old', { created_at: '2026-09-01T10:00:00Z', project_id: null });
 
   // Sans demande : la plus récente de la mission.
-  let cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', refetch() {} } });
+  let cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', settled: true, refetch() {} } });
   let { instance } = mountFlow();
   assert.equal(pickerOf(instance).props.selectedId, 'seq-new');
 
   // Demandée et présente, même si ce n'est pas le choix d'avance.
-  cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', refetch() {} } });
+  cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', settled: true, refetch() {} } });
   ({ instance } = mountFlow({ preferredSequenceId: 'seq-old' }));
   assert.equal(pickerOf(instance).props.selectedId, 'seq-old');
   assert.equal(cf.calls.steps.at(-1), 'seq-old');
@@ -833,12 +834,12 @@ test('5F2D-G12 séquence demandée : choisie d\'avance, et absente du menu elle 
   assert.deepEqual(notes(instance.tree), []);
 
   // Demandée et présente, hors mission : choisie d'avance aussi (c'est le cas de la page d'une séquence sans mission).
-  cf = scenario({ sequencesRead: { sequences: [older], status: 'ready', refetch() {} } });
+  cf = scenario({ sequencesRead: { sequences: [older], status: 'ready', settled: true, refetch() {} } });
   ({ instance } = mountFlow({ missionId: null, job: null, candidates: [candidate('p1', { rowId: null })], preferredSequenceId: 'seq-old' }));
   assert.equal(pickerOf(instance).props.selectedId, 'seq-old');
 
   // Demandée mais absente du menu (en pause, sans étape, hors de la vue) : aucune séquence choisie et une phrase.
-  cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', refetch() {} } });
+  cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', settled: true, refetch() {} } });
   ({ instance } = mountFlow({ preferredSequenceId: 'seq-paused' }));
   assert.equal(pickerOf(instance).props.selectedId, null, 'jamais le choix d\'avance à la place');
   assert.equal(cf.calls.steps.at(-1), null, 'aucune étape lue : aucune séquence');
@@ -857,9 +858,34 @@ test('5F2D-G12 séquence demandée : choisie d\'avance, et absente du menu elle 
   assert.deepEqual(notes(instance.tree), []);
   assert.ok(buttonStarting(instance.tree, 'Inscrire'));
 
+  // Liste gardée d'une ouverture précédente, sans la séquence demandée, relecture en cours : la demande n'est pas
+  // encore jugée. Ni phrase ni autre séquence ; puis la relecture tranche.
+  const paused = SEQ('seq-paused');
+  cf = scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', settled: false, refetch() {} } });
+  ({ instance } = mountFlow({ preferredSequenceId: 'seq-paused' }));
+  assert.deepEqual(notes(instance.tree), [], 'relecture en cours : pas de phrase');
+  assert.equal(pickerOf(instance).props.selectedId, null, 'jamais une autre séquence à la place');
+  assert.equal(cf.calls.steps.at(-1), null);
+  assert.equal(buttonStarting(instance.tree, 'Inscrire'), undefined);
+  // Relecture terminée sans la séquence : la phrase.
+  cf.sequencesRead = { sequences: [newest, older], status: 'ready', settled: true, refetch() {} };
+  instance.setProps({});
+  assert.match(notes(instance.tree)[0] ?? '', /séquence demandée n'est pas disponible/);
+  assert.equal(pickerOf(instance).props.selectedId, null);
+  // Une relecture suivante en cours efface la phrase le temps de la lecture, puis la séquence arrive : elle est choisie.
+  cf.sequencesRead = { sequences: [newest, older], status: 'ready', settled: false, refetch() {} };
+  instance.setProps({});
+  assert.deepEqual(notes(instance.tree), [], 'nouvelle relecture en cours : pas de phrase');
+  cf.sequencesRead = { sequences: [newest, older, paused], status: 'ready', settled: true, refetch() {} };
+  instance.setProps({});
+  assert.equal(pickerOf(instance).props.selectedId, 'seq-paused', 'relecture terminée avec la séquence : elle est choisie');
+  assert.deepEqual(notes(instance.tree), []);
+  assert.equal(cf.calls.steps.at(-1), 'seq-paused');
+  assert.ok(buttonStarting(instance.tree, 'Inscrire'));
+
   // Lecture des séquences en cours ou en échec : pas de phrase, la demande n'est pas encore jugée.
   for (const status of ['loading', 'error']) {
-    scenario({ sequencesRead: { sequences: [], status, refetch() {} } });
+    scenario({ sequencesRead: { sequences: [], status, settled: false, refetch() {} } });
     ({ instance } = mountFlow({ preferredSequenceId: 'seq-paused' }));
     assert.equal(pickerOf(instance).props.selectedId, null);
     assert.deepEqual(notes(instance.tree), [], `lecture ${status} : pas de phrase`);
@@ -867,14 +893,14 @@ test('5F2D-G12 séquence demandée : choisie d\'avance, et absente du menu elle 
 
   // Une demande vide vaut aucune demande.
   for (const preferredSequenceId of [null, undefined, '']) {
-    scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', refetch() {} } });
+    scenario({ sequencesRead: { sequences: [newest, older], status: 'ready', settled: true, refetch() {} } });
     ({ instance } = mountFlow({ preferredSequenceId }));
     assert.equal(pickerOf(instance).props.selectedId, 'seq-new', `demande ${JSON.stringify(preferredSequenceId)}`);
     assert.deepEqual(notes(instance.tree), []);
   }
 });
 
-test('5F2D-G13 overflow : absent, aucun message ; au-delà du plafond, les autres restent sélectionnés', (t) => {
+test('5F2D-G13 overflow : absent, aucun message ; au-delà du plafond, les autres ne sont pas inclus (vrai pour tous les hôtes, avec ou sans sélection)', (t) => {
   if (!esbuild) return t.skip('esbuild absent');
 
   scenario();
@@ -885,10 +911,12 @@ test('5F2D-G13 overflow : absent, aucun message ; au-delà du plafond, les autre
   assert.doesNotMatch(textOf(instance.tree), /candidats au plus par inscription/);
   scenario();
   ({ instance } = mountFlow({ overflow: 3 }));
-  assert.match(textOf(instance.tree), /400 candidats au plus par inscription : les 3 autres restent sélectionnés\./);
+  assert.match(textOf(instance.tree), /400 candidats au plus par inscription : les 3 autres ne sont pas inclus dans cette inscription\./);
   scenario();
   ({ instance } = mountFlow({ overflow: 1 }));
-  assert.match(textOf(instance.tree), /400 candidats au plus par inscription : l'autre reste sélectionné\./);
+  assert.match(textOf(instance.tree), /400 candidats au plus par inscription : l'autre n'est pas inclus dans cette inscription\./);
+  // Les entrées « nouveaux retenus » et bandeau Go ne passent aucune sélection : jamais « sélectionné » dans cette phrase.
+  assert.doesNotMatch(textOf(instance.tree), /sélectionné/);
 });
 
 test('5F2D-G14 tous les hooks sont appelés à chaque rendu, quelle que soit la porte : le nombre de hooks ne change pas', (t) => {
@@ -907,7 +935,7 @@ test('5F2D-G14 tous les hooks sont appelés à chaque rendu, quelle que soit la 
     'sans compte': () => { scenario({ accounts: { selectedAccount: null, accountsLoading: false } }); return {}; },
     'compte en lecture': () => { scenario({ accounts: { selectedAccount: null, accountsLoading: true } }); return {}; },
     'formule gratuite': () => { scenario({ subscription: { effectivePlanId: 'free', isLoading: false, isLoadingError: false } }); return {}; },
-    'hors mission': () => { scenario({ sequencesRead: { sequences: [], status: 'ready', refetch() {} } }); return { missionId: null, job: null, candidates: [candidate('p1', { rowId: null })] }; },
+    'hors mission': () => { scenario({ sequencesRead: { sequences: [], status: 'ready', settled: true, refetch() {} } }); return { missionId: null, job: null, candidates: [candidate('p1', { rowId: null })] }; },
     'séquence demandée absente': () => { scenario(); return { preferredSequenceId: 'seq-paused' }; },
   };
   for (const [name, setup] of Object.entries(doors)) {
@@ -922,7 +950,7 @@ test('5F2D-G14 tous les hooks sont appelés à chaque rendu, quelle que soit la 
 // 2. useContactSequences : lue aussi hors mission
 // ═══════════════════════════════════════════════════════════════════════════
 
-test('5F2D-G15 useContactSequences : activée dès qu\'il y a une organisation, mission ou non ; la clé garde la mission', async (t) => {
+test('5F2D-G15 useContactSequences : activée dès qu\'il y a une organisation, mission ou non ; la clé ne contient pas la mission ; « settled » dit si la liste est à jour', async (t) => {
   if (!esbuild) return t.skip('esbuild absent');
   const module = await loadBundled(SEQUENCES, {
     ...BASE_STUBS,
@@ -930,29 +958,45 @@ test('5F2D-G15 useContactSequences : activée dès qu\'il y a une organisation, 
     '@/integrations/supabase/client': 'export const supabase = {};',
     '@/hooks/useOrganization': 'export const useOrganization = () => globalThis.__cf.organization;',
   });
-  const run = (organizationId, missionId, queryResult = { data: [], isError: false, fetchStatus: 'idle', refetch: async () => {} }) => {
+  const FRESH = { data: [], isError: false, fetchStatus: 'idle', isFetchedAfterMount: true, isRefetchError: false, refetch: async () => {} };
+  const run = (organizationId, queryResult = FRESH) => {
     globalThis.__cf = { queries: [], organization: { organizationId }, queryResult };
-    const instance = mount(() => module.useContactSequences(missionId), {});
+    const instance = mount(() => module.useContactSequences(), {});
     return { options: globalThis.__cf.queries[0], result: instance.tree };
   };
 
-  const hors = run('org-1', null);
-  assert.equal(hors.options.enabled, true, 'sans mission, la lecture a lieu (sinon squelette éternel)');
-  assert.deepEqual(hors.options.queryKey, [module.CONTACT_SEQUENCES_KEY, 'org-1', null]);
-  assert.equal(hors.result.status, 'ready');
+  // La lecture ne dépend pas de la mission : une seule clé par organisation, donc changer de mission ne relit rien.
+  assert.equal(module.useContactSequences.length, 0, 'aucune mission en argument');
+  const read = run('org-1');
+  assert.equal(read.options.enabled, true, 'la lecture a lieu mission ou non (sinon squelette éternel)');
+  assert.deepEqual(read.options.queryKey, [module.CONTACT_SEQUENCES_KEY, 'org-1']);
+  assert.equal(read.result.status, 'ready');
 
-  const dans = run('org-1', MISSION);
-  assert.equal(dans.options.enabled, true);
-  assert.deepEqual(dans.options.queryKey, [module.CONTACT_SEQUENCES_KEY, 'org-1', MISSION]);
-
-  assert.equal(run(null, MISSION).options.enabled, false, 'sans organisation, rien n\'est lu');
-  assert.equal(run('', null).options.enabled, false);
-  assert.equal(run(undefined, null).options.enabled, false);
+  assert.equal(run(null).options.enabled, false, 'sans organisation, rien n\'est lu');
+  assert.equal(run('').options.enabled, false);
+  assert.equal(run(undefined).options.enabled, false);
 
   // Le statut ne change pas : en lecture, en échec, hors ligne.
-  assert.equal(run('org-1', null, { data: undefined, isError: false, fetchStatus: 'fetching', refetch() {} }).result.status, 'loading');
-  assert.equal(run('org-1', null, { data: undefined, isError: true, fetchStatus: 'idle', refetch() {} }).result.status, 'error');
-  assert.equal(run('org-1', null, { data: undefined, isError: false, fetchStatus: 'paused', refetch() {} }).result.status, 'error');
+  assert.equal(run('org-1', { data: undefined, isError: false, fetchStatus: 'fetching', isFetchedAfterMount: false, isRefetchError: false, refetch() {} }).result.status, 'loading');
+  assert.equal(run('org-1', { data: undefined, isError: true, fetchStatus: 'idle', isFetchedAfterMount: true, isRefetchError: false, refetch() {} }).result.status, 'error');
+  assert.equal(run('org-1', { data: undefined, isError: false, fetchStatus: 'paused', isFetchedAfterMount: false, isRefetchError: false, refetch() {} }).result.status, 'error');
+
+  // À jour : la lecture de cette ouverture a abouti et la dernière relecture n'a pas échoué.
+  assert.equal(run('org-1', FRESH).result.settled, true);
+  // Liste gardée en cache, relecture de cette ouverture pas encore revenue : affichée (« ready »), mais pas à jour.
+  const cached = run('org-1', { ...FRESH, fetchStatus: 'fetching', isFetchedAfterMount: false });
+  assert.equal(cached.result.status, 'ready');
+  assert.equal(cached.result.settled, false);
+  // Hors ligne avec une liste en cache : la relecture est en attente, la liste n'est pas à jour.
+  assert.equal(run('org-1', { ...FRESH, fetchStatus: 'paused', isFetchedAfterMount: false }).result.settled, false);
+  // Relecture en échec : la liste déjà lue reste affichée, mais ne peut pas dire qu'une séquence est absente.
+  const failed = run('org-1', { ...FRESH, isError: true, isRefetchError: true });
+  assert.equal(failed.result.status, 'ready');
+  assert.equal(failed.result.settled, false);
+  // Pas de liste du tout : jamais à jour.
+  assert.equal(run('org-1', { ...FRESH, data: undefined }).result.settled, false);
+  // Une relecture au retour sur la fenêtre (liste déjà à jour pour cette ouverture) ne la rend pas périmée.
+  assert.equal(run('org-1', { ...FRESH, fetchStatus: 'fetching' }).result.settled, true);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1490,6 +1534,49 @@ test('5F2D-G25 ContactFlowSheet : « above » entre l\'en-tête et le flux, seul
 
   const without = mountSheet();
   assert.ok(!elementsOf(without.instance.tree).some((element) => element.props?.['data-above'] !== undefined));
+
+  // Pas d'enveloppe vide non plus : sans « above » la feuille n'a que l'en-tête et le corps ; avec, un bandeau de plus.
+  const slots = (mounted) => [contentOf(mounted.instance).props.children].flat(Infinity).filter(Boolean);
+  assert.equal(slots(without).length, 2, 'sans « above » : l\'en-tête et le corps seulement');
+  assert.equal(slots(mountSheet({ above: marker })).length, 3, 'avec « above » : un bandeau de plus');
+  // Une fonction qui ne rend rien ne laisse pas d'enveloppe non plus.
+  assert.equal(slots(mountSheet({ above: () => null })).length, 2, '« above » qui ne rend rien : pas de bandeau');
+});
+
+test('5F2D-G25b ContactFlowSheet : « above » en fonction reçoit l\'état occupé, vrai pendant l\'écriture seulement', async (t) => {
+  if (!esbuild) return t.skip('esbuild absent');
+  const seen = [];
+  const above = ({ busy }) => {
+    seen.push(busy);
+    return { type: 'div', props: { 'data-above': '', 'data-busy': String(busy), children: 'Choix de la mission' }, key: null };
+  };
+  const { instance } = mountSheet({ above });
+  const bandOf = () => elementsOf(instance.tree).find((element) => element.props?.['data-above'] !== undefined);
+  assert.equal(bandOf().props['data-busy'], 'false', 'au repos');
+  assert.deepEqual([...new Set(seen)], [false]);
+
+  // L'écriture démarre : le bandeau est rendu à nouveau avec busy vrai.
+  flowOf(instance).props.onBusyChange(true);
+  await settle();
+  assert.equal(bandOf().props['data-busy'], 'true', 'pendant l\'écriture');
+  assert.equal(seen.at(-1), true);
+
+  // L'écriture finit : il se libère.
+  flowOf(instance).props.onBusyChange(false);
+  await settle();
+  assert.equal(bandOf().props['data-busy'], 'false', 'après l\'écriture');
+
+  // Fermée pendant l'écriture (cas limite) : l'occupation est oubliée, comme pour la croix.
+  flowOf(instance).props.onBusyChange(true);
+  await settle();
+  instance.setProps({ open: false });
+  await settle();
+  assert.equal(bandOf().props['data-busy'], 'false', 'feuille fermée : plus occupée');
+
+  // Un contenu fixe (ni fonction, ni état) reste rendu tel quel.
+  const fixed = { type: 'div', props: { 'data-above': '', children: 'Fixe' }, key: null };
+  const plain = mountSheet({ above: fixed });
+  assert.ok(elementsOf(plain.instance.tree).includes(fixed));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

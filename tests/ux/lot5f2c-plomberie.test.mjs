@@ -257,9 +257,10 @@ test('5F2C-P8 ContactPanel : branche du mode Contacter entre l\'archive et l\'on
     branch,
     /<ContactFlow\s+missionId=\{project\.id\}\s+job=\{job\}\s+candidates=\{flow\.candidates\}\s+candidatesStatus=\{flow\.status\}\s+overflow=\{flow\.overflow\}\s+refreshing=\{flow\.refreshing\}\s+onRetryCandidates=\{flow\.refetch\}\s+onEnrolled=\{onEnrolled\}\s+onOpenCandidate=\{openCandidate\}\s+onLeave=\{onLeave\}\s+preferredSequenceId=\{preferredSequenceId\}\s*\/>/,
   );
-  // Lot 5f-2d : la séquence demandée par l'adresse (page d'une séquence), lue ici et transmise au seul mode Contacter.
+  // Lot 5f-2d : la séquence demandée par l'adresse (page d'une séquence), lue une fois à la création du panneau
+  // (état local, consommée : retirée de l'adresse à l'ouverture du mode) et transmise au seul mode Contacter.
   assert.match(src, /const SEQUENCE_PARAM = 'sequence';/);
-  assert.match(src, /const preferredSequenceId = new URLSearchParams\(location\.search\)\.get\(SEQUENCE_PARAM\) \|\| null;/);
+  assert.match(src, /const \[preferredSequenceId\] = useState<string \| null>\(\(\) => new URLSearchParams\(location\.search\)\.get\(SEQUENCE_PARAM\) \|\| null\);/);
   assert.equal(src.split('preferredSequenceId={').length - 1, 1, 'transmise une seule fois, à ContactFlow');
   assert.doesNotMatch(branch, /InvitationsPanel|panel-invitations|ContactedList/);
 

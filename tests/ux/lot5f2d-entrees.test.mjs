@@ -5,12 +5,17 @@
  *
  * - SequenceEnrollButton : interrupteur éteint, le composant d'avant (menu puis
  *   fenêtre SequenceEnrollModal) ; allumé, même bouton qui ouvre la feuille du
- *   flux d'inscription avec des profils figés à l'ouverture. Le composant est
+ *   flux d'inscription avec des profils figés à l'ouverture. « Retenir sans
+ *   contacter » ne prévient l'hôte qu'à la fermeture de la feuille (B7), un
+ *   chargement de la feuille qui échoue ne fait pas tomber l'écran (B8), une
+ *   recherche autonome n'est pas une mission (B9). Le composant est
  *   empaqueté par esbuild avec des doublures de React (hooks, JSX en objets) et
  *   de ses dépendances, puis appelé comme une fonction : pas de DOM nécessaire.
  * - LinkedInSearch.handleSequenceEnrollSuccess : lu dans son source et exécuté
  *   avec des doublures (avec identifiants : retire ceux-là seulement ; sans
  *   argument : vide la sélection).
+ * - ProfileDetailSheet : un balayage commencé dans une feuille en portail ne
+ *   fait pas changer de profil (D1).
  * - Types des props des deux panneaux de résultats et appelants qui ignorent
  *   l'argument.
  * - EnrollmentPreviewModal : libellé en fonction de l'interrupteur, ancien
@@ -84,17 +89,19 @@ test('5F2D-B1 bouton : ancien composant gardé tel quel, nouveau composant à pa
   }
 });
 
-test('5F2D-B2 bouton : le nouveau composant n\'écrit rien, ne lit rien et charge la feuille à la demande', () => {
+test('5F2D-B2 bouton : le nouveau composant n\'écrit rien, ne lit que le cache et charge la feuille à la demande', () => {
   const body = code(read(BUTTON));
   const v2 = body.slice(body.indexOf('const ContactFlowEnrollButton'), body.indexOf('export const SequenceEnrollButton'));
   assert.ok(v2.length > 800, 'nouveau composant lu');
 
-  // Feuille chargée à la demande, sans rendu bloquant.
+  // Feuille chargée à la demande, sans rendu bloquant, par un chargeur qui rattrape l'échec du chargement (5F2D-B8).
   assert.match(
     body,
-    /const ContactFlowSheet = lazy\(\(\) =>\s*import\('@\/components\/sequences\/contact\/ContactFlowSheet'\)\.then\(\(m\) => \(\{ default: m\.ContactFlowSheet \}\)\),\s*\);/,
+    /function loadContactFlowSheet\(\): Promise<\{ default: ComponentType<ContactFlowSheetProps> \}> \{\s*return import\('@\/components\/sequences\/contact\/ContactFlowSheet'\)\s*\.then\(\(m\) => \(\{ default: m\.ContactFlowSheet as ComponentType<ContactFlowSheetProps> \}\)\)\s*\.catch\(/,
   );
+  assert.match(body, /let ContactFlowSheet = lazy\(loadContactFlowSheet\);/);
   assert.doesNotMatch(body, /import \{[^}]*ContactFlowSheet[^}]*\} from/, 'jamais d\'import statique de la feuille');
+  assert.match(body, /import type \{ ContactFlowSheetProps \} from '@\/components\/sequences\/contact\/ContactFlowSheet';/);
   assert.match(v2, /<Suspense fallback=\{null\}>/);
 
   // Profils figés à l'ouverture, par l'adaptateur pur.
@@ -107,13 +114,24 @@ test('5F2D-B2 bouton : le nouveau composant n\'écrit rien, ne lit rien et charg
   assert.match(v2, /job=\{selectedJob \?\? null\}/);
   assert.match(v2, /accountId=\{accountId\}/);
   assert.doesNotMatch(v2, /onOpenCandidate/);
-  // Fin d'inscription et retenu sans inscrire.
-  assert.match(v2, /onEnrolled=\{\(handledIds\) => onSuccess\?\.\(handledIds\)\}/);
-  assert.match(v2, /onChanged=\{\(\) => onSuccess\?\.\(\[\]\)\}/);
-  // La feuille survit à une sélection vide : seul le bouton dépend d'elle.
+  // Fin d'inscription : l'hôte est prévenu tout de suite. Retenu sans inscrire : à la fermeture seulement (5F2D-B7).
+  assert.match(v2, /onEnrolled=\{\(handledIds\) => \{\s*changedWhileOpen\.current = false;\s*onSuccess\?\.\(handledIds\);\s*\}\}/);
+  assert.match(v2, /onChanged=\{\(\) => \{\s*changedWhileOpen\.current = true;\s*\}\}/);
+  assert.match(
+    v2,
+    /onOpenChange=\{\(open\) => \{\s*if \(open\) return;\s*setFrozen\(null\);\s*if \(changedWhileOpen\.current\) \{\s*changedWhileOpen\.current = false;\s*onSuccess\?\.\(\[\]\);\s*\}\s*\}\}/,
+  );
+  assert.doesNotMatch(v2, /onChanged=\{\(\) => onSuccess/, 'onChanged ne prévient jamais l\'hôte avant la fermeture');
+  // Seul le bouton dépend de la sélection : il rend la feuille même si la sienne tombe à vide (l'hôte, lui, est prévenu à la fermeture).
   assert.match(v2, /\{selectedProfiles\.length > 0 && \(\s*<Button/);
   assert.match(v2, /\{frozen && \(\s*<span className="contents" onClick=\{\(event\) => event\.stopPropagation\(\)\} onKeyDown=\{\(event\) => event\.stopPropagation\(\)\}>\s*<Suspense/);
   // Les clics et les touches de la feuille (rendue dans un portail) ne remontent pas jusqu'à la carte du résultat.
+  // Les gestes tactiles sont arrêtés à la source, dans la fiche (5F2D-D1) : un stopPropagation ici gênerait le défilement de la feuille.
+  assert.doesNotMatch(v2, /onTouchStart|onTouchEnd/);
+  // Recherche autonome : le type du projet est lu dans le cache de l'écran, jamais par une requête ni un abonnement (5F2D-B9).
+  assert.match(v2, /queryClient\.getQueryData<SourcingProject \| null>\(\['sourcing-project', jobMissionId\]\)\?\.kind === 'search'/);
+  assert.match(v2, /const missionId = isStandaloneSearch \? null : jobMissionId;/);
+  assert.doesNotMatch(v2, /useQuery\(|useSourcingProject|fetchQuery|ensureQueryData|\.channel\(/);
 
   // Même aspect que le menu, sans chevron ; kit seulement.
   assert.match(v2, /variant=\{quiet \? 'ghost' : 'outline'\}/);
@@ -123,7 +141,7 @@ test('5F2D-B2 bouton : le nouveau composant n\'écrit rien, ne lit rien et charg
   assert.doesNotMatch(v2, /ChevronDown|DropdownMenu|SequenceEnrollModal/);
   assert.doesNotMatch(v2, /<button\b/, 'composant du kit, pas de balise brute');
 
-  // Aucune écriture, aucune lecture, aucun stockage local, aucune adresse : le flux s'en charge.
+  // Aucune écriture, aucune requête, aucun stockage local, aucune adresse : le flux s'en charge.
   assert.doesNotMatch(v2, /supabase|\.from\(|\.rpc\(|retainCandidates|enrollCandidates|localStorage|sessionStorage|navigate|\/sequences|<Link/);
   // Pas de texte nouveau : ni tiret long, ni « (s) », ni nom de prestataire.
   assert.ok(!v2.includes(EM_DASH));
@@ -146,6 +164,13 @@ const BUTTON_STUBS = {
       if (!(i in h.states)) h.states[i] = typeof initial === 'function' ? initial() : initial;
       return [h.states[i], (next) => { h.states[i] = typeof next === 'function' ? next(h.states[i]) : next; }];
     };
+    export const useRef = (initial) => {
+      const h = globalThis.__enrollHarness;
+      const i = h.cursor++;
+      if (!(i in h.states)) h.states[i] = { current: initial };
+      return h.states[i];
+    };
+    export const useEffect = (fn) => { globalThis.__enrollHarness.effects.push(fn); };
     export default { Fragment, Suspense, lazy };
   `,
   'react/jsx-runtime': `
@@ -175,7 +200,8 @@ const BUTTON_STUBS = {
     export const Plus = 'Plus';
     export const Search = 'Search';
   `,
-  sonner: 'export const toast = { error() {} };',
+  sonner: 'export const toast = { error: (...args) => globalThis.__enrollHarness.toasts.push(args) };',
+  '@tanstack/react-query': 'export const useQueryClient = () => globalThis.__enrollHarness.queryClient;',
   './SequenceEnrollModal': "export const SequenceEnrollModal = 'SequenceEnrollModal';",
   '@/components/ui/UpgradePrompt': "export const UpgradePrompt = 'UpgradePrompt';",
   '@/hooks/useSubscriptionState': "export const useSubscriptionState = () => ({ effectivePlanId: 'pro', isLoading: false });",
@@ -189,7 +215,17 @@ const BUTTON_STUBS = {
       overflow: 7,
     });
   `,
-  '@/components/sequences/contact/ContactFlowSheet': "export const ContactFlowSheet = 'ContactFlowSheetStub';",
+  // Module CommonJS à accesseur : le chargeur lit « ContactFlowSheet » après l'import, et le test fait échouer cette
+  // lecture à la demande (le chargement du fichier échoue) puis la rétablit, comme un réseau qui revient.
+  '@/components/sequences/contact/ContactFlowSheet': `
+    module.exports = {
+      get ContactFlowSheet() {
+        const failure = globalThis.__enrollHarness.sheetFailure;
+        if (failure) throw failure;
+        return 'ContactFlowSheetStub';
+      },
+    };
+  `,
 };
 
 async function loadButton() {
@@ -213,8 +249,23 @@ async function loadButton() {
 }
 
 /** Rendu à la main : l'aiguillage, puis le composant choisi, avec l'état du harnais. */
-function makeHarness({ beta }) {
-  const harness = { beta, states: [], cursor: 0 };
+function makeHarness({ beta, projects = {} }) {
+  const harness = {
+    beta,
+    states: [],
+    cursor: 0,
+    effects: [],
+    toasts: [],
+    sheetFailure: null,
+    // Cache de l'écran : seule lecture admise (aucune requête, aucun abonnement n'existe dans cette doublure).
+    cacheReads: [],
+    queryClient: {
+      getQueryData: (key) => {
+        harness.cacheReads.push(key);
+        return key[0] === 'sourcing-project' ? projects[key[1]] : undefined;
+      },
+    },
+  };
   globalThis.__enrollHarness = harness;
   return harness;
 }
@@ -293,7 +344,8 @@ test('5F2D-B3 bouton allumé : même bouton, la feuille s\'ouvre avec les profil
   ({ tree } = renderButton(kit, harness, { ...props, selectedProfiles: [profile('a'), profile('b'), profile('c')] }));
   assert.equal(find(tree, (n) => n.type?.lazy === true).props.candidates, frozenCandidates);
 
-  // Sélection tombée à vide : plus de bouton, la feuille reste sous les mains de la personne.
+  // Sélection tombée à vide : plus de bouton, la feuille reste sous les mains de la personne (dans le bouton ;
+  // c'est 5F2D-B7 qui garantit que l'hôte n'est pas prévenu, donc ne démonte pas le bouton, avant la fermeture).
   ({ tree } = renderButton(kit, harness, { ...props, selectedProfiles: [] }));
   assert.equal(find(tree, (n) => n.type === 'Button'), null);
   assert.ok(find(tree, (n) => n.type?.lazy === true), 'feuille toujours rendue');
@@ -302,19 +354,17 @@ test('5F2D-B3 bouton allumé : même bouton, la feuille s\'ouvre avec les profil
   const openSheet = find(tree, (n) => n.type?.lazy === true);
   openSheet.props.onEnrolled(['a', 'b']);
   assert.deepEqual(calls, [[['a', 'b']]]);
-  // Retenu sans inscrire : l'appelant relit ses statuts, aucun profil n'est traité.
-  openSheet.props.onChanged();
-  assert.deepEqual(calls[1], [[]]);
-  assert.equal(calls.length, 2);
 
   // Une demande d'ouverture n'est pas une fermeture ; la fermeture rend la feuille.
   openSheet.props.onOpenChange(true);
   ({ tree } = renderButton(kit, harness, props));
   assert.ok(find(tree, (n) => n.type?.lazy === true));
+  assert.equal(calls.length, 1, 'ouvrir ne prévient personne');
   openSheet.props.onOpenChange(false);
   ({ tree } = renderButton(kit, harness, props));
   assert.equal(find(tree, (n) => n.type === 'Suspense'), null);
   assert.ok(find(tree, (n) => n.type === 'Button'), 'le bouton revient avec la sélection');
+  assert.equal(calls.length, 1, 'après une inscription, la fermeture ne prévient pas une seconde fois');
 
   // Chargement à la demande : la feuille nommée par le module, jamais autre chose.
   const loaded = await sheet.type.loader();
@@ -347,10 +397,11 @@ test('5F2D-B4 bouton allumé : poste sans mission, absent ou sans rappel ne plan
     assert.equal(sheet.props.job, null);
   }
 
-  // Sans rappel : rien ne plante, ni à l'inscription ni au retenu.
+  // Sans rappel : rien ne plante, ni à l'inscription, ni au retenu, ni à la fermeture qui suit.
   sheet = openedSheet({ onSuccess: undefined });
   sheet.props.onEnrolled(['a']);
   sheet.props.onChanged();
+  sheet.props.onOpenChange(false);
 });
 
 test('5F2D-B5 bouton : discret sur la nouvelle page, classes ajoutées gardées', async (t) => {
@@ -389,6 +440,241 @@ test('5F2D-B6 bouton éteint : l\'ancien menu et la fenêtre d\'avant, jamais la
   // Rien de coché : le composant d'avant ne rend rien.
   const empty = renderButton(kit, harness, baseProps({ selectedProfiles: [] }));
   assert.equal(empty.tree, null);
+});
+
+// ─── Bouton : « Retenir sans contacter » ne prévient l'hôte qu'à la fermeture ─
+
+test('5F2D-B7 bouton : retenu sans inscrire, l\'hôte (qui peut démonter le bouton) n\'est prévenu qu\'à la fermeture de la feuille', async (t) => {
+  if (!esbuild) return t.skip('esbuild absent');
+  const kit = await loadButton();
+  const open = (extra) => {
+    const harness = makeHarness({ beta: true });
+    const calls = [];
+    const props = baseProps({ onSuccess: (...args) => calls.push(args), ...extra });
+    let { tree } = renderButton(kit, harness, props);
+    find(tree, (n) => n.type === 'Button').props.onClick();
+    ({ tree } = renderButton(kit, harness, props));
+    return { harness, calls, props, sheet: find(tree, (n) => n.type?.lazy === true), rerender: () => renderButton(kit, harness, props).tree };
+  };
+
+  // Retenu sans inscrire : la feuille reste rendue et l'hôte n'est pas prévenu, donc il ne relit ni ne démonte rien.
+  let ctx = open();
+  ctx.sheet.props.onChanged();
+  ctx.sheet.props.onChanged();
+  assert.deepEqual(ctx.calls, [], 'rien tant que la feuille est ouverte');
+  assert.ok(find(ctx.rerender(), (n) => n.type?.lazy === true), 'la feuille est toujours là');
+
+  // À la fermeture : un seul appel, avec un tableau vide (aucun profil traité), puis le drapeau retombe.
+  ctx.sheet.props.onOpenChange(false);
+  assert.deepEqual(ctx.calls, [[[]]]);
+  assert.equal(find(ctx.rerender(), (n) => n.type === 'Suspense'), null, 'feuille fermée');
+  ctx.sheet.props.onOpenChange(false);
+  assert.equal(ctx.calls.length, 1, 'une seconde fermeture ne prévient plus');
+
+  // Une feuille rouverte repart d'un drapeau bas : fermer sans rien retenir ne prévient personne.
+  find(ctx.rerender(), (n) => n.type === 'Button').props.onClick();
+  const reopened = find(ctx.rerender(), (n) => n.type?.lazy === true);
+  reopened.props.onOpenChange(false);
+  assert.equal(ctx.calls.length, 1);
+
+  // Retenu puis inscription : l'inscription prévient l'hôte tout de suite avec ses identifiants, la fermeture qui suit n'ajoute rien.
+  ctx = open();
+  ctx.sheet.props.onChanged();
+  ctx.sheet.props.onEnrolled(['a', 'b']);
+  assert.deepEqual(ctx.calls, [[['a', 'b']]]);
+  ctx.sheet.props.onOpenChange(false);
+  assert.deepEqual(ctx.calls, [[['a', 'b']]], 'une seule notification : celle de l\'inscription');
+
+  // Fermée sans rien changer (croix, Échap) : aucune notification.
+  ctx = open();
+  ctx.sheet.props.onOpenChange(false);
+  assert.deepEqual(ctx.calls, []);
+});
+
+// ─── Bouton : échec du chargement de la feuille ──────────────────────────────
+
+test('5F2D-B8 bouton : le chargement de la feuille qui échoue (fichier périmé) ne lève rien, prévient une fois, ferme et se retente', async (t) => {
+  if (!esbuild) return t.skip('esbuild absent');
+  const kit = await loadButton();
+  const harness = makeHarness({ beta: true });
+  const props = baseProps({ onSuccess: () => {} });
+  const openSheet = () => {
+    let { tree } = renderButton(kit, harness, props);
+    find(tree, (n) => n.type === 'Button').props.onClick();
+    ({ tree } = renderButton(kit, harness, props));
+    return find(tree, (n) => n.type?.lazy === true);
+  };
+
+  // Chargement qui échoue comme après un déploiement : le chargeur rend un composant de repli, il ne rejette pas.
+  harness.sheetFailure = new TypeError('Failed to fetch dynamically imported module: https://app.test/assets/ContactFlowSheet-3f9a.js');
+  const first = openSheet();
+  const failed = await first.type.loader();
+  assert.equal(typeof failed.default, 'function', 'composant de repli, pas la feuille');
+  assert.equal(harness.toasts.length, 1, 'un seul avertissement');
+  const [message, options] = harness.toasts[0];
+  assert.equal(message, "La prise de contact n'a pas pu s'ouvrir. Rechargez la page, puis réessayez.");
+  assert.ok(options?.id, 'identifiant de l\'avertissement : jamais deux fois à l\'écran');
+  assert.ok(!message.includes(EM_DASH));
+
+  // Le composant de repli ne montre rien et ferme la feuille (via onOpenChange, comme une fermeture de la personne).
+  const closed = [];
+  assert.equal(failed.default({ onOpenChange: (open) => closed.push(open) }), null);
+  assert.equal(harness.effects.length, 1);
+  harness.effects[0]();
+  assert.deepEqual(closed, [false]);
+
+  // Un lazy rejeté ou résolu au repli est collant : le clic suivant doit reposer sur un chargeur neuf.
+  harness.states.length = 0; // feuille fermée : plus d'état figé
+  harness.sheetFailure = null;
+  const second = openSheet();
+  assert.notEqual(second.type, first.type, 'nouveau chargeur après un échec');
+  assert.deepEqual(await second.type.loader(), { default: 'ContactFlowSheetStub' });
+  assert.equal(harness.toasts.length, 1, 'le succès ne prévient pas');
+
+  // Les autres erreurs ne sont pas rattrapées : elles remontent à la barrière d'erreur comme avant.
+  harness.sheetFailure = new Error('ContactFlowSheet is not a constructor');
+  const third = openSheet();
+  await assert.rejects(third.type.loader(), /is not a constructor/);
+  assert.equal(harness.toasts.length, 1);
+
+  // Les messages de chargement des navigateurs et d'un empaqueteur sont reconnus.
+  for (const text of ['Importing a module script failed.', 'error loading dynamically imported module: x', 'Loading chunk 7 failed. (ChunkLoadError)']) {
+    harness.sheetFailure = new Error(text);
+    const result = await openSheet().type.loader();
+    assert.equal(typeof result.default, 'function', text);
+  }
+  const named = new Error('Loading chunk 9 failed');
+  named.name = 'ChunkLoadError';
+  harness.sheetFailure = named;
+  assert.equal(typeof (await openSheet().type.loader()).default, 'function', 'nom ChunkLoadError');
+});
+
+// ─── Bouton : recherche autonome ────────────────────────────────────────────
+
+test('5F2D-B9 bouton : une recherche autonome n\'est pas une mission, le poste reste transmis', async (t) => {
+  if (!esbuild) return t.skip('esbuild absent');
+  const kit = await loadButton();
+  const MISSION = '11111111-1111-4111-8111-111111111111';
+  const sheetOf = (projects, extra) => {
+    const harness = makeHarness({ beta: true, projects });
+    const props = baseProps(extra);
+    let { tree } = renderButton(kit, harness, props);
+    find(tree, (n) => n.type === 'Button').props.onClick();
+    ({ tree } = renderButton(kit, harness, props));
+    return { sheet: find(tree, (n) => n.type?.lazy === true), harness, props };
+  };
+
+  // Recherche autonome lue dans le cache : aucune mission, le poste (donc la règle Retenu) est gardé tel quel.
+  let { sheet, harness, props } = sheetOf({ [MISSION]: { id: MISSION, kind: 'search' } });
+  assert.equal(sheet.props.missionId, null);
+  assert.deepEqual(sheet.props.job, props.selectedJob);
+  assert.equal(sheet.props.job.id, `project:${MISSION}`);
+  // Seule lecture : le cache de la fiche du projet, sous sa clé.
+  assert.ok(harness.cacheReads.length > 0);
+  assert.ok(harness.cacheReads.every((key) => key.length === 2 && key[0] === 'sourcing-project' && key[1] === MISSION));
+
+  // Mission, cache vide ou ligne absente (null) : comportement d'avant, la mission du poste.
+  for (const projects of [{ [MISSION]: { id: MISSION, kind: 'mission' } }, {}, { [MISSION]: null }]) {
+    ({ sheet } = sheetOf(projects));
+    assert.equal(sheet.props.missionId, MISSION, JSON.stringify(projects));
+  }
+
+  // Poste sans mission : le cache n'est même pas lu.
+  ({ sheet, harness } = sheetOf({ [MISSION]: { kind: 'search' } }, { selectedJob: { id: 'job-ancien', title: 'Poste' } }));
+  assert.equal(sheet.props.missionId, null);
+  assert.deepEqual(harness.cacheReads, []);
+});
+
+// ─── Fiche : gestes tactiles d'une feuille imbriquée ────────────────────────
+
+/** Les deux gestionnaires de balayage de la fiche, lus dans son source et exécutés avec des doublures. */
+function loadSwipeHandlers() {
+  const src = read(DETAIL_SHEET);
+  const extract = (name, endMarker) => {
+    const head = `const ${name} = useCallback(`;
+    const start = src.indexOf(head);
+    const end = src.indexOf(endMarker, start);
+    assert.ok(start > 0 && end > start, `${name} trouvé`);
+    const fnSrc = src.slice(start + head.length, end + 1);
+    return esbuild.transformSync(fnSrc, { loader: 'ts' }).code.trim().replace(/;$/, '');
+  };
+  const startJs = extract('handleTouchStart', '}, []);');
+  const endJs = extract('handleTouchEnd', '}, [onNavigatePrev, onNavigateNext]);');
+  const nav = [];
+  const refs = { touchStartX: { current: null }, touchStartY: { current: null }, swipeBlocked: { current: false } };
+  const make = new Function(
+    'touchStartX', 'touchStartY', 'swipeBlocked', 'isInsideScrollable', 'onNavigatePrev', 'onNavigateNext',
+    `return { start: (${startJs}), end: (${endJs}) };`,
+  );
+  const handlers = make(
+    refs.touchStartX, refs.touchStartY, refs.swipeBlocked, () => false,
+    () => nav.push('prev'), () => nav.push('next'),
+  );
+  return { ...handlers, refs, nav };
+}
+
+/** Événement tactile : currentTarget est la fiche, target l'élément touché (dedans ou dans un portail). */
+const touch = (target, x, y, sheetDom) => ({
+  currentTarget: { contains: (node) => sheetDom.has(node) },
+  target,
+  touches: [{ clientX: x, clientY: y }],
+  changedTouches: [{ clientX: x, clientY: y }],
+});
+
+test('5F2D-D1 fiche : un balayage commencé hors de la fiche (feuille de contact en portail) ne fait pas changer de profil', (t) => {
+  const body = code(read(DETAIL_SHEET));
+  // Garde statique : les deux gestionnaires écartent d'abord les gestes dont la cible n'est pas dans le DOM de la fiche.
+  const startAt = body.indexOf('const handleTouchStart = useCallback(');
+  const endAt = body.indexOf('const handleTouchEnd = useCallback(');
+  assert.ok(startAt > 0 && endAt > startAt);
+  assert.match(body.slice(startAt, endAt), /\(e: React\.TouchEvent\) => \{\s*if \(!e\.currentTarget\.contains\(e\.target as Node\)\) return;/);
+  assert.match(
+    body.slice(endAt, endAt + 500),
+    /\(e: React\.TouchEvent\) => \{\s*if \(!e\.currentTarget\.contains\(e\.target as Node\)\) \{\s*touchStartX\.current = null;\s*touchStartY\.current = null;\s*return;\s*\}/,
+  );
+  // Le geste de la fiche garde son comportement : seuil, dominance horizontale, boutons voisins.
+  assert.match(body, /Math\.abs\(dx\) > 80 && Math\.abs\(dx\) > Math\.abs\(dy\) \* 1\.5/);
+  assert.match(body, /<SheetContent side="right"[^>]*onTouchStart=\{handleTouchStart\} onTouchEnd=\{handleTouchEnd\}/);
+
+  // Comportement.
+  if (!esbuild) return t.skip('esbuild absent : garde statique seule');
+  const inside = {};
+  const portal = {};
+  const dom = new Set([inside]);
+
+  // Geste de la fiche vers la droite : profil précédent ; vers la gauche : profil suivant.
+  let h = loadSwipeHandlers();
+  h.start(touch(inside, 100, 200, dom));
+  h.end(touch(inside, 220, 205, dom));
+  assert.deepEqual(h.nav, ['prev']);
+  h = loadSwipeHandlers();
+  h.start(touch(inside, 300, 200, dom));
+  h.end(touch(inside, 150, 200, dom));
+  assert.deepEqual(h.nav, ['next']);
+  // Trop court, ou plutôt vertical : rien (comportement d'avant).
+  h = loadSwipeHandlers();
+  h.start(touch(inside, 100, 200, dom));
+  h.end(touch(inside, 150, 200, dom));
+  h.start(touch(inside, 100, 200, dom));
+  h.end(touch(inside, 230, 400, dom));
+  assert.deepEqual(h.nav, []);
+
+  // Même balayage, mais dans la feuille en portail : la fiche reste sur son profil et ne garde aucun départ de geste.
+  h = loadSwipeHandlers();
+  h.start(touch(portal, 100, 200, dom));
+  assert.equal(h.refs.touchStartX.current, null, 'aucun départ de geste retenu');
+  h.end(touch(portal, 260, 200, dom));
+  h.start(touch(portal, 300, 200, dom));
+  h.end(touch(portal, 100, 200, dom));
+  assert.deepEqual(h.nav, []);
+
+  // Un départ de la fiche ne se termine pas dans un portail : le geste est abandonné, sans navigation ni départ gardé.
+  h = loadSwipeHandlers();
+  h.start(touch(inside, 100, 200, dom));
+  h.end(touch(portal, 300, 200, dom));
+  assert.deepEqual(h.nav, []);
+  assert.equal(h.refs.touchStartX.current, null);
+  assert.equal(h.refs.touchStartY.current, null);
 });
 
 // ─── Recherche : rappel de fin d'inscription ────────────────────────────────
