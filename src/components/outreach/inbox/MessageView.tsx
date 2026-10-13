@@ -25,6 +25,7 @@ import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { ConversationContext } from './ConversationContext';
+import { LazyInboxCandidateSheet as InboxCandidateSheet } from './LazyInboxCandidateSheet';
 import { CandidateActions, CandidateActionHistory } from './CandidateActions';
 import { useCandidateActions } from '@/hooks/useCandidateActions';
 import { mergeCandidateActionEvents } from '@/lib/candidateActions';
@@ -214,6 +215,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
   }, [aiPanelOpen]);
   const [contextOpen, setContextOpen] = useState(false);
   const contextOpenerRef = useRef<HTMLButtonElement>(null);
+  const candidateOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const [candidateOpen, setCandidateOpen] = useState(false);
+  useEffect(() => { setCandidateOpen(false); setContextOpen(false); }, [selectedChat?.id, organizationId]);
+  const openCandidate = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // Un bouton du contexte disparaît avec sa fenêtre : revenir à son ouvreur.
+    candidateOpenerRef.current = event.currentTarget.closest('[role="dialog"]') ? contextOpenerRef.current : event.currentTarget;
+    setContextOpen(false);
+    setCandidateOpen(true);
+  };
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
@@ -793,7 +803,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     missionUrl: linkedMission ? `/missions/${linkedMission.id}` : inferredMission ? `/missions/${inferredMission.id}` : undefined,
     probableMission: !jobInfo?.job_title && !!inferredMission,
     sequenceStatus: enrollmentStatus ? <EnrollmentStatusBadge status={enrollmentStatus} pauseReason={enrollmentPauseReason} manualStop={enrollmentManualStop} stoppedByName={memberName(enrollmentManualStop?.by)} plain /> : undefined,
-    onEnroll: onEnrollInSequence, onAddToPipeline: () => onAddToPipeline(),
+    onEnroll: onEnrollInSequence, onAddToPipeline: () => onAddToPipeline(), onOpenCandidate: openCandidate,
   };
 
   // ─── Mise en page : grille à trois rangées (auto / 1fr / auto) ──────────
@@ -842,7 +852,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <div className="min-w-0 flex-1 py-0.5">
             {/* Le nom, puis l'état de l'inscription en mots, sans pastille (design simplifié) */}
             <div className="flex min-w-0 items-baseline gap-x-2">
-              <h2 className="min-w-0 truncate text-md font-semibold text-foreground">{displayName}</h2>
+              <h2 className="min-w-0"><button type="button" className="block min-h-11 max-w-full truncate rounded-md text-left text-md font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8" aria-label={`Ouvrir la fiche de ${displayName}`} onClick={openCandidate}>{displayName}</button></h2>
               {enrollmentStatus && (
                 <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground md:inline-flex">
                   <GitBranch className="h-3 w-3 self-center text-foreground" aria-hidden="true" />
@@ -885,8 +895,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
           {/* Actions : visibles sur ordinateur et sur téléphone */}
           <div className="flex shrink-0 items-center gap-0.5 md:gap-1">
+            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={HEADER_ICON} aria-label="Fiche candidat" onClick={openCandidate}><UserRound aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Fiche candidat</TooltipContent></Tooltip>
             <Tooltip>
-              <TooltipTrigger asChild><Button ref={contextOpenerRef} variant="ghost" size="icon-sm" className={cn(HEADER_ICON, '2xl:hidden')} aria-label="Afficher le contexte candidat" onClick={() => setContextOpen(true)}><UserRound aria-hidden="true" /></Button></TooltipTrigger>
+              <TooltipTrigger asChild><Button ref={contextOpenerRef} variant="ghost" size="icon-sm" className={cn(HEADER_ICON, '2xl:hidden')} aria-label="Afficher le contexte candidat" onClick={() => setContextOpen(true)}><Briefcase aria-hidden="true" /></Button></TooltipTrigger>
               <TooltipContent>Contexte candidat</TooltipContent>
             </Tooltip>
             <SnoozeArchiveButtons
@@ -1413,6 +1424,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
         <ConversationContext {...contextProps} onEnroll={() => { setContextOpen(false); onEnrollInSequence(); }} onAddToPipeline={() => { setContextOpen(false); onAddToPipeline(); }} />
       </SheetContent>
     </Sheet>
+    {candidateOpen && <InboxCandidateSheet identity={{ chatId: selectedChat.id, profileId: getChatProfileId(selectedChat), profileUrl, profileName: displayName, name: displayName, headline, photo: avatar, aliases: profileAliases, projectId: linkedMission?.id }} onClose={() => setCandidateOpen(false)} onChanged={() => { retryActivity(); onEnrollmentsChanged?.(); }} onCloseAutoFocus={event => {
+      const opener = candidateOpenerRef.current;
+      if (opener?.isConnected && opener.getClientRects().length) { event.preventDefault(); opener.focus(); }
+    }} />}
     </div>
   );
 };
