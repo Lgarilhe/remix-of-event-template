@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — SHIP — Lot 5f-2c : panneau Contacter depuis le Pipeline
+
+**Contexte** : deuxième part de la fin du lot 5f-2, construite sur les propositions de `docs/refonte-mission/lot5f2b-conception.md` (feu vert du propriétaire le 13/10/2026). Contrat entre les fichiers : `docs/refonte-mission/lot5f2c-conception.md`.
+**Fait** : interrupteur des séquences allumé, « Contacter » de la barre d'actions du Pipeline et de la fiche d'un Retenu ouvre le panneau Prise de contact en mode Contacter (`?panneau=contact&contacter=1`) au lieu du menu « Séquence ». Séquence choisie d'avance (la plus récente de la mission), candidats prêts, à compléter ou exclus avec leur raison en toutes lettres et leur dérogation, aperçu du premier message, jauge du plafond LinkedIn, case des destinataires dès 5, « Inscrire N candidats » par `enrollCandidates`, toast « N candidats inscrits dans la séquence « X » » avec « Ouvrir la séquence », panneau sur « Contactés ». La sélection du Pipeline vit au-dessus de l'écran (contexte dédié). Une séquence à message rédigé par l'IA passe par « Relire les messages ». Éteint : l'ancien menu, inchangé.
+**Relecture indépendante** (62 agents, neuf angles, chaque trouvaille contestée par un sceptique) : 30 défauts confirmés, tous corrigés sauf les limites notées dans la conception. Deux importants : la règle Retenu (5f-2a, déjà sur `main`) créait une seconde ligne à profil réduit pour un candidat sourcé par un collègue, qui devenait la ligne canonique (`retainCandidates` lit désormais les lignes de l'organisation) ; la distance de réseau d'un instantané ancien aurait été écrite dans l'inscription, où le moteur la lit comme une preuve de connexion (le panneau garde le profil d'avant). Aussi : dérogation armée pour un candidat coché ensuite, navigation tardive après l'inscription, focus perdu, deux boutons de dérogation pour une même catégorie, jauge qui promettait ce que le moteur ne tient pas.
+**Visible pour tous au merge** : oui, l'interrupteur est allumé par défaut. Aucune migration, aucune fonction serveur.
+**QA** : TypeScript 11 erreurs (base), ESLint 1279 problèmes (base), cliquet design égal à `main`, `test:c1` 653, `test:agent` 418 (1 ignoré), `test:ux` 2217 sur 2221 (les 4 rouges d'avant), build OK. Nouveaux tests `tests/ux/lot5f2c-*.test.mjs` (libs, plomberie, écran, composants), joués par la CI dans le job Node 22. E2E locale `seq-v2-contacter` (14 parcours dont le moteur : un envoi par candidat inscrit, aucun pour un exclu) ; `seq-retenu`, `seq-v2-contactes`, `seq-v2-invitations`, `seq-last-enroll-batch`, `seq-ai-review` verts.
+**Impact** : `src/components/sequences/contact/` (nouveau), `missionSequencePick.ts`, `contactFlowGroups.ts`, `quotaGauge.ts`, `useContactCandidates.ts`, `missionSelection*.ts(x)` (nouveaux) ; `ContactPanel.tsx`, `ContactSelectionButton.tsx`, `PipelineScreen.tsx`, `MissionWorkspaceV3.tsx`, `MissionShell.tsx`, `types.ts`, `retainCandidates.ts`, tests, CI, `CLAUDE.md`, plan.
+**Limites connues** : le choix de séquence se perd par « Ouvrir la fiche » ; une même personne sous deux identifiants du Pipeline est comptée deux fois « prête » ; la jauge ne voit que le journal des envois.
+**Reste à faire** : `[ ]` 5f-2d (Sourcing de la mission, « Contacter les N » de Maintenant, page séquence, hors mission, messagerie).
+**Refs** : branche `claude/repository-audit-pcgg0y`, `docs/refonte-mission/lot5-plan.md` section 5f-2.
+
+---
+
 ## 2026-10-13 — BUG — Profil candidat consultable depuis la messagerie
 
 **Contexte** : le panneau Profil de la messagerie pouvait échouer malgré un identifiant LinkedIn utilisable. Le participant, ses alias triés et l’URL publique ne conservaient pas la priorité de l’identité du profil. Le lecteur serveur présentait aussi certaines pannes, limitations ou déconnexions comme un profil introuvable ; une relecture ratée masquait les données déjà affichées.
