@@ -32,6 +32,24 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — BUG — Accès visible à la suite des résultats de sourcing
+
+**Contexte** : « Voir la suite » était placé au bas du défilement et seulement dans À trier. Une page entièrement retirée par les filtres locaux masquait l’action malgré un curseur restant ; une nouvelle recherche pouvait garder Retenus ou Écartés. Le contrôle préalable du quota ignorait aussi le clic sans message. Cinq parcours sur le code initial reproduisent les défauts de visibilité et de groupe ; le test du quota échoue également avant correction.
+**Fait** : un seul compteur des profils chargés et une action pour la suite, près des groupes et hors du défilement. L’action reste accessible avec un lot localement vide et depuis Retenus ou Écartés ; elle ouvre À trier. Une nouvelle recherche ouvre ce groupe uniquement quand ses résultats sont appliqués, y compris après une réussite partielle. Les retours depuis le cache, les lots suivants et les erreurs sans résultat conservent le groupe choisi. Le total annoncé est distinct des profils chargés ; la fin des lots ne promet pas l’exhaustivité du marché. Le clic passe par le contrôle de quota qui affiche le motif, avec exemption LinkedIn conservée pour la Base Konekt.
+**Validation** : build réussi ; onze diagnostics TypeScript exactement identiques au socle, lint sans aggravation. Quatorze compteurs design inchangés et un bouton brut en moins. Trente parcours navigateur validés sur onze sources applicatives dont les SHA256 correspondent au worktree : 29 réussis dans le passage complet, puis le parcours de modification des filtres réussi avec l’action réellement affichée. Trente et un fichiers de tests agents passent, dont 38 cas comportementaux de cycle de recherche ; gardes UX ciblés réussis. Les attentes asynchrones des tests suivent maintenant l’état réel plutôt qu’un délai fixe de 5 ms.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Trente notes et sélection conservées ; suite depuis chaque groupe ; nouveau résultat et retour au sourcing | PASS |
+| Claire | Action visible sans défilement, 25 puis 50 puis 75 profils, total annoncé et fin des lots distincts | PASS |
+| Théo | Lot filtré vide, curseurs exacts, double clic, réessai après erreur, quota, résultats partiels et relance après modification | PASS |
+| Sophie | 320/390 px, cible de 44 px, focus pendant et après chargement, aucun débordement ni violation axe | PASS |
+
+**Limites** : services simulés ; aucune recherche réelle, aucun modèle réel ni contact candidat ou écriture en production pour les tests. Aucune modification de la taille des lots, du scoring, du serveur ou du schéma. La visibilité corrigée concerne la présentation V3 ; la vue historique reste couverte par ses régressions.
+**Refs** : branche `codex/fix-sourcing-pagination-20261013` ; `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-search-lifecycle.test.mjs`, `tests/ux/lot12-sourcing.test.mjs`.
+
+---
+
 ## 2026-10-12 — BUG — Retour au sourcing sans perdre l’écran configuré
 
 **Contexte** : quitter le sourcing puis revenir pouvait afficher l’accueil malgré les filtres préparés. Le compte LinkedIn revenait au compte présélectionné, et les groupes ou filtres d’affichage pouvaient être remplacés à la restauration. Le parcours de préparation a été reproduit en échec sur les composants initiaux.

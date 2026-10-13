@@ -13,7 +13,7 @@
 // (puces d'état sans cadre, comme au Pipeline, et bascule d'affichage sur fond
 // neutre) ; « Noter » est le seul bouton plein de l'écran, son coût écrit à côté ;
 // lignes avec visage et note en anneau ; décisions en boutons discrets ; une
-// seule phrase de pied de liste, qui dit combien de profils sont chargés.
+// un compteur et un accès à la suite près des groupes, hors du défilement de la liste.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
@@ -215,8 +215,9 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     [groups.retained],
   );
 
+  const canLoadMore = hasMoreResults && !!cursor;
   const loadedLabel = `${plural(results.length, 'profil chargé', 'profils chargés')}${
-    total !== null && total > results.length ? ` sur ${total.toLocaleString('fr-FR')}` : ''
+    total !== null && total > results.length ? ` sur ${total.toLocaleString('fr-FR')} résultats annoncés` : ''
   }`;
   useEffect(() => {
     if (loadingMore) {
@@ -344,7 +345,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
 
   // ------------------------------------------------------------ aucun profil
 
-  if (hasSearched && !loading && profiles.length === 0) {
+  if (hasSearched && !loading && profiles.length === 0 && !canLoadMore && !loadingMore) {
     return (
       <div className="flex flex-col items-center px-4 py-16 text-center">
         <IconTile icon={Search} size="lg" aria-hidden="true" className="mb-4" />
@@ -372,7 +373,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
 
   // ------------------------------------------------------------ résultats
 
-  const canLoadMore = hasMoreResults && !!cursor;
   const allToSortSelected = toSort.length > 0 && selectedRows.length === toSort.length;
   const someToSortSelected = selectedRows.length > 0 && !allToSortSelected;
   const activeTabId = `sourcing-onglet-${tab}`;
@@ -418,16 +418,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             );
           })}
         </div>
-        {chipsDirty && onRerun && (
-          <button
-            type="button"
-            onClick={onRerun}
-            disabled={loading}
-            className="inline-flex h-8 items-center rounded-md px-1 text-sm text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground disabled:no-underline max-sm:min-h-11"
-          >
-            {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
-          </button>
-        )}
         {renderCompact && renderCard && onViewChange && (
           <div role="group" aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5">
             {VIEW_OPTIONS.map((option) => (
@@ -448,6 +438,42 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
           </div>
         )}
       </div>
+
+      {/* La suite reste accessible sans défiler et depuis chacun des groupes. */}
+      {(hasSearched || results.length > 0 || canLoadMore || loadingMore || (chipsDirty && !!onRerun)) && (
+        <div className="mt-2 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+          <span>{loadedLabel}.</span>
+          {chipsDirty && onRerun ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRerun}
+              disabled={loading || loadingMore}
+              className="text-foreground max-sm:min-h-11"
+            >
+              {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
+            </Button>
+          ) : !chipsDirty && (canLoadMore || loadingMore) && (
+            // aria-disabled conserve le focus pendant le chargement ; un clic depuis Retenus ou Écartés ouvre À trier.
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadingMore ? undefined : () => {
+                if (loading || chipsDirty || !canLoadMore) return;
+                pickTab('to_sort');
+                onLoadMore();
+              }}
+              disabled={loading && !loadingMore}
+              aria-disabled={loadingMore || undefined}
+              className={cn('text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
+            >
+              {loadingMore ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+              {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
+            </Button>
+          )}
+          <span role="status" className="sr-only">{loadAnnouncement}</span>
+        </div>
+      )}
 
       <section id="sourcing-groupe" role="tabpanel" aria-labelledby={activeTabId} className="flex min-h-0 flex-1 flex-col">
         {/* Rangée C : actions du groupe. */}
@@ -721,8 +747,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             </tbody>
           </table>
           )}
-          <span role="status" className="sr-only">{loadAnnouncement}</span>
-
           {groups[tab].length === 0 && tab === 'to_sort' && !(hasSearched && results.length === 0) && (
             <div className="flex flex-col items-center gap-3 px-2 py-8 text-center">
               <Illustration name="tri" size="lg" />
@@ -733,33 +757,18 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             <p className="px-2 py-5 text-sm text-muted-foreground">
               {tab === 'to_sort'
                 ? hasSearched && results.length === 0
-                  ? 'Aucun profil à trier. Cette recherche ne trouve aucun profil : ajustez vos filtres.'
+                  ? canLoadMore
+                    ? 'Aucun profil à trier dans les résultats déjà parcourus. Consultez la suite pour continuer la recherche.'
+                    : 'Aucun profil à trier. Ajustez vos filtres pour trouver d’autres profils.'
                   : 'Aucun profil à trier.'
                 : tab === 'retained' ? 'Aucun profil retenu.' : 'Aucun profil écarté.'}
             </p>
           )}
-          {/* Pied de liste : une seule phrase, qui dit où en est le chargement. */}
+          {/* Pied de liste : une seule phrase pour annoncer la fin du chargement. */}
           {tab === 'to_sort' && !hasMoreResults && results.length > 0 && groups.to_sort.length > 0 && (
             <p className="px-2 py-4 text-sm text-muted-foreground">
-              Tous les profils de cette recherche sont chargés. Élargissez vos filtres pour en trouver d'autres.
+              Fin des résultats disponibles pour cette recherche. Élargissez vos filtres pour en trouver d'autres.
             </p>
-          )}
-          {tab === 'to_sort' && (canLoadMore || loadingMore) && (
-            <div className="flex flex-wrap items-center gap-x-1 px-2 py-3 text-sm text-muted-foreground">
-              <span>{loadedLabel}.</span>
-              {/* Le bouton reste en place pendant le chargement (aria-disabled, jamais disabled) : le focus ne tombe pas sur la page. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={loadingMore ? undefined : onLoadMore}
-                disabled={loading && !loadingMore}
-                aria-disabled={loadingMore || undefined}
-                className={cn('text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
-              >
-                {loadingMore ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-                {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
-              </Button>
-            </div>
           )}
 
           {/* Barre de sélection, flottante en bas (À trier seulement). */}

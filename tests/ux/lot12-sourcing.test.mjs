@@ -332,7 +332,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   const results = code(`${V3_DIR}/SourcingResultsV3.tsx`);
   const top = code(`${V3_DIR}/SourcingTopBar.tsx`);
   // Branche des résultats : après l'écran de chargement et l'écran « aucun profil » (qui ont leurs propres boutons).
-  const resultsBranch = results.slice(results.indexOf('const canLoadMore'));
+  const resultsBranch = results.slice(results.indexOf('const allToSortSelected'));
   // Liste de résultats : « Noter » est le seul bouton plein, son coût écrit à côté (lu par aria-describedby).
   assert.equal((resultsBranch.match(/variant="primary"/g) || []).length, 1, 'un seul bouton plein dans les résultats');
   assert.match(resultsBranch, /variant="primary"[\s\S]{0,200}aria-describedby="sourcing-cout-notation"/);
@@ -370,7 +370,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   assert.match(results, /aria-label="Groupes de résultats"/);
   // Une seule phrase de pied de liste, qui ne répète pas ce que dit « Noter ».
   assert.doesNotMatch(results, /pas encore notés/i);
-  assert.match(results, /Tous les profils de cette recherche sont chargés\. Élargissez vos filtres pour en trouver d'autres\./);
+  assert.match(results, /Fin des résultats disponibles pour cette recherche\. Élargissez vos filtres pour en trouver d'autres\./);
 });
 
 test('S-11b : cibles de 44 px sur téléphone et nom accessible des boutons gardé', () => {
