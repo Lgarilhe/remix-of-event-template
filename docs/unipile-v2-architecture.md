@@ -206,7 +206,7 @@ Tests Node qui lisent les sources (lancés par `npm run test:c1`, `test:ux`, `te
 
 ## 10. Ce qu'un essai avec une vraie clé doit confirmer
 
-Aucun test de contrat contre le vrai service n'existe dans le dépôt (recherche du 12 octobre : aucun fichier). Liste à jouer sur un environnement hors production, avant la fusion. Un résultat différent de l'hypothèse se corrige dans `normalize/*`, `errors.ts` ou la fonction concernée.
+Un premier essai contre le vrai service a eu lieu le 12 octobre 2026, avec la clé de l'application « Development » (0 compte relié) : compte rendu et verdicts dans `docs/unipile-v2-contrat-essais.md`, réponses réelles d'erreur dans `tests/fixtures/unipile-v2/real-errors.json` (lues par `errors.test.ts`). Il a joué la fin de la ligne 5 (400, 401, 404, 429), les lignes 6 (liste d'événements seulement), 8, 18 (lien rendu, page non ouverte), 19 (en partie), 20, 23 et 24 ; aucune n'a demandé de correctif du client. Le tableau ci-dessous garde l'hypothèse de chaque ligne : lire le compte rendu pour son verdict. Les lignes qui demandent un compte relié restent à jouer sur un environnement hors production, avant la fusion. Un résultat différent de l'hypothèse se corrige dans `normalize/*`, `errors.ts` ou la fonction concernée.
 
 | # | À confirmer | Hypothèse actuelle |
 |---|---|---|
@@ -379,9 +379,9 @@ Le relevé (guide, partie 3.0) ne demande aucune modification de code. Il fixe d
 8. **Comptes reliés depuis le tableau de bord.** Ils ne sont pas rattachés par Konekt (partie 5) ; un numéro comme celui de Jarvis, relié ainsi, est le cas voulu. Non vérifié : tous les chemins par lesquels le récepteur traite un événement d'un compte sans ligne en base. Pour un `new_message` d'un compte relié à aucune organisation dont l'expéditeur n'est pas indiqué, `unipile-webhook/index.ts` l'acquitte sans rien faire.
 9. **Comptes reliés de nouveau depuis juillet.** Voir partie 10, ligne 25 : la conversion peut annoncer « Absent du service » des comptes opérationnels. Aucun changement de code demandé ; le guide donne la marche à suivre (étapes 7 et 8).
 
-## Annexe A. Secret des essais de contrat avec le vrai service (à créer, pas encore fait)
+## Annexe A. Secret des essais de contrat avec le vrai service (créé et joué le 12 octobre 2026 ; la clé doit être supprimée)
 
-Cette annexe est réservée aux développeurs. Elle ne figure pas dans le guide du propriétaire. Elle prépare la partie 10, qui n'a jamais été jouée contre le vrai service.
+Cette annexe est réservée aux développeurs. Elle ne figure pas dans le guide du propriétaire. Elle a préparé la partie 10, jouée en partie le 12 octobre 2026 (voir le compte rendu). Une session démarrée le 13 octobre a trouvé la clé refusée par le service (401 `api/invalid_credentials`, sept appels de lecture, rien d'écrit) : cause non établie (clé supprimée par le propriétaire après les essais, expiration, ou secret réglé avec un autre en-tête que `X-API-KEY`). Pour rejouer, créer une nouvelle clé de l'application « Development ».
 
 - **Nom et lieu.** Un secret d'environnement nommé `UNIPILE_DEV_API_KEY`, créé dans l'application « Development » du tableau de bord du prestataire seulement. Jamais dans « Konekt app / Production » (la seule qui porte des comptes : partie 12, point 1). Non vérifié : sa création, ni l'existence d'une application « Development » exploitable pour ces essais (le relevé du 12 octobre 2026 y compte 0 compte et trois clés de service).
 - **Réglage d'accès attendu.** En-tête `X-API-KEY`, hôte autorisé `api.unipile.com`, préfixe de chemin autorisé `/v2/`. Ces trois valeurs sont celles du client (`UNIPILE_BASE_URL` et l'en-tête de `_shared/unipile/http.ts`, vérifiés) : un essai ne doit pas pouvoir toucher autre chose que l'API v2.

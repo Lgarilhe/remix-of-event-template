@@ -859,7 +859,7 @@ Rappels API :
 
 ## Unipile API v2 (LinkedIn, WhatsApp, e-mail)
 
-Détails : `docs/unipile-v2-architecture.md` (développeurs), `docs/unipile-v2-bascule.md` (mise en production, propriétaire). Rien n'a été confronté à un vrai serveur v2 : liste à confirmer en partie 10 de l'architecture. Ne pas fusionner la branche de bascule avant le guide : la fusion déploie un code qui n'accepte que les identifiants `acc_...`.
+Détails : `docs/unipile-v2-architecture.md` (développeurs), `docs/unipile-v2-bascule.md` (mise en production, propriétaire). Seuls les essais sans compte ont été joués contre le vrai service (12 octobre 2026, application « Development », `docs/unipile-v2-contrat-essais.md`) : tout ce qui demande un compte relié reste à confirmer, liste en partie 10 de l'architecture. Ne pas fusionner la branche de bascule avant le guide : la fusion déploie un code qui n'accepte que les identifiants `acc_...`.
 
 ### Architecture
 ```
