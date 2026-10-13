@@ -15,6 +15,7 @@ interface GridProps {
   autoGenerate?: boolean;
   autoOpenFirst?: boolean;
   autoStartCoaching?: boolean;
+  meetingLocation?: string | null;
 }
 declare global {
   interface Window {
@@ -72,14 +73,26 @@ async function read(table: string, filters: Record<string, unknown>) {
     return { data: { id: filters.id, candidate_profile_id: filters.candidate_profile_id,
       project_id: qa.scenario === 'no-mission' ? null : filters.id === SESSION_A ? MISSION_A : MISSION_B,
       manager_id: qa.scenario === 'reassigned' ? 'recruiter-two' : null, created_by: 'recruiter-one',
+      event_location: filters.id === SESSION_A ? 'https://meet.google.com/fixture-alpha' : 'https://teams.microsoft.com/l/meetup-join/fixture-beta',
       candidate_name: 'Samira Legrand', candidate_headline: 'Développeuse', candidate_linkedin_url: null,
       invitee_email: 'samira@example.test', job_title: 'Échange de découverte', created_at: '2026-10-10T09:00:00Z', updated_at: '2026-10-10T09:00:00Z' }, error: null };
   }
   if (table === 'job_candidate_status') {
     if (qa.scenario === 'slow-profile') await new Promise<void>(resolve => { qa.releaseSnapshot = resolve; });
     if (filters.candidate_id === 'new-person') return { data: null, error: null };
-    return { data: { linkedin_profile_data: { name: 'Samira Legrand', headline: 'Développeuse', summary: 'Parcours chargé pour préparer la grille', work_experience: [{ role: 'Développeuse', company: 'Atelier', company_logo: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E', start: { year: 2020 } }], skills: ['TypeScript'] } }, error: null };
+    return { data: {
+      id: filters.project_id === MISSION_A ? 'row-a' : 'row-b', candidate_id: filters.candidate_id,
+      candidate_name: 'Samira Legrand', candidate_headline: 'Développeuse',
+      organization_id: ORG, project_id: filters.project_id ?? null, job_id: null,
+      general_stage: null, pipeline_stage: 'Nouveau', tags: [],
+      linkedin_profile_data: { name: 'Samira Legrand', headline: 'Développeuse', summary: 'Parcours chargé pour préparer la grille', work_experience: [{ role: 'Développeuse', company: 'Atelier', company_logo: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E', start: { year: 2020 } }], skills: ['TypeScript'] },
+    }, error: null };
   }
+  if (table === 'mission_candidate_rows') return { data: null, error: null };
+  if (table === 'sourcing_projects') return { data: {
+    name: filters.id === MISSION_A ? 'Mission Alpha' : 'Mission Bêta',
+    job_title: filters.id === MISSION_A ? 'Mission Alpha' : 'Mission Bêta', job_details: {},
+  }, error: null };
   if (table === 'candidate_notes' || table === 'candidate_reminders') return { data: [], error: null };
   throw new Error(`Lecture inattendue : ${table}`);
 }
@@ -133,6 +146,7 @@ export function ScorecardTab(props: GridProps) {
     <output aria-label="Préparation autorisée">{String(!!props.autoGenerate)}</output>
     <output aria-label="Ouverture immédiate">{String(!!props.autoOpenFirst)}</output>
     <output aria-label="Assistant ouvert">{String(!!props.autoStartCoaching)}</output>
+    <output aria-label="Lieu de l’entretien">{props.meetingLocation ?? 'inconnu'}</output>
     <output aria-label="Parcours disponible">{props.candidate.linkedinProfileData?.summary ?? ''}</output>
   </section>;
 }

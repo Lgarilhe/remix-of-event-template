@@ -335,11 +335,10 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
   function expectCandidateDestination(value: string | null, expected: { candidate: string; mission: string; session: string; coaching?: string }) {
     expect(value).not.toBeNull();
     const url = new URL(value!, 'https://app.example.test');
-    expect(url.pathname).toBe('/pipeline');
+    expect(url.pathname).toBe(`/pipeline/scorecard/${encodeURIComponent(expected.candidate)}`);
     expect(Object.fromEntries(url.searchParams)).toEqual({
-      candidate: expected.candidate, tab: 'evaluation', prepareInterview: '1',
       mission: expected.mission, session: expected.session,
-      ...(expected.coaching ? { coaching: expected.coaching } : {}),
+      coaching: '1',
     });
   }
 
@@ -360,6 +359,20 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
       await isolated(page, audit);
     });
   }
+
+  test('Claire — Préparer l’entretien depuis le menu garde aussi sa session et son assistant', async ({ page }) => {
+    const audit = await open(page, '/native-event');
+    const sheet = page.getByRole('dialog', { name: 'Entretien de Camille', exact: true });
+    await sheet.getByRole('button', { name: 'Plus', exact: true }).click();
+    await page.getByRole('menuitem', { name: "Préparer l'entretien", exact: true }).click();
+    const destination = page.getByRole('status', { name: 'Destination' });
+    await expect(destination).toBeVisible();
+    expectCandidateDestination(await destination.textContent(), {
+      candidate: 'candidate/fixture', mission: 'mission/fixture', session: 'session-fixture',
+    });
+    await expect(sheet).toHaveCount(0);
+    await isolated(page, audit);
+  });
 
   test('Claire — rejoindre un rendez-vous réel utilise son lien sans activer le micro', async ({ page }) => {
     const audit = await open(page, '/native-event');

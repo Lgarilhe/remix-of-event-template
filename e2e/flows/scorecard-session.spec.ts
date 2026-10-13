@@ -47,6 +47,17 @@ test.describe('Grille préparée du rendez-vous @critical', () => {
     await isolated(page, result);
   });
 
+  test('Guillaume — ouvre l’assistant sur la grille préparée et lui transmet la visio du rendez-vous', async ({ page }) => {
+    const result = await open(page, 'ready-assistant');
+    await expect(first(page)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Assistant prêt' })).toBeVisible();
+    await expect(page.getByLabel('Entretien de l’assistant')).toHaveText('session-first');
+    await expect(page.getByLabel('Visio de l’assistant')).toHaveText('https://teams.microsoft.com/l/meetup-join/fixture');
+    await expect(page.getByRole('button', { name: 'Démarrer l’enregistrement' })).toBeVisible();
+    expect((await audit(page)).calls).toEqual([]);
+    await isolated(page, result);
+  });
+
   test('Sophie — attend la préparation puis ouvre les critères, sans saisie prématurée', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const result = await open(page, 'preparing');
