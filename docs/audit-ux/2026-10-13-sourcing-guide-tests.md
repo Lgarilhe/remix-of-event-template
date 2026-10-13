@@ -10,7 +10,7 @@ Le dashboard propose « Trouver des candidats ». Une nouvelle recherche ou une 
 4. Choisir la source, valider, puis vérifier les filtres, les résultats et leur source. Le cadrage sauvegardé est aussi visible dans l’onglet Cadrage de la mission.
 5. Ouvrir un profil, le noter si nécessaire, le retenir ou l’écarter. Les retenus rejoignent le Pipeline. Modifier les filtres ou la source puis relancer explicitement. Un simple retour dans le sourcing conserve les résultats sans nouvelle recherche.
 
-Les champs du poste, les critères et les détails réutilisent les composants de Cadrage. Le chat reprend les enveloppes de messages et le composer de l’assistant existant ; la source utilise le SegmentedControl partagé. Aucun nouveau jeu de couleurs ni nouveau modèle de critères.
+Les champs du poste, les critères et les détails réutilisent les composants de Cadrage. Le chat reprend les enveloppes de messages et le composer de l’assistant existant ; la source utilise le SegmentedControl partagé. Les onglets existants donnent un accès direct au poste et aux critères, sans cacher l’action finale sous le formulaire. Aucun nouveau jeu de couleurs ni nouveau modèle de critères.
 
 Une réponse non envoyée empêche la validation. Une sortie avec un brouillon modifié demande confirmation. Les champs restent verrouillés pendant un échange. Un échec conserve le texte ; une modification du cadrage par une autre session empêche son remplacement. La sauvegarde utilise une condition sur `updated_at`.
 
@@ -22,9 +22,8 @@ La Base Konekt recherche avec l’accès de l’organisation, sans compte Linked
 | --- | --- | --- |
 | Nom, titre, entreprise, lieu, lien professionnel | Aperçu, selon les données collectées | Selon ce que le compte peut voir |
 | Parcours, formations, résumé, compétences, photo | Fiche complète collectée à l’ouverture ; champs parfois absents, compétences parfois inférées | Profil détaillé, selon sa visibilité |
-| Fraîcheur | Dernière collecte disponible | Réponse reçue au moment de l’appel |
 | Email ou téléphone | Enrichissement distinct, jamais garanti | Jamais garanti par la recherche |
-| Messages LinkedIn, invitations, réseau, signaux à l’écoute | Pas accessibles sans compte relié | Selon la licence, les autorisations et les quotas |
+| Messages et invitations LinkedIn | Compte LinkedIn relié nécessaire | Selon la licence, les autorisations et les quotas |
 | Notation | Possible après récupération de la fiche complète ; crédits applicables | Possible sur les informations disponibles ; crédits applicables |
 
 La localisation de la Base Konekt est un nom de lieu, conservé dans les filtres visibles sans résolution d’identifiant LinkedIn. La tranche d’expérience est appliquée au dataset complet par le serveur ; les cartes d’aperçu sans dates ne sont pas filtrées une deuxième fois au navigateur. Une action charge une page ; la suite reste un choix de l’utilisateur.
@@ -34,7 +33,7 @@ La localisation de la Base Konekt est un nom de lieu, conservé dans les filtres
 - `tests/agent/guided-sourcing.test.mjs` : validation des tours, plages et pondérations, refus des credentials service et des organisations étrangères, garde de crédits avant appel, décompte même si la sortie du modèle est invalide, aucune écriture du brief côté fonction, lieux sans appel LinkedIn.
 - `tests/agent/guided-sourcing-filter-reset.test.mjs` : lancement depuis un cadrage validé sans conserver les anciens lieux, compétences, entreprises ou exclusions ; affinage manuel conservé.
 - `e2e/flows/guided-sourcing.spec.ts` : accueil et mission, sources reliée/non reliée, critères et pondérations réellement transmis à la génération, accès base absent, erreurs IA/sauvegarde, cadrage concurrent, protection du brouillon, lancement unique, refus d’un forfait incompatible, métadonnées des critères et du client conservées, description libre modifiable sans troncature, Échap dans les suggestions Client et critères vides.
-- Dialogues à 1440, 390 et 320 px en clair et sombre, avec vérification de débordement et audit axe WCAG A/AA. Les captures sont des données fictives.
+- Dialogues à 1440, 390 et 320 px, plus comparaison dépliée à 1024 × 600 px sans chevauchement du composer et de la validation en clair et sombre, avec vérification de débordement et audit axe WCAG A/AA. Les captures sont des données fictives.
 - `e2e/flows/sourcing-return.spec.ts` : résultats, notes, sélection, groupes, pagination, changements de contexte et retour depuis le Pipeline, sur les composants réels.
 
 Les transports, la base et le modèle sont simulés aux frontières dans ces tests. Aucun compte, candidat ou crédit de production n’est modifié. Les tests ne valident pas la qualité du prompt avec le modèle réel ni l’accès actuel au fournisseur.

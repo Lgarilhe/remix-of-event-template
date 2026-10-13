@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AssistantMessageLayout, UserMessageLayout } from '@/components/assistant-ui/message-layout';
 import { ASSISTANT_COMPOSER_CLASS, ASSISTANT_COMPOSER_INPUT_CLASS, ASSISTANT_COMPOSER_TOOLBAR_CLASS, ASSISTANT_SEND_CLASS } from '@/components/assistant-ui/composer-styles';
 import { CriteriaSection } from '@/components/missions/v3/cadrage/CriteriaSection';
@@ -82,54 +84,74 @@ export function SourcingInterviewDialog({ initialBrief = {}, initialMessage = ''
   const close = () => { if (locked.current) return; if (value.trim() || JSON.stringify(brief) !== JSON.stringify(initialBrief)) setConfirmClose(true); else onClose(); };
 
   return <Dialog open onOpenChange={open => { if (!open) close(); }}>
-    <DialogContent className="flex max-h-[95dvh] w-[calc(100%-1rem)] max-w-5xl flex-col overflow-y-auto p-4 sm:p-6" onEscapeKeyDown={event => { if (event.defaultPrevented) return; event.preventDefault(); close(); }}>
-      <DialogHeader>
+    <DialogContent className="flex max-h-[95dvh] w-[calc(100%-1rem)] max-w-5xl flex-col overflow-y-auto p-4 sm:p-6 md:h-[90dvh] md:overflow-hidden" onEscapeKeyDown={event => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      // ClientPicker ferme sa liste dans le champ ; Échap lui laisse ce premier geste.
+      if (event.target instanceof Element && event.target.closest('[role="combobox"][aria-expanded="true"]')) return;
+      close();
+    }}>
+      <DialogHeader className="shrink-0">
         <DialogTitle>Cadrer la recherche</DialogTitle>
         <DialogDescription>Précisez le poste avec l’assistant, ajustez les critères, puis validez pour chercher. Le cadrage existant est repris.</DialogDescription>
       </DialogHeader>
-      <SourcingSourcePicker source={source} onChange={setSource} linkedinAvailable={linkedinAvailable} disabled={busy || saving} preserveDraft />
-      <div className="grid shrink-0 gap-6 md:grid-cols-2">
+      <div role="region" aria-label="Sources et accès" tabIndex={0} className="md:min-h-0 md:overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <SourcingSourcePicker source={source} onChange={setSource} linkedinAvailable={linkedinAvailable} disabled={busy || saving} preserveDraft />
+      </div>
+      <div className="grid shrink-0 gap-6 md:min-h-[12rem] md:flex-1 md:shrink md:grid-cols-2">
         <section aria-label="Dialogue de cadrage" className="flex min-h-0 flex-col gap-3">
-          <div ref={log} role="log" tabIndex={0} aria-label="Conversation de cadrage" aria-live="polite" className="max-h-[36dvh] min-h-32 space-y-5 overflow-y-auto px-1 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <div ref={log} role="log" tabIndex={0} aria-label="Conversation de cadrage" aria-live="polite" className="max-h-[36dvh] min-h-32 space-y-5 overflow-y-auto px-1 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0 md:max-h-none md:flex-1">
             {messages.map((message, i) => message.role === 'assistant'
               ? <AssistantMessageLayout key={i}><p className="whitespace-pre-wrap break-words text-md leading-relaxed text-foreground">{message.content}</p></AssistantMessageLayout>
               : <UserMessageLayout key={i}><p className="whitespace-pre-wrap break-words">{message.content}</p></UserMessageLayout>)}
             {busy && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />Mise à jour du cadrage…</p>}
           </div>
-          <form onSubmit={event => { event.preventDefault(); void send(); }} className="space-y-2">
+          <form onSubmit={event => { event.preventDefault(); void send(); }} className="shrink-0 space-y-2">
             <label htmlFor="sourcing-answer" className="sr-only">Votre réponse ou votre ajustement</label>
             <div className={ASSISTANT_COMPOSER_CLASS}>
-              <textarea id="sourcing-answer" className={ASSISTANT_COMPOSER_INPUT_CLASS} value={value} onChange={e => setValue(e.target.value)} disabled={busy || saving} maxLength={6000} rows={3}
+              <Textarea id="sourcing-answer" className={`${ASSISTANT_COMPOSER_INPUT_CLASS} border-0 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent md:text-md`} value={value} onChange={e => setValue(e.target.value)} disabled={busy || saving} maxLength={6000} rows={3}
                 placeholder="Précisez le profil ou demandez un ajustement des critères…"
                 onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
               <div className={ASSISTANT_COMPOSER_TOOLBAR_CLASS}>
                 <span className="text-xs text-muted-foreground">1 crédit minimum par échange IA.</span>
-                <button type="submit" aria-label="Envoyer" disabled={busy || saving || !value.trim()} className={ASSISTANT_SEND_CLASS}><ArrowUp className="h-4 w-4" aria-hidden="true" /></button>
+                <Button type="submit" variant="ghost" size="icon-sm" aria-label="Envoyer" disabled={busy || saving || !value.trim()} className={`${ASSISTANT_SEND_CLASS} hover:text-background disabled:opacity-100`}><ArrowUp className="h-4 w-4" aria-hidden="true" /></Button>
               </div>
             </div>
           </form>
         </section>
-        <fieldset disabled={busy || saving} tabIndex={0} className="min-w-0 space-y-6 md:max-h-[48dvh] md:overflow-y-auto md:pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <fieldset disabled={busy || saving} className="flex min-h-0 min-w-0 flex-col">
           <legend className="mb-3 text-md font-semibold">Votre recherche</legend>
-          <JobFields jd={brief} updateField={updateField} readOnly={busy || saving} className="sm:grid-cols-2" />
-          <CriteriaSection jd={brief} updateField={updateField} readOnly={busy || saving} />
-          <p className="text-xs text-muted-foreground">Les critères pondèrent la notation ; les filtres décident quels profils sont trouvés.</p>
-          <JobMoreDetails jd={brief} updateField={updateField} readOnly={busy || saving} />
-          {brief.evaluation_weights && <details>
-            <summary className="cursor-pointer py-2 text-sm font-medium max-sm:min-h-11">Pondération globale</summary>
-            <div className="space-y-3 pb-2">
-              <p className="text-xs text-muted-foreground">Total attendu : 100 %. Vous pouvez aussi demander un ajustement dans le dialogue.</p>
-              {Object.entries(weightLabels).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-2 text-sm">{label}
-                <FieldInput type="number" min={0} max={100} className="w-20" aria-label={`Poids ${label} en pourcentage`} value={brief.evaluation_weights?.[key as keyof typeof weightLabels] ?? 0}
-                  onChange={e => setBrief(previous => ({ ...previous, evaluation_weights: { ...previous.evaluation_weights!, [key]: Number(e.target.value) } }))} />
-              </label>)}
+          <Tabs defaultValue="job" className="flex min-h-0 flex-col md:flex-1">
+            <TabsList aria-label="Informations de la recherche" className="mb-3 w-fit shrink-0 max-sm:h-11">
+              <TabsTrigger value="job">Le poste</TabsTrigger>
+              <TabsTrigger value="criteria">Critères</TabsTrigger>
+            </TabsList>
+            <div tabIndex={0} aria-label="Cadrage de la recherche" className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <TabsContent value="job" className="mt-0 space-y-6">
+                <JobFields jd={brief} updateField={updateField} readOnly={busy || saving} className="sm:grid-cols-2" />
+                <JobMoreDetails jd={brief} updateField={updateField} readOnly={busy || saving} />
+              </TabsContent>
+              <TabsContent value="criteria" className="mt-0 space-y-6 [&_.group]:sm:flex [&_.group>input]:sm:basis-full">
+                <CriteriaSection jd={brief} updateField={updateField} readOnly={busy || saving} />
+                <p className="text-xs text-muted-foreground">Les critères pondèrent la notation ; les filtres décident quels profils sont trouvés.</p>
+                {brief.evaluation_weights && <details>
+                  <summary className="cursor-pointer py-2 text-sm font-medium max-sm:min-h-11">Pondération globale</summary>
+                  <div className="space-y-3 pb-2">
+                    <p className="text-xs text-muted-foreground">Total attendu : 100 %. Vous pouvez aussi demander un ajustement dans le dialogue.</p>
+                    {Object.entries(weightLabels).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-2 text-sm">{label}
+                      <FieldInput type="number" min={0} max={100} className="w-20" aria-label={`Poids ${label} en pourcentage`} value={brief.evaluation_weights?.[key as keyof typeof weightLabels] ?? 0}
+                        onChange={e => setBrief(previous => ({ ...previous, evaluation_weights: { ...previous.evaluation_weights!, [key]: Number(e.target.value) } }))} />
+                    </label>)}
+                  </div>
+                </details>}
+              </TabsContent>
             </div>
-          </details>}
+          </Tabs>
         </fieldset>
       </div>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {confirmClose ? <div role="group" aria-label="Quitter le cadrage" className="flex flex-wrap items-center gap-2 border-t border-border pt-3"><p className="flex-1 text-sm">Quitter et perdre ce brouillon ?</p><Button variant="ghost" onClick={() => setConfirmClose(false)}>Continuer</Button><Button variant="secondary" onClick={onClose}>Quitter sans enregistrer</Button></div>
-        : <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+      {error && <p role="alert" className="shrink-0 text-sm text-destructive">{error}</p>}
+      {confirmClose ? <div role="group" aria-label="Quitter le cadrage" className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-3"><p className="flex-1 text-sm">Quitter et perdre ce brouillon ?</p><Button variant="ghost" onClick={() => setConfirmClose(false)}>Continuer</Button><Button variant="secondary" onClick={onClose}>Quitter sans enregistrer</Button></div>
+        : <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
           <p className="max-w-xl text-sm text-muted-foreground">{value.trim() ? 'Envoyez votre réponse avant de valider.' : 'La validation enregistre le cadrage, génère les filtres et lance la recherche. La génération consomme des crédits IA.'}</p>
           <Button variant="primary" className="max-sm:min-h-11" disabled={busy || saving || !!value.trim() || (brief.title?.trim().length ?? 0) < 3 || sourceUnavailable} onClick={() => void confirm()}>{saving && <Loader2 aria-hidden="true" className="animate-spin" />}Valider et chercher</Button>
         </div>}

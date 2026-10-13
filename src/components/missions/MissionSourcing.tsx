@@ -100,7 +100,7 @@ export const MissionSourcing = ({ project: serverProject, layout = 'default', in
         : 'Pas de compte LinkedIn connecté',
       base.isLoading
         ? 'Base Konekt : vérification de l’accès en cours'
-        : base.isError
+        : base.isError || !base.state
           ? 'Base Konekt : accès non vérifié'
           : !base.planAllows
             ? 'Base Konekt : accès non inclus dans le forfait actuel'
@@ -118,7 +118,7 @@ export const MissionSourcing = ({ project: serverProject, layout = 'default', in
       projectId: project.id,
       accountId: selectedAccount || undefined,
     });
-  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent, base.isLoading, base.isError, base.planAllows, base.isEnabled, base.includedRemaining]);
+  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent, base.isLoading, base.isError, base.state, base.planAllows, base.isEnabled, base.includedRemaining]);
 
   if (accountsLoading) {
     return (

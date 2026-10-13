@@ -57,10 +57,12 @@ async function startDashboard(page: Page) {
   await expect(dialog(page).getByRole('textbox', { name: 'Intitulé du poste', exact: true })).toHaveValue('Développeur React');
   await expect(confirm(page)).toBeEnabled();
 }
+test.describe('Sourcing guidé @critical', () => {
 test('Accueil sans LinkedIn : dialogue, critères validés, 20 résultats avec expérience, puis retour sans nouvelle facturation', async ({ page }) => {
   const audit = await open(page);
   await startDashboard(page);
   expect(audit.searches()).toHaveLength(0);
+  await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
   await dialog(page).getByRole('group', { name: 'Importance du critère React en production', exact: true }).getByRole('button', { name: 'Indispensable', exact: true }).click();
   await confirm(page).click();
   await test.info().attach('guided-mission-boundaries', { body: JSON.stringify(audit.calls), contentType: 'application/json' });
@@ -87,6 +89,7 @@ test('Mission : reprend le cadrage sans appeler l’IA, pourcentages invalides r
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
   await expect(dialog(page).getByRole('textbox', { name: 'Lieu et télétravail', exact: true })).toHaveValue('Lyon');
   expect(audit.calls.filter(c => c.name === 'sourcing-interview')).toHaveLength(0);
+  await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
   await dialog(page).getByText('Pondération globale', { exact: true }).click();
   await dialog(page).getByRole('spinbutton', { name: 'Poids Technique en pourcentage' }).fill('70');
   await confirm(page).click();
@@ -156,6 +159,7 @@ test('Cadrage existant : métadonnées conservées après échange, critères et
   await dialog(page).getByRole('textbox', { name: 'Votre réponse ou votre ajustement' }).fill('Confirmez les critères existants.');
   await dialog(page).getByRole('button', { name: 'Envoyer', exact: true }).click();
   await expect(confirm(page)).toBeEnabled();
+  await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
   await dialog(page).getByRole('textbox', { name: 'Libellé du critère 1', exact: true }).fill('React livré en production');
   await dialog(page).getByRole('group', { name: 'Importance du critère React livré en production', exact: true }).getByRole('button', { name: 'Indispensable', exact: true }).click();
   await dialog(page).getByRole('checkbox', { name: 'Rédhibitoire : React livré en production', exact: true }).check();
@@ -164,6 +168,7 @@ test('Cadrage existant : métadonnées conservées après échange, critères et
   await expect(dialog(page).getByRole('alert')).toContainText('libellé');
   expect(audit.searches()).toHaveLength(0);
   await dialog(page).getByRole('textbox', { name: 'Libellé du critère 2', exact: true }).fill('Travail en équipe');
+  await dialog(page).getByRole('tab', { name: 'Le poste', exact: true }).click();
   await dialog(page).getByRole('button', { name: 'Plus de détails sur le poste', exact: true }).click();
   const raw = 'Contexte ajusté '.repeat(900) + 'Fin conservée.';
   await dialog(page).getByRole('textbox', { name: 'Description libre', exact: true }).fill(raw);
@@ -206,6 +211,26 @@ test('Double clic et fermeture pendant l’IA : un seul échange, brouillon prot
   await dialog(page).getByRole('button', { name: 'Continuer', exact: true }).click();
   await expect(dialog(page).getByRole('textbox', { name: 'Intitulé du poste', exact: true })).toHaveValue('Développeur React');
 });
+test('Dialogue 1024x600 : comparaison des sources dépliée, composer et validation accessibles', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  const audit = await open(page);
+  await startDashboard(page);
+  await dialog(page).getByText('Quelles différences entre les sources ?', { exact: true }).click();
+  const composer = dialog(page).locator('form');
+  const footer = confirm(page).locator('..');
+  const composerRect = await composer.boundingBox();
+  const footerRect = await footer.boundingBox();
+  expect(composerRect!.y + composerRect!.height).toBeLessThanOrEqual(footerRect!.y);
+  await expect(composer).toBeInViewport();
+  await expect(confirm(page)).toBeInViewport();
+  const sources = dialog(page).getByRole('region', { name: 'Sources et accès', exact: true });
+  await sources.focus();
+  await page.keyboard.press('End');
+  await expect(dialog(page).getByRole('rowheader', { name: 'Email et téléphone', exact: true })).toBeInViewport();
+  await expect(confirm(page)).toBeInViewport();
+  await test.info().attach('dialogue-1024x600-comparaison', { body: await dialog(page).screenshot(), contentType: 'image/png' });
+  expect(audit.errors).toEqual([]); expect(audit.external).toEqual([]);
+});
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 640 }]) {
   for (const dark of [false, true]) {
     test(`Dialogue ${viewport.width}px ${dark ? 'sombre' : 'clair'} : récapitulatif, clavier et accessibilité`, async ({ page }) => {
@@ -214,13 +239,27 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await page.evaluate(dark => { document.documentElement.classList.remove('light', 'dark'); document.documentElement.classList.add(dark ? 'dark' : 'light'); }, dark);
       await startDashboard(page);
       await expect(dialog(page)).toBeVisible();
+      await expect(dialog(page).getByRole('tab', { name: 'Le poste', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(dialog(page).getByRole('tab', { name: 'Critères', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
       expect(await dialog(page).evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
       await expect.poll(() => dialog(page).locator('.animate-fade-in').evaluateAll(elements => elements.every(el => getComputedStyle(el).opacity === '1'))).toBe(true);
       const axe = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa']).analyze();
       expect(axe.violations).toEqual([]);
-      await test.info().attach(`dialogue-${viewport.width}-${dark ? 'sombre' : 'clair'}`, { body: await dialog(page).screenshot(), contentType: 'image/png' });
+      await test.info().attach(`dialogue-${viewport.width}-${dark ? 'sombre' : 'clair'}-poste`, { body: await dialog(page).screenshot(), contentType: 'image/png' });
+      await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
+      await expect(dialog(page).getByRole('textbox', { name: 'Libellé du critère 1', exact: true })).toBeVisible();
+      const criteriaAxe = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa']).analyze();
+      expect(criteriaAxe.violations).toEqual([]);
+      if (viewport.width >= 768) {
+        await dialog(page).locator('[aria-label="Cadrage de la recherche"]').evaluate(el => { el.scrollTop = el.scrollHeight; });
+        await expect(dialog(page).getByRole('tab', { name: 'Critères', exact: true })).toBeInViewport();
+        await expect(confirm(page)).toBeInViewport();
+      }
+      await test.info().attach(`dialogue-${viewport.width}-${dark ? 'sombre' : 'clair'}-criteres`, { body: await dialog(page).screenshot(), contentType: 'image/png' });
       expect(audit.errors).toEqual([]); expect(audit.external).toEqual([]);
     });
   }
 }
+
+});
