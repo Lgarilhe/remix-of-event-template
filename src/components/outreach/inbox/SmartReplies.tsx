@@ -12,6 +12,7 @@ import { ChevronRight, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { trackUsage } from '@/lib/usageEvents';
 
 export interface SmartRepliesProps {
   suggestions: Array<{ text: string; type?: string }>;
@@ -62,7 +63,11 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
               size="xs"
               // Au doigt, 44 px de haut : la zone s'élargit dans la marge de la bande.
               className="relative max-w-52 bg-background font-normal after:absolute after:inset-x-0 after:-inset-y-2"
-              onClick={() => onPick(s.text)}
+              onClick={() => {
+                onPick(s.text);
+                // Mesure d'usage : type de la suggestion insérée, jamais son texte.
+                trackUsage('Reply Suggestion Used', { kind: s.type, place: 'bandeau' });
+              }}
               title={s.text}
               aria-label={`Insérer la suggestion : ${s.text}`}
             >

@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { EmptyState, ErrorState } from '@/components/layout';
 import { Bot, Check, RefreshCw, X } from 'lucide-react';
 import { JobData } from '@/hooks/useMessagesInbox';
+import { trackUsage } from '@/lib/usageEvents';
 
 /**
  * InlineAIPanel — panneau IA au-dessus du composeur : réponses proposées,
@@ -189,8 +190,10 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
   const qualQuestions = analysis?.qualificationQuestions || [];
   const suggestionCount = positive.length + negative.length;
 
-  const insert = (text: string) => {
+  const insert = (text: string, kind: string, tone?: 'positive' | 'negative') => {
     onSuggestionSelect(text);
+    // Mesure d'usage : type et ton de la proposition insérée, jamais son texte.
+    trackUsage('Reply Suggestion Used', { kind, tone, place: 'panneau' });
     onClose();
   };
 
@@ -266,7 +269,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                   <section aria-labelledby="ai-panel-replies" className="space-y-1.5">
                     <h3 id="ai-panel-replies" className="eyebrow">Réponses proposées</h3>
                     {positive.map((s, i) => (
-                      <SuggestionItem key={i} suggestion={s} onInsert={insert} />
+                      <SuggestionItem key={i} suggestion={s} onInsert={(text) => insert(text, s.type, 'positive')} />
                     ))}
                   </section>
                 )}
@@ -275,7 +278,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                   <section aria-labelledby="ai-panel-close" className="space-y-1.5">
                     <h3 id="ai-panel-close" className="eyebrow">Pour clore l'échange</h3>
                     {negative.map((s, i) => (
-                      <SuggestionItem key={i} suggestion={s} onInsert={insert} />
+                      <SuggestionItem key={i} suggestion={s} onInsert={(text) => insert(text, s.type, 'negative')} />
                     ))}
                   </section>
                 )}
@@ -289,7 +292,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                         variant="ghost"
                         size="sm"
                         className="h-auto min-h-11 w-full justify-start whitespace-normal rounded-lg border border-border py-1.5 text-left font-normal hover:border-foreground md:min-h-8"
-                        onClick={() => insert(q)}
+                        onClick={() => insert(q, 'question')}
                       >
                         {q}
                       </Button>

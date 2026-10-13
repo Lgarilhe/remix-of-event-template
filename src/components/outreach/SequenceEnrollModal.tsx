@@ -54,6 +54,7 @@ import { UpgradePrompt } from '@/components/ui/UpgradePrompt';
 import { plural } from '@/lib/plural';
 import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { hasMessage } from '@/hooks/useEnrollmentPreview';
+import { trackUsage } from '@/lib/usageEvents';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -342,6 +343,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       // serveur les passe à l'étape suivante au premier envoi réel (lot 0b).
       if (enrollmentResults.success > 0) {
         void invalidateMissionContacted(queryClient);
+        // Mesure d'usage : inscriptions créées avec leur première étape planifiée (nombre seulement).
+        trackUsage('Candidates Enrolled', { surface: 'inscription', count: enrollmentResults.success });
         toast.success(`${plural(enrollmentResults.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });

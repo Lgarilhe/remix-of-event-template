@@ -27,6 +27,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
+import { trackUsage } from '@/lib/usageEvents';
 import {
   summarizeStopResponse,
   summarizeUndoPause,
@@ -39,6 +40,9 @@ import {
   type UndoStopResponse,
   type UndoSummary,
 } from '@/lib/sequenceErrorMessages';
+
+/** Issues d'une annulation d'arrêt qui défont l'arrêt (même liste que summarizeUndoStopResponse). */
+const UNDONE_STOP_OUTCOMES = new Set(['resumed', 'paused', 'finished', 'resume_refused']);
 
 /** Durée d'affichage du toast « Annuler », prolongée au survol ou au focus. */
 export const UNDO_TOAST_DURATION_MS = 8_000;
@@ -337,6 +341,9 @@ async function undoStopRequest(
         action: { label: 'Réessayer', onClick: () => { void undoStopRequest(ids, token, options, organizationId); } },
       });
     } else {
+      // Mesure d'usage : inscriptions dont l'arrêt est défait (nombre seulement).
+      const undone = (data.results ?? []).filter((r) => UNDONE_STOP_OUTCOMES.has(r.outcome ?? '')).length;
+      if (undone > 0) trackUsage('Enrollment Undo', { gesture: 'arret', count: undone });
       showSummary(summarizeUndoStopResponse(data, options.candidateName), loadingId);
     }
   } catch (err) {
@@ -369,6 +376,8 @@ async function stopRequest(options: StopEnrollmentsOptions, organizationId: () =
     console.error('[useUndoableEnrollmentAction] arrêt en échec :', err);
     summary = summarizeStopResponse(null, ids, options.candidateName);
   }
+  // Mesure d'usage : inscriptions réellement arrêtées par le serveur (nombre seulement).
+  if (summary.stoppedIds.length > 0) trackUsage('Enrollment Stopped', { count: summary.stoppedIds.length });
   const token = payload?.token;
   if (summary.title && token) {
     const stopped = summary.stoppedIds;
@@ -404,6 +413,8 @@ export function useUndoableEnrollmentAction() {
   /** Toast « Annuler » d'une pause : « Annuler » reprend les seules inscriptions mises en pause. */
   const offerUndoPause = useCallback((options: OfferUndoPauseOptions) => {
     const ids = [...new Set(options.enrollmentIds)];
+    // Mesure d'usage : appelée après une pause réussie, avec les seules inscriptions qu'elle a touchées.
+    if (ids.length > 0) trackUsage('Enrollment Paused', { scope: 'candidats', count: ids.length });
     return showUndoToast({
       title: options.title,
       description: options.description,
@@ -412,6 +423,8 @@ export function useUndoableEnrollmentAction() {
         const loadingId = toast.loading('Annulation de la pause…');
         try {
           const result = await resumeEnrollmentIds(ids, orgRef.current);
+          // Mesure d'usage : inscriptions reprises par l'annulation (nombre seulement).
+          if (result.counts.resumed > 0) trackUsage('Enrollment Undo', { gesture: 'pause', count: result.counts.resumed });
           showSummary(summarizeUndoPause({ ...result, total: ids.length, name: options.candidateName }), loadingId);
         } catch (err) {
           console.error('[useUndoableEnrollmentAction] reprise en échec :', err);

@@ -7,6 +7,8 @@ import type { NavigateFunction } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { actionTypeLabel } from '@/lib/sequenceErrorMessages';
+import { trackUsage } from '@/lib/usageEvents';
+import type { NewSequenceStart } from '@/lib/sequencesBeta';
 import {
   DEFAULT_STOP_CONDITIONS,
   blockedStepsNotice,
@@ -39,6 +41,8 @@ export interface SequenceSaveOptions {
    * d'abonnement lu. Sans elle, les messages de l'ancien éditeur.
    */
   announceCreated?: (outcome: { inactiveForPlan: boolean }) => void;
+  /** Départ d'une création (/sequences/nouvelle), pour la mesure d'usage seulement. */
+  startKind?: NewSequenceStart['kind'];
 }
 
 export function useSequenceSave({
@@ -53,6 +57,7 @@ export function useSequenceSave({
   setEditingSequence,
   onCreated,
   announceCreated,
+  startKind,
 }: SequenceSaveOptions) {
   const handleSaveSequence = async (sequence: Sequence) => {
     try {
@@ -196,6 +201,13 @@ export function useSequenceSave({
         }
         throw sequenceSaveError(stepsError);
       }
+
+      // Mesure d'usage : en-tête et étapes enregistrés (catégories et nombre seulement).
+      trackUsage('Sequence Saved', {
+        mode: sequence.id ? 'modification' : 'creation',
+        start: sequence.id ? undefined : startKind,
+        steps: sequence.steps.length,
+      });
 
       if (sequence.id) {
         toast.success('Séquence mise à jour');

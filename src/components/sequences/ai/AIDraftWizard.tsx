@@ -37,6 +37,7 @@ import { WritingStyleFields } from '@/components/ai/WritingStyleFields';
 import { AiLevelPicker } from '@/components/ai/AiLevelPicker';
 import { useMissionDraftReadiness, useSequenceAI } from '@/hooks/useSequenceAI';
 import { cn } from '@/lib/utils';
+import { trackUsage } from '@/lib/usageEvents';
 import { AGENDA_FALLBACK_SENTENCE, STYLE_ONLY_THIS_TIME, sameStyle, styleSummary } from '@/lib/writingStyle';
 import {
   AI_DRAFT_NOTICE,
@@ -245,6 +246,8 @@ export function AIDraftWizard({ open, onCancel, organizationId, missionId, previ
     setDraftError(null);
     try {
       const outcome = await runDraft(draftRequestBody(organizationId, missionId, prepare, settings));
+      // Mesure d'usage : rédaction de toute la séquence, niveau et issue (réussite : séquence rendue à l'éditeur).
+      trackUsage('Sequence AI Draft', { scope: 'sequence', level: settings.level, result: outcome.status === 'ok' ? 'ok' : outcome.error.kind });
       if (outcome.status === 'ok') {
         draftedRef.current = true;
         onDrafted(outcome.result, settings);
