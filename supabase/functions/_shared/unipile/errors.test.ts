@@ -206,3 +206,22 @@ Deno.test('UnipileError : String(error) ne porte pas le nom du prestataire', () 
   // Le texte d’une issue incertaine vaut pour toute action, pas seulement un envoi.
   ok(!/envoi|messagerie/i.test(userSafeMessage('uncertain')));
 });
+
+// Réponses d'erreur réelles du service (essais de contrat du 12 octobre 2026, application Development).
+Deno.test('classifyError : les erreurs réelles du service sont classées par statut', async () => {
+  const raw = await Deno.readTextFile(new URL('../../../../tests/fixtures/unipile-v2/real-errors.json', import.meta.url));
+  const { captures } = JSON.parse(raw) as {
+    captures: { name: string; status: number; x_request_id: string | null; body: { type: string; req_id?: string } }[];
+  };
+  const expected = (status: number): ErrorKind =>
+    status === 401 ? 'auth' : status === 404 ? 'not_found' : status === 429 ? 'rate_limited' : 'validation';
+  ok(captures.length >= 14);
+  for (const capture of captures) {
+    const result = classifyError(capture.status, capture.body);
+    strictEqual(result.kind, expected(capture.status), capture.name);
+    strictEqual(result.code, capture.body.type.toLowerCase(), `${capture.name}: code`);
+    if (capture.x_request_id !== null) strictEqual(capture.body.req_id, capture.x_request_id, `${capture.name}: req_id`);
+    const message = userSafeMessage(result.kind);
+    ok(!/unipile|api key|clé d.api/i.test(message), `${capture.name}: ${message}`);
+  }
+});
