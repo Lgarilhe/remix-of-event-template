@@ -220,7 +220,15 @@ async function openContext(browser: Browser, ws: Workspace, candidates: Candidat
       status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, has_credits: true, estimated_credits: 1, remaining: 10_000 }),
     }));
     await context.route('**/functions/v1/score-profile-job', async (route) => {
-      const body = route.request().postDataJSON() as Record<string, any>;
+      const body = route.request().postDataJSON() as {
+        job?: unknown;
+        customScoringInstructions?: unknown;
+        organization_id?: string;
+        project_id?: string;
+        _ai_model: string;
+        expected_memory_version_key: string;
+        profile?: { id?: string; name?: string };
+      };
       const memoryVersionKey = String(body.expected_memory_version_key);
       const scoringContext = {
         fingerprint: '1'.repeat(64),
