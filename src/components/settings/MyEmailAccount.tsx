@@ -165,9 +165,10 @@ export const MyEmailAccount = () => {
     () => (currentUserId ? mappings.filter((m) => m.user_id === currentUserId) : []),
     [mappings, currentUserId],
   );
+  // Une boîte reliée après la dernière lecture réussie n'est pas dans la liste ancienne : « État à vérifier », pas « À reconnecter ».
   const rows = useMemo(
-    () => buildMailboxRows(myMappings, list.data ?? [], listFailed),
-    [myMappings, list.data, listFailed],
+    () => buildMailboxRows(myMappings, list.data ?? [], listFailed, listStale),
+    [myMappings, list.data, listFailed, listStale],
   );
 
   const handleRefresh = () => {

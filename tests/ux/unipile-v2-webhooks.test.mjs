@@ -188,17 +188,27 @@ test('v2 — verrouillage : LOCKED remplace OK, DEGRADED, PARTIAL, sans statut o
   const filter = `account_status.is.null,account_status.not.in.(${kept.join(',')})`;
 
   const lock = (status) => (matchesOr(filter, status) ? 'LOCKED' : status);
-  const unlock = (status) => (status === 'LOCKED' ? 'OK' : status);
+  // Le déverrouillage ne relève que LOCKED : il relit l'état chez le prestataire (`provider`) et écrit celui-ci ;
+  // relecture impossible (`provider` null) : la liaison reste LOCKED (aucun envoi ne part sur un doute), l'événement est rejoué.
+  const unlock = (status, provider) => (status === 'LOCKED' ? (provider ?? 'LOCKED') : status);
   for (const status of ['OK', 'DEGRADED', 'PARTIAL', 'CONNECTING', 'STOPPED', 'PAUSED', null]) {
     assert.equal(lock(status), 'LOCKED', `${status} → verrouillé`);
   }
   for (const status of ['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DISCONNECTED', 'DELETED', 'LOCKED']) {
     assert.equal(lock(status), status, `${status} garde son statut`);
-    assert.equal(unlock(lock(status)), status === 'LOCKED' ? 'OK' : status, `${status} → verrouillé → déverrouillé`);
+    assert.equal(unlock(lock(status), 'OK'), status === 'LOCKED' ? 'OK' : status, `${status} → verrouillé → déverrouillé`);
   }
-  // Conséquence décidée (12/10/2026) : un compte OK, DEGRADED ou PARTIAL verrouillé revient OK au déverrouillage ;
-  // DEGRADED et PARTIAL se rétablissent par leur propre événement de statut.
-  for (const status of ['OK', 'DEGRADED', 'PARTIAL', null]) assert.equal(unlock(lock(status)), 'OK', `${status} → verrouillé → déverrouillé`);
+  // Un compte OK, DEGRADED ou PARTIAL verrouillé revient à l'état que le prestataire rapporte au déverrouillage (PARTIAL
+  // reste PARTIAL, jamais OK d'office) ; sans réponse du prestataire il reste LOCKED.
+  for (const status of ['OK', 'DEGRADED', 'PARTIAL', null]) {
+    for (const provider of ['OK', 'DEGRADED', 'PARTIAL', 'CREDENTIALS', 'ERROR']) assert.equal(unlock(lock(status), provider), provider, `${status} → verrouillé → déverrouillé, prestataire ${provider}`);
+    assert.equal(unlock(lock(status), null), 'LOCKED', `${status} → verrouillé → déverrouillage sans relecture : reste verrouillé`);
+  }
+  // Le code suit ce modèle : rien n'est relu ni écrit sans liaison LOCKED, et une relecture impossible lève une erreur
+  // transitoire (500, clé de dédoublonnage libérée) au lieu d'écrire OK.
+  assert.match(block, /else if \(await hasLockedBinding\(supabase, accId\)\)/);
+  assert.match(block, /if \(returnsTo === null\) throw new TransientEventError\(/);
+  assert.doesNotMatch(block, /\?\? 'OK'/, 'plus de repli sur OK quand la relecture échoue');
 });
 
 test('v2 — dédoublonnage : identifiant evt_ retenu seulement s\'il en a la forme', () => {

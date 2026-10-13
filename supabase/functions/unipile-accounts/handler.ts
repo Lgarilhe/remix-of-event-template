@@ -141,12 +141,17 @@ type WhatsAppMappingRow = {
 
 /**
  * Vrai quand une écriture échoue parce qu'une colonne n'existe pas (encore) : PGRST204 (PostgREST, cache de schéma),
- * 42703 (Postgres) ou un message qui nomme la colonne. Les fonctions et les migrations se déploient chacune de leur côté
- * (deux workflows indépendants) : le code peut précéder sa colonne.
+ * 42703 (Postgres), ou, sans code SQL, un message qui nomme la colonne ET dit qu'elle manque (« does not exist »,
+ * « could not find », « schema cache »). Un autre code SQL dit lui-même ce qu'est l'erreur : droit refusé (42501), type
+ * (42804), contrainte (23514), déclencheur (P0001)... ne sont jamais une colonne manquante, même si leur message nomme la
+ * colonne : le refus d'avant est gardé. Les fonctions et les migrations se déploient chacune de leur côté (deux workflows
+ * indépendants) : le code peut précéder sa colonne.
  */
 function isMissingColumnError(error: unknown, column: string): boolean {
   const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
-  return code === 'PGRST204' || code === '42703' || (typeof message === 'string' && message.includes(column));
+  if (code === 'PGRST204' || code === '42703') return true;
+  if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return false;
+  return typeof message === 'string' && message.includes(column) && /does not exist|could not find|schema cache/i.test(message);
 }
 
 type LinkedInLinkRow = {

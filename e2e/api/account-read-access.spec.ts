@@ -23,6 +23,9 @@
  *
  * Dernier état connu d'un compte que le prestataire ne renseigne pas (revue de l'écran, 13/10/2026) : un état que le webhook a déjà
  * dit (à reconnecter, en panne, partiel, verrouillé) est rendu tel quel, sans le marqueur « à vérifier ».
+ * Licences lues (revue de l'écran, 13/10/2026) : chaque entrée de la liste LinkedIn porte `licences_read`, vrai seulement quand les contrats
+ * du compte ont vraiment été lus dans l'appel ; une entrée sans lecture, un ancien identifiant ou un appel des contrats en échec
+ * rendent faux, `subscriptions` restant présent pour la compatibilité (une estimation, pas une lecture).
  *
  * Marque de déconnexion WhatsApp (revue de l'écran, 12/10/2026) : list_whatsapp rend `removed_by_member` vrai pour la pierre
  * tombale d'un « Déconnecter », faux pour un compte vivant et pour un compte disparu chez le prestataire (lecture ou webhook).
@@ -287,7 +290,7 @@ test.describe('Lecture des comptes de l’équipe', () => {
     expect(res.body.success).toBe(true);
     const accounts = res.body.accounts as Array<Record<string, unknown>>;
     // Identité de compte seulement : nom affiché, état, licences. Ni conversation, ni message, ni invitation, ni solde.
-    const allowed = new Set(['id', 'name', 'identifier', 'status', 'mapped', 'profile_picture_url', 'subscriptions', 'is_locked', 'reconnectable', 'initial_sync_status']);
+    const allowed = new Set(['id', 'name', 'identifier', 'status', 'mapped', 'profile_picture_url', 'subscriptions', 'is_locked', 'reconnectable', 'initial_sync_status', 'licences_read']);
     for (const account of accounts) {
       for (const key of Object.keys(account)) expect(allowed.has(key), `clé inattendue dans la liste : ${key}`).toBe(true);
     }
@@ -441,10 +444,56 @@ test.describe('Liste des comptes : compte que le prestataire ne renseigne pas', 
       expect(entry.status, status).toBe(status);
       expect('unverified' in entry, `${status} : le webhook a dit la vérité, pas de marqueur « à vérifier » : ${JSON.stringify(entry)}`).toBe(false);
       expect(entry.reconnectable, `${status} : l’action Reconnecter suit l’état`).toBe(status !== 'LOCKED');
+      expect(entry.licences_read, `${status} : le prestataire n’a pas répondu, aucune licence lue`).toBe(false);
     }
-    expect(byId[accounts.DEGRADED], JSON.stringify(byId[accounts.DEGRADED])).toMatchObject({ status: 'DEGRADED', unverified: true, reconnectable: false });
-    expect(byId[readable], 'un compte lu ne porte pas le marqueur').toMatchObject({ status: 'OK' });
+    expect(byId[accounts.DEGRADED], JSON.stringify(byId[accounts.DEGRADED])).toMatchObject({ status: 'DEGRADED', unverified: true, reconnectable: false, licences_read: false });
+    expect(byId[readable], 'un compte lu ne porte pas le marqueur').toMatchObject({ status: 'OK', licences_read: true });
     expect('unverified' in byId[readable]).toBe(false);
+    expect(JSON.stringify(res.body)).not.toMatch(/unipile/i);
+  });
+
+  test('@critical licences_read : vrai seulement quand les contrats du compte ont vraiment été lus dans cet appel (lus, appel en échec, PARTIAL lu, enregistré non lu, ancien identifiant)', async () => {
+    const org = await createOrg('agency', 'E2E licences lues');
+    const names = ['lu', 'sanscontrat', 'partiel', 'nonlu', 'ancien'] as const;
+    const members: Array<readonly [(typeof names)[number], TestUser]> = [];
+    for (const name of names) members.push([name, await addMember(org.orgId, 'member', `lr${name}`)] as const);
+    cleanups.push(() => deleteOrg(org, members.map(([, member]) => member)));
+    const ids: Record<string, string> = {};
+    for (const [name, member] of members) {
+      ids[name] = await seedLinkedInAccount(org.orgId, member.userId, name === 'ancien' ? `ancien${rand()}` : `acc_lr${name}${rand()}`);
+    }
+    // Lu avec ses contrats (offre Recruiter) : licences lues.
+    await setMockMode(ids.lu, { licenses: ['classic', 'recruiter'] });
+    // Compte lu, mais l’appel des contrats échoue : l’offre n’est pas lue.
+    await setMockMode(ids.sanscontrat, { error: { ops: ['getAvailableContracts'], methods: ['GET'], status: 500 } });
+    // PARTIAL réellement lu chez le prestataire : ses contrats sont lus.
+    await setMockMode(ids.partiel, { status: 'partial', locked: false, licenses: ['classic', 'sales_navigator'] });
+    // Enregistré CREDENTIALS, le prestataire ne répond pas : entrée construite sans lecture.
+    {
+      const { error } = await admin().from('member_linkedin_accounts').update({ account_status: 'CREDENTIALS' }).eq('linkedin_account_id', ids.nonlu);
+      if (error) throw new Error(error.message);
+    }
+    await setMockMode(ids.nonlu, { error: { ops: ['getAccount'], methods: ['GET'], preset: 'rate_limited' } });
+
+    const res = await callFunction('unipile-accounts', await tokenOf(org.owner), { action: 'list', organization_id: org.orgId });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const byId = Object.fromEntries((res.body.accounts as Array<Record<string, unknown>>).map((a) => [String(a.id), a]));
+    for (const name of names) expect(typeof byId[ids[name]]?.licences_read, `${name} : toujours un booléen`).toBe('boolean');
+
+    expect(byId[ids.lu], JSON.stringify(byId[ids.lu])).toMatchObject({ status: 'OK', licences_read: true });
+    expect((byId[ids.lu].subscriptions as Record<string, boolean>).recruiter, 'offre lue').toBe(true);
+
+    expect(byId[ids.sanscontrat], JSON.stringify(byId[ids.sanscontrat])).toMatchObject({ status: 'OK', licences_read: false });
+    // `subscriptions` reste présent (compatibilité) mais n'est qu'une estimation : c'est `licences_read` qui dit qu'elle n'est pas lue.
+    expect((byId[ids.sanscontrat].subscriptions as Record<string, boolean>).classic).toBe(true);
+    expect('unverified' in byId[ids.sanscontrat], 'le compte lui-même a été lu').toBe(false);
+
+    expect(byId[ids.partiel], JSON.stringify(byId[ids.partiel])).toMatchObject({ status: 'PARTIAL', licences_read: true });
+    expect((byId[ids.partiel].subscriptions as Record<string, boolean>).sales_navigator).toBe(true);
+
+    expect(byId[ids.nonlu], JSON.stringify(byId[ids.nonlu])).toMatchObject({ status: 'CREDENTIALS', licences_read: false });
+    expect(byId[ids.ancien], JSON.stringify(byId[ids.ancien])).toMatchObject({ status: 'CREDENTIALS', licences_read: false });
+    expect(await mockCalls(ids.ancien), 'un ancien identifiant n’appelle pas le prestataire').toEqual([]);
     expect(JSON.stringify(res.body)).not.toMatch(/unipile/i);
   });
 });

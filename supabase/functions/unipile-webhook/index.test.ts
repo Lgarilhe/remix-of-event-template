@@ -437,6 +437,8 @@ function rowMatches(row: LinkRow, filters: Call['filters']): boolean {
  */
 function linkedState(rows: LinkRow[], options: {
   failLinkedinUpdate?: boolean;
+  /** Toute lecture de member_linkedin_accounts échoue (lecture d'avant un passage d'état, ou lecture des liaisons LOCKED). */
+  failLinkedinSelect?: boolean;
   beforeUpdate?: (call: Call, rows: LinkRow[]) => void;
   afterUpdate?: (call: Call, rows: LinkRow[]) => void;
 } = {}) {
@@ -448,7 +450,14 @@ function linkedState(rows: LinkRow[], options: {
       seen.add(key);
       return { data: isNew };
     }
+    // Le récepteur libère la clé d'un événement qu'il n'a pas pu traiter : le rejeu du prestataire est alors traité.
+    if (call.table === 'webhook_event_log' && call.op === 'delete') {
+      const key = call.filters.find(([name, args]) => name === 'eq' && args[0] === 'event_key')?.[1][1];
+      if (typeof key === 'string') seen.delete(key);
+      return undefined;
+    }
     if (call.table !== 'member_linkedin_accounts') return undefined;
+    if (call.op === 'select' && options.failLinkedinSelect) return { error: { code: 'XX000', message: 'base indisponible' } };
     if (call.op === 'select') return { data: rows.filter((row) => rowMatches(row, call.filters)).map((row) => ({ ...row })) };
     if (call.op === 'update') {
       if (options.failLinkedinUpdate) return { error: { code: 'XX000', message: 'base indisponible' } };
@@ -552,7 +561,7 @@ Deno.test('verrouillage : des livraisons simultanées d\'événements distincts 
 
 Deno.test('verrouillage : le même evt_ rejoué est ignoré, un compte déjà verrouillé n\'est pas annoncé de nouveau', async () => {
   const rows = [marie('OK')];
-  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
+  await withEnv(WITH_KEY, linkedState(rows), async ({ calls }) => {
     const event = fresh('account.locked', { object: 'Account', is_locked: true });
     strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200);
     strictEqual(noticesOf(calls).length, 1);
@@ -565,7 +574,7 @@ Deno.test('verrouillage : le même evt_ rejoué est ignoré, un compte déjà ve
     await mod.handleRequest(post(URL_OK, fresh('account.status.running', { object: 'Account', is_locked: true })));
     strictEqual(noticesOf(calls).length, 1);
     // Déverrouillage puis nouveau verrouillage : un nouveau passage, une nouvelle notification.
-    await mod.handleRequest(post(URL_OK, fresh('account.unlocked', { object: 'Account', is_locked: false })));
+    await withFetch(providerSays('running'), () => mod.handleRequest(post(URL_OK, fresh('account.unlocked', { object: 'Account', is_locked: false }))));
     strictEqual(rows[0].account_status, 'OK');
     await mod.handleRequest(post(URL_OK, fresh('account.locked', { object: 'Account', is_locked: true })));
     strictEqual(noticesOf(calls).length, 2);
@@ -638,8 +647,9 @@ Deno.test('account.unlocked : l\'état est relu chez le prestataire et c\'est lu
         strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.unlocked', { object: 'Account', is_locked: false })))).status, 200, label);
         strictEqual(rows[0].account_status, finalStatus, `${label} : statut final`);
         deepStrictEqual(noticesOf(calls).map((n) => n.title), title ? [title] : [], `${label} : notifications`);
-        strictEqual(urls.length, 1, `${label} : une seule relecture`);
-        ok(/\/accounts\/acc_01kyex2j0pexzt3v8prstne0ey$/.test(urls[0]), urls[0]);
+        // Le prestataire n'est lu que pour une liaison enregistrée LOCKED : aucune relecture pour les autres statuts.
+        strictEqual(urls.length, stored === 'LOCKED' ? 1 : 0, `${label} : relecture seulement d'une liaison LOCKED`);
+        if (stored === 'LOCKED') ok(/\/accounts\/acc_01kyex2j0pexzt3v8prstne0ey$/.test(urls[0]), urls[0]);
         strictEqual(calls.filter((c) => c.table === 'sequence_enrollments').length, 0, 'le déverrouillage ne reprend aucune inscription');
         const update = writes(calls, 'member_linkedin_accounts', 'update')[0];
         ok(update === undefined || update.filters.some(([name, args]) => name === 'eq' && args[0] === 'account_status' && args[1] === 'LOCKED'), `${label} : limité à LOCKED`);
@@ -670,60 +680,134 @@ Deno.test('account.unlocked : PARTIAL puis verrou puis déverrouillage reste PAR
   }
 });
 
-Deno.test('account.unlocked : relecture impossible (clé absente, compte introuvable, erreur du prestataire, délai dépassé) : OK comme avant, journalisé', async () => {
-  const unlock = () => post(URL_OK, fresh('account.unlocked', { object: 'Account', is_locked: false }));
-  // Clé du prestataire absente : la relecture refuse avant tout appel.
-  const noKey = [marie('LOCKED')];
-  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(noKey), async () => {
-    const { warnings } = await warningsDuring(async () => mod.handleRequest(unlock()));
-    strictEqual(noKey[0].account_status, 'OK');
-    ok(warnings.some((w) => /could not be re-read/.test(w)), warnings.join('\n'));
-  });
-  for (const failure of [404, 500]) {
+/** Corps de la réponse JSON d'un récepteur. */
+const bodyOf = async (response: Response) => await response.json() as Record<string, unknown>;
+
+Deno.test('account.unlocked : relecture impossible (clé absente, compte introuvable, erreur du prestataire, délai dépassé, compte sans statut) : la liaison reste LOCKED, 500 et clé libérée ; le rejeu relu applique l\'état du prestataire, un rejeu après succès est dédoublonné', async () => {
+  // Chaque panne de relecture : [libellé, réponse du prestataire]. `null` : clé du prestataire absente (aucun appel).
+  const failures: Array<[string, ((url: string) => unknown) | null]> = [
+    ['clé absente', null],
+    ['404', () => 404],
+    ['500', () => 500],
+    ['compte sans statut', () => ({ object: 'Account', id: ACC, provider: 'linkedin' })],
+    ['statut vide', () => ({ object: 'Account', id: ACC, provider: 'linkedin', status: '  ' })],
+  ];
+  for (const [label, answer] of failures) {
+    // Un compte PARTIAL verrouillé puis déverrouillé : tant que le prestataire n'a pas répondu, il ne devient pas OK.
     const rows = [marie('LOCKED')];
-    await withEnv(WITH_KEY, linkedState(rows), async ({ calls }) => {
-      await withFetch(() => failure, async (urls) => {
-        const { result, warnings } = await warningsDuring(async () => mod.handleRequest(unlock()));
-        strictEqual(result.status, 200);
-        strictEqual(rows[0].account_status, 'OK', `relecture ${failure}`);
-        strictEqual(noticesOf(calls).length, 0);
-        ok(urls.length >= 1 && warnings.some((w) => /could not be re-read/.test(w)), warnings.join('\n'));
+    await withEnv(answer === null ? { UNIPILE_V2_WEBHOOK_TOKEN: TOKEN } : WITH_KEY, linkedState(rows), async ({ calls }) => {
+      const event = fresh('account.unlocked', { object: 'Account', is_locked: false });
+      const first = await warningsDuring(async () => {
+        if (answer === null) return await mod.handleRequest(post(URL_OK, event));
+        return await withFetch(answer, () => mod.handleRequest(post(URL_OK, event)));
       });
+      strictEqual(first.result.status, 500, `${label} : l'événement n'est pas acquitté`);
+      strictEqual((await bodyOf(first.result)).success, false, label);
+      ok(first.warnings.some((w) => /could not be re-read/.test(w)), `${label} : journalisé : ${first.warnings.join(' | ')}`);
+      strictEqual(rows[0].account_status, 'LOCKED', `${label} : la liaison reste LOCKED, aucun envoi ne part sur un doute`);
+      strictEqual(writes(calls, 'member_linkedin_accounts', 'update').length, 0, `${label} : rien n'est écrit`);
+      strictEqual(writes(calls, 'member_email_accounts', 'update').length + writes(calls, 'member_whatsapp_accounts', 'update').length, 0, label);
+      strictEqual(noticesOf(calls).length, 0, `${label} : aucune notification`);
+      strictEqual(calls.some((c) => c.table === 'sequence_enrollments'), false, `${label} : aucune reprise des inscriptions`);
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1, `${label} : clé de dédoublonnage libérée`);
+
+      // Le même evt_ rejoué, le prestataire répondant cette fois : traité (pas « deduplicated ») et l'état du prestataire est écrit.
+      if (answer === null) Deno.env.set('UNIPILE_V2_API_KEY', 'key-test');
+      const redelivery = await withFetch(providerSays('partial'), (urls) => mod.handleRequest(post(URL_OK, event)).then((r) => ({ r, urls })));
+      strictEqual(redelivery.r.status, 200, `${label} : le rejeu est traité`);
+      strictEqual(redelivery.urls.length, 1, `${label} : une relecture`);
+      strictEqual(rows[0].account_status, 'PARTIAL', `${label} : l'état du prestataire`);
+      deepStrictEqual(noticesOf(calls).map((n) => n.title), [TITLES.partial], `${label} : le retour en PARTIAL prévient une fois`);
+
+      // Un rejeu après le succès reste dédoublonné.
+      deepStrictEqual(await bodyOf(await mod.handleRequest(post(URL_OK, event))), { ok: true, deduplicated: true }, label);
+      strictEqual(noticesOf(calls).length, 1, label);
     });
   }
-  // Délai dépassé : la relecture est abandonnée, l'événement est traité sans elle.
+  // Délai dépassé : la relecture est abandonnée, même résultat.
   const slow = [marie('LOCKED')];
   const savedDeadline = mod.testing.rereadDeadlineMs;
-  mod.testing.rereadDeadlineMs = 30;
   const savedFetch = globalThis.fetch;
+  mod.testing.rereadDeadlineMs = 30;
   try {
-    await withEnv(WITH_KEY, linkedState(slow), async () => {
+    await withEnv(WITH_KEY, linkedState(slow), async ({ calls }) => {
+      const event = fresh('account.unlocked', { object: 'Account', is_locked: false });
       globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
-      const { result, warnings } = await warningsDuring(async () => mod.handleRequest(unlock()));
-      strictEqual(result.status, 200);
-      strictEqual(slow[0].account_status, 'OK');
+      const { result, warnings } = await warningsDuring(async () => mod.handleRequest(post(URL_OK, event)));
+      strictEqual(result.status, 500);
+      strictEqual(slow[0].account_status, 'LOCKED');
       ok(warnings.some((w) => /deadline/.test(w)), warnings.join('\n'));
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1);
+      globalThis.fetch = savedFetch;
+      await withFetch(providerSays('running'), async () => {
+        strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200);
+      });
+      strictEqual(slow[0].account_status, 'OK');
     });
   } finally {
     globalThis.fetch = savedFetch;
     mod.testing.rereadDeadlineMs = savedDeadline;
   }
-  // Statut illisible chez le prestataire (champ absent) : OK, comme sans relecture ; inconnu : ERROR, un doute ne laisse rien partir.
-  const missing = [marie('LOCKED')];
-  await withEnv(WITH_KEY, linkedState(missing), async () => {
-    await withFetch(() => ({ object: 'Account', id: ACC, provider: 'linkedin' }), async () => {
-      await mod.handleRequest(unlock());
-      strictEqual(missing[0].account_status, 'OK');
-    });
-  });
+  // Statut inconnu chez le prestataire (mot hors spécification) : lu, donc ERROR (un doute ne laisse rien partir), comme avant.
   const weird = [marie('LOCKED')];
   await withEnv(WITH_KEY, linkedState(weird), async ({ calls }) => {
     await withFetch(providerSays('quelque_chose_de_nouveau'), async () => {
-      await mod.handleRequest(unlock());
+      strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.unlocked', { object: 'Account', is_locked: false })))).status, 200);
       strictEqual(weird[0].account_status, 'ERROR');
       deepStrictEqual(noticesOf(calls).map((n) => n.title), [TITLES.error]);
     });
   });
+});
+
+Deno.test('account.unlocked : la lecture des liaisons enregistrées en échec : 500 et clé libérée, rien n\'est écrit ni relu chez le prestataire ; le rejeu est traité', async () => {
+  const rows = [marie('LOCKED')];
+  const options = { failLinkedinSelect: true };
+  await withEnv(WITH_KEY, linkedState(rows, options), async ({ calls }) => {
+    await withFetch(providerSays('running'), async (urls) => {
+      const event = fresh('account.unlocked', { object: 'Account', is_locked: false });
+      strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 500);
+      strictEqual(urls.length, 0, 'sans lecture des liaisons, aucune relecture du prestataire');
+      strictEqual(writes(calls, 'member_linkedin_accounts', 'update').length, 0);
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1);
+      options.failLinkedinSelect = false;
+      strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200);
+      strictEqual(rows[0].account_status, 'OK');
+      strictEqual(urls.length, 1);
+    });
+  });
+});
+
+Deno.test('account.unlocked : le prestataire n\'est lu que pour une liaison enregistrée LOCKED (LinkedIn, e-mail ou WhatsApp), jamais pour OK, PARTIAL, CREDENTIALS, ERROR, DEGRADED ou sans statut', async () => {
+  const unlock = () => post(URL_OK, fresh('account.unlocked', { object: 'Account', is_locked: false }));
+  for (const stored of ['OK', 'PARTIAL', 'CREDENTIALS', 'ERROR', 'DEGRADED', null]) {
+    const rows = [marie(stored)];
+    await withEnv(WITH_KEY, linkedState(rows), async ({ calls }) => {
+      await withFetch(providerSays('running'), async (urls) => {
+        // Plusieurs livraisons distinctes (rafale) : toujours aucune lecture.
+        const responses = await Promise.all([unlock(), unlock(), unlock()].map((request) => mod.handleRequest(request)));
+        deepStrictEqual(responses.map((r) => r.status), [200, 200, 200], String(stored));
+        strictEqual(urls.length, 0, `${stored} : aucune lecture du prestataire`);
+        strictEqual(rows[0].account_status, stored, `${stored} : statut inchangé`);
+        strictEqual(['member_linkedin_accounts', 'member_email_accounts', 'member_whatsapp_accounts'].flatMap((t) => writes(calls, t, 'update')).length, 0, `${stored} : aucune écriture`);
+        strictEqual(noticesOf(calls).length, 0, String(stored));
+      });
+    });
+  }
+  // Une liaison LOCKED d'une boîte e-mail ou d'un compte WhatsApp suffit à relire (la table LinkedIn n'a aucune ligne).
+  for (const table of ['member_email_accounts', 'member_whatsapp_accounts']) {
+    await withEnv(WITH_KEY, (call) => {
+      if (call.table === 'rpc:record_webhook_event') return { data: true };
+      if (call.table === table && call.op === 'select') return { data: [{ account_status: 'LOCKED' }] };
+      return undefined;
+    }, async ({ calls }) => {
+      await withFetch(providerSays('running'), async (urls) => {
+        strictEqual((await mod.handleRequest(unlock())).status, 200, table);
+        strictEqual(urls.length, 1, `${table} : une relecture`);
+        const update = writes(calls, table, 'update')[0];
+        strictEqual((update.payload as { account_status: string }).account_status, 'OK', table);
+      });
+    });
+  }
 });
 
 Deno.test('account.unlocked : les boîtes e-mail et les comptes WhatsApp prennent le même état relu, sur les seules lignes LOCKED', async () => {
@@ -787,6 +871,54 @@ Deno.test('account.status.* sans verrou sur une liaison LOCKED : l\'état est re
   }
 });
 
+Deno.test('account.status.* avec is_locked explicite sur une liaison LOCKED : l\'événement fait foi, aucune relecture du prestataire, même s\'il dit encore verrouillé', async () => {
+  // [événement, charge, statut final, notification attendue, reprise des inscriptions]
+  const cases: Array<[string, Record<string, unknown>, string, string | null, boolean]> = [
+    ['account.status.running', { is_locked: false }, 'OK', null, true],
+    ['account.status.degraded', { is_locked: false }, 'DEGRADED', null, false],
+    ['account.status.partial', { is_locked: false }, 'PARTIAL', TITLES.partial, false],
+    // is_locked: true : la liaison est déjà LOCKED, rien ne change, personne n'est prévenu une seconde fois.
+    ['account.status.running', { is_locked: true }, 'LOCKED', null, false],
+    ['account.status.partial', { is_locked: true }, 'LOCKED', null, false],
+  ];
+  for (const [type, flag, finalStatus, title, resumes] of cases) {
+    const rows = [marie('LOCKED')];
+    await withEnv(WITH_KEY, linkedState(rows), async ({ calls }) => {
+      // Le prestataire dit encore « verrouillé » (événement en avance sur la lecture) : l'événement l'emporte, pas la lecture.
+      await withFetch(providerSays('running', true), async (urls) => {
+        const label = `${type} ${JSON.stringify(flag)} sur LOCKED`;
+        strictEqual((await mod.handleRequest(post(URL_OK, fresh(type, { object: 'Account', ...flag })))).status, 200, label);
+        strictEqual(rows[0].account_status, finalStatus, `${label} : statut final`);
+        deepStrictEqual(noticesOf(calls).map((n) => n.title), title ? [title] : [], `${label} : notifications`);
+        strictEqual(urls.length, 0, `${label} : aucune relecture`);
+        strictEqual(calls.some((c) => c.table === 'sequence_enrollments'), resumes, `${label} : reprise`);
+      });
+    });
+  }
+});
+
+Deno.test('account.status.* sans is_locked sur une liaison LOCKED, relecture impossible : la liaison reste LOCKED, 500 et clé libérée ; le rejeu relu applique l\'état du prestataire', async () => {
+  for (const type of ['account.status.running', 'account.status.degraded', 'account.status.partial']) {
+    const rows = [marie('LOCKED')];
+    await withEnv(WITH_KEY, linkedState(rows), async ({ calls }) => {
+      const event = fresh(type);
+      const failed = await withFetch(() => 500, () => warningsDuring(() => mod.handleRequest(post(URL_OK, event))));
+      strictEqual(failed.result.status, 500, `${type} : non acquitté`);
+      strictEqual(rows[0].account_status, 'LOCKED', `${type} : la liaison reste LOCKED, jamais l'état de l'événement sur un doute`);
+      strictEqual(writes(calls, 'member_linkedin_accounts', 'update').length, 0, type);
+      strictEqual(noticesOf(calls).length, 0, type);
+      strictEqual(calls.some((c) => c.table === 'sequence_enrollments'), false, `${type} : aucune reprise des inscriptions`);
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1, `${type} : clé libérée`);
+      await withFetch(providerSays('running'), async (urls) => {
+        strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200, `${type} : le rejeu est traité`);
+        strictEqual(urls.length, 1, type);
+      });
+      strictEqual(rows[0].account_status, 'OK', `${type} : l'état du prestataire`);
+      deepStrictEqual(await bodyOf(await mod.handleRequest(post(URL_OK, event))), { ok: true, deduplicated: true }, type);
+    });
+  }
+});
+
 Deno.test('verrouillage d\'une boîte e-mail ou d\'un compte WhatsApp : même règle (jamais une panne à reconnecter), sur les deux événements', async () => {
   const conditionOf = (call: Call) => String(call.filters.find(([name]) => name === 'or')?.[1][0]);
   await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, isNewEvent, async ({ calls }) => {
@@ -835,7 +967,8 @@ Deno.test('account.status.partial : PARTIAL écrit et une notification au passag
     const rows = [marie(previous)];
     await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
       const label = previous === null ? 'sans statut' : `« ${previous} »`;
-      strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.status.partial')))).status, 200, label);
+      // `is_locked: false` dans l'événement fait foi pour le verrou : même depuis LOCKED, aucune relecture du prestataire.
+      strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.status.partial', { object: 'Account', is_locked: false })))).status, 200, label);
       strictEqual(rows[0].account_status, 'PARTIAL', `depuis ${label} : le statut de l'événement est écrit`);
       const notices = noticesOf(calls);
       strictEqual(notices.length, notified, `depuis ${label} : ${notified} notification(s)`);
@@ -894,11 +1027,20 @@ Deno.test('account.status.partial : une lecture puis UNE écriture conditionnell
     ok(update.filters.some(([name, args]) => name === 'is' && args[0] === 'account_status' && args[1] === null));
     strictEqual(unset[0].account_status, 'PARTIAL');
   });
+  // Écriture en échec : personne n'est prévenu, la liaison garde son statut, et l'événement n'est PAS acquitté (500,
+  // clé de dédoublonnage libérée) : le prestataire le rejoue et le rejeu s'applique.
   const failing = [marie('OK')];
-  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(failing, { failLinkedinUpdate: true }), async ({ calls }) => {
-    strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.status.partial')))).status, 200);
+  const failingOptions = { failLinkedinUpdate: true };
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(failing, failingOptions), async ({ calls }) => {
+    const event = fresh('account.status.partial');
+    strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 500);
     strictEqual(noticesOf(calls).length, 0);
     strictEqual(failing[0].account_status, 'OK');
+    strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1, 'clé de dédoublonnage libérée pour le rejeu');
+    failingOptions.failLinkedinUpdate = false;
+    strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200, 'le rejeu est traité, pas dédoublonné');
+    strictEqual(failing[0].account_status, 'PARTIAL');
+    strictEqual(noticesOf(calls).length, 1);
   });
 });
 
@@ -942,23 +1084,96 @@ Deno.test('statut : un événement qui s\'applique entre la lecture et l\'écrit
     strictEqual(noticesOf(calls).length, 0, 'le passage a eu lieu depuis une panne déjà signalée : aucune notification');
     strictEqual(calls.filter((c) => c.table === 'member_linkedin_accounts' && c.op === 'select').length, 2, 'relu après le conflit');
   });
-  // Un conflit permanent (une ligne qui change à chaque écriture) s'arrête : événement non appliqué, 200, journalisé.
+  // Un conflit permanent (une ligne qui change à chaque écriture) s'arrête au plafond d'essais : événement non
+  // appliqué, donc NON acquitté (500, clé de dédoublonnage libérée), le prestataire le rejoue.
   const churn = [marie('OK')];
   let flip = 0;
+  let churning = true;
   await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(churn, {
-    beforeUpdate: (_call: Call, state: LinkRow[]) => { state[0].account_status = `AUTRE_${++flip}`; },
+    beforeUpdate: (_call: Call, state: LinkRow[]) => { if (churning) state[0].account_status = `AUTRE_${++flip}`; },
   }), async ({ calls }) => {
-    strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.status.partial')))).status, 200);
+    const event = fresh('account.status.partial');
+    strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 500);
     ok(flip >= 10 && flip <= 40, `essais bornés (${flip})`);
     strictEqual(noticesOf(calls).length, 0);
+    strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1, 'clé de dédoublonnage libérée pour le rejeu');
+    // Le rejeu, une fois la ligne stable, est traité.
+    churning = false;
+    strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200);
+    strictEqual(churn[0].account_status, 'PARTIAL');
+    strictEqual(noticesOf(calls).length, 1);
   });
+});
+
+Deno.test('statut : lecture des liaisons en échec avant un passage d\'état : 500 et clé libérée, rien n\'est écrit ni notifié ; le rejeu est traité', async () => {
+  // [libellé, événement, statut final au rejeu, notification au rejeu]
+  const cases: Array<[string, () => ReturnType<typeof envelope>, string, string | null]> = [
+    ['account.status.partial', () => fresh('account.status.partial'), 'PARTIAL', TITLES.partial],
+    ['account.status.degraded', () => fresh('account.status.degraded'), 'DEGRADED', null],
+    ['account.status.running', () => fresh('account.status.running', { object: 'Account', is_locked: false }), 'OK', null],
+    ['account.status.disconnected', () => fresh('account.status.disconnected'), 'CREDENTIALS', TITLES.disconnected],
+    ['account.status.errored', () => fresh('account.status.errored'), 'ERROR', TITLES.error],
+    ['account.reconnect sans tentative', () => fresh('account.reconnect', { status: 'partial' }), 'PARTIAL', TITLES.partial],
+  ];
+  for (const [label, makeEvent, finalStatus, title] of cases) {
+    const rows = [marie('OK')];
+    const options = { failLinkedinSelect: true };
+    await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows, options), async ({ calls }) => {
+      const event = makeEvent();
+      const failed = await warningsDuring(() => mod.handleRequest(post(URL_OK, event)));
+      strictEqual(failed.result.status, 500, `${label} : la lecture a échoué, l'événement n'est pas acquitté`);
+      ok(failed.warnings.some((w) => /not applied/.test(w)), `${label} : journalisé : ${failed.warnings.join(' | ')}`);
+      strictEqual(writes(calls, 'member_linkedin_accounts', 'update').length, 0, `${label} : rien n'est écrit`);
+      strictEqual(noticesOf(calls).length, 0, `${label} : personne n'est prévenu`);
+      strictEqual(calls.some((c) => c.table === 'sequence_enrollments'), false, `${label} : aucune reprise des inscriptions`);
+      strictEqual(rows[0].account_status, 'OK', label);
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 1, `${label} : clé de dédoublonnage libérée`);
+      // La base répond de nouveau : le même evt_ rejoué est traité (pas « deduplicated »).
+      options.failLinkedinSelect = false;
+      strictEqual((await mod.handleRequest(post(URL_OK, event))).status, 200, `${label} : le rejeu est traité`);
+      strictEqual(rows[0].account_status, finalStatus, `${label} : statut au rejeu`);
+      deepStrictEqual(noticesOf(calls).map((n) => n.title), title ? [title] : [], `${label} : notifications au rejeu`);
+      deepStrictEqual(await bodyOf(await mod.handleRequest(post(URL_OK, event))), { ok: true, deduplicated: true }, `${label} : un rejeu après succès est dédoublonné`);
+    });
+  }
+});
+
+Deno.test('transitionLinkedInAccount : au plafond de 25 essais, ou sur une lecture ou une relecture en échec, rend une erreur (jamais « appliqué ») sans écrire ce qu\'elle ne peut pas écrire', async () => {
+  const row = { id: 'l1', user_id: 'u1', organization_id: 'o1', linkedin_account_name: 'Marie', account_status: 'OK' };
+  const target = () => ({ status: 'PARTIAL', patch: { account_status: 'PARTIAL' } });
+  // Plafond : l'écriture conditionnelle ne trouve jamais la ligne telle qu'elle l'a lue.
+  const capped = makeDb((call) => (call.op === 'select' ? { data: [row] } : call.op === 'update' ? { data: [] } : undefined));
+  const cap = await mod.transitionLinkedInAccount(capped.db as never, ACC, target);
+  ok(cap.error instanceof Error && /kept changing/.test(cap.error.message), String(cap.error));
+  deepStrictEqual(cap.finalStatuses, [], 'aucun statut final : rien n\'a été appliqué');
+  strictEqual(capped.calls.filter((c) => c.op === 'select').length, 25, 'vingt-cinq lectures');
+  strictEqual(capped.calls.filter((c) => c.op === 'update').length, 25, 'vingt-cinq écritures conditionnelles');
+  strictEqual(capped.calls.some((c) => c.table === 'notifications'), false, 'aucune notification');
+  // Lecture en échec : aucune écriture.
+  const readFails = makeDb((call) => (call.op === 'select' ? { error: { code: 'XX000', message: 'indisponible' } } : undefined));
+  const read = await mod.transitionLinkedInAccount(readFails.db as never, ACC, target);
+  deepStrictEqual((read.error as { code: string }).code, 'XX000');
+  strictEqual(readFails.calls.filter((c) => c.op === 'update').length, 0);
+  // Écriture en échec : l'erreur de la base est rendue.
+  const writeFails = makeDb((call) => (call.op === 'select' ? { data: [row] } : call.op === 'update' ? { error: { code: 'XX000', message: 'indisponible' } } : undefined));
+  strictEqual(((await mod.transitionLinkedInAccount(writeFails.db as never, ACC, target)).error as { code: string }).code, 'XX000');
+  // Relecture du compte impossible (l'état à écrire ne peut pas être décidé) : l'erreur est rendue, rien n'est écrit.
+  const noTarget = makeDb((call) => (call.op === 'select' ? { data: [row] } : undefined));
+  const refused = await mod.transitionLinkedInAccount(noTarget.db as never, ACC, () => { throw new Error('relecture impossible'); });
+  strictEqual((refused.error as Error).message, 'relecture impossible');
+  strictEqual(noTarget.calls.filter((c) => c.op === 'update').length, 0);
+  // Cas nominal : une lecture, une écriture, statut final rendu, pas d'erreur.
+  const fine = makeDb((call) => (call.op === 'select' ? { data: [row] } : call.op === 'update' ? { data: [{ id: 'l1' }] } : undefined));
+  const done = await mod.transitionLinkedInAccount(fine.db as never, ACC, target);
+  strictEqual(done.error, null);
+  deepStrictEqual(done.finalStatuses, ['PARTIAL']);
 });
 
 Deno.test('account.status.degraded : état de carte seulement, jamais de notification, depuis aucun statut', async () => {
   for (const previous of ['OK', null, 'PARTIAL', 'LOCKED', 'CREDENTIALS', 'ERROR', 'DEGRADED']) {
     const rows = [marie(previous)];
     await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
-      strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.status.degraded')))).status, 200);
+      strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.status.degraded', { object: 'Account', is_locked: false })))).status, 200);
       strictEqual(rows[0].account_status, 'DEGRADED', String(previous));
       strictEqual(noticesOf(calls).length, 0, `${previous} : pas de notification`);
       strictEqual(calls.filter((c) => c.table === 'sequence_enrollments').length, 0, `${previous} : pas de reprise`);
@@ -1040,9 +1255,11 @@ function modelApply(status: string, kind: Kind, provider: string): [string, Told
   switch (kind) {
     case 'lock': return BROKEN.includes(status) || status === 'LOCKED' ? [status, null] : ['LOCKED', 'locked'];
     case 'unlock': return status === 'LOCKED' ? afterLock() : [status, null];
-    case 'running': case 'degraded': case 'partial': {
+    // `running` porte `is_locked: false` (eventOfKind) : il fait foi pour le verrou, aucune relecture du prestataire.
+    case 'running': return ['OK', null];
+    case 'degraded': case 'partial': {
       if (status === 'LOCKED') return afterLock();
-      const to = kind === 'running' ? 'OK' : kind === 'degraded' ? 'DEGRADED' : 'PARTIAL';
+      const to = kind === 'degraded' ? 'DEGRADED' : 'PARTIAL';
       return [to, told(to, status)];
     }
     case 'disconnected': return ['CREDENTIALS', told('CREDENTIALS', status)];
@@ -1256,11 +1473,11 @@ Deno.test('account.remove : compte sans liaison LinkedIn : rien à arrêter, Wha
 // account.add / account.reconnect
 // ---------------------------------------------------------------------------
 
-Deno.test('account.add : state inconnu ou absent : aucun rattachement ; liaison LinkedIn déjà en place repasse OK, reprise des inscriptions', async () => {
+Deno.test('account.add : state inconnu ou absent : aucun rattachement ; liaison LinkedIn déjà en place repasse OK quand l\'événement dit running, reprise des inscriptions', async () => {
   for (const state of [undefined, 'pas-un-uuid', '8d0a6a62-1b53-4f4e-9a52-2f0a8f6b1111']) {
     const rows = [marie('CREDENTIALS')];
     await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
-      const response = await mod.handleRequest(post(URL_OK, fresh('account.add', state ? { state } : {})));
+      const response = await mod.handleRequest(post(URL_OK, fresh('account.add', { status: 'running', ...(state ? { state } : {}) })));
       strictEqual(response.status, 200, String(state));
       strictEqual(writes(calls, 'member_linkedin_accounts', 'upsert').length, 0, 'rien n\'est rattaché sans tentative connue');
       strictEqual(writes(calls, 'member_email_accounts', 'insert').length, 0);
@@ -1339,7 +1556,8 @@ Deno.test('account.reconnect sans tentative : l\'état rapporté suit les règle
     ['OK', { status: 'disconnected' }, 'CREDENTIALS', [D], false],
     ['CREDENTIALS', { status: 'degraded' }, 'DEGRADED', [], false],
     ['CREDENTIALS', { status: 'running', is_locked: false }, 'OK', [], true],
-    ['CREDENTIALS', {}, 'OK', [], true],
+    // Un statut absent ne dit rien : le statut enregistré est gardé (voir « sans information » plus bas).
+    ['CREDENTIALS', {}, 'CREDENTIALS', [], false],
     ['LOCKED', { status: 'running', is_locked: false }, 'OK', [], true],
   ];
   for (const [previous, payload, expected, titles, resumes] of cases) {
@@ -1374,6 +1592,51 @@ Deno.test('account.reconnect sans tentative : rejeu ou répétition ne prévienn
         deepStrictEqual(noticesOf(calls).map((n) => n.title), [title], `${status} ${count} livraisons simultanées`);
       });
     }
+  }
+});
+
+Deno.test('account.add et account.reconnect sans tentative : un statut absent ou hors spécification ne dit rien : statut gardé, aucune écriture, aucune notification, aucune reprise', async () => {
+  const E = 'Problème de connexion LinkedIn';
+  // Charges sans information utilisable sur l'état du compte.
+  const noInformation: Array<Record<string, unknown>> = [
+    {}, { status: 'paused' }, { status: 'PAUSED' }, { status: '' }, { status: '   ' }, { status: 'OK' }, { status: 'stopped' },
+    { is_locked: false }, { status: 'paused', is_locked: false },
+  ];
+  for (const type of ['account.add', 'account.reconnect']) {
+    for (const stored of ['OK', 'DEGRADED', 'PARTIAL', 'CREDENTIALS', 'ERROR', 'LOCKED', null]) {
+      for (const payload of noInformation) {
+        const rows = [marie(stored)];
+        await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
+          const label = `${type} ${JSON.stringify(payload)} sur ${stored}`;
+          strictEqual((await mod.handleRequest(post(URL_OK, fresh(type, { object: 'Account', ...payload })))).status, 200, label);
+          strictEqual(rows[0].account_status, stored, `${label} : statut enregistré gardé`);
+          strictEqual(writes(calls, 'member_linkedin_accounts', 'update').length, 0, `${label} : aucune écriture`);
+          strictEqual(noticesOf(calls).length, 0, `${label} : aucune notification (pas de « ${E} » pour un mot inconnu)`);
+          strictEqual(calls.some((c) => c.table === 'sequence_enrollments'), false, `${label} : aucune reprise des inscriptions`);
+        });
+      }
+    }
+  }
+  // Un verrou annoncé reste une information même sans statut lisible : le statut du verrou est écrit et annoncé.
+  for (const payload of [{ is_locked: true }, { status: 'paused', is_locked: true }]) {
+    const rows = [marie('OK')];
+    await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
+      strictEqual((await mod.handleRequest(post(URL_OK, fresh('account.reconnect', { object: 'Account', ...payload })))).status, 200);
+      strictEqual(rows[0].account_status, 'LOCKED', JSON.stringify(payload));
+      deepStrictEqual(noticesOf(calls).map((n) => n.title), [TITLES.locked]);
+    });
+  }
+  // Les statuts connus gardent leurs règles (casse du mot ignorée) : running reprend, les pannes préviennent.
+  for (const [payload, expected, titles] of [
+    [{ status: 'RUNNING' }, 'OK', []], [{ status: 'running' }, 'OK', []], [{ status: 'disconnected' }, 'CREDENTIALS', [TITLES.disconnected]],
+    [{ status: 'errored' }, 'ERROR', [TITLES.error]], [{ status: 'degraded' }, 'DEGRADED', []], [{ status: 'partial' }, 'PARTIAL', [TITLES.partial]],
+  ] as const) {
+    const rows = [marie('OK')];
+    await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, linkedState(rows), async ({ calls }) => {
+      await mod.handleRequest(post(URL_OK, fresh('account.add', { object: 'Account', ...payload })));
+      strictEqual(rows[0].account_status, expected, JSON.stringify(payload));
+      deepStrictEqual(noticesOf(calls).map((n) => n.title), titles, JSON.stringify(payload));
+    });
   }
 });
 

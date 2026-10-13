@@ -549,6 +549,60 @@ Deno.test('disconnect_whatsapp : toute autre erreur d écriture garde le refus d
   });
 });
 
+Deno.test('disconnect_whatsapp : la reprise sans la colonne n est prise que pour une colonne manquante ; droit refusé, type, contrainte, déclencheur et message qui ne dit pas qu elle manque gardent le refus, sans nouvelle tentative', async () => {
+  await withEnv(ENV, async () => {
+    const column = 'removed_by_member_at';
+    // Erreurs qui nomment la colonne sans qu elle manque : jamais transformées en succès.
+    const refused: Array<[string, { code?: string; message?: string }]> = [
+      ['droit refusé sur la colonne (42501)', { code: '42501', message: `permission denied for column "${column}" of relation "member_whatsapp_accounts"` }],
+      ['droit refusé, sans code SQL', { message: `permission denied for column "${column}" of relation "member_whatsapp_accounts"` }],
+      ['type (42804)', { code: '42804', message: `column "${column}" is of type timestamp with time zone but expression is of type boolean` }],
+      ['contrainte (23514) nommée d après la colonne', { code: '23514', message: `new row for relation "member_whatsapp_accounts" violates check constraint "member_whatsapp_accounts_${column}_check"` }],
+      ['déclencheur (P0001) qui nomme la colonne', { code: 'P0001', message: `${column} cannot be changed by this role` }],
+      ['déclencheur (P0001) dont le message dit « does not exist » : un code SQL qui n est pas 42703 dit ce qu est l erreur', { code: 'P0001', message: `${column} does not exist for this tenant` }],
+      ['sans code, message qui nomme la colonne sans dire qu elle manque', { message: `invalid input for ${column}` }],
+      ['sans code, message de contrainte', { message: `violates check constraint "member_whatsapp_accounts_${column}_check"` }],
+    ];
+    for (const [label, error] of refused) {
+      const db = whatsappDb();
+      db.failOn('member_whatsapp_accounts', 'update', error);
+      const mock = withMockTransport(router({ 'DELETE /accounts/acc_wa_own': { body: { success: true } } }));
+      try {
+        await withWarnings(async (warnings) => {
+          const reply = await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_own' });
+          strictEqual(reply.status, 500, `${label} : ${reply.raw}`);
+          strictEqual(reply.data.success, false, label);
+          strictEqual(reply.data.error, 'La connexion a été retirée mais son état reste à actualiser', label);
+          strictEqual(whatsappUpdates(db).length, 1, `${label} : une seule écriture, pas de nouvelle tentative sans la colonne`);
+          strictEqual(warnings.filter((w) => w.includes(column)).length, 0, `${label} : aucun avertissement qui attribue la panne à la migration : ${JSON.stringify(warnings)}`);
+          strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')?.account_status, 'OK', label);
+          strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')?.removed_by_member_at ?? null, null, label);
+          assertNoVendor(reply, label);
+        });
+      } finally {
+        mock.restore();
+      }
+    }
+    // PGRST204 sur une AUTRE colonne : la reprise est tentée (le code seul suffit), mais elle échoue aussi, donc le refus est gardé.
+    const other = { code: 'PGRST204', message: "Could not find the 'updated_at' column of 'member_whatsapp_accounts' in the schema cache" };
+    const db = whatsappDb();
+    db.failOn('member_whatsapp_accounts', 'update', other);
+    db.failOn('member_whatsapp_accounts', 'update', other);
+    const mock = withMockTransport(router({ 'DELETE /accounts/acc_wa_own': { body: { success: true } } }));
+    try {
+      await withWarnings(async () => {
+        const reply = await call(db, { action: 'disconnect_whatsapp', account_id: 'acc_wa_own' });
+        strictEqual(reply.status, 500, reply.raw);
+        strictEqual(reply.data.error, 'La connexion a été retirée mais son état reste à actualiser');
+        strictEqual(whatsappUpdates(db).length, 2, 'une seule nouvelle tentative');
+        strictEqual(db.table('member_whatsapp_accounts').find((r) => r.id === 'w-own')?.account_status, 'OK');
+      });
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
 Deno.test('WhatsApp : après « Déconnecter », list_whatsapp rend la pierre tombale avec removed_by_member vrai et n appelle pas le service ; un compte disparu chez le service reste faux', async () => {
   await withEnv(ENV, async () => {
     const db = makeDb({
@@ -900,6 +954,85 @@ Deno.test('list : un compte non lu dont le dernier état est mauvais le garde sa
       strictEqual('unverified' in byId.acc_ok, false, 'un compte lu ne porte pas le marqueur');
       assertNoVendor(reply);
       deepStrictEqual(db.table('member_linkedin_accounts').map((r) => r.account_status), ['OK', ...stored], 'aucune liaison modifiée');
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+Deno.test('list : licences_read dit si les contrats du compte ont vraiment été lus dans cet appel (lus, appel en échec, PARTIAL lu, à reconnecter, non lu, ancien identifiant)', async () => {
+  await withEnv(ENV, async () => {
+    const row = (id: string, accountId: string, status?: string) => ({
+      id, organization_id: ORG, user_id: USER, linkedin_account_id: accountId, linkedin_account_name: accountId, ...(status ? { account_status: status } : {}),
+    });
+    const db = makeDb({
+      member_linkedin_accounts: [
+        row('lr1', 'acc_lr_ok', 'OK'),
+        row('lr2', 'acc_lr_nocontracts', 'OK'),
+        row('lr3', 'acc_lr_partial', 'PARTIAL'),
+        row('lr4', 'acc_lr_disc', 'OK'),
+        row('lr5', 'acc_lr_slow_cred', 'CREDENTIALS'),
+        row('lr6', 'acc_lr_slow_partial', 'PARTIAL'),
+        row('lr7', 'acc_lr_slow_ok', 'OK'),
+        row('lr8', 'ancien-id-lr', 'OK'),
+      ],
+    });
+    const mock = withMockTransport(router({
+      'GET /accounts/acc_lr_ok': { body: li('acc_lr_ok') },
+      'GET /acc_lr_ok/linkedin/contracts': { body: { object: 'AvailableContracts', contracts: [{ object: 'Contract', id: 'c1', name: 'Contrat', product: 'recruiter', selected: true }] } },
+      'GET /acc_lr_ok/users/me': { body: { id: 'ACoAAlr1' } },
+      // Compte lu, mais l appel des contrats échoue : l offre n est pas lue.
+      'GET /accounts/acc_lr_nocontracts': { body: li('acc_lr_nocontracts') },
+      'GET /acc_lr_nocontracts/linkedin/contracts': { status: 500, body: { message: 'server error' } },
+      'GET /acc_lr_nocontracts/users/me': { body: { id: 'ACoAAlr2' } },
+      // PARTIAL réellement lu : ses contrats sont lus (compte lisible).
+      'GET /accounts/acc_lr_partial': { body: li('acc_lr_partial', { status: 'partial' }) },
+      'GET /acc_lr_partial/linkedin/contracts': { body: { object: 'AvailableContracts', contracts: [{ object: 'Contract', id: 'c2', name: 'Contrat', product: 'sales_navigator', selected: true }] } },
+      'GET /acc_lr_partial/users/me': { body: { id: 'ACoAAlr3' } },
+      // À reconnecter chez le prestataire : aucun contrat demandé.
+      'GET /accounts/acc_lr_disc': { body: li('acc_lr_disc', { status: 'disconnected' }) },
+      // Le prestataire ne répond pas pour ces comptes : entrées construites sans lecture.
+      'GET /accounts/acc_lr_slow_cred': { status: 429, body: { message: 'Too many requests' } },
+      'GET /accounts/acc_lr_slow_partial': { status: 429, body: { message: 'Too many requests' } },
+      'GET /accounts/acc_lr_slow_ok': { status: 429, body: { message: 'Too many requests' } },
+    }));
+    try {
+      const reply = await call(db, { action: 'list' });
+      strictEqual(reply.status, 200, reply.raw);
+      const byId = Object.fromEntries(reply.data.accounts.map((a: any) => [a.id, a]));
+      deepStrictEqual(Object.keys(byId).sort(), ['acc_lr_disc', 'acc_lr_nocontracts', 'acc_lr_ok', 'acc_lr_partial', 'acc_lr_slow_cred', 'acc_lr_slow_ok', 'acc_lr_slow_partial', 'ancien-id-lr']);
+      for (const entry of Object.values(byId) as any[]) strictEqual(typeof entry.licences_read, 'boolean', `${entry.id} : toujours un booléen`);
+
+      strictEqual(byId.acc_lr_ok.status, 'OK');
+      strictEqual(byId.acc_lr_ok.licences_read, true, 'OK lu avec ses contrats');
+      deepStrictEqual(byId.acc_lr_ok.subscriptions, { classic: true, recruiter: true, sales_navigator: false });
+
+      strictEqual(byId.acc_lr_nocontracts.status, 'OK');
+      strictEqual(byId.acc_lr_nocontracts.licences_read, false, 'OK dont l appel des contrats a échoué : offre non lue');
+      deepStrictEqual(byId.acc_lr_nocontracts.subscriptions, { classic: true, recruiter: false, sales_navigator: false }, 'subscriptions gardée pour la compatibilité (estimation, ici sans produit connecté)');
+      strictEqual('unverified' in byId.acc_lr_nocontracts, false, 'le compte lui-même a été lu');
+
+      strictEqual(byId.acc_lr_partial.status, 'PARTIAL');
+      strictEqual(byId.acc_lr_partial.licences_read, true, 'PARTIAL réellement lu avec ses contrats');
+      strictEqual(byId.acc_lr_partial.subscriptions.sales_navigator, true);
+
+      strictEqual(byId.acc_lr_disc.status, 'CREDENTIALS');
+      strictEqual(byId.acc_lr_disc.licences_read, false, 'à reconnecter : contrats non demandés');
+      ok(!mock.calls.some((c) => c.path.includes('acc_lr_disc/linkedin/contracts')), 'aucun appel de contrats pour un compte à reconnecter');
+
+      strictEqual(byId.acc_lr_slow_cred.status, 'CREDENTIALS');
+      strictEqual(byId.acc_lr_slow_cred.licences_read, false, 'CREDENTIALS enregistré, non lu');
+      strictEqual('unverified' in byId.acc_lr_slow_cred, false);
+      strictEqual(byId.acc_lr_slow_partial.status, 'PARTIAL');
+      strictEqual(byId.acc_lr_slow_partial.licences_read, false, 'PARTIAL enregistré mais non lu : pas de licence connue');
+      strictEqual(byId.acc_lr_slow_ok.status, 'OK');
+      strictEqual(byId.acc_lr_slow_ok.unverified, true);
+      strictEqual(byId.acc_lr_slow_ok.licences_read, false, 'OK non lu');
+
+      strictEqual(byId['ancien-id-lr'].status, 'CREDENTIALS');
+      strictEqual(byId['ancien-id-lr'].licences_read, false, 'ancien identifiant : aucun appel, aucune lecture');
+      ok(!mock.calls.some((c) => c.path.includes('ancien-id-lr')));
+      assertNoVendor(reply);
     } finally {
       mock.restore();
     }

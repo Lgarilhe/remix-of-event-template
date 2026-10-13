@@ -12,7 +12,7 @@
  * Testé par tests/ux/connexion-cartes.test.mjs.
  */
 
-import { healthOfState, type ConnectionHealth, type MyLinkedInState } from '@/lib/linkedinStatus';
+import { classifyConnectionHealth, healthOfState, type ConnectionHealth, type MyLinkedInState } from '@/lib/linkedinStatus';
 import { hasOutdatedAccountId } from '@/lib/accountIdFormat';
 import type { MemberWhatsAppAccount } from '@/hooks/useMemberWhatsAppAccounts';
 import {
@@ -21,6 +21,7 @@ import {
   HEALTH_TONE,
   OFFER_LABEL,
   PROVIDER_CHANNEL,
+  QUOTA_NOTICE,
   causeReason,
   healthAction,
   healthActionLabel,
@@ -30,6 +31,8 @@ import {
   type ConnectionProviderId,
   type HealthAction,
   type HealthTone,
+  type QuotaNoticeKind,
+  type ReconnectCause,
 } from '@/lib/connectionCopy';
 
 export interface ConnectionView {
@@ -76,6 +79,12 @@ export interface AccountFacts {
   accountId?: string | null;
   /** Compte que le prestataire n'a pas répondu : l'état reçu n'est qu'un dernier état connu, jamais affiché comme lu. */
   unverified?: boolean;
+  /**
+   * Champ `licences_read` de l'entrée de la liste : vrai quand le serveur a vraiment lu les licences de CE compte dans cet
+   * appel, faux quand il ne les a pas lues (appel des contrats en échec, état non lu, compte à reconnecter, ancien identifiant).
+   * Absent (serveur plus ancien pendant un déploiement) : la lecture se devine par la classe de santé (licenceWasRead).
+   */
+  licencesRead?: boolean | null;
 }
 
 /**
@@ -86,7 +95,7 @@ export interface AccountFacts {
  */
 export function linkedInAccountFacts(li: {
   state: MyLinkedInState;
-  account: { status?: string | null; unverified?: boolean } | null;
+  account: { status?: string | null; unverified?: boolean; licences_read?: boolean | null } | null;
   mapping: { linkedin_account_id: string } | null;
 }): AccountFacts {
   return {
@@ -94,11 +103,12 @@ export function linkedInAccountFacts(li: {
     status: li.state === 'missing' ? 'DELETED' : li.account?.status,
     accountId: li.mapping?.linkedin_account_id,
     unverified: li.account?.unverified === true,
+    licencesRead: typeof li.account?.licences_read === 'boolean' ? li.account.licences_read : undefined,
   };
 }
 
 /** Pourquoi un compte est à reconnecter, d'après son statut et son identifiant. */
-export function causeOfReconnect(facts: Pick<AccountFacts, 'status' | 'accountId'>): AccountCause {
+export function causeOfReconnect(facts: Pick<AccountFacts, 'status' | 'accountId'>): ReconnectCause {
   const status = typeof facts.status === 'string' ? facts.status.trim().toUpperCase() : '';
   if (status === 'DELETED') return 'removed';
   if (hasOutdatedAccountId(facts.accountId)) return 'outdated_identifier';
@@ -134,6 +144,23 @@ export function viewOfAccount(facts: AccountFacts, provider: ConnectionProviderI
     cause,
     reconnect: cause === 'removed' ? 'new_link' : 'in_place',
   };
+}
+
+/**
+ * Encart rouge de « Plafonds du jour », d'après le statut enregistré du compte : null quand rien n'est à dire (compte actif,
+ * limité, en connexion, inconnu), sinon le titre et la conséquence pour les envois de la cause, d'accord avec la carte du
+ * compte (même cause : causeOfReconnect). Un accès restreint a le sien, sans « reconnectez ».
+ */
+export function quotaNoticeOf(
+  accountStatus: string | null | undefined,
+  accountId: string | null | undefined,
+): ({ kind: QuotaNoticeKind } & (typeof QUOTA_NOTICE)[QuotaNoticeKind]) | null {
+  const health = classifyConnectionHealth({ status: accountStatus });
+  let kind: QuotaNoticeKind;
+  if (health === 'locked') kind = 'locked';
+  else if (health === 'needs_reconnect') kind = causeOfReconnect({ status: accountStatus, accountId });
+  else return null;
+  return { kind, ...QUOTA_NOTICE[kind] };
 }
 
 const isRemoved = (account: { status?: string | null }) => String(account.status ?? '').trim().toUpperCase() === 'DELETED';
@@ -232,15 +259,20 @@ export function cardAction(view: ConnectionView, missing: boolean): HealthAction
 const LICENCE_READ_HEALTH: ReadonlySet<ConnectionHealth> = new Set<ConnectionHealth>(['connected', 'syncing', 'limited']);
 
 /**
- * Vrai quand la liste a vraiment lu les licences du compte. Sinon la ligne « Offre : LinkedIn Classic » serait inventée :
- * le serveur met « classique » par défaut quand il n'a rien lu. C'est le cas d'un état non lu (marqueur), d'un
- * identifiant d'ancien format (aucun appel) et d'un compte dont les contrats ne se lisent pas (CREDENTIALS, ERROR,
- * restreint, en connexion, état inconnu). Une connexion partielle (PARTIAL) est aussi écartée : le serveur la lit, mais
- * un dernier état connu PARTIAL arrive sous la même forme, sans marqueur, et rien ne distingue les deux.
+ * Vrai quand la liste a vraiment lu les licences du compte, donc quand la ligne « Offre : … » peut s'écrire. Sinon elle
+ * serait inventée : le serveur met « classique » par défaut quand il n'a rien lu.
+ * - un état non lu (marqueur) et un identifiant d'ancien format (aucun appel) : jamais ;
+ * - le champ `licences_read` de l'entrée (licencesRead) fait foi quand il est là : vrai, la licence a été lue (une connexion
+ *   partielle vraiment lue montre son offre) ; faux, elle ne l'a pas été (appel des contrats en échec, compte à
+ *   reconnecter, restreint, en connexion), même pour un compte qui se dit actif ;
+ * - champ absent (serveur plus ancien pendant un déploiement) : la classe de santé en décide, comme avant ce champ. Une
+ *   connexion partielle (PARTIAL) est alors écartée : le serveur la lit, mais un dernier état connu PARTIAL arrive sous la
+ *   même forme, sans marqueur, et rien ne distingue les deux.
  */
-export function licenceWasRead(facts: Pick<AccountFacts, 'health' | 'accountId' | 'unverified'>): boolean {
+export function licenceWasRead(facts: Pick<AccountFacts, 'health' | 'accountId' | 'unverified' | 'licencesRead'>): boolean {
   if (facts.unverified === true) return false;
   if (hasOutdatedAccountId(facts.accountId)) return false;
+  if (typeof facts.licencesRead === 'boolean') return facts.licencesRead;
   return LICENCE_READ_HEALTH.has(facts.health);
 }
 

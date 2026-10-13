@@ -262,6 +262,56 @@ export function causeReason(cause: AccountCause, channel: ConnectionChannel): st
   return REASON_BY_CAUSE[cause][channel];
 }
 
+/** Les causes d'un compte à reconnecter : toutes, sauf l'état non lu (qui n'est pas une panne connue). */
+export type ReconnectCause = Exclude<AccountCause, 'unreadable'>;
+
+/** Ce que dit l'encart rouge de « Plafonds du jour » : une cause de la carte, ou l'accès restreint. */
+export type QuotaNoticeKind = ReconnectCause | 'locked';
+
+/**
+ * Encart rouge sous la carte LinkedIn, dans « Plafonds du jour » : un titre et ce que l'état change pour les envois.
+ * Une entrée par cause, d'accord avec la phrase de la carte (REASON_BY_CAUSE, REASON_LOCKED) : jamais « Compte
+ * déconnecté » pour une panne de connexion ou une authentification partielle. « En pause » ne se dit que de ce que le
+ * moteur met vraiment en pause : une session expirée (CREDENTIALS) arrête les séquences du compte, et la reconnexion les
+ * reprend. Pour les autres états (panne, connexion partielle, restriction, compte à refaire), le moteur retient les
+ * envois sans arrêter les séquences : « retenus ».
+ */
+export const QUOTA_NOTICE: Record<QuotaNoticeKind, { title: string; body: string }> = {
+  session_expired: {
+    title: 'Compte déconnecté, reconnectez-le.',
+    body: 'Les séquences qui utilisent ce compte sont en pause et reprendront automatiquement après reconnexion.',
+  },
+  connection_error: {
+    title: 'La connexion à LinkedIn rencontre un problème.',
+    body: "Les séquences qui utilisent ce compte sont en pause et reprendront d'elles-mêmes une fois la connexion rétablie.",
+  },
+  authentication_partial: {
+    title: 'Une partie de la connexion LinkedIn demande une nouvelle authentification.',
+    body: "Les envois qui partent de ce compte sont retenus et reprendront d'eux-mêmes une fois le compte reconnecté.",
+  },
+  outdated_identifier: {
+    title: 'Cette connexion doit être refaite, reconnectez votre compte LinkedIn.',
+    body: "Les séquences qui utilisent ce compte sont en pause. Une fois le compte reconnecté, relancez-les : elles ne reprennent pas d'elles-mêmes.",
+  },
+  removed: {
+    title: "Ce compte LinkedIn n'est plus disponible.",
+    body: "Les séquences qui utilisent ce compte sont en pause. La nouvelle connexion remplacera celle-ci : relancez ensuite vos séquences, elles ne reprennent pas d'elles-mêmes.",
+  },
+  locked: {
+    title: 'Compte restreint par LinkedIn.',
+    body: "Les envois qui partent de ce compte sont retenus. Se reconnecter n'y change rien : ils reprendront d'eux-mêmes une fois la restriction levée.",
+  },
+};
+
+/**
+ * Phrase entière d'une ligne de panne d'« À traiter » (survol et toucher long de la ligne, dont le sous-titre est
+ * coupé à 30 caractères). La ligne ne connaît pas la cause d'un compte à reconnecter (session expirée ou panne) : sa
+ * phrase tient pour les deux. Connexion partielle et accès restreint reprennent la phrase de la carte.
+ */
+export const OUTAGE_ROW_HINT = {
+  reconnect: "Ce compte LinkedIn doit être reconnecté. Les envois sont en pause jusqu'à la reconnexion.",
+} as const;
+
 export const ACTION_LABEL = {
   reconnect: 'Reconnecter',
   refresh: 'Actualiser',

@@ -8,7 +8,9 @@
  *
  * - boîte lue dans la liste du serveur : son état, avec la phrase de sa cause ;
  * - liste non reçue : « État à vérifier » et « Réessayer », jamais un état deviné ;
- * - liste reçue sans cette boîte : compte retiré, à reconnecter par une nouvelle connexion.
+ * - liste reçue sans cette boîte : compte retiré, à reconnecter par une nouvelle connexion ;
+ * - liste ancienne (la relecture a échoué, la dernière liste reçue reste affichée) sans cette boîte : elle a pu être
+ *   reliée après cette lecture, donc « État à vérifier » et « Réessayer », jamais « À reconnecter » ni « retirée ».
  *
  * Testé par tests/ux/connexion-etats-comptes.test.mjs.
  */
@@ -86,22 +88,29 @@ function withDistinctNames(rows: readonly MailboxRow[]): MailboxRow[] {
   return rows.map((row) => (ranked.has(row.key) ? { ...row, address: ranked.get(row.key) as string } : row));
 }
 
+/**
+ * @param listFailed liste jamais reçue (première lecture ratée).
+ * @param listStale  liste reçue une fois, dont la relecture a échoué : ses boîtes gardent leur dernier état, mais une
+ *                   boîte qui n'y figure pas n'est pas prouvée retirée (reliée depuis, ou lecture ratée).
+ */
 export function buildMailboxRows(
   mappings: readonly MailboxMapping[],
   accounts: readonly ListedMailbox[],
   listFailed: boolean,
+  listStale = false,
 ): MailboxRow[] {
   const rows = mappings.map((mapping): MailboxRow => {
     const account = accounts.find((a) => a.id === mapping.email_account_id) ?? null;
     const provider = emailProviderOf(mapping.provider) ?? emailProviderOf(account?.type);
-    // Absente d'une liste reçue : le compte n'existe plus. Liste non reçue : on ne sait pas.
-    const status = account ? account.status ?? null : listFailed ? null : 'DELETED';
+    // Absente d'une liste reçue et à jour : le compte n'existe plus. Liste non reçue ou ancienne : on ne sait pas.
+    const unknown = !account && (listFailed || listStale);
+    const status = account ? account.status ?? null : unknown ? null : 'DELETED';
     const view = viewOfAccount(
       {
         health: account ? classifyConnectionHealth({ status: account.status }) : 'needs_reconnect',
         status,
         accountId: mapping.email_account_id,
-        unverified: !account && listFailed,
+        unverified: unknown,
       },
       provider ?? 'imap',
     );

@@ -30,6 +30,7 @@ import {
   licenceWasRead,
   linkedInAccountFacts,
   offerLabelOf,
+  quotaNoticeOf,
   sinceDate,
   viewOfAccount,
   viewOfHealth,
@@ -153,7 +154,8 @@ export const MyLinkedInAccount = () => {
   };
 
   const accountName = readableConnectionName(myAccount?.name || myMapping?.linkedin_account_name, 'linkedin');
-  // Jamais une offre qui n'a pas été lue : ni état non lu, ni identifiant d'ancien format, ni compte dont les contrats ne se lisent pas.
+  // Jamais une offre qui n'a pas été lue : le champ `licences_read` de l'entrée fait foi (sans lui, ancien serveur : la
+  // classe de santé en décide), et ni un état non lu ni un identifiant d'ancien format n'en ont.
   const offer = licenceWasRead(facts) ? offerLabelOf(myAccount?.subscriptions) : null;
   const since = sinceDate(myMapping?.linked_at);
 
@@ -438,7 +440,7 @@ function QuotaRow({ label, used, cap }: { label: string; used: number; cap: numb
 /**
  * Carte « Plafonds du jour » : compteurs serveur (RPC get_linkedin_quota_status)
  * du compte LinkedIn rattaché, plafonds effectifs après palier de montée en
- * charge, pause en cours, compte déconnecté.
+ * charge, pause en cours, compte à reconnecter ou restreint (une phrase par cause, comme la carte du compte).
  */
 function LinkedInQuotaCard({ accountId }: { accountId: string }) {
   const { data: status, isLoading, isError, isFetching, refetch } = useLinkedInQuotaStatus(accountId);
@@ -473,8 +475,9 @@ function LinkedInQuotaCard({ accountId }: { accountId: string }) {
   // Compte non rattaché à un membre : rien à afficher.
   if (!status) return null;
 
-  // Même classement que « Mon compte LinkedIn » (STOPPED, PERMISSIONS, DELETED compris).
-  const disconnected = classifyLinkedInStatus(status.account_status) === 'needs_reconnect';
+  // Même classement et même cause que « Mon compte LinkedIn » (STOPPED, PERMISSIONS, DELETED compris) : l'encart dit
+  // la même chose que la carte du compte, jamais « déconnecté » pour une panne, une connexion partielle ou une restriction.
+  const notice = quotaNoticeOf(status.account_status, accountId);
   const paused = !!status.paused_until && new Date(status.paused_until).getTime() > Date.now();
   const pad = (h: number) => String(h).padStart(2, '0');
 
@@ -491,14 +494,12 @@ function LinkedInQuotaCard({ accountId }: { accountId: string }) {
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {disconnected && (
+        {notice && (
           <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-muted p-2.5 text-xs">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" aria-hidden="true" />
             <p className="text-foreground">
-              <span className="font-medium">Compte déconnecté, reconnectez-le.</span>{' '}
-              <span className="text-foreground-secondary">
-                Les séquences qui utilisent ce compte sont en pause et reprendront automatiquement après reconnexion.
-              </span>
+              <span className="font-medium">{notice.title}</span>{' '}
+              <span className="text-foreground-secondary">{notice.body}</span>
             </p>
           </div>
         )}

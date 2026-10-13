@@ -330,14 +330,14 @@ function BatchesList({ preview, busy, onRollback }: { preview: Preview; busy: bo
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Badge variant={batch.rolledBack ? 'muted' : 'info'}>{batch.rolledBack ? BATCHES.rolledBack : BATCHES.applied}</Badge>
                 {/* Le geste de retrait est déjà gris à l'état actif et le désactivé n'a jamais d'opacité : un lot dont un
-                    lot plus récent n'est pas annulé le dit dans son libellé (« Annulez d'abord le lot plus récent »). */}
+                    lot plus récent n'est pas annulé le dit dans son libellé, qui décrit l'état (« Lot plus récent à
+                    annuler d'abord ») sans ordre ni ligne de raison dessous. */}
                 {(state === 'available' || state === 'blocked') && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="min-h-11 text-muted-foreground hover:text-danger disabled:hover:bg-transparent disabled:hover:text-muted-foreground md:min-h-0"
                     aria-label={state === 'blocked' ? BATCHES.rollbackBlockedAria(batch.batchId) : BATCHES.rollbackAria(batch.batchId)}
-                    aria-describedby={state === 'blocked' ? `batch-blocked-${batch.batchId}` : undefined}
                     disabled={busy || state === 'blocked'}
                     onClick={() => onRollback(batch.batchId)}
                   >
@@ -345,11 +345,8 @@ function BatchesList({ preview, busy, onRollback }: { preview: Preview; busy: bo
                   </Button>
                 )}
               </div>
-              {/* Un lot ne s'annule qu'après les lots plus récents ; un lot sans ligne n'a rien à annuler. */}
+              {/* Un lot sans ligne réécrite n'a rien à annuler. */}
               {state === 'empty' && <p className="text-xs text-foreground-secondary">{BATCHES.empty}</p>}
-              {state === 'blocked' && (
-                <p id={`batch-blocked-${batch.batchId}`} className="text-xs text-foreground-secondary">{BATCHES.blockedByNewer}</p>
-              )}
             </li>
           );
         })}

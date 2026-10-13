@@ -75,6 +75,29 @@ const MAX_TRANSITION_ATTEMPTS = 25;
  */
 const PARTIAL_CONNECTION_SENTENCE = 'Une partie de la connexion LinkedIn demande une nouvelle authentification. Reconnectez le compte pour reprendre les envois.';
 
+/**
+ * Échec passager d'un événement d'état (lecture ou écriture de base en échec, relecture du compte impossible,
+ * conflit d'écriture qui ne se résout pas) : l'événement n'est PAS appliqué, il ne doit donc pas être acquitté.
+ * Elle remonte jusqu'au catch de handleRequest, qui libère la ligne de dédoublonnage (ou la marque en échec) et
+ * répond 500 : le prestataire rejoue l'événement, et le rejeu est traité.
+ */
+class TransientEventError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+    this.name = 'TransientEventError';
+  }
+}
+
+/** L'erreur d'un passage d'état, rendue transitoire (message neutre : il est renvoyé dans le corps du 500). */
+function transientFailure(error: unknown): TransientEventError {
+  if (error instanceof TransientEventError) return error;
+  console.warn('[unipile-webhook] Account status event not applied, the provider will redeliver it:', describeForLog(error));
+  return new TransientEventError('Account status event not applied (transient failure), retry', error);
+}
+
+/** Mots de statut du prestataire (spécification des comptes) : un autre mot ne dit rien sur l'état du compte. */
+const KNOWN_PROVIDER_STATUS_WORDS = new Set(['running', 'disconnected', 'errored', 'degraded', 'partial']);
+
 // Timeout wrapper for the internal function calls (analyse, indexation)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -380,8 +403,11 @@ async function notifyAccountState(
  * jamais un événement plus récent. Le membre n'est prévenu que pour le passage que CETTE écriture a fait,
  * jamais d'après la lecture : des livraisons simultanées d'événements distincts ne le préviennent qu'une fois
  * par passage réel. `targetFor` rend l'état à écrire pour un statut d'avant, ou null pour laisser la ligne.
+ * Une erreur n'est jamais levée mais rendue dans `error` : lecture ou écriture en échec, plafond d'essais atteint, ou
+ * état à écrire impossible à décider (`targetFor` lève). Elle signifie « événement non appliqué en entier » : l'appelant
+ * la rend transitoire (transientFailure) pour que le prestataire rejoue l'événement, jamais acquitté comme traité.
  */
-async function transitionLinkedInAccount(
+export async function transitionLinkedInAccount(
   supabase: SupabaseClient,
   accountId: string,
   targetFor: (previous: string | null) => StatusTarget | null | Promise<StatusTarget | null>,
@@ -403,7 +429,14 @@ async function transitionLinkedInAccount(
     settled = true;
     for (const row of (data ?? []) as LinkedAccountStateRow[]) {
       if (handled.has(row.id)) continue;
-      const target = await targetFor(row.account_status ?? null);
+      let target: StatusTarget | null;
+      try {
+        target = await targetFor(row.account_status ?? null);
+      } catch (e) {
+        // Relecture du compte impossible (voir applyLinkedInStatus) : la liaison n'est pas touchée, l'événement est rejoué.
+        failure = e;
+        break;
+      }
       if (!target) {
         handled.add(row.id);
         finalStatuses.push(String(row.account_status ?? ''));
@@ -443,8 +476,8 @@ async function transitionLinkedInAccount(
  * État que le prestataire rapporte maintenant pour un compte (statut et verrou ensemble, `statusAtClaim`),
  * relu à l'événement d'un déverrouillage ou d'un statut qui ne dit pas si le verrou est levé : aucun événement de
  * statut n'est émis quand seul le verrou change, donc ni l'événement ni la ligne enregistrée ne disent dans
- * quel état le compte revient. null quand la lecture échoue ou dépasse son délai (l'appelant garde alors son
- * comportement d'avant la relecture).
+ * quel état le compte revient. null quand la lecture échoue, dépasse son délai ou rend un compte sans statut
+ * lisible : l'appelant n'écrit alors rien (un doute ne laisse rien partir) et fait rejouer l'événement.
  */
 async function readReportedStatus(accountId: string): Promise<KonektAccountStatus | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -454,9 +487,15 @@ async function readReportedStatus(accountId: string): Promise<KonektAccountStatu
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('account state re-read deadline')), testing.rereadDeadlineMs);
     });
-    return statusAtClaim(await Promise.race([read, deadline]));
+    const account = await Promise.race([read, deadline]);
+    // Un compte sans statut lisible n'apprend rien : ce n'est pas un compte opérationnel.
+    if (typeof account?.status !== 'string' || account.status.trim() === '') {
+      console.warn('[unipile-webhook] Account state could not be re-read, the provider returned no status, the event is not applied and will be redelivered');
+      return null;
+    }
+    return statusAtClaim(account);
   } catch (e) {
-    console.warn('[unipile-webhook] Account state could not be re-read, the event is applied as received:', describeForLog(e));
+    console.warn('[unipile-webhook] Account state could not be re-read, the event is not applied and will be redelivered:', describeForLog(e));
     return null;
   } finally {
     clearTimeout(timer);
@@ -464,26 +503,44 @@ async function readReportedStatus(accountId: string): Promise<KonektAccountStatu
 }
 
 /**
+ * Vrai quand une liaison de ce compte (LinkedIn, e-mail ou WhatsApp) est enregistrée LOCKED. Lecture en échec : le
+ * déverrouillage ne peut pas être décidé, l'erreur est transitoire (rien n'est écrit, l'événement est rejoué).
+ */
+async function hasLockedBinding(supabase: SupabaseClient, accountId: string): Promise<boolean> {
+  const reads = await Promise.all([
+    supabase.from('member_linkedin_accounts').select('account_status').eq('linkedin_account_id', accountId).eq('account_status', 'LOCKED'),
+    supabase.from('member_email_accounts').select('account_status').eq('email_account_id', accountId).eq('account_status', 'LOCKED'),
+    supabase.from('member_whatsapp_accounts').select('account_status').eq('whatsapp_account_id', accountId).eq('account_status', 'LOCKED'),
+  ]);
+  for (const { error } of reads) if (error) throw transientFailure(error);
+  return reads.some(({ data }) => (data ?? []).length > 0);
+}
+
+/**
  * Applique aux liaisons LinkedIn d'un compte le statut qu'un événement rapporte, hors LOCKED (account.status.running,
  * degraded et partial sans verrou, account.status.disconnected et errored, account.add et account.reconnect sans
  * tentative de connexion) : un seul chemin, donc les mêmes règles partout. Une panne à reconnecter (CREDENTIALS,
- * ERROR) l'emporte sur le verrou, qui se règle en reconnectant. Les autres statuts ne disent pas si le verrou est
- * levé : une liaison LOCKED prend l'état que le prestataire rapporte maintenant (relu), et reste LOCKED s'il dit
- * encore verrouillé ; relecture impossible : l'état de l'événement, comme avant.
+ * ERROR) l'emporte sur le verrou, qui se règle en reconnectant. Les autres statuts ne disent pas toujours si le verrou
+ * est levé : une liaison LOCKED prend alors l'état que le prestataire rapporte maintenant (relu), et reste LOCKED s'il
+ * dit encore verrouillé. Relecture impossible : la liaison reste LOCKED (aucun envoi ne part sur un doute), rien n'est
+ * écrit et l'erreur rendue est transitoire (l'appelant fait rejouer l'événement). `lockKnown` : l'événement porte
+ * lui-même `is_locked` (vrai ou faux), il fait foi pour le verrou et aucune relecture n'a lieu.
  */
 async function applyLinkedInStatus(
   supabase: SupabaseClient,
   accountId: string,
   status: string,
+  lockKnown = false,
 ): Promise<{ finalStatuses: string[]; error: unknown }> {
   if (status === 'LOCKED') return { finalStatuses: [], error: new Error('LOCKED is written by its own conditional update') };
   const own: StatusTarget = { status, patch: statusPatch(status) };
-  const rereadsLocked = status !== 'CREDENTIALS' && status !== 'ERROR';
+  const rereadsLocked = !lockKnown && status !== 'CREDENTIALS' && status !== 'ERROR';
   let afterLock: Promise<StatusTarget | null> | undefined;
   return await transitionLinkedInAccount(supabase, accountId, (previous) => {
     if (!rereadsLocked || String(previous ?? '').toUpperCase() !== 'LOCKED') return own;
     afterLock ??= (async () => {
-      const reported = (await readReportedStatus(accountId)) ?? status;
+      const reported = await readReportedStatus(accountId);
+      if (reported === null) throw new TransientEventError('Account state could not be re-read');
       return reported === 'LOCKED' ? null : { status: reported, patch: statusPatch(reported) };
     })();
     return afterLock;
@@ -901,8 +958,9 @@ export async function handleRequest(req: Request): Promise<Response> {
             // - LOCKED remplace OK, DEGRADED, PARTIAL, l'absence de statut et un statut inconnu, jamais une
             //   panne à reconnecter (CREDENTIALS, ERROR…) : même règle que account.locked.
             // - les autres statuts (applyLinkedInStatus) : PARTIAL est annoncé à qui n'était ni en panne à
-            //   reconnecter ni déjà PARTIAL ; une liaison LOCKED prend l'état que le prestataire rapporte
-            //   maintenant, l'événement ne disant pas si le verrou est levé.
+            //   reconnecter ni déjà PARTIAL ; avec `is_locked` dans l'événement (vrai ou faux), l'événement fait
+            //   foi pour le verrou ; sans lui, une liaison LOCKED prend l'état que le prestataire rapporte
+            //   maintenant (relu), et reste LOCKED, événement rejoué (500), si la relecture est impossible.
             // DEGRADED arrête les envois sans mettre les inscriptions en pause ni prévenir (nouvelle tentative
             // automatique, état de carte seulement) : le moteur attend le retour à OK. LOCKED et PARTIAL les
             // arrêtent aussi sans pause, mais le membre en est prévenu.
@@ -916,7 +974,11 @@ export async function handleRequest(req: Request): Promise<Response> {
               linkedinError = result.error;
               await notifyAccountState(supabase, accId, result.moved, 'locked');
             } else {
-              ({ finalStatuses, error: linkedinError } = await applyLinkedInStatus(supabase, accId, newStatus));
+              // `is_locked` dans l'événement (vrai ou faux) fait foi pour le verrou : aucune relecture.
+              ({ finalStatuses, error: linkedinError } = await applyLinkedInStatus(supabase, accId, newStatus, typeof payload.is_locked === 'boolean'));
+              // Lecture ou écriture en échec, conflit sans fin, relecture du compte impossible : l'événement n'est pas
+              // appliqué, il est rejoué (500), jamais acquitté comme traité.
+              if (linkedinError) throw transientFailure(linkedinError);
             }
             if (linkedinError) console.warn('[unipile-webhook] status_updated: linkedin status write failed:', linkedinError);
             // Les inscriptions ne reprennent que si le compte est vraiment revenu OK (une liaison qui reste
@@ -926,6 +988,7 @@ export async function handleRequest(req: Request): Promise<Response> {
             }
           }
         } catch (e) {
+          if (e instanceof TransientEventError) throw e;
           console.warn('[unipile-webhook] status_updated handler failed:', e);
         }
         break;
@@ -953,7 +1016,8 @@ export async function handleRequest(req: Request): Promise<Response> {
         // réel même pour des livraisons simultanées, pas à chaque événement répété.
         try {
           const { error: linkedinError } = await applyLinkedInStatus(supabase, payload.account_id, brokenStatus);
-          if (linkedinError) console.warn('[unipile-webhook] Could not update LinkedIn account status:', linkedinError);
+          // Panne non enregistrée (lecture ou écriture en échec, conflit sans fin) : rejouée, jamais acquittée.
+          if (linkedinError) throw transientFailure(linkedinError);
           await supabase
             .from('member_email_accounts')
             .update({ account_status: brokenStatus })
@@ -963,6 +1027,7 @@ export async function handleRequest(req: Request): Promise<Response> {
             .eq('whatsapp_account_id', payload.account_id).neq('account_status', 'DELETED');
           if (whatsappError) throw whatsappError;
         } catch (e) {
+          if (e instanceof TransientEventError) throw e;
           console.warn('[unipile-webhook] Could not update account status:', e);
         }
         break;
@@ -981,12 +1046,15 @@ export async function handleRequest(req: Request): Promise<Response> {
       // simultanées ne préviennent qu'une fois.
       // Le déverrouillage ne relève que LOCKED, mais ne sait pas en quel état :
       // le verrou a pu remplacer DEGRADED ou PARTIAL, et aucun événement de
-      // statut n'est émis quand seul le verrou change. L'état est donc relu chez
-      // le prestataire (readReportedStatus : statut et verrou ensemble) et c'est
-      // lui qui est écrit, sur les trois canaux ; un retour en PARTIAL, en
-      // CREDENTIALS ou en ERROR prévient comme l'événement de statut l'aurait fait.
-      // Compte encore verrouillé chez le prestataire : rien ne change. Relecture
-      // impossible : OK, comme avant la relecture (journalisé).
+      // statut n'est émis quand seul le verrou change. Les liaisons enregistrées sont
+      // lues d'abord : sans liaison LOCKED (OK, PARTIAL, CREDENTIALS...), il n'y a rien à
+      // relever, ni relecture chez le prestataire ni écriture. Sinon l'état est relu chez le
+      // prestataire (readReportedStatus : statut et verrou ensemble) et c'est lui qui est
+      // écrit, sur les trois canaux ; un retour en PARTIAL, en CREDENTIALS ou en ERROR
+      // prévient comme l'événement de statut l'aurait fait. Compte encore verrouillé chez le
+      // prestataire : rien ne change. Relecture impossible (erreur, délai, compte sans
+      // statut) ou lecture des liaisons en échec : rien n'est écrit, les liaisons restent
+      // LOCKED (aucun envoi ne part sur un doute) et l'événement est rejoué (500).
       case 'account_locked':
       case 'account_unlocked': {
         const locking = payload.event === 'account_locked';
@@ -1009,8 +1077,9 @@ export async function handleRequest(req: Request): Promise<Response> {
             for (const { error } of [linkedin, email, whatsapp]) {
               if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, (error as { message?: string }).message ?? error);
             }
-          } else {
-            const returnsTo = (await readReportedStatus(accId)) ?? 'OK';
+          } else if (await hasLockedBinding(supabase, accId)) {
+            const returnsTo = await readReportedStatus(accId);
+            if (returnsTo === null) throw new TransientEventError('Account state could not be re-read after the unlock');
             notice = NOTICE_BY_STATUS[returnsTo];
             if (returnsTo !== 'LOCKED') {
               const [linkedin, email, whatsapp] = await Promise.all([
@@ -1032,6 +1101,7 @@ export async function handleRequest(req: Request): Promise<Response> {
             }
           }
         } catch (e) {
+          if (e instanceof TransientEventError) throw e;
           console.warn(`[unipile-webhook] ${payload.event} handler failed:`, e);
         }
         // Seules les liaisons que l'écriture vient de faire changer d'état sont prévenues.
@@ -1098,6 +1168,17 @@ export async function handleRequest(req: Request): Promise<Response> {
 }
 
 Deno.serve(handleRequest);
+
+/**
+ * Statut Konekt qu'un account.add ou account.reconnect sans tentative rapporte, ou null quand il ne dit rien : statut
+ * absent ou mot hors de la spécification du prestataire (« paused »...), sans verrou. Un verrou (`is_locked` vrai) est
+ * toujours une information. Pour null, le statut enregistré est gardé : ni écriture ni notification.
+ */
+function informedStatus(account: Parameters<typeof statusAtClaim>[0]): KonektAccountStatus | null {
+  const word = typeof account.status === 'string' ? account.status.trim().toLowerCase() : '';
+  if (!KNOWN_PROVIDER_STATUS_WORDS.has(word) && account.is_locked !== true) return null;
+  return statusAtClaim(account);
+}
 
 /**
  * account.add / account.reconnect. Le `state` du lien d'authentification est
@@ -1185,21 +1266,30 @@ async function handleAccountConnected(supabase: SupabaseClient, payload: Webhook
         // un passage en PARTIAL ou en LOCKED prévient une fois, des livraisons simultanées
         // aussi (écriture conditionnelle au statut d'avant).
         console.warn('[unipile-webhook] No connection attempt for this event, nothing to link:', outcome.reason);
-        const reportedStatus = statusAtClaim(account);
-        try {
-          let finalStatuses: string[] = [];
-          let statusError: unknown = null;
-          if (reportedStatus === 'LOCKED') {
-            const result = await moveLinkedInAccount(supabase, accountId, statusPatch(reportedStatus), LOCK_REPLACES_FILTER);
-            statusError = result.error;
-            await notifyAccountState(supabase, accountId, result.moved, 'locked');
-          } else {
-            ({ finalStatuses, error: statusError } = await applyLinkedInStatus(supabase, accountId, reportedStatus));
+        const reportedStatus = informedStatus(account);
+        if (reportedStatus === null) {
+          // Statut absent ou mot hors de la spécification du prestataire, sans verrou : aucune information sur l'état
+          // du compte. Le statut enregistré est gardé, rien n'est écrit, personne n'est prévenu.
+          console.warn('[unipile-webhook] Event without a usable status, the stored status is kept:', payload.v2_event);
+        } else {
+          try {
+            let finalStatuses: string[] = [];
+            let statusError: unknown = null;
+            if (reportedStatus === 'LOCKED') {
+              const result = await moveLinkedInAccount(supabase, accountId, statusPatch(reportedStatus), LOCK_REPLACES_FILTER);
+              statusError = result.error;
+              await notifyAccountState(supabase, accountId, result.moved, 'locked');
+            } else {
+              ({ finalStatuses, error: statusError } = await applyLinkedInStatus(supabase, accountId, reportedStatus, typeof account.is_locked === 'boolean'));
+              // Lecture ou écriture en échec, conflit sans fin, relecture du compte impossible : rejoué (500).
+              if (statusError) throw transientFailure(statusError);
+            }
+            if (statusError) throw statusError;
+            resumeAllowed = reportedStatus === 'OK' && finalStatuses.every((status) => status === 'OK');
+          } catch (e) {
+            if (e instanceof TransientEventError) throw e;
+            console.warn('[unipile-webhook] Could not update account status (no connection attempt):', e);
           }
-          if (statusError) throw statusError;
-          resumeAllowed = reportedStatus === 'OK' && finalStatuses.every((status) => status === 'OK');
-        } catch (e) {
-          console.warn('[unipile-webhook] Could not update account status (no connection attempt):', e);
         }
       }
       break;

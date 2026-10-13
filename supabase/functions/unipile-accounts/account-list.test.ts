@@ -41,6 +41,7 @@ Deno.test('projectLinkedInEntry : forme de l ancienne liste, statut au vocabulai
     is_locked: false,
     reconnectable: false,
     initial_sync_status: 'completed',
+    licences_read: true,
   });
   const limited = projectLinkedInEntry({ id: 'acc_2', status: 'partial', is_locked: false }, { mapped: false, pictureUrl: null, contracts: null });
   strictEqual(limited.status, 'PARTIAL');
@@ -52,6 +53,41 @@ Deno.test('projectLinkedInEntry : forme de l ancienne liste, statut au vocabulai
   const stored = projectLinkedInEntry({ id: 'acc_4', status: 'disconnected' }, { mapped: true, pictureUrl: null, contracts: null, storedName: 'Nom enregistré' });
   strictEqual(stored.name, 'Nom enregistré');
   strictEqual(stored.status, 'CREDENTIALS');
+});
+
+Deno.test('licences_read : vrai seulement quand les contrats ont vraiment été lus, jamais pour une entrée construite sans lecture', () => {
+  const live = (status: string, contracts: ReadonlyArray<{ product?: unknown }> | null, extra: Record<string, unknown> = {}) =>
+    projectLinkedInEntry({ id: 'acc_l', name: 'Claire', status, is_locked: false, ...extra }, { mapped: true, pictureUrl: null, contracts });
+  // Compte OK dont les contrats sont lus : les licences sont exactes (recruiter, ou classique seule avec une liste vide).
+  strictEqual(live('running', [{ product: 'recruiter' }]).licences_read, true);
+  strictEqual(live('running', []).licences_read, true, 'une liste vide lue est une lecture : classique seulement, exact');
+  deepStrictEqual(live('running', []).subscriptions, { classic: true, recruiter: false, sales_navigator: false });
+  // Compte OK dont l appel des contrats a échoué (readContracts rend null) : `subscriptions` n est qu une estimation, rien n est lu.
+  const failed = live('running', null);
+  strictEqual(failed.licences_read, false);
+  deepStrictEqual(failed.subscriptions, { classic: true, recruiter: false, sales_navigator: false }, 'subscriptions gardée pour la compatibilité (ici sans produit connecté)');
+  // Avec des produits connectés dans les métadonnées, l estimation les reprend, mais l entrée dit toujours qu elle n est pas lue.
+  const estimated = projectLinkedInEntry(
+    { id: 'acc_e', name: 'Claire', status: 'running', is_locked: false, metadata: { products_connection_status: { recruiter: 'running' } } },
+    { mapped: true, pictureUrl: null, contracts: null },
+  );
+  strictEqual(estimated.subscriptions.recruiter, true);
+  strictEqual(estimated.licences_read, false, 'une estimation n est pas une lecture');
+  // Compte PARTIAL réellement lu avec ses contrats : lu ; compte à reconnecter ou orphelin (aucun contrat demandé) : non lu.
+  strictEqual(live('partial', [{ product: 'sales_navigator' }]).licences_read, true);
+  strictEqual(live('partial', [{ product: 'sales_navigator' }]).subscriptions.sales_navigator, true);
+  strictEqual(live('disconnected', null).licences_read, false);
+  // Entrées construites sans lecture du prestataire.
+  strictEqual(outdatedLinkEntry({ linkedin_account_id: 'ancien-id' }).licences_read, false);
+  for (const stored of ['OK', 'DEGRADED', 'CREDENTIALS', 'ERROR', 'PARTIAL', 'LOCKED', 'WEIRD', null, undefined]) {
+    const entry = unverifiedLinkEntry({ linkedin_account_id: 'acc_u', account_status: stored });
+    strictEqual(entry.licences_read, false, `état gardé ${String(stored)} : aucune lecture`);
+    strictEqual(typeof entry.licences_read, 'boolean', 'toujours un booléen, jamais absent');
+  }
+  // Le JSON envoyé à l écran porte le booléen sur chaque entrée, avec ou sans marqueur `unverified`.
+  for (const entry of [live('running', []), live('running', null), unverifiedLinkEntry({ linkedin_account_id: 'a', account_status: 'CREDENTIALS' }), outdatedLinkEntry({ linkedin_account_id: 'b' })]) {
+    strictEqual(typeof JSON.parse(JSON.stringify(entry)).licences_read, 'boolean');
+  }
 });
 
 Deno.test('outdatedLinkEntry : à reconnecter, aucun appel, jamais le nom qui porte l état', () => {

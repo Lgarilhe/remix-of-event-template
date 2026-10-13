@@ -12,7 +12,9 @@ export interface MemberWhatsAppAccount {
   /**
    * Vrai pour la trace d'un « Déconnecter » voulu (list_whatsapp) : la carte ne l'affiche jamais. Absent ou faux :
    * compte disparu chez le prestataire, qui reste une ligne « À reconnecter ». La carte lit ce champ par ce type
-   * (withoutDeliberateDisconnects) : renommé côté serveur, il ne compile plus.
+   * (withoutDeliberateDisconnects) : renommé dans ce type, le champ ne compile plus dans la garde de la carte. Le type
+   * ne voit pas le serveur (la réponse est lue par un cast) : un test statique compare ce nom à celui que
+   * unipile-accounts/handler.ts écrit (tests/ux/connexion-etats-comptes.test.mjs).
    */
   removed_by_member?: boolean;
 }

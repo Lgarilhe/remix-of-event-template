@@ -7,7 +7,8 @@
  * - connexion partielle (PARTIAL : un produit demande une nouvelle authentification) : bandeau, ligne et
  *   chiffre, avec « Reconnecter ». Le bandeau et la notification du récepteur d'événements disent la phrase de
  *   la carte de connexion, mot pour mot ; la ligne d'« À traiter », qui n'a qu'une ligne de sous-titre dans la
- *   barre de 256 px, dit le geste en 30 caractères au plus (le survol seul ne se lit pas au toucher) ;
+ *   barre de 256 px, dit le geste en 30 caractères au plus (le survol seul ne se lit pas au toucher) et porte la
+ *   phrase entière dans son texte de survol (`hint` de SidebarRow) ;
  * - accès restreint (LOCKED, ou is_locked) : bandeau et ligne sans « Reconnecter » (se reconnecter n'y
  *   change rien) ;
  * - connexion limitée (DEGRADED) seule : état de carte seulement, ni bandeau, ni ligne, ni chiffre.
@@ -24,7 +25,8 @@ import { loadTs, read, ROOT } from './connexion-helpers.mjs';
 const status = await loadTs('src/lib/linkedinStatus.ts');
 const { linkedInOutageKind, myLinkedInOutage, classifyConnectionHealth, resolveMyLinkedInStatus } = status;
 const { todoCount } = await loadTs('src/lib/sidebarSignals.ts');
-const { causeReason } = await loadTs('src/lib/connectionCopy.ts');
+const copyModule = await loadTs('src/lib/connectionCopy.ts');
+const { causeReason } = copyModule;
 /** La phrase que la carte de connexion montre pour PARTIAL : bandeau, ligne et notification la reprennent. */
 const PARTIAL_SENTENCE = 'Une partie de la connexion LinkedIn demande une nouvelle authentification. Reconnectez le compte pour reprendre les envois.';
 
@@ -133,7 +135,7 @@ const stubs = {
     const stubSource = {
       useLinkedInOutage: 'export const useLinkedInOutage = () => globalThis.__outage;',
       SidebarRow: "import { createElement as h } from 'react';\n"
-        + "export const SidebarRow = ({ title, sub, to }) => h('a', { href: to }, h('b', null, title), h('span', null, sub));",
+        + "export const SidebarRow = ({ title, sub, hint, to }) => h('a', { href: to, 'data-hint': hint ?? undefined }, h('b', null, title), h('span', null, sub));",
       SidebarSection: "export const SidebarSection = ({ children }) => children ?? null;",
     };
     b.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => {
@@ -175,6 +177,11 @@ const kit = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[
 const inRouter = (component, props) =>
   kit.renderToStaticMarkup(kit.createElement(kit.MemoryRouter, null, kit.createElement(component, props)));
 const focus = (props) => inRouter(kit.DashboardFocusPanel, { unreadMessages: 0, pendingResponses: 0, stagnantCandidates: 0, ...props });
+/** Valeur décodée de l'attribut data-hint de la ligne rendue par la maquette de SidebarRow. */
+const hintOf = (html) => {
+  const match = html.match(/data-hint="([^"]*)"/);
+  return match ? match[1].replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&') : null;
+};
 const section = (outage) => {
   globalThis.__outage = { status: 'ok', outage: outage !== null, kind: outage, retry: () => {} };
   return inRouter(kit.LinkedInOutageSection, {});
@@ -229,14 +236,16 @@ test('ligne d\'À traiter : à reconnecter garde son texte, restreint n\'invite 
   const partial = section('partial');
   assert.match(partial, /Connexion LinkedIn partielle/);
   assert.match(partial, /<span>Reconnectez le compte<\/span>/, 'le sous-titre dit le geste');
-  assert.ok(!partial.includes(PARTIAL_SENTENCE), 'la phrase de 120 caractères est au bandeau et à la notification, pas dans une ligne qui la couperait');
+  assert.ok(!partial.includes(`>${PARTIAL_SENTENCE}<`), 'la phrase de 120 caractères n\'est pas écrite dans la ligne, qui la couperait : elle est au survol (hint)');
+  assert.equal(hintOf(partial), PARTIAL_SENTENCE, 'le survol dit la phrase de la carte, mot pour mot');
   assert.match(partial, /href="\/settings\/account\/connections"/);
 
   const locked = section('locked');
   assert.match(locked, /Compte LinkedIn restreint/);
   assert.match(locked, /Les envois sont en pause/);
   assert.match(locked, /href="\/settings\/account\/connections"/, 'la carte explique l\'état');
-  assert.doesNotMatch(locked, /reconnecter/i);
+  // Le texte visible n'invite pas à reconnecter ; le survol dit seulement que se reconnecter n'y change rien
+  assert.doesNotMatch(locked.replace(/ data-hint="[^"]*"/, ''), /reconnecter/i);
 
   assert.equal(section(null), '', 'hors panne : rien');
 });
@@ -264,6 +273,73 @@ test('ligne d\'À traiter : le sous-titre de chaque genre de panne tient sur la 
   assert.match(partial[3], /^Reconnectez /);
   // La phrase entière de la carte reste dite par le bandeau, mot pour mot.
   assert.ok(focus({ linkedinPartial: true }).includes(`>${PARTIAL_SENTENCE}<`));
+});
+
+test('ligne d\'À traiter : le texte de survol de chaque genre de panne est une phrase entière, celle de la carte quand elle existe', () => {
+  const { healthReason } = copyModule;
+  assert.equal(hintOf(section('partial')), causeReason('authentication_partial', 'linkedin'), 'connexion partielle : la phrase de la carte');
+  assert.equal(hintOf(section('locked')), healthReason('locked', 'linkedin'), 'accès restreint : la phrase de la carte');
+  const reconnect = hintOf(section('reconnect'));
+  assert.equal(reconnect, copyModule.OUTAGE_ROW_HINT.reconnect, 'à reconnecter : une phrase valable pour toute cause');
+  for (const kind of ['reconnect', 'partial', 'locked']) {
+    const hint = hintOf(section(kind));
+    assert.ok(hint && hint.length > 30 && /[.]$/.test(hint), `${kind} : une phrase entière, plus longue que le sous-titre (${hint})`);
+    assert.doesNotMatch(hint, /—|unipile/i, kind);
+    assert.doesNotMatch(hint, /\b(tu|ton|ta|tes|toi)\b/i, kind);
+  }
+  // Le survol d'un compte restreint ne propose pas de se reconnecter ; celui d'une connexion partielle le propose
+  assert.match(hintOf(section('locked')), /Se reconnecter n'y change rien/);
+  assert.match(hintOf(section('partial')), /Reconnectez le compte/);
+});
+
+// SidebarRow réel (sans SidebarProvider : seul le hook qui ferme la barre sur téléphone est remplacé)
+const { outputFiles: rowFiles } = await build({
+  stdin: {
+    contents: [
+      "export { SidebarRow } from './src/components/sidebar/SidebarRow';",
+      "export { MemoryRouter } from 'react-router-dom';",
+      "export { createElement } from 'react';",
+      "export { renderToStaticMarkup } from 'react-dom/server.browser';",
+    ].join('\n'),
+    resolveDir: ROOT,
+    loader: 'ts',
+  },
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'node',
+  logLevel: 'silent',
+  tsconfig: join(ROOT, 'tsconfig.app.json'),
+  define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [{
+    name: 'close-mobile-stub',
+    setup(b) {
+      b.onResolve({ filter: /hooks\/sidebar\/useCloseMobileSidebar$/ }, (args) => ({ path: args.path, namespace: 'close-stub' }));
+      b.onLoad({ filter: /.*/, namespace: 'close-stub' }, () => ({ contents: 'export const useCloseMobileSidebar = () => () => {};', loader: 'js', resolveDir: ROOT }));
+    },
+  }],
+});
+const rowKit = await import(`data:text/javascript;base64,${Buffer.from(rowFiles[0].text).toString('base64')}`);
+const rowHtml = (props) => rowKit.renderToStaticMarkup(rowKit.createElement(rowKit.MemoryRouter, null, rowKit.createElement('ul', null, rowKit.createElement(rowKit.SidebarRow, props))));
+const titleAttr = (html) => {
+  const match = html.match(/ title="([^"]*)"/);
+  return match ? match[1].replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&') : null;
+};
+
+test('SidebarRow : le texte de survol est le hint quand il est donné, sinon « titre · sous-titre » (lien, bouton et ligne seule)', () => {
+  const HINT = 'Une phrase entière, plus longue que le sous-titre que la ligne peut écrire.';
+  for (const target of [{ to: '/settings' }, { onSelect: () => {} }, {}]) {
+    const kind = Object.keys(target)[0] ?? 'div';
+    assert.equal(titleAttr(rowHtml({ title: 'Titre', sub: 'Sous-titre', hint: HINT, ...target })), HINT, `${kind} : le hint est le texte de survol`);
+    assert.equal(titleAttr(rowHtml({ title: 'Titre', sub: 'Sous-titre', ...target })), 'Titre · Sous-titre', `${kind} : sans hint, le texte d'avant`);
+    assert.equal(titleAttr(rowHtml({ title: 'Titre', ...target })), 'Titre', `${kind} : sans sous-titre ni hint, le titre`);
+    assert.equal(titleAttr(rowHtml({ title: 'Titre', sub: 'Sous-titre', hint: null, ...target })), 'Titre · Sous-titre', `${kind} : un hint nul ne change rien`);
+    assert.equal(titleAttr(rowHtml({ title: 'Titre', sub: 'Sous-titre', hint: '', ...target })), 'Titre · Sous-titre', `${kind} : un hint vide ne masque pas le texte d'avant`);
+  }
+  // Le sous-titre visible reste le texte court : le hint ne change que l'attribut
+  const html = rowHtml({ title: 'Titre', sub: 'Sous-titre', hint: HINT, to: '/x' });
+  assert.match(html, /<span class="truncate[^"]*">Sous-titre<\/span>/);
+  assert.ok(!html.includes(`>${HINT}<`), 'la phrase entière n\'est pas écrite dans la ligne');
 });
 
 // --------------------------------------------------------------------------- Bandeau, ligne et chiffre : d'accord
@@ -322,7 +398,9 @@ test('la notification du récepteur d\'événements dit la même chose que le ba
   const banner = read('src/components/dashboard/DashboardFocusPanel.tsx');
   assert.match(banner, /Connexion LinkedIn partielle/);
   assert.match(banner, /causeReason\('authentication_partial', 'linkedin'\)/, 'la phrase du bandeau vient de la carte');
-  assert.match(read('src/components/sidebar/todo/LinkedInOutageSection.tsx'), /title: 'Connexion LinkedIn partielle'/);
+  const row = read('src/components/sidebar/todo/LinkedInOutageSection.tsx');
+  assert.match(row, /title: 'Connexion LinkedIn partielle'/);
+  assert.match(row, /causeReason\('authentication_partial', 'linkedin'\)/, 'la phrase du survol de la ligne vient de la carte');
 });
 
 test('récepteur : aucune écriture de statut LinkedIn sans condition sur le statut d\'avant (ni double écriture, ni lecture suivie d\'une écriture)', () => {

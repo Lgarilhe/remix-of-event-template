@@ -24,6 +24,11 @@ export interface SidebarRowProps {
   leading?: React.ReactNode;
   title: string;
   sub?: string | null;
+  /**
+   * Phrase entière au survol et au toucher long (attribut title), quand le sous-titre est une version courte de ce qu'il
+   * faut dire (une ligne de 195 px coupe au-delà de 30 caractères). Absente : « titre · sous-titre ».
+   */
+  hint?: string | null;
   /** Heure ou mention courte, en gris à droite. */
   right?: string | null;
   /** Gras : l'élément compte dans le chiffre d'À traiter, et rien d'autre. */
@@ -50,6 +55,7 @@ export function SidebarRow({
   leading,
   title,
   sub,
+  hint,
   right,
   strong = false,
   dotLabel,
@@ -59,8 +65,8 @@ export function SidebarRow({
   muted = false,
 }: SidebarRowProps) {
   const closeMobile = useCloseMobileSidebar();
-  // Texte complet au survol : titres et sous-titres peuvent être coupés.
-  const fullText = sub ? `${title} · ${sub}` : title;
+  // Texte complet au survol : titres et sous-titres peuvent être coupés. Une phrase donnée (hint) remplace « titre · sous-titre ».
+  const fullText = hint || (sub ? `${title} · ${sub}` : title);
 
   const content = (
     <>

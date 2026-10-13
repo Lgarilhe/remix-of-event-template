@@ -50,8 +50,21 @@ export interface LinkedInListEntry {
   is_locked: boolean;
   reconnectable: boolean;
   initial_sync_status: string | null;
-  /** Vrai quand le prestataire n'a pas répondu pour ce compte : statut et licences ne sont pas lus (écran : « État à vérifier »). */
+  /**
+   * Vrai seulement pour une entrée non lue dont le statut enregistré ne dit rien (OK, DEGRADED, absent ou
+   * inconnu) : l'écran affiche « État à vérifier » au lieu d'« Actif ». Une entrée non lue dont le statut
+   * enregistré est déjà connu par un webhook (CREDENTIALS, ERROR, PARTIAL, LOCKED) n'a pas ce repère : elle
+   * porte ce statut. Il ne dit rien des licences, c'est `licences_read` qui le dit.
+   */
   unverified?: boolean;
+  /**
+   * Vrai seulement quand les contrats de ce compte ont vraiment été lus dans cet appel : `subscriptions` est
+   * alors exact. Faux pour une entrée construite sans lecture, un ancien identifiant, un compte dont la lecture
+   * des contrats a échoué ou n'a pas été tentée : `subscriptions` n'est alors qu'une estimation (les produits
+   * connectés du compte quand le prestataire les donne, sinon l'offre de base seule) et ne dit rien de sûr sur
+   * l'offre réelle.
+   */
+  licences_read: boolean;
 }
 
 /** List entry of a live v2 LinkedIn account. */
@@ -78,6 +91,7 @@ export function projectLinkedInEntry(
     is_locked: account.is_locked === true,
     reconnectable: isReconnectable(status),
     initial_sync_status: typeof asRecord(account.initial_sync).status === 'string' ? String(asRecord(account.initial_sync).status) : null,
+    licences_read: options.contracts !== null,
   };
 }
 
@@ -99,6 +113,7 @@ export function outdatedLinkEntry(row: { linkedin_account_id: string; linkedin_a
     is_locked: false,
     reconnectable: true,
     initial_sync_status: null,
+    licences_read: false,
   };
 }
 
@@ -143,6 +158,7 @@ export function unverifiedLinkEntry(row: {
     is_locked: stored === 'LOCKED',
     reconnectable: isReconnectable(stored),
     initial_sync_status: null,
+    licences_read: false,
     ...(told ? {} : { unverified: true }),
   };
 }

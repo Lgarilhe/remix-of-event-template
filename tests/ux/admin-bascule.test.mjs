@@ -478,21 +478,18 @@ test('R1 : un lot plus ancien n\u2019a pas de bouton actif tant qu\u2019un lot p
   assert.equal(state({ rolledBack: false, rows: 0, newerOpen: false }), 'empty');
   assert.equal(state({ rolledBack: true, rows: 5, newerOpen: false }), 'done');
   assert.equal(state({ rolledBack: false, rows: null, newerOpen: false }), 'available', 'lignes inconnues : le serveur décide');
-  assert.equal(copy.BATCHES.blockedByNewer, 'Les conversions s\u2019annulent de la plus récente à la plus ancienne.');
-  assert.equal(copy.BATCHES.rollbackBlockedButton, 'Annulez d\u2019abord le lot plus récent');
+  assert.equal(copy.BATCHES.rollbackBlockedButton, 'Lot plus récent à annuler d\u2019abord');
   assert.equal(copy.BATCHES.empty, 'Aucune ligne réécrite : rien à annuler.');
   const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
   assert.match(panel, /const state = batchRollbackState\(batch\)/);
   assert.match(panel, /\(state === 'available' \|\| state === 'blocked'\) && \(/);
   assert.match(panel, /disabled=\{busy \|\| state === 'blocked'\}/);
-  assert.match(panel, /aria-describedby=\{state === 'blocked' \? `batch-blocked-\$\{batch\.batchId\}` : undefined\}/);
-  assert.match(panel, /state === 'blocked' && \(\s*<p id=\{`batch-blocked-\$\{batch\.batchId\}`\}[^>]*>\{BATCHES\.blockedByNewer\}/);
   assert.match(panel, /state === 'empty' && <p[^>]*>\{BATCHES\.empty\}/);
   // La confirmation de l'annulation rappelle l'ordre.
   assert.ok(copy.ROLLBACK.lines.some((line) => /annulez la plus récente en premier/.test(line)));
 });
 
-test('R1 : le bouton refusé d\u2019un ancien lot se lit sans opacité (son libellé dit quoi faire), sa raison et son attribut restent', async () => {
+test('R1 : le bouton refusé d\u2019un ancien lot se lit sans opacité (son libellé décrit l\u2019état, sans ordre), sans ligne de raison dessous', async () => {
   // Le fichier se lit comme du TSX (un commentaire mal placé dans une expression JSX casse la page sans casser les regex).
   await transform(SRC[`${ADMIN_DIR}/BasculePanel.tsx`], { loader: 'tsx' });
   const panel = CODE[`${ADMIN_DIR}/BasculePanel.tsx`];
@@ -508,17 +505,22 @@ test('R1 : le bouton refusé d\u2019un ancien lot se lit sans opacité (son libe
     assert.ok(classes.includes(cls), `classe absente : ${cls}`);
   }
   // Sans opacité, le refus se lit dans les mots : libellé et nom accessible propres au lot refusé, le nom contient le libellé affiché.
+  // Le libellé décrit l'état et n'est pas un ordre : un impératif sur un contrôle éteint se lit comme un geste à faire.
   assert.equal(open[2].trim(), "state === 'blocked' ? BATCHES.rollbackBlockedAria(batch.batchId) : BATCHES.rollbackAria(batch.batchId)");
   assert.match(panel, /\{state === 'blocked' \? BATCHES\.rollbackBlockedButton : BATCHES\.rollbackButton\}\s*<\/Button>/);
   assert.ok(copy.BATCHES.rollbackBlockedAria('abcd-1234').includes(copy.BATCHES.rollbackBlockedButton), 'étiquette dans le nom accessible');
   assert.ok(copy.BATCHES.rollbackBlockedAria('abcd-1234').includes('abcd-1234'));
   assert.ok(copy.BATCHES.rollbackAria('abcd-1234').includes(copy.BATCHES.rollbackButton));
   assert.notEqual(copy.BATCHES.rollbackBlockedButton, copy.BATCHES.rollbackButton);
-  // Le lecteur d'écran garde l'attribut disabled, le lien vers la raison et la phrase : la raison ne répète pas le libellé.
-  assert.match(panel, /<Button[^>]*?aria-describedby=\{state === 'blocked' \? `batch-blocked-\$\{batch\.batchId\}` : undefined\}[^>]*?disabled=\{busy \|\| state === 'blocked'\}/);
-  assert.match(panel, /state === 'blocked' && \(\s*<p id=\{`batch-blocked-\$\{batch\.batchId\}`\}[^>]*>\{BATCHES\.blockedByNewer\}/);
-  assert.doesNotMatch(copy.BATCHES.blockedByNewer, /d\u2019abord/);
-  assert.equal(copy.BATCHES.blockedByNewer.split(/[.!?]/).filter(Boolean).length, 1, 'une phrase au plus');
+  assert.equal(copy.BATCHES.rollbackBlockedButton, 'Lot plus récent à annuler d\u2019abord');
+  assert.doesNotMatch(copy.BATCHES.rollbackBlockedButton, /^(annulez|annuler|attendez|patientez|cliquez|commencez|d\u00e9faites)/i, 'un libellé qui décrit, pas un ordre');
+  assert.doesNotMatch(copy.BATCHES.rollbackBlockedAria('abcd-1234'), /^(annulez|attendez|patientez|cliquez)/i);
+  // Le lecteur d'écran garde l'attribut disabled ; la ligne de raison est supprimée : elle redisait la règle du libellé
+  // (« de la plus récente à la plus ancienne »), et le nom accessible porte déjà le libellé et le lot visé.
+  assert.match(panel, /<Button[^>]*?disabled=\{busy \|\| state === 'blocked'\}/);
+  assert.equal('blockedByNewer' in copy.BATCHES, false, 'plus de ligne de raison dans les textes');
+  assert.doesNotMatch(panel, /blockedByNewer|batch-blocked-|aria-describedby/, 'ni ligne de raison ni lien vers elle');
+  assert.doesNotMatch(panel, /Les conversions s\u2019annulent/);
 });
 
 test('R1 : le refus du serveur pour l\u2019ordre et pour un lot vide a sa phrase, sans résultat inconnu', async () => {

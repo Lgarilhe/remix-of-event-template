@@ -245,8 +245,8 @@ test('R6 — Mon compte LinkedIn : état partagé, un geste par cause, plus de f
   assert.doesNotMatch(myAccount, /Le mapping pointe vers/);
   assert.doesNotMatch(myAccount, /Rate limit/);
   assert.doesNotMatch(myAccount, /getMappingForUser/);
-  // Carte Plafonds : même classement que l'écran
-  assert.match(myAccount, /classifyLinkedInStatus\(status\.account_status\) === 'needs_reconnect'/);
+  // Carte Plafonds : même classement et même cause que l'écran (quotaNoticeOf lit classifyConnectionHealth et causeOfReconnect)
+  assert.match(myAccount, /quotaNoticeOf\(status\.account_status, accountId\)/);
 });
 
 test('C8/C23 — Mon compte LinkedIn : lecture ratée affichée en erreur avec « Réessayer »', () => {

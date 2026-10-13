@@ -13,10 +13,14 @@
  * - account.status.degraded : état de carte seulement, aucune notification ;
  * - account.status.errored : « Problème de connexion LinkedIn », pas « n'est plus connecté » ;
  *   account.status.disconnected garde « Compte LinkedIn déconnecté » ;
- * - account.unlocked : l'état est relu chez le prestataire et c'est lui qui est écrit (PARTIAL avant le verrou, il
- *   reste PARTIAL ; running, OK ; relecture impossible, OK comme avant) ; un account.status.* qui ne dit pas si le
- *   verrou est levé fait de même sur une liaison LOCKED ;
- * - account.reconnect sans tentative de connexion : mêmes règles que account.status.* ;
+ * - account.unlocked : le prestataire n'est lu que pour une liaison enregistrée LOCKED, et c'est son état qui est écrit
+ *   (PARTIAL avant le verrou, il reste PARTIAL ; running, OK) ; relecture impossible (compte introuvable, erreur, compte
+ *   sans statut) : la liaison reste LOCKED, l'événement n'est pas acquitté (500, clé de dédoublonnage libérée), le même
+ *   evt_ rejoué est traité, un rejeu après succès est dédoublonné ;
+ * - un account.status.* qui ne dit pas si le verrou est levé fait de même sur une liaison LOCKED ; avec is_locked
+ *   (vrai ou faux) l'événement fait foi, sans relecture ;
+ * - account.reconnect et account.add sans tentative de connexion : mêmes règles que account.status.* ; un statut absent
+ *   ou hors spécification ne dit rien : statut gardé, aucune notification ;
  * - des livraisons simultanées (evt_ distincts, 8 et 24, par genre puis mêlées) laissent le statut ET les
  *   notifications d'un ordre série quelconque des mêmes événements : jamais un événement recouvert, perdu ou
  *   annoncé deux fois.
@@ -26,7 +30,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { admin, createOrg, deleteOrg, seedLinkedInAccount, type TestOrg } from '../helpers/supabase-admin';
-import { ENGINE_SKIP_REASON, engineAvailable, rand, setMockMode, v2, webhook } from '../helpers/sequence-engine';
+import { ENGINE_SKIP_REASON, callsOf, engineAvailable, rand, rawWebhook, setMockMode, v2, webhook } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
 test.setTimeout(120_000);
@@ -98,9 +102,11 @@ function modelApply(status: string, kind: Kind, provider: string): [string, Told
   switch (kind) {
     case 'lock': return BROKEN.includes(status) || status === 'LOCKED' ? [status, null] : ['LOCKED', 'locked'];
     case 'unlock': return status === 'LOCKED' ? afterLock() : [status, null];
-    case 'running': case 'degraded': case 'partial': {
+    // `running` porte `is_locked: false` (eventOfKind) : il fait foi pour le verrou, aucune relecture du prestataire.
+    case 'running': return ['OK', null];
+    case 'degraded': case 'partial': {
       if (status === 'LOCKED') return afterLock();
-      const to = kind === 'running' ? 'OK' : kind === 'degraded' ? 'DEGRADED' : 'PARTIAL';
+      const to = kind === 'degraded' ? 'DEGRADED' : 'PARTIAL';
       return [to, told(to, status)];
     }
     case 'disconnected': return ['CREDENTIALS', told('CREDENTIALS', status)];
@@ -377,7 +383,7 @@ test.describe('compte LinkedIn : ce que dit l\'application quand l\'état change
 
   // ─── Déverrouillage : l'état d'avant le verrou n'est pas perdu ───────────────────────────────────────────────
 
-  test('@critical account.unlocked : PARTIAL puis verrou puis déverrouillage reste PARTIAL quand le prestataire le dit, OK s\'il dit running ou si la relecture échoue', async () => {
+  test('@critical account.unlocked : PARTIAL puis verrou puis déverrouillage reste PARTIAL quand le prestataire le dit, OK s\'il dit running', async () => {
     const s = await scene();
     const cases: Array<[string, Record<string, unknown>, string, string[]]> = [
       ['partial', { status: 'partial', locked: false }, 'PARTIAL', [RESTREINT, PARTIEL]],
@@ -385,8 +391,6 @@ test.describe('compte LinkedIn : ce que dit l\'application quand l\'état change
       ['degraded', { status: 'degraded', locked: false }, 'DEGRADED', [RESTREINT]],
       ['disconnected', { status: 'disconnected', locked: false }, 'CREDENTIALS', [RESTREINT, DECONNECTE]],
       ['errored', { status: 'errored', locked: false }, 'ERROR', [RESTREINT, PROBLEME]],
-      // Relecture impossible (compte introuvable chez le prestataire) : OK, comme avant la relecture.
-      ['compte introuvable', { missing: true }, 'OK', [RESTREINT]],
       // Encore verrouillé chez le prestataire (événement en retard) : rien ne change.
       ['encore verrouillé', { status: 'running', locked: true }, 'LOCKED', [RESTREINT]],
     ];
@@ -430,7 +434,8 @@ test.describe('compte LinkedIn : ce que dit l\'application quand l\'état change
       await setStatus(s, 'LOCKED');
       await clearNotices(s);
       await setMockMode(s.accountId, provider);
-      await webhook(eventOfKind(s.accountId, kind, 1));
+      // Sans is_locked dans l'événement : le prestataire dit si le verrou est levé (relecture).
+      await webhook(v2.accountStatus(s.accountId, kind as 'running' | 'degraded' | 'partial'));
       const label = `${kind} sur LOCKED, prestataire ${provider.status}${provider.locked ? ' + verrou' : ''}`;
       expect(await statusOf(s), label).toBe(finalStatus);
       expect(await titlesOf(s), label).toEqual(titles);
@@ -441,6 +446,100 @@ test.describe('compte LinkedIn : ce que dit l\'application quand l\'état change
       await setMockMode(s.accountId, { status: 'running', locked: true });
       await webhook(eventOfKind(s.accountId, kind, 1));
       expect(await statusOf(s), kind).toBe(finalStatus);
+    }
+  });
+
+  // ─── Relecture impossible, lectures utiles seulement, événement qui fait foi ──────────────────────────────────
+
+  /** Nombre de lectures du compte (GET /v2/accounts/{id}) que le faux prestataire a reçues. */
+  const readsOf = async (s: Scene) => (await callsOf(s.accountId, 'getAccount')).length;
+
+  test('@critical account.unlocked : relecture impossible (compte introuvable, erreur du prestataire, compte sans statut) : LOCKED gardé et 500 ; le même evt_ rejoué applique l\'état du prestataire, un rejeu après succès est dédoublonné', async () => {
+    const s = await scene();
+    const failures: Array<[string, Record<string, unknown>]> = [
+      ['compte introuvable', { missing: true }],
+      ['erreur du prestataire', { error: { ops: ['getAccount'], methods: ['GET'], status: 500 } }],
+      ['compte sans statut', { error: { ops: ['getAccount'], methods: ['GET'], status: 200, body: { object: 'Account', id: s.accountId, provider: 'linkedin' } } }],
+    ];
+    for (const [name, failing] of failures) {
+      // Un compte PARTIAL verrouillé puis déverrouillé : tant que le prestataire n'a pas répondu, il ne devient pas OK.
+      await setStatus(s, 'PARTIAL');
+      await clearNotices(s);
+      await setMockMode(s.accountId, { status: 'partial', locked: false });
+      await webhook(v2.accountLocked(s.accountId));
+      expect(await statusOf(s), `${name} : verrouillé`).toBe('LOCKED');
+      await setMockMode(s.accountId, failing);
+      const event = v2.accountUnlocked(s.accountId);
+
+      const failed = await rawWebhook(event);
+      expect(failed.status, `${name} : l'événement n'est pas acquitté : ${JSON.stringify(failed.body)}`).toBe(500);
+      expect(failed.body.success, name).toBe(false);
+      expect(await statusOf(s), `${name} : la liaison reste LOCKED, aucun envoi ne part sur un doute`).toBe('LOCKED');
+      expect(await titlesOf(s), `${name} : seule la notification du verrou`).toEqual([RESTREINT]);
+
+      // Le prestataire répond cette fois : le même evt_ est traité (la clé de dédoublonnage a été libérée).
+      await setMockMode(s.accountId, { status: 'partial', locked: false });
+      const redelivered = await rawWebhook(event);
+      expect(redelivered.status, `${name} : ${JSON.stringify(redelivered.body)}`).toBe(200);
+      expect(redelivered.body, `${name} : traité, pas dédoublonné`).not.toMatchObject({ deduplicated: true });
+      expect(await statusOf(s), `${name} : l'état du prestataire`).toBe('PARTIAL');
+      expect(await titlesOf(s), `${name} : le retour en PARTIAL prévient une fois`).toEqual([RESTREINT, PARTIEL]);
+
+      // Un rejeu après le succès reste dédoublonné.
+      expect(await webhook(event), name).toMatchObject({ deduplicated: true });
+      expect(await titlesOf(s), name).toEqual([RESTREINT, PARTIEL]);
+    }
+  });
+
+  test('account.unlocked : le prestataire n\'est lu que pour une liaison enregistrée LOCKED, jamais pour OK, PARTIAL, CREDENTIALS, ERROR ou DEGRADED', async () => {
+    const s = await scene();
+    await setMockMode(s.accountId, { status: 'running', locked: false });
+    for (const stored of ['OK', 'PARTIAL', 'CREDENTIALS', 'ERROR', 'DEGRADED']) {
+      await setStatus(s, stored);
+      const before = await readsOf(s);
+      await Promise.all(Array.from({ length: 4 }, () => webhook(v2.accountUnlocked(s.accountId))));
+      expect((await readsOf(s)) - before, `${stored} : aucune lecture du prestataire`).toBe(0);
+      expect(await statusOf(s), stored).toBe(stored);
+    }
+    await setStatus(s, 'LOCKED');
+    const before = await readsOf(s);
+    await webhook(v2.accountUnlocked(s.accountId));
+    expect((await readsOf(s)) - before, 'une liaison LOCKED : une lecture').toBe(1);
+    expect(await statusOf(s)).toBe('OK');
+  });
+
+  test('@critical account.status.* avec is_locked explicite sur une liaison LOCKED : l\'événement fait foi, aucune relecture, même si le prestataire dit encore verrouillé', async () => {
+    const s = await scene();
+    await setMockMode(s.accountId, { status: 'running', locked: true });
+    const cases: Array<['running' | 'degraded' | 'partial', string, string[]]> = [
+      ['running', 'OK', []], ['degraded', 'DEGRADED', []], ['partial', 'PARTIAL', [PARTIEL]],
+    ];
+    for (const [kind, finalStatus, titles] of cases) {
+      await setStatus(s, 'LOCKED');
+      await clearNotices(s);
+      const before = await readsOf(s);
+      await webhook(v2.envelope(`account.status.${kind}`, s.accountId, { object: 'Account', id: s.accountId, status: kind, is_locked: false, provider: 'linkedin' }));
+      expect(await statusOf(s), `${kind} avec is_locked: false`).toBe(finalStatus);
+      expect(await titlesOf(s), kind).toEqual(titles);
+      expect((await readsOf(s)) - before, `${kind} : aucune lecture`).toBe(0);
+    }
+  });
+
+  test('@critical account.status.* sans is_locked sur une liaison LOCKED, relecture impossible : LOCKED gardé et 500 ; le même evt_ rejoué applique l\'état du prestataire', async () => {
+    const s = await scene();
+    for (const kind of ['running', 'degraded', 'partial'] as const) {
+      await setStatus(s, 'LOCKED');
+      await clearNotices(s);
+      await setMockMode(s.accountId, { missing: true });
+      const event = v2.accountStatus(s.accountId, kind);
+      const failed = await rawWebhook(event);
+      expect(failed.status, `${kind} : ${JSON.stringify(failed.body)}`).toBe(500);
+      expect(await statusOf(s), `${kind} : jamais l'état de l'événement sur un doute`).toBe('LOCKED');
+      expect(await titlesOf(s), kind).toEqual([]);
+      await setMockMode(s.accountId, { status: 'running', locked: false });
+      expect((await rawWebhook(event)).status, `${kind} : le rejeu est traité`).toBe(200);
+      expect(await statusOf(s), kind).toBe('OK');
+      expect(await webhook(event), kind).toMatchObject({ deduplicated: true });
     }
   });
 
@@ -486,6 +585,26 @@ test.describe('compte LinkedIn : ce que dit l\'application quand l\'état change
     await Promise.all(Array.from({ length: 8 }, () => webhook(reconnect({ status: 'running', is_locked: true }))));
     expect(await statusOf(s)).toBe('LOCKED');
     expect(await titlesOf(s)).toEqual([RESTREINT]);
+  });
+
+  test('@critical account.add et account.reconnect sans tentative : un statut absent ou hors spécification ne dit rien : statut gardé, aucune notification', async () => {
+    const s = await scene();
+    for (const type of ['account.add', 'account.reconnect']) {
+      for (const stored of ['OK', 'PARTIAL', 'CREDENTIALS', 'ERROR', 'LOCKED']) {
+        for (const payload of [{}, { status: 'paused' }, { status: '' }]) {
+          await setStatus(s, stored);
+          await clearNotices(s);
+          await webhook(v2.envelope(type, s.accountId, { object: 'Account', id: s.accountId, provider: 'linkedin', ...payload }));
+          const label = `${type} ${JSON.stringify(payload)} sur ${stored}`;
+          expect(await statusOf(s), label).toBe(stored);
+          expect(await noticesOf(s), `${label} : aucune notification`).toHaveLength(0);
+        }
+      }
+    }
+    // Un statut du prestataire reste pris en compte.
+    await setStatus(s, 'CREDENTIALS');
+    await webhook(v2.accountReconnect({ accountId: s.accountId }));
+    expect(await statusOf(s)).toBe('OK');
   });
 
   // ─── Livraisons simultanées : l'équivalent d'un ordre série ──────────────────────────────────────────────────

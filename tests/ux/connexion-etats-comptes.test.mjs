@@ -15,10 +15,15 @@
  * deux boîtes sans adresse connue, relecture à l'ouverture), compte restreint (même mot et
  * même phrase que le bandeau, aucun bouton ni adresse), liste e-mail du tableau de bord partagée.
  *
- * Troisième série (cartes) : toast de dissociation qui nomme l'adresse, type de la pierre tombale WhatsApp (renommé,
- * il ne compile plus), avis « Actualisation impossible » de la carte e-mail, noms accessibles qui commencent par le mot
+ * Troisième série (cartes) : toast de dissociation qui nomme l'adresse, type de la pierre tombale WhatsApp (renommé dans
+ * le type du front, il ne compile plus dans la garde de la carte), avis « Actualisation impossible » de la carte e-mail, noms accessibles qui commencent par le mot
  * affiché, deux boîtes de même nom distinguées par un rang, offre LinkedIn écrite seulement quand elle a été lue, état
  * d'une entrée dont le statut est déjà connu par webhook (même lecture que le bandeau).
+ *
+ * Quatrième série (cartes) : offre LinkedIn écrite d'après le champ `licences_read` de l'entrée (vrai, faux, absent, par statut
+ * et par format d'identifiant), encart rouge de « Plafonds du jour » avec une phrase par cause d'accord avec la carte,
+ * boîte e-mail absente d'une liste ancienne (« État à vérifier », jamais « À reconnecter »), nom du champ de la pierre
+ * tombale WhatsApp identique côté serveur et côté type.
  *
  * Lancer : node --test tests/ux/connexion-etats-comptes.test.mjs
  */
@@ -686,7 +691,10 @@ function typeErrorsOfView(hookSource) {
     .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
 }
 
-test('WhatsApp — renommé côté serveur, le champ de la trace ne compile plus dans la garde de la carte', () => {
+test('WhatsApp — renommé dans le type du front, le champ de la trace ne compile plus dans la garde de la carte', () => {
+  // Ce test garde le type du front seulement : la réponse du serveur est lue par un cast, donc un renommage dans
+  // unipile-accounts/handler.ts ne casse aucune compilation. Le nom côté serveur est comparé au type plus bas.
+
   assert.deepEqual(typeErrorsOfView(), [], 'le fichier tel qu\'il est compile');
   const renamed = read('src/hooks/useMemberWhatsAppAccounts.ts').replace('removed_by_member?: boolean;', 'deliberate_removal?: boolean;');
   assert.notEqual(renamed, read('src/hooks/useMemberWhatsAppAccounts.ts'), 'le champ a bien été renommé dans la copie');
@@ -898,3 +906,225 @@ test('Statut connu par webhook — la carte lit l\'entrée par les mêmes faits 
   // Reconnecter sur la carte : seulement pour l'action reconnect de la vue
   assert.match(src, /\{view\.action === 'reconnect' && \(\s*<ReconnectButton/);
 });
+
+// ================================================================== quatrième série (cartes)
+
+// ------------------------------------------------------------------ offre LinkedIn : le champ licences_read de l'entrée
+test('Offre — licences_read vrai : la licence a été lue, y compris pour une connexion partielle ; faux : jamais, même sous un statut actif', () => {
+  const RECRUITER = { ...CLASSIC, recruiter: true };
+  const offerOf = (raw, extra = {}, mappingId = 'acc_abc') => linkedInCard(entry(raw, { subscriptions: RECRUITER, ...extra }), mappingId).offer;
+  // Vrai : une connexion partielle vraiment lue montre de nouveau son offre (le défaut « classique » n'est pas en jeu)
+  assert.equal(offerOf('PARTIAL', { licences_read: true }), 'LinkedIn Recruiter');
+  assert.equal(offerOf('OK', { licences_read: true }), 'LinkedIn Recruiter');
+  assert.equal(offerOf('DEGRADED', { licences_read: true }), 'LinkedIn Recruiter');
+  assert.equal(linkedInCard(entry('OK', { licences_read: true })).offer, 'LinkedIn Classic', 'lue et classique : c\'est bien la licence');
+  // Faux : appel des contrats en échec (compte vivant, statut actif), entrée non lue, statuts que le serveur ne lit pas
+  for (const raw of ['OK', 'DEGRADED', 'PARTIAL', 'CREDENTIALS', 'ERROR', 'LOCKED', 'CONNECTING']) {
+    assert.equal(offerOf(raw, { licences_read: false }), null, `${raw} : licences_read faux`);
+  }
+  assert.equal(linkedInCard(entry('OK', { licences_read: false })).offer, null, 'contrats en échec : pas de « LinkedIn Classic » inventé');
+});
+
+test('Offre — licences_read absent (serveur plus ancien pendant un déploiement) : la classe de santé décide, comme avant', () => {
+  const RECRUITER = { ...CLASSIC, recruiter: true };
+  for (const raw of ['OK', 'DEGRADED']) assert.equal(linkedInCard(entry(raw, { subscriptions: RECRUITER })).offer, 'LinkedIn Recruiter', raw);
+  for (const raw of ['PARTIAL', 'CREDENTIALS', 'ERROR', 'LOCKED', 'CONNECTING']) assert.equal(linkedInCard(entry(raw, { subscriptions: RECRUITER })).offer, null, raw);
+  // Une valeur qui n'est pas un booléen vaut « absent », jamais « vrai »
+  for (const odd of ['true', 1, 'oui', {}, []]) {
+    assert.equal(view.linkedInAccountFacts({ state: 'connected', account: { status: 'OK', licences_read: odd }, mapping: { linkedin_account_id: 'acc_abc' } }).licencesRead, undefined, JSON.stringify(odd));
+    assert.equal(linkedInCard(entry('PARTIAL', { subscriptions: RECRUITER, licences_read: odd })).offer, null, `PARTIAL avec ${JSON.stringify(odd)}`);
+  }
+  assert.equal(view.linkedInAccountFacts({ state: 'connected', account: { status: 'OK', licences_read: null }, mapping: null }).licencesRead, undefined);
+});
+
+test('Offre — champ licences_read, statut et identifiant : la matrice entière', () => {
+  const RECRUITER = { ...CLASSIC, recruiter: true };
+  const OLD = 'q8Zr1TnWQeG4mXvH2dKpLa';
+  const STATUSES = ['OK', 'DEGRADED', 'PARTIAL', 'CREDENTIALS', 'ERROR', 'LOCKED', 'CONNECTING'];
+  const HEURISTIC = new Set(['OK', 'DEGRADED']);
+  for (const flag of [true, false, undefined]) for (const raw of STATUSES) for (const old of [false, true]) {
+    const id = old ? OLD : 'acc_abc';
+    const extra = flag === undefined ? {} : { licences_read: flag };
+    const offer = linkedInCard(entry(raw, { id, subscriptions: RECRUITER, ...extra }), id).offer;
+    // Un identifiant d'ancien format n'a eu aucun appel : jamais d'offre, quel que soit le champ
+    const expected = old ? null : flag === true ? 'LinkedIn Recruiter' : flag === false ? null : HEURISTIC.has(raw) ? 'LinkedIn Recruiter' : null;
+    assert.equal(offer, expected, `licences_read ${flag}, ${raw}, ${old ? 'ancien' : 'actuel'}`);
+  }
+  // L'état non lu (marqueur) l'emporte sur le champ
+  for (const flag of [true, false, undefined]) {
+    const extra = flag === undefined ? {} : { licences_read: flag };
+    assert.equal(linkedInCard(entry('OK', { unverified: true, subscriptions: RECRUITER, ...extra })).offer, null, `non lu, licences_read ${flag}`);
+  }
+  // Compte relié que la liste ne contient plus : pas d'entrée, pas d'offre
+  assert.equal(linkedInCard(null).offer, null);
+  assert.equal(view.licenceWasRead({ health: 'needs_reconnect', accountId: 'acc_abc', licencesRead: true }), true);
+  assert.equal(view.licenceWasRead({ health: 'connected', accountId: 'acc_abc', licencesRead: false }), false);
+  assert.equal(view.licenceWasRead({ health: 'connected', accountId: 'acc_abc', licencesRead: true, unverified: true }), false);
+});
+
+test('Offre — la carte passe par les faits du champ licences_read, et le type de la liste le déclare', () => {
+  const src = code('src/components/connections/connectionView.ts');
+  assert.match(src, /licences_read\?: boolean \| null/);
+  assert.match(src, /licencesRead: typeof li\.account\?\.licences_read === 'boolean' \? li\.account\.licences_read : undefined,/);
+  assert.match(src, /if \(typeof facts\.licencesRead === 'boolean'\) return facts\.licencesRead;/);
+  assert.match(code('src/components/settings/MyLinkedInAccount.tsx'), /const offer = licenceWasRead\(facts\) \? offerLabelOf\(myAccount\?\.subscriptions\) : null;/);
+});
+
+// ------------------------------------------------------------------ encart rouge de « Plafonds du jour » : une phrase par cause
+const sendRules = await loadTs('supabase/functions/_shared/sequence-send-rules.ts');
+
+test('Plafonds du jour — l\'encart dit la cause de la carte : session expirée, panne, connexion partielle, restriction, compte retiré, identifiant à refaire', () => {
+  const EXPECTED = {
+    CREDENTIALS: 'session_expired',
+    ERROR: 'connection_error',
+    ERRORED: 'connection_error',
+    STOPPED: 'connection_error',
+    PERMISSIONS: 'connection_error',
+    PARTIAL: 'authentication_partial',
+    LOCKED: 'locked',
+    DELETED: 'removed',
+  };
+  for (const [raw, kind] of Object.entries(EXPECTED)) {
+    const notice = view.quotaNoticeOf(raw, 'acc_abc');
+    assert.equal(notice?.kind, kind, raw);
+    assert.equal(notice.title, copy.QUOTA_NOTICE[kind].title, raw);
+    assert.equal(notice.body, copy.QUOTA_NOTICE[kind].body, raw);
+    // Même cause que la carte du compte au-dessus (sauf l'accès restreint, qui n'a pas de cause de reconnexion)
+    const card = of('linkedin', raw, { accountId: 'acc_abc' });
+    if (kind === 'locked') assert.equal(card.label, 'Compte restreint', raw);
+    else assert.equal(card.cause, kind, `${raw} : l'encart et la carte parlent de la même cause`);
+  }
+  // Un identifiant d'ancien format se lit « à refaire », comme la carte
+  const outdated = view.quotaNoticeOf('CREDENTIALS', 'q8Zr1TnWQeG4mXvH2dKpLa');
+  assert.equal(outdated?.kind, 'outdated_identifier');
+  assert.equal(of('linkedin', 'CREDENTIALS', { accountId: 'q8Zr1TnWQeG4mXvH2dKpLa' }).cause, 'outdated_identifier');
+  // Rien à dire d'un compte actif, limité, en connexion, inconnu ou sans statut
+  for (const raw of ['OK', 'RUNNING', 'DEGRADED', 'CONNECTING', 'TRUC_NOUVEAU', '', null, undefined]) {
+    assert.equal(view.quotaNoticeOf(raw, 'acc_abc'), null, String(raw));
+  }
+});
+
+test('Plafonds du jour — le titre reprend la phrase de la carte, sauf pour une session expirée dont le mot « déconnecté » reste', () => {
+  for (const kind of ['connection_error', 'authentication_partial', 'removed']) {
+    const cardSentence = copy.causeReason(kind, 'linkedin');
+    assert.ok(cardSentence.startsWith(copy.QUOTA_NOTICE[kind].title), `${kind} : la carte commence par le titre de l'encart`);
+    assert.doesNotMatch(`${copy.QUOTA_NOTICE[kind].title} ${copy.QUOTA_NOTICE[kind].body}`, /déconnect/i, `${kind} : pas « déconnecté » pour une autre cause`);
+  }
+  assert.equal(copy.QUOTA_NOTICE.session_expired.title, 'Compte déconnecté, reconnectez-le.', 'le mot « déconnecté » reste pour une session expirée');
+  assert.equal(copy.QUOTA_NOTICE.session_expired.body, 'Les séquences qui utilisent ce compte sont en pause et reprendront automatiquement après reconnexion.');
+  assert.doesNotMatch(`${copy.QUOTA_NOTICE.locked.title} ${copy.QUOTA_NOTICE.locked.body}`, /déconnect|reconnectez/i);
+  assert.match(copy.QUOTA_NOTICE.locked.body, /Se reconnecter n'y change rien/);
+  assert.match(copy.QUOTA_NOTICE.locked.title, /restreint/);
+});
+
+test('Plafonds du jour — « en pause » ne se dit que de ce que le moteur met vraiment en pause', () => {
+  // accountSendGate (supabase/functions/_shared/sequence-send-rules.ts) : CREDENTIALS et ERROR sont « disconnected » (le moteur met
+  // les inscriptions en pause, account_disconnected, et la reprise vient seule au retour du compte) ; DEGRADED, PARTIAL et LOCKED
+  // sont « limited » (les envois sont retenus 6 h, sans mise en pause).
+  const KIND = { CREDENTIALS: 'session_expired', ERROR: 'connection_error', PARTIAL: 'authentication_partial', LOCKED: 'locked' };
+  assert.equal(sendRules.accountSendGate('CREDENTIALS'), 'disconnected');
+  assert.equal(sendRules.accountSendGate('ERROR'), 'disconnected');
+  for (const [raw, kind] of Object.entries(KIND)) {
+    const gate = sendRules.accountSendGate(raw);
+    const { body } = copy.QUOTA_NOTICE[kind];
+    assert.notEqual(gate, 'send', `${raw} : le moteur ne laisse rien partir`);
+    if (gate === 'disconnected') {
+      assert.match(body, /séquences .* sont en pause/, `${raw} : les séquences du compte sont vraiment mises en pause`);
+      assert.match(body, /reprendront/, `${raw} : la reprise est automatique au retour du compte`);
+    } else {
+      assert.doesNotMatch(body, /en pause/, `${raw} (${gate}) : le moteur retient les envois, il ne met rien en pause`);
+      assert.match(body, /retenus/, raw);
+    }
+  }
+  // Un compte retiré ou à identifiant d'ancien format : la reconnexion crée un autre compte, le serveur arrête alors les envois de
+  // l'ancien (pause « manual », InMails annulés, retrait des rotations) : rien ne reprend seul, la phrase le dit.
+  for (const kind of ['outdated_identifier', 'removed']) {
+    const { body } = copy.QUOTA_NOTICE[kind];
+    assert.match(body, /séquences .* sont en pause/, kind);
+    assert.match(body, /relancez/, `${kind} : la personne relance ses séquences`);
+    assert.match(body, /ne reprennent pas d'elles-mêmes/, kind);
+    assert.doesNotMatch(body, /reprendront/, `${kind} : pas de promesse de reprise automatique`);
+  }
+});
+
+test('Plafonds du jour — l\'encart de la carte vient de quotaNoticeOf, plus de phrase écrite en dur', () => {
+  const src = code('src/components/settings/MyLinkedInAccount.tsx');
+  assert.match(src, /const notice = quotaNoticeOf\(status\.account_status, accountId\);/);
+  assert.match(src, /\{notice && \(/);
+  assert.match(src, /<span className="font-medium">\{notice\.title\}<\/span>/);
+  assert.match(src, /<span className="text-foreground-secondary">\{notice\.body\}<\/span>/);
+  assert.doesNotMatch(src, /Compte déconnecté, reconnectez-le|Les séquences qui utilisent ce compte/, 'la phrase vit dans connectionCopy.ts');
+  assert.doesNotMatch(src, /const disconnected =/);
+});
+
+// ------------------------------------------------------------------ boîte e-mail absente d'une liste ancienne
+test('E-mail — une boîte absente d\'une liste ancienne (relecture ratée) dit « État à vérifier » avec « Réessayer », jamais « À reconnecter »', () => {
+  const m = (id, acc) => ({ id, email_account_id: acc, email_address: null, provider: 'OUTLOOK' });
+  const listed = [{ id: 'acc_1', status: 'OK', type: 'OUTLOOK' }];
+  const mappings = [m('m1', 'acc_1'), m('m2', 'acc_2')];
+  const byAccount = (built) => Object.fromEntries(built.map((r) => [r.mapping.email_account_id, r]));
+
+  // Liste ancienne : la boîte connue garde son dernier état, la boîte absente n'est pas prouvée retirée
+  const stale = byAccount(rows.buildMailboxRows(mappings, listed, false, true));
+  assert.equal(stale.acc_1.view.label, 'Actif');
+  assert.equal(stale.acc_2.view.label, 'État à vérifier');
+  assert.equal(stale.acc_2.view.cause, 'unreadable');
+  assert.equal(stale.acc_2.view.action, 'refresh');
+  assert.equal(stale.acc_2.view.actionLabel, 'Réessayer');
+  assert.equal(stale.acc_2.view.reconnect, 'in_place');
+  assert.equal(stale.acc_2.status, null, 'pas de statut deviné, donc pas de « DELETED » qui masquerait une autre boîte');
+  assert.notEqual(stale.acc_2.view.reason, copy.causeReason('removed', 'email'));
+
+  // Liste à jour (quatrième paramètre faux ou absent) : la même boîte absente est bien retirée
+  for (const built of [rows.buildMailboxRows(mappings, listed, false), rows.buildMailboxRows(mappings, listed, false, false)]) {
+    const fresh = byAccount(built);
+    assert.equal(fresh.acc_2.view.label, 'À reconnecter');
+    assert.equal(fresh.acc_2.view.cause, 'removed');
+    assert.equal(fresh.acc_2.view.reconnect, 'new_link');
+    assert.equal(fresh.acc_2.status, 'DELETED');
+  }
+
+  // Une boîte que la liste ancienne contient reste lue telle quelle, y compris retirée ou à reconnecter
+  const known = byAccount(rows.buildMailboxRows(mappings, [{ id: 'acc_1', status: 'CREDENTIALS', type: 'OUTLOOK' }, { id: 'acc_2', status: 'DELETED', type: 'OUTLOOK' }], false, true));
+  assert.equal(known.acc_1.view.cause, 'session_expired');
+  assert.equal(known.acc_2.view.cause, 'removed');
+
+  // Aucune liste reçue : toujours « à vérifier » pour toutes les boîtes
+  for (const row of rows.buildMailboxRows(mappings, [], true, false)) assert.equal(row.view.label, 'État à vérifier');
+  for (const row of rows.buildMailboxRows(mappings, [], true, true)) assert.equal(row.view.label, 'État à vérifier');
+});
+
+test('E-mail — la carte donne à buildMailboxRows la relecture ratée comme quatrième argument', () => {
+  const card = code('src/components/settings/MyEmailAccount.tsx');
+  assert.match(card, /const listStale = list\.isRefetchError;/);
+  assert.match(card, /buildMailboxRows\(myMappings, list\.data \?\? \[\], listFailed, listStale\)/);
+  assert.match(card, /\[myMappings, list\.data, listFailed, listStale\]/);
+});
+
+// ------------------------------------------------------------------ pierre tombale WhatsApp : même nom côté serveur et côté type
+/** Noms du champ de la pierre tombale : celui que list_whatsapp écrit (handler.ts) et celui que le type du front déclare. */
+function tombstoneFieldNames(handlerSource, hookSource) {
+  const server = [...handlerSource.matchAll(/^\s+(\w+): account\.status === 'DELETED' && mapping\.(\w+) != null,$/gm)]
+    .map((match) => ({ field: match[1], column: match[2] }));
+  const type = hookSource.match(/export interface MemberWhatsAppAccount \{[\s\S]*?\n\s+(\w+)\?: boolean;\n\}/);
+  return { server, type: type ? type[1] : null };
+}
+
+test('WhatsApp — le champ de la pierre tombale que le serveur écrit est celui du type du front (un cast les sépare)', () => {
+  const handler = read('supabase/functions/unipile-accounts/handler.ts');
+  const hook = read('src/hooks/useMemberWhatsAppAccounts.ts');
+  const names = tombstoneFieldNames(handler, hook);
+  assert.equal(names.server.length, 1, 'une seule projection de la pierre tombale dans list_whatsapp');
+  assert.equal(names.type, 'removed_by_member', 'le type du front déclare le champ');
+  assert.equal(names.server[0].field, names.type, 'le serveur écrit le champ que le type du front lit');
+  assert.equal(names.server[0].column, `${names.type}_at`, 'la colonne qui porte la marque s\'appelle le champ avec _at');
+  assert.match(read('src/components/connections/connectionView.ts'), /account\.removed_by_member !== true/, 'la garde de la carte lit ce même nom');
+  // La comparaison attrape un renommage d'un seul côté
+  const renamedOnServer = handler.replace("removed_by_member: account.status === 'DELETED'", "deliberate_removal: account.status === 'DELETED'");
+  assert.notEqual(renamedOnServer, handler, 'le champ a bien été renommé dans la copie du serveur');
+  const drifted = tombstoneFieldNames(renamedOnServer, hook);
+  assert.notEqual(drifted.server[0]?.field, drifted.type, 'un renommage côté serveur seul est vu');
+  const renamedInType = hook.replace('removed_by_member?: boolean;', 'deliberate_removal?: boolean;');
+  assert.notEqual(tombstoneFieldNames(handler, renamedInType).server[0].field, tombstoneFieldNames(handler, renamedInType).type, 'un renommage dans le type seul est vu');
+});
+
