@@ -83,6 +83,8 @@ interface ScorecardTabProps {
   onRecordingChange?: (recording: boolean) => void;
   /** Événement vérifié de l'entretien, fourni par le calendrier. */
   qualificationSessionId?: string | null;
+  /** Lieu du rendez-vous vérifié : guide les réglages audio de l'assistant. */
+  meetingLocation?: string | null;
 }
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'error';
@@ -241,7 +243,7 @@ function IconAction({
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   candidate, enrichedProfile, onOpenProfile, autoStartCoaching, autoGenerate, autoOpenFirst,
-  onActiveEvaluationChange, onRecordingChange, qualificationSessionId,
+  onActiveEvaluationChange, onRecordingChange, qualificationSessionId, meetingLocation,
 }) => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
@@ -1143,6 +1145,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         projectId={activeEval.projectId}
         processStepId={activeEval.processStepId}
         qualificationSessionId={activeEval.qualificationSessionId ?? qualificationSessionId}
+        meetingLocation={meetingLocation}
         jobId={candidate.jobId || ''}
         jobTitle={candidate.jobTitle || ''}
         jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}

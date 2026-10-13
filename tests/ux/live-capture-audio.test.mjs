@@ -42,6 +42,7 @@ async function load(contents) {
 }
 
 const lib = await load("export * from './src/lib/liveAudioCapture';");
+const recommendations = await load("export * from './src/lib/interviewAudioRecommendation';");
 
 const UA = {
   chromeWindows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
@@ -217,6 +218,72 @@ test('préférence : « visio ou appel » par défaut, le choix « sur place » 
     assert.equal(lib.readCaptureMode(), 'meeting');
     assert.doesNotThrow(() => lib.storeCaptureMode('mic'));
   } finally { delete globalThis.localStorage; }
+});
+
+test('rendez-vous : le réglage conseillé ne remplace jamais un choix explicite et ne le sauvegarde pas', () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  try {
+    assert.equal(lib.readCaptureMode('mic'), 'mic', 'premier rendez-vous sur place');
+    assert.equal(store.size, 0, 'une recommandation ne devient pas une préférence');
+    assert.equal(lib.readCaptureMode('meeting'), 'meeting', 'visio suivante sans préférence');
+    lib.storeCaptureMode('mic');
+    assert.equal(lib.readCaptureMode('meeting'), 'mic', 'préférence explicite conservée');
+    lib.storeCaptureMode('meeting');
+    assert.equal(lib.readCaptureMode('mic'), 'meeting', 'choix visio également conservé');
+    globalThis.localStorage = { getItem() { throw new Error('bloqué'); } };
+    assert.equal(lib.readCaptureMode('mic'), 'mic', 'recommandation conservée sans stockage');
+  } finally { delete globalThis.localStorage; }
+});
+
+test('rendez-vous : marque déduite du vrai domaine, jamais d’une sous-chaîne trompeuse', () => {
+  for (const [location, expected] of [
+    ['https://teams.microsoft.com/l/meetup-join/example', 'teams'],
+    ['https://teams.live.com/meet/example', 'teams'],
+    ['https://teams.cloud.microsoft/meet/example', 'teams'],
+    ['https://meet.google.com/abc-defg-hij', 'google_meet'],
+    ['https://company.zoom.us/j/123', 'zoom'],
+    ['https://zoom.com/j/123', 'zoom'],
+    ['https://teams.microsoft.com.example.test/meet', 'video'],
+    ['https://example.test/zoom.us', 'video'],
+    ['javascript:alert("Teams")', null],
+  ]) assert.equal(recommendations.interviewAudioService(location), expected, location);
+});
+
+test('rendez-vous : téléphone et présentiel conseillent le micro, un lieu inconnu reste un choix manuel', () => {
+  for (const location of ['tel:+33612345678', 'Entretien téléphonique', '+33 6 12 34 56 78']) {
+    const advice = recommendations.interviewAudioRecommendation(location, true, UA.chromeWindows);
+    assert.equal(advice.service, 'phone');
+    assert.equal(advice.mode, 'mic');
+    assert.match(advice.description, /haut-parleur/);
+  }
+  const inPerson = recommendations.interviewAudioRecommendation('Présentiel — bureau Paris', true, UA.chromeWindows);
+  assert.equal(inPerson.service, 'in_person');
+  assert.equal(inPerson.mode, 'mic');
+  for (const location of [null, '', 'À préciser']) assert.equal(recommendations.interviewAudioRecommendation(location, true), null);
+});
+
+test('rendez-vous : Teams, Meet et Zoom conseillent le partage de l’onglet sur navigateur compatible', () => {
+  for (const location of ['https://teams.microsoft.com/l/example', 'https://meet.google.com/abc', 'https://zoom.us/j/123']) {
+    const advice = recommendations.interviewAudioRecommendation(location, true, UA.chromeMac);
+    assert.equal(advice.mode, 'meeting');
+    assert.match(advice.description, /Chrome ou Edge/);
+    assert.match(advice.description, /Partager aussi l’audio/);
+  }
+});
+
+test('rendez-vous : aucune promesse de capture native, ni sur mobile ou navigateur incompatible', () => {
+  const teamsWindows = recommendations.interviewAudioRecommendation('Microsoft Teams', true, UA.chromeWindows);
+  assert.match(teamsWindows.applicationHint, /uniquement si le navigateur propose/);
+  const teamsMac = recommendations.interviewAudioRecommendation('Microsoft Teams', true, UA.chromeMac);
+  assert.match(teamsMac.applicationHint, /version web/);
+  assert.match(teamsMac.applicationHint, /n’est pas garanti/);
+  for (const userAgent of [UA.chromeAndroid, UA.chromeIos, UA.safariMac, UA.firefox]) {
+    const advice = recommendations.interviewAudioRecommendation('https://teams.microsoft.com/l/example', false, userAgent);
+    assert.equal(advice.mode, 'mic');
+    assert.match(advice.description, /seul le micro est disponible/);
+    assert.match(advice.description, /haut-parleur/);
+  }
 });
 
 // ─── Gardes sur le panneau ────────────────────────────────────────────────

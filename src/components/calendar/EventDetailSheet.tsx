@@ -116,7 +116,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
     onOpenChange(false);
   };
   const prepareInterview = () => {
-    navigate(`/pipeline?candidate=${meta.candidateId}&tab=evaluation&prepareInterview=1`);
+    navigate(interviewActions?.scorecard ?? `/pipeline?candidate=${encodeURIComponent(meta.candidateId ?? '')}&tab=evaluation&prepareInterview=1`);
     onOpenChange(false);
   };
 

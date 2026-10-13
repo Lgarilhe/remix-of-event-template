@@ -35,7 +35,7 @@ function evaluation(session: string): Row {
   };
 }
 
-const evaluations = [evaluation('session-second'), ...(scenario === 'ready' ? [evaluation('session-first')] : [])];
+const evaluations = [evaluation('session-second'), ...(['ready', 'ready-assistant'].includes(scenario) ? [evaluation('session-first')] : [])];
 const sessions = ['session-first', 'session-second'].map(id => ({
   id, organization_id: 'org-fixture', candidate_profile_id: 'candidate-fixture',
   project_id: 'mission-fixture', created_by: 'recruiter-fixture',
@@ -68,7 +68,14 @@ export const useOrganization = () => ({ organizationId: 'org-fixture' });
 export const missionIdOfJob = () => undefined;
 export const isInsufficientCreditsError = () => false;
 export const ModelPicker = () => null;
-export const LiveCoachingPanel = () => { throw new Error('Assistant audio ouvert sans demande'); };
+export const LiveCoachingPanel = ({ qualificationSessionId, meetingLocation }: { qualificationSessionId: string; meetingLocation?: string }) => {
+  if (scenario !== 'ready-assistant') throw new Error('Assistant audio ouvert sans demande');
+  return <section aria-label="Assistant prêt">
+    <output aria-label="Entretien de l’assistant">{qualificationSessionId}</output>
+    <output aria-label="Visio de l’assistant">{meetingLocation}</output>
+    <button>Démarrer l’enregistrement</button>
+  </section>;
+};
 export const invokeWithCredits = () => { qa.manualGenerations++; throw new Error('Génération manuelle payante inattendue'); };
 
 export async function invokeEdgeFunction(name: string, body: Record<string, unknown>): Promise<Result> {
