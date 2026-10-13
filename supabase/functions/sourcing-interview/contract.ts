@@ -21,6 +21,58 @@ export type BriefPatch = {
 };
 
 const categories = ['technical', 'soft_skill', 'culture_fit', 'motivation', 'experience'] as const;
+
+export const SOURCING_INTERVIEW_TOOL = 'update_sourcing_brief';
+const stringSchema = { type: 'string' };
+const objectSchema = (properties: Record<string, unknown>, required: string[] = []) => ({
+  type: 'object', additionalProperties: false, properties, required,
+});
+const stringArraySchema = { type: 'array', items: stringSchema };
+/** The model uses the existing structured-tool transport; local validation stays authoritative. */
+export const SOURCING_INTERVIEW_SCHEMA = objectSchema({
+  reply: { type: 'string', description: 'Confirmation des changements et une seule prochaine question en français.' },
+  patch: objectSchema({
+    ...Object.fromEntries(['title', 'location', 'context', 'mission_description', 'seniority', 'salary_currency', 'reports_to'].map(key => [key, stringSchema])),
+    client: objectSchema({ name: stringSchema, sector: stringSchema, culture_notes: stringSchema,
+      size: { type: 'string', enum: ['startup', 'scale-up', 'mid-market', 'enterprise'] } }),
+    contract_type: { type: 'string', enum: ['cdi', 'cdd', 'freelance', 'alternance', 'stage', 'interim'] },
+    remote_policy: { type: 'string', enum: ['onsite', 'hybrid', 'full_remote'] },
+    salary_type: { type: 'string', enum: ['annual', 'daily', 'hourly'] },
+    ...Object.fromEntries(['experience_min', 'experience_max', 'salary_min', 'salary_max', 'remote_days', 'team_size', 'manages'].map(key => [key, { type: 'number' }])),
+    ...Object.fromEntries(['skills_must_have', 'skills_should_have', 'skills_nice_to_have', 'skills_to_avoid', 'certifications'].map(key => [key, stringArraySchema])),
+    languages: { type: 'array', items: objectSchema({ language: stringSchema, level: stringSchema }, ['language', 'level']) },
+    target_companies: { type: 'array', items: objectSchema({ category: stringSchema,
+      companies: { type: 'array', items: objectSchema({ name: stringSchema }, ['name']) } }, ['category', 'companies']) },
+    evaluation_criteria: { type: 'array', items: objectSchema({ id: stringSchema, label: stringSchema, description: stringSchema,
+      category: { type: 'string', enum: categories }, weight: { type: 'number', enum: [1, 2, 3] }, deal_breaker: { type: 'boolean' },
+    }, ['id', 'label', 'description', 'category', 'weight']) },
+    evaluation_weights: objectSchema(Object.fromEntries(categories.map(key => [key, { type: 'number' }])), [...categories]),
+  }),
+}, ['reply', 'patch']);
+
+/** Only fixed validation codes reach logs or a correction prompt, never supplied values. */
+export function interviewValidationCode(error: unknown): string {
+  const row = error && typeof error === 'object' ? error as { name?: unknown; message?: unknown } : {};
+  if (row.name === 'SyntaxError') return 'invalid_json';
+  const codes: Record<string, string> = {
+    'Réponse de cadrage invalide. Réessayez.': 'invalid_object',
+    'Texte de cadrage invalide.': 'invalid_text',
+    'Liste de cadrage invalide.': 'invalid_list',
+    'Valeur de cadrage invalide.': 'invalid_number',
+    'Choix de cadrage invalide.': 'invalid_choice',
+    'Critère invalide.': 'invalid_criterion',
+    'Critère éliminatoire invalide.': 'invalid_deal_breaker',
+    'Les pondérations doivent totaliser 100 %.': 'invalid_weights_total',
+    'La réponse de cadrage est vide. Réessayez.': 'empty_reply',
+    'Le minimum doit être inférieur ou égal au maximum.': 'inverted_range',
+    'Outil de cadrage invalide.': 'invalid_tool',
+    'Réponse de cadrage tronquée.': 'truncated_output',
+    'Modèle de cadrage invalide.': 'invalid_model',
+    'Modèles de cadrage incohérents.': 'inconsistent_models',
+  };
+  return typeof row.message === 'string' && Object.prototype.hasOwnProperty.call(codes, row.message) ? codes[row.message] : 'unknown_error';
+}
+
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Réponse de cadrage invalide. Réessayez.');
   return v as Record<string, unknown>;
