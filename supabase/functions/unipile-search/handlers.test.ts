@@ -1203,6 +1203,27 @@ Deno.test('send_message : un interlocuteur connu par son seul nom public ou son 
   strictEqual(fine.rpcCalls.length, 0, 'rien à enregistrer sans identifiant');
 });
 
+Deno.test('send_message : une lecture de conversation en panne passagère refuse l\'envoi 503 (échec fermé), un refus du prestataire laisse l\'envoi rendre sa propre erreur', async () => {
+  reset();
+  // Réseau, 5xx et limite : l'interlocuteur est inconnu, son effacement ne peut pas être vérifié, rien ne part ni ne s'écrit.
+  for (const status of [503, 502, 429]) {
+    const admin = fakeAdmin();
+    await withMockTransport(router({ [`GET /${ACC}/chats/c1`]: { status, body: {} }, [`POST /${ACC}/chats/c1/messages/send`]: { body: SENT } }), async (mock) => {
+      const refused = await refusedSend(() => handleSendMessage(ACC, { chat_id: 'c1', text: 'Bonjour' }, sendContext(admin)));
+      deepStrictEqual(refused, { status: 503, code: 'GDPR_UNVERIFIED', message: SEND_GDPR_UNVERIFIED_MESSAGE }, String(status));
+      ok(!mock.calls.some((c) => c.method === 'POST'), `aucun envoi (${status})`);
+    });
+    strictEqual(admin.rpcCalls.length, 0, `aucun marqueur (${status})`);
+  }
+  // Conversation introuvable chez le prestataire : pas une panne passagère, l'envoi suit son cours et rend sa propre erreur.
+  const gone = fakeAdmin();
+  await withMockTransport(router({ [`GET /${ACC}/chats/c1`]: { status: 404, body: {} } }), async (mock) => {
+    const { status } = await call(await handleSendMessage(ACC, { chat_id: 'c1', text: 'Bonjour' }, sendContext(gone)));
+    ok(status >= 400, String(status));
+    ok(mock.calls.some((c) => c.method === 'POST'), 'l\'envoi a été tenté et refusé par le prestataire');
+  });
+});
+
 Deno.test('send_message : un candidat non effacé part et s\'enregistre comme avant', async () => {
   reset();
   const timeline: string[] = [];

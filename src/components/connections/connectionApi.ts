@@ -26,12 +26,16 @@ import {
   type ConnectionProviderId,
 } from '@/lib/connectionCopy';
 
+/** JSON lu du serveur, dont chaque champ est vérifié avant usage (même forme que la réponse de `invokeUnipile`). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LooseJson = Record<string, any>;
+
 // ---------------------------------------------------------------------------
 // Types du contrat
 // ---------------------------------------------------------------------------
 
 export interface InvokeResult {
-  data: Record<string, any> | null;
+  data: LooseJson | null;
   error: (Error & { status?: number; code?: string }) | null;
 }
 export type InvokeFn = (functionName: string, body: Record<string, unknown>) => Promise<InvokeResult>;
@@ -139,8 +143,8 @@ const PROVIDERS: readonly string[] = ['linkedin', 'whatsapp', 'google', 'outlook
 // Lecture des réponses
 // ---------------------------------------------------------------------------
 
-function record(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+function record(value: unknown): LooseJson {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as LooseJson) : {};
 }
 
 function text(value: unknown): string | undefined {
@@ -191,7 +195,7 @@ export function parseNext(raw: unknown): ConnectionNext | null {
       if (Array.isArray(r.challenges)) {
         step.challenges = r.challenges
           .filter((c: unknown) => text(record(c).id))
-          .map((c: Record<string, any>) => ({
+          .map((c: LooseJson) => ({
             id: c.id as string,
             label: text(c.label) ?? (c.id as string),
             ...(text(c.description) ? { description: c.description as string } : {}),
@@ -200,12 +204,12 @@ export function parseNext(raw: unknown): ConnectionNext | null {
       if (Array.isArray(r.contracts)) {
         step.contracts = r.contracts
           .filter((c: unknown) => text(record(c).id))
-          .map((c: Record<string, any>) => ({ id: c.id as string, name: text(c.name) ?? (c.id as string) }));
+          .map((c: LooseJson) => ({ id: c.id as string, name: text(c.name) ?? (c.id as string) }));
       }
       if (Array.isArray(r.products)) {
         step.products = r.products
           .filter((p: unknown) => text(record(p).id))
-          .map((p: Record<string, any>) => ({ id: p.id as string, display_name: text(p.display_name) ?? (p.id as string) }));
+          .map((p: LooseJson) => ({ id: p.id as string, display_name: text(p.display_name) ?? (p.id as string) }));
       }
       if (r.captcha && typeof r.captcha === 'object') {
         const c = record(r.captcha);

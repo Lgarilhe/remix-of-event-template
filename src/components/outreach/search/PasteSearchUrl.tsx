@@ -214,14 +214,16 @@ export const PasteSearchUrl: React.FC<PasteSearchUrlProps> = ({
                 </div>
               )}
             </div>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setFeedback(null)}
               aria-label={PASTE_URL_COPY.dismissResult}
-              className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11"
+              className="h-6 w-6 shrink-0 rounded text-muted-foreground hover:text-foreground max-sm:h-11 max-sm:w-11"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         )}
       </div>

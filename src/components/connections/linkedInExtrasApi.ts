@@ -19,14 +19,18 @@
 import { safeServerMessage } from '@/lib/connectionCopy';
 import { CONTRACTS_COPY, INVITATIONS_COPY } from './linkedInExtrasCopy';
 
+/** JSON lu du serveur, dont chaque champ est vérifié avant usage (même forme que la réponse de `invokeUnipile`). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LooseJson = Record<string, any>;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 /** Appel de la fonction de recherche (invokeUnipile en production). */
-export type SearchInvoke = (body: Record<string, unknown>) => Promise<{ data: Record<string, any> | null; httpStatus?: number }>;
+export type SearchInvoke = (body: Record<string, unknown>) => Promise<{ data: LooseJson | null; httpStatus?: number }>;
 /** Appel de la fonction des comptes (invokeEdgeFunction en production). */
-export type AccountsInvoke = (body: Record<string, unknown>) => Promise<{ data: Record<string, any> | null; error: Error | null }>;
+export type AccountsInvoke = (body: Record<string, unknown>) => Promise<{ data: LooseJson | null; error: Error | null }>;
 
 export interface SentInvitation {
   id: string;
@@ -62,8 +66,8 @@ export type ExtrasResult<T> = ({ ok: true } & T) | ExtrasFailure;
 // Lecture des réponses
 // ---------------------------------------------------------------------------
 
-function record(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+function record(value: unknown): LooseJson {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as LooseJson) : {};
 }
 
 function text(value: unknown): string | null {

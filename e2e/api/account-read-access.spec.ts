@@ -127,37 +127,37 @@ interface Use extends Read {
   label: string;
 }
 
-const use = (fn: Read['fn'], action: string, extra: Record<string, unknown> | undefined, flags: { own?: boolean; provider?: boolean; label?: string } = {}): Use => ({
+const usage = (fn: Read['fn'], action: string, extra: Record<string, unknown> | undefined, flags: { own?: boolean; provider?: boolean; label?: string } = {}): Use => ({
   fn, action, extra, own: flags.own ?? true, provider: flags.provider ?? false, label: flags.label ?? action,
 });
 
 const USES: Use[] = [
   // Paramètres de recherche : ils rendent les projets, les recherches enregistrées et récentes du compte.
-  ...['PROJECT', 'SAVED_SEARCH', 'SEAT', 'CUSTOM_FILTER'].map((type) => use('unipile-search', 'get_parameters', { type, service: 'RECRUITER' }, { provider: true, label: `get_parameters ${type}` })),
+  ...['PROJECT', 'SAVED_SEARCH', 'SEAT', 'CUSTOM_FILTER'].map((type) => usage('unipile-search', 'get_parameters', { type, service: 'RECRUITER' }, { provider: true, label: `get_parameters ${type}` })),
   // Sales Navigator : le faux prestataire n'a que le contrat Recruiter actif, la fonction suit alors le contrat actif et ne
   // rend aucun de ces types sans appel. Le refus ne dépend pas de ce chemin : il est jugé avant (`provider` faux ici).
   ...['LEAD_LIST', 'ACCOUNT_LIST', 'SAVED_PEOPLE_SEARCH', 'SAVED_COMPANY_SEARCH', 'RECENT_SEARCH', 'PERSONA']
-    .map((type) => use('unipile-search', 'get_parameters', { type, service: 'SALES_NAVIGATOR' }, { label: `get_parameters ${type}` })),
-  use('unipile-search', 'search', { api: 'classic', keywords: 'Go' }, { provider: true, label: 'search classique' }),
-  use('unipile-search', 'search', { api: 'recruiter', keywords: 'Go', recruiter_project_id: '777' }, { provider: true, label: 'search dans un projet Recruiter' }),
-  use('unipile-search', 'search_from_url', { url: 'https://www.linkedin.com/search/results/people/?keywords=go' }),
-  use('unipile-search', 'get_profile', { profile_id: 'ACoAAcandidat' }, { provider: true }),
-  use('unipile-search', 'get_user_posts', { identifier: 'jean-dupont' }, { provider: true }),
-  use('unipile-search', 'mark_as_read', { chat_id: 'CLASSIC_1-CHAT' }, { provider: true }),
+    .map((type) => usage('unipile-search', 'get_parameters', { type, service: 'SALES_NAVIGATOR' }, { label: `get_parameters ${type}` })),
+  usage('unipile-search', 'search', { api: 'classic', keywords: 'Go' }, { provider: true, label: 'search classique' }),
+  usage('unipile-search', 'search', { api: 'recruiter', keywords: 'Go', recruiter_project_id: '777' }, { provider: true, label: 'search dans un projet Recruiter' }),
+  usage('unipile-search', 'search_from_url', { url: 'https://www.linkedin.com/search/results/people/?keywords=go' }),
+  usage('unipile-search', 'get_profile', { profile_id: 'ACoAAcandidat' }, { provider: true }),
+  usage('unipile-search', 'get_user_posts', { identifier: 'jean-dupont' }, { provider: true }),
+  usage('unipile-search', 'mark_as_read', { chat_id: 'CLASSIC_1-CHAT' }, { provider: true }),
   // Hors du faux prestataire (aucune route de recommandation) et gestes au nom du compte : refus seulement.
-  use('unipile-search', 'endorse_skill', { profile_id: 'ACoAAcandidat', skill_endorsement_id: 'sk1' }, { own: false }),
-  use('unipile-search', 'send_message', { chat_id: 'CLASSIC_1-CHAT', text: 'Bonjour' }, { own: false }),
-  use('unipile-search', 'withdraw_invitation', { invitation_id: 'inv1' }, { own: false }),
-  use('unipile-search', 'une_action_ajoutee_plus_tard', undefined, { own: false }),
-  use('unipile-accounts', 'handle_invitation_received', { invitation_id: 'rr1', invitation_action: 'decline' }, { provider: true }),
-  use('unipile-accounts', 'bulk_handle_invitations', { invitations: [{ invitation_id: 'rr1', action: 'decline' }] }, { provider: true }),
-  use('unipile-accounts', 'add_reaction', { chat_id: 'CLASSIC_1-CHAT', message_id: 'msg1', reaction: 'like' }, { own: false }),
-  use('unipile-accounts', 'delete_message', { chat_id: 'CLASSIC_1-CHAT', message_id: 'msg1' }, { own: false }),
-  use('unipile-accounts', 'delete_chat', { chat_id: 'CLASSIC_1-CHAT' }, { own: false }),
-  use('unipile-accounts', 'disconnect', undefined, { own: false }),
-  use('unipile-accounts', 'select_contract', { contract_id: 'c1' }, { own: false }),
-  use('unipile-accounts', 'update_proxy', { proxy_mode: 'country', proxy_country: 'FR' }, { own: false }),
-  use('unipile-accounts', 'une_action_ajoutee_plus_tard', undefined, { own: false }),
+  usage('unipile-search', 'endorse_skill', { profile_id: 'ACoAAcandidat', skill_endorsement_id: 'sk1' }, { own: false }),
+  usage('unipile-search', 'send_message', { chat_id: 'CLASSIC_1-CHAT', text: 'Bonjour' }, { own: false }),
+  usage('unipile-search', 'withdraw_invitation', { invitation_id: 'inv1' }, { own: false }),
+  usage('unipile-search', 'une_action_ajoutee_plus_tard', undefined, { own: false }),
+  usage('unipile-accounts', 'handle_invitation_received', { invitation_id: 'rr1', invitation_action: 'decline' }, { provider: true }),
+  usage('unipile-accounts', 'bulk_handle_invitations', { invitations: [{ invitation_id: 'rr1', action: 'decline' }] }, { provider: true }),
+  usage('unipile-accounts', 'add_reaction', { chat_id: 'CLASSIC_1-CHAT', message_id: 'msg1', reaction: 'like' }, { own: false }),
+  usage('unipile-accounts', 'delete_message', { chat_id: 'CLASSIC_1-CHAT', message_id: 'msg1' }, { own: false }),
+  usage('unipile-accounts', 'delete_chat', { chat_id: 'CLASSIC_1-CHAT' }, { own: false }),
+  usage('unipile-accounts', 'disconnect', undefined, { own: false }),
+  usage('unipile-accounts', 'select_contract', { contract_id: 'c1' }, { own: false }),
+  usage('unipile-accounts', 'update_proxy', { proxy_mode: 'country', proxy_country: 'FR' }, { own: false }),
+  usage('unipile-accounts', 'une_action_ajoutee_plus_tard', undefined, { own: false }),
 ];
 
 async function quotaRows(accountId: string): Promise<number> {

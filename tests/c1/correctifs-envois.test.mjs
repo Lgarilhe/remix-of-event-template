@@ -120,6 +120,10 @@ test('correctif 4 : send_message refuse un candidat effacé avant le plafond, le
   assert.match(prepare, /recipient: SendRecipient \| null,\s*\): Promise<ManualSendTarget \| null> \{\s*if \(!recipient\) return null;/);
   assert.doesNotMatch(prepare, /isCandidateErasedForOrg/, 'plus de saut silencieux de l\'écriture pour un candidat effacé');
   assert.match(prepare, /if \(recipient\.candidate\.ids\.length === 0\) return null;/, 'sans identifiant, rien à enregistrer (jugé par nom public ou adresse)');
+  // Lecture de la conversation en panne passagère : l'interlocuteur est inconnu, l'envoi est refusé (échec fermé, décision du
+  // 13/10/2026). Un refus du prestataire (conversation introuvable, compte) laisse l'envoi rendre sa propre erreur.
+  assert.match(send, /const UNVERIFIABLE_READ_KINDS: readonly string\[\] = \['network', 'server', 'rate_limited'\];/, 'pannes passagères seulement');
+  assert.match(topLevelBody(send, 'export async function fetchChatCandidate('), /if \(e instanceof UnipileError && UNVERIFIABLE_READ_KINDS\.includes\(e\.kind\)\) \{\s*throw new UnipileInputError\(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED'\);\s*\}/, 'lecture en panne : 503 GDPR_UNVERIFIED');
 });
 
 test('correctif 4 : messages de refus lisibles après humanizeError (français, sans nombre ni mot anglais)', () => {

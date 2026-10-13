@@ -82,9 +82,13 @@ async function linkedChatCandidate(
 
 /**
  * Candidat d'une conversation lu auprès du prestataire : l'interlocuteur d'une
- * conversation à deux. Un groupe, une conversation illisible ou sans identifiant :
- * null. Le chat est lu sous le compte de la requête (il n'a pas de compte propre).
+ * conversation à deux. Un groupe ou une conversation sans identité : null (le message part
+ * sans enregistrement). Lecture en panne passagère : refus 503 GDPR_UNVERIFIED. Le chat est
+ * lu sous le compte de la requête (il n'a pas de compte propre).
  */
+/** Genres d'échec d'une lecture de conversation qui laissent l'interlocuteur inconnu sans raison de croire qu'il n'y en a pas. */
+const UNVERIFIABLE_READ_KINDS: readonly string[] = ['network', 'server', 'rate_limited'];
+
 export async function fetchChatCandidate(accountId: string, chatId: string): Promise<CandidateRef | null> {
   try {
     const chat = await getChat(accountId, chatId);
@@ -100,6 +104,12 @@ export async function fetchChatCandidate(accountId: string, chatId: string): Pro
     return ref.ids.length > 0 || ref.slug || ref.profile_url ? ref : null;
   } catch (e) {
     console.warn('[unipile-search] send_message: lecture de la conversation impossible:', e instanceof UnipileError ? e.kind : e instanceof Error ? e.message : e);
+    // Sans lecture, l'interlocuteur est inconnu et son effacement ne peut pas être vérifié. Une panne passagère (réseau,
+    // 5xx, limite) refuse l'envoi, échec fermé comme un registre illisible : le candidat peut être effacé. Une conversation
+    // ou un compte refusés par le prestataire laissent l'envoi rendre sa propre erreur (compte à reconnecter, par exemple).
+    if (e instanceof UnipileError && UNVERIFIABLE_READ_KINDS.includes(e.kind)) {
+      throw new UnipileInputError(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED');
+    }
     return null;
   }
 }

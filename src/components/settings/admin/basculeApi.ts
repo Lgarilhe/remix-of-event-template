@@ -17,6 +17,10 @@
 
 import { errorText, ROLLBACK_CONFIRM_WORD, shownText, UNEXPECTED_ANSWER, type CheckStatus } from './basculeCopy';
 
+/** JSON lu du serveur, dont chaque champ est vérifié avant usage (même forme que la réponse de `invokeUnipile`). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LooseJson = Record<string, any>;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -30,7 +34,7 @@ export interface InvokeError {
 /** Forme de `invokeEdgeFunction('unipile-migration', body)`. */
 export type MigrationInvoke = (
   body: Record<string, unknown>,
-) => Promise<{ data: Record<string, any> | null; error: InvokeError | null }>;
+) => Promise<{ data: LooseJson | null; error: InvokeError | null }>;
 
 export type Failure = {
   ok: false;
@@ -183,7 +187,7 @@ export interface RollbackResult {
 // Lecture des réponses
 // ---------------------------------------------------------------------------
 
-const isRecord = (value: unknown): value is Record<string, any> =>
+const isRecord = (value: unknown): value is LooseJson =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const num = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : Number(value) || 0);
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -194,12 +198,12 @@ function failure(code: string | null, serverText: unknown, extra: Partial<Failur
 }
 
 /** Réponse reçue mais de forme inconnue. */
-function unexpected(data: Record<string, any> | null): Failure {
+function unexpected(data: LooseJson | null): Failure {
   return failure(textOrNull(data?.error_code), data?.error, {}, UNEXPECTED_ANSWER);
 }
 
 /** Échec d'un appel : refus d'accès, réponse perdue, ou erreur du serveur. */
-export function failureOf(data: Record<string, any> | null, error: InvokeError | null): Failure | null {
+export function failureOf(data: LooseJson | null, error: InvokeError | null): Failure | null {
   const code = textOrNull(data?.error_code) ?? error?.code ?? null;
   if (error?.status === 403 || code === 'admin_only') {
     return failure('admin_only', null, { denied: true });
@@ -221,7 +225,7 @@ export function isUnknownOutcome(error: InvokeError, code: string | null): boole
   return error.status >= 500 && (code === null || code === 'server');
 }
 
-export function readReadiness(data: Record<string, any> | null): Readiness | null {
+export function readReadiness(data: LooseJson | null): Readiness | null {
   if (!isRecord(data) || !Array.isArray(data.checks) || !isRecord(data.summary)) return null;
   const checks: ReadinessCheck[] = [];
   for (const raw of data.checks) {
@@ -251,7 +255,7 @@ function readHeld(raw: unknown): HeldRow[] {
     : [];
 }
 
-function readUnmapped(raw: Record<string, any>): UnmappedRow {
+function readUnmapped(raw: LooseJson): UnmappedRow {
   return {
     kind: text(raw.kind), label: textOrNull(raw.label), ref: text(raw.ref), reason: text(raw.reason),
     held: readHeld(raw.usage), heldRows: num(raw.held_rows), heldUnread: raw.usage_error === true,
@@ -266,7 +270,7 @@ function readCounts(raw: unknown): KindCounts {
   };
 }
 
-export function readPreview(data: Record<string, any> | null): Preview | null {
+export function readPreview(data: LooseJson | null): Preview | null {
   if (!isRecord(data) || !isRecord(data.counts) || !Array.isArray(data.pairs)) return null;
   const counts = data.counts;
   return {
@@ -305,11 +309,11 @@ export function readPreview(data: Record<string, any> | null): Preview | null {
   };
 }
 
-export function readApply(data: Record<string, any> | null): ApplyResult | null {
+export function readApply(data: LooseJson | null): ApplyResult | null {
   if (!isRecord(data) || typeof data.applied !== 'number' || !Array.isArray(data.results)) return null;
   const failedPairs: FailedPair[] = data.results
     .filter((r: unknown) => isRecord(r) && r.status === 'failed')
-    .map((r: Record<string, any>) => ({
+    .map((r: LooseJson) => ({
       kind: text(r.kind),
       label: textOrNull(r.label),
       ref: text(r.ref),
@@ -317,8 +321,8 @@ export function readApply(data: Record<string, any> | null): ApplyResult | null 
     }));
   const skippedColumns: SkippedColumn[] = data.results
     .filter((r: unknown) => isRecord(r) && Array.isArray(r.skipped))
-    .flatMap((r: Record<string, any>) =>
-      r.skipped.filter(isRecord).map((c: Record<string, any>) => ({
+    .flatMap((r: LooseJson) =>
+      r.skipped.filter(isRecord).map((c: LooseJson) => ({
         label: textOrNull(r.label), ref: text(r.ref), table: text(c.table), column: text(c.column), status: text(c.status), rows: num(c.rows),
       })));
   return {
@@ -336,7 +340,7 @@ export function readApply(data: Record<string, any> | null): ApplyResult | null 
   };
 }
 
-export function readRollback(data: Record<string, any> | null): RollbackResult | null {
+export function readRollback(data: LooseJson | null): RollbackResult | null {
   if (!isRecord(data) || data.success !== true || typeof data.batch_id !== 'string') return null;
   return {
     batchId: data.batch_id,
@@ -369,7 +373,7 @@ export function shareInFlight<T>(slot: { current: Promise<T> | null }, start: ()
 async function call<T>(
   invoke: MigrationInvoke,
   body: Record<string, unknown>,
-  read: (data: Record<string, any> | null) => T | null,
+  read: (data: LooseJson | null) => T | null,
 ): Promise<Outcome<{ value: T }>> {
   let answer: Awaited<ReturnType<MigrationInvoke>>;
   try {
