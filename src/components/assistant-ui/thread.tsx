@@ -12,7 +12,6 @@ import {
   ClipboardList, MessageSquare, CheckCircle2, XCircle, AlertTriangle,
   MapPin, Briefcase, Loader2, Square,
 } from 'lucide-react';
-import KonektLogo from '@/components/KonektLogo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';
@@ -25,6 +24,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAgent } from '@/contexts/AgentContext';
 import { ToolFallbackChip } from './tool-uis';
 import { FileUpload, FileUploadTrigger, FileUploadContent } from '@/components/prompt-kit/file-upload';
+import { AssistantAvatar, AssistantMessageLayout, UserMessageLayout } from './message-layout';
+import {
+  ASSISTANT_COMPOSER_CLASS,
+  ASSISTANT_COMPOSER_INPUT_CLASS,
+  ASSISTANT_COMPOSER_TOOLBAR_CLASS,
+  ASSISTANT_SEND_CLASS,
+} from './composer-styles';
 
 interface SkalrThreadProps {
   contextMode?: string | null;
@@ -123,19 +129,6 @@ const ReasoningBlock = ({ text }: { text: string }) => {
     </div>
   );
 };
-
-/** Avatar de l'assistant : le monogramme Konekt, fixe (plus d'œil animé, E-14). */
-const AssistantAvatar = ({ size = 'sm' }: { size?: 'sm' | 'lg' }) => (
-  <span
-    className={cn(
-      'flex shrink-0 items-center justify-center rounded-full bg-muted',
-      size === 'lg' ? 'h-10 w-10' : 'h-7 w-7',
-    )}
-    aria-hidden="true"
-  >
-    <KonektLogo variant="mark" theme="auto" size={size === 'lg' ? 20 : 14} ariaLabel="" />
-  </span>
-);
 
 /** Avant le premier contenu : une ligne d'état en texte, avec l'indicateur de chargement. */
 const ThinkingLine = () => (
@@ -680,35 +673,28 @@ const AssistantMessage = () => {
   }
 
   return (
-    <div className="flex gap-3 animate-fade-in">
-      <div className="mt-0.5">
-        <AssistantAvatar />
-      </div>
-      <div className="flex-1 min-w-0 space-y-2 pt-0.5">
-        <MessagePrimitive.Content
-          components={{
-            Text: ({ text }) => <MarkdownText text={text} />,
-            Reasoning: ({ text }) => <ReasoningBlock text={text} />,
-            // Chips de progression des tools de la boucle backend — les tool
-            // UIs enregistrées par nom (tool-uis.tsx) gardent la priorité.
-            tools: { Fallback: ToolFallbackChip as any },
-          }}
-        />
-        {isRunning && hasText && (
-          <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" aria-hidden="true" />
-        )}
-      </div>
-    </div>
+    <AssistantMessageLayout>
+      <MessagePrimitive.Content
+        components={{
+          Text: ({ text }) => <MarkdownText text={text} />,
+          Reasoning: ({ text }) => <ReasoningBlock text={text} />,
+          // Chips de progression des tools de la boucle backend — les tool
+          // UIs enregistrées par nom (tool-uis.tsx) gardent la priorité.
+          tools: { Fallback: ToolFallbackChip as any },
+        }}
+      />
+      {isRunning && hasText && (
+        <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" aria-hidden="true" />
+      )}
+    </AssistantMessageLayout>
   );
 };
 
 /** User message — soft right-aligned bubble (ChatGPT/Claude style) */
 const UserMessage = () => (
-  <div className="flex justify-end animate-fade-in">
-    <div className="max-w-[80%] rounded-xl rounded-br-sm bg-muted px-4 py-2.5 text-md leading-relaxed text-foreground">
-      <MessagePrimitive.Content components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }} />
-    </div>
-  </div>
+  <UserMessageLayout>
+    <MessagePrimitive.Content components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }} />
+  </UserMessageLayout>
 );
 
 export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, toolsSlot, filesBridge }) => {
@@ -771,7 +757,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
         <div className="mx-auto w-full max-w-2xl">
           {/* Formats alignés sur ingest-user-file (PDF, Word .docx, images, texte). */}
           <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
-            <ComposerPrimitive.Root className="relative flex flex-col rounded-xl border border-input bg-background p-2 transition-colors focus-within:border-brand">
+            <ComposerPrimitive.Root className={ASSISTANT_COMPOSER_CLASS}>
               {/* Attached files */}
               {files.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pt-1.5 pb-1">
@@ -809,11 +795,11 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                 aria-label="Message à l’assistant"
                 rows={1}
                 autoFocus
-                className="w-full resize-none bg-transparent px-3 py-2.5 text-md leading-relaxed text-foreground placeholder:text-muted-foreground outline-none max-h-40 min-h-[24px]"
+                className={ASSISTANT_COMPOSER_INPUT_CLASS}
               />
 
               {/* Toolbar */}
-              <div className="flex items-center gap-1 pl-1 pr-0.5 pt-1">
+              <div className={ASSISTANT_COMPOSER_TOOLBAR_CLASS}>
                 {toolsSlot ?? (
                   <Tooltip>
                     {/* FileUploadTrigger ne transmet pas de ref : l'infobulle s'ancre sur le bouton. */}
@@ -841,11 +827,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                   <ComposerPrimitive.Send
                     aria-label="Envoyer"
                     title="Envoyer"
-                    className={cn(
-                      'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors max-md:h-11 max-md:w-11',
-                      'bg-foreground text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                      'disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground'
-                    )}
+                    className={ASSISTANT_SEND_CLASS}
                   >
                     <ArrowUp className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
                   </ComposerPrimitive.Send>

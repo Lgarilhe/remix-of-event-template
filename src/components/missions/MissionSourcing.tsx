@@ -1,15 +1,18 @@
-import React, { useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { SourcingProject } from '@/hooks/useSourcingProjects';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
+import { useBaseKonektState } from '@/hooks/useBaseKonekt';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
-import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { countBriefFields } from '@/lib/missionUtils';
 import { useAgent } from '@/contexts/AgentContext';
 import { ArrowLeft } from 'lucide-react';
 import type { JobDetails } from '@/types/jobDetails';
+import { SourcingInterviewDialog } from '@/components/outreach/search/SourcingInterviewDialog';
+import type { SourcingSource } from '@/components/outreach/search/SourcingSourcePicker';
+import { saveGuidedBrief } from '@/lib/guidedSourcing';
 
 interface MissionSourcingProps {
   project: SourcingProject;
@@ -20,13 +23,27 @@ interface MissionSourcingProps {
   layout?: 'default' | 'mission-v3';
   /** Phrase déjà saisie (recherche créée depuis /sourcing), lancée à l'ouverture. */
   initialPhrase?: string;
+  initialSource?: SourcingSource;
   /** Recherche créée depuis /sourcing avec « Configurer les filtres » : ouvre la fenêtre des filtres. */
   startWithFilters?: boolean;
 }
 
-export const MissionSourcing = ({ project, layout = 'default', initialPhrase, startWithFilters }: MissionSourcingProps) => {
+export const MissionSourcing = ({ project: serverProject, layout = 'default', initialPhrase, initialSource, startWithFilters }: MissionSourcingProps) => {
+  const [start] = useState({ phrase: initialPhrase, source: initialSource });
+  const [launch, setLaunch] = useState<{ project: SourcingProject; source: SourcingSource; version: number } | null>(null);
+  const project = launch?.project.id === serverProject.id && launch.project.updated_at > serverProject.updated_at ? launch.project : serverProject;
+  const [dialog, setDialog] = useState<{ phrase: string; source: SourcingSource; project: SourcingProject } | null>(null);
+  const { updateProject } = useSourcingProjects();
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (start.phrase && location.state) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    // Consume the explicit launch once; refreshing or returning never bills another search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const isV3 = layout === 'mission-v3';
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts({ selectionScope: project.id });
+  const base = useBaseKonektState();
 
   const jd = (project.job_details || {}) as JobDetails;
   const briefCompletion = countBriefFields(jd);
@@ -81,7 +98,15 @@ export const MissionSourcing = ({ project, layout = 'default', initialPhrase, st
       linkedInAccount
         ? `Compte LinkedIn : ${linkedInAccount.name || linkedInAccount.identifier} (${linkedInAccount.status})${(linkedInAccount as any).subscriptions?.recruiter ? ' — Licence Recruiter' : (linkedInAccount as any).subscriptions?.sales_navigator ? ' — Licence Sales Navigator' : ' — Licence Classic'}`
         : 'Pas de compte LinkedIn connecté',
-      'Base Konekt : disponible',
+      base.isLoading
+        ? 'Base Konekt : vérification de l’accès en cours'
+        : base.isError || !base.state
+          ? 'Base Konekt : accès non vérifié'
+          : !base.planAllows
+            ? 'Base Konekt : accès non inclus dans le forfait actuel'
+            : !base.isEnabled
+              ? 'Base Konekt : non activée pour cette organisation'
+              : `Base Konekt : activée pour cette organisation, ${base.includedRemaining} recherches incluses restantes. L’accès fournisseur et les crédits doivent encore être vérifiés au lancement.`,
       hasFilters ? `Filtres déjà générés : oui` : 'Filtres : non générés',
     ].join('\n');
 
@@ -93,7 +118,7 @@ export const MissionSourcing = ({ project, layout = 'default', initialPhrase, st
       projectId: project.id,
       accountId: selectedAccount || undefined,
     });
-  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent]);
+  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent, base.isLoading, base.isError, base.state, base.planAllows, base.isEnabled, base.includedRemaining]);
 
   if (accountsLoading) {
     return (
@@ -103,14 +128,15 @@ export const MissionSourcing = ({ project, layout = 'default', initialPhrase, st
     );
   }
 
-  // Un rechargement en échec ne doit pas démonter une recherche en cours :
-  // l'état vide ne s'affiche que si aucun compte n'a jamais été sélectionné ici.
-  if (accounts.length === 0 && !selectedAccount) {
-    return <EmptyLinkedInAccountState message="Pour lancer le sourcing, connectez d'abord un compte LinkedIn." />;
-  }
-
   return (
     <div>
+      {dialog && <SourcingInterviewDialog initialBrief={dialog.project.job_details ?? {}} initialMessage={dialog.phrase}
+        initialSource={dialog.source} linkedinAvailable={accounts.length > 0} onClose={() => setDialog(null)}
+        onConfirm={async (brief, source) => {
+          const saved = await saveGuidedBrief(dialog.project, brief, updateProject);
+          setLaunch(previous => ({ project: saved, source, version: (previous?.version ?? 0) + 1 }));
+          setDialog(null);
+        }} />}
       {/* Brief rempli mais pas encore de filtres → renvoie au brief où vit
           le bouton canonique "Analyser avec l'IA" (avec review modal).
           Avant : on avait un bouton ici qui dupliquait l'appel sans review.
@@ -139,13 +165,15 @@ export const MissionSourcing = ({ project, layout = 'default', initialPhrase, st
           to keep chrome compact and results visible higher on the page. */}
       <OutreachSearchProvider>
         <LinkedInSearch
+          key={`${project.id}:${launch?.version ?? 0}`}
           accounts={accounts}
           selectedAccount={selectedAccount}
           onAccountChange={setSelectedAccount}
           activeProject={project}
-          searchSource="linkedin"
+          searchSource={launch?.source ?? start.source ?? (accounts.length ? 'linkedin' : 'database')}
           onOpenSearchAgent={handleOpenSearchAgent}
-          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase, startWithFilters } : {})}
+          onPrepareSearch={isV3 ? (phrase, source) => setDialog({ phrase, source, project }) : undefined}
+          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase: launch ? 'Chercher selon le cadrage et les critères validés.' : start.phrase, startWithFilters } : {})}
         />
       </OutreachSearchProvider>
     </div>

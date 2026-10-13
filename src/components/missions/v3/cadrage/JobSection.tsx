@@ -244,18 +244,194 @@ function RecruitmentModeLine({
   );
 }
 
-export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendlyCommit, children }: JobSectionProps) {
+/** Les champs du poste, identiques dans le Cadrage et sa préparation de recherche. */
+export function JobFields({ jd, updateField, readOnly, className }: Pick<JobSectionProps, 'jd' | 'updateField' | 'readOnly'> & { className?: string }) {
   const uid = useId();
   const id = (name: string) => `${uid}-${name}`;
   const client = jd.client ?? {};
   const manager = client.hiring_manager ?? {};
+  const setManager = (change: Partial<NonNullable<NonNullable<JobDetails['client']>['hiring_manager']>>) =>
+    updateField({ client: { ...client, hiring_manager: { ...manager, ...change } } });
+
+  return (
+    <div className={cn('grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-4', className)}>
+      <Field label="Intitulé du poste" htmlFor={id('intitule')} className="sm:col-span-2">
+        <FieldInput
+          id={id('intitule')}
+          value={jd.title ?? ''}
+          onChange={(e) => updateField({ title: e.target.value })}
+          disabled={readOnly}
+          autoComplete="off"
+        />
+      </Field>
+      <Field label="Client" htmlFor={id('client')}>
+        <ClientPicker
+          id={id('client')}
+          value={{ name: client.name, website: client.website, logo_url: client.logo_url }}
+          onChange={(c) =>
+            // Un autre client ou un nouveau site : l'ancien logo et sa recherche sont oubliés.
+            updateField({
+              client: { ...client, name: c.name, website: c.website, logo_url: c.logo_url, logo_checked_at: undefined },
+            })}
+          disabled={readOnly}
+          inputClassName={TOUCH_FIELD}
+        />
+      </Field>
+      <Field label="Contrat" htmlFor={id('contrat')}>
+        <NativeSelect
+          id={id('contrat')}
+          value={jd.contract_type ?? ''}
+          onChange={(e) => updateField({ contract_type: (e.target.value || undefined) as JobDetails['contract_type'] })}
+          disabled={readOnly}
+        >
+          <option value="">Non précisé</option>
+          {CONTRACT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+
+      <Field label="Lieu et télétravail" htmlFor={id('lieu')} className="sm:col-span-2">
+        <div className="flex flex-wrap gap-2">
+          <FieldInput
+            id={id('lieu')}
+            value={jd.location ?? ''}
+            onChange={(e) => updateField({ location: e.target.value })}
+            disabled={readOnly}
+            autoComplete="off"
+            placeholder="Ville"
+            className="min-w-0 flex-[1_1_9rem]"
+          />
+          <NativeSelect
+            aria-label="Télétravail"
+            value={jd.remote_policy ?? ''}
+            onChange={(e) => updateField({ remote_policy: (e.target.value || undefined) as JobDetails['remote_policy'] })}
+            disabled={readOnly}
+            className="flex-[1_1_8rem]"
+          >
+            <option value="">Télétravail non précisé</option>
+            {REMOTE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        {jd.remote_policy === 'hybrid' && (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <FieldInput
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={5}
+              aria-label="Jours de télétravail par semaine"
+              value={typeof jd.remote_days === 'number' ? String(jd.remote_days) : ''}
+              onChange={(e) => updateField({ remote_days: parseAmount(e.target.value) })}
+              disabled={readOnly}
+              className="h-8 w-16 tabular-nums"
+            />
+            jours de télétravail par semaine
+          </span>
+        )}
+      </Field>
+
+      <Field label="Rémunération" htmlFor={id('remu-min')} className="sm:col-span-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldInput
+            id={id('remu-min')}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            aria-label="Rémunération minimale"
+            placeholder="Minimum"
+            value={typeof jd.salary_min === 'number' ? String(jd.salary_min) : ''}
+            onChange={(e) => updateField({ salary_min: parseAmount(e.target.value) })}
+            disabled={readOnly}
+            className="min-w-0 flex-[1_1_6rem] tabular-nums"
+          />
+          <span className="text-sm text-muted-foreground" aria-hidden="true">
+            à
+          </span>
+          <FieldInput
+            type="number"
+            inputMode="numeric"
+            min={0}
+            aria-label="Rémunération maximale"
+            placeholder="Maximum"
+            value={typeof jd.salary_max === 'number' ? String(jd.salary_max) : ''}
+            onChange={(e) => updateField({ salary_max: parseAmount(e.target.value) })}
+            disabled={readOnly}
+            className="min-w-0 flex-[1_1_6rem] tabular-nums"
+          />
+          {jd.salary_currency && jd.salary_currency !== 'EUR' && (
+            <span className="text-sm text-muted-foreground">{jd.salary_currency}</span>
+          )}
+          <NativeSelect
+            aria-label="Période de la rémunération"
+            value={jd.salary_type ?? ''}
+            onChange={(e) => updateField({ salary_type: (e.target.value || undefined) as JobDetails['salary_type'] })}
+            disabled={readOnly}
+            className="flex-[0_1_8rem]"
+          >
+            <option value="">Période</option>
+            {SALARY_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      </Field>
+
+      <Field label="Contexte" htmlFor={id('contexte')} className="sm:col-span-2">
+        <Textarea
+          id={id('contexte')}
+          rows={3}
+          value={jd.context ?? ''}
+          onChange={(e) => updateField({ context: e.target.value })}
+          disabled={readOnly}
+          className="min-h-0 resize-none"
+        />
+      </Field>
+
+      <div role="group" aria-labelledby={id('interlocuteur')} className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+        <span id={id('interlocuteur')} className={FIELD_LABEL_CLASS}>
+          Interlocuteur chez le client
+        </span>
+        <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <FieldInput
+            aria-label="Nom de l'interlocuteur"
+            placeholder="Nom"
+            value={manager.name ?? ''}
+            onChange={(e) => setManager({ name: e.target.value })}
+            disabled={readOnly}
+            autoComplete="off"
+          />
+          <FieldInput
+            type="email"
+            aria-label="E-mail de l'interlocuteur"
+            placeholder="E-mail"
+            value={manager.email ?? ''}
+            onChange={(e) => setManager({ email: e.target.value })}
+            disabled={readOnly}
+            autoComplete="off"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendlyCommit, children }: JobSectionProps) {
+  const uid = useId();
+  const id = (name: string) => `${uid}-${name}`;
+  const client = jd.client ?? {};
   const config = jd.outreach_config ?? {};
   const clientName = (client.name ?? '').trim();
   const anonymize = !!config.anonymize_client;
 
-  const setClient = (change: Partial<NonNullable<JobDetails['client']>>) => updateField({ client: { ...client, ...change } });
-  const setManager = (change: Partial<NonNullable<NonNullable<JobDetails['client']>['hiring_manager']>>) =>
-    updateField({ client: { ...client, hiring_manager: { ...manager, ...change } } });
   const setConfig = (change: Partial<NonNullable<JobDetails['outreach_config']>>) =>
     updateField({ outreach_config: { ...config, ...change } });
 
@@ -267,173 +443,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
         help="Ce que l'IA lit pour chercher, noter et écrire aux candidats."
       />
       <div className="flex flex-col gap-8">
-        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-4">
-          <Field label="Intitulé du poste" htmlFor={id('intitule')} className="sm:col-span-2">
-            <FieldInput
-              id={id('intitule')}
-              value={jd.title ?? ''}
-              onChange={(e) => updateField({ title: e.target.value })}
-              disabled={readOnly}
-              autoComplete="off"
-            />
-          </Field>
-          <Field label="Client" htmlFor={id('client')}>
-            <ClientPicker
-              id={id('client')}
-              value={{ name: client.name, website: client.website, logo_url: client.logo_url }}
-              onChange={(c) =>
-                // Un autre client ou un nouveau site : l'ancien logo et sa recherche sont oubliés.
-                updateField({
-                  client: { ...client, name: c.name, website: c.website, logo_url: c.logo_url, logo_checked_at: undefined },
-                })}
-              disabled={readOnly}
-              inputClassName={TOUCH_FIELD}
-            />
-          </Field>
-          <Field label="Contrat" htmlFor={id('contrat')}>
-            <NativeSelect
-              id={id('contrat')}
-              value={jd.contract_type ?? ''}
-              onChange={(e) => updateField({ contract_type: (e.target.value || undefined) as JobDetails['contract_type'] })}
-              disabled={readOnly}
-            >
-              <option value="">Non précisé</option>
-              {CONTRACT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-
-          <Field label="Lieu et télétravail" htmlFor={id('lieu')} className="sm:col-span-2">
-            <div className="flex flex-wrap gap-2">
-              <FieldInput
-                id={id('lieu')}
-                value={jd.location ?? ''}
-                onChange={(e) => updateField({ location: e.target.value })}
-                disabled={readOnly}
-                autoComplete="off"
-                placeholder="Ville"
-                className="min-w-0 flex-[1_1_9rem]"
-              />
-              <NativeSelect
-                aria-label="Télétravail"
-                value={jd.remote_policy ?? ''}
-                onChange={(e) => updateField({ remote_policy: (e.target.value || undefined) as JobDetails['remote_policy'] })}
-                disabled={readOnly}
-                className="flex-[1_1_8rem]"
-              >
-                <option value="">Télétravail non précisé</option>
-                {REMOTE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-            {jd.remote_policy === 'hybrid' && (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <FieldInput
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={5}
-                  aria-label="Jours de télétravail par semaine"
-                  value={typeof jd.remote_days === 'number' ? String(jd.remote_days) : ''}
-                  onChange={(e) => updateField({ remote_days: parseAmount(e.target.value) })}
-                  disabled={readOnly}
-                  className="h-8 w-16 tabular-nums"
-                />
-                jours de télétravail par semaine
-              </span>
-            )}
-          </Field>
-
-          <Field label="Rémunération" htmlFor={id('remu-min')} className="sm:col-span-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <FieldInput
-                id={id('remu-min')}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                aria-label="Rémunération minimale"
-                placeholder="Minimum"
-                value={typeof jd.salary_min === 'number' ? String(jd.salary_min) : ''}
-                onChange={(e) => updateField({ salary_min: parseAmount(e.target.value) })}
-                disabled={readOnly}
-                className="min-w-0 flex-[1_1_6rem] tabular-nums"
-              />
-              <span className="text-sm text-muted-foreground" aria-hidden="true">
-                à
-              </span>
-              <FieldInput
-                type="number"
-                inputMode="numeric"
-                min={0}
-                aria-label="Rémunération maximale"
-                placeholder="Maximum"
-                value={typeof jd.salary_max === 'number' ? String(jd.salary_max) : ''}
-                onChange={(e) => updateField({ salary_max: parseAmount(e.target.value) })}
-                disabled={readOnly}
-                className="min-w-0 flex-[1_1_6rem] tabular-nums"
-              />
-              {jd.salary_currency && jd.salary_currency !== 'EUR' && (
-                <span className="text-sm text-muted-foreground">{jd.salary_currency}</span>
-              )}
-              <NativeSelect
-                aria-label="Période de la rémunération"
-                value={jd.salary_type ?? ''}
-                onChange={(e) => updateField({ salary_type: (e.target.value || undefined) as JobDetails['salary_type'] })}
-                disabled={readOnly}
-                className="flex-[0_1_8rem]"
-              >
-                <option value="">Période</option>
-                {SALARY_TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-          </Field>
-
-          <Field label="Contexte" htmlFor={id('contexte')} className="sm:col-span-2">
-            <Textarea
-              id={id('contexte')}
-              rows={3}
-              value={jd.context ?? ''}
-              onChange={(e) => updateField({ context: e.target.value })}
-              disabled={readOnly}
-              className="min-h-0 resize-none"
-            />
-          </Field>
-
-          <div role="group" aria-labelledby={id('interlocuteur')} className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
-            <span id={id('interlocuteur')} className={FIELD_LABEL_CLASS}>
-              Interlocuteur chez le client
-            </span>
-            <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-              <FieldInput
-                aria-label="Nom de l'interlocuteur"
-                placeholder="Nom"
-                value={manager.name ?? ''}
-                onChange={(e) => setManager({ name: e.target.value })}
-                disabled={readOnly}
-                autoComplete="off"
-              />
-              <FieldInput
-                type="email"
-                aria-label="E-mail de l'interlocuteur"
-                placeholder="E-mail"
-                value={manager.email ?? ''}
-                onChange={(e) => setManager({ email: e.target.value })}
-                disabled={readOnly}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-        </div>
+        <JobFields jd={jd} updateField={updateField} readOnly={readOnly} />
 
         <RecruitmentModeLine
           mode={config.recruitment_mode}

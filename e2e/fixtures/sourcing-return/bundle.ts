@@ -8,7 +8,7 @@ import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
 
 /** Real mission, search, filter UI and React lifecycle; remote boundaries only. */
-export async function sourcingReturnHarnessHtml() {
+export async function sourcingReturnHarnessHtml(entry = 'main.tsx') {
   const root = process.cwd();
   const fixture = path.join(root, 'e2e/fixtures/sourcing-return');
   const mocked = new Set([
@@ -25,7 +25,7 @@ export async function sourcingReturnHarnessHtml() {
     'src/components/missions/v3/sourcing/SourcingTopBar.tsx', 'src/lib/sourcingSearchLifecycle.ts']);
   const sourceHashes: Record<string, string> = {};
   const bundle = await build({
-    entryPoints: [path.join(fixture, 'main.tsx')], bundle: true, write: false,
+    entryPoints: [path.join(fixture, entry)], bundle: true, write: false,
     platform: 'browser', format: 'iife', jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env': JSON.stringify({ VITE_SUPABASE_URL: '/qa-api', VITE_SUPABASE_PUBLISHABLE_KEY: 'fixture-only' }) },
     loader: { '.svg': 'dataurl', '.webp': 'dataurl', '.png': 'dataurl', '.jpg': 'dataurl' },

@@ -250,6 +250,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "qualification",
   },
+  sourcing_interview: { action: "sourcing_interview", label: "Cadrage guidé de la recherche", floor: 1, typicalTokens: 3000, routingTier: "fast", category: "sourcing", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   agent_search_calibration: {
     action: "agent_search_calibration",
     label: "Agent — calibration",

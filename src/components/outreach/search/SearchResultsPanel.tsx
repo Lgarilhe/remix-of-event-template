@@ -271,13 +271,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, []);
 
   // Nouvelle page mission : affichage des profils à trier (Tri, Liste, Détaillé),
-  // dans la clé de l'ancienne recherche ; la Liste reste le défaut.
+  // dans la clé de l'ancienne recherche ; le Tri est le défaut sans préférence enregistrée.
   const [v3View, setV3ViewState] = useState<SourcingView>(() => {
     try {
       const stored = localStorage.getItem('konekt_search_view_mode');
-      return stored === 'triage' || stored === 'detailed' ? stored : 'compact';
+      return stored === 'compact' || stored === 'detailed' ? stored : 'triage';
     } catch {
-      return 'compact';
+      return 'triage';
     }
   });
   const setV3View = useCallback((next: SourcingView) => {

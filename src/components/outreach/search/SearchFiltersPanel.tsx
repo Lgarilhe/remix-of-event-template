@@ -147,10 +147,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   // que de laisser partir des recherches qui seront refusées.
   const baseKonektUsable = baseKonektEnabled && baseKonektPlanAllows;
   useEffect(() => {
-    if (!baseKonektLoading && !baseKonektUsable && searchSource === 'database') {
+    if (!baseKonektLoading && !baseKonektUsable && searchSource === 'database' && selectedAccount) {
       onSearchSourceChange?.('linkedin');
     }
-  }, [baseKonektLoading, baseKonektUsable, searchSource, onSearchSourceChange]);
+  }, [baseKonektLoading, baseKonektUsable, searchSource, onSearchSourceChange, selectedAccount]);
 
   // Le projet Recruiter choisi est retiré quand il ne peut plus s'appliquer (autre source, autre compte). Ce panneau
   // reste monté, contrairement au sélecteur : le choix n'est jamais gardé caché puis renvoyé à la recherche.
@@ -169,7 +169,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   return (
     <div className="space-y-2 sm:space-y-2.5 lg:sticky lg:top-24 min-w-0 overflow-hidden">
       {/* Reconnection alert */}
-      {needsReconnection && (
+      {needsReconnection && searchSource !== 'database' && (
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <AlertTitle className="text-destructive">Reconnexion requise</AlertTitle>
@@ -686,7 +686,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <div className="flex gap-2">
           <Button
             onClick={onSearch}
-            disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable || keywordsTooLong}
+            disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || (searchSource !== 'database' && needsReconnection) || (searchSource === 'database' && !baseKonektUsable) || !isApiModeAvailable || keywordsTooLong}
             className="flex-1 max-sm:min-h-11 bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border-0"
           >
             {loading ? (
