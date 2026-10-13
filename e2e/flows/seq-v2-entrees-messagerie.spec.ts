@@ -276,7 +276,8 @@ test('messagerie : avec une mission, le candidat est prêt, la séquence de la m
   expect(enrollment.profile_id).toBe(spec.participantId);
   expect(enrollment.account_id).toBe(ws.accountId);
   expect(enrollment.status).toBe('active');
-  expect(enrollment.job_id, 'poste de la mission, clé du Sourcing et du Pipeline').toBe(`project:${ws.missionId}`);
+  // Le moteur retrouve la mission par son identifiant : « project:<uuid> » devient <uuid> (normalizedJobIdOf).
+  expect(enrollment.job_id, 'poste de la mission, identifiant nu').toBe(ws.missionId);
 
   // Ligne de Pipeline Retenu, posée par l'origine « user », avec la clé de la mission.
   await expect.poll(async () => (await pipelineRows(ws, spec.participantId!)).map((r) => `${r.general_stage}/${r.decision_source}`), { timeout: 20_000 })

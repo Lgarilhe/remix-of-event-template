@@ -21,6 +21,7 @@
  */
 import type { Browser, BrowserContext, Page, Route } from '@playwright/test';
 import { test, expect } from '../fixtures';
+import { buildScoringInputVersionKey } from '../../src/lib/sourcingScoringContext';
 import { pinLegacySequences } from '../helpers/env';
 import {
   admin,
@@ -162,7 +163,10 @@ function asResult(c: Candidate) {
 interface OpenOptions {
   /** Interrupteur des séquences éteint (secours jusqu'au lot 5j). Défaut : allumé, rien n'est épinglé. */
   legacy?: boolean;
-  /** Vue Détaillé de l'ancienne page (une carte par profil, avec ses propres boutons) au lieu du tableau compact. */
+  /**
+   * Vue Détaillé de l'ancienne page (une carte par profil, avec ses propres boutons) au lieu du tableau compact,
+   * et notation simulée : une note valide (contexte de notation du navigateur) est rendue pour le profil noté.
+   */
   detailed?: boolean;
 }
 
@@ -194,9 +198,40 @@ async function openContext(browser: Browser, ws: Workspace, candidates: Candidat
     contentType: 'application/json',
     body: JSON.stringify({ success: true, filters: { keywords: 'Backend Engineer' }, suggestions: null }),
   }));
-  await context.route('**/functions/v1/score-profile-job', (route) => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, scores: [] }),
-  }));
+  if (opts.detailed) {
+    // La carte ne propose son propre bouton « Séquence » qu'une fois le profil noté. Une note n'est reprise par le
+    // navigateur que si son contexte (empreinte de l'entrée et mémoire de recrutement) est celui de la demande :
+    // il se reconstruit ici depuis le corps reçu, comme le fait le serveur.
+    await context.route('**/functions/v1/ai-credits', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, has_credits: true, estimated_credits: 1, remaining: 10_000 }),
+    }));
+    await context.route('**/functions/v1/score-profile-job', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, any>;
+      const memoryVersionKey = String(body.expected_memory_version_key);
+      const scoringContext = {
+        fingerprint: '1'.repeat(64),
+        inputVersionKey: buildScoringInputVersionKey(body.job, body.customScoringInstructions, {
+          organizationId: body.organization_id, projectId: body.project_id, requestModel: body._ai_model, memoryVersionKey,
+        }),
+        memory: { fingerprint: '2'.repeat(64), versionKey: memoryVersionKey, provenance: [] },
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          result: {
+            profile_id: body.profile?.id, name: body.profile?.name, score: 82, recommendation: 'go',
+            summary: 'Profil de test, compétences vérifiées.', hardFilterPassed: true, skippedLLM: false, confidenceScore: 95, scoringContext,
+          },
+        }),
+      });
+    });
+  } else {
+    await context.route('**/functions/v1/score-profile-job', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, scores: [] }),
+    }));
+  }
   return context;
 }
 
@@ -333,21 +368,19 @@ test('Vue Détaillé : un clic dans la feuille ouverte depuis une carte n\'ouvre
   const ws = await workspace('E2E entrées clic');
   const seq = await invitationSequence(ws);
   const lea = candidateOf('L', 'Léa Cliquée');
-  // Une note enregistrée suffit à la carte pour proposer son propre bouton « Séquence » (elle lit la note du Pipeline).
-  await seedCandidateRow({
-    orgId: ws.org.orgId, createdBy: ws.org.owner.userId, missionId: ws.projectId, candidateId: lea.id, stage: 'to_sort',
-    extra: { candidate_name: lea.name, score: 82, recommendation: 'go' },
-  });
   const page = await openMissionSourcing(browser, ws, [lea], { detailed: true });
   const card = page.locator('[role="button"][aria-label^="Candidat Léa Cliquée"]');
   await expect(card).toBeVisible({ timeout: 30_000 });
+  // La carte propose son propre bouton « Séquence » une fois le profil noté.
+  await expect(card.getByRole('button', { name: 'Séquence', exact: true })).toHaveCount(0);
+  await card.getByRole('button', { name: 'Noter', exact: true }).click();
+  await expect(card).toHaveAttribute('aria-label', /score 82 sur 100/, { timeout: 30_000 });
   const cardSequence = card.getByRole('button', { name: 'Séquence', exact: true });
   await expect(cardSequence).toBeVisible({ timeout: 30_000 });
 
   // Témoin : un clic sur le texte de la carte, sans feuille, ouvre bien la fiche (c'est ce que le clic de la feuille ne doit pas faire).
   await card.getByText('Ingénieur backend').first().click();
-  await expect(page.locator('[role="dialog"]')).toHaveCount(1, { timeout: 20_000 });
-  await expect(page.getByRole('region', { name: 'Étape du candidat' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('dialog', { name: lea.name, exact: true })).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
   await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 20_000 });
 
@@ -367,8 +400,7 @@ test('Vue Détaillé : un clic dans la feuille ouverte depuis une carte n\'ouvre
   await group(page, 'ready').locator(`[data-contact-row="${lea.id}"]`).getByText(lea.name).click();
   await expect(page.locator('[role="dialog"]')).toHaveCount(1);
   await expect(sheet(page)).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Étape du candidat' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Ouvrir le profil LinkedIn' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: lea.name, exact: true })).toHaveCount(0);
   // Rien n'a été inscrit en cliquant.
   expect(await enrollmentsOf(seq.id)).toHaveLength(0);
 });
