@@ -9,7 +9,9 @@
 
 import {
   accountPath,
+  describeForLog,
   getProfile,
+  isUnipileError,
   listUserPosts,
   toKonektProfile,
   UnipileError,
@@ -51,6 +53,48 @@ async function readProfileOnce(accountId: string, userId: string): Promise<UserP
   return body as unknown as UserProfile;
 }
 
+const PROFILE_NOT_FOUND_MESSAGE = 'Ce profil est introuvable sur LinkedIn. Vérifiez le lien du candidat.';
+const PROFILE_ACCESS_MESSAGE = 'Votre compte LinkedIn ne permet pas de consulter ce profil.';
+const PROFILE_RECONNECT_MESSAGE = 'Reconnectez votre compte LinkedIn dans les paramètres pour consulter ce profil.';
+
+/** Titre, détail et message du corps d'erreur du prestataire, pour reconnaître la cause d'un 404 (journal et tri seulement, jamais rendu). */
+function providerText(error: UnipileError): string {
+  const body = error.debug.body;
+  if (!isRec(body)) return '';
+  return [body.title, body.detail, body.message].filter((v): v is string => typeof v === 'string').join(' ');
+}
+
+/**
+ * Échec d'une lecture de profil, dans les termes que lit la messagerie (`useInboxCandidateProfile`) : seule
+ * l'absence du profil (404 PROFILE_NOT_FOUND) autorise une nouvelle recherche par son adresse publique ; un compte
+ * à reconnecter ou refusé (403) et une limite (429) se distinguent d'un profil indisponible. Un 404 qui nomme le
+ * compte (« Account not found ») est un compte à reconnecter, un 404 de route n'est pas un profil absent. Les
+ * autres échecs gardent la traduction commune (`failureResponse`). Forme réelle d'une absence de profil chez le
+ * prestataire : non confirmée sans compte relié, un 404 qui ne nomme ni compte ni route est lu comme tel.
+ */
+function profileFailure(error: unknown): Response {
+  if (isUnipileError(error)) {
+    let refusal: { status: number; errorType: string; message: string } | null = null;
+    if (error.kind === 'not_found') {
+      const text = providerText(error);
+      if (/\baccount\b[^.]{0,60}\bnot found\b/i.test(text)) {
+        refusal = { status: 403, errorType: 'LINKEDIN_CONNECTION_REQUIRED', message: PROFILE_RECONNECT_MESSAGE };
+      } else if (!/\broute\b/i.test(text)) {
+        refusal = { status: 404, errorType: 'PROFILE_NOT_FOUND', message: PROFILE_NOT_FOUND_MESSAGE };
+      }
+    } else if (error.kind === 'forbidden') {
+      refusal = { status: 403, errorType: 'ACCOUNT_ACCESS', message: PROFILE_ACCESS_MESSAGE };
+    } else if (error.kind === 'account_disconnected') {
+      refusal = { status: 403, errorType: 'LINKEDIN_CONNECTION_REQUIRED', message: PROFILE_RECONNECT_MESSAGE };
+    }
+    if (refusal) {
+      console.error(`[unipile-search] get_profile: ${describeForLog(error)}`);
+      return json({ success: false, error: refusal.message, errorType: refusal.errorType }, refusal.status);
+    }
+  }
+  return failureResponse(error, 'get_profile');
+}
+
 export async function handleGetProfile(
   accountId: string,
   params: Record<string, unknown>,
@@ -73,7 +117,7 @@ export async function handleGetProfile(
       : await getProfile(accountId, { providerId: ref.providerId, slug: ref.slug }, { sections: [...PROFILE_SECTIONS] });
     return json({ success: true, profile: toKonektProfile(raw, { onDiagnostic: reportProfilePath }) });
   } catch (error) {
-    return failureResponse(error, 'get_profile', { notFoundMessage: 'Profil non trouvé' });
+    return profileFailure(error);
   }
 }
 

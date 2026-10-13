@@ -52,6 +52,16 @@ jobs:
       # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
       - name: Lot 0b regression tests (écrivains)
         run: node --test tests/c1/lot0b-ecrivains.test.mjs
+      # Refonte mission, lot 5f-1 : un seul écrivain navigateur des
+      # inscriptions en séquence (enrollCandidates), joué contre un faux client
+      # pour l'écriture groupée et l'écriture candidat par candidat.
+      - name: Lot 5f-1 regression tests (inscription)
+        run: node --test tests/c1/lot5f-inscription.test.mjs
+      # Refonte mission, lot 5f-3 : invitations reçues dans la messagerie,
+      # panneau de la mission sans l'onglet quand l'interrupteur des séquences
+      # est allumé.
+      - name: Lot 5f-3 regression tests (invitations)
+        run: node --test tests/ux/lot5f3-invitations.test.mjs
       # Agenda Outlook (lot I3), demande A : table member_calendar_accounts,
       # colonnes d'agenda des séances, effacement, purge et export RGPD.
       - name: Agenda Outlook, base de données et RGPD
@@ -302,6 +312,12 @@ jobs:
       # carte du niveau au seul propriétaire). Empaquette les modules avec esbuild.
       - name: Lot 5e-2 tests (style et niveau de l'IA, écrans)
         run: node --test tests/ux/lot5e2-style-niveau.test.mjs
+      # Refonte mission, lot 5f-2b : onglet Contactés du panneau Prise de contact
+      # (groupes, identités réunies, lectures sous la RLS) et pastille du bouton.
+      # Dans ce job, sous Node 22 : le module pur est lu nativement, sous Node 20
+      # ses contrôles de comportement se sauteraient sans bruit.
+      - name: Lot 5f-2b tests (contactés et pastille)
+        run: node --test tests/ux/lot5f2b-contactes.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié

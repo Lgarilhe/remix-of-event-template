@@ -4,9 +4,13 @@
 // (un seul bouton plein par écran, celui de la carte « Maintenant »), Bilan et
 // Prise de contact en boutons discrets ; sur téléphone, l'icône seule, le nom
 // restant lisible par les lecteurs d'écran.
+// Lot 5f-2b : pastille de Prise de contact (« 2 réponses », sinon « 1 bloqué »),
+// jamais de zéro ; son texte complet est la description du bouton, dont le nom
+// reste « Prise de contact ».
 
 import { BarChart3, LayoutGrid, List, Send, UserSearch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { ContactBadge } from '@/lib/contactedGroups';
 import { cn } from '@/lib/utils';
 import { unopenedLinkText, type PipelineViewMode } from '../types';
 
@@ -19,7 +23,11 @@ interface PipelineToolbarProps {
   bilanOpen: boolean;
   onToggleBilan: () => void;
   onOpenContact: () => void;
+  /** Pastille de Prise de contact ; null sans réponse ni candidat bloqué, ou interrupteur des séquences éteint. */
+  contactBadge?: ContactBadge | null;
 }
+
+const CONTACT_BADGE_ID = 'pipeline-contact-badge';
 
 const TOGGLE = [
   { value: 'liste' as const, label: 'Liste', icon: List },
@@ -34,6 +42,7 @@ export function PipelineToolbar({
   bilanOpen,
   onToggleBilan,
   onOpenContact,
+  contactBadge = null,
 }: PipelineToolbarProps) {
   const unopenedText = unopenedLinkText(unopened);
 
@@ -84,11 +93,34 @@ export function PipelineToolbar({
           variant="ghost"
           size="sm"
           aria-label="Prise de contact"
+          aria-describedby={contactBadge ? CONTACT_BADGE_ID : undefined}
           onClick={onOpenContact}
-          className="max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0"
+          className={cn('max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0', contactBadge && 'max-sm:relative')}
         >
           <Send className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
           <span className="max-sm:hidden">Prise de contact</span>
+          {contactBadge && (
+            <>
+              <span id={CONTACT_BADGE_ID} className="sr-only">{contactBadge.description}</span>
+              <span
+                aria-hidden="true"
+                data-testid="contact-badge"
+                className={cn(
+                  'ml-1.5 text-xs font-medium tabular-nums max-sm:hidden',
+                  contactBadge.tone === 'brand' ? 'text-brand' : 'text-warning',
+                )}
+              >
+                {contactBadge.text}
+              </span>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'absolute right-1.5 top-1.5 h-2 w-2 rounded-full sm:hidden',
+                  contactBadge.tone === 'brand' ? 'bg-brand' : 'bg-warning',
+                )}
+              />
+            </>
+          )}
         </Button>
       </div>
     </div>

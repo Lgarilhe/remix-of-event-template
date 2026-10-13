@@ -851,6 +851,8 @@ Critère de fin. Suites `e2e/api/seq-*` et specs d'inscription vertes ; recette 
 
 Risques. Cœur des envois réels. Parades : bascule des deux fenêtres dans la même PR, aucune autre modification, recette complète.
 
+Réalisation (12/10/2026). `enrollCandidates` a deux écrivains internes, choisis par l'appelant : `batch` (modale simple : écriture groupée, heure de la première exécution dans la fenêtre d'envoi, retrait du lot entier) et `one_by_one` (aperçu : un candidat après l'autre, retouches et réglages par étape dans `tracking_data`, délai brut, retrait du seul candidat). Un seul jeu de règles les relie (dédoublonnage par identité, anti-doublon de 90 jours, lecture des inscriptions bloquantes, refus de la base, première étape tirée par inscription, retrait si elle ne peut pas être planifiée). Les gardes de l'écran (organisation, compte d'envoi, case des destinataires, relecture IA), les états et les toasts restent dans les fenêtres, qui lisent `refused`, `done` ou `failed`. Aucun changement de logique entre les deux fenêtres : les écarts actuels (stratégie d'écriture, calcul de l'heure, textes, `inmail_wasted`) sont gardés, à décider séparément. Défaut de la modale simple corrigé dans la même PR : `formerPassages` repasse à 0 après un retrait complet de l'écriture groupée.
+
 ### 5f-2. Contacter : panneau Prise de contact définitif (G)
 
 Objectif. « Contacter » depuis toute sélection, séquence de la mission choisie d'avance, aperçu, case, « Inscrire N candidats » (décision 4, conception 5.3). Sous drapeau, sauf la règle Retenu.
@@ -859,6 +861,10 @@ Règle Retenu à l'inscription (sans drapeau, tous les appelants d'`enrollCandid
 - Une inscription réussie fait passer en Retenu un candidat À trier ou Écarté.
 - Comme `handleShortlist` (`EnrollmentPreviewModal.tsx:818-909`) : ligne À trier créée si le profil n'en a pas dans la mission, lecture des lignes sous les deux formes de `job_id`, puis `setCandidateStages(ids, 'retained')`, origine `user`, `p_from_stages` to_sort et rejected, surface `enrollment`. Aucun site d'upsert nouveau hors de ce chemin.
 - « Contacté » reste posé par le serveur au premier envoi.
+
+Réalisation de la règle Retenu, 5f-2a (12/10/2026, branche `claude/repository-audit-pcgg0y`). Écart au texte ci-dessus : elle ne vit pas dans `enrollCandidates.ts` même, que `tests/c1/lot5f-inscription.test.mjs` garde sans mot du pipeline et sans client global, mais dans `src/lib/retainCandidates.ts`, que `enrollCandidates` appelle après une inscription réussie (donc tous ses appelants, sans drapeau) et que `handleShortlist` appelle aussi : un seul site de création des lignes de mission. Étapes de départ de la règle : `to_sort` et `rejected` comme écrit ici ; « Présélectionner sans message » garde `RETAIN_FROM_STAGES` (avec `retained`, pour compter un déjà Retenu comme enregistré). Sans mission (`job` absent), rien n'est écrit. Les lignes sont lues et créées au nom de la personne qui inscrit (`created_by`), comme `handleShortlist` : un candidat déjà présent par un collègue reçoit sa propre ligne, point à reprendre avec la fusion des doublons du lot 4.
+
+Réalisation de 5f-2b, onglet Contactés et pastille (12/10/2026, branche `claude/repository-audit-pcgg0y`, interrupteur allumé). Faite sur les propositions de `lot5f2b-conception.md` (décisions 1 et 2), faute de spec-cible. Une ligne par candidat de la mission, quatre groupes, statut et geste de `enrollmentStatusLine`, gestes d'écriture limités à la pause et à l'arrêt du lot 5b (le reste ouvre la page de la séquence). Écart au plan : la pastille compte les réponses de `get_mission_attention` (votre compte) et les bloqués de l'onglet, pas les inscriptions `replied`. Reste de 5f-2 : ContactFlow depuis le Pipeline (5f-2c) et les autres entrées (5f-2d).
 
 Panneau `?panneau=contact&outreach=contactes|sequences` (drapeau allumé).
 - Deux onglets, « Contactés » et « Séquences ». « Contactés » s'ouvre par défaut s'il a une ligne (mesures du 24/09, conséquences 10 et 11).
@@ -932,6 +938,8 @@ Fichiers. Modifiés : `src/pages/Inbox.tsx`, `outreach/MessagesInbox.tsx` si l'o
 Tests. À écrire : `tests/ux/lot5f3-invitations.test.mjs` (onglet dans la messagerie, redirection drapeau allumé) ; un cas dans `seq-v2-contacter.spec.ts` (onglet de la messagerie). À adapter : `lot12-panneaux` (drapeau éteint inchangé), `lot6a-messagerie`, `barre-lot6-a-traiter` (lecteurs de `Inbox.tsx`).
 
 Critère de fin. Invitations acceptées et refusées depuis la messagerie sur la stack locale ; panneau inchangé drapeau éteint.
+
+Réalisation (12/10/2026). `Inbox.tsx` porte l'onglet (contrôle « Conversations / Invitations » au-dessus de la messagerie, `?onglet=invitations`, comptes déjà filtrés sur celui de la personne, états chargement, erreur avec réessai et aucun compte). `ContactPanel.tsx` lit l'interrupteur : allumé, une seule rubrique (séquences, sans barre d'onglets) et `?outreach=invitations` mène à `/inbox?onglet=invitations` (`Navigate` en remplacement, après les hooks) ; éteint, rendu inchangé. `missionBeta.ts` n'est pas touché : sa conversion des anciennes adresses garde son test du lot 5h (aucune mention de l'interrupteur) et la redirection se fait dans le panneau. Le prestataire de test ne sert pas la liste des invitations reçues : `e2e/flows/seq-v2-invitations.spec.ts` simule la fonction des comptes dans le navigateur et relève les demandes d'acceptation et de refus. Tests : `tests/ux/lot5f3-invitations.test.mjs` (ajouté à la CI).
 
 Risques. Faibles.
 

@@ -82,7 +82,7 @@ test('D-46 : les aperçus générés et les retouches sont conservés pour la se
   // Revue design : l'appel porte aussi les candidats visés de l'audit (SEQ-045) : les incompatibles exclus ne sont ni générés ni comptés.
   // Lot 5e-2 : style et niveau de la ligne « Rédaction par l'IA » complètent l'appel.
   assert.match(preparation, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey, writtenText: writtenTextForAi, writing, onWritingRefused: refreshWritingPreferences \}\)/);
-  assert.match(preparation, /discardSessionPreviews\(enrolledIds\)/, 'les candidats inscrits libèrent leurs aperçus');
+  assert.match(preparation, /discardSessionPreviews\(outcome\.enrolledIds\)/, 'les candidats inscrits libèrent leurs aperçus');
 });
 
 test('D-46 : la génération groupée n’écrase jamais une retouche', () => {
@@ -140,8 +140,11 @@ test('D-51 : fenêtre simple au registre du kit', () => {
   assert.match(simple, /Rechargez la page ou reconnectez votre compte/);
   assert.doesNotMatch(simple, /Traiter les séquences/, 'le toast ne renvoie plus vers un bouton absent');
   // Revue design : l'échec de planification suit l'audit (SEQ-129) : inscriptions retirées et bilan d'échec ; la reprise dans l'heure n'est annoncée que si le retrait échoue.
-  assert.match(simple, /L'inscription a échoué : aucune étape n'a pu être planifiée\. Aucun message ne partira\. Réessayez\./);
-  assert.match(simple, /Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure\./);
+  // Lot 5f-1 : les deux textes sont écrits par la bibliothèque, la fenêtre choisit le titre du toast.
+  const enrollLib = readFileSync(new URL('../../src/lib/enrollCandidates.ts', import.meta.url), 'utf8');
+  assert.match(enrollLib, /L'inscription a échoué : aucune étape n'a pu être planifiée\. Aucun message ne partira\. Réessayez\./);
+  assert.match(enrollLib, /Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure\./);
+  assert.match(simple, /schedulingFailure\.rolledBack \? 'Inscription impossible' : 'Inscription incomplète'/);
 });
 
 // ---------------------------------------------------------------- D-53

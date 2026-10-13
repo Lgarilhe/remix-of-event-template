@@ -556,9 +556,30 @@ Deno.test('get_profile : identifiant du prestataire accepté, entrée invalide r
   });
   await withMockTransport(router({}), async () => {
     const { status, body } = await call(await handleGetProfile(ACC, { profile_id: 'inconnu' }));
-    strictEqual(status, 502);
-    strictEqual(body.error, 'Profil non trouvé');
+    strictEqual(status, 404);
+    strictEqual(body.errorType, 'PROFILE_NOT_FOUND');
+    strictEqual(body.error, 'Ce profil est introuvable sur LinkedIn. Vérifiez le lien du candidat.');
   });
+});
+
+Deno.test('get_profile : compte introuvable, route introuvable et accès refusé ne passent pas pour un profil absent', async () => {
+  reset();
+  const refused = async (reply: { status: number; body: unknown }) => {
+    let result = { status: 0, body: {} as Record<string, unknown> };
+    await withMockTransport(router({ [`GET /${ACC}/users/ACoAAada`]: reply }), async () => {
+      result = await call(await handleGetProfile(ACC, { profile_id: 'ACoAAada' }));
+    });
+    return result;
+  };
+  const account = await refused({ status: 404, body: { object: 'Error', status: 404, type: 'api/resource_not_found', title: 'Account not found', detail: 'Account with given id acc_x not found' } });
+  strictEqual(account.status, 403);
+  strictEqual(account.body.errorType, 'LINKEDIN_CONNECTION_REQUIRED');
+  const route = await refused({ status: 404, body: { object: 'Error', status: 404, type: 'api/resource_not_found', title: 'Route Not Found' } });
+  strictEqual(route.status, 502);
+  strictEqual(route.body.errorType, 'NOT_FOUND');
+  const denied = await refused({ status: 403, body: { object: 'Error', status: 403, type: 'api/forbidden', title: 'Forbidden' } });
+  strictEqual(denied.status, 403);
+  strictEqual(denied.body.errorType, 'ACCOUNT_ACCESS');
 });
 
 Deno.test('get_profile : la barrière passe avant l\'appel', async () => {
@@ -584,7 +605,7 @@ Deno.test('get_profile sous la barrière : une seule requête, ni reprise du tra
   // Profil introuvable : le second format d'identifiant n'est pas essayé sous barrière.
   await withMockTransport(router({}), async (mock) => {
     const { status } = await call(await handleGetProfile(ACC, { profile_id: 'ACoAAadaLovelace1', profile_url: 'https://www.linkedin.com/in/ada-lovelace/' }, beforeProvider));
-    strictEqual(status, 502);
+    strictEqual(status, 404);
     strictEqual(mock.calls.length, 1);
   });
   // Sans barrière le comportement d'avant demeure : reprise passagère.

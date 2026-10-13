@@ -19,7 +19,7 @@ const code = (rel) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 
-const scorecard = code('src/components/ats/ScorecardTab.tsx');
+const scorecard = [code('src/components/ats/ScorecardTab.tsx'), code('src/components/ats/ScorecardEditor.tsx')].join('\n');
 const fullPage = code('src/pages/ScorecardFullPage.tsx');
 const coaching = code('src/components/ats/LiveCoachingPanel.tsx');
 const guide = code('src/components/ats/AudioSetupGuide.tsx');

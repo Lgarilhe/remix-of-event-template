@@ -134,10 +134,12 @@ test('une ligne créée par « Retenir » ou l\'inscription porte le profil enti
   // Jamais de profil réduit à la photo.
   assert.doesNotMatch(button, /linkedin_profile_data:\s*\{\s*profile_picture/);
 
-  const modal = read('src/components/outreach/EnrollmentPreviewModal.tsx');
-  assert.match(modal, /import \{ serializeProfileForStorage \} from '@\/lib\/serializeProfile';/);
-  assert.match(modal, /linkedin_profile_data: serializeProfileForStorage\(profile\),/);
-  assert.doesNotMatch(modal, /linkedin_profile_data:\s*\{\s*profile_picture/);
+  // Lot 5f-2 : « Retenir sans contacter » et la règle de l'inscription créent leur ligne au même endroit.
+  const retain = read('src/lib/retainCandidates.ts');
+  assert.match(retain, /import \{ serializeProfileForStorage \} from '@\/lib\/serializeProfile';/);
+  assert.match(retain, /linkedin_profile_data: serializeProfileForStorage\(profile\),/);
+  assert.doesNotMatch(retain, /linkedin_profile_data:\s*\{\s*profile_picture/);
+  assert.doesNotMatch(read('src/components/outreach/EnrollmentPreviewModal.tsx'), /linkedin_profile_data/, 'plus de seconde écriture du profil dans la fenêtre');
 
   // Les deux appelants de AddToProjectButton passent le profil.
   for (const rel of ['src/components/outreach/result-card/CardActions.tsx', 'src/components/outreach/result-card/ProfileDetailSheet.tsx']) {

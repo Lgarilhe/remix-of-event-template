@@ -75,7 +75,7 @@ import { channelLabel } from '@/lib/channels';
 import {
   getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
   getInitials, getMessageText, getMessageDisplayText, hasDisplayableContent,
-  getChatJobInfo, getAttendeeProfileId,
+  getChatJobInfo, getAttendeeProfileId, getChatProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
@@ -213,6 +213,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     previousAIPanelOpen.current = aiPanelOpen;
   }, [aiPanelOpen]);
   const [contextOpen, setContextOpen] = useState(false);
+  const contextOpenerRef = useRef<HTMLButtonElement>(null);
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
@@ -787,7 +788,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const linkedMission = activeMissions.find(mission => mission.id === jobInfo?.job_id || mission.job_id === jobInfo?.job_id);
   const contextProps = {
     name: displayName, profileUrl, events: candidateActivityEvents, now: currentTime,
-    profileId, profileAliases,
+    profileId: selectedChat ? getChatProfileId(selectedChat) : null, profileAliases,
     mission: jobInfo?.job_title || inferredMission?.job_title || inferredMission?.name || null,
     missionUrl: linkedMission ? `/missions/${linkedMission.id}` : inferredMission ? `/missions/${inferredMission.id}` : undefined,
     probableMission: !jobInfo?.job_title && !!inferredMission,
@@ -885,7 +886,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           {/* Actions : visibles sur ordinateur et sur téléphone */}
           <div className="flex shrink-0 items-center gap-0.5 md:gap-1">
             <Tooltip>
-              <TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn(HEADER_ICON, '2xl:hidden')} aria-label="Afficher le contexte candidat" onClick={() => setContextOpen(true)}><UserRound aria-hidden="true" /></Button></TooltipTrigger>
+              <TooltipTrigger asChild><Button ref={contextOpenerRef} variant="ghost" size="icon-sm" className={cn(HEADER_ICON, '2xl:hidden')} aria-label="Afficher le contexte candidat" onClick={() => setContextOpen(true)}><UserRound aria-hidden="true" /></Button></TooltipTrigger>
               <TooltipContent>Contexte candidat</TooltipContent>
             </Tooltip>
             <SnoozeArchiveButtons
@@ -1399,7 +1400,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
       <ConversationContext {...contextProps} />
     </aside>
     <Sheet open={contextOpen} onOpenChange={setContextOpen}>
-      <SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11">
+      <SheetContent className="w-full max-w-sm overflow-y-auto p-0 [&>button]:h-11 [&>button]:w-11" onCloseAutoFocus={event => {
+        // Une action peut ouvrir une autre fenêtre depuis le contexte candidat.
+        if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+        const opener = contextOpenerRef.current;
+        if (opener?.isConnected && opener.getClientRects().length) {
+          event.preventDefault();
+          opener.focus();
+        }
+      }}>
         <SheetHeader className="px-5 pt-6"><SheetTitle>Contexte candidat</SheetTitle><SheetDescription>Mission, séquence et prochain entretien.</SheetDescription></SheetHeader>
         <ConversationContext {...contextProps} onEnroll={() => { setContextOpen(false); onEnrollInSequence(); }} onAddToPipeline={() => { setContextOpen(false); onAddToPipeline(); }} />
       </SheetContent>

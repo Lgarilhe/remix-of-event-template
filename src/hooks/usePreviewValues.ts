@@ -15,7 +15,7 @@
  * - Mémoire par candidat, pour une organisation, une mission, une séquence,
  *   un compte d'envoi, un titre de poste et des variables ; tout change avec eux.
  * - Chaque candidat est décrit par les colonnes que l'inscription écrira
- *   (previewProfileOf, mêmes champs que handleEnroll de EnrollmentPreviewModal).
+ *   (previewProfileOf, mêmes champs que buildEnrollmentRow de src/lib/enrollCandidates.ts).
  * - Variables remplies à l'envoi seulement (expéditeur choisi par la rotation,
  *   variable personnelle d'un autre membre) : annoncées entre crochets
  *   (`atSend`), gardées telles quelles dans une retouche.

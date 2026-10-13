@@ -363,3 +363,62 @@ test('la lecture des conversations et des messages garde les formes lues par la 
   assert.equal((await t.post({ action: 'mark_as_read', chat_id: 'c1' })).body.success, true);
   assert.equal(t.provider.some(entry => entry.includes('/chat_attendees')), false);
 });
+
+// Lecture d'un profil depuis la messagerie (reprise de tests/agent/inbox-profile-provider.test.mjs de main, écrit pour l'API v1) :
+// seule l'absence du profil autorise une nouvelle recherche par son adresse publique ; compte à reconnecter, accès refusé et
+// limite se distinguent d'un profil indisponible ; aucun texte du prestataire n'atteint l'écran.
+const PROFILE_ROUTE = 'GET /acc_mine/users/candidate-a';
+const profileCall = (t, reply) => {
+  t.state.routes = { [PROFILE_ROUTE]: reply };
+  return t.post({ action: 'get_profile', profile_id: 'candidate-a' });
+};
+
+test('get_profile : l\'absence du profil est un 404 PROFILE_NOT_FOUND, seul cas qui autorise la recherche par adresse publique', async () => {
+  for (const body of [
+    { object: 'Error', status: 404, type: 'api/resource_not_found', title: 'User not found', detail: 'User with given id candidate-a not found' },
+    { object: 'Error', status: 404, type: 'api/resource_not_found', title: 'Profile not found' },
+    { object: 'Error', status: 404, type: 'api/resource_not_found' },
+  ]) {
+    const t = await boot();
+    const response = await profileCall(t, { status: 404, body });
+    assert.equal(response.status, 404, JSON.stringify(body));
+    assert.deepEqual(response.body, { success: false, errorType: 'PROFILE_NOT_FOUND', error: 'Ce profil est introuvable sur LinkedIn. Vérifiez le lien du candidat.' });
+    noVendor(response.body);
+  }
+});
+
+test('get_profile : un compte ou une route introuvables ne passent jamais pour un profil absent', async () => {
+  const account = await profileCall(await boot(), { status: 404, body: { object: 'Error', status: 404, type: 'api/resource_not_found', title: 'Account not found', detail: 'Account with given id acc_mine not found' } });
+  assert.equal(account.status, 403);
+  assert.equal(account.body.errorType, 'LINKEDIN_CONNECTION_REQUIRED');
+  assert.equal(account.body.error, 'Reconnectez votre compte LinkedIn dans les paramètres pour consulter ce profil.');
+  const route = await profileCall(await boot(), { status: 404, body: { object: 'Error', status: 404, type: 'api/resource_not_found', title: 'Route Not Found' } });
+  assert.notEqual(route.body.errorType, 'PROFILE_NOT_FOUND');
+  assert.equal(route.status, 502);
+  for (const response of [account, route]) noVendor(response.body);
+});
+
+test('get_profile : un accès refusé est un 403 ACCOUNT_ACCESS, une limite un 429, sans texte du prestataire', async () => {
+  const denied = await profileCall(await boot(), { status: 403, body: { object: 'Error', status: 403, type: 'api/forbidden', title: 'Forbidden', detail: 'Unipile access denied (private-secret)' } });
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.errorType, 'ACCOUNT_ACCESS');
+  assert.equal(denied.body.error, 'Votre compte LinkedIn ne permet pas de consulter ce profil.');
+  const limited = await profileCall(await boot(), { status: 429, body: { object: 'Error', status: 429, type: 'api/rate_limit', title: 'Too many requests', detail: 'Unipile quota exhausted' } });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.body.errorType, 'RATE_LIMIT');
+  for (const response of [denied, limited]) assert.doesNotMatch(JSON.stringify(response.body), /Unipile|private-secret/);
+});
+
+test('get_profile : les autres pannes restent indisponibles, y compris un corps qui parle d\'absence sur un statut qui n\'est pas 404', async () => {
+  for (const status of [400, 422, 500, 502, 503, 504]) {
+    const response = await profileCall(await boot(), { status, body: { object: 'Error', status, type: 'api/resource_not_found', title: 'User not found', detail: 'Unipile internal private-secret' } });
+    assert.notEqual(response.body.errorType, 'PROFILE_NOT_FOUND', String(status));
+    assert.ok(response.status >= 400, String(status));
+    assert.doesNotMatch(JSON.stringify(response.body), /Unipile|private-secret/, String(status));
+  }
+  for (const status of [404, 500, 503, 429]) {
+    const response = await profileCall(await boot(), { status, body: '<html>Unipile private-secret unavailable</html>' });
+    assert.equal(response.body.success, false, String(status));
+    assert.doesNotMatch(JSON.stringify(response.body), /Unipile|private-secret|<html>/, String(status));
+  }
+});

@@ -50,6 +50,7 @@ import { rememberPanelTab } from '../panels/panelTabMemory';
 import { PipelineToolbar } from './PipelineToolbar';
 import { StageBar } from './StageBar';
 import { ToSortSection } from './ToSortSection';
+import { useContactBadge } from './useContactBadge';
 
 const EMPTY_ROWS: readonly MissionCandidateRow[] = [];
 
@@ -104,6 +105,7 @@ export function PipelineScreen(): JSX.Element | null {
   const [now] = useState(() => Date.now());
   const navigate = useNavigate();
   const rowSignals = useMissionRowSignals(project);
+  const contactBadge = useContactBadge(project, ctx.isArchived);
 
   // Paramètres de l'écran, par remplacement. Le marqueur d'historique d'un
   // panneau ouvert tombe : sa fermeture retire alors le panneau par
@@ -386,6 +388,7 @@ export function PipelineScreen(): JSX.Element | null {
         bilanOpen={location.bilan}
         onToggleBilan={() => ctx.setBilanOpen(!location.bilan)}
         onOpenContact={ctx.openContactPanel}
+        contactBadge={contactBadge}
       />
 
       {location.bilan && (

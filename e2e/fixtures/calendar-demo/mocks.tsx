@@ -28,5 +28,9 @@ export function useUpcomingInterviews() {
 export const useMissionNames = () => () => 'Mission de test';
 /** Échec explicite si une régression tente de lire/écrire la base ou des crédits. */
 export const supabase = new Proxy({}, {
-  get(_target, key) { throw new Error(`Accès Supabase inattendu dans l’aperçu : ${String(key)}`); },
+  get(_target, key) {
+    const w = window as Window & { calendarDatabaseAccesses: string[] };
+    w.calendarDatabaseAccesses.push(String(key));
+    throw new Error(`Accès Supabase inattendu dans l’aperçu : ${String(key)}`);
+  },
 });

@@ -4,6 +4,7 @@ import { calendarDemoHarnessHtml } from '../fixtures/calendar-demo/bundle';
 interface PreviewWindow extends Window {
   calendarQA: { microphone: number; windows: number; recordings: number };
   calendarLiveReads: number;
+  calendarDatabaseAccesses: string[];
   calendarWindows: Array<{ url: string; target?: string; features?: string }>;
 }
 
@@ -21,6 +22,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
       const w = window as PreviewWindow;
       w.calendarQA = { microphone: 0, windows: 0, recordings: 0 };
       w.calendarLiveReads = 0;
+      w.calendarDatabaseAccesses = [];
       w.calendarWindows = [];
       const blockMicrophone = async () => { w.calendarQA.microphone++; throw new Error('Microphone interdit dans cet aperçu'); };
       Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: blockMicrophone, getDisplayMedia: blockMicrophone } });
@@ -41,6 +43,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
   async function isolated(page: Page, audit: Awaited<ReturnType<typeof open>>, windows = 0) {
     expect(audit.requests).toEqual([]);
     expect(audit.errors).toEqual([]);
+    expect(await page.evaluate(() => (window as PreviewWindow).calendarDatabaseAccesses)).toEqual([]);
     expect(await page.evaluate(() => (window as PreviewWindow).calendarQA)).toEqual({ microphone: 0, windows, recordings: 0 });
   }
 
@@ -70,7 +73,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await expect(alex.getByText('Google Meet', { exact: true })).toBeVisible();
     await camille.getByRole('button', { name: 'Rejoindre la visio', exact: true }).click();
     await expect(camilleDialog(page).getByRole('heading', { name: 'Aperçu Microsoft Teams', exact: true })).toBeVisible();
-    await expect(camilleDialog(page).getByRole('tab', { name: 'Visio', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(camilleDialog(page).getByRole('tab', { name: 'Évaluation', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(camilleDialog(page).getByText('Aucune réunion ouverte. Caméra et micro désactivés.', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => (window as PreviewWindow).calendarLiveReads)).toBe(0);
     await isolated(page, audit);
@@ -83,35 +86,56 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await candidateSheet(page, dialog);
     await expect(dialog.getByRole('tab', { name: 'Évaluation', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(dialog.getByText(/^Grille préparée ·/)).toBeVisible();
-    await expect(dialog.getByRole('radiogroup')).toHaveCount(3);
-    await expect(dialog.getByText('Comment avez-vous transformé un retour utilisateur en amélioration du produit ?', { exact: true })).toBeVisible();
-    await dialog.getByRole('radiogroup', { name: 'Note : Recherche utilisateur', exact: true }).getByRole('radio', { name: '4 sur 5', exact: true }).click();
-    await page.keyboard.press('ArrowRight');
-    await expect(dialog.getByRole('radiogroup', { name: 'Note : Recherche utilisateur', exact: true }).getByRole('radio', { name: '5 sur 5', exact: true })).toBeChecked();
-    await page.keyboard.press('ArrowLeft');
-    await dialog.getByLabel('Commentaire : Recherche utilisateur', { exact: true }).fill('A expliqué les retours des huit utilisateurs.');
-    await dialog.getByLabel('Notes de l’entretien', { exact: true }).fill('Revoir ensemble la mesure des abandons.');
+    // Le même éditeur que les vrais entretiens : un critère ouvert à la fois.
+    const criterion = dialog.getByRole('article', { name: 'Recherche utilisateur', exact: true });
+    await expect(criterion).toBeVisible();
+    await expect(dialog.getByRole('radiogroup', { name: 'Votre note', exact: true })).toHaveCount(1);
+    await expect(criterion.getByText('Comment avez-vous transformé un retour utilisateur en amélioration du produit ?', { exact: true })).toBeVisible();
+    await criterion.getByRole('radio', { name: 'Noter 4 sur 5', exact: true }).click();
+    await expect(criterion.getByRole('radio', { name: 'Noter 4 sur 5', exact: true })).toBeChecked();
+    await criterion.getByRole('button', { name: "Voir l'échelle complète", exact: true }).click();
+    const rubric = criterion.getByRole('button', { name: "Masquer l'échelle complète", exact: true });
+    await expect(rubric).toHaveAttribute('aria-expanded', 'true');
+    await rubric.press('3');
+    await expect(criterion.getByRole('radio', { name: 'Noter 3 sur 5', exact: true })).toBeChecked();
+    await rubric.press('4');
+    await criterion.getByLabel('Vos notes sur ce critère', { exact: true }).fill('A expliqué les retours des huit utilisateurs.');
+    await criterion.getByRole('button', { name: 'Suivant', exact: true }).click();
+    const second = dialog.getByRole('article', { name: 'Collaboration avec les développeurs', exact: true });
+    await expect(second).toBeVisible();
+    await expect(criterion).toHaveCount(0);
+    await expect(second.getByLabel('Vos notes sur ce critère', { exact: true })).toHaveValue('');
+    await second.getByLabel('Vos notes sur ce critère', { exact: true }).fill('A détaillé un arbitrage avec les développeurs.');
+    await second.getByRole('button', { name: 'Précédent', exact: true }).click();
+    await expect(criterion.getByLabel('Vos notes sur ce critère', { exact: true })).toHaveValue('A expliqué les retours des huit utilisateurs.');
+    await dialog.getByRole('radiogroup', { name: 'Votre recommandation', exact: true }).getByRole('radio', { name: 'Oui', exact: true }).click();
+    await dialog.getByLabel('Résumé et justification', { exact: true }).fill('Revoir ensemble la mesure des abandons.');
+    await dialog.getByLabel('Points de suivi pour le prochain entretien', { exact: true }).fill('Vérifier la période de mesure.');
     await dialog.getByRole('tab', { name: 'Profil', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: 'Expérience', exact: true })).toBeVisible();
-    await expect(dialog.getByText('Studio Horizon (fictif)', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('tabpanel', { name: 'Profil', exact: true }).getByText('Studio Horizon (fictif)', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Formation', exact: true })).toBeVisible();
     await expect(dialog.getByText('Master Design d’interaction', { exact: true })).toBeVisible();
     await dialog.getByRole('tab', { name: 'Évaluation', exact: true }).click();
-    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Revoir ensemble la mesure des abandons.');
+    await expect(dialog.getByLabel('Résumé et justification', { exact: true })).toHaveValue('Revoir ensemble la mesure des abandons.');
     await dialog.getByRole('button', { name: 'Fermer', exact: true }).click();
     await expect(card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true })).toBeFocused();
     await card(page, 'Alex Martin').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
     const alex = page.getByRole('dialog', { name: 'Alex Martin', exact: true });
-    await expect(alex.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('');
+    await expect(alex.getByLabel('Résumé et justification', { exact: true })).toHaveValue('');
     await expect(alex.getByRole('radio', { checked: true })).toHaveCount(0);
-    await alex.getByLabel('Notes de l’entretien', { exact: true }).fill('Clarifier le montant du contrat.');
+    await alex.getByLabel('Résumé et justification', { exact: true }).fill('Clarifier le montant du contrat.');
     await page.keyboard.press('Escape');
     await expect(card(page, 'Alex Martin').getByRole('button', { name: "Grille d'entretien", exact: true })).toBeFocused();
     await card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
-    await expect(dialog.getByRole('radiogroup', { name: 'Note : Recherche utilisateur', exact: true }).getByRole('radio', { name: '4 sur 5', exact: true })).toBeChecked();
-    await expect(dialog.getByLabel('Commentaire : Recherche utilisateur', { exact: true })).toHaveValue('A expliqué les retours des huit utilisateurs.');
-    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Revoir ensemble la mesure des abandons.');
-    await expect(dialog.getByRole('status')).toHaveText('1/3 critères notés · Moyenne 4/5');
+    await expect(criterion.getByRole('radio', { name: 'Noter 4 sur 5', exact: true })).toBeChecked();
+    await expect(criterion.getByLabel('Vos notes sur ce critère', { exact: true })).toHaveValue('A expliqué les retours des huit utilisateurs.');
+    await expect(dialog.getByLabel('Résumé et justification', { exact: true })).toHaveValue('Revoir ensemble la mesure des abandons.');
+    await expect(dialog.getByText('1 critère noté sur 3', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('radiogroup', { name: 'Votre recommandation', exact: true }).getByRole('radio', { name: 'Oui', exact: true })).toBeChecked();
+    await expect(dialog.getByLabel('Points de suivi pour le prochain entretien', { exact: true })).toHaveValue('Vérifier la période de mesure.');
+    await criterion.getByRole('button', { name: 'Suivant', exact: true }).click();
+    await expect(second.getByLabel('Vos notes sur ce critère', { exact: true })).toHaveValue('A détaillé un arbitrage avec les développeurs.');
     await isolated(page, audit);
   });
 
@@ -139,14 +163,14 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     const dialog = camilleDialog(page);
     await candidateSheet(page, dialog);
     await fits(page, dialog);
-    await dialog.getByLabel('Notes de l’entretien', { exact: true }).fill('Note sur mobile.');
-    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Note sur mobile.');
+    await dialog.getByLabel('Résumé et justification', { exact: true }).fill('Note sur mobile.');
+    await expect(dialog.getByLabel('Résumé et justification', { exact: true })).toHaveValue('Note sur mobile.');
     await dialog.getByRole('tab', { name: 'Profil', exact: true }).click();
-    await expect(dialog.getByText('Studio Horizon (fictif)', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('tabpanel', { name: 'Profil', exact: true }).getByText('Studio Horizon (fictif)', { exact: true })).toBeVisible();
     await fits(page, dialog);
     await dialog.getByRole('tab', { name: 'Évaluation', exact: true }).click();
-    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Note sur mobile.');
-    await dialog.getByRole('tab', { name: 'Assistant', exact: true }).click();
+    await expect(dialog.getByLabel('Résumé et justification', { exact: true })).toHaveValue('Note sur mobile.');
+    await dialog.getByRole('button', { name: "Ouvrir l'assistant d'entretien", exact: true }).click();
     await dialog.getByRole('button', { name: 'Lancer la simulation', exact: true }).click();
     await dialog.getByRole('button', { name: 'Voir le compte rendu', exact: true }).click();
     await fits(page, dialog);
@@ -159,7 +183,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await expect(card(page, 'Camille Durand')).toBeVisible();
     expect(await page.evaluate(() => (window as PreviewWindow).calendarLiveReads)).toBe(0);
     await card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
-    await camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true }).fill('Cet essai doit rester temporaire.');
+    await camilleDialog(page).getByLabel('Résumé et justification', { exact: true }).fill('Cet essai doit rester temporaire.');
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('button', { name: 'Quitter la démo', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible();
@@ -167,7 +191,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     expect(await page.evaluate(() => (window as PreviewWindow).calendarLiveReads)).toBeGreaterThan(0);
     await page.getByRole('link', { name: 'Voir un exemple', exact: true }).click();
     await card(page, 'Camille Durand').getByRole('button', { name: "Grille d'entretien", exact: true }).click();
-    await expect(camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('');
+    await expect(camilleDialog(page).getByLabel('Résumé et justification', { exact: true })).toHaveValue('');
     await isolated(page, audit);
   });
 
@@ -201,24 +225,24 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await sidebarScorecard(page, 'Camille Durand').click();
     await candidateSheet(page, camilleDialog(page));
     await expect(camilleDialog(page).getByRole('tab', { name: 'Évaluation', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true }).fill('Suivi conservé entre les pages.');
+    await camilleDialog(page).getByLabel('Résumé et justification', { exact: true }).fill('Suivi conservé entre les pages.');
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('navigation', { name: 'Navigation de l’aperçu' }).getByRole('link', { name: 'Pipeline', exact: true }).click();
     await expect(page.getByRole('status', { name: 'Page active' })).toHaveText('/pipeline');
     await sidebarScorecard(page, 'Alex Martin').click();
     const alex = page.getByRole('dialog', { name: 'Alex Martin', exact: true });
-    await expect(alex.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('');
-    await alex.getByLabel('Notes de l’entretien', { exact: true }).fill('Uniquement Alex.');
+    await expect(alex.getByLabel('Résumé et justification', { exact: true })).toHaveValue('');
+    await alex.getByLabel('Résumé et justification', { exact: true }).fill('Uniquement Alex.');
     await alex.getByRole('button', { name: 'Fermer', exact: true }).click();
     await sidebarScorecard(page, 'Camille Durand').click();
-    await expect(camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Suivi conservé entre les pages.');
+    await expect(camilleDialog(page).getByLabel('Résumé et justification', { exact: true })).toHaveValue('Suivi conservé entre les pages.');
     await camilleDialog(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.getByRole('button', { name: 'Quitter les exemples', exact: true }).click();
     await expect(sidebarCard(page, 'Camille Durand')).toHaveCount(0);
     await expect(page.getByRole('status', { name: 'Page active' })).toHaveText('/pipeline');
     await page.getByRole('button', { name: 'Voir un exemple', exact: true }).click();
     await sidebarScorecard(page, 'Camille Durand').click();
-    await expect(camilleDialog(page).getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('');
+    await expect(camilleDialog(page).getByLabel('Résumé et justification', { exact: true })).toHaveValue('');
     await isolated(page, audit);
   });
 
@@ -237,8 +261,8 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await expect(drawer).toBeHidden();
     await candidateSheet(page, dialog);
     await fits(page, dialog);
-    await dialog.getByLabel('Notes de l’entretien', { exact: true }).fill('Essai depuis le tiroir mobile.');
-    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toBeFocused();
+    await dialog.getByLabel('Résumé et justification', { exact: true }).fill('Essai depuis le tiroir mobile.');
+    await expect(dialog.getByLabel('Résumé et justification', { exact: true })).toBeFocused();
     await dialog.getByRole('button', { name: 'Fermer', exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
@@ -253,7 +277,7 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
     await dialog.getByRole('button', { name: 'Voir le compte rendu', exact: true }).click();
     await expect(dialog.getByRole('region', { name: 'Compte rendu fictif', exact: true })).toBeVisible();
     await dialog.getByRole('tab', { name: 'Évaluation', exact: true }).click();
-    await expect(dialog.getByLabel('Notes de l’entretien', { exact: true })).toHaveValue('Essai depuis le tiroir mobile.');
+    await expect(dialog.getByLabel('Résumé et justification', { exact: true })).toHaveValue('Essai depuis le tiroir mobile.');
     await fits(page, dialog);
     await test.info().attach('sidebar-interview-mobile-320', { body: await page.screenshot(), contentType: 'image/png' });
     await isolated(page, audit);
@@ -292,7 +316,12 @@ test.describe('Agenda — aperçu des entretiens et accès réels @critical', ()
   }
 
   async function candidateSheet(page: Page, sheet: Locator) {
-    await expect(sheet.getByText('Fiche candidat · Exemple', { exact: true })).toBeVisible();
+    await expect(sheet.getByRole('heading', { name: 'Camille Durand', exact: true })).toBeVisible();
+    await expect(sheet.getByText('Exemple fictif', { exact: true })).toBeVisible();
+    await expect(sheet.getByRole('tab', { name: 'Profil', exact: true })).toBeVisible();
+    await expect(sheet.getByRole('tab', { name: 'Évaluation', exact: true })).toBeVisible();
+    await expect(sheet.getByRole('tab')).toHaveCount(2);
+    await expect(sheet.getByRole('button', { name: /^(Message|Séquence|Noter|Enrichir|Régénérer la grille)$/ })).toHaveCount(0);
     const viewport = page.viewportSize()!;
     const expectedWidth = viewport.width >= 640 ? Math.min(viewport.width * 0.95, 720) : viewport.width;
     await expect.poll(async () => {
