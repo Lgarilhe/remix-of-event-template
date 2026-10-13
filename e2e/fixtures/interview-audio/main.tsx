@@ -32,7 +32,7 @@ export function Harness() {
       onCriteriaUpdate={() => {}} onAutoScores={() => {}} onReportGenerated={() => {}}
       onClose={() => setOpen(false)}
     /> : <button className="min-h-11 rounded border border-border px-3" onClick={() => setOpen(true)}>Rouvrir l’assistant</button>;
-  return <main className={`mx-auto w-full space-y-3 p-3 ${workspace ? 'max-w-[1600px]' : 'max-w-[420px]'}`}>
+  return <main className="mx-auto w-full space-y-3 p-3" style={{ maxWidth: workspace ? 1600 : 420 }}>
     <h1 className="text-lg font-semibold">Entretien de Camille Durand</h1>
     {!workspace && <label className="block text-sm">Rendez-vous du harnais
       <select aria-label="Rendez-vous du harnais" className="mt-1 block min-h-11 w-full rounded border border-border bg-background px-2" value={meeting} onChange={event => setMeeting(event.target.value)}>

@@ -31,7 +31,7 @@ export function InterviewAudioRecommendation({ recommendation, captureMode, onAp
         </details>
       )}
       {!selected && (
-        <Button variant="outline" size="sm" className="h-auto w-full whitespace-normal max-md:min-h-11" onClick={() => onApply(mode)}>
+        <Button variant="ghost" size="sm" className="h-auto w-full whitespace-normal rounded-lg border border-border hover:border-foreground max-md:min-h-11" onClick={() => onApply(mode)}>
           {mode === 'meeting' ? 'Utiliser le micro et l’audio partagé' : 'Utiliser le micro seul'}
         </Button>
       )}
