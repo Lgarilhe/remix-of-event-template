@@ -71,6 +71,7 @@ function CandidateRecordSheet({ candidate, pipelineAttached, ...props }: Props &
   const profile = mergeCandidateProfileDetails(mergeCandidateProfileDetails(savedProfile, props.profile ?? null), query.data ?? null);
   const detailedProfile = profile && {
     ...profile,
+    profile_picture_url: profile.profile_picture_url || candidate.pictureUrl || props.identity.photo || undefined,
     work_experience: profile.work_experience?.map(job => ({ ...job, start: parseDate(job.start), end: parseDate(job.end) })),
     education: profile.education?.map(school => ({ ...school, school_logo: school.school_picture_url, start: parseDate(school.start), end: parseDate(school.end) })),
   };

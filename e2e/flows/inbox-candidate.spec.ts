@@ -6,6 +6,7 @@ import type { CandidateFixtureState, CandidateFixtureWindow, Row } from '../fixt
 
 const require = createRequire(import.meta.url);
 const PERSON = 'ACo_fixture_camille';
+const PORTRAIT = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="#d8bf96"/><circle cx="32" cy="24" r="12" fill="#715641"/><path d="M10 64c0-20 9-27 22-27s22 7 22 27" fill="#506b69"/></svg>').toString('base64');
 const LINKEDIN_URL = 'https://www.linkedin.com/in/camille-fixture';
 const MISSION_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const MISSION_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -124,13 +125,16 @@ test.describe('Messagerie — vraie fiche candidat commune @critical', () => {
   }
 
   test('Guillaume — fiche commune, vrais onglets et brouillon conservé après fermeture', async ({ page }) => {
-    const api = await open(page);
+    const api = await open(page, { rows: [{ ...missionRow(), picture: PORTRAIT }] });
     const message = page.getByRole('textbox', { name: 'Message', exact: true });
     await message.fill('Merci Camille, rendez-vous vendredi.');
     await openSheet(page);
     await expect(sheet(page).getByRole('tab', { name: 'Profil', exact: true })).toHaveAttribute('aria-selected', 'true');
     for (const name of ['Aperçu', 'Évaluation', 'CV', 'Séquences', 'Notes']) await expect(sheet(page).getByRole('tab', { name, exact: true })).toBeAttached();
     await expect(sheet(page).getByText('Parcours complet de Camille', { exact: true })).toBeVisible();
+    const portrait = sheet(page).locator('img[src="' + PORTRAIT + '"]');
+    await expect(portrait).toBeVisible();
+    await expect.poll(() => portrait.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
     await test.info().attach('shared-candidate-desktop', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
     await sheet(page).getByRole('button', { name: 'Fermer', exact: true }).click();
     await expect(message).toHaveValue('Merci Camille, rendez-vous vendredi.');
