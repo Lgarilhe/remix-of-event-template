@@ -562,6 +562,36 @@ Deno.test('get_profile : identifiant du prestataire accepté, entrée invalide r
   });
 });
 
+Deno.test('get_profile : include_details (messagerie) ne change rien, les sections sont toujours demandées et les rubriques limitées sont rendues', async () => {
+  reset();
+  // main (#343) a ajouté include_details pour que l'ancienne API rende les cinq rubriques sans notifier la personne ;
+  // l'API v2 les demande d'office (with_sections), en lecture silencieuse, et rend les rubriques que le réseau a limitées.
+  await withMockTransport(
+    router({
+      [`GET /${ACC}/users/ACoAAada`]: {
+        body: {
+          object: 'UserProfile', id: 'ACoAAada', display_name: 'Ada Lovelace',
+          specifics: { experience: [{ job_title: 'CTO', company: { name: 'X' }, started_on: '03/15/2019' }], throttled_sections: ['skills', 'languages'] },
+        },
+      },
+    }),
+    async (mock) => {
+      for (const include_details of [undefined, true, false, 'true']) {
+        const params: Record<string, unknown> = { profile_id: 'ACoAAada' };
+        if (include_details !== undefined) params.include_details = include_details;
+        const { status, body } = await call(await handleGetProfile(ACC, params));
+        strictEqual(status, 200);
+        const profile = body.profile as Record<string, unknown>;
+        deepStrictEqual(profile.throttled_sections, ['skills', 'languages']);
+        strictEqual((profile.work_experience as Array<Record<string, unknown>>)[0].role, 'CTO');
+      }
+      strictEqual(mock.calls.length, 4, 'une lecture par appel, aucune reprise automatique');
+      for (const c of mock.calls) deepStrictEqual(c.query.getAll('with_sections'), ['linkedin_*']);
+      ok(!mock.calls.some((c) => c.path.includes('visit-profile')));
+    },
+  );
+});
+
 Deno.test('get_profile : compte introuvable, route introuvable et accès refusé ne passent pas pour un profil absent', async () => {
   reset();
   const refused = async (reply: { status: number; body: unknown }) => {

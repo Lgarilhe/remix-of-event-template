@@ -60,6 +60,24 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Fait** : l’aperçu monte la fiche commune et l’éditeur de scorecard extrait de la vue réelle : un critère à la fois, barème, notes, recommandation, résumé et suivi. Les brouillons restent locaux et séparés par rendez-vous ; l’assistant simulé occupe le panneau de la grille. Les lectures distantes, enrichissements, actions métier et micro ne sont pas activés par l’aperçu.
 **Validation** : build, audit design, régressions ciblées et rendu des composants sans accès DB passants ; onze erreurs TypeScript héritées inchangées. Les douze parcours agenda couvrent les quatre personas (navigation et conservation, simplicité, isolation, mobile 320 px/focus) ; exécution navigateur requise en CI avant fusion. Les parcours des vraies grilles restent dans la vérification de régression.
 
+## 2026-10-13 — BUG — Rubriques détaillées du profil dans la messagerie
+
+**Contexte** : une consultation réussie pouvait ne ramener que l’identité du candidat, puis afficher « Profil LinkedIn non disponible ». Le lecteur manuel ne demandait pas les rubriques du parcours. Un instantané enregistré avec seulement un nom, une photo ou un intitulé pouvait aussi bloquer leur consultation.
+**Fait** : la lecture depuis le panneau Profil demande explicitement les cinq rubriques affichées : présentation, expériences, formation, compétences et langues. L’option serveur `include_details === true` ajoute les paramètres de rubriques et `notify=false` en conservant les anciens appels, les quotas, l’identité et les contrôles d’accès. Les instantanés d’identité seuls n’évitent plus cette lecture sur le compte personnel connecté ; un profil avec des rubriques déjà disponibles reste consultable sans nouvel appel. Le tri inclut les langues. L’actualisation et la relecture du cache conservent les rubriques précédentes lorsque la réponse est partielle, dans leur clé d’origine. Les limitations `throttled_sections` restent visibles ; une identité seule affiche ses informations disponibles sans prétendre que le profil est absent. La fiche affiche également les langues lorsque c’est sa seule rubrique.
+**Validation** : 40 parcours Chromium passent sur les sources finales, dont les deux parcours du véritable écran Inbox, mobiles 320/390 px et relecture partielle après invalidation. Cinq parcours reproduisent les défauts sur le socle précédent. 35 cas du profil et 91 cas UX ciblés passent, ainsi que 32 fichiers de tests agents et 14 tests du lecteur serveur. Les transports de test ne renvoient maintenant les rubriques que si elles sont demandées. Build final réussi ; onze diagnostics TypeScript hérités identiques, lint sans aggravation et quinze compteurs design inchangés. Revue indépendante favorable.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Profil déjà détaillé sans nouvel appel, récupération des rubriques depuis une identité seule, langues conservées | PASS |
+| Claire | Rubriques réellement demandées, identité partielle lisible, actualisation donnant un parcours | PASS |
+| Théo | Limites sans nouvelle boucle, actualisation et relecture partielles conservant les données et leur organisation | PASS |
+| Sophie | Profils et états partiels à 320/390 px, focus et contrôles d’accessibilité, véritable écran Inbox | PASS |
+
+**Limites** : transports simulés ; aucun appel LinkedIn réel, contact ou écriture de données en production pour les tests. Une rubrique disponible ne prouve pas l’exhaustivité du parcours enregistré ; Actualiser demande de nouveau les cinq rubriques. La disponibilité réelle du profil signalé dépend encore des données et des droits renvoyés par LinkedIn.
+**Refs** : branche `codex/fix-inbox-profile-details-20261013` ; [contrat v1 des profils](https://developer.unipile.com/reference/userscontroller_getprofilebyidentifier), `useInboxCandidateProfile.ts`, `candidateProfile.ts`, `CandidateProfileContent.tsx`, `ProfileDetailedTab.tsx`, `unipile-search`, `e2e/flows/inbox-profile.spec.ts`.
+
+---
+
 ## 2026-10-13 — BUG — Profil candidat consultable depuis la messagerie
 
 **Contexte** : le panneau Profil de la messagerie pouvait échouer malgré un identifiant LinkedIn utilisable. Le participant, ses alias triés et l’URL publique ne conservaient pas la priorité de l’identité du profil. Le lecteur serveur présentait aussi certaines pannes, limitations ou déconnexions comme un profil introuvable ; une relecture ratée masquait les données déjà affichées.
