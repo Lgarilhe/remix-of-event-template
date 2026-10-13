@@ -852,7 +852,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <div className="min-w-0 flex-1 py-0.5">
             {/* Le nom, puis l'état de l'inscription en mots, sans pastille (design simplifié) */}
             <div className="flex min-w-0 items-baseline gap-x-2">
-              <h2 className="min-w-0"><button type="button" className="block min-h-11 max-w-full truncate rounded-md text-left text-md font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8" aria-label={`Ouvrir la fiche de ${displayName}`} onClick={openCandidate}>{displayName}</button></h2>
+              <h2 className="min-w-0"><Button type="button" variant="link" className="block h-auto min-h-11 max-w-full truncate p-0 text-left text-md font-semibold text-foreground md:min-h-8" aria-label={`Ouvrir la fiche de ${displayName}`} onClick={openCandidate}>{displayName}</Button></h2>
               {enrollmentStatus && (
                 <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground md:inline-flex">
                   <GitBranch className="h-3 w-3 self-center text-foreground" aria-hidden="true" />
