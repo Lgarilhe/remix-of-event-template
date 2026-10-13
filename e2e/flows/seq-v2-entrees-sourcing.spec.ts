@@ -447,12 +447,24 @@ test('Interrupteur éteint : le menu « Séquence » d\'avant s\'ouvre, pas de f
 
 // ─── 5. Recherche autonome (/sourcing/<id>) ─────────────────────────────────
 
-/** Recherche autonome avec les résultats simulés affichés (nouvelle disposition du Sourcing : liste à trier). */
+/**
+ * Recherche autonome avec les résultats simulés affichés (nouvelle disposition du Sourcing : liste à trier).
+ * Parcours guidé (« Sourcing guidé », main #344) : l'écran de départ « Qui cherchez-vous ? » ouvre le dialogue
+ * « Assistant · Sourcing » (lien « compléter le cadrage depuis le poste » : aucune phrase, donc aucun tour de
+ * `sourcing-interview` ; le poste de la recherche a déjà son intitulé), « Valider et chercher » enregistre le cadrage
+ * puis lance la recherche (filtres et résultats simulés par openContext).
+ */
 async function openStandaloneSearch(browser: Browser, ws: Workspace, candidates: Candidate[]): Promise<Page> {
   const context = await openContext(browser, ws, candidates);
   const page = await context.newPage();
   await page.goto(`/sourcing/${ws.projectId}`, { waitUntil: 'domcontentloaded' });
-  await page.getByText('générer les filtres depuis le poste').click({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: 'Qui cherchez-vous ?' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'compléter le cadrage depuis le poste', exact: true }).click();
+  const assistant = page.getByRole('dialog', { name: 'Assistant · Sourcing', exact: true });
+  const validate = assistant.getByRole('button', { name: 'Valider et chercher', exact: true });
+  await expect(validate).toBeEnabled({ timeout: 30_000 });
+  await validate.click();
+  await expect(assistant).toHaveCount(0, { timeout: 30_000 });
   for (const c of candidates) await expect(checkbox(page, c.name)).toBeVisible({ timeout: 30_000 });
   return page;
 }
