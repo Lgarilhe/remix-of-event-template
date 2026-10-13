@@ -242,7 +242,7 @@ test.describe('Décision 10 : alerte « Relances non arrêtées après une répo
   test('classée « action », avec ou sans mission', () => {
     const metadata = {
       source: 'reply_sibling_stop_failed',
-      event_key: 'unipile:message_received:m1',
+      event_key: 'unipile:v2:message.new:evt_m1',
       enrollment_ids: ['e1'],
       sequence_id: 's1',
       profile_name: 'Camille Martin',

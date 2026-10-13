@@ -110,6 +110,11 @@ jobs:
       # le rafraîchissement des adresses est branché (tests sans dépendance).
       - name: Photos des candidats (notation)
         run: node --test tests/ux/photos-candidats.test.mjs
+      # Prestataire LinkedIn, API v2 seule : plus d'appel /api/v1, de DSN, de clé par
+      # organisation ni d'ancien module dans supabase/functions, src, scripts et
+      # extensions ; l'hôte du prestataire n'est cité que par le client partagé.
+      - name: Garde API v2 seule (aucune trace de l'ancienne API)
+        run: node --test tests/c1/unipile-v1-absent.test.mjs
 
   migrations:
     name: Migrations (versions uniques)
@@ -127,6 +132,139 @@ jobs:
             exit 1
           fi
           echo "OK : $(ls supabase/migrations/*.sql | wc -l) migrations, versions uniques."
+
+  unipile-v2:
+    name: Prestataire LinkedIn v2 (Deno)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Même table d'imports que candidate-actions.yml : supabase-js (esm.sh) et le
+      # serveur HTTP de deno.land sont résolus en local, sans réseau vers ces hôtes.
+      DENO_IMPORT_MAP: e2e/local-stack/import_map.json
+      # Points d'entrée des fonctions migrées vers l'API v2, plus le client partagé.
+      ENTRY_POINTS: |
+        supabase/functions/_shared/unipile/index.ts
+        supabase/functions/auto-analyze-message/index.ts
+        supabase/functions/auto-categorize-chats/index.ts
+        supabase/functions/coresignal-search/index.ts
+        supabase/functions/enrich-candidate-contact/index.ts
+        supabase/functions/export-org-data/index.ts
+        supabase/functions/generate-outreach-message/index.ts
+        supabase/functions/generate-search-filters/index.ts
+        supabase/functions/process-enrichment-queue/index.ts
+        supabase/functions/process-inmail-queue/index.ts
+        supabase/functions/process-sequences/index.ts
+        supabase/functions/refresh-pedigree-by-funding-stage/index.ts
+        supabase/functions/resolve-pedigree-directory/index.ts
+        supabase/functions/run-agent-search/index.ts
+        supabase/functions/score-profile-job/index.ts
+        supabase/functions/search-agent-chat/index.ts
+        supabase/functions/send-candidate-email/index.ts
+        supabase/functions/sequence-send-email/index.ts
+        supabase/functions/sequence-webhooks-handler/index.ts
+        supabase/functions/sourcing-agent/index.ts
+        supabase/functions/unipile-accounts/index.ts
+        supabase/functions/unipile-manage-webhooks/index.ts
+        supabase/functions/unipile-migration/index.ts
+        supabase/functions/unipile-search/index.ts
+        supabase/functions/unipile-webhook/index.ts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6
+      # Pas de `npm ci` dans ce job, exprès. Deno lit le package.json de la racine et, sans
+      # node_modules, refuse de résoudre supabase-js ("Could not find ... in a node_modules
+      # folder"). Avec un node_modules présent (dépôt de travail après `npm ci`), il résout au
+      # contraire supabase-js depuis cet arbre et annonce des centaines de fausses erreurs de
+      # typage. `--node-modules-dir=none` fixe le comportement des deux côtés : les paquets npm
+      # viennent de la table d'imports et du cache de Deno.
+      - name: Tests Deno du client partagé et des fonctions migrées
+        run: |
+          deno test --no-check --node-modules-dir=none \
+            --import-map="$DENO_IMPORT_MAP" \
+            --allow-env --allow-read --allow-write --allow-net=127.0.0.1,localhost \
+            supabase/functions/_shared/unipile/ \
+            supabase/functions/_shared/connection-claim.test.ts \
+            supabase/functions/_shared/candidate-actions/ \
+            supabase/functions/_shared/agent-tools-email.test.ts \
+            supabase/functions/_shared/agent-tools-mutations.provider.test.ts \
+            supabase/functions/_shared/continuous-sourcing.accounts.test.ts \
+            supabase/functions/_shared/profile-data.test.ts \
+            supabase/functions/_shared/profile-enrichment.test.ts \
+            supabase/functions/_shared/sequence-email-send.test.ts \
+            supabase/functions/_shared/sequence-ledger-slot.test.ts \
+            supabase/functions/_shared/sequence-linkedin-send.test.ts \
+            supabase/functions/_shared/sequence-preview-values.test.ts \
+            supabase/functions/_shared/sequence-send-rules.test.ts \
+            supabase/functions/_shared/sequence-sender.test.ts \
+            supabase/functions/_shared/sequence-wait-guards.test.ts \
+            supabase/functions/auto-analyze-message/ \
+            supabase/functions/auto-categorize-chats/ \
+            supabase/functions/generate-outreach-message/recent-posts.test.ts \
+            supabase/functions/process-enrichment-queue/outcome.test.ts \
+            supabase/functions/process-sequences/engine.test.ts \
+            supabase/functions/resolve-pedigree-directory/ \
+            supabase/functions/sequence-webhooks-handler/ \
+            supabase/functions/unipile-accounts/ \
+            supabase/functions/unipile-manage-webhooks/ \
+            supabase/functions/unipile-migration/ \
+            supabase/functions/unipile-search/ \
+            supabase/functions/unipile-webhook/
+      # Typage des points d'entrée. La table d'imports résout supabase-js depuis npm (types
+      # plus stricts que ceux d'esm.sh), ce qui laisse une dette de typage ancienne dans
+      # score-profile-job, credit-guard, require-auth et d'autres : le job compare donc la PR
+      # à sa base sur le même runner, comme le job de type-check de ce fichier, et exige en plus
+      # zéro erreur dans le client partagé et dans les fonctions unipile-*.
+      - name: Typage des points d'entrée (PR contre base, zéro erreur dans le client)
+        shell: bash --noprofile --norc {0}
+        run: |
+          mkdir -p "$RUNNER_TEMP/imports"
+          cp e2e/local-stack/import_map.json e2e/local-stack/std-serve-shim.ts "$RUNNER_TEMP/imports/"
+          MAP="$RUNNER_TEMP/imports/import_map.json"
+
+          # Affiche le nombre d'erreurs de typage ; -1 si deno échoue sans erreur de typage
+          # (module introuvable, réseau) : ce n'est pas un résultat à comparer.
+          count_errors() {
+            local files
+            files=$(for f in $ENTRY_POINTS; do [ -f "$f" ] && echo "$f"; done)
+            NO_COLOR=1 deno check --node-modules-dir=none --import-map="$MAP" $files > "$1" 2>&1
+            local rc=$? n
+            n=$(grep -c '\[ERROR\]' "$1")
+            if [ "$rc" -ne 0 ] && [ "$n" -eq 0 ]; then echo -1; else echo "$n"; fi
+          }
+
+          ERRS_PR=$(count_errors "$RUNNER_TEMP/check-pr.log")
+          echo "deno check (PR) : $ERRS_PR erreurs de typage"
+          if [ "$ERRS_PR" -lt 0 ]; then
+            echo "::error::deno check a échoué sans erreur de typage (voir le journal)."
+            tail -30 "$RUNNER_TEMP/check-pr.log"
+            exit 1
+          fi
+
+          CLIENT_ERRS=$(grep -cE 'at file://.*/supabase/functions/(_shared/unipile/|unipile-)' "$RUNNER_TEMP/check-pr.log")
+          if [ "$CLIENT_ERRS" -gt 0 ]; then
+            echo "::error::$CLIENT_ERRS erreurs de typage dans le client partagé ou une fonction unipile-*."
+            grep -B3 -E 'at file://.*/supabase/functions/(_shared/unipile/|unipile-)' "$RUNNER_TEMP/check-pr.log" | head -60
+            exit 1
+          fi
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            echo "::notice::Pas de base (workflow_dispatch) : rapport informatif uniquement."
+            exit 0
+          fi
+
+          git -c advice.detachedHead=false checkout "$BASE_SHA" || exit 1
+          ERRS_BASE=$(count_errors "$RUNNER_TEMP/check-base.log")
+          echo "deno check (base) : $ERRS_BASE erreurs de typage"
+          if [ "$ERRS_BASE" -ge 0 ] && [ "$ERRS_PR" -gt "$ERRS_BASE" ]; then
+            echo "::error::$ERRS_PR erreurs de typage Deno sur la PR > $ERRS_BASE sur la base."
+            exit 1
+          fi
+          exit 0
 
   build:
     name: Build (bloquant)
@@ -235,6 +373,11 @@ jobs:
         run: node --test tests/ux/correctif4-ecrans.test.mjs
       - name: Agent de sourcing, contrôles et changements de contexte
         run: node --test tests/ux/continuous-sourcing-agent.test.mjs tests/ux/sourcing-agents-hub.test.mjs tests/ux/contraste-ecrans.test.mjs tests/ux/contraste-icones.test.mjs
+      # Marque : le nom du prestataire LinkedIn n'apparaît dans aucune chaîne ni
+      # aucun texte JSX de src/ ni de l'extension (hors pages juridiques). Lit les
+      # sources avec le compilateur TypeScript : demande npm ci.
+      - name: Garde de marque (nom du prestataire absent de l'interface)
+        run: node --test tests/ux/vendor-name-ui.test.mjs
       - name: Vite production build
         run: npx vite build
 

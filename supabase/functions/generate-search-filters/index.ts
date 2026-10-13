@@ -5,6 +5,10 @@ import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { gen5Params, isGen5Model, textFromContent, withThinkingHeadroom } from "../_shared/gen5-models.ts";
 import { createSourcingMemoryContext, loadSourcingMemoryContext, parseSourcingMemoryConflicts } from "../_shared/sourcing-memory.ts";
 
+// Phrase rendue à l'utilisateur quand le modèle ou un prestataire échoue : jamais le texte brut de l'erreur
+// (adresse du prestataire, code interne), qui reste dans les journaux.
+const ANALYSIS_UNAVAILABLE_MESSAGE = "Le service d'analyse est momentanément indisponible. Veuillez réessayer.";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -455,7 +459,7 @@ PRÉCISION OBLIGATOIRE:
 
 === VARIABLES D'AJUSTEMENT (SPOTLIGHTS & OPEN TO WORK) ===
 LinkedIn Recruiter propose des "spotlights" qui filtrent les profils par signal comportemental.
-Valeurs VALIDES pour l'API Unipile:
+Valeurs VALIDES:
 - OPEN_TO_WORK: Profils déclarés ouverts aux opportunités → utile mais réduit le vivier
 - ACTIVE_TALENT: Profils actifs sur LinkedIn récemment → NE PAS utiliser par défaut (réduit trop le vivier)
 - REDISCOVERED_CANDIDATES: Candidats déjà identifiés/contactés → utile pour relance
@@ -678,7 +682,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
       }
       console.error("[generate-search-filters] AI call failed:", errorMessage);
       return new Response(
-        JSON.stringify({ error: `Erreur IA : ${errorMessage}`, fallback: true }),
+        JSON.stringify({ error: ANALYSIS_UNAVAILABLE_MESSAGE, fallback: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -997,8 +1001,14 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     );
   } catch (error) {
     console.error("[generate-search-filters] Error:", error);
+    // Le message de l'erreur est rendu tel quel, sauf s'il nomme un prestataire (clé absente, erreur du modèle) :
+    // le détail reste dans les journaux.
+    const rawMessage = error instanceof Error ? error.message : "Unknown error";
+    const publicMessage = /anthropic|openai|unipile|apollo|coresignal|firecrawl|perplexity|deepgram|resend/i.test(rawMessage)
+      ? ANALYSIS_UNAVAILABLE_MESSAGE
+      : rawMessage;
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: publicMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { assertAccountOwnedByOrg } from "../_shared/unipile/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -302,30 +303,36 @@ Deno.serve(async (req) => {
 
     // ── 2. Resolve LinkedIn account ──
 
+    // The search runs on the CALLER's own connected account, never a colleague's: the provider key is global,
+    // so the account must be one this member linked in this organization (proven again below), in working order.
     let accountId: string | null = null;
+    let ownAccountCount = 0;
     console.log(`[run-agent-search] Resolving LinkedIn account for org: ${orgId}`);
-    try {
-      const accountsRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-accounts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": authHeader!,
-          "apikey": anonKey,
-        },
-        body: JSON.stringify({ action: "list", organization_id: orgId }),
-      }, 15000);
-      const accountsData = await accountsRes.json();
-      console.log(`[run-agent-search] unipile-accounts response: success=${accountsData?.success}, accounts=${accountsData?.accounts?.length || 0}`);
-      if (accountsData?.success && accountsData.accounts?.length > 0) {
-        accountId = accountsData.accounts[0].id;
-        console.log(`[run-agent-search] Using account: ${accountId}`);
+    if (orgId) {
+      try {
+        const { data: ownAccounts, error: ownError } = await supabase
+          .from("member_linkedin_accounts")
+          .select("linkedin_account_id, account_status, linked_at")
+          .eq("user_id", user.id)
+          .eq("organization_id", orgId)
+          .order("linked_at", { ascending: true });
+        if (ownError) throw ownError;
+        ownAccountCount = ownAccounts?.length ?? 0;
+        const working = (ownAccounts ?? []).find((a: any) => a.account_status === "OK" && a.linkedin_account_id);
+        if (working) {
+          await assertAccountOwnedByOrg(supabase, orgId, working.linkedin_account_id, { userId: user.id, kinds: ["linkedin"] });
+          accountId = working.linkedin_account_id;
+          console.log(`[run-agent-search] Using account: ${accountId}`);
+        }
+      } catch (e) {
+        console.error("[run-agent-search] Failed to get accounts:", e);
       }
-    } catch (e) {
-      console.error("[run-agent-search] Failed to get accounts:", e);
     }
 
     if (!accountId) {
-      await postStatus("❌ Aucun compte LinkedIn connecté. Connectez un compte dans les paramètres pour lancer la recherche.");
+      await postStatus(ownAccountCount > 0
+        ? "❌ Votre compte LinkedIn n'est pas opérationnel (déconnecté, limité ou verrouillé). Vérifiez sa connexion dans les paramètres, puis relancez la recherche."
+        : "❌ Aucun compte LinkedIn connecté. Connectez un compte dans les paramètres pour lancer la recherche.");
       await supabase.from("agent_conversations").update({ status: "completed" }).eq("id", conversation_id);
       return new Response(JSON.stringify({ success: false, error: "No LinkedIn account" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -416,6 +423,8 @@ Deno.serve(async (req) => {
     let round = 0;
     const maxRounds = Math.ceil(maxProfiles / 25);
     let skippedDedup = 0;
+    // Neutral French reason of a refused search (a licence the account lacks, a limit, a disconnected account).
+    let searchFailure: string | null = null;
 
     while (allProfiles.length < maxProfiles && round < maxRounds) {
       round++;
@@ -463,7 +472,7 @@ Deno.serve(async (req) => {
         // No keywords / no company-size / no industry hard filter here —
         // those over-filter; the scoring AI evaluates them post-search.
 
-        console.log(`[run-agent-search] Unipile search body:`, JSON.stringify(searchBody).slice(0, 500));
+        console.log(`[run-agent-search] LinkedIn search body:`, JSON.stringify(searchBody).slice(0, 500));
 
         if (cursor) searchBody.cursor = cursor;
 
@@ -480,6 +489,10 @@ Deno.serve(async (req) => {
         const searchData = await searchRes.json();
         if (!searchData?.success) {
           console.error("[run-agent-search] Search failed:", searchData);
+          // Only a refusal that unipile-search itself wrote (it carries an errorType) is neutral French text.
+          searchFailure = typeof searchData?.errorType === "string" && typeof searchData?.error === "string" && searchData.error.trim()
+            ? searchData.error.trim()
+            : "La recherche LinkedIn n'a pas pu aboutir pour le moment.";
           break;
         }
 
@@ -493,16 +506,17 @@ Deno.serve(async (req) => {
         // Deduplicate: skip profiles already treated for this job
         for (const profile of results) {
           const providerId = profile.provider_id || "";
-          const nameKey = `${(profile.name || "").trim().toLowerCase()}|${(profile.headline || "").trim().toLowerCase()}`;
+          // A partial Recruiter profile carries no name: a "|headline" key would merge distinct people, so only the id counts.
+          const nameKey = profile.name ? `${(profile.name || "").trim().toLowerCase()}|${(profile.headline || "").trim().toLowerCase()}` : "";
 
-          if (alreadyTreatedSet.has(providerId) || alreadyTreatedSet.has(nameKey)) {
+          if (alreadyTreatedSet.has(providerId) || (nameKey && alreadyTreatedSet.has(nameKey))) {
             skippedDedup++;
             continue;
           }
 
           // Mark as seen to avoid duplicates within this search too
           if (providerId) alreadyTreatedSet.add(providerId);
-          alreadyTreatedSet.add(nameKey);
+          if (nameKey) alreadyTreatedSet.add(nameKey);
 
           allProfiles.push(profile);
         }
@@ -521,7 +535,9 @@ Deno.serve(async (req) => {
     console.log(`[run-agent-search] LinkedIn search complete: ${allProfiles.length} profiles found (${skippedDedup} dedup skipped, ${round} rounds)`);
 
     if (allProfiles.length === 0) {
-      const msg = skippedDedup > 0
+      const msg = searchFailure
+        ? `❌ ${searchFailure}`
+        : skippedDedup > 0
         ? `😕 Aucun nouveau profil trouvé (${skippedDedup} déjà traités). Essayez d'élargir la recherche.`
         : "😕 Aucun profil trouvé avec ces critères. Essayez d'élargir la recherche.";
       await postStatus(msg);
@@ -937,7 +953,8 @@ Deno.serve(async (req) => {
     } catch (_) { /* best-effort cleanup */ }
 
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      // The cause stays in the log: a provider or model error text must never reach the screen.
+      JSON.stringify({ error: "Le service est momentanément indisponible. Veuillez réessayer dans quelques instants." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

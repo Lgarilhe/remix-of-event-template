@@ -127,7 +127,7 @@ test('SEQ-088 — report après limite du fournisseur : erreur, mode InMail et f
 
 // ---------------------------------------------------------------- n°9 SEQ-121 (E3)
 test('SEQ-121 — crédits InMail épuisés à l\'envoi : bloquée jusqu\'au lendemain, ni relance ni échec de séquence', () => {
-  const credits = slice(errorBlock, "errorStr.toLowerCase().startsWith('inmail_credits_exhausted')", '} else if (isRateLimitError(errorStr))');
+  const credits = slice(errorBlock, "errorStr.toLowerCase().startsWith('inmail_credits_exhausted')", '} else if (isRateLimitError(errorStr, errorKind))');
   assert.match(credits, /status: 'quota_blocked'/);
   assert.match(credits, /skip_reason: 'Crédits InMail épuisés'/);
   assert.match(credits, /quotaBlockedRetryAt\('daily', new Date\(\), userTimezone, userQuotas\.business_hours_start\)/);
@@ -135,7 +135,7 @@ test('SEQ-121 — crédits InMail épuisés à l\'envoi : bloquée jusqu\'au len
   assert.match(credits, /final_message: finalMessage \|\| null/, 'texte résolu gardé');
   assert.doesNotMatch(credits, /noteSequenceFailure|retry_count|results\.failed/);
   const creditsAt = errorBlock.indexOf("startsWith('inmail_credits_exhausted')");
-  const retryableAt = errorBlock.indexOf('isRetryableError(errorStr)');
+  const retryableAt = errorBlock.indexOf('isRetryableError(errorStr, errorKind)');
   assert.ok(creditsAt !== -1 && creditsAt < retryableAt, 'avant la relance générique à 30 min');
   // Échec propre au candidat : hors auto-pause (déjà en place).
   // Décision 2 : la lecture de profil impossible est aussi hors auto-pause.
@@ -146,7 +146,7 @@ test('SEQ-121 — crédits InMail épuisés à l\'envoi : bloquée jusqu\'au len
 test('SEQ-092 — génération IA en échec : la cause précise est affichée dans le report et l\'échec', () => {
   const ai = slice(loop, 'const personalized = await generatePersonalizedMessage(', '// ⭐ Safety net');
   assert.match(loop, /const aiDiag: \{ reason\?: string; deadlineMs: number \} = \{ deadlineMs: cycleDeadline \};/);
-  assert.match(ai, /^const personalized = await generatePersonalizedMessage\(supabase, enrollment, step, exec, uCreds\.apiKey, uCreds\.dsn, aiDiag\)/);
+  assert.match(ai, /^const personalized = await generatePersonalizedMessage\(supabase, enrollment, step, exec, aiDiag\)/);
   assert.match(ai, /const aiFailure = \(aiDiag\.reason \|\| 'Génération IA indisponible'\)\.replace\(/);
   assert.match(ai, /error_message: `\$\{aiFailure\} : nouvel essai \$\{aiRetryCount \+ 1\}\/\$\{MAX_RETRIES\} dans 30 min`/);
   assert.match(ai, /error_message: `\$\{aiFailure\} : message non envoyé après plusieurs essais\. Relancez l'étape plus tard\.`/);

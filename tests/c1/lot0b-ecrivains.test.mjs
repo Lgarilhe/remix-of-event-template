@@ -148,7 +148,7 @@ test('0b-3 : une note n\'écrit plus le statut dans l\'upsert (N10, N11)', () =>
 const WEBHOOK = 'supabase/functions/unipile-webhook/index.ts';
 const ENGINE = 'supabase/functions/process-sequences/index.ts';
 const EVENTS = 'supabase/functions/_shared/candidate-stage-events.ts';
-const SEARCH = 'supabase/functions/unipile-search/index.ts';
+const SEARCH = 'supabase/functions/unipile-search/send.ts';
 const INMAIL = 'supabase/functions/process-inmail-queue/index.ts';
 const CALENDLY = 'supabase/functions/calendly-webhook/index.ts';
 const ANALYZE = 'supabase/functions/auto-analyze-message/index.ts';
@@ -222,9 +222,14 @@ test('0b-2a (S2) : le webhook passe par record_candidate_inbound, après les cl�
 test('0b-2a (S16) : message écrit depuis le compte du recruteur, par record_own_message, non bloquant', () => {
   const src = read(WEBHOOK);
   const msg = topLevelBody(src, 'async function handleNewMessage(');
-  // Les deux formes : is_sender (new_message) et notre propre participant (message_received).
-  assert.match(msg, /if \(isSenderSelf === true\) \{\s*await markChatNotificationsRead\([^)]*\);\s*[^\n]*\n\s*await handleOwnMessage\(supabase, uCreds, account_id, chatId, messageId, null\);/);
-  assert.match(msg, /await handleOwnMessage\(supabase, uCreds, account_id, chatId, messageId, otherParticipantRef\(attendeeList\)\);/);
+  // Un message de nous : is_sender de message.new, ou, faute de ce drapeau, le message relu chez le prestataire.
+  assert.match(msg, /const handleSentByUs = async \(\) => \{\s*await markChatNotificationsRead\([^)]*\);\s*[^\n]*\n\s*await handleOwnMessage\(supabase, account_id, chatId, messageId, null\);/);
+  // Avec le drapeau de la charge, le chemin est pris AVANT toute lecture des membres (non bloquant, aucun 500
+  // ni rejeu d'un écho de nos envois) ; sans lui, après la relecture du message.
+  const sentAt = msg.indexOf('if (isSenderSelf === true) {\n    await handleSentByUs();');
+  assert.ok(sentAt > 0 && sentAt < msg.indexOf(".from('member_linkedin_accounts')"), 'chemin de nos messages avant la lecture des membres');
+  assert.ok(msg.lastIndexOf('await handleSentByUs();') > msg.indexOf('const fresh = await getMessage('), 'et après la relecture du message');
+  assert.match(msg, /const fresh = await getMessage\(account_id, chatId, messageId\);/);
   const own = topLevelBody(src, 'async function handleOwnMessage(');
   assert.match(own, /recordOwnMessage\(supabase, \{/);
   assert.match(own, /result\.data\.result === 'no_candidate'/, 'second appel avec les participants lus');
@@ -232,9 +237,9 @@ test('0b-2a (S16) : message écrit depuis le compte du recruteur, par record_own
   // Compte relié à plusieurs organisations : seulement là où un lien existe sur ce compte (jamais U-I7).
   assert.match(own, /if \(sharedAccount\) \{[\s\S]*?missionLinkOnAccount\(supabase, organizationId, accountId, chatId,[\s\S]*?if \(!linked\) \{[\s\S]*?continue;/);
   assert.ok(own.indexOf('if (sharedAccount) {') < own.indexOf('let result = await call('), 'garde avant record_own_message');
-  // Conversation de groupe : aucun candidat attribué.
+  // Conversation de groupe : aucun candidat attribué (seul le participant d'une conversation à deux, Chat.user).
   const other = topLevelBody(src, 'function otherParticipantRef(');
-  assert.match(other, /if \(others\.length !== 1\) return null;/);
+  assert.match(other, /if \(!\(chat\.type === '1to1' \|\| chat\.is_1to1 === true\)\) return null;/);
 });
 
 test('0b-2a (S3) : le moteur reporte la réponse par record_candidate_inbound, mission de l\'inscription d\'abord', () => {
@@ -269,11 +274,14 @@ test('0b-2a (S13) : envoi du moteur enregistré en tête de la branche de succè
   assert.match(send, /\} catch \(err\) \{/, 'au mieux');
   // Marqueurs : message et InMail avant le POST ; invitation avant le POST.
   const step = topLevelBody(src, 'async function executeStepAction(');
+  // API v2 : le marqueur précède chaque appel du client partagé qui peut envoyer
+  // (message dans une conversation, nouvelle conversation, demande de relation).
   const markerMsg = step.indexOf("sendKind: needsInMail ? 'inmail' : 'message', pending: true");
-  const postMsg = step.indexOf('r = await postSend(', markerMsg);
-  assert.ok(markerMsg > 0 && postMsg > markerMsg);
+  const postMsg = step.indexOf('outcome = await sendMessage(', markerMsg);
+  const startMsg = step.indexOf('outcome = await startNewChat()', markerMsg);
+  assert.ok(markerMsg > 0 && postMsg > markerMsg && startMsg > markerMsg);
   const markerInv = step.indexOf("sendKind: 'invitation', pending: true");
-  const postInv = step.indexOf('/api/v1/users/invite', markerInv);
+  const postInv = step.indexOf('await sendRelationRequest(', markerInv);
   assert.ok(markerInv > 0 && postInv > markerInv);
   const rules = read('supabase/functions/_shared/sequence-engine-rules.ts');
   assert.match(topLevelBody(rules, 'export function missionSendKind('), /actionType === 'email' \|\| actionType === 'whatsapp_message'\) return null;/);
@@ -283,8 +291,8 @@ test('0b-2a (S14, S15) : envois manuels, assistant et file InMail enregistrés a
   const search = read(SEARCH);
   const handle = topLevelBody(search, 'async function handleSendMessage(');
   const prepare = handle.indexOf('const manualSend = await prepareManualSend(');
-  const post = handle.indexOf('const response = await fetchWithTimeout(url, {');
-  const fail = handle.indexOf('if (!response.ok) {');
+  const post = handle.indexOf('const outcome = chat_id');
+  const fail = handle.indexOf("if (outcome.outcome !== 'sent') {");
   const record = handle.indexOf('await recordManualSend(');
   assert.ok(prepare > 0 && post > prepare, 'candidat, effacement et marqueur avant le POST');
   assert.ok(fail > 0 && record > fail, 'enregistrement seulement après un envoi réussi');
@@ -298,7 +306,7 @@ test('0b-2a (S14, S15) : envois manuels, assistant et file InMail enregistrés a
   assert.match(before, /if \(!recipient\) return null;/);
   assert.doesNotMatch(before, /isCandidateErasedForOrg/);
   const manual = topLevelBody(search, 'async function recordManualSend(');
-  assert.match(manual, /messageId: sendText\(sent\?\.message_id\),/);
+  assert.match(manual, /messageId: sent\.messageId,/);
   assert.doesNotMatch(manual, /pending: true/);
   for (const body of [before, manual]) assert.match(body, /\} catch \(e\) \{/, 'au mieux');
   // Assistant : origine, auteur et mission de la conversation (même organisation).

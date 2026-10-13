@@ -3,6 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { candidateRef, recordInbound, recordReplySummary, type CandidateRef } from "../_shared/candidate-stage-events.ts";
 import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
+import { isUnipileConfigured, userSafeMessage } from "../_shared/unipile/index.ts";
+import { authorizeAccount } from "./account-gate.ts";
+import { fetchChatDetails, fetchChatMessages } from "./chat-reads.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -15,9 +18,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Env fallbacks — NEVER reassigned. Per-org credentials resolved per-request.
-const ENV_UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-const ENV_UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
@@ -26,29 +26,6 @@ const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get
 const AUTO_ANALYZE_MODEL = "claude-sonnet-4-6";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-interface OrgCreds {
-  unipileApiKey: string | undefined;
-  unipileDsn: string | undefined;
-}
-
-async function resolveOrgCredentials(organizationId?: string): Promise<OrgCreds> {
-  const result: OrgCreds = {
-    unipileApiKey: ENV_UNIPILE_API_KEY,
-    unipileDsn: ENV_UNIPILE_DSN,
-  };
-  if (!organizationId) return result;
-  try {
-    const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
-    const uCreds = await resolveUnipileCredentials(organizationId, supabase);
-    if (uCreds) {
-      result.unipileApiKey = uCreds.apiKey;
-      result.unipileDsn = uCreds.dsn.replace(/^https?:\/\//, '');
-    }
-  } catch (e) {
-    console.warn('[auto-analyze] Org credential resolution failed (LinkedIn: env):', e);
-  }
-  return result;
-}
 // Intents qui déclenchent la mise à jour de la catégorie de conversation
 // (l'étape du candidat n'est plus écrite ici depuis le lot 0b-2a).
 const STATUS_UPDATE_INTENTS = new Set<string>([
@@ -57,58 +34,6 @@ const STATUS_UPDATE_INTENTS = new Set<string>([
 
 // Minimum confidence to trigger auto-update
 const MIN_CONFIDENCE = 60;
-
-// ─── Unipile helpers ──────────────────────────────────────────────
-async function fetchChatMessages(chatId: string, accountId: string, creds: OrgCreds): Promise<Array<{ text: string; is_sender: boolean; timestamp?: string }>> {
-  const baseUrl = `https://${creds.unipileDsn}/api/v1`;
-  const url = `${baseUrl}/chats/${chatId}/messages?limit=15`;
-
-  const response = await fetchWithTimeout(url, {
-    headers: { 'X-API-KEY': creds.unipileApiKey!, 'Accept': 'application/json' },
-  });
-
-  if (!response.ok) {
-    console.error('[auto-analyze] Failed to fetch messages:', response.status);
-    return [];
-  }
-
-  const data = await response.json();
-  const items = data.items || data.data || [];
-
-  return items.map((m: Record<string, unknown>) => ({
-    text: (m.text || m.body || '') as string,
-    is_sender: !!m.is_sender,
-    timestamp: m.timestamp as string || m.date as string,
-  })).reverse(); // Oldest first
-}
-
-async function fetchChatDetails(chatId: string, creds: OrgCreds): Promise<{ attendeeName?: string; attendeeHeadline?: string; attendeeProfileUrl?: string; attendeeProviderId?: string }> {
-  const baseUrl = `https://${creds.unipileDsn}/api/v1`;
-  const url = `${baseUrl}/chats/${chatId}`;
-
-  const response = await fetchWithTimeout(url, {
-    headers: { 'X-API-KEY': creds.unipileApiKey!, 'Accept': 'application/json' },
-  });
-
-  if (!response.ok) return {};
-  const data = await response.json();
-
-  const attendees = data.attendees || [];
-  const candidate = attendees.find((a: Record<string, unknown>) => !a.is_self);
-  // Conversation à deux : l'identifiant LinkedIn du candidat est aussi porté
-  // par la conversation (le navigateur n'envoie en sender_id que l'identifiant
-  // du participant chez le prestataire).
-  const chatAttendeeProviderId = typeof data.attendee_provider_id === 'string' ? data.attendee_provider_id : undefined;
-
-  if (!candidate) return chatAttendeeProviderId ? { attendeeProviderId: chatAttendeeProviderId } : {};
-
-  return {
-    attendeeName: candidate.display_name || candidate.name || 'Inconnu',
-    attendeeHeadline: candidate.headline,
-    attendeeProfileUrl: candidate.profile_url,
-    attendeeProviderId: candidate.provider_id || chatAttendeeProviderId,
-  };
-}
 
 /** Date ISO du dernier message du candidat (is_sender faux), jamais dans le futur ; null si absente ou illisible. */
 function lastCandidateMessageAt(messages: Array<{ is_sender: boolean; timestamp?: string }>): string | null {
@@ -164,7 +89,8 @@ async function stageWriteAllowed(organizationId: string, accountId: string, chat
     const orgCount = new Set(((accountOrgs ?? []) as Array<{ organization_id: string | null }>)
       .map((r) => r.organization_id).filter(Boolean)).size;
     if (orgCount <= 1) return true;
-    const safe = (v: string) => v.replace(/[^a-zA-Z0-9_\-:]/g, '');
+    // `=`, `+`, `/` et `.` : un identifiant de conversation du service peut être en base64.
+    const safe = (v: string) => v.replace(/[^a-zA-Z0-9_\-:=+/.]/g, '');
     const ids = candidate.ids.map(safe).filter(Boolean);
     const filters = [`chat_id.eq.${safe(chatId)}`,
       ...(ids.length > 0 ? [`candidate_id.in.(${ids.join(',')})`, `candidate_ids.ov.{${ids.join(',')}}`] : [])];
@@ -301,44 +227,43 @@ Deno.serve(async (req) => {
     // de rattrapage. Lu seulement sur un appel interne (clé de service).
     const stageRecorded = isServiceRole && _body?.stage_recorded === true;
 
-    // Autorisation (appels JWT uniquement — service_role a userId=null et reste
-    // bypass, par design pour les appels internes). Les appelants ne passent
-    // qu'un account_id : on ANCRE TOUJOURS l'autorisation sur l'org PROPRIÉTAIRE
-    // du compte LinkedIn (résolue depuis account_id), JAMAIS sur organization_id
-    // du body — sinon un membre de l'org A enverrait {account_id:<compte de B>,
-    // organization_id:A}, passerait le check, puis lirait/écrirait les données de
-    // B via les créds partagées. Ferme lecture ET écriture cross-org.
-    // accountOrgId (= org du compte pour un user ; org du body pour un appel
-    // service_role interne trusted) sert ensuite à résoudre les créds.
-    let accountOrgId: string | undefined = organization_id;
-    // Propriétaire du compte LinkedIn (org + premier membre rattaché) : sert à
-    // l'autorisation (appel JWT) et à l'imputation des crédits (appel webhook
-    // service_role, sans user).
-    let ownerOrgId: string | undefined;
-    let ownerUserId: string | undefined;
-    if (account_id) {
-      const { data: acctMap } = await supabase
-        .from('member_linkedin_accounts')
-        .select('organization_id, user_id')
-        .eq('linkedin_account_id', account_id)
-        .limit(1);
-      ownerOrgId = acctMap?.[0]?.organization_id as string | undefined;
-      ownerUserId = acctMap?.[0]?.user_id as string | undefined;
+    // Autorisation du compte LinkedIn (account-gate.ts), avant toute lecture et tout débit.
+    // Les appelants ne passent qu'un account_id : l'autorisation d'un membre est ANCRÉE sur
+    // l'org PROPRIÉTAIRE du compte (résolue depuis account_id), JAMAIS sur organization_id du
+    // body — sinon un membre de l'org A enverrait {account_id:<compte de B>, organization_id:A}
+    // et lirait/écrirait les données de B via les créds partagées. Ferme lecture ET écriture
+    // cross-org. Appel service_role (userId=null, appels internes de confiance) : l'org du body,
+    // à laquelle le compte doit être relié, sinon l'org du propriétaire ; aucune des deux, refus.
+    // accountOrgId borne ensuite les lectures et les écritures. ownerUserId (premier membre
+    // rattaché) sert à l'imputation des crédits d'un appel webhook, sans user.
+    const accountGate = await authorizeAccount(
+      { accountId: account_id, userId, bodyOrganizationId: organization_id },
+      {
+        admin: supabase as any,
+        findOwner: async (accountId) => {
+          const { data: acctMap } = await supabase
+            .from('member_linkedin_accounts')
+            .select('organization_id, user_id')
+            .eq('linkedin_account_id', accountId)
+            .limit(1);
+          return {
+            organizationId: acctMap?.[0]?.organization_id as string | undefined,
+            userId: acctMap?.[0]?.user_id as string | undefined,
+          };
+        },
+        isMember: async (memberId, organizationId) => {
+          const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
+          return await verifyOrgMembership(supabase, memberId, organizationId);
+        },
+      },
+    );
+    if (!accountGate.ok) {
+      return new Response(JSON.stringify(accountGate.body), {
+        status: accountGate.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-    if (userId) {
-      const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-      const isMember = ownerOrgId
-        ? await verifyOrgMembership(supabase, userId, ownerOrgId)
-        : false;
-      if (!isMember) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      accountOrgId = ownerOrgId;
-    } else if (!accountOrgId) {
-      accountOrgId = ownerOrgId;
-    }
+    const accountOrgId: string | undefined = accountGate.accountOrgId;
+    const ownerUserId: string | undefined = accountGate.ownerUserId;
     // User à débiter : le user JWT, sinon (webhook) le membre rattaché au compte.
     // ai_credit_transactions.user_id est uuid NOT NULL → jamais sender_id
     // (id d'attendee LinkedIn) ni 'system'.
@@ -353,20 +278,24 @@ Deno.serve(async (req) => {
       console.warn("[auto-analyze-message] Failed to load settle-credits:", e);
     }
 
-    // Resolve org-specific credentials (Unipile) pour l'org du compte
-    // (résolue/vérifiée ci-dessus), jamais l'organization_id brut du body.
-    const creds = await resolveOrgCredentials(accountOrgId);
-
     if (!chat_id || !account_id) {
       throw new Error('chat_id and account_id are required');
+    }
+
+    // Clé de l'application absente : panne de configuration, dite sans nommer le service.
+    if (!isUnipileConfigured()) {
+      console.error('[auto-analyze] provider key missing (UNIPILE_V2_API_KEY)');
+      return new Response(JSON.stringify({ error: userSafeMessage('config') }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log(`[auto-analyze] Processing chat: ${chat_id}, sender: ${sender_id}`);
 
     // 1. Fetch chat details and messages in parallel
     const [chatDetails, messages] = await Promise.all([
-      fetchChatDetails(chat_id, creds),
-      fetchChatMessages(chat_id, account_id, creds),
+      fetchChatDetails(account_id, chat_id),
+      fetchChatMessages(account_id, chat_id),
     ]);
 
     if (messages.length === 0) {

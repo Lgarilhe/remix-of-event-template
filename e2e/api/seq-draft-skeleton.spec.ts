@@ -31,15 +31,20 @@ import {
   engineAvailable,
   enrollmentRow,
   executionsOf,
+  inviteNoteOf,
+  inviteTargetOf,
+  isNewChat,
   minutesFromNow,
   mockCalls,
   rand,
+  recipientOf,
   runCycle,
   runEngine,
   sendingOrg,
   sentInvites,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
   type ExecutionRow,
 } from '../helpers/sequence-engine';
@@ -253,8 +258,7 @@ const statusAt = (execs: ExecutionRow[], order: number) => at(execs, order).at(-
 
 /** Messages envoyés à ce candidat (nouvelle conversation ou suite). */
 async function chatsTo(accountId: string, profileId: string) {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats'
-    && (c.body as Record<string, unknown>)?.attendees_ids === profileId);
+  return (await mockCalls(accountId)).filter((c) => isNewChat(c) && recipientOf(c) === profileId);
 }
 
 // ─── Forme enregistrée ──────────────────────────────────────────────────────
@@ -288,19 +292,16 @@ test.describe('Séquence rédigée par l’IA jouée par le moteur (lot 5e)', ()
 
     // Visite, puis invitation avec la note rédigée, puis attente de l'acceptation.
     await cycleUntil(enrollmentId, (e) => statusAt(e, 2) === 'waiting_event', 'attente de l’acceptation');
-    const invites = (await sentInvites(d.accountId)).filter((c) => (c.body as Record<string, unknown>)?.provider_id === profileId);
+    const invites = (await sentInvites(d.accountId)).filter((c) => inviteTargetOf(c) === profileId);
     expect(invites).toHaveLength(1);
-    const note = String((invites[0].body as Record<string, unknown>).message ?? '');
+    const note = String(inviteNoteOf(invites[0]) ?? '');
     expect(note).toMatch(/^Bonjour Camille, je recrute un directeur financier à Lyon pour un groupe industriel\./);
     expect(note).not.toMatch(/[{}]/);
     expect(await sentTexts(d.accountId), 'aucun message avant l’acceptation').toEqual([]);
 
     // Acceptation : le premier message part aussitôt, la première relance attend 4 jours.
     await setMockMode(d.accountId, { distance: 'FIRST_DEGREE' });
-    await webhook({
-      event: 'new_relation', account_id: d.accountId, account_type: 'LINKEDIN',
-      user_provider_id: profileId, user_full_name: 'Camille Martin', user_public_identifier: `camille-${rand()}`,
-    });
+    await webhook(v2.relationNew({ accountId: d.accountId, userId: profileId, name: 'Camille Martin', slug: `camille-${rand()}` }));
     // Attente franchie au cycle suivant ; le premier message est planifié dans la foulée (le moteur
     // espace seulement les actions d'un même compte de quelques minutes), sans délai en jours.
     let execs: ExecutionRow[] = [];
@@ -331,11 +332,10 @@ test.describe('Séquence rédigée par l’IA jouée par le moteur (lot 5e)', ()
     expect(texts[1]).toContain('je reviens vers vous au sujet du poste de Directeur financier');
 
     // Le candidat répond : inscription « répondue », la dernière relance est annulée.
-    await webhook({
-      event: 'message_received', account_id: d.accountId, account_type: 'LINKEDIN',
-      chat_id: `chat_${rand()}`, message_id: `msg_${rand()}`, message: 'Bonjour, oui avec plaisir',
-      sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate', attendee_name: 'Camille Martin' },
-    });
+    await webhook(v2.messageNew({
+      accountId: d.accountId, chatId: `chat_${rand()}`, messageId: `msg_${rand()}`, text: 'Bonjour, oui avec plaisir',
+      senderId: profileId, senderName: 'Camille Martin',
+    }));
     expect((await enrollmentRow(enrollmentId)).status).toBe('replied');
     const pending = (await executionsOf(enrollmentId)).filter((e) => ['scheduled', 'waiting_event', 'quota_blocked'].includes(e.status));
     expect(pending, 'plus rien en attente').toEqual([]);
@@ -350,7 +350,7 @@ test.describe('Séquence rédigée par l’IA jouée par le moteur (lot 5e)', ()
 
     const waiting = await cycleUntil(enrollmentId, (e) => statusAt(e, 1) === 'waiting_event', 'attente de l’acceptation');
     expect(statusAt(waiting, 0)).toBe('sent');
-    expect((await sentInvites(d.accountId)).filter((c) => (c.body as Record<string, unknown>)?.provider_id === profileId)).toHaveLength(1);
+    expect((await sentInvites(d.accountId)).filter((c) => inviteTargetOf(c) === profileId)).toHaveLength(1);
 
     // Treize jours plus tard, l'attente tient toujours.
     const waitId = at(waiting, 1).at(-1)!.id;

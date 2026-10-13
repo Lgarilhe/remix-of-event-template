@@ -27,7 +27,7 @@ import { PostgrestClient } from '@supabase/postgrest-js';
 
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
 
-const accountsFn = read('supabase/functions/unipile-accounts/index.ts');
+const accountsFn = read('supabase/functions/unipile-accounts/handler.ts');
 const sendingStop = read('supabase/functions/_shared/linkedin-sending-stop.ts');
 const inmailQueue = read('supabase/functions/process-inmail-queue/index.ts');
 const sequences = read('supabase/functions/process-sequences/index.ts');
@@ -146,7 +146,7 @@ test('C10 — séquences : quotas du titulaire du compte d\'envoi, chargés apr�
 });
 
 test('C10 — file InMail : plafond et plages du titulaire du compte', () => {
-  const owner = sliceBetween(inmailQueue, 'const getAccountOwner', 'const credsCache');
+  const owner = sliceBetween(inmailQueue, 'const getAccountOwner', 'const signatureCache');
   assert.match(owner, /\.from\("member_linkedin_accounts"\)/);
   assert.match(owner, /\.eq\("organization_id", orgId\)/);
   assert.match(owner, /\.eq\("linkedin_account_id", accountId\)/);

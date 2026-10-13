@@ -1,19 +1,21 @@
 /** Personal, verified channels for candidate actions. No transport retries a POST. */
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.75.1';
-import { resolveUnipileCredentials } from '../resolve-org-credentials.ts';
 import { isCandidateErasedForOrg } from '../get-or-fetch-contact.ts';
-import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from '../linkedin-quotas.ts';
+import { enforceLinkedInAction } from '../linkedin-quotas.ts';
 import { candidateRef, recordOutbound } from '../candidate-stage-events.ts';
-import { classifySendStatus } from '../sequence-send-rules.ts';
 import { sanitizeEmailBody } from '../email-tool-policy.mjs';
 import { textToHtml } from '../interview-followup.ts';
+import {
+  assertAccountOwnedByOrg, describeForLog, getChat, getChatForUser, getEmail, isUnipileError, listEmails, listMessages,
+  sendEmail, sendMessage, startChat, toKonektChat, toKonektEmail, toKonektMessage, type ChatLookupEntry, type OwnedAccountKind,
+} from '../unipile/index.ts';
 import { resolveCandidateActionMessageScope } from './message-scope.ts';
 import type { CandidateActionMessageEffect, CandidateActionMessageOutcome, CandidateActionScope, CandidateActionSource, CandidateActionTarget } from './types.ts';
 
 type ActionClient = SupabaseClient;
-// Older shared helpers infer an unknown schema from ReturnType<createClient>.
+// The quota helper infers an unknown schema from ReturnType<createClient>.
 // The runtime client is identical; keep this compatibility cast at that boundary.
-const legacyAdmin = (admin: ActionClient): NonNullable<Parameters<typeof resolveUnipileCredentials>[1]> => admin as unknown as NonNullable<Parameters<typeof resolveUnipileCredentials>[1]>;
+const quotaAdmin = (admin: ActionClient): Parameters<typeof enforceLinkedInAction>[0] => admin as unknown as Parameters<typeof enforceLinkedInAction>[0];
 type Row = Record<string, unknown>;
 export interface CandidateActionContact { candidate_id?: string; email?: string | null; phone?: string | null }
 export interface CandidateActionMember { id: string; name: string; email?: string | null }
@@ -37,62 +39,111 @@ export function candidateActionEmailService(value: unknown): 'gmail' | 'outlook'
   return 'email';
 }
 const usable = (value: unknown): boolean => !token(value) || ['OK', 'CONNECTED'].includes(token(value).toUpperCase());
-const safeId = (value: string): string => {
+/** A chat id is an opaque provider string; the client encodes it, this only rejects what could leave the path. */
+const checkedId = (value: string): string => {
   if (!value || value.length > 512 || /[/\\?#]|\.\./.test(value)) fail('INVALID_CHANNEL_ID', 'La conversation ou le compte est invalide.');
-  return encodeURIComponent(value);
+  return value;
 };
 const profileSlug = (value: unknown): string => {
   try { const url = new URL(token(value)); return (url.hostname === 'linkedin.com' || url.hostname.endsWith('.linkedin.com')) ? decodeURIComponent(url.pathname.match(/^\/in\/([^/]+)/)?.[1] ?? '').toLowerCase() : ''; } catch { return ''; }
 };
-const items = (value: unknown): Row[] => { const payload = record(value); const rows = Array.isArray(value) ? value : payload.items; return Array.isArray(rows) ? rows.map(record) : []; };
 
-export async function candidateActionProviderCredentials(admin: ActionClient, organizationId: string): Promise<{ apiKey: string; baseUrl: string }> {
-  const creds = await resolveUnipileCredentials(organizationId, legacyAdmin(admin));
-  if (!creds) fail('CHANNEL_UNAVAILABLE', 'Le service de messagerie est indisponible. Réessayez dans un instant.');
-  const base = creds.dsn.startsWith('https://') ? creds.dsn : `https://${creds.dsn}`;
-  return { apiKey: creds.apiKey, baseUrl: base.replace(/\/$/, '').replace(/\/api\/v1$/, '') + '/api/v1' };
+/** Provider failure turned into an audited application error. The provider text only reaches the server log. */
+function providerFailure(error: unknown, code: string, message: string): never {
+  console.error('[candidate-actions] provider call failed:', describeForLog(error));
+  if (isUnipileError(error) && error.kind === 'account_disconnected') fail('SENDER_CHANGED', 'Votre compte d’envoi doit être reconnecté. Préparez à nouveau cette action.');
+  fail(code, message);
 }
 
-export function candidateActionProviderFetch(creds: { apiKey: string; baseUrl: string }, path: string, options: RequestInit = {}, timeoutMs = 12_000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(`${creds.baseUrl}${path}`, { ...options, headers: { 'X-API-KEY': creds.apiKey, Accept: 'application/json', ...options.headers }, signal: controller.signal }).finally(() => clearTimeout(timer));
+const ACCOUNT_COLUMN = { email: 'email_account_id', linkedin: 'linkedin_account_id', whatsapp: 'whatsapp_account_id' } as const;
+const MAX_CHAT_OWNER_PROBES = 3;
+
+/** Wording for an own account that is linked but cannot act: the state decides what the member can do about it. */
+function blockedAccountMessage(status: unknown): string {
+  const value = token(status).toUpperCase();
+  if (value === 'DEGRADED') return 'Votre compte d’envoi est temporairement limité. Réessayez plus tard, sans le reconnecter.';
+  if (value === 'LOCKED') return 'Votre compte d’envoi est verrouillé. Levez le blocage chez le service concerné, puis réessayez.';
+  return 'Votre compte d’envoi doit être reconnecté. Préparez à nouveau cette action.';
 }
 
-async function ownAccount(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: 'email' | 'linkedin' | 'whatsapp', accountId?: string): Promise<Row | null> {
+/** The member's own accounts of one channel, newest first, split between those that can act and those linked but blocked. */
+async function ownAccountRows(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: 'email' | 'linkedin' | 'whatsapp', accountId?: string): Promise<{ usable: Row[]; blocked: Row[] }> {
   const table = channel === 'email' ? 'member_email_accounts' : channel === 'linkedin' ? 'member_linkedin_accounts' : 'member_whatsapp_accounts';
-  const column = channel === 'email' ? 'email_account_id' : channel === 'linkedin' ? 'linkedin_account_id' : 'whatsapp_account_id';
   let query = admin.from(table).select('*').eq('organization_id', scope.organization_id).eq('user_id', userId);
-  if (accountId) query = query.eq(column, accountId);
+  if (accountId) query = query.eq(ACCOUNT_COLUMN[channel], accountId);
   const { data, error } = await query.order('linked_at', { ascending: false }).limit(10);
   if (error) fail('CHANNEL_UNVERIFIED', 'Votre connexion de messagerie ne peut pas être vérifiée. Réessayez.');
   const rows = (data ?? []) as Row[];
-  return rows.find(row => usable(row.account_status)) ?? null;
+  return { usable: rows.filter(row => usable(row.account_status)), blocked: rows.filter(row => !usable(row.account_status)) };
+}
+async function ownAccounts(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: 'email' | 'linkedin' | 'whatsapp', accountId?: string): Promise<Row[]> {
+  return (await ownAccountRows(admin, userId, scope, channel, accountId)).usable;
+}
+async function ownAccount(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: 'email' | 'linkedin' | 'whatsapp', accountId?: string): Promise<Row | null> {
+  return (await ownAccounts(admin, userId, scope, channel, accountId))[0] ?? null;
 }
 
-/** A one-to-one chat and its exact non-self attendee, never a display-name match. */
-async function verifiedChat(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: 'linkedin' | 'whatsapp', chatId: string, accountId?: string): Promise<{ chat: Row; attendee: Row; account: Row }> {
-  const creds = await candidateActionProviderCredentials(admin, scope.organization_id);
-  const chatResponse = await candidateActionProviderFetch(creds, `/chats/${safeId(chatId)}`);
-  if (!chatResponse.ok) fail('CHAT_UNVERIFIED', 'La conversation ne peut pas être vérifiée. Réessayez.');
-  const chat = record(await chatResponse.json());
-  const ownerId = token(chat.account_id);
-  if (!ownerId || (accountId && accountId !== ownerId)) fail('SENDER_CHANGED', 'Le compte de cette conversation a changé. Préparez à nouveau la réponse.');
-  const account = await ownAccount(admin, userId, scope, channel, ownerId);
-  if (!account) fail('CHAT_NOT_OWNED', "Cette conversation appartient à un autre compte. Répondez depuis votre propre compte.");
-  const attendeeResponse = await candidateActionProviderFetch(creds, `/chats/${safeId(chatId)}/attendees`);
-  if (!attendeeResponse.ok) fail('RECIPIENT_UNVERIFIED', 'Le destinataire de la conversation ne peut pas être vérifié.');
-  const attendees = items(await attendeeResponse.json());
-  const others = attendees.filter(row => row.is_self !== true && row.is_self !== 1 && row.role !== 'self');
-  if (others.length !== 1 || token(chat.type) === '1' || Number(chat.type) === 1) fail('GROUP_CHAT_NOT_ALLOWED', 'Seules les conversations individuelles peuvent recevoir une action candidat.');
-  const attendee = others[0];
-  if (token(attendee.account_id) && token(attendee.account_id) !== ownerId) fail('RECIPIENT_UNVERIFIED', 'Le destinataire de cette conversation ne peut pas être vérifié.');
-  return { chat, attendee, account };
+/**
+ * Last gate before a provider call: the account is linked, in this organization, by this very member.
+ * The provider key is global, so an account id that is not the caller's own must never reach it.
+ */
+async function assertOwn(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: OwnedAccountKind, accountId: string): Promise<void> {
+  try { await assertAccountOwnedByOrg(admin, scope.organization_id, accountId, { userId, kinds: [channel] }); }
+  catch (error) {
+    if (isUnipileError(error) && error.code === 'account_not_owned') fail('CHAT_NOT_OWNED', 'Ce compte ne vous appartient pas. Répondez depuis votre propre compte.');
+    providerFailure(error, 'CHANNEL_UNVERIFIED', 'Votre connexion de messagerie ne peut pas être vérifiée. Réessayez.');
+  }
 }
 
-export async function validateCandidateActionChat(admin: ActionClient, userId: string, scope: CandidateActionScope): Promise<{ candidateIds: string[]; linkedinUrl: string | null; candidateName: string }> {
+/**
+ * A one-to-one chat and its exact other participant, never a display-name match.
+ * A v2 chat carries no account id: the owner is the member's own account under which the provider
+ * answers for this chat (a chat of a colleague, or of another account, is simply not reachable).
+ */
+async function verifiedChat(admin: ActionClient, userId: string, scope: CandidateActionScope, channel: 'linkedin' | 'whatsapp', chatId: string, accountId?: string): Promise<{ chat: ReturnType<typeof toKonektChat>; attendee: Row; account: Row; ownerId: string }> {
+  const id = checkedId(chatId);
+  const rows = await ownAccountRows(admin, userId, scope, channel, accountId);
+  const accounts = rows.usable.slice(0, MAX_CHAT_OWNER_PROBES);
+  if (!accounts.length) {
+    // The plan's own account is gone from the member's links: the account changed. A linked account that is only limited
+    // is not "another account": say what is wrong with it.
+    if (rows.blocked.length) fail('SENDER_CHANGED', blockedAccountMessage(rows.blocked[0].account_status));
+    if (accountId) {
+      // An account id that a colleague carries is another member's chat; one that nobody carries any more was replaced or unlinked.
+      const table = channel === 'linkedin' ? 'member_linkedin_accounts' : 'member_whatsapp_accounts';
+      const { data, error } = await admin.from(table).select('user_id').eq('organization_id', scope.organization_id).eq(ACCOUNT_COLUMN[channel], accountId).neq('user_id', userId).limit(1);
+      if (error) fail('CHAT_UNVERIFIED', 'La conversation ne peut pas être vérifiée. Réessayez.');
+      if (!(data ?? []).length) fail('SENDER_CHANGED', 'Le compte de cette conversation a changé. Préparez à nouveau la réponse.');
+    }
+    fail('CHAT_NOT_OWNED', "Cette conversation appartient à un autre compte. Répondez depuis votre propre compte.");
+  }
+  let unverified: unknown = null;
+  for (const account of accounts) {
+    const ownerId = token(account[ACCOUNT_COLUMN[channel]]);
+    await assertOwn(admin, userId, scope, channel, ownerId);
+    let raw: unknown;
+    try { raw = await getChat(ownerId, id); }
+    catch (error) {
+      if (isUnipileError(error) && (error.kind === 'not_found' || error.kind === 'forbidden')) continue;
+      unverified = error;
+      continue;
+    }
+    const chat = toKonektChat(raw, { accountId: ownerId });
+    if (chat.type !== 0) fail('GROUP_CHAT_NOT_ALLOWED', 'Seules les conversations individuelles peuvent recevoir une action candidat.');
+    const other = chat.attendees[0];
+    const providerId = token(other?.provider_id) || token(chat.attendee_provider_id);
+    if (!providerId) fail('RECIPIENT_UNVERIFIED', 'Le destinataire de la conversation ne peut pas être vérifié.');
+    const attendee: Row = { provider_id: providerId, public_identifier: token(other?.public_identifier), specifics: {}, profile_url: token(other?.profile_url), name: token(other?.name) };
+    return { chat, attendee, account, ownerId };
+  }
+  if (unverified) providerFailure(unverified, 'CHAT_UNVERIFIED', 'La conversation ne peut pas être vérifiée. Réessayez.');
+  if (accountId) fail('SENDER_CHANGED', 'Le compte de cette conversation a changé. Préparez à nouveau la réponse.');
+  fail('CHAT_NOT_OWNED', "Cette conversation appartient à un autre compte. Répondez depuis votre propre compte.");
+}
+
+export async function validateCandidateActionChat(admin: ActionClient, userId: string, scope: CandidateActionScope): Promise<{ candidateIds: string[]; linkedinUrl: string | null; candidateName: string; accountId: string }> {
   if (!scope.chat_id) fail('CHAT_REQUIRED', 'La conversation est introuvable.');
-  const { attendee, chat } = await verifiedChat(admin, userId, scope, 'linkedin', scope.chat_id, scope.account_id ?? undefined);
+  const { attendee, ownerId } = await verifiedChat(admin, userId, scope, 'linkedin', scope.chat_id, scope.account_id ?? undefined);
   const specifics = record(attendee.specifics);
   const ids = [...new Set([token(attendee.provider_id), token(attendee.public_identifier), token(specifics.public_identifier)].filter(Boolean))];
   const url = token(attendee.profile_url);
@@ -100,7 +151,7 @@ export async function validateCandidateActionChat(admin: ActionClient, userId: s
   let matches = ids.includes(scope.candidate_id) || (!!slug && (slug === scope.candidate_id.toLowerCase() || slug === profileSlug(scope.linkedin_url)));
   if (!matches) {
     const { data, error } = await admin.from('mission_conversations').select('candidate_id,candidate_ids')
-      .eq('organization_id', scope.organization_id).eq('account_id', token(chat.account_id))
+      .eq('organization_id', scope.organization_id).eq('account_id', ownerId)
       .eq('chat_id', scope.chat_id).limit(20);
     if (error) fail('CANDIDATE_UNVERIFIED', 'L’identité du candidat ne peut pas être vérifiée.');
     matches = (data ?? []).some((row: Row) => {
@@ -110,7 +161,7 @@ export async function validateCandidateActionChat(admin: ActionClient, userId: s
   }
   if (!matches) fail('CANDIDATE_MISMATCH', 'Cette conversation ne correspond pas au candidat affiché.');
   if (!ids.length) fail('RECIPIENT_UNVERIFIED', 'Le destinataire LinkedIn ne peut pas être vérifié.');
-  return { candidateIds: [...new Set([...ids, ...(slug ? [slug] : [])])], linkedinUrl: url || null, candidateName: token(attendee.name) };
+  return { candidateIds: [...new Set([...ids, ...(slug ? [slug] : [])])], linkedinUrl: url || null, candidateName: token(attendee.name), accountId: ownerId };
 }
 
 export async function loadCandidateActionTargets(admin: ActionClient, userClient: ActionClient, userId: string, scope: CandidateActionScope, contacts: CandidateActionContact[], members: CandidateActionMember[]): Promise<CandidateActionTarget[]> {
@@ -144,10 +195,12 @@ export async function loadCandidateActionTargets(admin: ActionClient, userClient
     const accountId = token(linkedin.linkedin_account_id);
     let chatId = scope.chat_id ?? '';
     if (!chatId && /^(ACo|ACw|urn:li:)/.test(scope.candidate_id)) {
-      const creds = await candidateActionProviderCredentials(admin, scope.organization_id);
-      const response = await candidateActionProviderFetch(creds, `/chat_attendees/${safeId(scope.candidate_id)}/chats?account_id=${safeId(accountId)}&limit=10`);
-      if (!response.ok) fail('CHAT_DISCOVERY_UNAVAILABLE', 'Les conversations LinkedIn ne peuvent pas être vérifiées. Réessayez.');
-      chatId = token(items(await response.json()).find(chat => token(chat.account_id) === accountId && Number(chat.type) === 0)?.id);
+      await assertOwn(admin, userId, scope, 'linkedin', accountId);
+      let entries: ChatLookupEntry[];
+      try { entries = await getChatForUser(accountId, scope.candidate_id); }
+      catch (error) { providerFailure(error, 'CHAT_DISCOVERY_UNAVAILABLE', 'Les conversations LinkedIn ne peuvent pas être vérifiées. Réessayez.'); }
+      // One 1:1 chat per inbox at most; the one with a history wins, the answer of the provider order otherwise.
+      chatId = token((entries.find(entry => entry.has_history === true) ?? entries[0])?.chat_id);
     }
     if (chatId) {
       const resolved = await validateCandidateActionChat(admin, userId, { ...scope, account_id: accountId, chat_id: chatId });
@@ -195,8 +248,9 @@ export async function validateCandidateActionMessage(admin: ActionClient, userId
   if (!effect.content.trim() || effect.content.length > (effect.channel === 'linkedin' ? 1500 : 5000)) fail('INVALID_MESSAGE', 'Le message est vide ou trop long. Corrigez-le avant de valider.');
   const membership = await admin.from('organization_members').select('id').eq('organization_id', scope.organization_id).eq('user_id', userId).maybeSingle();
   if (membership.error || !membership.data) fail('RIGHTS_UNVERIFIED', "Vous ne pouvez plus agir dans cette organisation.");
-  const account = await ownAccount(admin, userId, scope, effect.channel, effect.senderAccountId);
-  if (!account) fail('SENDER_CHANGED', 'Votre compte d’envoi a changé ou doit être reconnecté. Préparez à nouveau cette action.');
+  const rows = await ownAccountRows(admin, userId, scope, effect.channel, effect.senderAccountId);
+  const account = rows.usable[0];
+  if (!account) fail('SENDER_CHANGED', rows.blocked.length ? blockedAccountMessage(rows.blocked[0].account_status) : 'Votre compte d’envoi a changé ou doit être reconnecté. Préparez à nouveau cette action.');
   try {
     if (await isCandidateErasedForOrg(admin, { organizationId: scope.organization_id, linkedinIds: [scope.candidate_id], linkedinUrl: scope.linkedin_url, emails: effect.audience === 'candidate' && effect.channel === 'email' ? [effect.recipient] : [] })) fail('CANDIDATE_ERASED', 'Ce candidat a demandé l’effacement de ses données. Aucun message ne peut partir.');
   } catch (error) {
@@ -225,7 +279,7 @@ export async function validateCandidateActionMessage(admin: ActionClient, userId
     if (effect.audience !== 'candidate' || !effect.chatId || effect.service !== 'linkedin') fail('INVALID_LINKEDIN_TARGET', 'Le destinataire LinkedIn est invalide.');
     const candidate = await validateCandidateActionChat(admin, userId, { ...scope, chat_id: effect.chatId, account_id: effect.senderAccountId });
     if (!candidate.candidateIds.includes(effect.recipientProviderId ?? effect.recipient)) fail('RECIPIENT_CHANGED', 'Le destinataire de la conversation a changé.');
-    const gate = await enforceLinkedInAction(legacyAdmin(admin), { accountId: effect.senderAccountId, actionType: 'message', userId, organizationId: scope.organization_id, source: 'candidate_action', mode: 'auto', log: false });
+    const gate = await enforceLinkedInAction(quotaAdmin(admin), { accountId: effect.senderAccountId, actionType: 'message', userId, organizationId: scope.organization_id, source: 'candidate_action', mode: 'auto', log: false });
     if (!gate.allowed) fail('LINKEDIN_QUOTA', gate.reason || 'La limite de votre compte LinkedIn est atteinte.');
   } else {
     if (effect.audience !== 'candidate' || effect.service !== 'whatsapp' || candidateActionPhone(account.phone_number) !== effect.senderAddress) fail('INVALID_WHATSAPP_TARGET', 'Le compte ou le destinataire WhatsApp est invalide.');
@@ -238,68 +292,87 @@ export async function validateCandidateActionMessage(admin: ActionClient, userId
   }
 }
 
+/** Thread and RFC Message-ID of a mail we just sent: the v2 send answer may carry neither. Read once, never required, bounded to a few seconds. */
+async function sentEmailIdentity(accountId: string, emailId: string): Promise<{ threadId: string | null; messageId: string | null }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const sent = await Promise.race([
+      getEmail(accountId, emailId, { metaOnly: true }),
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 4_000); }),
+    ]);
+    return { threadId: sent && token(sent.thread_id) ? token(sent.thread_id) : null, messageId: sent && token(sent.message_id) ? token(sent.message_id) : null };
+  } catch { return { threadId: null, messageId: null }; } finally { if (timer) clearTimeout(timer); }
+}
+
 /** Calls this only after the engine has durably claimed this individual effect. */
 export async function sendCandidateActionMessage(admin: ActionClient, userId: string, scope: CandidateActionScope, effect: CandidateActionMessageEffect, context?: { planId: string }): Promise<CandidateActionMessageOutcome> {
   try { await validateCandidateActionMessage(admin, userId, scope, effect); }
   catch (error) { return { status: 'failed', result: { errorCode: error instanceof CandidateActionTransportError ? error.code : 'PREFLIGHT_FAILED', message: error instanceof CandidateActionTransportError ? error.message : 'Les conditions de l’envoi ne peuvent pas être vérifiées.' } }; }
-  let creds: { apiKey: string; baseUrl: string };
-  try { creds = await candidateActionProviderCredentials(admin, scope.organization_id); }
-  catch { return { status: 'failed', result: { errorCode: 'CHANNEL_UNAVAILABLE', message: 'Le service de messagerie est indisponible. Aucun message n’a été envoyé.' } }; }
+  // The provider key is global: the sending account must be this member's own, whatever the plan said.
+  try { await assertOwn(admin, userId, scope, effect.channel, effect.senderAccountId); }
+  catch (error) { return { status: 'failed', result: { errorCode: error instanceof CandidateActionTransportError ? error.code : 'PREFLIGHT_FAILED', message: error instanceof CandidateActionTransportError ? error.message : 'Les conditions de l’envoi ne peuvent pas être vérifiées.' } }; }
   if (effect.channel === 'linkedin') {
-    const gate = await enforceLinkedInAction(legacyAdmin(admin), { accountId: effect.senderAccountId, actionType: 'message', userId, organizationId: scope.organization_id, source: 'candidate_action', mode: 'auto' });
+    const gate = await enforceLinkedInAction(quotaAdmin(admin), { accountId: effect.senderAccountId, actionType: 'message', userId, organizationId: scope.organization_id, source: 'candidate_action', mode: 'auto' });
     if (!gate.allowed) return { status: 'failed', result: { errorCode: 'LINKEDIN_QUOTA', message: gate.reason || 'La limite de votre compte LinkedIn est atteinte. Réessayez plus tard.' } };
     // Mark the pending Konekt send so its webhook echo cannot advance the wrong mission.
     await recordOutbound(admin, { organizationId: scope.organization_id, accountId: effect.senderAccountId, candidate: candidateRef({ ids: [scope.candidate_id, effect.recipientProviderId], profileUrl: scope.linkedin_url }), source: 'assistant', projectId: scope.project_id, chatId: effect.chatId, createdBy: userId, pending: true });
   }
   let existingChatId = effect.chatId;
   if (effect.channel === 'whatsapp' && !existingChatId) {
+    const lookupFailed: CandidateActionMessageOutcome = { status: 'failed', result: { errorCode: 'CHAT_LOOKUP_FAILED', message: 'Votre conversation WhatsApp ne peut pas être vérifiée. Aucun message n’a été envoyé.' } };
     try {
-      const response = await candidateActionProviderFetch(creds, `/chat_attendees/${safeId(effect.recipient)}/chats?account_id=${safeId(effect.senderAccountId)}&limit=10`, {}, 6_000);
-      if (!response.ok) return { status: 'failed', result: { errorCode: 'CHAT_LOOKUP_FAILED', message: 'Votre conversation WhatsApp ne peut pas être vérifiée. Aucun message n’a été envoyé.' } };
-      const payload = record(await response.json());
-      const chats = items(payload).filter(chat => token(chat.account_id) === effect.senderAccountId && Number(chat.type) === 0);
-      const chat = chats.find(row => candidateActionPhone(row.attendee_provider_id) === effect.recipient)
-        ?? (chats.length === 1 ? chats[0] : undefined);
-      if (chat) {
-        const verified = await verifiedChat(admin, userId, scope, 'whatsapp', token(chat.id), effect.senderAccountId);
-        if (candidateActionPhone(verified.attendee.provider_id) !== effect.recipient) return { status: 'failed', result: { errorCode: 'RECIPIENT_CHANGED', message: 'Le destinataire WhatsApp ne peut pas être vérifié. Aucun message n’a été envoyé.' } };
-        existingChatId = token(chat.id);
-      } else if (chats.length || payload.cursor) {
-        return { status: 'failed', result: { errorCode: 'CHAT_LOOKUP_FAILED', message: 'Votre conversation WhatsApp ne peut pas être vérifiée. Aucun message n’a été envoyé.' } };
+      // The lookup is by person: every entry is that person's 1:1 chat in one inbox, each re-verified below.
+      const entries = (await getChatForUser(effect.senderAccountId, effect.recipient)).slice(0, MAX_CHAT_OWNER_PROBES);
+      for (const entry of entries) {
+        const verified = await verifiedChat(admin, userId, scope, 'whatsapp', entry.chat_id, effect.senderAccountId);
+        if (candidateActionPhone(verified.attendee.provider_id) === effect.recipient) { existingChatId = entry.chat_id; break; }
       }
-    } catch {
-      return { status: 'failed', result: { errorCode: 'CHAT_LOOKUP_FAILED', message: 'Votre conversation WhatsApp ne peut pas être vérifiée. Aucun message n’a été envoyé.' } };
+      // A chat exists with this person but none could be proven to be theirs: never start a second one blindly.
+      if (entries.length && !existingChatId) return { status: 'failed', result: { errorCode: 'RECIPIENT_CHANGED', message: 'Le destinataire WhatsApp ne peut pas être vérifié. Aucun message n’a été envoyé.' } };
+    } catch (error) {
+      console.error('[candidate-actions] whatsapp chat lookup failed:', describeForLog(error));
+      return lookupFailed;
     }
   }
-  let response: Response;
   const sendStartedAt = Date.now();
+  const uncertain: CandidateActionMessageOutcome = { status: 'unknown', result: { errorCode: 'SEND_UNCERTAIN', message: 'Le service n’a pas confirmé l’envoi. Vérifiez votre conversation ou vos e-mails envoyés avant toute nouvelle action.' } };
+  const rejected: CandidateActionMessageOutcome = { status: 'failed', result: { errorCode: 'SEND_REJECTED', message: 'Le service a refusé le message. Vérifiez votre connexion puis réessayez.' } };
+  let providerId = '';
+  let threadId: string | null = existingChatId || null;
+  let providerReceipt: Row = {};
   try {
     if (effect.channel === 'email') {
-      const form = new FormData();
-      form.set('account_id', effect.senderAccountId);
-      form.set('subject', effect.subject!.trim());
-      form.set('body', textToHtml(effect.content.trim()));
-      form.set('to', JSON.stringify([{ display_name: effect.recipient, identifier: effect.recipient }]));
-      response = await candidateActionProviderFetch(creds, '/emails', { method: 'POST', headers: { 'Idempotency-Key': effect.id }, body: form }, 15_000);
+      const sent = await sendEmail({ accountId: effect.senderAccountId, to: [{ email: effect.recipient, display_name: effect.recipient }], subject: effect.subject!.trim(), html: textToHtml(effect.content.trim()) });
+      if (sent.outcome === 'uncertain') { console.error('[candidate-actions] email send outcome unknown:', describeForLog(sent.error)); return uncertain; }
+      if (sent.outcome === 'refused') { console.error('[candidate-actions] email send refused:', describeForLog(sent.error)); return rejected; }
+      // The Email id is the one id the webhook and the mailbox reads share: the journal key must be the same everywhere.
+      providerId = sent.emailId;
+      const identity = await sentEmailIdentity(effect.senderAccountId, sent.emailId);
+      threadId = identity.threadId;
+      // The RFC Message-ID is what a reply names in In-Reply-To: it is kept in the receipt of the effect, where the incoming path finds it.
+      const rfcMessageId = sent.messageId ?? identity.messageId;
+      providerReceipt = { object: 'EmailSent', id: sent.emailId, ...(rfcMessageId ? { message_id: rfcMessageId } : {}) };
     } else {
-      const form = new FormData();
-      form.set('account_id', effect.senderAccountId);
-      form.set('text', effect.content.trim());
-      if (!existingChatId) form.set('attendees_ids', effect.recipientProviderId ?? effect.recipient);
-      response = await candidateActionProviderFetch(creds, existingChatId ? `/chats/${safeId(existingChatId)}/messages` : '/chats', { method: 'POST', body: form }, 15_000);
+      const text = effect.content.trim();
+      const sent = existingChatId
+        ? await sendMessage({ accountId: effect.senderAccountId, chatId: existingChatId, text })
+        : await startChat({ accountId: effect.senderAccountId, user: effect.recipientProviderId ?? effect.recipient, text });
+      if (sent.outcome === 'uncertain') { console.error('[candidate-actions] chat send outcome unknown:', describeForLog(sent.error)); return uncertain; }
+      if (sent.outcome === 'refused') { console.error('[candidate-actions] chat send refused:', describeForLog(sent.error)); return rejected; }
+      providerId = sent.messageId ?? '';
+      threadId = sent.chatId ?? existingChatId ?? null;
+      providerReceipt = { object: existingChatId ? 'MessageSent' : 'ChatStarted', ...(sent.messageIds.length ? { message_id: sent.messageIds.length === 1 ? sent.messageIds[0] : sent.messageIds } : {}), ...(threadId ? { chat_id: threadId } : {}) };
     }
-  } catch {
-    return { status: 'unknown', result: { errorCode: 'SEND_UNCERTAIN', message: 'Le service n’a pas confirmé l’envoi. Vérifiez votre conversation ou vos e-mails envoyés avant toute nouvelle action.' } };
+  } catch (error) {
+    // The client throws before any request only for a missing key, an invalid input or an outdated account id: nothing was sent.
+    if (isUnipileError(error) && (error.kind === 'config' || error.kind === 'validation' || error.kind === 'account_disconnected')) {
+      console.error('[candidate-actions] send not attempted:', describeForLog(error));
+      return { status: 'failed', result: { errorCode: error.kind === 'config' ? 'CHANNEL_UNAVAILABLE' : 'SEND_REJECTED', message: error.kind === 'config' ? 'Le service de messagerie est indisponible. Aucun message n’a été envoyé.' : error.kind === 'account_disconnected' ? 'Votre compte d’envoi doit être reconnecté. Aucun message n’a été envoyé.' : 'Le message n’a pas pu être préparé pour l’envoi. Aucun message n’a été envoyé.' } };
+    }
+    console.error('[candidate-actions] send failed unexpectedly:', describeForLog(error));
+    return uncertain;
   }
-  const outcome = classifySendStatus(response.status);
-  if (outcome !== 'ok') {
-    await response.text().catch(() => '');
-    return { status: outcome === 'uncertain' ? 'unknown' : 'failed', result: { errorCode: outcome === 'uncertain' ? 'SEND_UNCERTAIN' : 'SEND_REJECTED', message: outcome === 'uncertain' ? 'L’envoi n’est pas confirmé. Vérifiez vos messages envoyés avant de continuer.' : 'Le service a refusé le message. Vérifiez votre connexion puis réessayez.' } };
-  }
-  // A successful HTTP send remains successful even if its receipt or local journal fails.
-  const receipt = record(await response.json().catch(() => null));
-  const providerId = token(receipt.provider_id) || token(receipt.message_id) || token(receipt.id);
-  const threadId = token(receipt.thread_id) || token(receipt.chat_id) || existingChatId || null;
+  // A confirmed send remains successful even if its receipt or local journal fails.
   const completedAt = new Date().toISOString();
   let referenceId: string | undefined;
   let journalFailed = false;
@@ -353,13 +426,11 @@ export async function sendCandidateActionMessage(admin: ActionClient, userId: st
     if (effect.channel === 'linkedin') {
       const tracked = await recordOutbound(admin, { organizationId: scope.organization_id, accountId: effect.senderAccountId, candidate: candidateRef({ ids: [scope.candidate_id, effect.recipientProviderId], profileUrl: scope.linkedin_url }), source: 'assistant', projectId: scope.project_id, chatId: threadId, messageId: providerId || null, createdBy: userId });
       if (!tracked.ok) journalFailed = true;
-      await recordUsageSignal(legacyAdmin(admin), effect.senderAccountId, parseUsagePct(receipt));
     }
   } catch (error) {
     journalFailed = true;
     console.error('[candidate-actions] message sent, tracking unavailable:', error instanceof Error ? error.message : 'unknown');
   }
-  const providerReceipt = Object.fromEntries(['object', 'provider_id', 'message_id', 'id', 'thread_id', 'chat_id', 'tracking_id'].filter(key => receipt[key] !== undefined).map(key => [key, receipt[key]]));
   return { status: 'succeeded', result: { providerId: providerId || undefined, providerThreadId: threadId ?? undefined, providerReceipt, completedAt, performedBy: userId, referenceId, referenceTable: referenceId ? 'candidate_action_messages' : undefined, message: journalFailed ? 'Le message est envoyé. Son historique n’a pas pu être enregistré.' : 'Message envoyé.' } };
 }
 
@@ -381,6 +452,13 @@ export function candidateActionStoredEmailSource(row: Row): CandidateActionSourc
   };
 }
 
+const EMAIL_HISTORY_LIMIT = 50;
+const CHAT_HISTORY_LIMIT = 50;
+/** A page proves the end of the history only when the provider says nothing follows and the page is not simply full. */
+function pageIsComplete(page: { items: unknown[]; nextCursor?: string | null; hasMore?: boolean | null; totalCount?: number | null }, limit: number): boolean {
+  return !page.nextCursor && page.hasMore !== true && page.items.length < limit && (page.totalCount ?? 0) <= page.items.length;
+}
+
 export async function readCandidateActionEmailContext(admin: ActionClient, userId: string, scope: CandidateActionScope, targets: CandidateActionTarget[]): Promise<{ messages: CandidateActionSource[]; complete: boolean }> {
   const candidates = targets.filter(target => target.channel === 'email' && target.audience === 'candidate');
   if (!candidates.length) return { messages: [], complete: true };
@@ -391,7 +469,8 @@ export async function readCandidateActionEmailContext(admin: ActionClient, userI
   const binding = await resolveCandidateActionMessageScope(admin, scope.organization_id, scope.candidate_id);
   const erased = () => isCandidateErasedForOrg(admin, { organizationId: scope.organization_id, linkedinIds: [scope.candidate_id, binding.candidate_id], linkedinUrl: scope.linkedin_url, emails: candidates.map(target => target.recipient) });
   if (await erased()) return { messages: [], complete: true };
-  const creds = await candidateActionProviderCredentials(admin, scope.organization_id);
+  const accountId = candidates[0].senderAccountId;
+  await assertOwn(admin, userId, scope, 'email', accountId);
   const recipients = new Set(candidates.map(target => target.recipient));
   const actualContacts = await storedContacts(admin, scope);
   const allowedCandidateIds = new Set([scope.candidate_id, binding.candidate_id, ...actualContacts.map(contact => token(contact.candidate_id)).filter(Boolean)]);
@@ -406,26 +485,28 @@ export async function readCandidateActionEmailContext(admin: ActionClient, userI
     if (identities.error) fail('RECIPIENT_UNVERIFIED', 'Les coordonnées du candidat ne peuvent pas être vérifiées.');
     if ((identities.data ?? []).length <= 10 && (identities.data ?? []).every((row: Row) => allowedCandidateIds.has(token(row.candidate_id)))) unambiguousRecipients.add(recipient);
   }
-  const query = new URLSearchParams({ account_id: candidates[0].senderAccountId, any_email: [...recipients].join(','), limit: '50', meta_only: 'false' });
-  const response = await candidateActionProviderFetch(creds, `/emails?${query}`);
-  if (!response.ok) fail('EMAIL_CONTEXT_UNAVAILABLE', 'Les échanges par e-mail ne peuvent pas être lus pour le moment.');
-  const payload = record(await response.json());
-  let complete = !payload.cursor && items(payload).length <= 50 && unambiguousRecipients.size === recipients.size;
-  const imported: Row[] = items(payload).slice(0, 50).flatMap(row => {
-    const from = email(record(row.from_attendee).identifier);
-    const to = items(row.to_attendees).map(attendee => email(attendee.identifier)).filter(Boolean);
-    const cc = items(row.cc_attendees).map(attendee => email(attendee.identifier)).filter(Boolean);
-    if (token(row.account_id) && row.account_id !== candidates[0].senderAccountId) { complete = false; return []; }
+  let page: Awaited<ReturnType<typeof listEmails>>;
+  try { page = await listEmails(accountId, { anyEmail: [...recipients], limit: EMAIL_HISTORY_LIMIT, metaOnly: false }); }
+  catch (error) { providerFailure(error, 'EMAIL_CONTEXT_UNAVAILABLE', 'Les échanges par e-mail ne peuvent pas être lus pour le moment.'); }
+  // The list is scoped by the account in the path: a message of another mailbox cannot appear in it.
+  // Offset based providers give no cursor, so a full page, a has_more flag or a total larger than the page also mean more history exists.
+  // A search by address is approximate on Outlook (it may miss messages), so an Outlook history is never claimed complete.
+  let complete = pageIsComplete(page, EMAIL_HISTORY_LIMIT) && candidateActionEmailService(account.provider) !== 'outlook' && unambiguousRecipients.size === recipients.size;
+  const imported: Row[] = page.items.slice(0, EMAIL_HISTORY_LIMIT).flatMap(raw => {
+    const row = toKonektEmail(raw, { accountId, accountEmail: senderAddress });
+    const from = email(row.from_attendee?.identifier);
+    const to = row.to_attendees.map(attendee => email(attendee.identifier)).filter(Boolean);
+    const cc = row.cc_attendees.map(attendee => email(attendee.identifier)).filter(Boolean);
     const direction = from === senderAddress ? 'outbound' : 'inbound';
     const counterpart = direction === 'inbound' ? from : to.length === 1 ? to[0] : '';
     if (!unambiguousRecipients.has(counterpart)) return [];
     if (!from || (direction === 'inbound' && ![...to, ...cc].includes(senderAddress))) { complete = false; return []; }
-    const id = token(row.provider_id) || token(row.id);
+    const id = token(row.id);
     const timestamp = token(row.date);
     const content = sanitizeEmailBody(row.body_plain, row.body, 12_000);
     if (!id || !Number.isFinite(Date.parse(timestamp)) || !content) { complete = false; return []; }
     return [{ organization_id: scope.organization_id, candidate_id: binding.candidate_id, project_id: binding.project_id,
-      owner_user_id: userId, account_id: candidates[0].senderAccountId, channel: 'email', service: candidateActionEmailService(account.provider),
+      owner_user_id: userId, account_id: accountId, channel: 'email', service: candidateActionEmailService(account.provider),
       audience: 'candidate', direction, provider_message_id: id, provider_thread_id: token(row.thread_id) || null,
       counterpart, sender: from, recipient: direction === 'inbound' ? senderAddress : counterpart,
       subject: token(row.subject) || null, content, occurred_at: new Date(timestamp).toISOString(),
@@ -456,16 +537,16 @@ export async function readCandidateActionEmailContext(admin: ActionClient, userI
 export async function readCandidateActionChatContext(admin: ActionClient, userId: string, scope: CandidateActionScope): Promise<{ messages: CandidateActionSource[]; complete: boolean }> {
   if (!scope.chat_id) return { messages: [], complete: true };
   const participant = await validateCandidateActionChat(admin, userId, scope);
-  const creds = await candidateActionProviderCredentials(admin, scope.organization_id);
-  const response = await candidateActionProviderFetch(creds, `/chats/${safeId(scope.chat_id)}/messages?limit=50`);
-  if (!response.ok) fail('CHAT_CONTEXT_UNAVAILABLE', 'Les messages de cette conversation ne peuvent pas être lus pour le moment.');
-  const payload = record(await response.json());
-  const messages: CandidateActionSource[] = items(payload).flatMap(row => {
-    const id = token(row.provider_id) || token(row.message_id) || token(row.id);
+  let page: Awaited<ReturnType<typeof listMessages>>;
+  try { page = await listMessages(participant.accountId, scope.chat_id, { limit: CHAT_HISTORY_LIMIT }); }
+  catch (error) { providerFailure(error, 'CHAT_CONTEXT_UNAVAILABLE', 'Les messages de cette conversation ne peuvent pas être lus pour le moment.'); }
+  const messages: CandidateActionSource[] = page.items.flatMap(raw => {
+    const row = toKonektMessage(raw, { accountId: participant.accountId, chatId: scope.chat_id });
+    const id = token(row.id);
     const timestamp = token(row.timestamp);
     const detail = token(row.text).slice(0, 5000);
-    if (!id || !Number.isFinite(Date.parse(timestamp)) || !detail || (row.is_sender !== true && row.is_sender !== false && row.is_sender !== 1 && row.is_sender !== 0)) return [];
-    return [{ id: `linkedin-${scope.account_id}-${id}`, type: row.is_sender === true || row.is_sender === 1 ? 'outbound_message' : 'inbound_message', title: row.is_sender === true || row.is_sender === 1 ? 'Votre message LinkedIn' : 'Message du candidat', author: row.is_sender === true || row.is_sender === 1 ? 'Vous' : participant.candidateName || 'Candidat', timestamp, summary: detail.slice(0, 240), detail, service: 'linkedin' as const, reference: { table: 'provider_messages', id, version: timestamp } }];
+    if (!id || !Number.isFinite(Date.parse(timestamp)) || !detail || (row.is_sender !== true && row.is_sender !== false)) return [];
+    return [{ id: `linkedin-${participant.accountId}-${id}`, type: row.is_sender ? 'outbound_message' : 'inbound_message', title: row.is_sender ? 'Votre message LinkedIn' : 'Message du candidat', author: row.is_sender ? 'Vous' : participant.candidateName || 'Candidat', timestamp, summary: detail.slice(0, 240), detail, service: 'linkedin' as const, reference: { table: 'provider_messages', id, version: timestamp } }];
   });
-  return { messages, complete: !payload.cursor };
+  return { messages, complete: pageIsComplete(page, CHAT_HISTORY_LIMIT) };
 }

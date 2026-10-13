@@ -4,14 +4,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
-import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useCompanyLookup } from '@/hooks/onboarding/useCompanyLookup';
 import type { PreviewResults } from '@/hooks/onboarding/useFirstSearch';
 import { updateOrganization } from '@/lib/organizationUpdate';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 import { companyContext } from '@/lib/onboarding/company';
 import type { BriefDraft } from '@/lib/onboarding/brief';
-import { connectedAccounts } from '@/lib/onboarding/linkedin';
+import { useMyLinkedInAccount } from '@/components/connections/useMyLinkedInAccount';
 import { createFirstMission, type ProcessKey } from '@/lib/onboarding/mission';
 import { guessFirstName, normalizeFirstName } from '@/lib/onboarding/names';
 import type { WritingTone } from '@/lib/onboarding/outreach';
@@ -51,7 +50,6 @@ const Onboarding = () => {
   const queryClient = useQueryClient();
   const { organization, isLoading: isOrgLoading } = useOrganization();
   const { user } = useAuthReady();
-  const { accounts, ready: accountsReady } = useLinkedInAccounts();
 
   // `?new=1` : création d'un second espace demandée explicitement (accueil collaborateur, Auth.tsx).
   const isExplicitNewWorkspace = new URLSearchParams(location.search).get('new') === '1';
@@ -85,7 +83,8 @@ const Onboarding = () => {
 
   const lookup = useCompanyLookup();
   const flow = useMemo(() => buildFlow({ linkedinSkipped }), [linkedinSkipped]);
-  const account = useMemo(() => connectedAccounts(accounts)[0] ?? null, [accounts]);
+  // Le compte de la personne (liaison stricte), jamais le premier compte connecté de l'organisation.
+  const { account, ready: accountsReady } = useMyLinkedInAccount();
 
   // Départ dans le tunnel : un utilisateur qui a déjà un espace et arrive à l'accueil, sans reprise, n'a rien à faire ici.
   const tunnelStartedRef = useRef(scene !== 'you' || !!returning);
@@ -427,7 +426,6 @@ const Onboarding = () => {
         )}
         {scene === 'linkedin' && (
           <SceneLinkedIn
-            orgName={orgName || organization?.name || null}
             returning={returning}
             onLeave={() => saveOnboardingProgress(progressRef.current)}
             onContinue={handleLinkedInContinue}

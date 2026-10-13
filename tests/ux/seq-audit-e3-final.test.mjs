@@ -256,9 +256,14 @@ test('file InMail : un 503 n’est jamais renvoyé seul (même règle que le mot
   assert.equal(rules.inmailQueueRetry(503, null).retry, false);
   assert.equal(rules.inmailQueueRetry(503, 'Service LinkedIn momentanément indisponible, nouvel essai 1/3 dans 1 h').retry, false);
   assert.equal(rules.inmailQueueRetry(429, null).retry, true);
-  // Le 503 tombe dans la branche « Envoi incertain ».
-  const loop = sliceBetween(inmailQueue, 'const retry = inmailQueueRetry(response.status', 'Capture the provider usage');
-  assert.match(loop, /if \(response\.status >= 500\) \{\s*throw new Error\(`Envoi incertain \(code \$\{response\.status\}\)/);
+  // Le client partagé range un 5xx ou un délai en « incertain » (jamais en refus) : la file
+  // échoue l'item sans nouvel essai. Un refus 429 passe par inmailRefusalPlan, qui garde les
+  // trois essais d'une heure.
+  const loop = sliceBetween(inmailQueue, 'const outcome = await startLinkedInChat(', '// Mark as sent');
+  assert.match(loop, /if \(outcome\.outcome === "uncertain"\) \{[\s\S]*?throw new Error\("Envoi incertain : /);
+  assert.match(loop, /inmailRefusalPlan\(outcome\.kind, outcome\.error\.status, item\.error_message \?\? null\)/);
+  assert.equal(rules.inmailRefusalPlan('server', 503, null).action, 'fail');
+  assert.equal(rules.inmailRefusalPlan('rate_limited', 429, null).action, 'retry');
 });
 
 // ---------------------------------------------------------------- 6, 12. Compte d'un collègue refusé à la mise en file

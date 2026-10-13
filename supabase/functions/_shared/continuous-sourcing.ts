@@ -4,7 +4,7 @@ import { stableScoringContextKey, SOURCING_SCORING_ENGINE_VERSION } from './scor
 import { loadSourcingMemoryContext } from './sourcing-memory.ts';
 import { buildJobFromBrief, buildProfileData } from './profile-data.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
-import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
+import { describeForLog, errorKindOf, getAccount, isV2AccountId, listContracts, mapAccountStatus } from './unipile/index.ts';
 import { assertCredits } from './credit-guard.ts';
 import { calculateTokenCredits, estimateCredits, MODEL_CATALOG } from './ai-config.ts';
 import { enforceLinkedInAction, getUserQuotas, isWithinBusinessHours, nextBusinessHoursStart } from './linkedin-quotas.ts';
@@ -50,6 +50,8 @@ export interface AgentProject extends AgentJson {
 }
 export interface AgentAccount {
   id: string; name: string; apis: AgentApi[]; status: string;
+  /** `UNAVAILABLE` or `DEGRADED` for a reason that goes away by itself (outage, rate limit): retry, never block. */
+  retryable?: boolean;
 }
 export class ContinuousError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
@@ -155,6 +157,51 @@ export async function timedFetch(url: string, init: RequestInit, milliseconds = 
   const timer = setTimeout(() => controller.abort(), milliseconds);
   try { return await fetch(url, { ...init, signal: controller.signal }); } finally { clearTimeout(timer); }
 }
+// Contract refusals that only mean "this account has no Recruiter or Sales Navigator contract".
+const NO_CONTRACT_KINDS = ['not_found', 'validation', 'forbidden'];
+// Provider failures that go away by themselves: the agent retries later instead of being blocked.
+const TRANSIENT_KINDS = ['network', 'server', 'rate_limited', 'uncertain', 'account_degraded'];
+const isTransient = (error: unknown) => TRANSIENT_KINDS.includes(errorKindOf(error));
+/** A Lite entitlement is not full Recruiter: the contract name is the only signal the provider gives. */
+const isRecruiterLite = (contract: { name?: unknown; description?: unknown }) =>
+  /\blite\b/i.test(`${String(contract.name ?? '')} ${String(contract.description ?? '')}`);
+
+/**
+ * Search licences an account can use, from its contracts. Classic is always
+ * granted. Recruiter and Sales Navigator are exclusive (one contract is
+ * `selected` at a time): when one is selected, only that product is granted,
+ * otherwise what exists. Failure: `{ retryable }` = the contracts could not be
+ * read, never a silent downgrade to classic.
+ */
+async function readAccountApis(accountId: string): Promise<{ apis: AgentApi[] } | { retryable: boolean }> {
+  try {
+    const contracts = await listContracts(accountId);
+    const selected = contracts.find(contract => contract.selected === true)?.product;
+    const granted = (product: 'recruiter' | 'sales_navigator') => (selected === 'recruiter' || selected === 'sales_navigator' ? selected === product : true) &&
+      contracts.some(contract => contract.product === product && (product !== 'recruiter' || !isRecruiterLite(contract)));
+    const apis: AgentApi[] = ['classic'];
+    if (granted('recruiter')) apis.push('recruiter');
+    if (granted('sales_navigator')) apis.push('sales_navigator');
+    return { apis };
+  } catch (error) {
+    if (NO_CONTRACT_KINDS.includes(errorKindOf(error))) return { apis: ['classic'] };
+    console.error('[continuous-sourcing] contracts unavailable:', describeForLog(error));
+    return { retryable: isTransient(error) };
+  }
+}
+
+/**
+ * The caller's own LinkedIn accounts with their live state and licences. One
+ * account read and one contracts read per account, each preceded by the
+ * `beforeProvider` fence. An account the provider cannot vouch for, or one
+ * whose id is not a current (`acc_`) id, is listed as `UNAVAILABLE` so the
+ * member is asked to reconnect, never silently dropped. A read that failed for
+ * a passing reason (outage, rate limit) is flagged `retryable`.
+ *
+ * A `degraded` or `partial` account still serves the products the provider
+ * reports as `running` (`metadata.products_connection_status`); without that
+ * detail it grants nothing.
+ */
 export async function readOwnAgentAccounts(admin: SupabaseClient, userId: string, orgId: string,
   beforeProvider: () => Promise<void> = async () => {}, selectedAccountId?: string): Promise<AgentAccount[]> {
   let query = admin.from('member_linkedin_accounts')
@@ -163,29 +210,34 @@ export async function readOwnAgentAccounts(admin: SupabaseClient, userId: string
   const { data: rows, error } = await query;
   if (error) throw new ContinuousError('ACCOUNT_UNAVAILABLE', 'Vos comptes ne peuvent pas être vérifiés.', 503);
   if (!rows?.length) return [];
-  const credentials = await resolveUnipileCredentials(orgId, admin as never);
-  if (!credentials) throw new ContinuousError('ACCOUNT_UNAVAILABLE', 'La connexion LinkedIn est indisponible.', 503);
-  const base = credentials.dsn.startsWith('http') ? credentials.dsn : 'https://' + credentials.dsn;
   const accounts: AgentAccount[] = [];
   for (const row of rows) {
     const id = String(row.linkedin_account_id || '');
-    if (!id || id.includes('..') || /[/\\?#]/.test(id)) continue;
+    const fallbackName = row.linkedin_account_name || 'Mon compte';
+    if (!id) continue;
+    if (!isV2AccountId(id)) { accounts.push({ id, name: fallbackName, status: 'UNAVAILABLE', apis: [] }); continue; }
     await beforeProvider();
-    const response = await timedFetch(`${base}/api/v1/accounts/${encodeURIComponent(id)}`, {
-      headers: { 'X-API-KEY': credentials.apiKey, Accept: 'application/json' },
-    });
-    if (!response.ok) { accounts.push({ id, name: row.linkedin_account_name || 'Mon compte', status: 'UNAVAILABLE', apis: [] }); continue; }
-    const account = record(await response.json());
-    if (account.id !== id || String(account.type).toUpperCase() !== 'LINKEDIN') continue;
-    const sources = Array.isArray(account.sources) ? account.sources.map(record) : [];
-    const status = sources.some(source => source.status === 'OK') ? 'OK' : String(sources[0]?.status || 'UNKNOWN');
-    const im = record(record(account.connection_params).im);
-    const features = Array.isArray(im.premiumFeatures) ? im.premiumFeatures.map(String).map(value => value.toLowerCase()) : [];
-    // Use actual provider entitlements. A Lite entitlement is not full Recruiter.
-    const apis: AgentApi[] = ['classic'];
-    if (features.some(feature => /recruiter/.test(feature) && !/lite/.test(feature))) apis.push('recruiter');
-    if (features.some(feature => /sales.*navigator|sales_navigator/.test(feature))) apis.push('sales_navigator');
-    accounts.push({ id, name: String(account.name || row.linkedin_account_name || 'Mon compte'), status, apis });
+    let account: Awaited<ReturnType<typeof getAccount>>;
+    try { account = await getAccount(id); }
+    catch (readError) {
+      console.error('[continuous-sourcing] account unavailable:', describeForLog(readError));
+      accounts.push({ id, name: fallbackName, status: 'UNAVAILABLE', apis: [], retryable: isTransient(readError) });
+      continue;
+    }
+    if (account.id !== id || String(account.provider).toLowerCase() !== 'linkedin') continue;
+    const status = mapAccountStatus(account.status, account.is_locked);
+    const name = String(account.name || fallbackName);
+    const perProduct = account.metadata?.products_connection_status;
+    const partialService = (status === 'DEGRADED' || status === 'PARTIAL') && perProduct && typeof perProduct === 'object';
+    if (status !== 'OK' && !partialService) {
+      accounts.push({ id, name, status, apis: [], ...(status === 'DEGRADED' ? { retryable: true } : {}) });
+      continue;
+    }
+    await beforeProvider();
+    const read = await readAccountApis(id);
+    if (!('apis' in read)) { accounts.push({ id, name, status: 'UNAVAILABLE', apis: [], retryable: read.retryable }); continue; }
+    const apis = status === 'OK' ? read.apis : read.apis.filter(api => perProduct![api] === 'running');
+    accounts.push({ id, name, status, apis, ...(status === 'DEGRADED' ? { retryable: true } : {}) });
   }
   return accounts;
 }
@@ -193,7 +245,13 @@ export function requireAccount(agent: Pick<ContinuousAgent, 'source' | 'account_
   if (agent.source === 'pool') return;
   const account = accounts.find(item => item.id === agent.account_id);
   if (!account) throw new ContinuousError('ACCOUNT_FORBIDDEN', 'Choisissez un compte LinkedIn qui vous appartient.', 403);
-  if (account.status !== 'OK') throw new ContinuousError('ACCOUNT_RECONNECT', 'Reconnectez le compte LinkedIn avant de continuer.', 409);
+  // A degraded or partial account is usable for the products it still runs; the licence check below decides.
+  const partial = account.status === 'DEGRADED' || account.status === 'PARTIAL';
+  const usable = account.status === 'OK' || (partial && Boolean(agent.api) && account.apis.includes(agent.api as AgentApi));
+  if (!usable) {
+    if (account.retryable) throw new ContinuousError('RETRY_LATER', 'Le compte LinkedIn ne peut pas être vérifié pour l’instant. Réessayez plus tard.', 503);
+    throw new ContinuousError('ACCOUNT_RECONNECT', 'Reconnectez le compte LinkedIn avant de continuer.', 409);
+  }
   if (!agent.api || !account.apis.includes(agent.api)) throw new ContinuousError('LICENSE_UNAVAILABLE', 'Cette recherche n’est pas disponible sur le contrat LinkedIn connecté.', 409);
 }
 export function continuousSearchRequest(snapshot: unknown, api: AgentApi): AgentJson {

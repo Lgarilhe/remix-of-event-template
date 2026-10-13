@@ -1,21 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { build, transform } from 'esbuild';
-import ts from 'typescript';
+import { build } from 'esbuild';
+import { bootModules } from '../agent/unipile-search-harness.mjs';
 
-const edgePath = new URL('../../supabase/functions/unipile-search/index.ts', import.meta.url);
-const source = await readFile(edgePath, 'utf8');
-const parsed = ts.createSourceFile(edgePath.pathname, source, ts.ScriptTarget.Latest, true);
-const handler = parsed.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'handleGetChats');
-assert.ok(handler, 'Le test doit appeler le véritable handler de découverte');
-const { code } = await transform(`
-  const corsHeaders = {};
-  const console = { log() {}, warn() {}, error() {} };
-  const fetchWithTimeout = (...args) => globalThis.discoveryFetch(...args);
-  export ${handler.getText(parsed)}
-`, { loader: 'ts', format: 'esm' });
-const { handleGetChats } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+// Le vrai gestionnaire de découverte (chats.ts de unipile-search, API v2) lit le transport factice du client
+// partagé : aucun réseau. La fiche candidat (useCandidateMessages) l'appelle comme le fait le navigateur.
+const modules = await bootModules();
+const { handleGetChats, handleGetMessages } = modules;
+const ACCOUNT = 'acc_my';
+let provider = () => ({ status: 500, body: {} });
+const mock = modules.withMockTransport(request => provider(request));
 
 const stubs = {
   '@tanstack/react-query': 'export const useQuery = () => {};',
@@ -34,144 +28,173 @@ const { outputFiles } = await build({
   } }],
 });
 const { fetchCandidateMessages } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
-const absent = { status: 404, type: 'errors/resource_not_found', title: 'Resource not found.', detail: 'The requested resource were not found.\nAttendee not found' };
-const baseUrl = 'https://provider.example.test/api/v1';
-
-function providerResponse(status, body) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-}
+const lookupPath = id => `/${ACCOUNT}/users/${id}/chat`;
+const chatObject = (id, stamp = '2026-10-08T20:00:00Z') => ({
+  object: 'Chat', id, type: '1to1', is_1to1: true, user_id: 'ACoAAcandidate', last_message_timestamp: stamp,
+  user: { id: 'ACoAAcandidate', display_name: 'Candidat' },
+});
 
 async function discovery(params = {}) {
-  const response = await handleGetChats(baseUrl, 'fixture-key', 'my-account', { attendee_provider_id: 'candidate', ...params });
+  const response = await handleGetChats(ACCOUNT, { attendee_provider_id: 'candidate', ...params });
   return { data: await response.json(), httpStatus: response.status };
 }
 
-test('Le 404 participant documenté et observé devient une absence normale de conversation', async () => {
+test.after(() => mock.restore());
+
+test('Une personne sans conversation (liste vide du prestataire) est une absence normale', async () => {
   const requests = [];
-  globalThis.discoveryFetch = async (url, options) => {
-    requests.push({ url, options });
-    return providerResponse(404, absent);
-  };
+  provider = request => { requests.push(request); return { body: { object: 'ChatLookup', data: [] } }; };
   assert.deepEqual(await discovery(), { data: { success: true, chats: [], cursor: null }, httpStatus: 200 });
   assert.equal(requests.length, 1);
-  assert.equal(new URL(requests[0].url).pathname, '/api/v1/chat_attendees/candidate/chats');
-  assert.equal(new URL(requests[0].url).searchParams.get('account_id'), 'my-account');
-  assert.equal(requests[0].options.method ?? 'GET', 'GET');
+  assert.equal(requests[0].path, lookupPath('candidate'));
+  assert.equal(requests[0].method, 'GET');
 });
 
 for (const [label, status, body] of [
-  ['route inexistante', 404, { message: 'Cannot GET /api/v1/chat_attendees/candidate/chats' }],
+  ['route inexistante', 404, { message: 'Cannot GET /v2/acc_my/users/candidate/chat' }],
   ['compte absent', 404, { detail: 'Account not found' }],
-  ['ressource absente sans précision', 404, { type: 'errors/resource_not_found', detail: 'The requested resource were not found.' }],
-  ['session expirée', 401, { detail: 'Attendee not found' }],
+  ['personne introuvable', 404, { detail: 'User not found' }],
+  ['session expirée', 401, { detail: 'Unauthorized' }],
   ['accès refusé', 403, { detail: 'Insufficient permissions' }],
   ['limite atteinte', 429, { detail: 'Too many requests' }],
-  ['panne serveur', 500, { detail: 'Attendee not found' }],
+  ['panne serveur', 500, { detail: 'Internal error' }],
   ['service indisponible', 503, { detail: 'No client session is currently running.' }],
 ]) test(`La découverte conserve l’erreur réelle : ${label}`, async () => {
-  globalThis.discoveryFetch = async () => providerResponse(status, body);
-  assert.equal((await discovery()).data.success, false);
+  provider = () => ({ status, body });
+  const { data, httpStatus } = await discovery();
+  assert.equal(data.success, false);
+  assert.deepEqual(data.chats, []);
+  assert.equal(httpStatus, 200, 'statut 200 comme avant : l’appelant lit success');
+  assert.doesNotMatch(JSON.stringify(data), /unipile/i);
 });
 
-test('Une disparition du participant à la page suivante ne tronque pas silencieusement l’historique', async () => {
-  globalThis.discoveryFetch = async () => providerResponse(404, absent);
-  assert.equal((await discovery({ cursor: 'next-page' })).data.success, false);
+test('La recherche par personne ne se pagine plus : un curseur reçu est la fin de la liste, sans appel', async () => {
+  let calls = 0;
+  provider = () => { calls++; return { status: 404, body: {} }; };
+  assert.deepEqual((await discovery({ cursor: 'next-page' })).data, { success: true, chats: [], cursor: null });
+  assert.equal(calls, 0);
 });
 
 test('La fiche sans échange charge un historique vide, y compris après résolution de son URL', async () => {
   const actions = [];
-  globalThis.discoveryFetch = async () => providerResponse(404, absent);
+  provider = () => ({ body: { object: 'ChatLookup', data: [] } });
   globalThis.discoveryInvoke = async body => {
     actions.push(body.action);
     assert.equal(body.organization_id, 'my-org');
-    assert.equal(body.account_id, 'my-account');
+    assert.equal(body.account_id, ACCOUNT);
     if (body.action === 'get_profile') return { data: { success: true, profile: { provider_id: 'resolved-candidate' } } };
     assert.equal(body.action, 'get_chats');
     return discovery(body);
   };
-  assert.deepEqual(await fetchCandidateMessages('my-org', 'my-account', ['imported-candidate'], 'https://linkedin.com/in/candidate'), { messages: [], chats: [] });
+  assert.deepEqual(await fetchCandidateMessages('my-org', ACCOUNT, ['imported-candidate'], 'https://linkedin.com/in/candidate'), { messages: [], chats: [] });
   assert.deepEqual(actions, ['get_chats', 'get_profile', 'get_chats']);
 });
 
-test('Un alias sans participant ne masque pas les messages de l’identifiant résolu', async () => {
-  globalThis.discoveryFetch = async url => new URL(url).pathname.includes('/resolved-candidate/')
-    ? providerResponse(200, { items: [{ id: 'existing-chat', timestamp: '2026-10-08T20:00:00Z' }], cursor: null })
-    : providerResponse(404, absent);
+test('Un alias sans conversation ne masque pas les messages de l’identifiant résolu', async () => {
+  provider = request => {
+    if (request.path === lookupPath('resolved-candidate')) return { body: { data: [{ chat_id: 'existing-chat' }] } };
+    if (request.path === `/${ACCOUNT}/chats/existing-chat`) return { body: chatObject('existing-chat') };
+    return { body: { data: [] } };
+  };
   globalThis.discoveryInvoke = async body => {
     if (body.action === 'get_profile') return { data: { success: true, profile: { provider_id: 'resolved-candidate' } } };
     if (body.action === 'get_messages') return { data: { success: true, messages: [{ id: 'existing-message', text: 'Bonjour' }] } };
     return discovery(body);
   };
-  const result = await fetchCandidateMessages('my-org', 'my-account', ['imported-candidate'], 'https://linkedin.com/in/candidate');
+  const result = await fetchCandidateMessages('my-org', ACCOUNT, ['imported-candidate'], 'https://linkedin.com/in/candidate');
   assert.equal(result.chats[0].id, 'existing-chat');
   assert.equal(result.messages[0].text, 'Bonjour');
 });
 
-for (const status of [429, 503]) test(`Une résolution du profil indisponible (${status}) ne devient pas un historique vide après un alias absent`, async () => {
+for (const status of [429, 503]) test(`Une résolution du profil indisponible (${status}) ne devient pas un historique vide après un alias sans conversation`, async () => {
   const actions = [];
-  globalThis.discoveryFetch = async () => providerResponse(404, absent);
+  provider = () => ({ body: { data: [] } });
   globalThis.discoveryInvoke = async body => {
     actions.push(body.action);
     if (body.action === 'get_profile') return { data: { success: false, error: 'Profil indisponible' }, httpStatus: status };
     return discovery(body);
   };
-  await assert.rejects(() => fetchCandidateMessages('my-org', 'my-account', ['imported-candidate'], 'https://linkedin.com/in/candidate'), /indisponibles/);
+  await assert.rejects(() => fetchCandidateMessages('my-org', ACCOUNT, ['imported-candidate'], 'https://linkedin.com/in/candidate'), /indisponibles/);
   assert.deepEqual(actions, ['get_chats', 'get_profile']);
 });
 
 test('Un alias vide ne transforme pas la panne d’un autre alias en historique vide', async () => {
-  globalThis.discoveryFetch = async url => new URL(url).pathname.includes('/missing-candidate/')
-    ? providerResponse(404, absent)
-    : providerResponse(503, { detail: 'Service unavailable' });
+  provider = request => request.path === lookupPath('missing-candidate')
+    ? { body: { data: [] } }
+    : { status: 503, body: { detail: 'Service unavailable' } };
   globalThis.discoveryInvoke = discovery;
-  await assert.rejects(() => fetchCandidateMessages('my-org', 'my-account', ['missing-candidate', 'candidate']), /indisponibles/);
+  await assert.rejects(() => fetchCandidateMessages('my-org', ACCOUNT, ['missing-candidate', 'candidate']), /indisponibles/);
 });
 
-test('Une pagination interrompue reste en erreur dans la fiche candidat', async () => {
-  globalThis.discoveryFetch = async url => new URL(url).searchParams.has('cursor')
-    ? providerResponse(404, absent)
-    : providerResponse(200, { items: [{ id: 'first-chat' }], cursor: 'next-page' });
-  globalThis.discoveryInvoke = discovery;
-  await assert.rejects(() => fetchCandidateMessages('my-org', 'my-account', ['candidate']), /indisponible/);
-});
-
-test('Une panne de tous les dossiers ne devient pas une messagerie vide', async () => {
-  const requests = [];
-  globalThis.discoveryFetch = async url => {
-    requests.push(url);
-    return providerResponse(500, { detail: 'Service unavailable' });
+test('Une lecture des messages interrompue reste en erreur dans la fiche candidat', async () => {
+  provider = request => {
+    if (request.path === lookupPath('candidate')) return { body: { data: [{ chat_id: 'chat-a' }] } };
+    if (request.path === `/${ACCOUNT}/chats/chat-a`) return { body: chatObject('chat-a') };
+    if (request.path === `/${ACCOUNT}/chats/chat-a/messages`) {
+      return request.query.has('cursor')
+        ? { status: 500, body: { detail: 'Service unavailable' } }
+        : { body: { data: [{ id: 'm1', chat_id: 'chat-a', text: 'Bonjour', timestamp: '2026-10-08T20:00:00Z', is_sender: true }], next_cursor: 'older' } };
+    }
+    return { status: 404, body: {} };
   };
-  const response = await handleGetChats(baseUrl, 'fixture-key', 'my-account', {});
+  globalThis.discoveryInvoke = async body => {
+    if (body.action === 'get_messages') {
+      const response = await handleGetMessages(ACCOUNT, body);
+      return { data: await response.json(), httpStatus: response.status };
+    }
+    return discovery(body);
+  };
+  await assert.rejects(() => fetchCandidateMessages('my-org', ACCOUNT, ['candidate']), /indisponibles/);
+});
+
+test('Une panne de toutes les boîtes ne devient pas une messagerie vide', async () => {
+  const requests = [];
+  provider = request => {
+    requests.push(request.path);
+    return request.path.endsWith('/inboxes')
+      ? { body: { data: [{ object: 'Inbox', id: 'inbox_a', disabled: false }, { object: 'Inbox', id: 'inbox_b', disabled: false }] } }
+      : { status: 500, body: { detail: 'Service unavailable' } };
+  };
+  modules.clearLicenceCache();
+  const response = await handleGetChats(ACCOUNT, {});
   assert.equal(response.status, 502);
   assert.equal((await response.json()).success, false);
-  assert.equal(requests.length, 3);
+  assert.equal(requests.filter(path => path.endsWith('/chats')).length, 2, 'chaque boîte est lue une fois');
 });
 
-test('Un dossier absent de la licence ne masque pas un autre dossier chargé et vide', async () => {
-  globalThis.discoveryFetch = async url => new URL(url).searchParams.get('folder') === 'INBOX_LINKEDIN_RECRUITER'
-    ? providerResponse(403, { detail: 'Feature not subscribed' })
-    : providerResponse(200, { items: [], cursor: null });
-  const response = await handleGetChats(baseUrl, 'fixture-key', 'my-account', {});
+test('Une boîte refusée ne masque pas une autre boîte chargée et vide', async () => {
+  provider = request => request.path.endsWith('/inboxes')
+    ? { body: { data: [{ object: 'Inbox', id: 'inbox_a', disabled: false }, { object: 'Inbox', id: 'inbox_b', disabled: false }] } }
+    : request.path.includes('inbox_a') ? { status: 403, body: { detail: 'Feature not subscribed' } } : { body: { data: [] } };
+  modules.clearLicenceCache();
+  const response = await handleGetChats(ACCOUNT, {});
   assert.equal(response.status, 200);
   assert.equal((await response.json()).success, true);
 });
 
-test('Des dossiers déjà parcourus ne provoquent aucun appel ni fausse panne', async () => {
-  globalThis.discoveryFetch = () => { throw new Error('Aucun dossier à relire'); };
-  const response = await handleGetChats(baseUrl, 'fixture-key', 'my-account', {
-    cursors: { INBOX_LINKEDIN_CLASSIC: null, INBOX_LINKEDIN_RECRUITER: null, INBOX: null },
-  });
+test('Des boîtes déjà parcourues ne provoquent aucun appel de liste ni fausse panne', async () => {
+  const requests = [];
+  provider = request => {
+    requests.push(request.path);
+    return request.path.endsWith('/inboxes')
+      ? { body: { data: [{ object: 'Inbox', id: 'inbox_a', disabled: false }, { object: 'Inbox', id: 'inbox_b', disabled: false }] } }
+      : { status: 500, body: {} };
+  };
+  modules.clearLicenceCache();
+  const response = await handleGetChats(ACCOUNT, { cursors: { inbox_a: null, inbox_b: null } });
   const result = await response.json();
   assert.equal(result.success, true);
   assert.deepEqual(result.chats, []);
   assert.equal(result.cursor, null);
+  assert.equal(requests.filter(path => path.endsWith('/chats')).length, 0);
 });
 
-test('Un dossier déjà parcouru ne masque pas les erreurs des dossiers restant à charger', async () => {
-  globalThis.discoveryFetch = async () => { throw new Error('Network unavailable'); };
-  const response = await handleGetChats(baseUrl, 'fixture-key', 'my-account', {
-    cursors: { INBOX_LINKEDIN_CLASSIC: null, INBOX_LINKEDIN_RECRUITER: 'next-recruiter', INBOX: 'next-inbox' },
-  });
+test('Une boîte déjà parcourue ne masque pas les erreurs des boîtes restant à charger', async () => {
+  provider = request => request.path.endsWith('/inboxes')
+    ? { body: { data: [{ object: 'Inbox', id: 'inbox_a', disabled: false }, { object: 'Inbox', id: 'inbox_b', disabled: false }] } }
+    : { status: 500, body: {} };
+  modules.clearLicenceCache();
+  const response = await handleGetChats(ACCOUNT, { cursors: { inbox_a: null, inbox_b: 'next-b' } });
   assert.equal(response.status, 502);
   assert.equal((await response.json()).success, false);
 });

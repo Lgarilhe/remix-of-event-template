@@ -13,6 +13,7 @@ import { LowCreditBanner } from '@/components/ai/LowCreditBanner';
 import { TrialBanner } from '@/components/billing/TrialBanner';
 import { pageTransitionKey } from '@/lib/missionBeta';
 import { useSequencesBetaParamSync } from '@/hooks/useSequencesBeta';
+import { useConnectionNativeParamSync } from '@/hooks/useConnection';
 
 // État replié de la barre, écrit par SidebarProvider dans le cookie sidebar:state.
 function readSidebarOpen(): boolean {
@@ -38,6 +39,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const [sidebarDefaultOpen] = React.useState(readSidebarOpen);
   // ?sequences-v2=1|0 : interrupteur des pages Séquences (src/lib/sequencesBeta.ts).
   useSequencesBetaParamSync();
+  // ?connection-native=1|0 : interrupteur des écrans de connexion directe (src/lib/connectionBeta.ts).
+  useConnectionNativeParamSync();
   // Les rubriques des Paramètres partagent une clé : changer de rubrique ne remonte ni la coquille ni sa navigation.
   // Même règle pour une mission (/missions/:id et ses écrans, src/lib/missionBeta.ts).
   const transitionKey = location.pathname.startsWith('/settings/') ? '/settings' : pageTransitionKey(location.pathname);

@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "Email without thread_id (IMAP) and without headers: thread_key falls back to the RFC Message-ID"
+  },
+  "input": {
+    "object": "Email",
+    "id": "em_0002",
+    "message_id": "<solo@mail.example>",
+    "body": "",
+    "body_plain": "Merci",
+    "snippet": "Merci",
+    "subject": "Merci",
+    "headers": [],
+    "from": [
+      {
+        "email": "a@example.com"
+      }
+    ],
+    "to": [
+      {
+        "email": "b@example.com"
+      }
+    ],
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "date": "2026-10-02T10:00:00.000Z",
+    "attachments": [],
+    "folders": [],
+    "is_unread": false
+  },
+  "expected": {
+    "id": "em_0002",
+    "provider_id": "em_0002",
+    "message_id": "<solo@mail.example>",
+    "account_id": null,
+    "thread_id": null,
+    "thread_key": "<solo@mail.example>",
+    "subject": "Merci",
+    "body": null,
+    "body_plain": "Merci",
+    "snippet": "Merci",
+    "date": "2026-10-02T10:00:00.000Z",
+    "from_attendee": {
+      "display_name": null,
+      "identifier": "a@example.com"
+    },
+    "to_attendees": [
+      {
+        "display_name": null,
+        "identifier": "b@example.com"
+      }
+    ],
+    "cc_attendees": [],
+    "bcc_attendees": [],
+    "reply_to_attendees": [],
+    "in_reply_to": null,
+    "references": [],
+    "has_attachments": false,
+    "attachments": [],
+    "folders": [],
+    "is_unread": false,
+    "is_sender": null,
+    "headers": []
+  }
+}

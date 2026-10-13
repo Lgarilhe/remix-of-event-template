@@ -3,8 +3,9 @@
  * (process-sequences : resume_enrollments, re_enroll, mark_replied), outils de
  * l'assistant (resume_sequence, enroll_in_sequence, approbation par
  * agent-tool-action), liaison des comptes LinkedIn (unipile-accounts :
- * claim, unlink, stop_member_linkedin ; unipile-webhook : nouvelle connexion
- * hosted_auth) et file des InMails (process-inmail-queue).
+ * claim, unlink, stop_member_linkedin, connection_start ; unipile-webhook :
+ * événement account.add d'une connexion hébergée) et file des InMails
+ * (process-inmail-queue).
  *
  * Contrat : CLAUDE.md, « Séquences : règles du moteur et de l'interface », et
  * docs/audit-2026-09-25-sequences.md (D1 à D6, tableau des décisions).
@@ -18,6 +19,13 @@
  * - updated_at reculé : psql en supabase_admin avec
  *   session_replication_role = replica (le déclencheur updated_at le remet
  *   sinon à maintenant).
+ *
+ * LinkedIn (API v2) : le faux fournisseur (e2e/local-stack/vendor-mock.mjs) se pilote par
+ * compte (`setMockMode`, `routes`), ses appels se lisent par opération (`callsOf`). Un compte
+ * ne se relie plus par son seul identifiant : « C'est mon compte » ne revendique qu'un compte
+ * déjà rattaché à l'organisation (aucun compte « orphelin », la clé du fournisseur est globale) ;
+ * une nouvelle connexion passe par `connection_start`, dont l'identifiant de tentative revient
+ * dans l'événement account.add (`state`).
  *
  * Dimanche : le moteur tourne avec force: true. process-inmail-queue n'a pas
  * de forçage : le membre reçoit une plage 0 h-24 h dans un fuseau où l'on est
@@ -52,15 +60,19 @@ import {
   executionsOf,
   messageSequence,
   minutesFromNow,
-  mockCalls,
+  callsOf,
+  chatPosts,
   postJson,
+  rawWebhook,
   rand,
+  routes,
   runCycle,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
   setPaidPlan,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -157,6 +169,17 @@ function processSequences(token: string, body: Record<string, unknown>) {
 
 function unipileAccounts(token: string, body: Record<string, unknown>) {
   return callFunction('unipile-accounts', token, body);
+}
+
+/**
+ * Connexion LinkedIn hébergée démarrée par ce membre (connection_start) : renvoie l'identifiant de
+ * la tentative, que le fournisseur rend dans `state` de l'événement account.add.
+ */
+async function startHostedConnection(user: TestUser): Promise<string> {
+  const res = await unipileAccounts(await tokenOf(user), { action: 'connection_start', provider: 'linkedin' });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+  return String(res.body.attempt_id);
 }
 
 async function restPatch(path: string, token: string, body: unknown) {
@@ -975,11 +998,19 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     const exec1 = await schedule(org, e1.enrollmentId, steps[0], { scheduled_at: plannedAt });
     const inmail = await queueInMail(org.orgId, org.owner.userId, acc1, { scheduled_at: minutesFromNow(DAY) });
     const acc2 = `acc_a2_new_${rand()}`;
+    const ownerToken = await tokenOf(org.owner);
 
+    // « C'est mon compte » ne revendique pas un compte sans liaison : refus, rien ne bouge.
+    const claim = await unipileAccounts(ownerToken, { action: 'claim_linkedin_account', account_id: acc2 });
+    expect(claim.status, JSON.stringify(claim.body)).toBe(403);
+    expect((await linkOf(org.orgId, org.owner.userId)).map((l) => l.linkedin_account_id), 'liaison inchangée').toEqual([acc1]);
+    expect((await enrollmentRow(e1.enrollmentId)).status, 'rien n’est arrêté par un refus').toBe('active');
+    expect((await inmailStatus(inmail)).status).toBe('scheduled');
+
+    // La connexion se fait par une tentative : le fournisseur rend son identifiant dans account.add.
+    const attemptId = await startHostedConnection(org.owner);
     const before = Date.now();
-    const res = await unipileAccounts(await tokenOf(org.owner), { action: 'claim_linkedin_account', account_id: acc2 });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.success).toBe(true);
+    await webhook(v2.accountAdd({ accountId: acc2, state: attemptId }));
 
     const links = await linkOf(org.orgId, org.owner.userId);
     expect(links).toHaveLength(1);
@@ -993,32 +1024,93 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
   });
 
   // claim-changement-compte
-  test('changement de compte dont l’arrêt des envois échoue : 500, l’ancienne liaison reste', async () => {
+  test('changement de compte dont l’arrêt des envois échoue : la liaison reste sur l’ancien compte, la tentative est close en échec et le membre est prévenu', async () => {
     const { org, accountId: acc1 } = await sendingOrg('E2E A2 Changement compte échec');
     track(org);
     const oldLinkedAt = minutesFromNow(-30 * DAY);
     await admin().from('member_linkedin_accounts').update({ linked_at: oldLinkedAt })
       .eq('organization_id', org.orgId).eq('linkedin_account_id', acc1);
     const inmail = await queueInMail(org.orgId, org.owner.userId, acc1, { scheduled_at: minutesFromNow(DAY) });
+    const acc2 = `acc_a2_new_${rand()}`;
+    const attemptId = await startHostedConnection(org.owner);
 
     const drop = failingTrigger('inmail_queue', 'UPDATE', org.orgId);
-    const res = await unipileAccounts(await tokenOf(org.owner), { action: 'claim_linkedin_account', account_id: `acc_a2_new_${rand()}` });
+    const res = await webhook(v2.accountAdd({ accountId: acc2, state: attemptId }));
     drop();
-    expect(res.status, JSON.stringify(res.body)).toBe(500);
-    expect(String(res.body.error)).toMatch(/le changement de compte est annulé/);
+    expect(res.success, JSON.stringify(res)).toBe(true);
     const links = await linkOf(org.orgId, org.owner.userId);
     expect(links.map((l) => l.linkedin_account_id), 'ancienne liaison intacte').toEqual([acc1]);
     expect(new Date(links[0].linked_at!).getTime()).toBe(new Date(oldLinkedAt).getTime());
     expect((await inmailStatus(inmail)).status, 'InMail inchangé').toBe('scheduled');
+    const { data: attempt } = await admin().from('connection_attempts').select('status, account_id').eq('id', attemptId).single();
+    expect(attempt, 'tentative close en échec, sans compte').toEqual({ status: 'failed', account_id: null });
+    const { data: notes } = await admin().from('notifications').select('title, body')
+      .eq('organization_id', org.orgId).eq('user_id', org.owner.userId).eq('title', 'Compte LinkedIn non rattaché');
+    expect(notes ?? [], 'le membre est prévenu').toHaveLength(1);
+    expect(JSON.stringify(notes), 'aucun nom de prestataire').not.toMatch(/unipile/i);
+  });
+
+  // claim-changement-compte (redelivery)
+  test('changement de compte dont l’arrêt des envois a échoué, événement redélivré : résultat stable, aucun rattachement tardif, une seule notification', async () => {
+    const { org, accountId: acc1 } = await sendingOrg('E2E A2 Changement compte échec redélivré');
+    track(org);
+    const oldLinkedAt = minutesFromNow(-30 * DAY);
+    await admin().from('member_linkedin_accounts').update({ linked_at: oldLinkedAt })
+      .eq('organization_id', org.orgId).eq('linkedin_account_id', acc1);
+    const inmail = await queueInMail(org.orgId, org.owner.userId, acc1, { scheduled_at: minutesFromNow(DAY) });
+    const acc2 = `acc_a2_new_${rand()}`;
+    const attemptId = await startHostedConnection(org.owner);
+    const noticesOf = async () => {
+      const { data } = await admin().from('notifications').select('id')
+        .eq('organization_id', org.orgId).eq('user_id', org.owner.userId).eq('title', 'Compte LinkedIn non rattaché');
+      return (data ?? []).length;
+    };
+    /** Tout ce qu'une redélivraison pourrait changer : liaison, InMail, tentative. */
+    const snapshot = async () => {
+      const links = await linkOf(org.orgId, org.owner.userId);
+      const { data: attempt } = await admin().from('connection_attempts').select('status, account_id, error_kind').eq('id', attemptId).single();
+      return { links: links.map((l) => ({ account: l.linkedin_account_id, linkedAt: new Date(l.linked_at!).getTime() })), inmail: (await inmailStatus(inmail)).status, attempt };
+    };
+
+    // 1re livraison : l'arrêt des envois de l'ancien compte échoue, la tentative est close en échec (définitif).
+    const delivered = v2.accountAdd({ accountId: acc2, state: attemptId });
+    const drop = failingTrigger('inmail_queue', 'UPDATE', org.orgId);
+    const first = await webhook(delivered);
+    expect(first.success, JSON.stringify(first)).toBe(true);
+    const afterFirst = await snapshot();
+    expect(afterFirst).toEqual({
+      links: [{ account: acc1, linkedAt: new Date(oldLinkedAt).getTime() }],
+      inmail: 'scheduled',
+      attempt: { status: 'failed', account_id: null, error_kind: 'claim_stop_failed' },
+    });
+    expect(await noticesOf(), 'une notification après la première livraison').toBe(1);
+
+    // La cause est levée : une redélivraison ne doit pas rattacher le compte après coup (la tentative est close en échec).
+    drop();
+
+    // 2e livraison, même enveloppe (même evt_) : dédoublonnée, rien n'est rejoué.
+    const same = await rawWebhook(delivered);
+    expect(same.status, JSON.stringify(same.body)).toBe(200);
+    expect(same.body.deduplicated, 'même enveloppe : événement déjà traité').toBe(true);
+    expect(await snapshot(), 'même enveloppe : état identique').toEqual(afterFirst);
+    expect(await noticesOf(), 'même enveloppe : pas de seconde notification').toBe(1);
+
+    // 3e livraison, autre enveloppe pour la même tentative (autre evt_) : refusée (tentative déjà close en échec), état identique.
+    // Le nombre de notifications n'est pas figé ici : le récepteur notifie chaque refus d'une tentative close (voir le rapport,
+    // unipile-webhook/index.ts, cas « refused » avec tentative), ce qui donne une seconde notification pour un nouvel evt_.
+    const other = await rawWebhook(v2.accountAdd({ accountId: acc2, state: attemptId }));
+    expect(other.status, JSON.stringify(other.body)).toBe(200);
+    expect(await snapshot(), 'autre enveloppe : état identique, aucun rattachement tardif').toEqual(afterFirst);
   });
 
   // claim-droits
-  test('« C’est mon compte » : autre espace 403, relié à un collègue 409, orphelin refusé au membre et accepté pour l’admin, liaison pour autrui réservée, cible hors organisation 404', async () => {
+  test('« C’est mon compte » : autre espace 403, relié à un collègue 409, compte sans liaison refusé au membre comme à l’admin, liaison pour autrui réservée, cible hors organisation 404 ; son propre compte relié se confirme', async () => {
     const { org, accountId: ownerAccount } = await sendingOrg('E2E A2 Rattacher');
     const member = await addMember(org.orgId, 'member', 'membre');
     const member2 = await addMember(org.orgId, 'member', 'membre2');
     const adminUser = await addMember(org.orgId, 'admin', 'admin');
     track(org, member, member2, adminUser);
+    const memberAccount = await seedLinkedInAccount(org.orgId, member.userId, `acc_a2_${rand()}`, 'OK');
     const other = await sendingOrg('E2E A2 Rattacher autre');
     track(other.org);
     const outsider = await createOrg('agency', 'E2E A2 Rattacher hors');
@@ -1033,13 +1125,14 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     const colleague = await claim(memberToken, { account_id: ownerAccount });
     expect(colleague.status, JSON.stringify(colleague.body)).toBe(409);
 
-    // Orphelin sans date de création connue du prestataire (le faux prestataire
-    // n'en donne pas) : traité comme plus vieux que 30 minutes.
+    // Compte sans liaison nulle part : la clé du fournisseur est globale, il peut être la connexion en
+    // cours d'une autre organisation. Ni le membre ni l'administrateur ne le revendiquent (la connexion
+    // passe par connection_start), et le fournisseur n'est même pas consulté.
     const orphan = `acc_a2_orphan_${rand()}`;
     const orphanByMember = await claim(memberToken, { account_id: orphan });
     expect(orphanByMember.status, JSON.stringify(orphanByMember.body)).toBe(403);
-    expect(String(orphanByMember.body.error)).toMatch(/Demandez à un administrateur/);
-    expect(await linkOf(org.orgId, member.userId)).toHaveLength(0);
+    expect(String(orphanByMember.body.error)).toMatch(/Connectez-le depuis/);
+    expect((await linkOf(org.orgId, member.userId)).map((l) => l.linkedin_account_id), 'liaison inchangée').toEqual([memberAccount]);
 
     const forOther = await claim(memberToken, { account_id: orphan, user_id: member2.userId });
     expect(forOther.status, 'un membre ne relie pas le compte d’un autre').toBe(403);
@@ -1048,9 +1141,21 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     const notInOrg = await claim(adminToken, { account_id: orphan, user_id: outsider.owner.userId });
     expect(notInOrg.status, JSON.stringify(notInOrg.body)).toBe(404);
 
-    const byAdmin = await claim(adminToken, { account_id: orphan, user_id: member.userId });
-    expect(byAdmin.status, JSON.stringify(byAdmin.body)).toBe(200);
-    expect((await linkOf(org.orgId, member.userId)).map((l) => l.linkedin_account_id)).toEqual([orphan]);
+    // Décision de conception (clé du fournisseur globale) : seule la plateforme (KONEKT_PLATFORM_ADMIN_USER_IDS) relie un
+    // compte sans liaison. La pile locale ne pose pas ce secret (identifiants créés à l'exécution) : le rattachement réussi
+    // par la plateforme est couvert au niveau unitaire, supabase/functions/unipile-accounts/handler.test.ts
+    // (« claim_linkedin_account : refus d un compte étranger… » et « …le droit de la plateforme ne vient que du secret… »).
+    const orphanByAdmin = await claim(adminToken, { account_id: orphan, user_id: member2.userId });
+    expect(orphanByAdmin.status, JSON.stringify(orphanByAdmin.body)).toBe(403);
+    expect(await linkOf(org.orgId, member2.userId)).toHaveLength(0);
+    expect(await callsOf(orphan, 'getAccount'), 'le fournisseur n’est pas consulté pour un compte sans liaison').toEqual([]);
+
+    // Son propre compte déjà relié : le membre le confirme, l'administrateur le confirme pour lui.
+    const own = await claim(memberToken, { account_id: memberAccount });
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    const forMember = await claim(adminToken, { account_id: memberAccount, user_id: member.userId });
+    expect(forMember.status, JSON.stringify(forMember.body)).toBe(200);
+    expect((await linkOf(org.orgId, member.userId)).map((l) => l.linkedin_account_id)).toEqual([memberAccount]);
 
     // Refus sans écriture : les liaisons des autres n'ont pas bougé.
     expect((await linkOf(org.orgId, org.owner.userId)).map((l) => l.linkedin_account_id)).toEqual([ownerAccount]);
@@ -1058,47 +1163,39 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     expect(await linkOf(org.orgId, member2.userId)).toHaveLength(0);
   });
 
-  // claim-droits (orphelin récent, type de compte)
-  test('« C’est mon compte » sur un orphelin : créé il y a 2 h refusé au membre, il y a 5 min accepté ; compte non LinkedIn 400', async () => {
+  // claim-droits (compte sans liaison, type de compte)
+  test('« C’est mon compte » sur un compte sans liaison : refusé au membre, sans consulter le fournisseur ; compte relié qui n’est pas LinkedIn 400', async () => {
     const { org } = await sendingOrg('E2E A2 Rattacher orphelin');
     const member = await addMember(org.orgId, 'member', 'membre');
     track(org, member);
     const memberToken = await tokenOf(member);
-    // Identifiants LinkedIn propres à l'organisation : l'adresse amène
-    // GET /accounts/<compte> du faux prestataire sous ce compte (même méthode
-    // que seq-assistant.spec.ts, la clé '*' étant interdite sur la stack partagée).
-    const scriptAccount = async (accountId: string, account: Record<string, unknown>) => {
-      const { error } = await admin().from('organization_integrations').upsert({
-        organization_id: org.orgId,
-        unipile_connected: true,
-        unipile_api_key: `e2e-${rand()}`,
-        unipile_dsn: `e2e-${rand()}.mock.test/api/v1/accounts/${accountId}?account_id=${accountId}&suite=`,
-      }, { onConflict: 'organization_id' });
-      if (error) throw new Error(`organization_integrations: ${error.message}`);
-      await setMockMode(accountId, {
-        routes: [{ method: 'GET', path: `^/api/v1/accounts/${accountId}$`, status: 200, body: { object: 'Account', id: accountId, name: 'Compte test', sources: [{ id: `${accountId}_MESSAGING`, status: 'OK' }], ...account } }],
-      });
-    };
     const claim = (accountId: string) => unipileAccounts(memberToken, { action: 'claim_linkedin_account', account_id: accountId });
 
+    // Plus d'exception pour un compte récent (v1 : créé depuis moins de 30 minutes) : l'ancienneté du compte
+    // n'est même plus lue. Deux demandes de suite, le refus est le même.
     const orphan = `acc_a2_orphan_${rand()}`;
-    await scriptAccount(orphan, { type: 'LINKEDIN', created_at: minutesFromNow(-120) });
-    const old = await claim(orphan);
-    expect(old.status, JSON.stringify(old.body)).toBe(403);
+    for (const attempt of [1, 2]) {
+      const refused = await claim(orphan);
+      expect(refused.status, `demande ${attempt} : ${JSON.stringify(refused.body)}`).toBe(403);
+    }
     expect(await linkOf(org.orgId, member.userId)).toHaveLength(0);
-    expect((await mockCalls(orphan)).some((c) => c.path === `/api/v1/accounts/${orphan}`), 'le prestataire a bien été consulté').toBe(true);
+    expect(await callsOf(orphan, 'getAccount'), 'le fournisseur n’est pas consulté').toEqual([]);
 
-    await scriptAccount(orphan, { type: 'LINKEDIN', created_at: minutesFromNow(-5) });
-    const recent = await claim(orphan);
-    expect(recent.status, JSON.stringify(recent.body)).toBe(200);
-    expect((await linkOf(org.orgId, member.userId)).map((l) => l.linkedin_account_id)).toEqual([orphan]);
-
+    // Compte relié à ce membre (boîte e-mail) mais qui n'est pas un compte LinkedIn : 400.
     const mail = `acc_a2_mail_${rand()}`;
-    await scriptAccount(mail, { type: 'MAIL', created_at: minutesFromNow(-5) });
+    const { error: mailError } = await admin().from('member_email_accounts').insert({
+      organization_id: org.orgId, user_id: member.userId, linked_by: member.userId,
+      email_account_id: mail, email_address: 'membre@e2e.konekt.test', provider: 'GOOGLE',
+    });
+    if (mailError) throw new Error(`member_email_accounts: ${mailError.message}`);
+    cleanups.push(() => admin().from('member_email_accounts').delete().eq('email_account_id', mail));
+    await setMockMode(mail, { provider: 'google' });
+    cleanups.push(() => setMockMode(mail, {}));
     const notLinkedIn = await claim(mail);
     expect(notLinkedIn.status, JSON.stringify(notLinkedIn.body)).toBe(400);
     expect(String(notLinkedIn.body.error)).toMatch(/n'est pas un compte LinkedIn/);
-    expect((await linkOf(org.orgId, member.userId)).map((l) => l.linkedin_account_id), 'liaison inchangée').toEqual([orphan]);
+    expect(await linkOf(org.orgId, member.userId), 'aucune liaison LinkedIn créée').toHaveLength(0);
+    expect((await callsOf(mail, 'getAccount')).length, 'le fournisseur a bien été consulté').toBeGreaterThan(0);
   });
 
   // stop-member-droits
@@ -1167,7 +1264,7 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
   });
 
   // hosted-auth-remplacement
-  test('nouvelle connexion LinkedIn (hosted_auth) qui remplace le compte d’un membre : l’ancien s’arrête puis la liaison est repointée', async () => {
+  test('nouvelle connexion LinkedIn (account.add d’une tentative) qui remplace le compte d’un membre : l’ancien s’arrête puis la liaison est repointée', async () => {
     const { org, accountId: acc1 } = await sendingOrg('E2E A2 Hosted auth');
     track(org);
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
@@ -1175,15 +1272,15 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
     await schedule(org, e1.enrollmentId, steps[0], { scheduled_at: minutesFromNow(DAY) });
     const inmail = await queueInMail(org.orgId, org.owner.userId, acc1, { scheduled_at: minutesFromNow(DAY) });
     const acc2 = `acc_a2_hosted_${rand()}`;
+    const attemptId = await startHostedConnection(org.owner);
 
-    await webhook({
-      status: 'CREATION_SUCCESS', account_id: acc2, account_type: 'LINKEDIN',
-      name: `user:${org.owner.userId}|org:${org.orgId}`,
-    });
+    await webhook(v2.accountAdd({ accountId: acc2, state: attemptId }));
 
     expect((await linkOf(org.orgId, org.owner.userId)).map((l) => l.linkedin_account_id)).toEqual([acc2]);
     expect(await enrollmentRow(e1.enrollmentId)).toMatchObject({ status: 'paused', pause_reason: 'manual' });
     expect((await inmailStatus(inmail)).status).toBe('cancelled');
+    const { data: attempt } = await admin().from('connection_attempts').select('status, account_id').eq('id', attemptId).single();
+    expect(attempt, 'tentative close avec le compte relié').toEqual({ status: 'completed', account_id: acc2 });
   });
 
   // hosted-auth-remplacement
@@ -1202,10 +1299,9 @@ test.describe('Comptes LinkedIn : dissociation, rattachement, retrait', () => {
       ['autre organisation', other.accountId, 'déjà rattaché à un autre espace de travail'],
       ['collègue', memberAccount, 'déjà rattaché à un autre membre de votre organisation'],
     ] as const) {
-      await webhook({
-        status: 'CREATION_SUCCESS', account_id: accountId, account_type: 'LINKEDIN',
-        name: `user:${org.owner.userId}|org:${org.orgId}`,
-      });
+      // Une tentative par essai : démarrer une connexion annule la précédente du même membre.
+      const attemptId = await startHostedConnection(org.owner);
+      await webhook(v2.accountAdd({ accountId, state: attemptId }));
       expect((await linkOf(org.orgId, org.owner.userId)).map((l) => l.linkedin_account_id), label).toEqual([acc1]);
       expect((await enrollmentRow(e1.enrollmentId)).status, `${label} : rien n’est arrêté`).toBe('active');
       const { data: notes } = await admin()
@@ -1231,7 +1327,7 @@ test.describe('File des InMails', () => {
     await openBusinessHours(org.orgId, org.owner.userId);
     const token = await tokenOf(org.owner);
     const processQueue = () => postJson('/functions/v1/process-inmail-queue', { action: 'process' }, { Authorization: `Bearer ${CRON_SECRET}` });
-    const sends = async () => (await mockCalls(accountId)).filter((c) => c.method === 'POST' && /^\/api\/v1\/chats/.test(c.path));
+    const sends = () => chatPosts(accountId);
 
     // 1. Annulé avant le passage de la file.
     const early = await queueInMail(org.orgId, org.owner.userId, accountId, { user_timezone: SEND_ZONE, scheduled_at: minutesFromNow(-400 * DAY) });
@@ -1244,13 +1340,13 @@ test.describe('File des InMails', () => {
 
     // 2. Annulé pendant le traitement : le contrôle du solde InMail est
     //    ralenti pour ce compte, l'annulation arrive avant la prise en charge.
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', status: 200, body: { recruiter: 10, premium: 0, sales_navigator: 0 }, delay_ms: 6_000, times: 1 }] });
+    await setMockMode(accountId, { routes: [routes.inmailCredits({ recruiter: 10, classic: 0, sales_navigator: 0 }, { delay_ms: 6_000, times: 1 })] });
     const racing = await queueInMail(org.orgId, org.owner.userId, accountId, { user_timezone: SEND_ZONE, scheduled_at: minutesFromNow(-400 * DAY) });
     const run = processQueue();
     let balanceSeen = false;
     for (let i = 0; i < 40 && !balanceSeen; i++) {
       await new Promise((r) => setTimeout(r, 250));
-      balanceSeen = (await mockCalls(accountId)).some((c) => c.path === '/api/v1/linkedin/inmail_balance');
+      balanceSeen = (await callsOf(accountId, 'getInmailCredits')).length > 0;
     }
     expect(balanceSeen, 'la file a pris l’InMail (contrôle du solde en cours)').toBe(true);
     const cancelLate = await postJson('/functions/v1/process-inmail-queue', { action: 'cancel', item_ids: [racing] }, { Authorization: `Bearer ${token}` });

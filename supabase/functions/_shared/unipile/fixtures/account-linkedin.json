@@ -1,0 +1,64 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/accounts/{account_id} (Account, spec accounts-auth.md)"
+  },
+  "context": {
+    "contracts": [
+      {
+        "object": "Contract",
+        "product": "recruiter",
+        "selected": true,
+        "id": "ct1",
+        "name": "Recruiter Lite"
+      }
+    ]
+  },
+  "input": {
+    "object": "Account",
+    "id": "acc_abc123",
+    "user_id": "ACoAAB1234567",
+    "name": "Marie Dupont",
+    "created_at": "2026-05-01T10:00:00.000Z",
+    "application_id": "app_1",
+    "status": "partial",
+    "is_locked": false,
+    "provider": "linkedin",
+    "metadata": {
+      "v1_account_id": "LegacyId_Xy-9",
+      "products_connection_status": {
+        "recruiter": "disconnected",
+        "classic": "running"
+      }
+    },
+    "initial_sync": {
+      "status": "completed"
+    }
+  },
+  "expected": {
+    "id": "acc_abc123",
+    "v1_account_id": "LegacyId_Xy-9",
+    "name": "Marie Dupont",
+    "identifier": "Marie Dupont",
+    "provider": "linkedin",
+    "type": "LINKEDIN",
+    "status": "PARTIAL",
+    "provider_status": "partial",
+    "is_locked": false,
+    "sendable": false,
+    "reconnectable": true,
+    "created_at": "2026-05-01T10:00:00.000Z",
+    "user_id": "ACoAAB1234567",
+    "products_connection_status": {
+      "recruiter": "disconnected",
+      "classic": "running"
+    },
+    "initial_sync_status": "completed",
+    "subscriptions": {
+      "classic": true,
+      "recruiter": true,
+      "sales_navigator": false
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from './useOrganization';
 import { toast } from 'sonner';
+import { actionFailureMessage } from '@/lib/connectionCopy';
 
 export interface MemberLinkedInMapping {
   id: string;
@@ -60,7 +61,7 @@ export function useMemberLinkedInAccounts() {
         action: 'claim_linkedin_account', organization_id: organizationId,
         user_id: userId, account_id: linkedinAccountId,
       });
-      if (error || !data?.success) throw new Error(data?.error || error?.message || "L'association a échoué");
+      if (error || !data?.success) throw new Error(actionFailureMessage(data?.error, error?.message, "L'association a échoué"));
       if (data.mapping?.linkedin_account_id !== linkedinAccountId || data.mapping?.user_id !== userId) {
         throw new Error("L'association n'a pas été confirmée. Rechargez la page puis réessayez.");
       }
@@ -83,7 +84,7 @@ export function useMemberLinkedInAccounts() {
         action: 'unlink_linkedin_account', organization_id: organizationId,
         mapping_id: mappingId, expected_account_id: expectedAccountId,
       });
-      if (error || !data?.success) throw new Error(data?.error || error?.message || 'La dissociation a échoué');
+      if (error || !data?.success) throw new Error(actionFailureMessage(data?.error, error?.message, 'La dissociation a échoué'));
       return data;
     },
     onSuccess: (data) => {

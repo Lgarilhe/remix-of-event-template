@@ -2,30 +2,36 @@
  * useDashboardConnections — agrège l'état de connexion des canaux outreach
  * pour l'utilisateur courant.
  *
- * 3 canaux suivis :
+ * 2 canaux suivis :
  * - LinkedIn : le compte relié à l'utilisateur (member_linkedin_accounts),
  *   jamais celui d'un collègue ; état calculé par resolveMyLinkedInStatus
- * - WhatsApp : jamais dans la liste (unipile-accounts ne renvoie que les
- *   comptes LinkedIn), affiché mais neutre pour hasIssue et allConnected
- * - Email (via Unipile email_account, mapping member_email_accounts)
+ * - Email (liste partagée useMemberEmailList, liaison member_email_accounts) :
+ *   la même requête que la carte de Connexions, donc une seule lecture par
+ *   chargement de page, relue toutes les 5 minutes
+ * WhatsApp n'est pas suivi ici : sa liste est distincte (list_whatsapp) et aucun
+ * écran n'en lisait l'état.
  *
  * Pour chaque canal :
- * - status : 'connected' | 'error' | 'connecting' | 'disconnected'
- * - account : compte Unipile mappé à l'user (nom, identifier, etc.)
+ * - status : 'connected' | 'error' | 'connecting' | 'disconnected'. Seul un
+ *   compte à reconnecter est une panne ('error') : une connexion limitée, un
+ *   accès suspendu ou une synchronisation en cours restent neutres
+ *   ('connecting'), car « Reconnecter » ne les répare pas.
+ * - label : nom du compte
  * - avatarUrl : photo de profil LinkedIn si dispo (utilisée pour le greeting)
  *
- * Plombage Unipile : `useLinkedInAccounts` retourne les comptes LinkedIn
- * reliés à l'organisation (et les orphelins en mode revendication). Les emails
- * ont leur propre liste séparée (action 'list_email').
+ * `useLinkedInAccounts` retourne les comptes LinkedIn reliés à l'organisation
+ * (et les orphelins en mode revendication). Les emails ont leur propre liste
+ * séparée.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useMemberEmailAccounts } from '@/hooks/useMemberEmailAccounts';
+import { useMemberEmailList, type MemberEmailListEntry } from '@/components/connections/useMemberEmailList';
 import { useAuthReady } from '@/hooks/useAuthReady';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { resolveMyLinkedInStatus, channelStatusOf } from '@/lib/linkedinStatus';
+import { resolveMyLinkedInStatus, channelStatusOf, classifyLinkedInStatus } from '@/lib/linkedinStatus';
+import { readableConnectionName } from '@/lib/connectionCopy';
 
 export type ConnectionStatus = 'connected' | 'error' | 'connecting' | 'disconnected';
 
@@ -35,30 +41,29 @@ export interface ChannelConnection {
   label: string | null;
   /** Avatar URL (LinkedIn photo, etc.) if available */
   avatarUrl: string | null;
-  /** Status raw from Unipile (OK / CONNECTING / CREDENTIALS / ERROR / DISCONNECTED) */
+  /** Statut brut du compte (OK / CONNECTING / CREDENTIALS / ERROR / DEGRADED / LOCKED...) */
   rawStatus: string | null;
 }
 
 export interface DashboardConnections {
   linkedin: ChannelConnection;
-  whatsapp: ChannelConnection;
   email: ChannelConnection;
   isLoading: boolean;
-  /** True if LinkedIn or email is in error/disconnected state (WhatsApp ignoré, voir plus bas) */
+  /** True if LinkedIn or email is in error/disconnected state */
   hasIssue: boolean;
-  /** True if LinkedIn and email are connected and OK (WhatsApp ignoré) */
+  /** True if LinkedIn and email are connected and OK */
   allConnected: boolean;
 }
 
-const mapUnipileStatus = (raw: string | null | undefined): ConnectionStatus => {
+/** Statut d'une carte d'après le statut brut d'un compte : même classement que les cartes de Connexions. */
+const statusOfRaw = (raw: string | null | undefined): ConnectionStatus => {
   if (!raw) return 'disconnected';
-  const upper = raw.toUpperCase();
-  if (upper === 'OK') return 'connected';
-  if (upper === 'CONNECTING') return 'connecting';
-  if (upper === 'DISCONNECTED') return 'disconnected';
-  // CREDENTIALS / ERROR / anything else = error state
-  return 'error';
+  return channelStatusOf(classifyLinkedInStatus(raw));
 };
+
+/** Actualisation de la liste des boîtes e-mail (en parallèle de celle des comptes LinkedIn). */
+const EMAIL_REFRESH_MS = 5 * 60 * 1000;
+const EMPTY_EMAIL_ACCOUNTS: MemberEmailListEntry[] = [];
 
 export function useDashboardConnections(): DashboardConnections {
   const { isReady, user } = useAuthReady();
@@ -66,37 +71,11 @@ export function useDashboardConnections(): DashboardConnections {
   const { mappings: linkedinMappings, isReady: linkedinMappingReady, isLoading: linkedinMappingLoading } = useMemberLinkedInAccounts();
   const { getMappingForUser: getEmailMapping, isLoading: emailMappingLoading } = useMemberEmailAccounts();
 
-  // Email accounts come from a separate Unipile call (list_email)
-  const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; name?: string; identifier?: string; status?: string }>>([]);
-  const [emailLoading, setEmailLoading] = useState(false);
-
-  const loadEmailAccounts = useCallback(async () => {
-    if (!isReady || !user) return;
-    setEmailLoading(true);
-    try {
-      const { data } = await invokeEdgeFunction('unipile-accounts', { action: 'list_email' });
-      if ((data as any)?.success && (data as any)?.accounts) {
-        setEmailAccounts((data as any).accounts);
-      }
-    } catch (err) {
-      console.warn('[useDashboardConnections] email fetch failed:', err);
-    } finally {
-      setEmailLoading(false);
-    }
-  }, [isReady, user]);
-
-  useEffect(() => {
-    void loadEmailAccounts();
-  }, [loadEmailAccounts]);
-
-  // Healthcheck refresh email accounts every 5 min (parallèle avec LinkedIn)
-  useEffect(() => {
-    if (!isReady || !user) return;
-    const interval = setInterval(() => {
-      void loadEmailAccounts();
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [isReady, user, loadEmailAccounts]);
+  // Les comptes e-mail viennent d'un appel distinct (list_email), partagé avec la carte de Connexions.
+  // Actualisation toutes les 5 minutes, en parallèle de celle de LinkedIn.
+  const emailList = useMemberEmailList({ refetchInterval: EMAIL_REFRESH_MS });
+  const emailAccounts = emailList.data ?? EMPTY_EMAIL_ACCOUNTS;
+  const emailLoading = emailList.isLoading;
 
   return useMemo<DashboardConnections>(() => {
     const userId = user?.id || null;
@@ -111,21 +90,11 @@ export function useDashboardConnections(): DashboardConnections {
     });
     const linkedin: ChannelConnection = {
       status: channelStatusOf(li.state),
-      label: li.account?.name || li.mapping?.linkedin_account_name || null,
+      label: li.account || li.mapping
+        ? readableConnectionName(li.account?.name || li.mapping?.linkedin_account_name, 'linkedin')
+        : null,
       avatarUrl: li.account?.profile_picture_url || null,
       rawStatus: li.rawStatus,
-    };
-
-    // ─── WhatsApp ───
-    const whatsappAccount = unipileAccounts.find(
-      (a: any) => a.type === 'WHATSAPP' || a.provider === 'WHATSAPP',
-    ) || null;
-
-    const whatsapp: ChannelConnection = {
-      status: mapUnipileStatus(whatsappAccount?.status),
-      label: (whatsappAccount as any)?.name || (whatsappAccount as any)?.identifier || null,
-      avatarUrl: null,
-      rawStatus: whatsappAccount?.status || null,
     };
 
     // ─── Email ───
@@ -135,21 +104,18 @@ export function useDashboardConnections(): DashboardConnections {
       : emailAccounts[0] || null; // fallback : 1er compte email si dispo
 
     const email: ChannelConnection = {
-      status: mapUnipileStatus(emailAccount?.status),
+      status: statusOfRaw(emailAccount?.status),
       label: emailAccount?.identifier || emailAccount?.name || emailMapping?.email_address || null,
       avatarUrl: null,
       rawStatus: emailAccount?.status || null,
     };
 
-    // WhatsApp n'est jamais dans la liste (unipile-accounts ne renvoie que les
-    // comptes LinkedIn) : il ne compte ni comme problème ni pour Tout actif.
     const channels = [linkedin, email];
     const hasIssue = channels.some((c) => c.status === 'error' || c.status === 'disconnected');
     const allConnected = channels.every((c) => c.status === 'connected');
 
     return {
       linkedin,
-      whatsapp,
       email,
       isLoading: !isReady || unipileLoading || linkedinMappingLoading || emailMappingLoading || emailLoading,
       hasIssue,

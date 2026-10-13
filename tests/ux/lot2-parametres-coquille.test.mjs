@@ -600,7 +600,7 @@ test('§3.4 — les textes renvoient aux nouvelles rubriques', () => {
     ['src/components/outreach/result-card/BulkEnrichButton.tsx', 'Lot arrêté : un abonnement est nécessaire (Paramètres › Abonnement et crédits)'],
     ['src/components/outreach/result-card/EnrichContactButton.tsx', 'Paramètres › Abonnement et crédits'],
     ['src/hooks/useCandidateEnrichment.ts', 'Choisissez un forfait dans Paramètres › Abonnement et crédits.'],
-    ['src/hooks/useLinkedInSearchActions.ts', '(Paramètres › Connexions)'],
+    ['src/hooks/useLinkedInSearchActions.ts', 'reconnectez-le dans Paramètres › Connexions.'],
     ['src/hooks/useLinkedInSearchActions.ts', 'Reconnectez votre compte dans Paramètres › Connexions.'],
     ['src/pages/Pricing.tsx', 'Paramètres, Abonnement et crédits'],
     ['src/pages/PrivacyExtension.tsx', 'Paramètres → Connexions'],

@@ -1,0 +1,133 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "Recruiter variant: recruiting_profile on specifics (spec users-social.md UserProfile specifics)"
+  },
+  "input": {
+    "object": "UserProfile",
+    "id": "ACoAAB7654321",
+    "type": "individual",
+    "display_name": "Luc Bernard",
+    "provider": "linkedin",
+    "is_blocked": false,
+    "specifics": {
+      "recruiting_profile": {
+        "events": [
+          {
+            "event": "MESSAGE",
+            "message_content": "Bonjour",
+            "message_status": "ACCEPTED",
+            "last_updated_at": "2026-09-01T10:00:00.000Z",
+            "last_updated_by": {
+              "id": "u1",
+              "object": "User",
+              "type": "individual",
+              "display_name": "Recruteur"
+            }
+          }
+        ],
+        "notes": [
+          {
+            "project_id": "p1",
+            "content": "Très bon contact",
+            "last_modified_at": "2026-09-02T08:00:00.000Z",
+            "author": {
+              "id": "u1",
+              "object": "User",
+              "type": "individual",
+              "display_name": "Recruteur"
+            },
+            "comments": []
+          }
+        ],
+        "tags": [
+          {
+            "id": "t1",
+            "content": "A rappeler"
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "id": "ACoAAB7654321",
+    "provider_id": "ACoAAB7654321",
+    "public_identifier": null,
+    "member_id": null,
+    "member_urn": null,
+    "recruiter_candidate_id": null,
+    "type": "individual",
+    "name": "Luc Bernard",
+    "first_name": null,
+    "last_name": null,
+    "headline": null,
+    "summary": null,
+    "location": null,
+    "industry": null,
+    "profile_url": null,
+    "public_profile_url": null,
+    "profile_picture_url": null,
+    "profile_picture_url_large": null,
+    "background_picture_url": null,
+    "network_distance": null,
+    "network_degree": null,
+    "can_send_inmail": null,
+    "open_to_work": null,
+    "is_open_to_work": null,
+    "premium": null,
+    "is_premium": null,
+    "open_profile": null,
+    "is_open_profile": null,
+    "is_hiring": null,
+    "is_influencer": null,
+    "is_creator": null,
+    "verified": null,
+    "pronoun": null,
+    "connections_count": null,
+    "followers_count": null,
+    "shared_connections_count": null,
+    "primary_locale": null,
+    "contact_info": null,
+    "websites": null,
+    "pending_invitation": null,
+    "invitation": null,
+    "work_experience": null,
+    "education": null,
+    "skills": null,
+    "languages": null,
+    "certifications": null,
+    "projects": null,
+    "volunteering_experience": null,
+    "recommendations": null,
+    "tags": [
+      {
+        "id": "t1",
+        "name": "A rappeler"
+      }
+    ],
+    "notes": [
+      {
+        "project_id": "p1",
+        "content": "Très bon contact",
+        "created_at": 1788336000000,
+        "author": "Recruteur"
+      }
+    ],
+    "recruiting_activity": [
+      {
+        "event": "MESSAGE",
+        "message_content": "Bonjour",
+        "message_status": "ACCEPTED",
+        "last_updated_at": "2026-09-01T10:00:00.000Z",
+        "last_updated_by": {
+          "id": "u1",
+          "object": "User",
+          "type": "individual",
+          "display_name": "Recruteur"
+        }
+      }
+    ],
+    "throttled_sections": null
+  }
+}

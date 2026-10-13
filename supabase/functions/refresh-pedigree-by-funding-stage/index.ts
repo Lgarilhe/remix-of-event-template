@@ -19,7 +19,7 @@
 // intactes.
 //
 // Le cron `resolve-pedigree-directory` s'occupe de remplir les
-// linkedin_company_id par la suite (résolution Unipile get_parameters).
+// linkedin_company_id par la suite (recherche de paramètres LinkedIn).
 //
 // Auth : service_role OU PROCESS_SEQUENCES_SECRET (pour pg_cron).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ const LOCATION_TO_COUNTRY: Record<string, string> = {
 };
 
 // Cap par bracket × pays pour éviter de saturer le directory (et le cron de
-// résolution Unipile derrière). 50 × 5 stages × 8 pays = max 2000 entrées /
+// résolution LinkedIn derrière). 50 × 5 stages × 8 pays = max 2000 entrées /
 // run, mais en pratique les buckets EU dépassent rarement 50 résultats.
 const RESULTS_PER_BRACKET_LOCATION = 50;
 
@@ -259,7 +259,7 @@ async function upsertCompanies(
       }
     } else {
       // INSERT — resolution_status='pending' pour que resolve-pedigree-directory
-      // le picke et tente de résoudre linkedin_company_id via Unipile.
+      // le picke et tente de résoudre linkedin_company_id via la recherche de paramètres LinkedIn.
       const { error: insErr } = await (admin
         .from('pedigree_company_directory' as never)
         .insert({

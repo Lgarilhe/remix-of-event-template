@@ -1,7 +1,7 @@
 // deno test --no-check supabase/functions/_shared/sequence-wait-guards.test.ts
 import { ok as assert, strictEqual as assertEquals } from "node:assert";
 import {
-  flaggedSender, isConnectionWaitSatisfied, messageSender, needsAttendeeResolution, nextWaitPageOffset,
+  flaggedSender, isConnectionWaitSatisfied, messageSender, nextWaitPageOffset,
   providerCallAllowed, replyStateOfMessages, shouldReadNextWaitPage, unresolvedAttendees,
   WAIT_SCAN_MAX_PAGES, WAIT_SCAN_PAGE_SIZE,
 } from "./sequence-wait-guards.ts";
@@ -67,12 +67,6 @@ Deno.test("REV engine-conditions-channels-1 — repli sur les participants (comp
   assertEquals(messageSender({ sender_attendee_id: "other" }, attendees), "self");
   assertEquals(replyStateOfMessages([{ sender_attendee_id: "cand-1", date: LATER_ISO }], AFTER, attendees).state, "replied");
   assertEquals(replyStateOfMessages([{ sender_attendee_id: "other", created_at: LATER_ISO }], AFTER, attendees).state, "no_reply");
-});
-
-Deno.test("REV engine-conditions-channels-1 — participants lus seulement si un message postérieur n'a aucun indicateur", () => {
-  assert(!needsAttendeeResolution([{ is_sender: 0, timestamp: LATER_ISO }, { is_sender: 1, timestamp: LATER_ISO }], AFTER));
-  assert(!needsAttendeeResolution([{ timestamp: BEFORE_ISO }], AFTER));
-  assert(needsAttendeeResolution([{ is_sender: 1, timestamp: LATER_ISO }, { timestamp: LATER_ISO }], AFTER));
 });
 
 Deno.test("REV engine-conditions-channels-11 — échéance testée avant chaque appel au fournisseur", () => {

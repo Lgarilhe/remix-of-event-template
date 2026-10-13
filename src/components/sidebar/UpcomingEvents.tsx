@@ -4,7 +4,7 @@
  *
  * Les entretiens que j'anime sur les 3 prochains jours, par heure (« Dans 8
  * min », « 17:00 », « Demain 14:30 »), 4 lignes au plus, puis « Tout afficher »
- * vers l'agenda. Cliquer une ligne ouvre la fiche du candidat (la page de
+ * vers l'agenda. Cliquer une ligne ouvre l'espace d'entretien en grand (la page de
  * l'entretien s'il n'est pas rattaché à un candidat). De 15 minutes avant le
  * début jusqu'à la fin, le menu de la ligne propose l'assistant d'entretien,
  * la visio et la grille. Sans rendez-vous prévu,
@@ -59,7 +59,7 @@ export function UpcomingEvents() {
           compact
           sub={row.job_title ?? missionName(row.project_id)}
           right={row.event_start_at ? formatUpcomingTime(row.event_start_at, now) : null}
-          to={links.candidate ?? links.qualification}
+          to={links.scorecard ?? links.candidate ?? links.qualification}
           action={isInterviewActive(row, now) && (links.coaching || joinUrl) ? (
             <UpcomingInterviewMenu
               person={person}

@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const ready: ProfileFixtureState = { userId: 'user-a', organizationId: 'org-a', accountId: 'account-a', accountsReady: true, mappingsReady: true, profileId: 'candidate-a', profileUrl: 'https://www.linkedin.com/in/camille-a', profileName: 'Camille Durand', aliases: [] };
 const detailed = (summary: string) => ({ summary, work_experience: [{ role: 'Ingénieure logiciel', company: 'Équipe produit', start: '2021-01-01' }], education: [{ school: 'Université de Nantes', degree: 'Master' }], skills: [{ name: 'Python' }], languages: [{ name: 'Français' }] });
 const row = (organization_id = 'org-a', summary = 'Profil enregistré complet', candidate_id = 'candidate-a', linkedin_profile_url = ready.profileUrl) => ({ organization_id, candidate_id, linkedin_profile_url, linkedin_profile_data: detailed(summary), updated_at: '2026-10-13T10:00:00Z', created_at: '2026-10-12T10:00:00Z' });
+const partial = { provider_id: 'candidate-a', first_name: 'Camille', last_name: 'Durand', headline: 'Sales Engineer chez Dataiku', location: 'Paris et périphérie', profile_picture_url: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Crect width="40" height="40" fill="%23888"/%3E%3C/svg%3E' };
 
 test.describe('Messagerie — profil candidat @critical', () => {
   let html: string;
@@ -44,6 +45,12 @@ test.describe('Messagerie — profil candidat @critical', () => {
       const body = request.postDataJSON() as Row;
       calls.push(body);
       const reply = await options.provider?.(body, calls.length - 1) ?? { data: { success: true, profile: detailed('Profil LinkedIn consulté') } };
+      // Le lecteur fournisseur renvoie une identité réduite si les rubriques
+      // détaillées ne sont pas demandées. Le test doit exercer ce contrat.
+      if (body.action === 'get_profile' && body.include_details !== true && reply.data.success && reply.data.profile) {
+        const value = reply.data.profile as Row;
+        reply.data.profile = Object.fromEntries(['id', 'provider_id', 'name', 'first_name', 'last_name', 'headline', 'location', 'profile_picture_url'].filter(key => value[key] !== undefined).map(key => [key, value[key]]));
+      }
       await route.fulfill({ status: reply.status ?? 200, contentType: 'application/json', body: JSON.stringify(reply.data) });
     });
     await page.goto('/inbox-profile-fixture');
@@ -71,6 +78,146 @@ test.describe('Messagerie — profil candidat @critical', () => {
     clean(api);
   });
 
+  test('Guillaume — un instantané identité et photo seuls laisse charger les détails LinkedIn', async ({ page }) => {
+    const api = await open(page, { rows: [{ ...row(), linkedin_profile_data: { name: 'Camille Durand', provider_id: 'candidate-a', profile_picture_url: partial.profile_picture_url } }], provider: () => ({ data: { success: true, profile: detailed('Détails retrouvés malgré l’instantané d’identité') } }) });
+    await expect(profile(page).getByText('Détails retrouvés malgré l’instantané d’identité', { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil LinkedIn non disponible', { exact: true })).toHaveCount(0);
+    expect(api.calls).toHaveLength(1);
+    clean(api);
+  });
+
+  test('Guillaume — un instantané avec seulement intitulé et lieu ne bloque pas le profil détaillé', async ({ page }) => {
+    const api = await open(page, { rows: [{ ...row(), linkedin_profile_data: partial }], provider: () => ({ data: { success: true, profile: { ...partial, ...detailed('Parcours détaillé récupéré') } } }) });
+    await expect(profile(page).getByText('Parcours détaillé récupéré', { exact: true })).toBeVisible();
+    expect(api.calls).toHaveLength(1);
+    clean(api);
+  });
+
+  test('Claire — succès LinkedIn partiel présente les informations disponibles sans déclarer le profil absent', async ({ page }) => {
+    const api = await open(page, { provider: () => ({ data: { success: true, profile: partial } }) });
+    await expect(profile(page).getByText(partial.headline, { exact: true })).toBeVisible();
+    await expect(profile(page).getByText(partial.location, { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil LinkedIn non disponible', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Impossible de charger le profil|Ce profil est introuvable/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Actualiser depuis LinkedIn', exact: true })).toBeVisible();
+    await expect(page.getByText('Le parcours détaillé n’est pas disponible pour le moment.', { exact: true })).toBeVisible();
+    expect(api.calls).toHaveLength(1);
+    await audit(page, 'partial-profile');
+    clean(api);
+  });
+
+  test('Claire — rubriques limitées par LinkedIn expliquées sans profil déclaré absent', async ({ page }) => {
+    const api = await open(page, { provider: () => ({ data: { success: true, profile: { ...partial, throttled_sections: ['experience', 'education'] } } }) });
+    await expect(profile(page).getByText(partial.headline, { exact: true })).toBeVisible();
+    await expect(page.getByText('LinkedIn limite temporairement l’accès au détail de ce profil. Réessayez plus tard.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil LinkedIn non disponible', { exact: true })).toHaveCount(0);
+    expect(api.calls).toHaveLength(1);
+    expect(api.calls[0].include_details).toBe(true);
+    clean(api);
+  });
+
+  test('Guillaume — rubriques limitées n’occultent pas les détails effectivement reçus', async ({ page }) => {
+    const api = await open(page, { provider: () => ({ data: { success: true, profile: { ...partial, ...detailed('Parcours reçu malgré une rubrique limitée'), throttled_sections: ['education'] } } }) });
+    await expect(profile(page).getByText('Parcours reçu malgré une rubrique limitée', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Ingénieure logiciel', { exact: true })).toBeVisible();
+    await expect(page.getByText('Certaines rubriques LinkedIn sont temporairement limitées. Les informations disponibles restent affichées.', { exact: true })).toBeVisible();
+    expect(api.calls).toHaveLength(1);
+    clean(api);
+  });
+
+  test('Claire — fiche partielle enregistrée sans compte conserve intitulé et lieu lisibles', async ({ page }) => {
+    const api = await open(page, { state: { accountId: null }, rows: [{ ...row(), linkedin_profile_data: partial }] });
+    await expect(profile(page).getByText(partial.headline, { exact: true })).toBeVisible();
+    await expect(profile(page).getByText(partial.location, { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil LinkedIn non disponible', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Actualiser depuis LinkedIn', exact: true })).toHaveCount(0);
+    expect(api.calls).toHaveLength(0);
+    clean(api);
+  });
+
+  test('Guillaume — actualiser une réponse partielle remplace le contenu par les détails reçus', async ({ page }) => {
+    const api = await open(page, { provider: (_body, index) => ({ data: { success: true, profile: index === 0 ? partial : { ...partial, ...detailed('Parcours obtenu après actualisation') } } }) });
+    await expect(profile(page).getByText(partial.headline, { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Actualiser depuis LinkedIn', exact: true }).click();
+    await expect(profile(page).getByText('Parcours obtenu après actualisation', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Ingénieure logiciel', { exact: true })).toBeVisible();
+    expect(api.calls).toHaveLength(2);
+    clean(api);
+  });
+
+  test('Théo — une actualisation partielle ne supprime pas un résumé déjà chargé', async ({ page }) => {
+    const api = await open(page, { rows: [row()], provider: () => ({ data: { success: true, profile: partial } }) });
+    await expect(profile(page).getByText('Profil enregistré complet', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Actualiser depuis LinkedIn', exact: true }).click();
+    await expect.poll(() => api.calls.length).toBe(1);
+    await expect(page.getByRole('button', { name: 'Actualiser depuis LinkedIn', exact: true })).toBeEnabled();
+    await expect(profile(page).getByText('Profil enregistré complet', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Ingénieure logiciel', { exact: true })).toBeVisible();
+    clean(api);
+  });
+
+  test('Théo — relecture automatique partielle conserve chaque rubrique déjà chargée', async ({ page }) => {
+    const api = await open(page, { provider: (_body, index) => ({ data: { success: true, profile: index === 0 ? { ...partial, ...detailed('Parcours complet conservé après relecture') } : { ...partial, throttled_sections: ['experience', 'education'] } } }) });
+    await expect(profile(page).getByText('Parcours complet conservé après relecture', { exact: true })).toBeVisible();
+    await page.evaluate(() => (window as ProfileFixtureWindow).qaProfileInvalidate());
+    await expect(page.getByText('Certaines rubriques LinkedIn sont temporairement limitées. Les informations disponibles restent affichées.', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Parcours complet conservé après relecture', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Ingénieure logiciel', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Université de Nantes', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Python', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Français', { exact: true })).toBeVisible();
+    expect(api.calls).toHaveLength(2);
+    expect(api.calls.every(call => call.include_details === true)).toBe(true);
+    clean(api);
+  });
+
+  test('Théo — une langue seule enregistrée est un contenu consultable sans fausse indisponibilité', async ({ page }) => {
+    const api = await open(page, { rows: [{ ...row(), linkedin_profile_data: { name: 'Camille Durand', headline: partial.headline } }, { ...row(), linkedin_profile_data: { name: 'Camille Durand', languages: [{ name: 'Français', proficiency: 'Langue maternelle' }] } }] });
+    await expect(profile(page).getByText('Français · Langue maternelle', { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil LinkedIn non disponible', { exact: true })).toHaveCount(0);
+    expect(api.calls).toHaveLength(0);
+    clean(api);
+  });
+
+  test('Guillaume — les formats natifs position et dates puis positions historiques restent complets', async ({ page }) => {
+    const native = { ...partial, about: 'À propos natif', work_experience: [{ position: 'Sales Engineer', company: 'Dataiku', start: '2020-09', end: null, current: true }], education: [{ school: 'Université de Nantes', degree: 'Master', start: '2014-09', end: '2016-06' }], skills: ['Avant-vente', 'Python'] };
+    const api = await open(page, { provider: () => ({ data: { success: true, profile: native } }) });
+    await expect(profile(page).getByText('À propos natif', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Sales Engineer', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Dataiku', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Avant-vente', { exact: true })).toBeVisible();
+    await patch(page, { profileId: 'candidate-b', profileUrl: 'https://linkedin.com/in/camille-b', profileName: 'Camille Bernard' });
+    await page.evaluate(() => { (window as ProfileFixtureWindow).qaProfileTables.job_candidate_status.push({ organization_id: 'org-a', candidate_id: 'candidate-b', linkedin_profile_url: 'https://linkedin.com/in/camille-b', linkedin_profile_data: { about: 'Résumé historique', positions: [{ title: 'Architecte solutions', company: { name: 'Équipe client' }, start_date: { year: 2018, month: 4 } }], educations: [{ school_name: 'École de Lyon', degree_name: 'Master' }], skills: ['Cloud'] } }); });
+    await page.getByRole('tab', { name: 'Profil', exact: true }).click();
+    await expect(profile(page).getByText('Résumé historique', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('Architecte solutions', { exact: true })).toBeVisible();
+    await expect(profile(page).getByText('École de Lyon', { exact: true })).toBeVisible();
+    expect(api.calls).toHaveLength(1);
+    clean(api);
+  });
+
+  for (const width of [320, 390]) test(`Sophie — réponse partielle et actualisation détaillée mobile ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+    const api = await open(page, { light: width === 320, provider: (_body, index) => ({ data: { success: true, profile: index === 0 ? partial : { ...partial, ...detailed('Détails lisibles sur mobile') } } }) });
+    await expect(profile(page).getByText(partial.headline, { exact: true })).toBeVisible();
+    await expect(profile(page).getByText(partial.location, { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil LinkedIn non disponible', { exact: true })).toHaveCount(0);
+    const refresh = page.getByRole('button', { name: 'Actualiser depuis LinkedIn', exact: true });
+    expect((await refresh.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    const dialog = page.getByRole('dialog', { name: 'Contexte candidat', exact: true });
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await audit(page, `partial-mobile-${width}`);
+    await test.info().attach(`partial-profile-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await refresh.click();
+    await expect(profile(page).getByText('Détails lisibles sur mobile', { exact: true })).toBeVisible();
+    await audit(page, `partial-refreshed-${width}`);
+    await dialog.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Afficher le contexte candidat', exact: true })).toBeFocused();
+    expect(api.calls).toHaveLength(2);
+    clean(api);
+  });
+
   test('Guillaume — profil retrouvé par URL exacte et pas un homonyme', async ({ page }) => {
     const api = await open(page, { state: { profileId: 'chat-provider-id' }, rows: [row('org-a', 'Homonyme exclu', 'other', 'https://linkedin.com/in/camille-a-autre'), row()] });
     await expect(profile(page).getByText('Profil enregistré complet', { exact: true })).toBeVisible();
@@ -83,7 +230,7 @@ test.describe('Messagerie — profil candidat @critical', () => {
     const api = await open(page);
     await expect(profile(page).getByText('Profil LinkedIn consulté', { exact: true })).toBeVisible();
     expect(api.calls).toHaveLength(1);
-    expect(api.calls[0]).toMatchObject({ action: 'get_profile', organization_id: 'org-a', account_id: 'account-a', profile_id: 'candidate-a' });
+    expect(api.calls[0]).toMatchObject({ action: 'get_profile', organization_id: 'org-a', account_id: 'account-a', profile_id: 'candidate-a', include_details: true });
     expect(await page.evaluate(() => (window as ProfileFixtureWindow).qaProfileQuota)).toEqual([{ type: 'profileVisits', count: 1, accountId: 'account-a' }]);
     await audit(page, 'provider-profile');
     clean(api);
@@ -327,7 +474,7 @@ test.describe('Messagerie — contexte du vrai écran inbox @critical', () => {
       let data: Row = { success: true };
       if (body.action === 'get_chats') data = { success: true, chats: [{ id: 'chat-profile', account_id: 'account', account_type: 'LINKEDIN', timestamp: '2026-10-13T10:00:00Z', attendees: [{ id: 'A_internal_attendee', name: 'Camille Durand', provider_id: 'Z_provider_camille', attendee_provider_id: 'Z_provider_camille', profile_url: 'https://linkedin.com/in/camille-a' }], last_message: { text: 'À bientôt.', timestamp: '2026-10-13T10:00:00Z', is_sender: false } }], cursors: {}, cursor: null };
       if (body.action === 'get_messages') data = { success: true, messages: [{ id: 'message-profile', text: 'À bientôt.', timestamp: '2026-10-13T10:00:00Z', is_sender: false }], cursor: null };
-      if (body.action === 'get_profile') data = body.profile_id === 'Z_provider_camille' ? { success: true, profile: detailed('Profil réel de la conversation') } : { success: false, error: 'Profil non trouvé' };
+      if (body.action === 'get_profile') data = body.profile_id === 'Z_provider_camille' ? { success: true, profile: body.include_details === true ? detailed('Profil réel de la conversation') : partial } : { success: false, error: 'Profil non trouvé' };
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
     });
     await page.goto('/inbox-profile-integration-fixture');
@@ -339,7 +486,7 @@ test.describe('Messagerie — contexte du vrai écran inbox @critical', () => {
     await expect(dialog.getByText('Profil réel de la conversation', { exact: true })).toBeVisible();
     const profileCalls = calls.filter(call => call.action === 'get_profile');
     expect(profileCalls).toHaveLength(1);
-    expect(profileCalls[0]).toMatchObject({ profile_id: 'Z_provider_camille', account_id: 'account', organization_id: 'org-a' });
+    expect(profileCalls[0]).toMatchObject({ profile_id: 'Z_provider_camille', account_id: 'account', organization_id: 'org-a', include_details: true });
     await dialog.getByRole('button', { name: 'Fermer', exact: true }).click();
     await expect(opener).toBeFocused();
     expect(errors).toEqual([]);

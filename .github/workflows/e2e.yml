@@ -475,6 +475,45 @@ jobs:
             cat calendar_anon.json; exit 1
           fi
 
+      # Tentatives de connexion d'un compte (API v2 du service de connexion) : table
+      # connection_attempts, purge, statuts de compte admis. Appel anonyme réel par
+      # l'API : refus attendu (401, code 42501).
+      - name: Audit des tentatives de connexion
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/connection_attempts_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o connection_attempts_anon.json -w '%{http_code}' \
+            "$E2E_SUPABASE_URL/rest/v1/connection_attempts?select=id&limit=1" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+          if [ "$code" != "401" ] || ! grep -q '"42501"' connection_attempts_anon.json; then
+            echo "::error::lecture anonyme de connection_attempts : HTTP $code (401 et 42501 attendus)"
+            cat connection_attempts_anon.json; exit 1
+          fi
+
+      # Bascule des identifiants de compte (API v1 vers v2) : tables de sauvegarde fermées,
+      # fonctions réservées à la clé de service, ordre des écritures face aux déclencheurs,
+      # atomicité d'une paire, restauration d'un lot. Appel anonyme réel par l'API : refus
+      # attendu (401, code 42501), pas par psql (voir get_org_member_emails ci-dessus).
+      - name: Audit de la bascule des identifiants de compte
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/account_remap_audit.sql -c 'ROLLBACK;'
+          for table in account_id_remap account_id_remap_backup; do
+            code=$(curl -sS -o account_remap_anon.json -w '%{http_code}' \
+              "$E2E_SUPABASE_URL/rest/v1/$table?select=batch_id&limit=1" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' account_remap_anon.json; then
+              echo "::error::lecture anonyme de $table : HTTP $code (401 et 42501 attendus)"
+              cat account_remap_anon.json; exit 1
+            fi
+          done
+
       - name: Audit actions candidat et connexions WhatsApp (local mode)
         if: steps.target.outputs.mode == 'local'
         run: |

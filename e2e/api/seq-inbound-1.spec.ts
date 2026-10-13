@@ -7,15 +7,14 @@
  * l'interface », et docs/audit-2026-09-25-sequences.md (D1 à D6, registre).
  *
  * Les webhooks et le moteur tournent pour de vrai contre la stack locale
- * (e2e/local-stack) ; LinkedIn, Stripe et l'IA sont simulés par
+ * (e2e/local-stack) ; LinkedIn (API v2), Stripe et l'IA sont simulés par
  * vendor-mock.mjs, qui journalise chaque appel. Ignoré sans cette stack.
  *
- * Réponses scriptées : l'appel « participants de la conversation » du webhook
- * ne porte pas d'account_id, donc aucune route par compte ne s'y applique.
- * Les tests qui doivent le faire échouer donnent à LEUR organisation des
- * identifiants LinkedIn propres (organization_integrations.unipile_dsn) dont
- * la requête porte leur account_id : la route reste sur leur compte, jamais
- * sur la clé '*'.
+ * Webhooks : enveloppes v2 (`v2.messageNew`, `v2.relationNew`, `v2.accountStatus`), remises avec
+ * le jeton `?v2_token=`. Le dédoublonnage porte sur `unipile:v2:<type>:<evt_...>`. Un message
+ * porte `is_sender` : le récepteur ne lit plus les participants de la conversation, il relit le
+ * message (GET .../chats/{chat}/messages/{message}) seulement quand `is_sender` manque.
+ * Réponses scriptées par compte (`setMockMode(compte, { routes })`), jamais par la clé '*'.
  *
  * @critical
  */
@@ -41,21 +40,25 @@ import {
   ENGINE_SKIP_REASON,
   WEBHOOK_SECRET,
   callFunction,
+  callsOf,
   engineAvailable,
   enroll,
   executionsOf,
   messageSequence,
   minutesFromNow,
-  mockCalls,
   postJson,
   rand,
+  rawWebhook,
+  routes,
   runCycle,
   runEngine,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
+  type V2Envelope,
 } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
@@ -144,27 +147,22 @@ async function ownerToken(org: TestOrg) {
 function engine(token: string, body: Record<string, unknown>) {
   return callFunction('process-sequences', token, body);
 }
-/** Webhook LinkedIn sans assertion de statut (en-tête d'authentification au choix). */
-function rawWebhook(payload: Record<string, unknown>, headers: Record<string, string> = { 'unipile-auth': WEBHOOK_SECRET }, query = '') {
-  return postJson(`/functions/v1/unipile-webhook${query}`, payload, headers);
+/** Message du candidat (enveloppe v2 message.new). Un même `id` (evt_...) rejoue le même événement. */
+function replyFrom(accountId: string, profileId: string, o: { chatId?: string; messageId?: string; id?: string } = {}): V2Envelope {
+  return v2.messageNew({
+    accountId,
+    chatId: o.chatId ?? `chat_${rand()}`,
+    messageId: o.messageId ?? `msg_${rand()}`,
+    senderId: profileId,
+    senderName: 'Camille Martin',
+    text: 'Bonjour, oui avec plaisir',
+    id: o.id,
+  });
 }
-/** Message du candidat, format à plat (message_received). */
-function replyFrom(accountId: string, profileId: string, o: { chatId?: string; messageId?: string; attendeeId?: string } = {}) {
-  return {
-    event: 'message_received',
-    account_id: accountId,
-    account_type: 'LINKEDIN',
-    chat_id: o.chatId ?? `chat_${rand()}`,
-    message_id: o.messageId ?? `msg_${rand()}`,
-    message: 'Bonjour, oui avec plaisir',
-    sender: { attendee_provider_id: profileId, attendee_id: o.attendeeId ?? 'att_candidate', attendee_name: 'Camille Martin' },
-  };
-}
-function newRelation(accountId: string, profileId: string) {
-  return {
-    event: 'new_relation', account_id: accountId, account_type: 'LINKEDIN',
-    user_provider_id: profileId, user_full_name: 'Camille Martin', user_public_identifier: `camille-${rand()}`,
-  };
+/** Clé de dédoublonnage d'une enveloppe : type v2 brut et identifiant d'événement. */
+const dedupKeyOf = (event: V2Envelope) => `unipile:v2:${event.type}:${event.id}`;
+function newRelation(accountId: string, profileId: string): V2Envelope {
+  return v2.relationNew({ accountId, userId: profileId, name: 'Camille Martin', slug: `camille-${rand()}` });
 }
 async function signedPost(fn: string, raw: string, headers: Record<string, string>) {
   const res = await fetch(`${E2E.supabaseUrl}/functions/v1/${fn}`, {
@@ -255,7 +253,7 @@ async function stepsWithTemplates(org: TestOrg, createdBy: string, steps: Array<
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Réponse du candidat (message_received / new_message)
+// Réponse du candidat (message.new)
 // ════════════════════════════════════════════════════════════════════════════
 test.describe('Réponse du candidat', () => {
   // reponse-pendant-pause (SEQ-012)
@@ -302,7 +300,7 @@ test.describe('Réponse du candidat', () => {
     for (const r of results) expect(r.outcome, `reprise refusée pour ${r.enrollment_id}`).toBe('not_paused');
 
     // Reconnexion du compte, puis souscription payante.
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'OK' } });
+    await webhook(v2.accountStatus(accountId, 'running'));
     const stripe = await checkoutCompleted(org.orgId);
     expect(stripe.status, JSON.stringify(stripe.body)).toBe(200);
 
@@ -402,19 +400,21 @@ test.describe('Réponse du candidat', () => {
 
     const chatId = `chat_${rand()}`;
     const messageId = `msg_${rand()}`;
-    const first = await webhook(replyFrom(accountId, profileId, { chatId, messageId }));
+    const event = replyFrom(accountId, profileId, { chatId, messageId });
+    const first = await webhook(event);
     expect(first.deduplicated).toBeUndefined();
-    const second = await webhook(replyFrom(accountId, profileId, { chatId, messageId }));
+    // Même enveloppe (même evt_...) : le fournisseur rejoue le même événement.
+    const second = await webhook(event);
     expect(second, 'second envoi du même événement').toEqual({ ok: true, deduplicated: true });
-    const thirdId = `msg_${rand()}`;
-    const third = await webhook(replyFrom(accountId, profileId, { chatId, messageId: thirdId }));
+    const thirdEvent = replyFrom(accountId, profileId, { chatId, messageId: `msg_${rand()}` });
+    const third = await webhook(thirdEvent);
     expect(third.deduplicated, 'autre message : traité, pas dédoublonné').toBeUndefined();
 
     expect((await enr(enrollmentId)).status).toBe('replied');
     expect((await exec(followUp)).status).toBe('cancelled');
     expect((await analytics(sequenceId)).replies, 'réponse comptée une seule fois').toBe(1);
-    expect(await dedupRows(`unipile:message_received:${messageId}`)).toBe(1);
-    expect(await dedupRows(`unipile:message_received:${thirdId}`)).toBe(1);
+    expect(await dedupRows(dedupKeyOf(event))).toBe(1);
+    expect(await dedupRows(dedupKeyOf(thirdEvent))).toBe(1);
   });
 
   // unipile-webhook-auth-refus
@@ -424,20 +424,20 @@ test.describe('Réponse du candidat', () => {
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
 
-    const messageId = `msg_${rand()}`;
-    const payload = replyFrom(accountId, profileId, { messageId });
-    const attempts: Array<[string, Record<string, string>, string]> = [
-      ['en-tête faux', { 'unipile-auth': 'faux' }, ''],
-      ['sans en-tête', {}, ''],
-      ['jeton v2 inventé', {}, '?v2_token=invente'],
-      ['signature hosted_auth inventée', {}, '?hosted_sig=deadbeef'],
+    const payload = replyFrom(accountId, profileId);
+    const attempts: Array<[string, Parameters<typeof rawWebhook>[1]]> = [
+      ['secret de l’ancienne génération en en-tête, sans jeton', { headers: { 'unipile-auth': WEBHOOK_SECRET }, token: null }],
+      ['en-tête faux, sans jeton', { headers: { 'unipile-auth': 'faux' }, token: null }],
+      ['sans jeton ni en-tête', { token: null }],
+      ['jeton v2 inventé', { token: 'invente' }],
+      ['signature hosted_auth inventée', { token: null, query: '?hosted_sig=deadbeef' }],
     ];
-    for (const [label, headers, query] of attempts) {
-      const res = await rawWebhook(payload, headers, query);
+    for (const [label, opts] of attempts) {
+      const res = await rawWebhook(payload, opts);
       expect(res.status, `${label} : ${JSON.stringify(res.body)}`).toBe(401);
       expect(res.body).toEqual({ error: 'Unauthorized' });
     }
-    expect(await dedupRows(`unipile:message_received:${messageId}`), 'aucune ligne de dédoublonnage').toBe(0);
+    expect(await dedupRows(dedupKeyOf(payload)), 'aucune ligne de dédoublonnage').toBe(0);
     expect((await enr(enrollmentId)).status).toBe('active');
     expect((await exec(followUp)).status).toBe('scheduled');
     expect(await notificationsOf(org.orgId, 'new_message')).toEqual([]);
@@ -450,37 +450,34 @@ test.describe('Réponse du candidat', () => {
   // rejeu-apres-echec (SEQ-040)
   test('vérification d’expéditeur impossible : 500, ligne de dédoublonnage purgée, le rejeu est traité normalement', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound rejeu');
-    // Identifiants propres à l'organisation : l'appel des participants porte l'account_id.
-    await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock?account_id=${accountId}&e2e=` });
-    await setMockMode(accountId, {
-      routes: [
-        { method: 'GET', url: '/attendees', status: 503, body: { status: 503, title: 'Service Unavailable' }, times: 1 },
-        {
-          method: 'GET', url: '/attendees', status: 200, body: {
-            object: 'ChatAttendeeList', items: [
-              { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
-              { object: 'ChatAttendee', id: 'att_candidate', provider_id: 'ACoAAMOCKCANDIDATE', is_self: 0 },
-            ],
-          },
-        },
-      ],
-    });
-    cleanups.push(() => setMockMode(accountId, {}));
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
 
-    const messageId = `msg_${rand()}`;
-    const payload = replyFrom(accountId, profileId, { messageId });
+    // Un message sans `is_sender` est relu auprès du fournisseur (GET .../messages/{id}) pour vérifier l'expéditeur.
+    // Le message est lu deux fois : une première fois par la capture des actions candidat (servie normalement), puis
+    // par la vérification de l'expéditeur, dont la relecture échoue (503).
+    const chatId = `chat_${rand()}`;
+    const payload = replyFrom(accountId, profileId, { chatId });
+    delete payload.payload.is_sender;
+    const messageId = payload.payload.id as string;
+    await setMockMode(accountId, {
+      routes: [
+        routes.message(chatId, { id: messageId, from: 'candidate' }, { times: 1 }),
+        routes.fail('getMessage', 'unavailable'),
+      ],
+    });
+    cleanups.push(() => setMockMode(accountId, {}));
     const failed = await rawWebhook(payload);
     expect(failed.status, JSON.stringify(failed.body)).toBe(500);
-    const scripted = (await mockCalls(accountId)).filter((c) => c.scripted);
-    expect(scripted.length, 'la vérification a bien reçu le 503 scripté').toBeGreaterThanOrEqual(1);
-    expect(await dedupRows(`unipile:message_received:${messageId}`), 'ligne de dédoublonnage purgée').toBe(0);
+    const reads = await callsOf(accountId, 'getMessage');
+    expect(reads.filter((c) => c.status === 503).length, 'la vérification a bien reçu le 503 scripté').toBeGreaterThanOrEqual(1);
+    expect(await dedupRows(dedupKeyOf(payload)), 'ligne de dédoublonnage purgée').toBe(0);
     expect((await enr(enrollmentId)).status, 'rien de clos sur échec').toBe('active');
     expect((await exec(followUp)).status).toBe('scheduled');
 
-    // Rejeu du prestataire, même clé.
+    // Le fournisseur répond de nouveau, puis rejoue la même enveloppe (même evt_...).
+    await setMockMode(accountId, {});
     const replay = await rawWebhook(payload);
     expect(replay.status, JSON.stringify(replay.body)).toBe(200);
     expect(replay.body.deduplicated).toBeUndefined();
@@ -495,24 +492,61 @@ test.describe('Réponse du candidat', () => {
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
 
-    // La capture des actions candidat lit le message chez le prestataire avant le traitement de la réponse.
-    // Cette lecture n'a pas d'account_id : route sans compte, chemin propre au test.
-    const messageId = `msg_${rand()}`;
-    await setMockMode(accountId, {
-      routes: [{ unscoped: true, method: 'GET', path: `^/api/v1/messages/${messageId}$`, status: 503, body: { status: 503, title: 'Service Unavailable' } }],
-    });
+    // La capture des actions candidat relit le message chez le prestataire (GET .../chats/{chat}/messages/{message})
+    // avant le traitement de la réponse. Le message porte is_sender : le récepteur n'a pas d'autre lecture à faire,
+    // la lecture de la capture est donc la seule, et elle échoue.
+    const chatId = `chat_${rand()}`;
+    const event = replyFrom(accountId, profileId, { chatId });
+    await setMockMode(accountId, { routes: [routes.fail('getMessage', 'unavailable')] });
     cleanups.push(() => setMockMode(accountId, {}));
 
-    const res = await rawWebhook(replyFrom(accountId, profileId, { messageId }));
+    const res = await rawWebhook(event);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const served = (await mockCalls()).filter((c) => c.scripted && c.path === `/api/v1/messages/${messageId}`);
-    expect(served.length, 'la lecture du message a bien reçu le 503 scripté').toBeGreaterThanOrEqual(1);
+    const reads = (await callsOf(accountId, 'getMessage')).filter((c) => c.path.includes(`/chats/${chatId}/messages/`));
+    expect(reads.filter((c) => c.status === 503).length, 'la lecture du message a bien reçu le 503 scripté').toBeGreaterThanOrEqual(1);
 
     expect((await enr(enrollmentId)).status, 'réponse enregistrée malgré la capture en échec').toBe('replied');
     expect((await exec(followUp)).status, 'relance annulée').toBe('cancelled');
     expect((await analytics(sequenceId)).replies, 'réponse comptée une fois').toBe(1);
+    expect(await dedupRows(dedupKeyOf(event)), 'événement consommé : le fournisseur n’a rien à rejouer').toBe(1);
     await runCycle();
     expect(await sentTexts(accountId), 'aucun message au candidat qui a répondu').toEqual([]);
+  });
+
+  // capture-actions-candidat-email-boite-declaree
+  test('e-mail relu par défaut pour la boîte déclarée (email_address) : l’identité de la boîte est vérifiée, l’échange entre dans l’historique du candidat et la réponse clôt l’inscription', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E inbound capture e-mail');
+    const mailbox = `acc_mbx${rand()}`;
+    const mailboxAddress = `recruteur.${rand()}@e2e.konekt.test`;
+    const { error: mbxError } = await admin().from('member_email_accounts').insert({
+      organization_id: org.orgId, user_id: org.owner.userId, linked_by: org.owner.userId,
+      email_account_id: mailbox, email_address: mailboxAddress, provider: 'GOOGLE',
+    });
+    if (mbxError) throw new Error(`member_email_accounts: ${mbxError.message}`);
+    // Expéditeur du courriel que le faux prestataire rend par défaut (emailObject de vendor-mock.mjs).
+    const candidateEmail = 'candidat@example.test';
+    const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance ne doit pas partir']);
+    const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId, { email_used: candidateEmail, current_step_order: 1 });
+    const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
+
+    // Aucune route scriptée : le courriel relu est celui du faux prestataire, adressé à la boîte déclarée.
+    await setMockMode(mailbox, { email_address: mailboxAddress });
+    cleanups.push(() => setMockMode(mailbox, {}));
+    const emailId = `mail_${rand()}`;
+    const res = await rawWebhook(v2.emailNew({ accountId: mailbox, provider: 'google', emailId, subject: 'Re: Bonjour', from: candidateEmail, to: mailboxAddress }));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const reads = (await callsOf(mailbox, 'getEmail')).filter((c) => c.path.endsWith(`/emails/${emailId}`));
+    expect(reads.length, 'le courriel a été relu chez le prestataire').toBeGreaterThanOrEqual(1);
+    expect(reads.every((c) => c.status === 200 && !c.scripted), 'réponse par défaut du faux prestataire').toBe(true);
+
+    const { data: history, error } = await admin().from('candidate_action_messages')
+      .select('direction, channel, counterpart, recipient, account_id, provider_message_id').eq('organization_id', org.orgId);
+    if (error) throw new Error(`candidate_action_messages: ${error.message}`);
+    expect(history, 'courriel capturé dans l’historique du candidat').toEqual([{
+      direction: 'inbound', channel: 'email', counterpart: candidateEmail, recipient: mailboxAddress, account_id: mailbox, provider_message_id: emailId,
+    }]);
+    expect((await enr(enrollmentId)).status, 'réponse enregistrée').toBe('replied');
+    expect((await exec(followUp)).status, 'relance annulée').toBe('cancelled');
   });
 
   // message-received-expediteur-soi
@@ -529,8 +563,8 @@ test.describe('Réponse du candidat', () => {
     ]).select('id');
     if (error || !notifs) throw new Error(error?.message);
 
-    // Expéditeur = participant « soi » (att_self pour le faux prestataire).
-    await webhook(replyFrom(accountId, own.profileId, { chatId, attendeeId: 'att_self' }));
+    // Message écrit depuis le compte lui-même : is_sender vrai (expéditeur = le compte, pas le candidat).
+    await webhook(v2.messageNew({ accountId, chatId, isSender: true, text: 'Message envoyé depuis le compte' }));
     expect((await enr(own.enrollmentId)).status, 'notre propre message ne clôt rien').toBe('active');
     expect((await exec(ownFollowUp)).status).toBe('scheduled');
     const after = await notificationsOf(org.orgId, 'new_message');
@@ -538,42 +572,53 @@ test.describe('Réponse du candidat', () => {
     expect(after.find((n) => n.id === notifs[0].id)?.read_at, 'notification de la conversation lue').not.toBeNull();
     expect(after.find((n) => n.id === notifs[1].id)?.read_at, 'autre conversation intacte').toBeNull();
 
-    // Payload sans identifiant de participant, puis sans conversation : ignorés (200).
+    // Payload sans expéditeur, puis ligne système (is_event) : ignorés (200).
     const noAttendee = await enroll(org, sequenceId, org.owner.userId, accountId);
     const noAttendeeExec = await schedule(org, noAttendee.enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
-    const missingAttendee = replyFrom(accountId, noAttendee.profileId);
-    delete (missingAttendee.sender as Record<string, unknown>).attendee_id;
-    await webhook(missingAttendee);
-    const missingChat = replyFrom(accountId, noAttendee.profileId) as Record<string, unknown>;
-    delete missingChat.chat_id;
-    await webhook(missingChat);
+    const missingSender = replyFrom(accountId, noAttendee.profileId);
+    delete missingSender.payload.sender;
+    delete missingSender.payload.sender_id;
+    await webhook(missingSender);
+    const systemRow = replyFrom(accountId, noAttendee.profileId);
+    systemRow.payload.is_event = true;
+    await webhook(systemRow);
     expect((await enr(noAttendee.enrollmentId)).status).toBe('active');
     expect((await exec(noAttendeeExec)).status).toBe('scheduled');
     expect(await notificationsOf(org.orgId, 'new_message'), 'aucune notification créée').toHaveLength(2);
   });
 
-  // message-received-expediteur-soi (participants sans « soi » identifiable)
-  test('réponse dont les participants n’ont pas de « soi » identifiable : ignorée (200), rien n’est clos', async () => {
+  // message-received-expediteur-soi (expéditeur indéterminé)
+  test('réponse dont l’expéditeur reste indéterminé après relecture du message : 500 (rejeu), rien n’est clos', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound sans soi');
-    // Identifiants propres : l'appel des participants tombe sur la réponse
-    // générique du faux prestataire (items vides, aucun is_self).
-    await setIntegration(org.orgId, { unipile_connected: true, unipile_api_key: 'mock-key', unipile_dsn: `unipile.mock/e2e-sans-soi-${rand()}` });
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
     const chatId = `chat_${rand()}`;
+    const event = replyFrom(accountId, profileId, { chatId });
+    delete event.payload.is_sender;
+    const messageId = event.payload.id as string;
+    // Première lecture (capture des actions candidat) normale ; la relecture de vérification ne dit pas non plus
+    // qui a écrit le message (aucun `is_sender`).
+    await setMockMode(accountId, {
+      routes: [
+        routes.message(chatId, { id: messageId, from: 'candidate' }, { times: 1 }),
+        routes.message(chatId, { id: messageId, from: 'candidate', withoutSender: true }),
+      ],
+    });
+    cleanups.push(() => setMockMode(accountId, {}));
 
-    const res = await webhook(replyFrom(accountId, profileId, { chatId }));
-    expect(res.success).toBe(true);
-    const attendeeCalls = (await mockCalls()).filter((c) => c.method === 'GET' && c.path.includes(`/chats/${chatId}/attendees`));
-    expect(attendeeCalls.length, 'participants bien demandés').toBe(1);
+    const res = await rawWebhook(event);
+    expect(res.status, JSON.stringify(res.body)).toBe(500);
+    const reads = (await callsOf(accountId, 'getMessage')).filter((c) => c.path.includes(`/chats/${chatId}/messages/`));
+    expect(reads.length, 'message lu par la capture puis relu pour la vérification').toBe(2);
+    expect(await dedupRows(dedupKeyOf(event)), 'ligne de dédoublonnage purgée : le fournisseur rejouera').toBe(0);
     expect((await enr(enrollmentId)).status).toBe('active');
     expect((await exec(followUp)).status).toBe('scheduled');
     expect(await notificationsOf(org.orgId, 'new_message')).toEqual([]);
   });
 
   // new-message-imbrique-is-sender
-  test('new_message imbriqué : is_sender vrai ignoré, faux clôt sans demander les participants, absent passe par les participants', async () => {
+  test('new_message imbriqué : is_sender vrai ignoré, faux clôt sans relire le message, absent passe par la relecture du message', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound imbriqué');
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
     const mine = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
@@ -586,19 +631,14 @@ test.describe('Réponse du candidat', () => {
     const { data: notif } = await admin().from('notifications').insert({
       user_id: org.owner.userId, organization_id: org.orgId, type: 'new_message', title: 'Nouveau message', metadata: { chat_id: chatMine },
     }).select('id').single();
-
-    await webhook({
-      event: 'new_message', account_id: accountId,
-      data: { message: { id: `m_${rand()}`, is_sender: true, chat_id: chatMine, sender: { provider_id: mine.profileId } } },
-    });
-    await webhook({
-      event: 'new_message', account_id: accountId,
-      data: { message: { id: `m_${rand()}`, is_sender: false, chat_id: chatTheirs, sender: { provider_id: theirs.profileId } } },
-    });
-    await webhook({
-      event: 'new_message', account_id: accountId,
-      data: { message: { id: `m_${rand()}`, chat_id: chatUnknown, sender_attendee_id: 'att_self', sender: { provider_id: unknown.profileId } } },
-    });
+    await webhook(v2.messageNew({ accountId, chatId: chatMine, isSender: true, text: 'Écrit depuis le compte' }));
+    await webhook(replyFrom(accountId, theirs.profileId, { chatId: chatTheirs }));
+    // Le message sans `is_sender` est relu : la relecture dit qu'il est du compte.
+    const absent = replyFrom(accountId, unknown.profileId, { chatId: chatUnknown });
+    delete absent.payload.is_sender;
+    await setMockMode(accountId, { routes: [routes.message(chatUnknown, { id: absent.payload.id as string, from: 'self' })] });
+    cleanups.push(() => setMockMode(accountId, {}));
+    await webhook(absent);
 
     expect((await enr(mine.enrollmentId)).status, 'is_sender vrai : ignoré').toBe('active');
     expect((await exec(execMine)).status).toBe('scheduled');
@@ -608,15 +648,17 @@ test.describe('Réponse du candidat', () => {
     expect((await enr(theirs.enrollmentId)).status, 'is_sender faux : réponse').toBe('replied');
     expect((await exec(execTheirs)).status).toBe('cancelled');
 
-    expect((await enr(unknown.enrollmentId)).status, 'is_sender absent, participant « soi » : ignoré').toBe('active');
+    expect((await enr(unknown.enrollmentId)).status, 'is_sender absent, message relu comme étant du compte : ignoré').toBe('active');
     expect((await exec(execUnknown)).status).toBe('scheduled');
 
-    const attendeeCalls = (await mockCalls()).filter((c) => c.method === 'GET' && /\/chats\/[^/]+\/attendees$/.test(c.path));
-    expect(attendeeCalls.filter((c) => c.path.includes(chatTheirs)), 'is_sender faux : aucun appel des participants').toHaveLength(0);
-    // Lot 0b (message propre, décision 5) : conversation sans lien, participants
-    // lus une seule fois pour reconnaître le candidat ; aucune clôture.
-    expect(attendeeCalls.filter((c) => c.path.includes(chatMine)), 'is_sender vrai : participants lus une fois (message propre)').toHaveLength(1);
-    expect(attendeeCalls.filter((c) => c.path.includes(chatUnknown)), 'is_sender absent : participants demandés').toHaveLength(1);
+    // Chaque message.new passe par la capture des actions candidat : un message (getMessage) et sa conversation (getChat) lus.
+    const reads = await callsOf(accountId, ['getMessage', 'getChat', 'getParticipantsList']);
+    const readsOf = (chat: string, op: string) => reads.filter((c) => c.op === op && c.path.includes(`/chats/${chat}`));
+    expect(readsOf(chatTheirs, 'getMessage'), 'is_sender faux : aucune relecture de vérification (seule la capture lit)').toHaveLength(1);
+    expect(reads.filter((c) => c.op === 'getParticipantsList'), 'les participants ne sont jamais demandés').toHaveLength(0);
+    expect(readsOf(chatUnknown, 'getMessage'), 'is_sender absent : message relu en plus de la capture').toHaveLength(2);
+    // Message propre (lot 0b, décision 5) : conversation sans lien, le candidat est lu une fois de plus (GET chat) pour le reconnaître, en plus de la capture ; aucune clôture.
+    expect(readsOf(chatMine, 'getChat'), 'is_sender vrai : conversation lue deux fois, la capture puis le candidat du fil non rattaché (message propre), pas une de plus').toHaveLength(2);
   });
 
   // reponse-compte-rotation (SEQ-013)
@@ -676,8 +718,8 @@ test.describe('Acceptation de l’invitation', () => {
     expect((await analytics(seq.sequenceId)).accepted, 'invitation acceptée comptée').toBe(1);
 
     // Même acceptation rejouée par un second événement : pas de double compte.
-    // (clé de dédoublonnage différente : chat_id fait partie de la clé.)
-    await webhook({ ...newRelation(accountId, profileId), event: 'relation.request.accept', chat_id: `chat_${rand()}` });
+    // (autre enveloppe, donc autre evt_... : la clé de dédoublonnage ne l'arrête pas.)
+    await webhook(newRelation(accountId, profileId));
     expect((await analytics(seq.sequenceId)).accepted).toBe(1);
 
     await runCycle();
@@ -793,7 +835,7 @@ test.describe('Reprises automatiques', () => {
       status: 'cancelled', skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON, scheduled_at: rotationPlanned,
     });
 
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'OK' } });
+    await webhook(v2.accountStatus(accountId, 'running'));
 
     for (const p of paused) {
       const row = await enr(p.enrollmentId);
@@ -1131,7 +1173,7 @@ test.describe('Effacement RGPD', () => {
     expect(bySequence.status, JSON.stringify(bySequence.body)).toBe(200);
     expect((bySequence.body.counts as Record<string, number>).resumed).toBe(0);
 
-    await webhook({ AccountStatus: { account_id: accountId, account_type: 'LINKEDIN', message: 'OK' } });
+    await webhook(v2.accountStatus(accountId, 'running'));
     const stripe = await checkoutCompleted(org.orgId);
     expect(stripe.status, JSON.stringify(stripe.body)).toBe(200);
 

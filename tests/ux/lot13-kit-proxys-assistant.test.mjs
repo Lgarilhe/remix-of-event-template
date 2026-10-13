@@ -121,7 +121,8 @@ test('Proxys LinkedIn : des mots, sans drapeau ni message technique', () => {
   assert.match(proxy, /loading=\{saving\}[^>]*>\s*Enregistrer\s*<\/Button>/);
   assert.match(proxy, /aria-label=\{`Type de proxy du compte \$\{accountName\}`\}/);
   assert.match(proxy, /aria-label="Pays du proxy"/);
-  assert.match(proxy, /aria-label="Adresse IP du proxy"/);
+  // Le choix d'une adresse IP n'existe plus (service LinkedIn v2 seul) : ni option, ni champ, ni envoi.
+  assert.doesNotMatch(proxy, /aria-label="Adresse IP du proxy"|value: 'ip'|proxy_ip|ipAddress/);
   for (const label of ['Protocole', 'Hôte', 'Port', 'Identifiant (facultatif)', 'Mot de passe (facultatif)']) {
     assert.match(proxy, new RegExp(`<Label htmlFor=\\{\`\\$\\{fieldId\\}-\\w+\`\\} className="text-xs">${label.replace(/[()]/g, '\\$&')}</Label>`), label);
   }

@@ -67,10 +67,11 @@ test('L3-1b — WhatsApp revient dans Connexions, avec une liaison personnelle c
   const hook = read('src/hooks/useMemberWhatsAppAccounts.ts');
   const sections = read('src/components/settings/shell/sections.tsx');
   assert.match(sections, /<SettingsAnchor id="whatsapp"><MyWhatsAppAccount \/><\/SettingsAnchor>/);
-  assert.match(account, /<ServiceLogo service="whatsapp"/);
-  assert.match(account, /providers: \['WHATSAPP'\]/);
-  assert.match(account, /action: 'hosted_auth_link'/);
-  assert.match(account, /Le service de connexion peut recevoir les conversations de ce compte personnel/);
+  assert.match(account, /<ChannelIcon channel="whatsapp"/);
+  // Connexion standard : la page de connexion, dans l'onglet courant, jamais une action de lien écrite ici
+  assert.match(account, /<HostedConnectButton\s+provider="whatsapp"/);
+  assert.doesNotMatch(account, /hosted_auth_link|window\.open|invokeEdgeFunction/);
+  assert.match(read('src/lib/connectionCopy.ts'), /privacy: "Konekt n'enregistre que les échanges avec vos candidats\."/);
   assert.match(hook, /\['member-whatsapp-accounts', organizationId, user\?\.id\]/);
   assert.match(hook, /action: 'list_whatsapp', organization_id: organizationId/);
   assert.match(hook, /action: 'disconnect_whatsapp', organization_id: organizationId, account_id: accountId/);
@@ -174,7 +175,11 @@ test('L3-10 — Calendly retiré du menu, Aircall relié depuis les réglages, p
   assert.ok(iGuard >= 0, 'garde du proxy absente');
   assert.ok(iGuard < integrations.indexOf('<ProxyConfigPanel'), 'la garde précède le panneau du proxy');
   assert.ok(integrations.includes('<WebhookManager />'));
-  assert.ok(integrations.includes('allez dans Connexions'));
+  // Chacun connecte son propre compte dans Connexions : un lien, plus un second bouton de connexion
+  assert.match(read('src/lib/connectionCopy.ts'), /description: "Voir quels membres sont connectés et qui doit se reconnecter\. Chacun connecte son propre compte dans Connexions\."/);
+  assert.ok(integrations.includes('description: ORG_LINKEDIN_CARD.description'));
+  assert.ok(integrations.includes('to={`${SETTINGS_PATHS.connections}#linkedin`}'));
+  assert.doesNotMatch(integrations, /hosted_auth_link|window\.open/);
 });
 
 // ---------------------------------------------------------------- 11. Extension

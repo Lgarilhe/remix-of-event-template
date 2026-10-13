@@ -123,7 +123,10 @@ const ContactChip: React.FC<{ icon: React.ElementType; value: string; title: str
 );
 
 
-const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
+const localImageUrl = (url?: string): string | undefined =>
+  url && (url.startsWith('data:') || (url.startsWith('/') && !url.startsWith('//'))) ? url : undefined;
+
+const CompanyLogo: React.FC<{ company: string; logoUrl?: string; localOnly?: boolean }> = ({ company, logoUrl, localOnly = false }) => {
   const [fallbackIndex, setFallbackIndex] = useState(0);
 
   const domainSlug = company
@@ -134,11 +137,11 @@ const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company,
     .replace(/[^a-z0-9]+/g, '')
     .trim();
 
-  const sources = [
+  const sources = (localOnly ? [localImageUrl(logoUrl)] : [
     logoUrl,
     domainSlug ? `https://logo.clearbit.com/${domainSlug}.com` : null,
     domainSlug ? `https://www.google.com/s2/favicons?domain=${domainSlug}.com&sz=128` : null,
-  ].filter(Boolean) as string[];
+  ]).filter(Boolean) as string[];
 
   if (!sources[fallbackIndex]) {
     return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-foreground" />;
@@ -244,6 +247,12 @@ interface ProfileDetailSheetProps {
    *  Permet d'ouvrir la modale directement sur "evaluation" depuis un
    *  deep-link (ex: CTA "Préparer l'entretien" du calendar). */
   initialTab?: string;
+  /** Facultatif : le parcours appelant peut choisir l'onglet sans remonter la fiche. */
+  activeTab?: string;
+  onActiveTabChange?: (tab: string) => void;
+  /** Même fiche pour un exemple local : aucun historique, enrichissement ou geste métier réel. */
+  localPreview?: boolean;
+  onCloseAutoFocus?: React.ComponentPropsWithoutRef<typeof SheetContent>['onCloseAutoFocus'];
   /** Nouvelle page mission (Sourcing) : les décisions de tri se prennent depuis la
    *  fiche, dans les mots de la page (Retenir, Écarter, Remettre à trier). Une
    *  action absente n'est pas proposée. Sans cette prop, la fiche garde ses
@@ -284,24 +293,33 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   pipelineMeta,
   hideStandardTabs,
   initialTab,
+  activeTab: controlledActiveTab,
+  onActiveTabChange,
+  localPreview = false,
+  onCloseAutoFocus,
   decisions,
   asPanel,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   // Onglet choisi : absent tant que personne n'a cliqué (l'onglet d'ouverture
   // vient de `initialTab`), posé aussi par la note de l'en-tête (Évaluation).
-  const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
+  const [chosenTab, setChosenTab] = useState<string | undefined>(undefined);
+  const activeTab = controlledActiveTab ?? chosenTab;
+  const setActiveTab = useCallback((tab: string) => {
+    setChosenTab(tab);
+    onActiveTabChange?.(tab);
+  }, [onActiveTabChange]);
   // Décision en cours : les boutons attendent la fin de l'écriture, pas de double clic.
   const [deciding, setDeciding] = useState(false);
   const decide = useCallback(async (action: (() => Promise<void> | void) | undefined) => {
-    if (!action || deciding) return;
+    if (localPreview || !action || deciding) return;
     setDeciding(true);
     try {
       await action();
     } finally {
       setDeciding(false);
     }
-  }, [deciding]);
+  }, [deciding, localPreview]);
 
   // Panneau : flèches haut et bas depuis n'importe où dans la page (la fenêtre
   // latérale, elle, les lit sur son propre contenu, plus bas).
@@ -402,7 +420,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   const [isScoring, setIsScoring] = useState(false);
 
   const handleScore = async () => {
-    if (!onScoreProfile) return;
+    if (localPreview || !onScoreProfile) return;
     setIsScoring(true);
     try {
       await onScoreProfile();
@@ -420,7 +438,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   }, [profile?.id]);
 
   useEffect(() => {
-    if (!open || !profile || !accountId) {
+    if (localPreview || !open || !profile || !accountId) {
       setIsEnriching(false);
       return;
     }
@@ -504,7 +522,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       if (timeoutId) clearTimeout(timeoutId);
       setIsEnriching(false);
     };
-  }, [open, profile?.id, accountId]);
+  }, [open, profile?.id, accountId, localPreview]);
 
   // ─── Base Konekt : révélation de la fiche complète à l'ouverture ─────────
   // L'aperçu ne contient que le poste courant. Le collect Coresignal ramène
@@ -512,7 +530,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   // Résultat mis en cache 30 j côté serveur → réouverture gratuite. Ne touche
   // jamais le compte LinkedIn (contrairement à l'auto-enrich pool ci-dessus).
   useEffect(() => {
-    if (!open || !profile) return;
+    if (localPreview || !open || !profile) return;
     const isDb = (profile as any).source === 'database' || (profile as any)._source === 'database';
     if (!isDb) return;
     // Déjà complet (fiche collectée en cache) si une expérience a une description.
@@ -536,7 +554,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     })();
 
     return () => { cancelled = true; };
-  }, [open, profile?.id]);
+  }, [open, profile?.id, localPreview]);
 
   // ─── Scoring profond à la demande ───────────────────────────────────────
   // Le score de liste ('quick') est calculé sur les seules données de
@@ -552,7 +570,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   onDeepScoreRef.current = onDeepScore;
 
   const runDeepScore = useCallback(async () => {
-    if (!profile || !accountId || !onDeepScoreRef.current || !selectedJob) return;
+    if (localPreview || !profile || !accountId || !onDeepScoreRef.current || !selectedJob) return;
     if (isDeepScoring) return;
     setIsDeepScoring(true);
     try {
@@ -611,9 +629,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     } finally {
       setIsDeepScoring(false);
     }
-  }, [profile, accountId, selectedJob?.id, enrichedProfile, isDeepScoring]);
+  }, [profile, accountId, selectedJob?.id, enrichedProfile, isDeepScoring, localPreview]);
 
-  const effectiveProfile = enrichedProfile || profile;
+  const effectiveProfile = (!localPreview && enrichedProfile) || profile;
 
   const dummyProfile = { id: '', name: '' } as LinkedInProfile;
   const profileData = useProfileData(effectiveProfile || dummyProfile);
@@ -621,7 +639,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
   // Airtable history — fetch by both URL and direct airtable_id for reliability
   const { data: historyData, loading: historyLoading } = useCandidateHistory(
-    airtableMatch
+    localPreview ? null : airtableMatch
       ? { linkedinUrl: candidateProfileUrl, airtableId: airtableMatch.airtable_id }
       : candidateProfileUrl
         ? { linkedinUrl: candidateProfileUrl }
@@ -629,7 +647,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   );
 
   // Appels de l'opérateur relié, par les numéros connus du candidat
-  const phoneHistory = usePhoneCallHistory(profile?.id);
+  const phoneHistory = usePhoneCallHistory(localPreview ? undefined : profile?.id);
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
@@ -654,10 +672,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
   const contactInfo = useMemo(() => {
     const rawValues = [
-      (enrichedProfile || profile)?.contact_info?.emails,
-      (enrichedProfile || profile)?.contact_info?.phones,
-      airtableMatch,
-      historyData?.candidate,
+      effectiveProfile?.contact_info?.emails,
+      effectiveProfile?.contact_info?.phones,
+      localPreview ? null : airtableMatch,
+      localPreview ? null : historyData?.candidate,
     ].flatMap((value) => collectStrings(value));
 
     const emails = unique(rawValues.filter((value) => EMAIL_REGEX.test(value.toLowerCase()))).slice(0, 4);
@@ -668,12 +686,12 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     ).slice(0, 3);
 
     return { emails, phones };
-  }, [airtableMatch, enrichedProfile, historyData?.candidate, profile]);
+  }, [airtableMatch, effectiveProfile, historyData?.candidate, localPreview]);
 
   if (!profile) return null;
 
   // Use enriched version if available (pool profiles auto-fetched from Unipile)
-  const displayProfile = enrichedProfile || profile;
+  const displayProfile = (!localPreview && enrichedProfile) || profile;
 
   const {
     fullName, initials, currentCompany, currentRole, currentJobTenure,
@@ -690,7 +708,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     historyData.candidate
   );
 
-  const messageModal = selectedJob ? (
+  const messageModal = !localPreview && selectedJob ? (
     <OutreachMessageModal
       open={showMessageModal}
       onOpenChange={setShowMessageModal}
@@ -726,14 +744,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     const note = jobScore && jobScore.match_score > 0 ? `Note ${Math.round(jobScore.match_score)}` : null;
     const meta = [displayProfile.location, totalExperience, note].filter(Boolean).join(' · ');
     const rank = currentIndex != null && totalCount != null ? `${currentIndex + 1} sur ${totalCount}` : null;
-    const canScore = !!selectedJob && !!onScoreProfile && (!jobScore || isDegradedScore(jobScore));
-    const showDecisionRow = !!decisions && (decisions.onRetain || decisions.onRestore);
+    const canScore = !localPreview && !!selectedJob && !!onScoreProfile && (!jobScore || isDegradedScore(jobScore));
+    const showDecisionRow = !localPreview && !!decisions && (decisions.onRetain || decisions.onRestore);
 
     return (
       <>
         <div ref={panelRootRef} className="flex min-h-full min-w-0 flex-col">
           <header className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-background py-3 pl-5 pr-3">
-            <PersonAvatar name={fullName} src={displayProfile.profile_picture_url} size={40} className="mt-0.5" />
+            <PersonAvatar name={fullName} src={localPreview ? localImageUrl(displayProfile.profile_picture_url) : displayProfile.profile_picture_url} size={40} className="mt-0.5" />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex items-center gap-0.5">
                 <h2
@@ -811,7 +829,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             {decisions?.stageLabel && (
               <div className="flex items-start gap-2">
                 <p className="min-w-0 flex-1 pt-1 text-md font-semibold text-foreground">{decisions.stageLabel}</p>
-                {decisions.onDismiss && (
+                {!localPreview && decisions.onDismiss && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -839,7 +857,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 )}
               </div>
             )}
-            <div className="-mx-2.5 flex flex-wrap items-center gap-1">
+            {!localPreview && <div className="-mx-2.5 flex flex-wrap items-center gap-1">
               {canScore && (
                 <Button
                   variant="ghost"
@@ -873,7 +891,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </Button>
               )}
               {profileUrl && <EnrichContactButton profile={profile} compact mode="button-only" quiet />}
-            </div>
+            </div>}
             {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {contactInfo.emails.map((email) => (
@@ -900,7 +918,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 ) : (
                   <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <span title="Évalué sur les données de la liste de recherche">Évaluation rapide</span>
-                    {accountId && onDeepScore && (
+                    {!localPreview && accountId && onDeepScore && (
                       <Button
                         type="button"
                         variant="link"
@@ -961,6 +979,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               historyLoading={false}
               onClose={() => asPanel.onClose()}
               hidePosts
+              hideStandardTabs={localPreview}
+              extraTabs={localPreview ? extraTabs : undefined}
+              initialTab={localPreview ? initialTab : undefined}
+              activeTab={localPreview ? activeTab : undefined}
+              onActiveTabChange={localPreview ? setActiveTab : undefined}
               onOpenMessage={() => setShowMessageModal(true)}
               onMessageSent={onMessageSent}
               onProfileTreated={onProfileTreated}
@@ -975,7 +998,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className={cn('!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] p-0 flex flex-col overflow-hidden border-l border-border bg-background', pipelineMeta ? 'sm:!max-w-[720px]' : 'sm:!max-w-[600px]')} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onKeyDown={handleArrowKeys}>
+        <SheetContent side="right" className={cn('!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] p-0 flex flex-col overflow-hidden border-l border-border bg-background', pipelineMeta ? 'sm:!max-w-[720px]' : 'sm:!max-w-[600px]')} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onKeyDown={handleArrowKeys} onCloseAutoFocus={onCloseAutoFocus}>
           {/* ─── SWIPE HINT ─── */}
           {showSwipeHint && (
             <div className="sm:hidden flex items-center justify-center gap-3 py-1.5 bg-primary/10 text-primary text-xs font-medium animate-fade-in shrink-0">
@@ -988,7 +1011,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           {/* ─── HEADER ─── */}
           <SheetHeader className="shrink-0 space-y-0 border-b border-border bg-background py-4 pl-4 pr-3 text-left sm:pl-5">
             <div className="flex items-start gap-3">
-              <PersonAvatar name={fullName} src={displayProfile.profile_picture_url} size={48} className="mt-0.5" />
+              <PersonAvatar name={fullName} src={localPreview ? localImageUrl(displayProfile.profile_picture_url) : displayProfile.profile_picture_url} size={48} className="mt-0.5" />
               <div className="min-w-0 flex-1">
                 {/* Rangée du nom : la place dans la liste et les flèches, à gauche de la croix de la fenêtre (pr-10). */}
                 <div className="flex items-center gap-0.5 pr-10">
@@ -1049,7 +1072,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   {currentCompany && (
                     <span className="flex items-center gap-1.5">
-                      <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
+                      <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} localOnly={localPreview} />
                       <span className="max-w-[160px] truncate sm:max-w-none">{currentCompany}</span>
                       {currentJobTenure && <span className="hidden sm:inline">· {currentJobTenure}</span>}
                     </span>
@@ -1078,8 +1101,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 profile={profile}
                 isLikelyToRespond={isLikelyToRespond}
                 airtableMatch={airtableMatch}
-                historyData={historyData}
-                historyLoading={historyLoading}
+                historyData={localPreview ? null : historyData}
+                historyLoading={localPreview ? false : historyLoading}
                 historyLatestDateLabel={historyLatestDateLabel}
               />
             </div>
@@ -1087,7 +1110,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             {/* ─── PIPELINE META : étape, note en anneau, étiquettes et Portail (mode pipeline seulement) ─── */}
             {pipelineMeta && (
               <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-                {pipelineMeta.onStageChange ? <Select value={pipelineMeta.stage} onValueChange={(value) => pipelineMeta.onStageChange?.(value)}>
+                {!localPreview && pipelineMeta.onStageChange ? <Select value={pipelineMeta.stage} onValueChange={(value) => pipelineMeta.onStageChange?.(value)}>
                   <SelectTrigger aria-label="Étape du candidat" className="h-9 w-auto min-w-[10.5rem] gap-2 text-sm">
                     <SelectValue />
                   </SelectTrigger>
@@ -1103,7 +1126,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     type="button"
                     onClick={() => {
                       if (extraTabs?.some(tab => tab.key === 'evaluation')) setActiveTab('evaluation');
-                      pipelineMeta.onScoreClick?.();
+                      if (!localPreview) pipelineMeta.onScoreClick?.();
                     }}
                     className="inline-flex items-center rounded-full transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title={`Note ${Math.round(pipelineMeta.score)} sur 100, voir l'évaluation`}
@@ -1117,15 +1140,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     key={tag}
                     type="button"
                     className="inline-flex h-6 items-center gap-1 rounded-full border border-border px-2 text-xs text-foreground-secondary transition-colors duration-150 hover:border-danger/40 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => pipelineMeta.onTagsChange?.((pipelineMeta.tags || []).filter(t => t !== tag))}
-                    title="Retirer cette étiquette"
-                    aria-label={`Retirer l'étiquette ${tag}`}
+                    onClick={localPreview ? undefined : () => pipelineMeta.onTagsChange?.((pipelineMeta.tags || []).filter(t => t !== tag))}
+                    title={localPreview ? undefined : 'Retirer cette étiquette'}
+                    aria-label={localPreview ? tag : `Retirer l'étiquette ${tag}`}
                   >
                     {tag}
-                    <X className="h-3 w-3" aria-hidden="true" />
+                    {!localPreview && <X className="h-3 w-3" aria-hidden="true" />}
                   </button>
                 ))}
-                {pipelineMeta.onCreatePortalLink && (
+                {!localPreview && pipelineMeta.onCreatePortalLink && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1159,7 +1182,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             )}
 
             {/* ─── ACTIONS ─── */}
-            <div className="mt-3 flex flex-wrap items-center gap-2 empty:hidden" data-no-swipe>
+            {!localPreview && <div className="mt-3 flex flex-wrap items-center gap-2 empty:hidden" data-no-swipe>
               {selectedJob && onScoreProfile && (!jobScore || isDegradedScore(jobScore)) && (
                 <Button
                   variant="primary"
@@ -1240,7 +1263,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   <span className="hidden sm:inline">Archiver</span>
                 </Button>
               )}
-            </div>
+            </div>}
           </SheetHeader>
 
           {/* ─── CONTENT ─── */}
@@ -1279,7 +1302,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                                 auto à l'ouverture de la fiche). stopPropagation
                                 + preventDefault : le bouton vit dans le <summary>
                                 du collapsible, un clic ne doit pas le replier. */}
-                            {accountId && onDeepScore && (
+                            {!localPreview && accountId && onDeepScore && (
                               <button
                                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); runDeepScore(); }}
                                 disabled={isEnriching}
@@ -1319,14 +1342,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               {!pipelineMeta && (
                 <>
                   {/* Airtable History Panel */}
-                  {(historyLoading || hasHistory) && (
+                  {!localPreview && (historyLoading || hasHistory) && (
                     <div className="overflow-hidden rounded-xl border border-border">
                       <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} />
                     </div>
                   )}
 
                   {/* Historique des appels (opérateur relié) */}
-                  {(phoneHistory.loading || phoneHistory.calls.length > 0) && (
+                  {!localPreview && (phoneHistory.loading || phoneHistory.calls.length > 0) && (
                     <div className="overflow-hidden rounded-xl border border-border p-3 sm:p-4">
                       <PhoneCallHistoryPanel
                         calls={phoneHistory.calls}
@@ -1382,7 +1405,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 onMessageSent={onMessageSent}
                 onProfileTreated={onProfileTreated}
                 extraTabs={extraTabs}
-                hideStandardTabs={hideStandardTabs}
+                hideStandardTabs={localPreview || hideStandardTabs}
                 initialTab={initialTab}
                 activeTab={activeTab}
                 onActiveTabChange={setActiveTab}

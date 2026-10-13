@@ -55,8 +55,6 @@ const ICON_EXCEPTIONS = [
   // b. geste de retrait.
   ['src/components/outreach/search/SearchFiltersPanel.tsx', 'X', 1, 'b : écarter une suggestion de filtre'],
   ['src/components/missions/FilterWizard.tsx', 'X', 1, 'b : retirer une puce (fichier importé nulle part)'],
-  // c. interrupteur éteint.
-  ['src/components/outreach/LinkedInAccountManager.tsx', 'ToggleLeft', 1, 'c : « Forcer Recruiter » éteint'],
   // d. statut neutre, à côté de sa variante colorée.
   ['src/components/outreach/JobScoreDisplay.tsx', 'Icon', 1, 'd : dimension non validée (la validée est verte)'],
   ['src/components/outreach/SequenceDiagnostic.tsx', 'XCircle', 1, 'd : planificateur dans un état inconnu (rouge quand la panne est connue)'],
@@ -319,7 +317,7 @@ test('cohérence entre écrans : un même geste a la même couleur, un statut ga
   assert.match(project, /isAdded \? 'text-success disabled:text-success'/, '« Shortlisté »');
   // Bouton à contour repeint d'un aplat de couleur : bord transparent et texte blanc, jamais l'encre sur le
   // bleu LinkedIn (3,25:1 en clair) ni le vert d'état en sombre (2,21:1) ; désactivé sur fond gris.
-  for (const rel of ['src/components/outreach/LinkedInAccountManager.tsx', 'src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/scenes/SceneLinkedIn.tsx']) {
+  for (const rel of ['src/components/outreach/CompanyFilter.tsx', 'src/components/onboarding/scenes/SceneLinkedIn.tsx']) {
     for (const m of read(rel).matchAll(/className="([^"]*\bbg-linkedin\b[^"]*)"/g)) {
       if (!/<Button\b[^<]*$/.test(read(rel).slice(0, m.index))) continue;
       assert.match(m[1], /\bborder-transparent\b/, `${rel} : bord`);

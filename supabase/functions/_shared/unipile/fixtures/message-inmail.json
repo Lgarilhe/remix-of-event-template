@@ -1,0 +1,143 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/{account_id}/chats/{chat_id}/messages (Message with reactions and an attachment, spec messaging.md)"
+  },
+  "context": {
+    "accountId": "acc_test_linkedin"
+  },
+  "input": {
+    "object": "Message",
+    "id": "msg_100",
+    "text": "Bonjour, votre profil nous intéresse.",
+    "sender_id": "ACoAAself",
+    "chat_id": "chat_001",
+    "timestamp": "2026-09-03T10:15:00.000Z",
+    "is_sender": true,
+    "is_hidden": false,
+    "is_seen": true,
+    "is_delivered": true,
+    "is_deleted": false,
+    "is_edited": false,
+    "is_pinned": false,
+    "is_event": false,
+    "is_mentionned": false,
+    "reactions_counter": [
+      {
+        "reaction": "👍",
+        "count": 2
+      },
+      {
+        "reaction": "❤️",
+        "count": 1
+      }
+    ],
+    "sender": {
+      "object": "User",
+      "id": "ACoAAself",
+      "type": "individual",
+      "display_name": "Recruteur Konekt"
+    },
+    "provider": "linkedin",
+    "attachments": [
+      {
+        "object": "Attachment",
+        "id": "att_9",
+        "type": "file",
+        "filename": "fiche.pdf",
+        "mimetype": "application/pdf",
+        "url": "https://files.example/fiche",
+        "is_inline": false,
+        "file_size": 2048
+      },
+      {
+        "object": "Attachment",
+        "id": "att_10",
+        "type": "img",
+        "mimetype": "image/png",
+        "url": "https://files.example/img",
+        "is_inline": false,
+        "sticker": false
+      }
+    ],
+    "hyperlinks": [],
+    "specifics": {
+      "type": "INMAIL",
+      "subject": "Une opportunité"
+    }
+  },
+  "expected": {
+    "id": "msg_100",
+    "provider_id": "msg_100",
+    "message_id": "msg_100",
+    "chat_id": "chat_001",
+    "account_id": "acc_test_linkedin",
+    "text": "Bonjour, votre profil nous intéresse.",
+    "sender_id": "ACoAAself",
+    "sender": {
+      "name": "Recruteur Konekt",
+      "attendee_id": "ACoAAself"
+    },
+    "timestamp": "2026-09-03T10:15:00.000Z",
+    "is_sender": true,
+    "read": true,
+    "seen": 1,
+    "delivered": true,
+    "is_deleted": false,
+    "is_edited": false,
+    "reactions": [
+      {
+        "value": "👍",
+        "reaction": "👍",
+        "sender_id": null,
+        "is_sender": null
+      },
+      {
+        "value": "👍",
+        "reaction": "👍",
+        "sender_id": null,
+        "is_sender": null
+      },
+      {
+        "value": "❤️",
+        "reaction": "❤️",
+        "sender_id": null,
+        "is_sender": null
+      }
+    ],
+    "attachments": [
+      {
+        "id": "att_9",
+        "type": "file",
+        "mimetype": "application/pdf",
+        "filename": "fiche.pdf",
+        "name": "fiche.pdf",
+        "size": 2048,
+        "url": "https://files.example/fiche",
+        "url_expires_at": null,
+        "is_inline": false,
+        "is_unavailable": null,
+        "content_id": null
+      },
+      {
+        "id": "att_10",
+        "type": "img",
+        "mimetype": "image/png",
+        "filename": null,
+        "name": null,
+        "size": null,
+        "url": "https://files.example/img",
+        "url_expires_at": null,
+        "is_inline": false,
+        "is_unavailable": null,
+        "content_id": null
+      }
+    ],
+    "subject": "Une opportunité",
+    "message_type": "INMAIL",
+    "is_event": false,
+    "event_type": null,
+    "is_hidden": false
+  }
+}

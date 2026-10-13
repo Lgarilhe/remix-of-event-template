@@ -287,7 +287,7 @@ test.describe('Décision 13 : enrichissement de contact et registre des effaceme
     // Témoin : registre relu, la même demande passe (contact connu, rien de payant).
     const ok = await callFunction('enrich-candidate-contact', token, body);
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
-    expect(ok.body).toMatchObject({ success: true, cached: true, source: 'unipile' });
+    expect(ok.body).toMatchObject({ success: true, cached: true, source: 'linkedin' });
     expect(await rows('candidate_contacts')).toBe(1);
   });
 });

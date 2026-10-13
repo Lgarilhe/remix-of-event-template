@@ -14,11 +14,9 @@
  * (e2e/local-stack) ; LinkedIn, l'IA et l'e-mail sont simulés par
  * vendor-mock.mjs, qui journalise chaque appel. Ignoré sans cette stack.
  *
- * Limite du faux prestataire : il rattache un appel à un compte par le
- * paramètre account_id. La lecture des messages d'une conversation et l'envoi
- * dans une conversation existante n'en portent pas : l'identifiant de
- * conversation renvoyé porte « ?account_id=<compte>&c= », que le moteur insère
- * tel quel dans l'URL (voir scriptedChat()).
+ * Faux prestataire LinkedIn : API v2 uniquement (chemins /v2/{acc_...}/...), chaque appel porte
+ * le compte dans son chemin. Les conversations se scriptent par `routes.chatLookup` et
+ * `routes.messages`, les erreurs par `routes.fail` (voir e2e/helpers/sequence-engine.ts).
  *
  * `force: true` lève la fenêtre d'envoi (jours ouvrés 8 h-19 h) ; seul le test
  * des heures d'envoi tourne sans. Les cycles passent par engine() : un cycle
@@ -43,9 +41,15 @@ import {
   engineAvailable,
   enroll,
   executionsOf,
+  inmailOf,
+  inviteNoteOf,
+  inviteTargetOf,
+  isNewChat,
   minutesFromNow,
   mockCalls,
   rand,
+  recipientOf,
+  routes,
   schedule,
   sendingOrg,
   sentInvites,
@@ -227,24 +231,20 @@ async function postsOf(accountId: string): Promise<MockCall[]> {
   return (await mockCalls(accountId)).filter((c) => c.method === 'POST');
 }
 
-const isNewChatPost = (c: MockCall) => c.method === 'POST' && c.path === '/api/v1/chats';
+const isNewChatPost = isNewChat;
 const bodyOf = (c: MockCall) => (typeof c.body === 'object' && c.body ? c.body : {}) as Record<string, unknown>;
 
-/** Conversation scriptable pour le compte : identifiant qui transporte account_id dans l'URL du moteur. */
-function scriptedChat(accountId: string) {
-  const base = `chat${rand()}${rand()}`;
-  return { id: `${base}?account_id=${accountId}&c=`, path: `^/api/v1/chats/${base}$` };
+/** Conversation scriptable pour le compte : identifiant de conversation propre au test. */
+function scriptedChat(_accountId: string) {
+  return { id: `chat${rand()}${rand()}` };
 }
 
-const chatListRoute = (chatId: string): MockRoute => ({
-  method: 'GET', path: '^/api/v1/chat_attendees/[^/]+/chats$',
-  body: { object: 'ChatList', items: [{ id: chatId }], cursor: null },
-});
+/** Recherche de conversation du candidat (GET /users/{id}/chat) : une conversation. */
+const chatListRoute = (chatId: string): MockRoute => routes.chatLookup([chatId]);
 
-const candidateReplyRoute = (chatPath: string, at: string): MockRoute => ({
-  method: 'GET', path: chatPath,
-  body: { object: 'MessageList', cursor: null, items: [{ id: `m_${rand()}`, is_sender: 0, text: 'Oui, avec plaisir', timestamp: at }] },
-});
+/** Messages de la conversation : une réponse du candidat à la date donnée. */
+const candidateReplyRoute = (chatId: string, at: string): MockRoute =>
+  routes.messages(chatId, [{ from: 'candidate', text: 'Oui, avec plaisir', at, id: `m_${rand()}` }]);
 
 /** Date et heure murales dans un fuseau. weekday : 0 = dimanche. */
 function localParts(d: Date | string, tz: string) {
@@ -369,8 +369,10 @@ test.describe('Moteur engine-2 : gardes avant envoi', () => {
 
     expect((await execRow(execA)).status, "RDV d'une autre organisation : l'envoi part").toBe('sent');
     expect((await execRow(execC)).status, "RDV d'un autre candidat : l'envoi part").toBe('sent');
-    const sentTo = (await postsOf(accountId)).filter(isNewChatPost).map((p) => String(bodyOf(p).attendees_ids));
-    expect(sentTo.sort()).toEqual([a.profileId, c.profileId].sort());
+    const sentTo = (await postsOf(accountId)).filter(isNewChatPost).map((p) => String(recipientOf(p)));
+    // v2 : l'adresse du profil est lue (par son slug) et le message part vers l'identifiant que le fournisseur rend.
+    const providerIdOfSlug = (slug: string) => `ACoAAMOCK${slug.replace(/[^a-zA-Z0-9]/g, '')}`;
+    expect(sentTo.sort()).toEqual([providerIdOfSlug(slugA), providerIdOfSlug(slugC)].sort());
   });
 
   // garde-canaux-fermes
@@ -497,7 +499,7 @@ test.describe('Moteur engine-2 : gardes avant envoi', () => {
   // garde-condition-lecture-impossible
   test('garde-condition-lecture-impossible : lecture du profil en échec, nouvel essai à 30 min puis échec après 3 essais, jamais sautée', async () => {
     const { org, accountId } = await sendingOrgTracked('E2E Condition illisible');
-    await mock(accountId, { routes: [{ method: 'GET', path: '^/api/v1/users/', status: 503, body: { title: 'Service unavailable' } }] });
+    await mock(accountId, { routes: [routes.fail('getUserProfile', 'unavailable')] });
     const { sequenceId, steps } = await insertSequence(org, org.owner.userId, [
       { action_type: 'message', message_template: 'Bonjour', condition_type: 'if_connected' },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -562,7 +564,7 @@ test.describe('Moteur engine-2 : gardes avant envoi', () => {
     // Attente de réponse : le candidat a répondu après le premier message.
     const { org: o3, accountId: acc3 } = await sendingOrgTracked('E2E Attente réponse');
     const chat = scriptedChat(acc3);
-    await mock(acc3, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.path, minutesFromNow(-5))] });
+    await mock(acc3, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.id, minutesFromNow(-5))] });
     const reply = await insertSequence(o3, o3.owner.userId, [
       { action_type: 'message', message_template: 'Bonjour' },
       { action_type: 'wait_reply' },
@@ -683,7 +685,8 @@ test.describe('Moteur engine-2 : gardes avant envoi', () => {
 
     const invites = await sentInvites(acc2);
     expect(invites).toHaveLength(1);
-    expect(bodyOf(invites[0]).provider_id).toBe(e2.profileId);
+    expect(inviteTargetOf(invites[0])).toBe(e2.profileId);
+    expect(inviteNoteOf(invites[0]), 'invitation sans note').toBeUndefined();
     expect('message' in bodyOf(invites[0]), 'invitation sans note').toBe(false);
     expect((await execRow(x2)).status).toBe('sent');
   });
@@ -729,7 +732,7 @@ test.describe('Moteur engine-2 : rotation des expéditeurs', () => {
     expect([enr1.assigned_sender_id, enr2.assigned_sender_id].sort(), 'un compte du groupe chacun, le moins utilisé du jour').toEqual([accA, accB].sort());
     for (const [e, enr] of [[e1, enr1], [e2, enr2]] as const) {
       const posts = (await postsOf(enr.assigned_sender_id!)).filter(isNewChatPost);
-      expect(posts.map((p) => String(bodyOf(p).attendees_ids)), 'message parti du compte enregistré').toEqual([e.profileId]);
+      expect(posts.map((p) => String(recipientOf(p))), 'message parti du compte enregistré').toEqual([e.profileId]);
     }
     expect(await ledgerCount(accA, 'message'), 'action journalisée sur le compte qui envoie').toBe(1);
     expect(await ledgerCount(accB, 'message')).toBe(1);
@@ -748,7 +751,7 @@ test.describe('Moteur engine-2 : rotation des expéditeurs', () => {
     for (const [e, enr] of [[e1, enr1], [e2, enr2]] as const) {
       const posts = (await postsOf(enr.assigned_sender_id!)).filter(isNewChatPost);
       expect(posts.map((p) => String(bodyOf(p).text)), 'la relance part du même compte').toEqual(['Bonjour', 'Relance']);
-      expect(posts.every((p) => String(bodyOf(p).attendees_ids) === e.profileId)).toBe(true);
+      expect(posts.every((p) => recipientOf(p) === e.profileId)).toBe(true);
       expect((await enrollmentFull(e.enrollmentId)).assigned_sender_id).toBe(enr.assigned_sender_id);
     }
   });
@@ -757,7 +760,7 @@ test.describe('Moteur engine-2 : rotation des expéditeurs', () => {
   test("rotation-attribution : l'expéditeur tiré est enregistré avant l'envoi, même quand l'envoi est refusé", async () => {
     const { org, users, accounts } = await orgWithAccounts('E2E Rotation avant envoi', 2);
     const [accA, accB] = accounts;
-    await mock(accB, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 400, body: { title: 'Bad request' } }] });
+    await mock(accB, { routes: [routes.failNewChat('validation')] });
     const seq = await insertSequence(org, users[0].userId, [
       { action_type: 'message', message_template: 'Bonjour' },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -768,7 +771,8 @@ test.describe('Moteur engine-2 : rotation des expéditeurs', () => {
 
     expect((await enrollmentFull(e.enrollmentId)).assigned_sender_id, 'expéditeur enregistré avant l’envoi').toBe(accB);
     expect((await execRow(x)).status).toBe('failed');
-    expect((await postsOf(accB)).filter(isNewChatPost).map((p) => String(bodyOf(p).attendees_ids))).toEqual([e.profileId]);
+    // v2 : le refus 400 de l'ouverture par la boîte fait réessayer la même ouverture sans boîte (deux POST, même destinataire).
+    expect((await postsOf(accB)).filter(isNewChatPost).map((p) => String(recipientOf(p)))).toEqual([e.profileId, e.profileId]);
     expect(await mockCalls(accA), "rien depuis le compte de l'inscription").toEqual([]);
   });
 
@@ -854,7 +858,7 @@ test.describe('Moteur engine-2 : quotas', () => {
     // Réponse détectée avant l'envoi de la relance.
     const { org: oR, accountId: accR } = await sendingOrgTracked('E2E Journal réponse');
     const chat = scriptedChat(accR);
-    await mock(accR, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.path, minutesFromNow(-10))] });
+    await mock(accR, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.id, minutesFromNow(-10))] });
     const sR = await insertSequence(oR, oR.owner.userId, [
       { action_type: 'message', message_template: 'Bonjour' },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -926,12 +930,12 @@ test.describe('Moteur engine-2 : quotas', () => {
     const e1 = await enroll(o1, s1.sequenceId, o1.owner.userId, acc1);
     // Hors relation, aucun crédit.
     const { org: o2, accountId: acc2 } = await sendingOrgTracked('E2E InMail sans crédit');
-    await mock(acc2, { distance: 'SECOND_DEGREE', routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', body: { object: 'InMailBalance', premium: 0, recruiter: 0, sales_navigator: 0 } }] });
+    await mock(acc2, { distance: 'SECOND_DEGREE', routes: [routes.inmailCredits({ classic: 0, recruiter: 0, sales_navigator: 0 })] });
     const s2 = await insertSequence(o2, o2.owner.userId, inmailSteps('Objet InMail'));
     const e2 = await enroll(o2, s2.sequenceId, o2.owner.userId, acc2);
     // Hors relation, solde illisible.
     const { org: o3, accountId: acc3 } = await sendingOrgTracked('E2E InMail solde illisible');
-    await mock(acc3, { distance: 'SECOND_DEGREE', routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', status: 503, body: { title: 'Unavailable' } }] });
+    await mock(acc3, { distance: 'SECOND_DEGREE', routes: [routes.fail('getInmailCredits', 'unavailable')] });
     const s3 = await insertSequence(o3, o3.owner.userId, inmailSteps('Objet InMail'));
     const e3 = await enroll(o3, s3.sequenceId, o3.owner.userId, acc3);
     // Hors relation, objet manquant.
@@ -960,18 +964,18 @@ test.describe('Moteur engine-2 : quotas', () => {
     // 1. Relation directe : message direct, ni solde ni linkedin[inmail], journalisé 'message'.
     expect((await execRow(x1)).status).toBe('sent');
     const calls1 = await mockCalls(acc1);
-    expect(calls1.some((c) => c.path === '/api/v1/linkedin/inmail_balance'), 'aucun contrôle de solde').toBe(false);
+    expect(calls1.some((c) => c.op === 'getInmailCredits'), 'aucun contrôle de solde').toBe(false);
     const post1 = calls1.filter(isNewChatPost);
     expect(post1).toHaveLength(1);
-    expect(bodyOf(post1[0])['linkedin[inmail]'], 'pas de champ linkedin[inmail]').toBeUndefined();
+    expect(inmailOf(post1[0]), 'pas de champ InMail (specifics.linkedin)').toBeNull();
     expect(await ledgerCount(acc1, 'message')).toBe(1);
     expect(await ledgerCount(acc1, 'inmail')).toBe(0);
     expect((await execRow(x5)).status).toBe('sent');
     const calls5 = await mockCalls(acc5);
-    expect(calls5.some((c) => c.path === '/api/v1/linkedin/inmail_balance'), 'message IA en relation directe : aucun contrôle de solde').toBe(false);
+    expect(calls5.some((c) => c.op === 'getInmailCredits'), 'message IA en relation directe : aucun contrôle de solde').toBe(false);
     const post5 = calls5.filter(isNewChatPost);
     expect(post5.map((p) => String(bodyOf(p).text))).toEqual(['Bonjour en direct']);
-    expect(bodyOf(post5[0])['linkedin[inmail]']).toBeUndefined();
+    expect(inmailOf(post5[0])).toBeNull();
     expect(await ledgerCount(acc5, 'message')).toBe(1);
     expect(await ledgerCount(acc5, 'inmail')).toBe(0);
 
@@ -1083,7 +1087,7 @@ test.describe('Moteur engine-2 : IA indisponible et budget du cycle', () => {
     const seq = await insertSequence(org, users[0].userId, [{ action_type: 'message', message_template: 'Bonjour' }]);
     // Recherche de la conversation lente (14 s, sous le délai de 15 s du moteur) pour chaque compte.
     for (const acc of accounts) {
-      await mock(acc, { routes: [{ method: 'GET', path: '^/api/v1/chat_attendees/', delay_ms: 14_000, body: { object: 'ChatList', items: [], cursor: null } }] });
+      await mock(acc, { routes: [routes.chatLookup([], { delay_ms: 14_000 })] });
     }
     const enrollments = [];
     for (let i = 0; i < 3; i++) enrollments.push(await enroll(org, seq.sequenceId, users[i].userId, accounts[i]));
@@ -1148,12 +1152,12 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
     // Conversation existante refusée (404), nouvelle conversation acceptée.
     const { org: o1, accountId: acc1 } = await sendingOrgTracked('E2E 404 conversation');
     const chat1 = scriptedChat(acc1);
-    await mock(acc1, { routes: [chatListRoute(chat1.id), { method: 'POST', path: chat1.path, status: 404, body: { title: 'Chat not found' } }] });
+    await mock(acc1, { routes: [chatListRoute(chat1.id), routes.fail('sendMessage', 'not_found')] });
     const s1 = await insertSequence(o1, o1.owner.userId, [{ action_type: 'message', message_template: 'Bonjour' }]);
     const e1 = await enroll(o1, s1.sequenceId, o1.owner.userId, acc1);
     // Sans conversation, nouvelle conversation refusée (400).
     const { org: o2, accountId: acc2 } = await sendingOrgTracked('E2E 400');
-    await mock(acc2, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 400, body: { title: 'Bad request', detail: 'invalid attendee' } }] });
+    await mock(acc2, { routes: [routes.failNewChat('validation')] });
     const s2 = await insertSequence(o2, o2.owner.userId, [{ action_type: 'message', message_template: 'Bonjour' }]);
     const e2 = await enroll(o2, s2.sequenceId, o2.owner.userId, acc2);
     // Conversation existante et nouvelle conversation refusées : une seule bascule.
@@ -1161,8 +1165,8 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
     const chat3 = scriptedChat(acc3);
     await mock(acc3, { routes: [
       chatListRoute(chat3.id),
-      { method: 'POST', path: chat3.path, status: 404, body: { title: 'Chat not found' } },
-      { method: 'POST', path: '^/api/v1/chats$', status: 404, body: { title: 'Attendee not found' } },
+      routes.fail('sendMessage', 'not_found'),
+      routes.failNewChat('not_found'),
     ] });
     const s3 = await insertSequence(o3, o3.owner.userId, [{ action_type: 'message', message_template: 'Bonjour' }]);
     const e3 = await enroll(o3, s3.sequenceId, o3.owner.userId, acc3);
@@ -1173,17 +1177,20 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
     await cycle();
 
     const posts1 = await postsOf(acc1);
-    expect(posts1.map((p) => p.path), 'conversation existante puis une nouvelle').toEqual([chat1.path.slice(1, -1), '/api/v1/chats']);
+    // API v2 : conversation existante (sendMessage), puis une nouvelle conversation (par la boîte de la licence).
+    expect(posts1.map((p) => p.op), 'conversation existante puis une nouvelle').toEqual(['sendMessage', 'startChatFromInbox']);
+    expect(posts1[0].path, 'envoi dans la conversation existante').toContain(`/chats/${chat1.id}/`);
     expect((await execRow(x1)).status).toBe('sent');
 
     const r2 = await execRow(x2);
     expect(r2.status).toBe('failed');
     expect(r2.error_message ?? '').toMatch(/^linkedin_send_failed_400/);
     expect(r2.retry_count ?? 0, 'sans relance').toBe(0);
-    expect(await postsOf(acc2)).toHaveLength(1);
+    // v2 : le refus de la route par boîte fait réessayer la même ouverture sans boîte (et rien d'autre : sans relance du message).
+    expect((await postsOf(acc2)).map((p) => p.op), 'ouverture par la boîte puis sans boîte, sans autre relance').toEqual(['startChatFromInbox', 'startChat']);
 
     const posts3 = await postsOf(acc3);
-    expect(posts3, 'une seule bascule').toHaveLength(2);
+    expect(posts3.map((p) => p.op), 'une seule bascule vers une nouvelle conversation (par la boîte puis sans boîte)').toEqual(['sendMessage', 'startChatFromInbox', 'startChat']);
     const r3 = await execRow(x3);
     expect(r3.status).toBe('failed');
     expect(r3.error_message ?? '').toMatch(/^linkedin_send_failed_404/);
@@ -1208,9 +1215,8 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
     ]);
     const e2 = await enroll(o2, s2.sequenceId, o2.owner.userId, acc2);
     // InMail réellement tenté (hors relation) dont le 429 cite les crédits : 1er du mois suivant.
-    const creditsBody = { status: 429, title: 'Too many requests', detail: 'Not enough InMail credits' };
     const { org: o3, accountId: acc3 } = await sendingOrgTracked('E2E 429 InMail crédits');
-    await mock(acc3, { distance: 'SECOND_DEGREE', routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 429, body: creditsBody }] });
+    await mock(acc3, { distance: 'SECOND_DEGREE', routes: [routes.failNewChat('credits_exhausted')] });
     const s3 = await insertSequence(o3, o3.owner.userId, [
       { action_type: 'inmail', subject_template: 'Objet', message_template: 'Bonjour' },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -1218,7 +1224,7 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
     const e3 = await enroll(o3, s3.sequenceId, o3.owner.userId, acc3);
     // Même erreur, mais l'InMail part en message direct (relation directe) : jour ouvré suivant.
     const { org: o4, accountId: acc4 } = await sendingOrgTracked('E2E 429 InMail direct');
-    await mock(acc4, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 429, body: creditsBody }] });
+    await mock(acc4, { routes: [routes.failNewChat('credits_exhausted')] });
     const s4 = await insertSequence(o4, o4.owner.userId, [
       { action_type: 'inmail', subject_template: 'Objet', message_template: 'Bonjour' },
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -1271,14 +1277,16 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
 
   // issue-compte-deconnecte-envoi
   test("issue-compte-deconnecte-envoi : envoi refusé pour compte déconnecté, inscription en pause account_disconnected, étape annulée avec un libellé sans nom de prestataire, hors échecs", async () => {
+    // v2 : une clé d'application refusée (401 `unauthorized`) n'est pas un compte déconnecté (famille `auth`, nouvel essai) ;
+    // le compte déconnecté se lit dans le corps du refus : session expirée (401) ou reconnexion demandée (403, jeu `forbidden`).
     const cases = [
-      { status: 401, body: { title: 'Invalid credentials' } },
-      { status: 403, body: { title: 'Forbidden', detail: 'Please reconnect this account' } },
+      { status: 401, preset: 'unauthorized', body: { status: 401, type: 'errors/invalid_credentials', title: 'Invalid credentials', detail: 'The account session has expired' } },
+      { status: 403, preset: 'forbidden', body: undefined },
     ];
     const seen: Array<{ seqId: string; enrollmentId: string; exec: string; acc: string }> = [];
     for (const c of cases) {
       const { org, accountId } = await sendingOrgTracked(`E2E Déconnecté ${c.status}`);
-      await mock(accountId, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: c.status, body: c.body }] });
+      await mock(accountId, { routes: [routes.failNewChat(c.preset, c.body ? { body: c.body } : {})] });
       const s = await insertSequence(org, org.owner.userId, [
         { action_type: 'message', message_template: 'Bonjour' },
         { action_type: 'message', message_template: 'Relance', delay_days: 3 },
@@ -1313,7 +1321,7 @@ test.describe("Moteur engine-2 : issues d'envoi", () => {
     ]);
     const e1 = await enroll(o1, s1.sequenceId, o1.owner.userId, acc1);
     const { org: o2, accountId: acc2 } = await sendingOrgTracked('E2E Invitation en attente');
-    await mock(acc2, { distance: 'SECOND_DEGREE', routes: [{ method: 'POST', path: '^/api/v1/users/invite$', status: 422, body: { title: 'Unprocessable', detail: 'User already invited' } }] });
+    await mock(acc2, { distance: 'SECOND_DEGREE', routes: [routes.fail('createRelationRequest', 'already_invited')] });
     const s2 = await insertSequence(o2, o2.owner.userId, [
       { action_type: 'connection_request' },
       { action_type: 'message', message_template: 'Merci', delay_days: 3 },
@@ -1408,7 +1416,7 @@ test.describe('Moteur engine-2 : auto-pause des séquences', () => {
       { action_type: 'message', message_template: 'Relance', delay_days: 3 },
     ]);
     for (const acc of accounts) {
-      await mock(acc, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 422, body: { title: 'Unprocessable entity' } }] });
+      await mock(acc, { routes: [routes.failNewChat('validation', { status: 422 })] });
     }
     const enrs: string[] = [];
     for (let i = 0; i < 5; i++) enrs.push((await enroll(org, seq.sequenceId, users[i].userId, accounts[i])).enrollmentId);
@@ -1437,7 +1445,8 @@ test.describe('Moteur engine-2 : auto-pause des séquences', () => {
     const { org, users, accounts } = await orgWithAccounts('E2E Auto-pause hors échecs', 5);
     const notFound = await insertSequence(org, users[0].userId, [{ action_type: 'connection_request' }]);
     for (const acc of accounts) {
-      await mock(acc, { routes: [{ method: 'GET', path: '^/api/v1/users/', status: 404, body: { title: 'Not found' } }] });
+      // Profil qui n'existe pas : ni la lecture ni l'invitation (toutes les formes de la référence) ne le reconnaissent.
+      await mock(acc, { routes: [routes.fail('getUserProfile', 'not_found'), routes.fail('createRelationRequest', 'not_found')] });
     }
     const execs: string[] = [];
     const enrs: string[] = [];
@@ -1448,7 +1457,8 @@ test.describe('Moteur engine-2 : auto-pause des séquences', () => {
     const disconnected = await orgWithAccounts('E2E Auto-pause déconnectés', 5);
     const discSeq = await insertSequence(disconnected.org, disconnected.users[0].userId, [{ action_type: 'message', message_template: 'Bonjour' }]);
     for (const acc of disconnected.accounts) {
-      await mock(acc, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 401, body: { title: 'Invalid credentials' } }] });
+      // v2 : un compte déconnecté refuse avec un corps qui demande la reconnexion (une clé refusée, 401 `unauthorized`, est une autre famille).
+      await mock(acc, { routes: [routes.failNewChat('forbidden')] });
     }
     const discEnrs: string[] = [];
     for (let i = 0; i < 5; i++) {

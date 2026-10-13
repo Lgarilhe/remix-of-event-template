@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
-import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
+import { assertAccountOwnedByOrg, describeForLog, isV2AccountId } from "../_shared/unipile/index.ts";
 import { createSourcingMemoryContext, loadSourcingMemoryContext, type SourcingMemoryContext } from "../_shared/sourcing-memory.ts";
 import { createScoringContextMetadata, parseScoringMemoryConflicts, type ScoringContextMetadata, type ScoringMemoryConflict } from "../_shared/scoring-context.ts";
 import { isExperienceRangeUncertain, type ExperienceAssessment } from "../_shared/profile-experience.ts";
@@ -1847,7 +1847,7 @@ function buildJobContext(job: JobData, customScoringInstructions?: string, memor
     const lines: string[] = [];
     lines.push("\n=== CONCURRENTS DU CLIENT (poach signals) ===");
     if (job.restrictSearchToCompetitors) {
-      lines.push("⚠️ MODE CHIRURGICAL : la search a été restreinte aux profils issus de ces concurrents. Considère la provenance \"concurrent\" comme un MATCH explicite (bonus très fort, +15 à +25 pts sur pedigree). Si le candidat n'a AUCUN passage chez eux, c'est un signal d'alerte (peut-être faux positif Unipile).");
+      lines.push("⚠️ MODE CHIRURGICAL : la search a été restreinte aux profils issus de ces concurrents. Considère la provenance \"concurrent\" comme un MATCH explicite (bonus très fort, +15 à +25 pts sur pedigree). Si le candidat n'a AUCUN passage chez eux, c'est un signal d'alerte (peut-être un faux positif de la recherche).");
     } else {
       lines.push("Bonus scoring fort si le candidat a bossé chez l'un de ces concurrents (+10 à +20 pts pedigree selon centralité). Mentionne-le explicitement dans `strengths` ou `notableCompanies`.");
     }
@@ -2652,8 +2652,6 @@ async function syncJobCandidateStatus(
 
 interface EnrichmentContext {
   accountId: string;
-  apiKey: string;
-  baseUrl: string;
   dailyCount: number;
   dailyLimit: number;
   // Sprint Backend-2 : cache cross-mission. Si fournis, maybeEnrichProfile
@@ -2744,8 +2742,11 @@ async function readEnrichmentCache(
 
 /**
  * Sprint Backend-2 — Write cache : persiste les données enrichies pour
- * réutilisation cross-mission dans la même org.
+ * réutilisation cross-mission dans la même org. Plus appelée depuis le retrait
+ * de l'enrichissement inline : le cache est écrit par _shared/profile-enrichment.ts
+ * (worker de la file), qui produit la même forme `enriched_data`.
  */
+// deno-lint-ignore no-unused-vars
 async function writeEnrichmentCache(
   ctx: EnrichmentContext,
   profile: ProfileData,
@@ -2885,12 +2886,12 @@ async function maybeEnrichProfile(
       // (l'enrichment est considéré "fait" mais sans consommer de quota natif
       // LinkedIn). Le caller incrémente dailyCount → on s'en fout, c'est pour
       // le quota Konekt (qui peut compter les hits cache séparément si besoin).
-      console.info(`[enrichment-cache] Skipped Unipile call for ${profile.name} (full cache hit)`);
+      console.info(`[enrichment-cache] Skipped LinkedIn call for ${profile.name} (full cache hit)`);
       return true;
     }
     // Cache hit partiel → on continue avec l'appel Unipile pour récupérer
     // ce qui manque, puis on update le cache à la fin.
-    console.info(`[enrichment-cache] Partial cache hit for ${profile.name}, fetching missing sections from Unipile`);
+    console.info(`[enrichment-cache] Partial cache hit for ${profile.name}, fetching missing sections from LinkedIn`);
   }
 
   const reasons: string[] = [];
@@ -2913,225 +2914,6 @@ async function maybeEnrichProfile(
   // MAINTENANT avec les données dispo (recherche + cache hydraté ci-dessus).
   await enqueueEnrichment(ctx, profile, profileId);
   return false;
-}
-
-// ⚠️ Legacy (Phase 1) — enrichissement INLINE, DÉSORMAIS INUTILISÉ : remplacé
-// par la file process-enrichment-queue + _shared/profile-enrichment.ts. Conservé
-// hors du chemin d'appel (jamais invoqué) pour limiter la surface de ce diff ;
-// à supprimer dans une passe de cleanup dédiée.
-// deno-lint-ignore no-unused-vars
-async function _legacyInlineEnrich(profile: ProfileData, ctx: EnrichmentContext, profileId: string): Promise<boolean> {
-  try {
-    let resolvedId = profileId;
-    if (resolvedId.includes("linkedin.com")) {
-      resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
-    }
-
-    // Sections demandées à Unipile — élargies (Option A) pour récupérer
-    // tous les signaux exploités par le scoring best-in-class :
-    // - experience/about/skills/education : déjà demandés (workExp + summary)
-    // - recommendations : signal humain validé (très précieux pour profils thin)
-    // - projects/certifications/languages/volunteer_experience : sections
-    //   secondaires souvent décisives sur les profils tech/internationaux.
-    //
-    // Coût : 1 seul appel Unipile (pas 2). Le quota natif LinkedIn (~50
-    // get_profile/jour pour compte normal) reste le bottleneck mais on
-    // récupère 6 fois plus de signal pour le même appel.
-    const sectionsParams = [
-      "experience", "about", "skills", "education",
-      "recommendations", "projects", "certifications",
-      "languages", "volunteer_experience",
-    ].map(s => `linkedin_sections=${encodeURIComponent(s)}`).join("&");
-
-    // ─── 1 SEUL appel Unipile (conformité #260513-007211) ───────────────
-    // GET /users/{id} → profil détaillé (toutes les sections demandées).
-    // L'appel /users/{id}/posts a été RETIRÉ : il DOUBLAIT l'empreinte de vues
-    // de profil par candidat. Le signal "posts récents" est sacrifié pour la
-    // sécurité du compte (le burst de vues était la cause du flag LinkedIn).
-    const profileResp = await fetchWithTimeout(
-      `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
-      { headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" } },
-    ).catch((err) => {
-      console.warn(`[enrichment] profile fetch error for ${profile.name}:`, err);
-      return null;
-    });
-
-    if (!profileResp || !profileResp.ok) {
-      const status = profileResp?.status ?? 'no response';
-      const errBody = profileResp ? await profileResp.text().catch(() => '') : '';
-      console.warn(`[enrichment] HTTP ${status} (profile) for ${profile.name}: ${errBody.slice(0, 200)}`);
-      // Si /posts a réussi malgré l'échec /profile, on tente quand même de
-      // l'utiliser (les posts seuls peuvent enrichir les profils thin).
-      // Mais sans data principale, on retourne false.
-      return false;
-    }
-
-    // (Parsing des posts récents retiré — l'appel /users/{id}/posts a été
-    // supprimé pour halver l'empreinte de vues de profil. Cf. plus haut.)
-
-    const response = profileResp;
-    const data = await response.json();
-    // Capte le signal usage fournisseur (% de proximité avec la limite) → pause
-    // auto du compte à ≥90%.
-    if (ctx.supabase) {
-      await recordUsageSignal(ctx.supabase as any, ctx.accountId, parseUsagePct(data), undefined);
-    }
-    const dataKeys = Object.keys(data).join(', ');
-    const enrichedExp = (data.work_experience || data.positions || data.experiences || []).slice(0, 5);
-    const hasSummaryData = !!(data.about || data.summary);
-    console.info(`[enrichment] API response for ${profile.name}: keys=[${dataKeys}], work_exp=${enrichedExp.length}, about=${hasSummaryData}`);
-    if (data.summary) console.info(`[enrichment] summary found (${data.summary.length} chars): ${data.summary.slice(0, 120)}...`);
-    if (data.about) console.info(`[enrichment] about found (${data.about.length} chars): ${data.about.slice(0, 120)}...`);
-    if (data.throttled_sections) console.warn(`[enrichment] THROTTLED sections for ${profile.name}: ${JSON.stringify(data.throttled_sections)}`);
-    // Log first exp description for debug
-    if (enrichedExp.length > 0) {
-      const firstDesc = enrichedExp[0]?.description;
-      console.info(`[enrichment] First exp desc: ${firstDesc ? `${firstDesc.length} chars - "${firstDesc.slice(0, 100)}"` : 'NONE'}`);
-    }
-
-    if (enrichedExp.length > 0) {
-      const formatDuration = (m: number) => {
-        const y = Math.floor(m / 12);
-        const mo = m % 12;
-        if (y === 0) return `${mo} mois`;
-        if (mo === 0) return `${y} an${y > 1 ? "s" : ""}`;
-        return `${y} an${y > 1 ? "s" : ""} ${mo} mois`;
-      };
-
-      const enrichedMapped = enrichedExp.map((exp: any) => {
-        const role = exp.role || exp.position || exp.title || "";
-        const company = exp.company || exp.company_name || "";
-        const description = exp.description || "";
-        const skills = (exp.skills || []).map((s: any) => (typeof s === "string" ? s : s.name));
-        let durationMonths = 0;
-        const startYear = exp.start?.year || (typeof exp.start === "string" ? parseInt(exp.start.split("-")[0]) : null);
-        const endYear = exp.end?.year || (typeof exp.end === "string" ? parseInt(exp.end.split("-")[0]) : null) || new Date().getFullYear();
-        if (startYear) {
-          const startMonth = exp.start?.month || 1;
-          const endMonth = exp.end?.month || new Date().getMonth() + 1;
-          durationMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
-        }
-        return {
-          role,
-          company,
-          duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
-          durationMonths,
-          description: description.slice(0, 500) || undefined,
-          skills: skills.slice(0, 8),
-        };
-      });
-
-      // Merge: enrich existing experiences with descriptions/skills from API, then append new ones
-      const existingExps = profile.workExperience || [];
-      for (const enriched of enrichedMapped) {
-        const match = existingExps.find((e: any) => 
-          e.company && enriched.company && 
-          e.company.toLowerCase().includes(enriched.company.toLowerCase().slice(0, 15)) &&
-          e.role && enriched.role &&
-          e.role.toLowerCase().includes(enriched.role.toLowerCase().slice(0, 15))
-        );
-        if (match) {
-          // Enrich existing entry with missing data
-          if (!match.description && enriched.description) match.description = enriched.description;
-          if ((!match.skills || match.skills.length === 0) && enriched.skills?.length > 0) match.skills = enriched.skills;
-          if (!match.duration && enriched.duration) match.duration = enriched.duration;
-        } else {
-          // New experience not in original data — append
-          existingExps.push(enriched);
-        }
-      }
-      profile.workExperience = existingExps;
-      const withDesc = existingExps.filter((e: any) => e.description && e.description.length > 30).length;
-      console.info(
-        `[enrichment] SUCCESS ${profile.name}: merged ${enrichedMapped.length} enriched into ${existingExps.length} total exp (${withDesc} with desc)`,
-      );
-    }
-
-    if (!profile.summary && (data.about || data.summary)) {
-      // 700 chars (cohérent avec la limite envoyée au LLM dans buildProfileSection).
-      // Permet de capturer les bios LinkedIn longues type "I help startups
-      // build reliable data infrastructure..." qui font souvent 400-600 chars.
-      profile.summary = (data.about || data.summary).slice(0, 700);
-      console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary!.slice(0, 80)}...`);
-    }
-    if ((!profile.skills || profile.skills.length === 0) && data.skills) {
-      profile.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
-    }
-
-    // ─── Skills avec endorsements (Sprint B — signal de validation pair) ─
-    if (Array.isArray(data.skills) && data.skills.length > 0) {
-      profile.skillsWithEndorsements = (data.skills as any[]).slice(0, 15).map((s: any) => ({
-        name: typeof s === "string" ? s : s.name,
-        endorsements: typeof s === "object" ? (s.endorsement_count || s.endorsements) : undefined,
-      })).filter((s: { name?: string }) => s.name);
-    }
-
-    // ─── Recommandations LinkedIn reçues (signal humain validé) ─────────
-    // Format Unipile : { received: [{ text, caption, actor: { first_name, last_name, headline, ... } }] }
-    const recosReceived = data.recommendations?.received
-      || data.recommendations  // selon version API, peut être à plat
-      || [];
-    if (Array.isArray(recosReceived) && recosReceived.length > 0) {
-      profile.recommendations = recosReceived.slice(0, 4).map((r: any) => ({
-        text: (r.text || r.caption || "").slice(0, 250),
-        author: r.actor ? `${r.actor.first_name || ""} ${r.actor.last_name || ""}`.trim() : undefined,
-        authorHeadline: r.actor?.headline,
-      })).filter((r: { text: string }) => r.text && r.text.length > 20);
-      console.info(`[enrichment] +${profile.recommendations.length} recommandations pour ${profile.name}`);
-    }
-
-    // ─── Projects (souvent stack non-déclarée explicitement) ────────────
-    if (Array.isArray(data.projects) && data.projects.length > 0) {
-      profile.projects = data.projects.slice(0, 5).map((p: any) => ({
-        name: p.name || "",
-        description: p.description?.slice(0, 120),
-        skills: Array.isArray(p.skills)
-          ? p.skills.slice(0, 5).map((s: any) => typeof s === "string" ? s : s.name).filter(Boolean)
-          : undefined,
-      })).filter((p: { name?: string }) => p.name);
-      console.info(`[enrichment] +${profile.projects.length} projects pour ${profile.name}`);
-    }
-
-    // ─── Certifications (preuve formelle pour must-have) ────────────────
-    if (Array.isArray(data.certifications) && data.certifications.length > 0) {
-      profile.certifications = data.certifications.slice(0, 8).map((c: any) => ({
-        name: c.name || "",
-        organization: c.organization || c.authority || c.issuer,
-      })).filter((c: { name?: string }) => c.name);
-      console.info(`[enrichment] +${profile.certifications.length} certifications pour ${profile.name}`);
-    }
-
-    // ─── Volunteering (soft skills, leadership, engagement) ─────────────
-    const volSrc = data.volunteer_experience || data.volunteering_experience || data.volunteering;
-    if (Array.isArray(volSrc) && volSrc.length > 0) {
-      profile.volunteering = volSrc.slice(0, 3).map((v: any) => ({
-        role: v.role || v.position,
-        company: v.company || v.organization,
-        description: v.description?.slice(0, 100),
-      })).filter((v: { role?: string; company?: string }) => v.role || v.company);
-    }
-
-    // ─── Languages (critique sur poste international) ───────────────────
-    if (Array.isArray(data.languages) && data.languages.length > 0) {
-      profile.languages = data.languages.map((l: any) => ({
-        name: l.name || l.language || "",
-        proficiency: l.proficiency || l.level,
-      })).filter((l: { name: string }) => l.name);
-      console.info(`[enrichment] +${profile.languages.length} langues pour ${profile.name}`);
-    }
-
-    console.info(`[enrichment] DONE ${profile.name}: exp=${enrichedExp.length}, summary=${!!profile.summary}, skills=${profile.skills?.length || 0}, recos=${profile.recommendations?.length || 0}, projects=${profile.projects?.length || 0}, certs=${profile.certifications?.length || 0}, langs=${profile.languages?.length || 0}, posts=${profile.recentPosts?.length || 0}`);
-
-    // Sprint Backend-2 : write-through cache. Persiste les données fraîches
-    // pour que les futurs scorings du même candidat (même mission ou autre)
-    // n'aient pas à re-call Unipile.
-    await writeEnrichmentCache(ctx, profile);
-
-    return true;
-  } catch (err) {
-    console.error(`[enrichment] ERROR for ${profile.name}:`, err);
-    return false;
-  }
 }
 
 // ─── HTTP Handler ────────────────────────────────────────────────────────────
@@ -3310,20 +3092,13 @@ Deno.serve(async (req) => {
     // Enrichment happens AFTER hard filter pass (inside the preScored loop).
     // This avoids wasting get_profile calls on profiles that would be eliminated.
     const ENRICHMENT_DAILY_LIMIT = 500;
-    // Resolve Unipile credentials from org_integrations with env fallback
-    let resolvedUnipile: { apiKey: string; dsn: string } | null = null;
+    // Organisation de la requête (le profil n'est plus lu ici : le worker de la file s'en charge).
     let resolvedOrgId: string | null = trustedOrgId ?? requestedOrgId;
     try {
-      const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
       resolvedOrgId = resolvedOrgId ?? (effectiveUserId ? await resolveOrgIdFromUser(effectiveUserId, supabase as any) : null);
-      resolvedUnipile = await resolveUnipileCredentials(resolvedOrgId, supabase as any);
     } catch (e) {
-      console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
-      const envKey = Deno.env.get("UNIPILE_API_KEY");
-      const envDsn = Deno.env.get("UNIPILE_DSN");
-      if (envKey && envDsn) {
-        resolvedUnipile = { apiKey: envKey, dsn: `https://${envDsn.replace(/^https?:\/\//, '')}` };
-      }
+      console.warn('[score-profile-job] Failed to resolve the organization:', e);
     }
 
     if (requestedOrgId && (!effectiveUserId || !await verifyOrgMembership(supabase, effectiveUserId, requestedOrgId))) {
@@ -3445,7 +3220,27 @@ Deno.serve(async (req) => {
 
     let enrichmentCtx: EnrichmentContext | null = null;
 
-    if (!isContinuousSourcing && accountId && resolvedUnipile) {
+    // Le compte LinkedIn vient du navigateur et sert plus tard au worker de la file : la clé du
+    // prestataire est commune à toutes les organisations, donc l'identifiant doit être courant
+    // (acc_...) et relié, dans l'organisation, au membre qui note. Sinon : notation normale,
+    // sans cache d'enrichissement ni mise en file.
+    let enrichmentAccountId: string | null = null;
+    if (!isContinuousSourcing && accountId) {
+      if (!resolvedOrgId || !isV2AccountId(accountId)) {
+        console.warn('[enrichment] account not usable (outdated identifier or no organization), enrichment disabled');
+      } else {
+        try {
+          await assertAccountOwnedByOrg(supabase as any, resolvedOrgId, accountId, {
+            kinds: ['linkedin'], ...(effectiveUserId ? { userId: effectiveUserId } : {}),
+          });
+          enrichmentAccountId = accountId;
+        } catch (e) {
+          console.warn('[enrichment] account refused, enrichment disabled:', describeForLog(e));
+        }
+      }
+    }
+
+    if (enrichmentAccountId) {
       const today = new Date().toISOString().split("T")[0];
       const countKey = `enrichment_count_${today}`;
       const { data: countRow } = await supabase
@@ -3456,9 +3251,7 @@ Deno.serve(async (req) => {
       const dailyCount = countRow ? parseInt(countRow.value, 10) : 0;
 
       enrichmentCtx = {
-        accountId,
-        apiKey: resolvedUnipile.apiKey,
-        baseUrl: `${resolvedUnipile.dsn}/api/v1`,
+        accountId: enrichmentAccountId,
         dailyCount,
         dailyLimit: ENRICHMENT_DAILY_LIMIT,
         // Sprint Backend-2 : passe le client Supabase + orgId pour activer

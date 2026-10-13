@@ -11,6 +11,7 @@ import {
   type ContinuousAgent, type ContinuousCandidate, type AgentJson, type AgentAccount, type AgentApi,
 } from '../_shared/continuous-sourcing.ts';
 import { estimateCredits } from '../_shared/ai-config.ts';
+import { isV2AccountId } from '../_shared/unipile/index.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -154,6 +155,8 @@ Deno.serve(async req => {
         source, account_id: accountId as string | null, api: selectedApi as AgentApi | null, settings,
       };
       if (source === 'linkedin' && !accounts.some(account => account.id === accountId)) throw new ContinuousError('ACCOUNT_FORBIDDEN', 'Ce compte ne vous appartient pas.', 403);
+      // An id from before the move to the current connection service cannot be used: the account has to be reconnected.
+      if (source === 'linkedin' && !isV2AccountId(accountId)) throw new ContinuousError('ACCOUNT_RECONNECT', 'Reconnectez le compte LinkedIn avant de continuer.', 409);
       context = await loadContinuousContext(admin, project, userId, proposed);
       await mutate('configure', { ...proposed, context_snapshot: context, search_filters_snapshot: project.filters_snapshot });
     } else if (action === 'start_calibration' || action === 'resume' || action === 'approve_calibration') {

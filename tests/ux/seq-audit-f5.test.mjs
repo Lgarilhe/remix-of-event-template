@@ -346,7 +346,9 @@ test('SEQ-115 — les écrivains réels (rebond, RDV, réponse e-mail) gardent l
   assert.match(header, /\| unipile-webhook \(rebond d'e-mail\)\s+\| action\s+\|/);
   assert.match(header, /\| calendly-webhook \(RDV pris\)\s+\| action\s+\|/);
   assert.match(header, /\| unipile-webhook \(réponse par e-mail, sans chat_id\)\| new_message/);
-  assert.match(header, /account_status_updated au passage de OK vers CREDENTIALS, ERROR ou\n \* PERMISSIONS/);
+  // Comptes LinkedIn : le paragraphe d'inventaire dit quand chacun des quatre titres est écrit (tests/ux/notification-kinds.test.mjs).
+  assert.match(header, /Comptes LinkedIn \(unipile-webhook\), quatre titres/);
+  assert.match(header, /account\.status\.partial/);
 });
 
 test('SEQ-073 — l’auto-pause d’une séquence est inventoriée et compte dans À traiter', () => {

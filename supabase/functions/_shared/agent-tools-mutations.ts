@@ -14,7 +14,7 @@ import { startScheduledScorecard } from './start-scheduled-scorecard.ts';
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
-import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
+import { assertAccountOwnedByOrg, describeForLog, getChat, isUnipileError, sendEmail as sendProviderEmail, toKonektChat } from './unipile/index.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
 import { getOrFetchContact, isCandidateErasedForOrg, GdprRegistryUnavailableError } from './get-or-fetch-contact.ts';
 import { firstExecutionTime, pickFirstRootStep, validTimeZone } from './sequence-first-step.ts';
@@ -444,7 +444,7 @@ const updateCandidateStage: AgentTool = {
       candidate_id: {
         type: 'string',
         description:
-          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
+          "The candidate's stable identifier (LinkedIn profile identifier like 'ACoAA...', or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
       },
       job_id: {
         type: 'string',
@@ -1072,7 +1072,7 @@ const enrollInSequence: AgentTool = {
     type: 'object',
     properties: {
       sequence_id: { type: 'string', description: 'UUID of the outreach_sequences row.' },
-      candidate_id: { type: 'string', description: 'Provider/Unipile ID of the candidate (used as provider_id).' },
+      candidate_id: { type: 'string', description: 'LinkedIn profile identifier of the candidate (used as provider_id).' },
       profile_url: { type: 'string', description: 'LinkedIn URL of the candidate.' },
       profile_name: { type: 'string', description: 'Display name (e.g. "Marie Martin").' },
       account_id: {
@@ -1178,10 +1178,7 @@ const enrollInSequence: AgentTool = {
     const sending = await resolveSendingAccount(params, ctx);
     if ('error' in sending) return { allowed: false, reason: sending.error };
     if (sending.account_status !== 'OK') {
-      return {
-        allowed: false,
-        reason: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats.",
-      };
+      return { allowed: false, reason: sendingAccountBlockedMessage(sending.account_status, 'enroll') };
     }
 
     // Anti-doublon organisation. Rejoué avant execute (SEC-002), donc la règle
@@ -1330,7 +1327,7 @@ const enrollInSequence: AgentTool = {
     const sending = await resolveSendingAccount(params, ctx);
     if ('error' in sending) return { success: false, error: sending.error };
     if (sending.account_status !== 'OK') {
-      return { success: false, error: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats." };
+      return { success: false, error: sendingAccountBlockedMessage(sending.account_status, 'enroll') };
     }
 
     // D5 : candidat effacé, même par un effacement limité à l'organisation
@@ -2993,67 +2990,118 @@ async function resolveSendingAccount(
 }
 
 const CHAT_NOT_IN_ORG_MESSAGE = "Cette conversation n'appartient pas à un compte LinkedIn de votre organisation";
+// A conversation has no account of its own: it answers only under the account that carries it. One that does not
+// answer under any of the caller's accounts is a colleague's, another organization's, or gone: the provider does not say which.
+const CHAT_NOT_REACHABLE_MESSAGE =
+  `${CHAT_NOT_IN_ORG_MESSAGE}. Si elle est portée par le compte d'un autre membre de l'équipe, vous ne pouvez répondre que depuis votre propre compte.`;
+const CHAT_OWNER_UNVERIFIED_MESSAGE = "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant.";
+const CHAT_TOO_MANY_ACCOUNTS_MESSAGE =
+  "Vous avez plus de comptes LinkedIn reliés que la vérification n'en examine. Indiquez le compte qui porte cette conversation (account_id) ou répondez depuis la messagerie.";
+const MAX_CHAT_OWNER_PROBES = 3;
+
+/** The other participant of a one-to-one chat: every identity the provider gives, for the erasure check. */
+interface ChatRecipient {
+  /** True for a one-to-one chat, the only kind that names a recipient. */
+  one_to_one: boolean;
+  provider_id: string | null;
+  public_identifier: string | null;
+  profile_url: string | null;
+}
 
 /**
- * Compte qui porte une conversation existante (GET /chats/{id}) : c'est lui
- * qui envoie la réponse, quel que soit l'account_id transmis. Il doit être un
- * compte relié de l'appelant dans l'organisation (SEQ-043, jamais celui d'un
- * collègue) : unipile-search ne contrôle que l'organisation, et le quota était
- * compté sur le compte de l'appelant alors que le message partait de celui du
- * collègue. Renvoie aussi l'identifiant LinkedIn du destinataire quand le
- * prestataire le donne (contrôle RGPD).
+ * Compte qui porte une conversation existante : c'est lui qui envoie la
+ * réponse, quel que soit l'account_id transmis. Une conversation n'a pas de
+ * compte propre (elle ne répond que sous le compte qui la porte) : le porteur
+ * est le compte relié de l'APPELANT, dans l'organisation, sous lequel le
+ * prestataire répond pour ce chat (SEQ-043, jamais le compte d'un collègue,
+ * qu'on ne lit pas avec la clé de service). Les comptes en état OK passent
+ * d'abord (un compte limité ou déconnecté ne prend pas la place d'une sonde).
+ * Renvoie aussi l'identité LinkedIn du destinataire d'une conversation à deux
+ * (contrôle RGPD : identifiant, identifiant public et adresse du profil).
  */
 async function resolveChatSendingAccount(
   params: Record<string, unknown>,
   ctx: ToolContext,
-): Promise<{ account_id: string; account_status: string | null; attendee_provider_id: string | null } | { error: string }> {
+): Promise<{ account_id: string; account_status: string | null; recipient: ChatRecipient } | { error: string }> {
   const chatId = String(params.chat_id ?? '').trim();
   if (!chatId || chatId.length > 512 || chatId.includes('..') || /[/\\?#]/.test(chatId)) {
     return { error: 'chat_id invalide' };
   }
-  let creds: { apiKey: string; dsn: string } | null = null;
-  try {
-    creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
-  } catch (e) {
-    console.error('[send_linkedin_message] credentials error:', e);
-  }
-  if (!creds) return { error: 'Connexion LinkedIn indisponible : réessayez dans un instant.' };
-  const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
-
-  let chat: Record<string, unknown> | null = null;
-  try {
-    const res = await fetchWithTimeout(`${baseDsn}/api/v1/chats/${encodeURIComponent(chatId)}`, {
-      headers: { 'X-API-KEY': creds.apiKey, 'Accept': 'application/json' },
-    });
-    if (!res.ok) return { error: 'Conversation LinkedIn introuvable.' };
-    chat = await res.json().catch(() => null);
-  } catch {
-    return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
-  }
-  const ownerId = typeof chat?.account_id === 'string' ? chat.account_id.trim() : '';
-  if (!ownerId) return { error: CHAT_NOT_IN_ORG_MESSAGE };
-
   const { data: links, error } = await ctx.adminClient
     .from('member_linkedin_accounts')
-    .select('user_id, account_status')
+    .select('linkedin_account_id, account_status')
     .eq('organization_id', ctx.organizationId)
-    .eq('linkedin_account_id', ownerId)
-    .limit(5);
-  if (error) return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
-  const rows = (links ?? []) as Array<{ user_id: string | null; account_status: string | null }>;
-  if (rows.length === 0) return { error: CHAT_NOT_IN_ORG_MESSAGE };
-  const own = rows.find((r) => r.user_id === ctx.userId);
-  if (!own) {
-    return {
-      error: "Cette conversation appartient au compte LinkedIn d'un autre membre de l'équipe : vous ne pouvez répondre que depuis votre propre compte.",
-    };
+    .eq('user_id', ctx.userId)
+    .order('linked_at', { ascending: true })
+    .limit(MAX_CHAT_OWNER_PROBES * 4);
+  if (error) return { error: CHAT_OWNER_UNVERIFIED_MESSAGE };
+  const all = (links ?? []) as Array<{ linkedin_account_id: string | null; account_status: string | null }>;
+  if (all.length === 0) return { error: CHAT_NOT_REACHABLE_MESSAGE };
+  // Stable sort: the accounts in good standing first, each group keeps its oldest-first order.
+  const ordered = [...all.filter((link) => link.account_status === 'OK'), ...all.filter((link) => link.account_status !== 'OK')];
+  const own = ordered.slice(0, MAX_CHAT_OWNER_PROBES);
+
+  let unverified = false;
+  let disconnected: string | null = null;
+  for (const link of own) {
+    const accountId = typeof link.linkedin_account_id === 'string' ? link.linkedin_account_id.trim() : '';
+    if (!accountId) continue;
+    try {
+      await assertAccountOwnedByOrg(ctx.adminClient, ctx.organizationId, accountId, { userId: ctx.userId, kinds: ['linkedin'] });
+      const chat = toKonektChat(await getChat(accountId, chatId), { accountId });
+      const requested = params.account_id ? String(params.account_id).trim() : '';
+      if (requested && requested !== accountId) {
+        return { error: "Cette conversation n'appartient pas au compte LinkedIn indiqué." };
+      }
+      // Only a one-to-one chat names its recipient; a group has none and the erasure check has nothing to match.
+      const other = chat.type === 0 ? chat.attendees.find((attendee) => !attendee.is_self) ?? chat.attendees[0] : undefined;
+      const recipient: ChatRecipient = chat.type === 0
+        ? {
+          one_to_one: true,
+          provider_id: (chat.attendee_provider_id ?? other?.provider_id ?? '').trim() || null,
+          public_identifier: (other?.public_identifier ?? '').trim() || null,
+          profile_url: (other?.profile_url ?? '').trim() || null,
+        }
+        : { one_to_one: false, provider_id: null, public_identifier: null, profile_url: null };
+      return { account_id: accountId, account_status: link.account_status ?? null, recipient };
+    } catch (err) {
+      if (isUnipileError(err) && (err.kind === 'not_found' || err.kind === 'forbidden')) continue;
+      if (isUnipileError(err) && err.kind === 'account_disconnected') {
+        // The account that may carry the chat cannot answer: say so, instead of a retry that never succeeds.
+        disconnected = disconnected ?? link.account_status ?? 'CREDENTIALS';
+        continue;
+      }
+      console.error('[send_linkedin_message] chat ownership check failed:', describeForLog(err));
+      unverified = true;
+    }
   }
-  const requested = params.account_id ? String(params.account_id).trim() : '';
-  if (requested && requested !== ownerId) {
-    return { error: "Cette conversation n'appartient pas au compte LinkedIn indiqué." };
+  if (unverified) return { error: CHAT_OWNER_UNVERIFIED_MESSAGE };
+  if (disconnected !== null) return { error: sendingAccountBlockedMessage(disconnected === 'OK' ? 'CREDENTIALS' : disconnected) };
+  // More own accounts than probed: the chat may live on one that was not asked, so "not yours" would be a false answer.
+  if (all.length > own.length) return { error: CHAT_TOO_MANY_ACCOUNTS_MESSAGE };
+  return { error: CHAT_NOT_REACHABLE_MESSAGE };
+}
+
+/**
+ * Why an account that is not `OK` cannot send. A degraded account recovers by itself (reconnecting it does nothing),
+ * a locked one is unlocked on LinkedIn, and a partial one has a product that needs authentication again: reconnecting
+ * is its remedy, like a disconnection. Each state needs its own sentence.
+ */
+function sendingAccountBlockedMessage(status: string | null, purpose: 'send' | 'enroll' = 'send'): string {
+  const value = (status ?? '').trim().toUpperCase();
+  if (value === 'DEGRADED') {
+    return purpose === 'send'
+      ? "Votre compte LinkedIn est temporairement limité : le message n'est pas parti. Réessayez plus tard, sans reconnecter le compte."
+      : "Votre compte LinkedIn est temporairement limité. Réessayez plus tard pour inscrire des candidats, sans reconnecter le compte.";
   }
-  const attendee = typeof chat?.attendee_provider_id === 'string' ? chat.attendee_provider_id.trim() : '';
-  return { account_id: ownerId, account_status: own.account_status ?? null, attendee_provider_id: attendee || null };
+  if (value === 'LOCKED') {
+    return purpose === 'send'
+      ? 'Votre compte LinkedIn est verrouillé : levez le blocage sur LinkedIn, puis réessayez.'
+      : 'Votre compte LinkedIn est verrouillé. Levez le blocage sur LinkedIn avant d\'inscrire des candidats.';
+  }
+  return purpose === 'send'
+    ? "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer."
+    : "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats.";
 }
 
 const GDPR_MESSAGE_REFUSED = "Ce candidat a demandé l'effacement de ses données : message impossible.";
@@ -3135,7 +3183,7 @@ const sendLinkedInMessage: AgentTool = {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { allowed: false, reason: resolved.error };
     if (resolved.account_status && resolved.account_status !== 'OK') {
-      return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+      return { allowed: false, reason: sendingAccountBlockedMessage(resolved.account_status) };
     }
 
     // Toujours membre de l'organisation : rejoué par le cron, une liaison
@@ -3144,24 +3192,37 @@ const sendLinkedInMessage: AgentTool = {
 
     // Réponse dans une conversation : elle doit être portée par un compte de
     // l'appelant (jamais celui d'un collègue).
+    // Le destinataire d'une réponse est identifié par tout ce que la conversation
+    // donne (identifiant, identifiant public, adresse du profil) : l'identifiant
+    // de la conversation n'est pas prouvé égal à celui du registre.
     let recipient = recipientId;
+    let recipientPublicId = '';
+    let recipientUrl = '';
     if (chatId) {
       const chat = await resolveChatSendingAccount(params, ctx);
       if ('error' in chat) return { allowed: false, reason: chat.error };
       if (chat.account_status && chat.account_status !== 'OK') {
-        return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+        return { allowed: false, reason: sendingAccountBlockedMessage(chat.account_status) };
       }
-      recipient = chat.attendee_provider_id ?? '';
+      recipient = chat.recipient.provider_id ?? '';
+      recipientPublicId = chat.recipient.public_identifier ?? '';
+      recipientUrl = chat.recipient.profile_url
+        ?? (recipientPublicId ? `https://www.linkedin.com/in/${encodeURIComponent(recipientPublicId)}` : '');
+      // Une conversation à deux sans aucune identité lisible ne peut pas être contrôlée : échec fermé.
+      if (chat.recipient.one_to_one && !recipient && !recipientPublicId && !recipientUrl) {
+        return { allowed: false, reason: GDPR_UNVERIFIED_MESSAGE };
+      }
     }
 
     // D5 : jamais de message à un candidat effacé (marqueur d'une inscription
     // de l'organisation ou registre global). Rejoué avant l'envoi, y compris
     // par le cron pour un message programmé. Échec fermé.
-    if (recipient) {
+    if (recipient || recipientPublicId || recipientUrl) {
       try {
         const erased = await isCandidateErasedForOrg(ctx.adminClient, {
           organizationId: ctx.organizationId,
-          linkedinIds: [recipient],
+          linkedinIds: [recipient, recipientPublicId],
+          linkedinUrl: recipientUrl || null,
         });
         if (erased) return { allowed: false, reason: GDPR_MESSAGE_REFUSED };
       } catch (err) {
@@ -3391,7 +3452,11 @@ const sendLinkedInMessage: AgentTool = {
             count_today: quotaCheck.count_today + 1,
             max_per_day: quotaCheck.max_per_day,
           },
-          unipile_response: data,
+          // Only what the model may repeat: the identifiers of the sent message, never the body of the provider answer.
+          send_result: {
+            message_id: typeof data?.message?.message_id === 'string' ? data.message.message_id : null,
+            chat_id: typeof data?.message?.chat_id === 'string' ? data.message.chat_id : null,
+          },
         },
       };
     } catch (err) {
@@ -5040,8 +5105,8 @@ const bulkDismiss: AgentTool = {
 
 // ─── Tool — send_email (P2.4 audit 2026-07-14) ──────────────────────────────
 // Envoie un email depuis la BOÎTE CONNECTÉE du recruteur (member_email_accounts,
-// même transport que les étapes email de séquence : POST /api/v1/emails chez le
-// provider LinkedIn/email). mutation_external → approbation TOUJOURS obligatoire
+// envoi par le client partagé du service de connexion, au nom du compte e-mail
+// du membre). mutation_external → approbation TOUJOURS obligatoire
 // (clamp serveur, jamais auto). Vérifie la liste de suppression — absent du
 // chemin séquences historique, ajouté ici.
 
@@ -5144,40 +5209,47 @@ const sendEmail: AgentTool = {
     const sender = await resolveSenderEmailAccount(ctx);
     if (!sender) return { success: false, error: 'Aucune boîte email connectée.' };
 
-    let creds: { apiKey: string; dsn: string } | null = null;
+    // Envoi au plus une fois : un envoi incertain (délai, 5xx, réponse illisible) n'est ni repris ni donné pour parti.
+    const recipientName = String(params.recipient_name || '').trim() || to;
     try {
-      creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
-    } catch (e) {
-      console.error('[send_email] credentials error:', e);
-    }
-    if (!creds) return { success: false, error: 'Connexion au service email impossible (credentials indisponibles).' };
-    const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
-
-    const res = await fetchWithTimeout(`${baseDsn}/api/v1/emails`, {
-      method: 'POST',
-      headers: { 'X-API-KEY': creds.apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        account_id: sender.email_account_id,
+      await assertAccountOwnedByOrg(ctx.adminClient, ctx.organizationId, sender.email_account_id, { userId: ctx.userId, kinds: ['email'] });
+      const outcome = await sendProviderEmail({
+        accountId: sender.email_account_id,
+        to: [{ email: to, display_name: recipientName }],
         subject: String(params.subject),
-        body: textToHtml(String(params.body).trim()),
-        to: [{ display_name: String(params.recipient_name || '') || to, identifier: to }],
-      }),
-    }, 20000);
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      console.error('[send_email] provider error:', res.status, err.slice(0, 300));
-      return { success: false, error: `Échec de l'envoi (${res.status}). Vérifie que ta boîte email est bien connectée.` };
+        html: textToHtml(String(params.body).trim()),
+      });
+      if (outcome.outcome === 'uncertain') {
+        console.error('[send_email] send outcome unknown:', describeForLog(outcome.error));
+        return { success: false, error: "L'envoi n'est pas confirmé : l'email est peut-être parti. Vérifie tes éléments envoyés avant de réessayer." };
+      }
+      if (outcome.outcome === 'refused') {
+        console.error('[send_email] provider refused:', describeForLog(outcome.error));
+        return {
+          success: false,
+          error: outcome.kind === 'account_disconnected'
+            ? 'Ta boîte email doit être reconnectée dans les réglages avant d\'envoyer.'
+            : `Échec de l'envoi${outcome.error.status ? ` (${outcome.error.status})` : ''}. Vérifie que ta boîte email est bien connectée.`,
+        };
+      }
+      return {
+        success: true,
+        data: {
+          to_email: to,
+          from_account: sender.email_address ?? null,
+          email_id: outcome.emailId,
+          message: `Email envoyé à ${to} depuis ${sender.email_address ?? 'ta boîte connectée'}.`,
+        },
+      };
+    } catch (err) {
+      // Thrown only before any request: a missing key, an invalid input, an account id that is not linked or outdated.
+      console.error('[send_email] send not attempted:', describeForLog(err));
+      if (isUnipileError(err) && err.kind === 'config') return { success: false, error: 'Connexion au service email impossible.' };
+      if (isUnipileError(err) && (err.kind === 'account_disconnected' || err.code === 'account_not_owned')) {
+        return { success: false, error: 'Ta boîte email doit être reconnectée dans les réglages avant d\'envoyer.' };
+      }
+      return { success: false, error: "L'email n'a pas pu être préparé pour l'envoi. Aucun email n'est parti." };
     }
-
-    return {
-      success: true,
-      data: {
-        to_email: to,
-        from_account: sender.email_address ?? null,
-        message: `Email envoyé à ${to} depuis ${sender.email_address ?? 'ta boîte connectée'}.`,
-      },
-    };
   },
 };
 
