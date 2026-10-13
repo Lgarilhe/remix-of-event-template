@@ -85,6 +85,7 @@ import { plural } from '@/lib/plural';
 import { skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
 import { invalidateMissionContacted, invalidateStageReaders } from '@/lib/stageDisplay';
 import { retainCandidates } from '@/lib/retainCandidates';
+import { trackUsage } from '@/lib/usageEvents';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
@@ -698,6 +699,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       setEnrollResults(results);
       if (results.success > 0) {
         void invalidateMissionContacted(queryClient);
+        // Mesure d'usage : candidats réellement inscrits (nombre seulement).
+        trackUsage('Candidates Enrolled', { surface: 'preparation', count: results.success });
         toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });

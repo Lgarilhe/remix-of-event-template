@@ -22,11 +22,12 @@ interface SourcingTopBarProps {
   /** Affinage en langage naturel ; rejette en cas d'échec (message déjà affiché). */
   onRefine: (phrase: string) => Promise<void>;
   onNewSearch: () => void;
+  onPrepare?: () => void;
   disabled?: boolean;
   children: ReactNode;
 }
 
-export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = false, children }: SourcingTopBarProps) {
+export function SourcingTopBar({ filterCount, onRefine, onNewSearch, onPrepare, disabled = false, children }: SourcingTopBarProps) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -95,6 +96,7 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
           )}
         </div>
         <div className="flex items-center gap-1">
+          {onPrepare && <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={onPrepare} className="max-sm:min-h-11">Ajuster avec l’assistant</Button>}
           <Button
             type="button"
             variant="ghost"

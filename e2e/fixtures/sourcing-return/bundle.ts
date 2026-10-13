@@ -7,8 +7,24 @@ import path from 'node:path';
 import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
 
+/** Même famille et mêmes graisses que main.tsx ; les fichiers restent dans le HTML du banc. */
+async function instrumentSansStyles(root: string) {
+  const fontRoot = path.join(root, 'node_modules/@fontsource/instrument-sans');
+  const styles = await Promise.all([400, 500, 600, 700].map(async weight => {
+    let css = await readFile(path.join(fontRoot, `${weight}.css`), 'utf8');
+    for (const match of [...css.matchAll(/url\(([^)]+)\)/g)]) {
+      const fontPath = match[1].replace(/^['"]|['"]$/g, '');
+      const font = await readFile(path.resolve(fontRoot, fontPath));
+      const mime = fontPath.endsWith('.woff2') ? 'font/woff2' : 'font/woff';
+      css = css.replace(match[0], `url(data:${mime};base64,${font.toString('base64')})`);
+    }
+    return css;
+  }));
+  return styles.join('\n');
+}
+
 /** Real mission, search, filter UI and React lifecycle; remote boundaries only. */
-export async function sourcingReturnHarnessHtml() {
+export async function sourcingReturnHarnessHtml(entry = 'main.tsx') {
   const root = process.cwd();
   const fixture = path.join(root, 'e2e/fixtures/sourcing-return');
   const mocked = new Set([
@@ -25,7 +41,7 @@ export async function sourcingReturnHarnessHtml() {
     'src/components/missions/v3/sourcing/SourcingTopBar.tsx', 'src/lib/sourcingSearchLifecycle.ts']);
   const sourceHashes: Record<string, string> = {};
   const bundle = await build({
-    entryPoints: [path.join(fixture, 'main.tsx')], bundle: true, write: false,
+    entryPoints: [path.join(fixture, entry)], bundle: true, write: false,
     platform: 'browser', format: 'iife', jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env': JSON.stringify({ VITE_SUPABASE_URL: '/qa-api', VITE_SUPABASE_PUBLISHABLE_KEY: 'fixture-only' }) },
     loader: { '.svg': 'dataurl', '.webp': 'dataurl', '.png': 'dataurl', '.jpg': 'dataurl' },
@@ -50,5 +66,6 @@ export async function sourcingReturnHarnessHtml() {
   sourceHashes['src/index.css'] = createHash('sha256').update(cssSource).digest('hex');
   const css = await postcss([tailwindcss({ config: path.join(root, 'tailwind.config.ts') })])
     .process(cssSource, { from: path.join(root, 'src/index.css') });
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sourcing QA</title><style>${css.css}</style></head><body><div id="root"></div><script>window.qaSourceHashes=${JSON.stringify(sourceHashes)};${bundle.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script></body></html>`;
+  const fonts = await instrumentSansStyles(root);
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sourcing QA</title><style>${fonts}\n${css.css}</style></head><body><div id="root"></div><script>window.qaSourceHashes=${JSON.stringify(sourceHashes)};${bundle.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script></body></html>`;
 }

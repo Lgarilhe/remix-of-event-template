@@ -29,6 +29,7 @@ import { readFirstStepPreview } from './firstStepPreview';
 import { SequenceDraftPreview } from './SequenceDraftPreview';
 import { PROPOSAL_EDITOR_NOTE, readSequenceDraftPreview } from './sequenceDraftPreview';
 import { writingDetailsLine } from './writingDetails';
+import { trackUsage } from '@/lib/usageEvents';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -523,7 +524,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
   }, [conversationId]);
 
   const handleAction = useCallback(
-    async (executionId: string, action: 'approve' | 'reject') => {
+    async (executionId: string, action: 'approve' | 'reject', toolName?: string) => {
       setActionLoading((prev) => ({ ...prev, [executionId]: action }));
       try {
         const { data, error } = await invokeEdgeFunction<{ success: boolean; error?: string; data?: Record<string, unknown> }>(
@@ -539,6 +540,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           );
           return;
         }
+        // Mesure d'usage : nom de l'outil et décision, jamais ses paramètres.
+        trackUsage('Assistant Proposal', { tool: toolName, decision: action === 'approve' ? 'approuvee' : 'rejetee', surface: 'conversation' });
         if (action === 'reject') {
           toast.success('Action rejetée');
         } else if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
@@ -564,7 +567,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
   );
 
   const handleSaveAndApprove = useCallback(
-    async (executionId: string) => {
+    async (executionId: string, toolName?: string) => {
       setActionLoading((prev) => ({ ...prev, [executionId]: 'save' }));
       try {
         // 1. UPDATE params on the row (only the original proposer's row, RLS-protected)
@@ -590,6 +593,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           toast.error("L'action n'a pas pu être exécutée avec vos modifications. Réessayez.");
           return;
         }
+        trackUsage('Assistant Proposal', { tool: toolName, decision: 'approuvee_modifiee', surface: 'conversation' });
         if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
           const when = new Date(data.data.scheduled_for as string).toLocaleString('fr-FR', {
             weekday: 'long',
@@ -628,6 +632,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           toast.error("La séquence n'a pas pu être ouverte dans l'éditeur. Réessayez dans un instant.");
           return;
         }
+        // « Ouvrir la séquence » n'existe que pour create_sequence.
+        trackUsage('Assistant Proposal', { tool: 'create_sequence', decision: 'reprise_editeur', surface: 'conversation' });
         setPending((prev) => prev.filter((p) => p.id !== executionId));
         navigate(aiProposalSequencePath(executionId));
       } finally {
@@ -762,7 +768,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleAction(row.id, 'reject')}
+                      onClick={() => handleAction(row.id, 'reject', row.tool_name)}
                       disabled={loading != null}
                       className="text-muted-foreground"
                     >
@@ -800,7 +806,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                         if (approveNeedsDialog) {
                           setConfirmDialogId(row.id);
                         } else {
-                          handleAction(row.id, 'approve');
+                          handleAction(row.id, 'approve', row.tool_name);
                         }
                       }}
                       disabled={loading != null}
@@ -819,7 +825,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                       size="sm"
                       variant="primary"
                       className="ml-auto"
-                      onClick={() => handleSaveAndApprove(row.id)}
+                      onClick={() => handleSaveAndApprove(row.id, row.tool_name)}
                       disabled={loading != null}
                     >
                       {loading === 'save' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
@@ -868,7 +874,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
               <AlertDialogAction
                 onClick={() => {
                   if (confirmDialogId) {
-                    handleAction(confirmDialogId, 'approve');
+                    handleAction(confirmDialogId, 'approve', pending.find((p) => p.id === confirmDialogId)?.tool_name);
                     setConfirmDialogId(null);
                   }
                 }}

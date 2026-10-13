@@ -68,6 +68,8 @@ export interface CreateProjectInput {
 
 export interface UpdateProjectInput {
   id: string;
+  /** Optimistic concurrency guard for an explicitly reviewed brief. */
+  expectedUpdatedAt?: string;
   name?: string;
   kind?: 'mission' | 'search';
   description?: string;
@@ -172,14 +174,16 @@ export const useSourcingProjects = (
 
   // Update project mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...input }: UpdateProjectInput) => {
+    mutationFn: async ({ id, expectedUpdatedAt, ...input }: UpdateProjectInput) => {
       const { job_details, ...rest } = input;
       const payload: Record<string, any> = { ...rest };
       if (job_details !== undefined) payload.job_details = job_details as any;
-      const { data, error } = await supabase
+      let request = supabase
         .from('sourcing_projects')
         .update(payload)
-        .eq('id', id)
+        .eq('id', id);
+      if (expectedUpdatedAt) request = request.eq('updated_at', expectedUpdatedAt);
+      const { data, error } = await request
         .select()
         .maybeSingle();
 
@@ -191,7 +195,9 @@ export const useSourcingProjects = (
       // (audit UX du 09/09/2026, constat UX03).
       if (!data) {
         throw new Error(
-          "Mission introuvable ou accès modifié : vos modifications n'ont pas été enregistrées.",
+          expectedUpdatedAt
+            ? "Mission modifiée ailleurs ou accès modifié : vos modifications n'ont pas été enregistrées."
+            : "Mission introuvable ou accès modifié : vos modifications n'ont pas été enregistrées.",
         );
       }
       return data as SourcingProject;

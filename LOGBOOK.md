@@ -44,6 +44,24 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Reste à faire** : `[ ]` pousser sur `main` (feu vert explicite attendu) ; `[ ]` lot 5g puis retrait de l'ancien flux au lot 5j.
 **Refs** : branche `claude/repository-audit-pcgg0y`, `docs/refonte-mission/lot5-plan.md` section 5f-2.
 
+## 2026-10-13 — BUG — Fiche candidat commune depuis la messagerie
+
+**Contexte** : la messagerie ouvrait une mini-fiche LinkedIn distincte du dossier disponible dans le pipeline et les missions.
+**Fait** : le nom et « Fiche candidat » ouvrent désormais `CandidateDetailModal` et `ProfileDetailSheet`, avec leurs onglets métier existants, sans navigation ni perte du brouillon. Le panneau de suivi donne aussi accès à cette fiche. Les candidats sont retrouvés par identifiant ou URL LinkedIn exacte dans l’organisation active ; une candidature ambiguë demande un choix. Un prospect reste hors pipeline, sans création automatique. Les consultations utilisent le compte LinkedIn personnel.
+**Impact** : messagerie LinkedIn et multicanal ; les lecteurs partagés de notes, rappels, parcours et appels suivent l’organisation et ignorent les réponses périmées. Le cache d’historique sépare utilisateur, organisation et candidat. Les données partielles et les limitations LinkedIn restent expliquées dans l’onglet Profil. Les onglets métier sont chargés à la demande.
+**Validation** : build production réussi ; TypeScript conserve les 11 diagnostics hérités, aucun nouveau ; ratchet design et revue indépendante passent. 61 tests ciblés et 77 parcours Chromium (52 de fiche candidat, 13 Agenda, 12 de chargement de la messagerie) passent avec transports simulés, sans appel LinkedIn réel. Les composants visuels et les lecteurs métier de la nouvelle fiche sont réels. Les harnais d’aperçu et de chargement reproduisent le contexte React Query de l’application et vérifient la fiche commune.
+
+| Persona | Parcours | Verdict |
+| --- | --- | --- |
+| Guillaume | Fiche complète, brouillon, note explicite et actualisation en panne | PASS |
+| Claire | Nom cliquable, prospect hors pipeline, profil limité puis détaillé | PASS |
+| Théo | Missions ambiguës, réessai et historiques isolés entre organisations | PASS |
+| Sophie | 320/390 px, thème clair/sombre, clavier et retour au brouillon | PASS |
+
+**Refs** : `e2e/flows/inbox-candidate.spec.ts`, `e2e/flows/inbox-profile.spec.ts`, `tests/ux/inbox-candidate-record.test.mjs`. Aucun changement de schéma ni de fonction serveur.
+
+---
+
 ## 2026-10-13 — BUG — Espace d’entretien prêt depuis le rendez-vous
 
 **Contexte** : le rendez-vous ouvrait encore la scorecard dans la fiche latérale, sans l’espace d’entretien complet ni l’assistant prêt. Le choix audio ne tenait pas compte du service de visioconférence du rendez-vous.
@@ -1617,3 +1635,15 @@ Sur téléphone (390 px), la page passe de 2 013 à 1 614 px en colonnes, de 2 3
 ---
 
 *Ce fichier est lu par Claude Code en début de chaque conversation via la skill /status. Garder concis pour ne pas polluer le contexte.*
+
+
+## 2026-10-13 — Sourcing guidé depuis l’accueil et accès sans LinkedIn
+
+- Accueil : départ d’une recherche guidée, nouvelle recherche ou mission avec son cadrage complet. Dialogue partagé avec le sourcing des missions et l’ajustement depuis les résultats.
+- Brouillon explicite : échanges structurés, critères, importance, caractère rédhibitoire et pondération globale à 100 %. Sauvegarde à la validation, refus des écrasements concurrents par contrôle de `updated_at`, conservation du texte sur erreur.
+- Nouvelle fonction `sourcing-interview` : utilisateur JWT et appartenance à l’organisation vérifiés, limitation de fréquence, garde de crédits avant modèle, sortie validée et décompte de l’appel. Aucune écriture de brief côté serveur. Nouvelle action IA `sourcing_interview`, palier rapide, 1 crédit minimum. Aucune migration.
+- Sans compte LinkedIn, la Base Konekt est proposée, avec ses prérequis de forfait/activation et une comparaison des données/actions disponibles. Les lieux restent textuels ; la tranche d’expérience appliquée au serveur n’est pas rejouée sur des aperçus sans dates.
+- Résultats : vue Tri par défaut sans préférence, consignes de décision et note manquante explicitée. Source et caches séparés, préférence conservée, validation explicite prioritaire sur une ancienne vue ; attente de synchronisation de l’API avant génération.
+- Design : champs du poste, détails, critères et importance du Cadrage réutilisés ; présentations/composer du chat assistant partagés. Onglets du kit pour rendre poste et critères accessibles. Description libre sans troncature, métadonnées conservées, filtres reconstruits sans anciennes contraintes à la validation.
+- Validation : 58/58 scénarios navigateur (16 guidés et 42 de retour au sourcing), suites agents et C1 sans échec, tests UX concernés réussis, build de production réussi. TypeScript/lint et compteurs design comparés à la dernière version de main, sans régression. Les transports/base/modèle de la QA navigateur sont contrôlés ; aucun crédit de production consommé.
+- Recette réelle et comparaison des sources : `docs/audit-ux/2026-10-13-sourcing-guide-tests.md`. Lecture de production : aucune opération Base Konekt enregistrée, aucune clé par organisation ; la configuration globale serveur et un essai réel restent à vérifier avant ouverture aux testeurs.

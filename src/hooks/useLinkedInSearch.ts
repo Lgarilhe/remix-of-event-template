@@ -20,6 +20,7 @@ interface UseLinkedInSearchOptions {
   organizationId?: string | null;
   userId?: string | null;
   selectedAccount: string | null;
+  searchSource?: 'linkedin' | 'database';
   activeProject?: SourcingProject | null;
   onProjectChange?: (project: SourcingProject | null) => void;
 }
@@ -135,6 +136,7 @@ export function useLinkedInSearch({
   organizationId,
   userId,
   selectedAccount,
+  searchSource = 'linkedin',
   activeProject,
   onProjectChange,
 }: UseLinkedInSearchOptions) {
@@ -374,11 +376,13 @@ export function useLinkedInSearch({
         skills_keywords: Array.isArray(savedFilters.skills_keywords) ? savedFilters.skills_keywords : [],
         industry_keywords: Array.isArray(savedFilters.industry_keywords) ? savedFilters.industry_keywords : [],
       };
-      setFilters({ ...INITIAL_FILTERS, ...transformed });
-
       // Store pending location for deferred resolution
       const locationKeyword = savedFilters.location_keywords?.[0]?.trim();
-      if (locationKeyword) {
+      if (searchSource === 'database' && locationKeyword && !transformed.location?.length) {
+        transformed.location = savedFilters.location_keywords.map((name: string) => ({ id: `database:${name}`, name, priority: 'MUST_HAVE', scope: 'CURRENT' }));
+      }
+      setFilters({ ...INITIAL_FILTERS, ...transformed, ...(searchSource === 'database' ? { api: 'database' as const } : {}) });
+      if (locationKeyword && searchSource !== 'database') {
         pendingLocationRef.current = locationKeyword;
         // Try resolving now if account is available
         if (selectedAccount) {
@@ -569,10 +573,10 @@ export function useLinkedInSearch({
 
   // Deferred location resolution: when selectedAccount becomes available and we have a pending location
   useEffect(() => {
-    if (selectedAccount && pendingLocationRef.current) {
+    if (searchSource !== 'database' && selectedAccount && pendingLocationRef.current) {
       resolveLocation(pendingLocationRef.current, selectedAccount);
     }
-  }, [selectedAccount, resolveLocation]);
+  }, [selectedAccount, searchSource, resolveLocation]);
 
   // ── Auto-persist filter changes to filters_snapshot (debounced) ──
   const initialFilterLoadRef = useRef(true);

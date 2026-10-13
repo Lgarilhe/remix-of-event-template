@@ -383,6 +383,7 @@ export function SequenceCreatePage() {
     setShowBuilder: () => undefined,
     setEditingSequence: () => undefined,
     onCreated: (id) => { createdIdRef.current = id; },
+    startKind: start.kind,
     // Créée sans envoi faute de droit d'envoi (règle existante, shouldCreateInactiveForPlan) : dit avec le texte de la spécification.
     announceCreated: ({ inactiveForPlan }) => {
       if (!inactiveForPlan) {

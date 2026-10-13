@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 export interface SegmentedOption<T extends string> {
   value: T;
   label: React.ReactNode;
+  /** Option indisponible, conservée pour expliquer les choix possibles. */
+  disabled?: boolean;
   /** Icône lucide, rendue avant le libellé. */
   icon?: React.ElementType;
   /** Infobulle native (raccourci clavier…). */
@@ -33,6 +35,7 @@ interface SegmentedControlProps<T extends string> {
   /** Sur téléphone, les icônes seules en carrés de 44 px ; le libellé reste lu. */
   iconsOnlyOnPhone?: boolean;
   className?: string;
+  disabled?: boolean;
 }
 
 export function SegmentedControl<T extends string>({
@@ -43,6 +46,7 @@ export function SegmentedControl<T extends string>({
   variant = "default",
   iconsOnlyOnPhone = false,
   className,
+  disabled = false,
   ...props
 }: SegmentedControlProps<T>) {
   const quiet = variant === "quiet";
@@ -50,6 +54,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={props["aria-label"]}
+      aria-disabled={disabled || undefined}
       className={cn(
         quiet
           ? "inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5"
@@ -67,6 +72,7 @@ export function SegmentedControl<T extends string>({
             key={option.value}
             type="button"
             aria-pressed={active}
+            disabled={disabled || option.disabled}
             title={option.title}
             onClick={() => onValueChange(option.value)}
             className={cn(
@@ -78,6 +84,7 @@ export function SegmentedControl<T extends string>({
                   ? "bg-card font-semibold text-foreground dark:bg-background"
                   : "bg-background text-foreground shadow-sm ring-1 ring-border-strong"
                 : "text-muted-foreground hover:text-foreground",
+              "disabled:cursor-not-allowed disabled:text-muted-foreground disabled:hover:text-muted-foreground",
               iconsOnlyOnPhone && Icon && "max-sm:min-w-11 max-sm:px-0",
             )}
           >

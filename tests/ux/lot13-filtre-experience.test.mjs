@@ -15,16 +15,17 @@ const ROOT = new URL('../../', import.meta.url);
 const source = readFileSync(new URL('src/hooks/useLinkedInSearchActions.ts', ROOT), 'utf8');
 
 test('la deuxième passe est sautée quand LinkedIn a reçu la tranche', () => {
-  const guard = source.match(/const linkedinFiltersExperience = ([\s\S]*?);\s*const filteredBatch = ([\s\S]*?);\n/);
+  const guard = source.match(/const linkedinFiltersExperience = ([\s\S]*?);[\s\S]*?const filteredBatch = ([\s\S]*?);\n/);
   assert.ok(guard, 'garde linkedinFiltersExperience présente');
   const condition = guard[1];
-  assert.match(condition, /!isDatabase/, 'jamais pour la Base Konekt, qui ne reçoit pas la tranche');
+  assert.match(condition, /!isDatabase/, 'la tranche LinkedIn reste spécifique à LinkedIn');
   assert.match(condition, /'recruiter'/);
   assert.match(condition, /'sales_navigator'/);
   assert.doesNotMatch(condition, /'classic'/, 'Classic n\'a pas de filtre serveur : la passe reste utile');
   assert.match(condition, /years_of_experience_min !== null/);
   assert.match(condition, /years_of_experience_max !== null/);
   assert.match(guard[2], /linkedinFiltersExperience\s*\?\s*batch/, 'le lot passe tel quel');
+  assert.match(guard[2], /isDatabase \|\| linkedinFiltersExperience/, 'la Base Konekt filtre les données complètes au serveur, jamais ses aperçus sans dates');
   assert.match(guard[2], /filterByCalculatedExperience\(/, 'le repli reste en place');
 });
 

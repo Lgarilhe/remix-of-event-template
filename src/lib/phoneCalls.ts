@@ -66,14 +66,14 @@ export function rowToPhoneCall(row: PhoneCallRow): PhoneCall {
 }
 
 /** Numéros enregistrés pour un candidat de l'organisation active (saisis ou enrichis). */
-export async function fetchKnownCandidatePhones(candidateId: string | null | undefined): Promise<string[]> {
+export async function fetchKnownCandidatePhones(candidateId: string | null | undefined, organizationId?: string | null): Promise<string[]> {
   if (!candidateId) return [];
-  const organizationId = await getActiveOrganizationId();
-  if (!organizationId) return [];
+  const activeOrganizationId = organizationId === undefined ? await getActiveOrganizationId() : organizationId;
+  if (!activeOrganizationId) return [];
   const { data, error } = await supabase
     .from('candidate_contacts')
     .select('phone')
-    .eq('organization_id', organizationId)
+    .eq('organization_id', activeOrganizationId)
     .eq('candidate_id', candidateId)
     .maybeSingle();
   if (error) {
@@ -87,12 +87,16 @@ export async function fetchKnownCandidatePhones(candidateId: string | null | und
 export async function fetchPhoneCallsForNumbers(
   rawNumbers: ReadonlyArray<string | null | undefined>,
   limit = 50,
+  organizationId?: string | null,
 ): Promise<PhoneCall[]> {
   const numbers = Array.from(new Set(rawNumbers.map((n) => toE164(n)).filter((n): n is string => !!n)));
   if (numbers.length === 0) return [];
+  const activeOrganizationId = organizationId === undefined ? await getActiveOrganizationId() : organizationId;
+  if (!activeOrganizationId) return [];
   const { data, error } = await supabase
     .from('phone_calls')
     .select(COLUMNS)
+    .eq('organization_id', activeOrganizationId)
     .in('contact_number_e164', numbers)
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(limit);
@@ -110,9 +114,12 @@ export async function fetchPhoneCallsForNumbers(
 export async function fetchPhoneCallsForCandidate(
   candidateId: string | null | undefined,
   extraNumbers: ReadonlyArray<string | null | undefined> = [],
+  organizationId?: string | null,
 ): Promise<PhoneCall[]> {
-  const known = await fetchKnownCandidatePhones(candidateId);
-  return fetchPhoneCallsForNumbers([...known, ...extraNumbers]);
+  const activeOrganizationId = organizationId === undefined ? await getActiveOrganizationId() : organizationId;
+  if (!activeOrganizationId) return [];
+  const known = await fetchKnownCandidatePhones(candidateId, activeOrganizationId);
+  return fetchPhoneCallsForNumbers([...known, ...extraNumbers], 50, activeOrganizationId);
 }
 
 /** Les appels les plus récents de l'organisation active (la RLS fait le périmètre). */

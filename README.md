@@ -40,7 +40,7 @@ VITE_SUPABASE_URL=https://<ref>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=<clé publique>
 ```
 
-Variables optionnelles : `VITE_SENTRY_DSN`, `VITE_PLAUSIBLE_DOMAIN`, `VITE_PLAUSIBLE_SRC`.
+Variables optionnelles : `VITE_SENTRY_DSN`, `VITE_PLAUSIBLE_DOMAIN`, `VITE_PLAUSIBLE_SRC` (une variante manuelle du script, `script.manual.js` par défaut ; une autre n'est pas chargée).
 
 ```sh
 npm run dev

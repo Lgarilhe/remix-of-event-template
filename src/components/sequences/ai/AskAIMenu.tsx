@@ -52,6 +52,7 @@ import {
   type AskAiAction,
   type AskAiWriting,
 } from '@/lib/sequenceDraft';
+import { trackUsage } from '@/lib/usageEvents';
 
 /** Ce que le panneau d'étape sait pour demander une proposition. */
 export interface AskAIContext {
@@ -127,7 +128,10 @@ export function AskAIMenu({ context, steps, version, onProposal, busy }: AskAIMe
     if (action === 'brief') {
       if (!context.missionId) return;
       const outcome = await draft(briefDraftRequestBody(context.organizationId, context.missionId, slot, writing));
+      // Mesure d'usage : rédaction du texte d'une étape, au niveau envoyé (aucun : défaut de l'organisation, inconnu ici) ;
+      // « ok » seulement quand une proposition s'affiche.
       if (outcome.status === 'error') {
+        trackUsage('Sequence AI Draft', { scope: 'etape', level: writing?.level, result: outcome.error.kind });
         if (outcome.error.kind === 'credits') setCreditsNeeded(draftCostEstimate(level));
         // Niveau refusé (plafond abaissé entre-temps) : réglages relus, le niveau affiché redescend.
         if (outcome.error.kind === 'level') void refetchPrefs();
@@ -139,9 +143,12 @@ export function AskAIMenu({ context, steps, version, onProposal, busy }: AskAIMe
       }
       const picked = draftTextForSlot(outcome.result, slot.slot);
       if (!picked || !picked.body.trim()) {
+        // Sans raison de retrait, la personne lit « indisponible » (briefRefusalMessage) : même issue mesurée.
+        trackUsage('Sequence AI Draft', { scope: 'etape', level: writing?.level, result: picked && picked.toWrite.length > 0 ? 'texte_retire' : 'unavailable' });
         settle({ versionId, label, status: 'error', message: briefRefusalMessage(picked?.toWrite ?? []) });
         return;
       }
+      trackUsage('Sequence AI Draft', { scope: 'etape', level: writing?.level, result: 'ok' });
       settle({
         versionId,
         label,

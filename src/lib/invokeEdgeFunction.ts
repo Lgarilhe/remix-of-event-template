@@ -18,6 +18,8 @@ const HEAVY_AI_FUNCTIONS = new Set([
   'generate-scorecard',
   'score-profile-job',
   'generate-call-report',
+  // Cadrage : une réponse puis une correction éventuelle, facturées ensemble.
+  'sourcing-interview',
   // Rédaction d'une séquence (lot 5e) : un appel au modèle et une correction,
   // jusqu'aux 60 s de la fonction ; couper avant ferait perdre une rédaction débitée.
   'draft-sequence',
@@ -126,12 +128,16 @@ async function doFetchEdgeFunction(
   functionName: string,
   enrichedBody: Record<string, unknown>,
   accessToken: string | null,
-): Promise<Response> {
+  signal?: AbortSignal,
+): Promise<{ response: Response; payload: EdgeResponsePayload; text: string }> {
   const abortController = new AbortController();
+  const abort = () => abortController.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
   const timeoutMs = getTimeoutForFunction(functionName);
   const timer = window.setTimeout(() => abortController.abort(), timeoutMs);
   try {
-    return await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`, {
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -141,8 +147,11 @@ async function doFetchEdgeFunction(
       body: JSON.stringify(enrichedBody),
       signal: abortController.signal,
     });
+    clearTimeout(timer);
+    return { response, ...await readEdgeResponse(response) };
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -178,19 +187,25 @@ export function isInsufficientCreditsError(err: unknown): boolean {
 
 export async function invokeEdgeFunction<T = Record<string, unknown>>(
   functionName: string,
-  body: Record<string, unknown> = {}
+  body: Record<string, unknown> = {},
+  options?: { signal?: AbortSignal },
 ): Promise<{ data: T & { success?: boolean; error?: string; error_code?: string }; error: EdgeFunctionError | null }> {
   const enrichedBody = { ...body };
-  if (!enrichedBody.organization_id) {
-    const orgId = await getActiveOrganizationId();
-    if (orgId) {
-      enrichedBody.organization_id = orgId;
-    }
-  }
-
+  const signal = options?.signal;
   try {
+    signal?.throwIfAborted();
+    if (!enrichedBody.organization_id) {
+      const orgId = await getActiveOrganizationId();
+      signal?.throwIfAborted();
+      if (orgId) {
+        enrichedBody.organization_id = orgId;
+      }
+    }
+
     let { data: { session } } = await supabase.auth.getSession();
-    let response = await doFetchEdgeFunction(functionName, enrichedBody, session?.access_token ?? null);
+    signal?.throwIfAborted();
+    let { response, payload, text } = await doFetchEdgeFunction(functionName, enrichedBody, session?.access_token ?? null, signal);
+    signal?.throwIfAborted();
 
     // I7 — Session recovery on 401 : si le JWT est expiré, on force un refresh
     // (Supabase tente normalement auto via autoRefreshToken: true mais peut rater
@@ -199,16 +214,16 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
     if (response.status === 401) {
       console.warn(`[invokeEdgeFunction] ${functionName} got 401, attempting session refresh + retry`);
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      signal?.throwIfAborted();
       if (refreshError || !refreshData.session) {
         // Refresh impossible → l'user doit se reconnecter (on laisse l'erreur 401 remonter)
         console.error('[invokeEdgeFunction] session refresh failed, user must re-login:', refreshError?.message);
       } else {
         session = refreshData.session;
-        response = await doFetchEdgeFunction(functionName, enrichedBody, session.access_token);
+        ({ response, payload, text } = await doFetchEdgeFunction(functionName, enrichedBody, session.access_token, signal));
+        signal?.throwIfAborted();
       }
     }
-
-    const { payload, text } = await readEdgeResponse(response);
 
     if (!response.ok) {
       const rawMessage =
@@ -236,6 +251,13 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
       error: null,
     };
   } catch (e: any) {
+    if (signal?.aborted) {
+      const err: EdgeFunctionError = Object.assign(new Error('Requête annulée.'), { name: 'AbortError', code: 'ABORTED' });
+      return {
+        data: { success: false, error: err.message, error_code: err.code } as T & { success?: boolean; error?: string; error_code?: string },
+        error: err,
+      };
+    }
     const friendlyMsg = await extractEdgeFunctionError(e);
     console.error(`[invokeEdgeFunction] ${functionName} failed:`, e);
     return { data: { success: false, error: friendlyMsg } as any, error: new Error(friendlyMsg) };

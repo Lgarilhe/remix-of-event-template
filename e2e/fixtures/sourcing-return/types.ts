@@ -11,6 +11,9 @@ export interface FixtureState {
   accountsReady?: boolean;
   accountIds?: string[];
   projectId?: string;
+  baseEnabled?: boolean;
+  basePlanAllows?: boolean;
+  failSave?: boolean;
 }
 export interface FixtureCandidateStatus {
   candidate_id: string;
@@ -24,7 +27,7 @@ export interface FixtureCandidateStatus {
 export interface FixtureWindow extends Window {
   qaState: FixtureState;
   qaProjects: Record<string, SourcingProject>;
-  qaWrites: Array<{ id: string; filters_snapshot: Record<string, unknown> }>;
+  qaWrites: Array<{ id: string; filters_snapshot?: Record<string, unknown>; job_details?: unknown; expectedUpdatedAt?: string }>;
   qaStatuses?: Record<string, FixtureCandidateStatus>;
   qaScoreWrites?: Array<Array<{ id: string; score: number }>>;
   qaSourceHashes?: Record<string, string>;

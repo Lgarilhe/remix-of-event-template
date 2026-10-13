@@ -292,8 +292,9 @@ sequence_enrollments       — candidates in sequences (.pause_reason : manual, 
                              .assigned_sender_id en text ; trigger sequence_enrollments_check_sender_owner : pas d'inscription
                              depuis le compte LinkedIn relié à un autre membre, HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER ;
                              effacement RGPD, 11/10/2026 : l'étape 7 bis de recordGdprErasure retire tracking_data.message_overrides
-                             (textes retouchés pour le candidat) des inscriptions retrouvées, marqueurs gardés ; aucun
-                             rattrapage des effacements passés, voir les points ouverts du plan du lot 5)
+                             (textes retouchés pour le candidat) des inscriptions retrouvées, marqueurs gardés ; effacements
+                             passés rattrapés par la migration 20261012112803 (décision du 12/10/2026 : inscriptions au marqueur
+                             gdpr_erased_at non vide, seule la clé message_overrides part, updated_at gardé))
 organizations              — org + subscription
 organization_members       — member roles (admin/owner/collaborator)
 profiles                   — user profiles
@@ -375,7 +376,10 @@ candidate_reminders        : rappels et tâches sur un candidat (nom affiché, m
                              rappel sans organisation n'est supprimé que si son auteur n'est membre que de l'organisation de
                              l'effacement (résultat deletedReminders). Exportée par export-org-data, filtrée par organisation
                              (10 000 lignes au plus, _meta.candidate_reminders_count et candidate_reminders_truncated), donc
-                             sans les rappels sans organisation. Pas encore de purge par ancienneté.
+                             sans les rappels sans organisation. Purge à 24 mois (décision du 12/10/2026) : rgpd-purge, étape 9,
+                             24 mois après la dernière activité (la plus tardive de created_at, updated_at, due_at et
+                             completed_at, `_shared/reminder-retention.ts`), rappels sans organisation compris, en « compte
+                             seulement » par défaut comme les autres étapes (reminders_purged, reminders_without_org_purged).
 candidate_evaluations      : grille d'entretien (« scorecard » dans le code). Refonte scorecard et assistant en direct, lot 1
                              (05/10/2026) : .project_id (mission) et .process_step_id (étape d'entretien de cette mission), tous deux
                              ON DELETE SET NULL ; .candidate_id est l'identifiant du profil (job_candidate_status.candidate_id), jamais
@@ -795,6 +799,7 @@ Connexion d'un compte (API v2) : actions `connection_*` de `unipile-accounts`, t
 - **Fonctions et `config.toml`** : toute fonction nouvelle sous `supabase/functions/` a sa section `[functions.<nom>]` avec `verify_jwt = false` (sauf `submit-application`, `verify_jwt = true`) ; contrôlé par `tests/c1/fonctions-config.test.mjs` (aucune section absente, orpheline ni en double).
 - **Tests du moteur** : `e2e/local-stack` (stack locale, faux prestataires scriptables par compte), `e2e/helpers/sequence-engine.ts`, fichiers `e2e/api/seq-*.spec.ts`, `e2e/flows/seq-*.spec.ts`, `supabase/tests/seq_*_audit.sql`.
 - Libellés communs : `src/lib/sequenceLabels.ts` (statuts, raisons de pause), `src/lib/sequenceErrorMessages.ts` (erreurs, `formatSkipReason`), `stepTypeLabel` de `src/components/outreach/sequence/sequenceGraph.ts` (types d'étape).
+- **Mesures d'usage (pilote des séquences, 12/10/2026)** : les gestes du pilote (séquence enregistrée, rédaction par l'IA, inscription, message IA relu, pause, arrêt et leurs annulations, réponse proposée utilisée, proposition de l'assistant tranchée) sont comptés par `trackUsage` de `src/lib/usageEvents.ts`, liste fermée d'événements envoyés à Plausible par `trackEvent` (actif seulement avec `VITE_PLAUSIBLE_DOMAIN`), une fois le geste réussi, avec pour seules propriétés des catégories d'une liste fermée et des nombres, jamais un identifiant, un nom, un texte ni l'organisation (garde `tests/ux/mesures-usage.test.mjs`, guide `docs/refonte-mission/pilote-sequences-2026-10.md`). Adresses envoyées (SEC-043, même jour) : variante manuelle du script seule (`script.manual.js` par défaut ; un `VITE_PLAUSIBLE_SRC` automatique n'est pas chargé), pages vues envoyées par App.tsx à chaque changement de chemin, et chaque envoi passe `u` = `analyticsUrl` de `src/lib/analytics.ts` : origine et chemin de la route, paramètres remplacés par leur nom (`/client/:token`, `/missions/:id/sourcing`), racine inconnue « /autre », jamais de requête ni de fragment ; rien ne part sans adresse lisible. Toute route nouvelle à paramètre s'ajoute à `routeParam` et sa racine à `KNOWN_ROOTS` (garde `tests/ux/mesures-adresses.test.mjs`, qui lit les routes de App.tsx). Limite : le script envoie `document.referrer` tel quel. Sentry n'est pas couvert (reste de SEC-043).
 
 ### Assistant d'entretien en direct : capture audio (05/10/2026)
 Le micro seul n'entend pas le candidat quand on porte un casque : sa voix ne passe que dans les écouteurs. `LiveCoachingPanel` propose « Visio ou appel » (micro et audio partagé par `getDisplayMedia`, onglet ou écran entier ; choix gardé sous `konekt.live-capture-mode`) ou « Sur place » (micro seul). Règles pures dans `src/lib/liveAudioCapture.ts`.

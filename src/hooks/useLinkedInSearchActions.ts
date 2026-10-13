@@ -937,7 +937,10 @@ export function useLinkedInSearchActions(
         const linkedinFiltersExperience = !isDatabase
           && (currentFilters.api === 'recruiter' || currentFilters.api === 'sales_navigator')
           && (currentFilters.years_of_experience_min !== null || currentFilters.years_of_experience_max !== null);
-        const filteredBatch = linkedinFiltersExperience
+        // The Base Konekt applies experience to the complete dataset server-side.
+        // Its previews have no education/dates: estimating again would erase
+        // valid results or call them unknown after a successful range query.
+        const filteredBatch = isDatabase || linkedinFiltersExperience
           ? batch
           : filterByCalculatedExperience(
             batch,
