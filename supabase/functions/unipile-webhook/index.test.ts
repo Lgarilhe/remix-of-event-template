@@ -1916,6 +1916,32 @@ Deno.test('message.new sans is_sender : le message est relu (GET /v2/{compte}/ch
   });
 });
 
+Deno.test('message.new : la capture de l\'historique ne retient pas la réponse (lecture du message impossible chez le prestataire, 503) : 200, inscription close, aucun rejeu', async () => {
+  // Compte relié à un membre de l\'organisation : la capture lit le message chez le prestataire avant le traitement de la réponse.
+  const bound = (call: Call): Reply => (call.table === 'organization_members' ? { data: { id: 'mb-1' } } : replyBase(call));
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN, UNIPILE_V2_API_KEY: 'key-test' }, bound, async ({ calls }) => {
+    await withFetch((url) => (url.includes('/messages/') ? 503 : profileAnswer(url)), async (urls) => {
+      const response = await mod.handleRequest(post(URL_OK, envelope('message.new', message())));
+      strictEqual(response.status, 200, 'la lecture du message de la capture est tentée puis journalisée, jamais un 500');
+      ok(urls.some((u) => u === `https://api.unipile.com/v2/${ACC}/chats/${CHAT}/messages/CLASSIC_2-MSG`), 'le message a bien été lu (et a reçu le 503)');
+      strictEqual((writes(calls, 'sequence_enrollments', 'update')[0].payload as { status: string }).status, 'replied');
+      ok(calls.some((c) => c.table === 'rpc:record_candidate_inbound'), 'étape du pipeline posée');
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 0, 'la ligne de dédoublonnage reste : pas de rejeu');
+      ok(urls.every((u) => !u.includes('/api/v1')), 'aucun appel de l\'ancienne génération');
+    });
+  });
+});
+
+Deno.test('message.new : la capture ne retient pas non plus un message dont la conversation répond une erreur transitoire (5xx)', async () => {
+  const bound = (call: Call): Reply => (call.table === 'organization_members' ? { data: { id: 'mb-1' } } : replyBase(call));
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN, UNIPILE_V2_API_KEY: 'key-test' }, bound, async ({ calls }) => {
+    await withFetch((url) => (url.endsWith(`/chats/${CHAT}`) ? 502 : /\/messages\//.test(url) ? message() : profileAnswer(url)), async () => {
+      strictEqual((await mod.handleRequest(post(URL_OK, envelope('message.new', message())))).status, 200);
+      strictEqual((writes(calls, 'sequence_enrollments', 'update')[0].payload as { status: string }).status, 'replied');
+    });
+  });
+});
+
 Deno.test('message.new d\'un compte WhatsApp ou d\'un autre fournisseur : jamais par le parcours LinkedIn', async () => {
   for (const provider of ['whatsapp', 'telegram', 'instagram']) {
     await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN, UNIPILE_V2_API_KEY: 'key-test' }, replyBase, async ({ calls }) => {
@@ -1999,6 +2025,36 @@ Deno.test('email.new : réponse du candidat rattachée par son adresse ; courrie
   await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN }, reply, async ({ calls }) => {
     strictEqual((await mod.handleRequest(post(URL_OK, mail('Recruteur@Konekt.fr')))).status, 200);
     strictEqual(writes(calls, 'sequence_enrollments', 'update').length, 0, 'un courrier envoyé depuis la boîte n\'est jamais une réponse');
+  });
+});
+
+Deno.test('email.new : la capture de l\'historique ne retient pas la réponse (lecture de l\'e-mail impossible chez le prestataire, 503) : 200 et inscription close', async () => {
+  const mailEnrollment = {
+    id: 'enr-m', sequence_id: 'seq-m', profile_id: 'ACoM', provider_id: null, resolved_profile_id: null, account_id: ACC,
+    email_used: 'candidat@exemple.fr', organization_id: 'o1', created_by: 'u1', profile_name: 'Marie', profile_headline: null,
+    profile_url: null, job_id: null, status: 'active',
+  };
+  // Boîte reliée à un membre de l\'organisation : la capture lit l\'e-mail chez le prestataire avant le traitement de la réponse.
+  const reply = (call: Call): Reply => {
+    if (call.table === 'rpc:record_webhook_event') return { data: true };
+    if (call.table === 'member_email_accounts' && call.op === 'select') return { data: [{ user_id: 'u1', organization_id: 'o1', email_address: 'recruteur@konekt.fr' }] };
+    if (call.table === 'organization_members') return { data: { id: 'mb-1' } };
+    if (call.table === 'sequence_enrollments' && call.op === 'select') return { data: [mailEnrollment] };
+    if (call.table === 'sequence_enrollments' && call.op === 'update') return { data: [{ id: 'enr-m' }] };
+    if (call.table === 'rpc:record_candidate_inbound') return { data: { changed: false, result: 'unchanged', project_id: null } };
+    return undefined;
+  };
+  const mail = envelope('email.new', {
+    id: 'em_1', message_id: '<m1@x>', thread_id: 'th_1', subject: 'Re: Poste', from: [{ email: 'candidat@exemple.fr', display_name: 'Marie' }],
+    to: [{ email: 'recruteur@konekt.fr' }], headers: [{ name: 'In-Reply-To', value: '<orig@konekt.fr>' }],
+  }, { account_provider: 'google' });
+  await withEnv({ UNIPILE_V2_WEBHOOK_TOKEN: TOKEN, UNIPILE_V2_API_KEY: 'key-test' }, reply, async ({ calls }) => {
+    await withFetch((url) => (url.includes('/emails/') ? 503 : {}), async (urls) => {
+      strictEqual((await mod.handleRequest(post(URL_OK, mail))).status, 200);
+      ok(urls.some((u) => u === `https://api.unipile.com/v2/${ACC}/emails/em_1`), 'l\'e-mail a bien été lu (et a reçu le 503)');
+      strictEqual((writes(calls, 'sequence_enrollments', 'update')[0].payload as { status: string }).status, 'replied');
+      strictEqual(writes(calls, 'webhook_event_log', 'delete').length, 0, 'pas de rejeu');
+    });
   });
 });
 

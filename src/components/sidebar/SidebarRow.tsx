@@ -43,6 +43,8 @@ export interface SidebarRowProps {
   action?: React.ReactNode;
   /** Élément présent mais hors du chiffre : texte grisé. */
   muted?: boolean;
+  /** Une seule ligne de texte ; le sous-titre reste disponible dans l'infobulle. */
+  compact?: boolean;
 }
 
 const TARGET_CLASS =
@@ -50,6 +52,9 @@ const TARGET_CLASS =
   'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring';
 
 const INTERACTIVE_CLASS = 'hover:bg-sidebar-accent/60 active:bg-sidebar-accent';
+
+/** Ligne compacte : une seule ligne de texte, mais la cible garde 44 px au toucher, même à partir de md. */
+const COMPACT_TARGET_CLASS = '[@media(pointer:coarse)]:min-h-11';
 
 export function SidebarRow({
   leading,
@@ -63,6 +68,7 @@ export function SidebarRow({
   onSelect,
   action,
   muted = false,
+  compact = false,
 }: SidebarRowProps) {
   const closeMobile = useCloseMobileSidebar();
   // Texte complet au survol : titres et sous-titres peuvent être coupés. Une phrase donnée (hint) remplace « titre · sous-titre ».
@@ -81,15 +87,15 @@ export function SidebarRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span
           className={cn(
-            // Deux lignes au plus : une panne ou une action à valider reste lisible.
-            'line-clamp-2 break-words text-sm',
+            // Deux lignes au plus (une seule en compact) : une panne ou une action à valider reste lisible.
+            compact ? 'block truncate text-xs' : 'line-clamp-2 break-words text-sm',
             strong ? 'font-semibold text-sidebar-foreground' : 'font-normal',
             !strong && (muted ? 'text-muted-foreground' : 'text-foreground-secondary'),
           )}
         >
           {title}
         </span>
-        {sub && (
+        {sub && !compact && (
           <span className="truncate text-2xs leading-4 text-muted-foreground">{sub}</span>
         )}
       </span>
@@ -108,22 +114,22 @@ export function SidebarRow({
   let target: React.ReactNode;
   if (to) {
     target = (
-      <Link to={to} onClick={closeMobile} title={fullText} className={cn(TARGET_CLASS, INTERACTIVE_CLASS)}>
+      <Link to={to} onClick={closeMobile} title={fullText} className={cn(TARGET_CLASS, compact && COMPACT_TARGET_CLASS, INTERACTIVE_CLASS)}>
         {content}
       </Link>
     );
   } else if (onSelect) {
     target = (
-      <button type="button" onClick={onSelect} title={fullText} className={cn(TARGET_CLASS, INTERACTIVE_CLASS)}>
+      <button type="button" onClick={onSelect} title={fullText} className={cn(TARGET_CLASS, compact && COMPACT_TARGET_CLASS, INTERACTIVE_CLASS)}>
         {content}
       </button>
     );
   } else {
-    target = <div title={fullText} className={TARGET_CLASS}>{content}</div>;
+    target = <div title={fullText} className={cn(TARGET_CLASS, compact && COMPACT_TARGET_CLASS)}>{content}</div>;
   }
 
   return (
-    <li className="flex items-center gap-0.5">
+    <li className="group/sidebar-row flex items-center gap-0.5">
       {target}
       {action != null && (
         <div

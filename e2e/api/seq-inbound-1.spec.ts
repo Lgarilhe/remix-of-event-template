@@ -485,6 +485,70 @@ test.describe('Réponse du candidat', () => {
     expect((await exec(followUp)).status).toBe('cancelled');
   });
 
+  // capture-actions-candidat-non-bloquante
+  test('@critical lecture du message reçu impossible chez le prestataire (503) : la réponse clôt quand même l’inscription et arrête la relance, le webhook répond 200', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E inbound capture');
+    const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance ne doit pas partir']);
+    const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
+    const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
+
+    // La capture des actions candidat relit le message chez le prestataire (GET .../chats/{chat}/messages/{message})
+    // avant le traitement de la réponse. Le message porte is_sender : le récepteur n'a pas d'autre lecture à faire,
+    // la lecture de la capture est donc la seule, et elle échoue.
+    const chatId = `chat_${rand()}`;
+    const event = replyFrom(accountId, profileId, { chatId });
+    await setMockMode(accountId, { routes: [routes.fail('getMessage', 'unavailable')] });
+    cleanups.push(() => setMockMode(accountId, {}));
+
+    const res = await rawWebhook(event);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const reads = (await callsOf(accountId, 'getMessage')).filter((c) => c.path.includes(`/chats/${chatId}/messages/`));
+    expect(reads.filter((c) => c.status === 503).length, 'la lecture du message a bien reçu le 503 scripté').toBeGreaterThanOrEqual(1);
+
+    expect((await enr(enrollmentId)).status, 'réponse enregistrée malgré la capture en échec').toBe('replied');
+    expect((await exec(followUp)).status, 'relance annulée').toBe('cancelled');
+    expect((await analytics(sequenceId)).replies, 'réponse comptée une fois').toBe(1);
+    expect(await dedupRows(dedupKeyOf(event)), 'événement consommé : le fournisseur n’a rien à rejouer').toBe(1);
+    await runCycle();
+    expect(await sentTexts(accountId), 'aucun message au candidat qui a répondu').toEqual([]);
+  });
+
+  // capture-actions-candidat-email-boite-declaree
+  test('e-mail relu par défaut pour la boîte déclarée (email_address) : l’identité de la boîte est vérifiée, l’échange entre dans l’historique du candidat et la réponse clôt l’inscription', async () => {
+    const { org, accountId } = await trackedSendingOrg('E2E inbound capture e-mail');
+    const mailbox = `acc_mbx${rand()}`;
+    const mailboxAddress = `recruteur.${rand()}@e2e.konekt.test`;
+    const { error: mbxError } = await admin().from('member_email_accounts').insert({
+      organization_id: org.orgId, user_id: org.owner.userId, linked_by: org.owner.userId,
+      email_account_id: mailbox, email_address: mailboxAddress, provider: 'GOOGLE',
+    });
+    if (mbxError) throw new Error(`member_email_accounts: ${mbxError.message}`);
+    // Expéditeur du courriel que le faux prestataire rend par défaut (emailObject de vendor-mock.mjs).
+    const candidateEmail = 'candidat@example.test';
+    const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance ne doit pas partir']);
+    const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId, { email_used: candidateEmail, current_step_order: 1 });
+    const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
+
+    // Aucune route scriptée : le courriel relu est celui du faux prestataire, adressé à la boîte déclarée.
+    await setMockMode(mailbox, { email_address: mailboxAddress });
+    cleanups.push(() => setMockMode(mailbox, {}));
+    const emailId = `mail_${rand()}`;
+    const res = await rawWebhook(v2.emailNew({ accountId: mailbox, provider: 'google', emailId, subject: 'Re: Bonjour', from: candidateEmail, to: mailboxAddress }));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const reads = (await callsOf(mailbox, 'getEmail')).filter((c) => c.path.endsWith(`/emails/${emailId}`));
+    expect(reads.length, 'le courriel a été relu chez le prestataire').toBeGreaterThanOrEqual(1);
+    expect(reads.every((c) => c.status === 200 && !c.scripted), 'réponse par défaut du faux prestataire').toBe(true);
+
+    const { data: history, error } = await admin().from('candidate_action_messages')
+      .select('direction, channel, counterpart, recipient, account_id, provider_message_id').eq('organization_id', org.orgId);
+    if (error) throw new Error(`candidate_action_messages: ${error.message}`);
+    expect(history, 'courriel capturé dans l’historique du candidat').toEqual([{
+      direction: 'inbound', channel: 'email', counterpart: candidateEmail, recipient: mailboxAddress, account_id: mailbox, provider_message_id: emailId,
+    }]);
+    expect((await enr(enrollmentId)).status, 'réponse enregistrée').toBe('replied');
+    expect((await exec(followUp)).status, 'relance annulée').toBe('cancelled');
+  });
+
   // message-received-expediteur-soi
   test('message envoyé par le compte lui-même : rien n’est clos et les notifications de la conversation passent en lues ; payload incomplet ignoré sans écriture', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound soi');

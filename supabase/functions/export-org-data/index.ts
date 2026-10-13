@@ -11,6 +11,7 @@
  * - Connected calendars (member_calendar_accounts): member, provider, address and state, no provider identifier
  * - Phone calls (phone_calls, lot A1), their analyses (phone_call_insights) and transcriptions
  *   (phone_call_transcripts, lot A5, the most recent ones: the cap is reported in _meta)
+ * - Reminders and tasks (candidate_reminders): candidate name, mission, free note, due date
  *
  * Only admins can trigger this export.
  */
@@ -19,6 +20,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 
 /** Une transcription pèse plusieurs ko : au-delà, l'export dépasserait la mémoire de la fonction. */
 const TRANSCRIPTS_EXPORT_LIMIT = 3000;
+/** Plafond des rappels exportés, annoncé dans _meta quand il est atteint. */
+const REMINDERS_EXPORT_LIMIT = 10000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,6 +96,7 @@ Deno.serve(async (req) => {
       { data: phoneCallTranscripts, error: phoneCallTranscriptsError },
       { data: candidateActionPlans, error: candidateActionPlansError },
       { data: candidateActionMessages, error: candidateActionMessagesError },
+      { data: candidateReminders, error: candidateRemindersError },
     ] = await Promise.all([
       adminClient
         .from("job_candidate_status")
@@ -168,6 +172,13 @@ Deno.serve(async (req) => {
       userClient.from('candidate_action_messages').select('*')
         .eq('organization_id', organizationId)
         .order('occurred_at', { ascending: false }).limit(2000),
+      // Rappels et tâches : nom du candidat, mission, note libre (effacés avec le candidat).
+      adminClient
+        .from("candidate_reminders")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(REMINDERS_EXPORT_LIMIT),
     ]);
     const ownPlanIds = (candidateActionPlans ?? []).map((plan: { id: string }) => plan.id);
     const actionEffectsQuery = ownPlanIds.length > 0
@@ -180,7 +191,8 @@ Deno.serve(async (req) => {
     const queryError = candidatesError || projectsError || transactionsError || membersError
       || conversationLinksError || candidatePhotosError || qualificationSessionsError || calendarAccountsError
       || phoneCallsError || phoneCallInsightsError || phoneCallTranscriptsError
-      || candidateActionPlansError || candidateActionMessagesError || actionEffectsQuery.error;
+      || candidateActionPlansError || candidateActionMessagesError || actionEffectsQuery.error
+      || candidateRemindersError;
     if (queryError) {
       console.error("[export-org-data] query failed:", queryError);
       return new Response(
@@ -207,6 +219,7 @@ Deno.serve(async (req) => {
       candidate_action_plans: candidateActionPlans || [],
       candidate_action_effects: actionEffectsQuery.data || [],
       candidate_action_messages: candidateActionMessages || [],
+      candidate_reminders: candidateReminders || [],
       _meta: {
         candidate_action_plans_count: (candidateActionPlans || []).length,
         candidate_action_plans_truncated: (candidateActionPlans || []).length >= 1000,
@@ -222,6 +235,8 @@ Deno.serve(async (req) => {
         candidate_photos_count: (candidatePhotos || []).length,
         qualification_sessions_count: (qualificationSessions || []).length,
         calendar_accounts_count: (calendarAccounts || []).length,
+        candidate_reminders_count: (candidateReminders || []).length,
+        candidate_reminders_truncated: (candidateReminders || []).length >= REMINDERS_EXPORT_LIMIT,
         format: "JSON",
         rgpd_article: "Article 20 — Droit à la portabilité",
       },

@@ -35,7 +35,7 @@ import {
 } from "../_shared/candidate-reply-closure.ts";
 import { candidateRef, recordInbound, recordOwnMessage, type CandidateRef } from "../_shared/candidate-stage-events.ts";
 import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
-import { captureCandidateActionIncoming } from "../_shared/candidate-actions/incoming.ts";
+import { captureCandidateActionIncomingBestEffort } from "../_shared/candidate-actions/incoming.ts";
 import { claimForAttempt, insertClaimNotification, providerKind, statusAtClaim } from "../_shared/connection-claim.ts";
 
 // Récepteur des événements du service de connexion (API v2). Aucun en-tête
@@ -895,7 +895,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       }
 
       case 'new_message': {
-        const captured = await captureCandidateActionIncoming(supabase, payload as unknown as Record<string, unknown>, rawPayload);
+        const captured = await captureCandidateActionIncomingBestEffort(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // WhatsApp has a personal binding and its own history. It must never
         // pass through the LinkedIn enrollment/stage handler.
         if (captured.channel !== 'whatsapp' && isLinkedInProvider(payload.account_type)) {
@@ -905,7 +905,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       }
 
       case 'mail_received': {
-        const captured = await captureCandidateActionIncoming(supabase, payload as unknown as Record<string, unknown>, rawPayload);
+        const captured = await captureCandidateActionIncomingBestEffort(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // Un email a été reçu sur un compte connecté → vérifier si c'est une
         // réponse à une étape de séquence email pour stopper les suivantes.
         if (captured.audience !== 'team') await handleNewMail(supabase, payload, eventKey);

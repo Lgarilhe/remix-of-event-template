@@ -188,6 +188,10 @@ Deno.serve(async (req) => {
     // Une recherche ou un envoi refusé (licence absente, page périmée, mots-clés trop longs, objet ou signature
     // d'InMail manquant, conversation mal formée) ne consomme pas d'unité du plafond LinkedIn : le gate journalise
     // l'usage dès qu'il laisse passer, et la nouvelle tentative de l'utilisateur coûterait une seconde unité.
+    // Correctif 4 : le destinataire d'un envoi est résolu et contrôlé ici aussi (planSend, checkSendRecipient) :
+    // un candidat effacé (RGPD, 403 CANDIDATE_ERASED) ou un registre illisible (503 GDPR_UNVERIFIED) refusent
+    // l'envoi avant le plafond, le marqueur et l'appel au prestataire. Le refus lève UnipileInputError, rendue
+    // plus bas avec son statut et son code.
     const searchDeps = {
       beforeProvider: continuousGuard,
       recordFailure: async (row: SearchFailureRow) => { await admin.from('search_failure_log').insert(row); },

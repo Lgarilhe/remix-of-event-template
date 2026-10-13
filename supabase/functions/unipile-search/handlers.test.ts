@@ -11,7 +11,7 @@ import { clearLicenceCache, inboxKindOf, licencesFromContracts, pickInbox, searc
 import { handleEndorseSkill, handleGetProfile, handleGetUserPosts, toLegacyPost } from './profile.ts';
 import { UnipileInputError } from './responses.ts';
 import { handleGetParameters, handleSearch, prepareSearch } from './search.ts';
-import { handleSendMessage, planSend, type SendContext } from './send.ts';
+import { handleSendMessage, planSend, SEND_ERASED_MESSAGE, SEND_GDPR_UNVERIFIED_MESSAGE, type SendContext } from './send.ts';
 
 const ACC = 'acc_test1';
 const originalConsole = { log: console.log, warn: console.warn, error: console.error };
@@ -44,19 +44,50 @@ async function call<T>(response: Response): Promise<{ status: number; body: Reco
   return { status: response.status, body: await response.json() };
 }
 
-function fakeAdmin(options: { erased?: boolean; displayName?: string | null; link?: Record<string, unknown> | null } = {}, timeline: string[] = []) {
+type Row = Record<string, unknown>;
+
+/**
+ * Doublure de la base. `erased` : le registre de l'organisation désigne tout candidat (true) ou ces identifiants
+ * seulement ; `pipeline` : lignes du pipeline qui rattachent une adresse de profil à un identifiant ; `unreadableRegister` :
+ * la lecture du registre d'effacement échoue.
+ */
+function fakeAdmin(
+  options: { erased?: boolean | string[]; unreadableRegister?: boolean; pipeline?: Row[]; displayName?: string | null; link?: Row | null } = {},
+  timeline: string[] = [],
+) {
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
-  const rows = (table: string): unknown[] => {
-    if (table === 'candidate_photos' && options.erased) return [{ candidate_id: 'x' }];
-    if (table === 'mission_conversations' && options.link) return [options.link];
-    return [];
-  };
+  const eqCalls: Array<{ table: string; column: string; value: unknown }> = [];
   const from = (table: string) => {
+    const inFilters: Record<string, unknown[]> = {};
+    const likeFilters: Record<string, string> = {};
+    const rows = (): unknown[] => {
+      if (table === 'candidate_photos' && options.erased === true) return [{ candidate_id: 'x' }];
+      if (table === 'candidate_photos' && Array.isArray(options.erased)) {
+        const asked = inFilters.candidate_id ?? [];
+        return asked.some((id) => (options.erased as string[]).includes(String(id))) ? [{ candidate_id: 'x' }] : [];
+      }
+      if (table === 'job_candidate_status') {
+        return (options.pipeline ?? []).filter((row) => {
+          if (inFilters.candidate_id) return inFilters.candidate_id.includes(row.candidate_id);
+          if (likeFilters.linkedin_profile_url) return String(row.linkedin_profile_url ?? '').toLowerCase().includes(likeFilters.linkedin_profile_url);
+          return false;
+        });
+      }
+      if (table === 'mission_conversations' && options.link) return [options.link];
+      return [];
+    };
     // deno-lint-ignore no-explicit-any
     const q: any = {
-      select: () => q, eq: () => q, in: () => q, ilike: () => q, or: () => q, order: () => q, limit: () => q,
+      select: () => q, or: () => q, order: () => q, limit: () => q,
+      eq: (column: string, value: unknown) => { eqCalls.push({ table, column, value }); return q; },
+      in: (column: string, values: unknown[]) => { inFilters[column] = values; return q; },
+      ilike: (column: string, pattern: string) => { likeFilters[column] = pattern.replace(/\\([%_\\])/g, '$1').replace(/^%|%$/g, '').toLowerCase(); return q; },
       maybeSingle: () => Promise.resolve({ data: table === 'profiles' && options.displayName !== undefined ? { display_name: options.displayName } : null, error: null }),
-      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve({ data: rows(table), error: null }).then(resolve, reject),
+      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve(
+        table === 'candidate_photos' && options.unreadableRegister
+          ? { data: null, error: { message: 'lecture impossible' } }
+          : { data: rows(), error: null },
+      ).then(resolve, reject),
     };
     return q;
   };
@@ -65,7 +96,7 @@ function fakeAdmin(options: { erased?: boolean; displayName?: string | null; lin
     timeline.push(`rpc ${name}${args.p_pending ? ' pending' : ''}`);
     return Promise.resolve({ data: { project_id: 'p1', via: 'explicit', rows: [] }, error: null });
   };
-  return { from, rpc, rpcCalls };
+  return { from, rpc, rpcCalls, eqCalls };
 }
 
 function sendContext(admin: ReturnType<typeof fakeAdmin>, overrides: Partial<SendContext> = {}): SendContext {
@@ -972,7 +1003,8 @@ Deno.test('send_message incertain : jamais enregistré comme envoyé, jamais rep
       strictEqual(status, 502);
       strictEqual(body.errorType, 'UNCERTAIN');
       ok(!/unipile|html/i.test(JSON.stringify(body)));
-      strictEqual(mock.calls.length, 1, 'aucune reprise');
+      // La conversation sans lien est lue une fois (interlocuteur du destinataire à contrôler), l'envoi une seule.
+      strictEqual(mock.calls.filter((c) => c.method === 'POST').length, 1, 'aucune reprise');
     });
     deepStrictEqual(admin.rpcCalls.map((c) => c.args.p_pending), [true], 'le marqueur seul, pas de « Contacté »');
   }
@@ -996,13 +1028,126 @@ Deno.test('send_message refusé (limite, compte, destinataire) : réponse en fra
   }
 });
 
-Deno.test('send_message : candidat effacé, le message part sans marqueur ni enregistrement', async () => {
+/** Refus d'un envoi (UnipileInputError du contrôle du destinataire) : statut, code et texte, ou échec du test si rien n'est refusé. */
+async function refusedSend(run: () => Promise<unknown>): Promise<{ status: number; code: string | undefined; message: string }> {
+  try {
+    await run();
+  } catch (e) {
+    if (e instanceof UnipileInputError) return { status: e.status, code: e.code, message: e.message };
+    throw e;
+  }
+  throw new Error('envoi non refusé');
+}
+
+const SENT = { object: 'MessageSent', message_id: 'm1' };
+
+Deno.test('send_message : un candidat effacé (nouvelle conversation) est refusé 403 avant tout appel, marqueur et lecture de licence', async () => {
   reset();
-  const admin = fakeAdmin({ erased: true });
-  await withMockTransport(router({ [`POST /${ACC}/chats/c1/messages/send`]: { body: { object: 'MessageSent', message_id: 'm1' } } }), async () => {
-    strictEqual((await call(await handleSendMessage(ACC, { chat_id: 'c1', text: 'Bonjour', recipient_id: 'ACoAAcand' }, sendContext(admin)))).body.success, true);
+  const timeline: string[] = [];
+  const admin = fakeAdmin({ erased: true }, timeline);
+  await withMockTransport(router({ [`POST /${ACC}/chats/send`]: { body: STARTED } }, timeline), async (mock) => {
+    const refused = await refusedSend(() => handleSendMessage(ACC, { recipient_id: 'ACoAAcand', text: 'Bonjour' }, sendContext(admin)));
+    deepStrictEqual(refused, { status: 403, code: 'CANDIDATE_ERASED', message: SEND_ERASED_MESSAGE });
+    // Même refus par le plan, qui précède le plafond LinkedIn dans le point d'entrée.
+    const planned = await refusedSend(() => planSend(ACC, { recipient_id: 'ACoAAcand', text: 'Bonjour' }, sendContext(admin)));
+    strictEqual(planned.code, 'CANDIDATE_ERASED');
+    // InMail : le candidat est jugé avant la lecture du contrat (aucun appel au prestataire).
+    const inmail = await refusedSend(() => handleSendMessage(ACC, { recipient_id: 'ACoAAcand', text: 'Bonjour', is_inmail: true, subject: 'Objet' }, sendContext(admin)));
+    strictEqual(inmail.code, 'CANDIDATE_ERASED');
+    strictEqual(mock.calls.length, 0, 'aucun appel au prestataire');
   });
-  strictEqual(admin.rpcCalls.length, 0);
+  strictEqual(admin.rpcCalls.length, 0, 'aucun marqueur');
+  ok(!/unipile|linkedin/i.test(SEND_ERASED_MESSAGE));
+});
+
+Deno.test('send_message : le candidat de la conversation prime sur recipient_id, lien de la mission puis interlocuteur lu chez le prestataire', async () => {
+  reset();
+  // Lien de la mission : le candidat effacé est celui du lien, recipient_id désigne un autre candidat.
+  const linked = fakeAdmin({ erased: ['ACoAAerased'], link: { candidate_id: 'ACoAAerased', candidate_ids: [], candidate_slug: 'erased' } });
+  await withMockTransport(router({ [`POST /${ACC}/chats/c1/messages/send`]: { body: SENT } }), async (mock) => {
+    const refused = await refusedSend(() => handleSendMessage(ACC, { chat_id: 'c1', recipient_id: 'ACoAAfine', text: 'Bonjour' }, sendContext(linked)));
+    deepStrictEqual([refused.status, refused.code], [403, 'CANDIDATE_ERASED']);
+    strictEqual(mock.calls.length, 0, 'ni lecture de la conversation (lien connu) ni envoi');
+  });
+  strictEqual(linked.rpcCalls.length, 0);
+
+  // Sans lien : l'interlocuteur lu sous le compte de la requête (identifiant ACoAAc1).
+  const readChat = { [`GET /${ACC}/chats/c1`]: { body: chat('c1', '2026-10-01T10:00:00Z') }, [`POST /${ACC}/chats/c1/messages/send`]: { body: SENT } };
+  const read = fakeAdmin({ erased: ['ACoAAc1'] });
+  await withMockTransport(router(readChat), async (mock) => {
+    const refused = await refusedSend(() => handleSendMessage(ACC, { chat_id: 'c1', recipient_id: 'ACoAAfine', text: 'Bonjour' }, sendContext(read)));
+    deepStrictEqual([refused.status, refused.code], [403, 'CANDIDATE_ERASED']);
+    deepStrictEqual(mock.calls.map((c) => c.method), ['GET'], 'une lecture, aucun envoi');
+  });
+  strictEqual(read.rpcCalls.length, 0);
+
+  // Le recipient_id effacé ne compte pas dans une conversation : le message part vers l'interlocuteur, enregistré pour lui.
+  const fine = fakeAdmin({ erased: ['ACoAAerased'] });
+  await withMockTransport(router(readChat), async () => {
+    strictEqual((await call(await handleSendMessage(ACC, { chat_id: 'c1', recipient_id: 'ACoAAerased', text: 'Bonjour' }, sendContext(fine)))).body.success, true);
+  });
+  deepStrictEqual((fine.rpcCalls[0].args.p_candidate as { ids: string[] }).ids, ['ACoAAc1']);
+});
+
+Deno.test('send_message : le candidat est cherché sous le chat_id que l\'envoi utilise, y compris un identifiant qui contient un %', async () => {
+  reset();
+  // Aucun décodage entre le contrôle et l'envoi : « %63hat » est un identifiant de conversation, pas « chat ».
+  const admin = fakeAdmin({ link: { candidate_id: 'ACoAAcand', candidate_ids: [], candidate_slug: 'cand' } });
+  await withMockTransport(router({ [`POST /${ACC}/chats/%2563hat1/messages/send`]: { body: SENT } }), async (mock) => {
+    strictEqual((await call(await handleSendMessage(ACC, { chat_id: ' %63hat1 ', text: 'Bonjour' }, sendContext(admin)))).body.success, true);
+    const post = mock.calls.find((c) => c.method === 'POST')!;
+    strictEqual(decodeURIComponent(post.path).endsWith('/chats/%63hat1/messages/send'), true, post.path);
+  });
+  const lookups = admin.eqCalls.filter((c) => c.table === 'mission_conversations' && c.column === 'chat_id');
+  deepStrictEqual(lookups.map((c) => c.value), ['%63hat1'], 'le lien est lu sous l\'identifiant que l\'envoi utilise');
+  strictEqual(admin.rpcCalls[0].args.p_chat_id, '%63hat1');
+});
+
+Deno.test('send_message : un registre d\'effacement illisible refuse l\'envoi 503, jamais un passage silencieux', async () => {
+  reset();
+  for (const params of [{ recipient_id: 'ACoAAcand' }, { chat_id: 'c1', recipient_id: 'ACoAAcand' }]) {
+    const admin = fakeAdmin({ unreadableRegister: true });
+    await withMockTransport(router({ [`POST /${ACC}/chats/c1/messages/send`]: { body: SENT }, [`POST /${ACC}/chats/send`]: { body: STARTED } }), async (mock) => {
+      const refused = await refusedSend(() => handleSendMessage(ACC, { ...params, text: 'Bonjour' }, sendContext(admin)));
+      deepStrictEqual(refused, { status: 503, code: 'GDPR_UNVERIFIED', message: SEND_GDPR_UNVERIFIED_MESSAGE });
+      ok(!mock.calls.some((c) => c.method === 'POST'), 'aucun envoi');
+    });
+    strictEqual(admin.rpcCalls.length, 0, 'aucun marqueur');
+  }
+});
+
+Deno.test('send_message : un recipient_id donné par nom court ou adresse de profil est contrôlé par ce profil', async () => {
+  reset();
+  const pipeline = [{ candidate_id: 'ACoAAerased', linkedin_profile_url: 'https://www.linkedin.com/in/ada-erased' }];
+  for (const recipient_id of ['ada-erased', 'https://www.linkedin.com/in/ada-erased/']) {
+    const admin = fakeAdmin({ erased: ['ACoAAerased'], pipeline });
+    await withMockTransport(router({}), async (mock) => {
+      const refused = await refusedSend(() => handleSendMessage(ACC, { recipient_id, text: 'Bonjour' }, sendContext(admin)));
+      strictEqual(refused.code, 'CANDIDATE_ERASED', recipient_id);
+      strictEqual(mock.calls.length, 0);
+    });
+    strictEqual(admin.rpcCalls.length, 0);
+  }
+  // Un profil qui n'est pas au registre reste joignable.
+  const other = fakeAdmin({ erased: ['ACoAAerased'], pipeline });
+  await withMockTransport(router({ [`GET /${ACC}/inboxes`]: { status: 404, body: {} }, [`POST /${ACC}/chats/send`]: { body: STARTED } }), async () => {
+    strictEqual((await call(await handleSendMessage(ACC, { recipient_id: 'grace-fine', text: 'Bonjour' }, sendContext(other)))).body.success, true);
+  });
+});
+
+Deno.test('send_message : un candidat non effacé part et s\'enregistre comme avant', async () => {
+  reset();
+  const timeline: string[] = [];
+  const admin = fakeAdmin({ erased: ['ACoAAsomeoneelse'] }, timeline);
+  await withMockTransport(
+    router({ [`GET /${ACC}/inboxes`]: { status: 404, body: {} }, [`POST /${ACC}/chats/send`]: { body: STARTED } }, timeline),
+    async () => {
+      const { status, body } = await call(await handleSendMessage(ACC, { recipient_id: 'ACoAAcand', text: 'Bonjour' }, sendContext(admin)));
+      strictEqual(status, 200);
+      strictEqual(body.success, true);
+    },
+  );
+  deepStrictEqual(timeline.filter((k) => k.startsWith('rpc') || k.startsWith('POST')), ['rpc record_candidate_outbound pending', `POST /${ACC}/chats/send`, 'rpc record_candidate_outbound']);
 });
 
 Deno.test('send_message dans une conversation sans lien : le candidat est l\'interlocuteur lu sous le compte de la requête', async () => {
@@ -1065,7 +1210,7 @@ Deno.test('planSend : objet, signature et conversation se jugent sans rien écri
   reset();
   await withMockTransport(router({ [`GET /${ACC}/linkedin/contracts`]: { body: RECRUITER } }), async (mock) => {
     const admin = fakeAdmin({ displayName: null });
-    const ctx = { userId: 'user-1', accountOwnerId: 'user-1', admin: () => admin };
+    const ctx = { organizationId: 'org-1', userId: 'user-1', accountOwnerId: 'user-1', admin: () => admin };
     const noSubject = await planSend(ACC, { recipient_id: 'ACoAAcand', text: 'Bonjour', is_inmail: true }, ctx);
     ok(!noSubject.ok);
     strictEqual(noSubject.response.status, 400);

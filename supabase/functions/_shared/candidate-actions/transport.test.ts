@@ -1,5 +1,5 @@
 import { candidateActionStoredEmailSource, loadCandidateActionTargets, readCandidateActionChatContext, readCandidateActionEmailContext, sendCandidateActionMessage, validateCandidateActionChat } from './transport.ts';
-import { captureCandidateActionIncoming } from './incoming.ts';
+import { captureCandidateActionIncoming, captureCandidateActionIncomingBestEffort } from './incoming.ts';
 import type { CandidateActionMessageEffect, CandidateActionScope } from './types.ts';
 import { jsonResponse, networkError, withMockTransport, type MockReply, type RecordedRequest } from '../unipile/testing.ts';
 
@@ -489,6 +489,79 @@ Deno.test('a chat that definitively does not answer is not captured, a transient
     let failed = false;
     try { await captureCandidateActionIncoming(f.client, delivery); } catch { failed = true; }
     assert(failed, 'a transient fault must fail the delivery so that it is replayed');
+  } finally { f.close(); }
+});
+
+/** Les journaux d'erreur attendus ne polluent pas la sortie et leur nombre est vérifié. */
+async function withSilencedErrors<T>(run: () => Promise<T>): Promise<{ result: T; logged: unknown[][] }> {
+  const original = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try { return { result: await run(), logged }; } finally { console.error = original; }
+}
+
+Deno.test('best-effort capture: a LinkedIn chat the provider cannot read is logged, not thrown, so the reply is still processed', async () => {
+  const f = fixture();
+  try {
+    f.tables.member_linkedin_accounts.push({ organization_id: f.org, user_id: f.user, linkedin_account_id: LI, linkedin_account_name: 'Mon LinkedIn', account_status: 'OK' });
+    const delivery = { account_id: LI, message_id: 'li-message', data: { message: { id: 'li-message', chat_id: 'chat-1' } } };
+    // The message is readable, its chat answers a transient fault: the exact capture fails the delivery, the best effort one does not.
+    f.reads(request => request.path.endsWith('/messages/li-message') ? jsonResponse({ id: 'li-message', chat_id: 'chat-1', is_sender: false, text: 'Oui avec plaisir', timestamp: '2026-10-07T10:00:00Z' }) : { status: 503, body: {} });
+    let exactRejected = false;
+    try { await captureCandidateActionIncoming(f.client, delivery); } catch { exactRejected = true; }
+    assert(exactRejected, 'the exact capture keeps throwing');
+    const { result, logged } = await withSilencedErrors(() => captureCandidateActionIncomingBestEffort(f.client, delivery));
+    equal(result, { channel: 'linkedin', audience: null, captured: false, failed: true });
+    equal(logged.length, 1);
+    equal(f.tables.candidate_action_messages.length, 0);
+    // A delivery that names no chat cannot be read either: logged as well, never guessed.
+    const noChat = await withSilencedErrors(() => captureCandidateActionIncomingBestEffort(f.client, { account_id: LI, message_id: 'li-message' }));
+    equal(noChat.result, { channel: 'linkedin', audience: null, captured: false, failed: true });
+  } finally { f.close(); }
+});
+
+Deno.test('best-effort capture: an email read that fails, or whose mailbox identity cannot be verified (alias, hidden copy), does not hold back reply handling', async () => {
+  const f = fixture();
+  try {
+    f.reads(request => request.path === `/${MAIL}/emails/alias-id` ? jsonResponse(v2Email({ id: 'alias-id', to: [{ email: 'alias@example.test' }], body_plain: 'Réponse sur un alias.', subject: 'Re', thread_id: 'alias-thread' })) : { status: 404, body: {} });
+    let exactRejected = false;
+    try { await captureCandidateActionIncoming(f.client, { account_id: MAIL, email_id: 'alias-id' }); } catch { exactRejected = true; }
+    assert(exactRejected, 'the exact capture keeps throwing');
+    const alias = await withSilencedErrors(() => captureCandidateActionIncomingBestEffort(f.client, { account_id: MAIL, email_id: 'alias-id' }));
+    equal(alias.result, { channel: 'email', audience: null, captured: false, failed: true });
+    equal(f.tables.candidate_action_messages.length, 0);
+    // The provider does not answer the read at all (5xx).
+    f.reads(() => ({ status: 503, body: {} }));
+    const down = await withSilencedErrors(() => captureCandidateActionIncomingBestEffort(f.client, { account_id: MAIL, email_id: 'down-id' }));
+    equal(down.result, { channel: 'email', audience: null, captured: false, failed: true });
+    equal(down.logged.length, 1);
+    equal(f.tables.candidate_action_messages.length, 0);
+  } finally { f.close(); }
+});
+
+Deno.test('best-effort capture: a WhatsApp failure still throws, because that message must never reach the LinkedIn handler', async () => {
+  const f = fixture();
+  try {
+    f.tables.member_whatsapp_accounts.push({ organization_id: f.org, user_id: f.user, whatsapp_account_id: WA, phone_number: '+33600000002', account_status: 'OK' });
+    f.reads(() => ({ status: 503, body: {} }));
+    let rejected = false;
+    try { await captureCandidateActionIncomingBestEffort(f.client, { account_id: WA, message_id: 'wa-message', data: { message: { id: 'wa-message', chat_id: 'wa-thread' } } }); } catch { rejected = true; }
+    assert(rejected);
+  } finally { f.close(); }
+});
+
+Deno.test('best-effort capture: a readable message is captured exactly like the exact capture, and unbound accounts are ignored', async () => {
+  const f = fixture();
+  try {
+    f.tables.job_candidate_status.push({ organization_id: f.org, candidate_id: f.scope.candidate_id, project_id: null, job_id: 'ats-job' });
+    f.reads(request => request.path === `/${MAIL}/emails/ok-id` ? jsonResponse(v2Email({ id: 'ok-id', body_plain: 'Bonjour, je suis disponible.', subject: 'Re', thread_id: 'ok-thread' })) : { status: 404, body: {} });
+    const result = await captureCandidateActionIncomingBestEffort(f.client, { account_id: MAIL, email_id: 'ok-id' });
+    equal(result, { channel: 'email', audience: 'candidate', captured: true });
+    equal(f.tables.candidate_action_messages.length, 1);
+    const before = f.mock.calls.length;
+    equal(await captureCandidateActionIncomingBestEffort(f.client, { account_id: 'acc_unknown', message_id: 'x' }), { channel: null, audience: null, captured: false });
+    equal(await captureCandidateActionIncomingBestEffort(f.client, {}), { channel: null, audience: null, captured: false });
+    equal(f.mock.calls.length, before);
   } finally { f.close(); }
 });
 

@@ -319,7 +319,8 @@ test('un envoi dans une conversation passe par l\'API v2, marqueur d\'abord, enr
   const response = await t.post({ action: 'send_message', chat_id: 'c1', recipient_id: 'ACoAAcand', text: 'Bonjour' });
   assert.equal(response.status, 200);
   assert.deepEqual(t.calls.rpc.filter(call => call.name === 'record_candidate_outbound').map(call => call.args.p_pending), [true, false]);
-  assert.deepEqual(t.provider, ['POST /acc_mine/chats/c1/messages/send']);
+  // Correctif 4 : sans lien de mission, le participant de la conversation est lu avant l'envoi (destinataire vérifié).
+  assert.deepEqual(t.provider, ['GET /acc_mine/chats/c1', 'POST /acc_mine/chats/c1/messages/send']);
 });
 
 test('un envoi incertain n\'est jamais compté comme envoyé ni repris', async () => {
@@ -329,15 +330,20 @@ test('un envoi incertain n\'est jamais compté comme envoyé ni repris', async (
   assert.equal(response.status, 502);
   assert.equal(response.body.errorType, 'UNCERTAIN');
   noVendor(response.body);
-  assert.deepEqual(t.provider, ['POST /acc_mine/chats/c1/messages/send'], 'aucune reprise');
+  assert.deepEqual(t.provider, ['GET /acc_mine/chats/c1', 'POST /acc_mine/chats/c1/messages/send'], 'aucune reprise de l\'envoi');
   assert.deepEqual(t.calls.rpc.filter(call => call.name === 'record_candidate_outbound').map(call => call.args.p_pending), [true]);
 });
 
-test('un candidat effacé reçoit le message sans marqueur ni lien', async () => {
+test('un candidat effacé est refusé avant le plafond, le marqueur et l\'envoi (correctif 4)', async () => {
   const t = await boot({ erased: true });
   t.state.routes = { 'POST /acc_mine/chats/c1/messages/send': { body: { object: 'MessageSent', message_id: 'm1' } } };
-  assert.equal((await t.post({ action: 'send_message', chat_id: 'c1', recipient_id: 'ACoAAcand', text: 'Bonjour' })).status, 200);
-  assert.equal(t.calls.rpc.filter(call => call.name === 'record_candidate_outbound').length, 0);
+  const response = await t.post({ action: 'send_message', chat_id: 'c1', recipient_id: 'ACoAAcand', text: 'Bonjour' });
+  assert.equal(response.status, 403);
+  assert.equal(response.body.error_code, 'CANDIDATE_ERASED');
+  noVendor(response.body);
+  assert.equal(t.provider.some(entry => entry.startsWith('POST ')), false, 'aucun envoi');
+  assert.equal(t.calls.rpc.filter(call => call.name === 'record_candidate_outbound').length, 0, 'ni marqueur ni lien');
+  assert.deepEqual(t.quotaCalls, [], 'aucune unité du plafond prise');
 });
 
 test('la lecture des conversations et des messages garde les formes lues par la messagerie', async () => {

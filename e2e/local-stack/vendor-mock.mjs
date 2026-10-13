@@ -60,7 +60,10 @@
 // v1_account_id (objet Account), candidate_provider_id, search_results, ai_markers,
 // action_recipes, ai_text, profile_sections ({ experience: [...], education: [...], ...} :
 // contenu des sections demandées par with_sections), group_chats (identifiants de conversations
-// de groupe : participants lisibles).
+// de groupe : participants lisibles), email_address (adresse de la boîte : destinataire du courriel
+// que GET /v2/{acc}/emails/{id} rend par défaut, pour que le récepteur de webhooks vérifie l'identité
+// de la boîte qu'il lit ; sans elle, recruteur@example.test. Une route scriptée `routes.email`
+// passe avant ce défaut).
 //
 // Points de contrôle de /v2/auth/intent : sans script, un compte LinkedIn, IMAP, mock ou
 // Instagram est créé tout de suite (réponse Account) ; WhatsApp répond un QR code ;
@@ -271,7 +274,7 @@ function emailObject(id, mode = {}) {
     object: 'Email', id, message_id: `<${id}@mock.invalid>`, thread_id: `thread_${id}`, subject: 'Re: Bonjour',
     body: '<p>Merci</p>', body_plain: 'Merci', snippet: 'Merci', headers: [],
     from: [{ email: 'candidat@example.test', display_name: 'Test Candidat' }],
-    to: [{ email: 'recruteur@example.test', display_name: 'Compte test' }],
+    to: [{ email: mode.email_address ?? 'recruteur@example.test', display_name: 'Compte test' }],
     cc: [], bcc: [], reply_to: [], date: nowIso(), attachments: [], folders: ['INBOX'], is_unread: true,
   };
 }
