@@ -9,7 +9,13 @@
 // (les candidats de la mission rangés par ContactedList, ouvert au départ s'il
 // a une ligne) puis « Séquences ». Les invitations reçues sont dans la
 // messagerie (lot 5f-3). Interrupteur éteint : l'ancien panneau, inchangé.
-import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
+//
+// Lot 5f-2c, interrupteur allumé et `?contacter=1` : le panneau est en mode
+// Contacter. Il rend ContactFlow sur la sélection du Pipeline (contexte de la
+// coquille), relue à l'ouverture (useContactCandidates). Le choix d'un onglet
+// quitte ce mode. Rechargé sans sélection (elle n'est qu'en mémoire), il
+// s'ouvre sur « Contactés ».
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Info, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,13 +24,17 @@ import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { EmptyLinkedInAccountState } from '@/components/missions/EmptyLinkedInAccountState';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
+import { ContactFlow } from '@/components/sequences/contact/ContactFlow';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { useMissionContactedView } from '@/hooks/useMissionContacted';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { cn } from '@/lib/utils';
 import { useMissionV3 } from '../MissionV3Context';
+import { missionEnrollJob } from '../pipeline/ContactSelectionButton';
+import { useContactCandidates } from '../pipeline/useContactCandidates';
 import { ArchivedNotice } from '../shell/ArchivedNotice';
+import { useMissionSelection } from '../shell/missionSelectionContext';
 import { PANEL_FULLSCREEN_QUERY, useMediaQuery } from '../shell/useMediaQuery';
 import type { ContactPanelProps } from '../types';
 import { ContactedList } from './ContactedList';
@@ -46,6 +56,9 @@ const TABS_V2: readonly { key: ContactTab; label: string }[] = [
 /** Paramètre d'onglet repris de l'ancienne vue Prise de contact. */
 const OUTREACH_PARAM = 'outreach';
 
+/** Lot 5f-2c : « contacter=1 » met le panneau en mode Contacter (voir MissionWorkspaceV3). */
+const CONTACT_PARAM = 'contacter';
+
 /** Pas de lien de conversation connu (liste lue sans eux). */
 const NO_CHATS: ReadonlyMap<string, string> = new Map();
 
@@ -53,7 +66,8 @@ const NO_CHATS: ReadonlyMap<string, string> = new Map();
 const INBOX_INVITATIONS_PATH = '/inbox?onglet=invitations';
 
 export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Element | null {
-  const { project, isArchived } = useMissionV3();
+  const { project, isArchived, openCandidate } = useMissionV3();
+  const { selection, setSelection } = useMissionSelection();
   const { organizationId } = useOrganization();
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
   const navigate = useNavigate();
@@ -69,6 +83,8 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   const tabs = sequencesV2 ? TABS_V2 : TABS;
   const outreachParam = new URLSearchParams(location.search).get(OUTREACH_PARAM);
   const asksInvitations = outreachParam === 'invitations';
+  // Mode Contacter : interrupteur allumé, mission en cours, adresse en `?contacter=1`.
+  const asksFlow = sequencesV2 && !isArchived && new URLSearchParams(location.search).get(CONTACT_PARAM) === '1';
   // Choix de la personne ou de l'adresse (?outreach=contactes|sequences). Sans lui,
   // interrupteur allumé : « Contactés » s'ouvre s'il a une ligne, sinon « Séquences ».
   const [chosen, setChosen] = useState<ContactTab | null>(() => {
@@ -92,6 +108,8 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
     (next: ContactTab) => {
       setChosen(next);
       const params = new URLSearchParams(location.search);
+      // Choisir un onglet quitte le mode Contacter.
+      params.delete(CONTACT_PARAM);
       if (!sequencesV2 && next === 'sequences') params.delete(OUTREACH_PARAM);
       else params.set(OUTREACH_PARAM, next);
       const query = params.toString();
@@ -100,6 +118,34 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
     },
     [location.pathname, location.search, location.state, navigate, sequencesV2],
   );
+
+  // Mode Contacter : les lignes cochées sont relues à l'ouverture (lien LinkedIn, fournisseur, réseau).
+  const flow = useContactCandidates(project, [...selection.values()], asksFlow);
+  const job = useMemo(() => missionEnrollJob(project), [project]);
+  // Après l'inscription : les lignes traitées quittent la sélection, puis « Contactés ».
+  const onEnrolled = useCallback(
+    (handledRowIds: readonly string[]) => {
+      const handled = new Set(handledRowIds);
+      setSelection((prev) => {
+        const next = new Map(prev);
+        for (const id of handled) next.delete(id);
+        return next;
+      });
+      setTab('contactes');
+    },
+    [setSelection, setTab],
+  );
+  const onLeave = useCallback(() => setTab('contactes'), [setTab]);
+  // Rechargement : la sélection n'est qu'en mémoire, `?contacter=1` seul ne la rend pas.
+  // Au montage, sans sélection, le panneau s'ouvre sur « Contactés » (jamais ensuite : vider la
+  // sélection panneau ouvert laisse l'état vide de ContactFlow).
+  const reloadChecked = useRef(false);
+  const selectionSize = selection.size;
+  useEffect(() => {
+    if (reloadChecked.current) return;
+    reloadChecked.current = true;
+    if (asksFlow && selectionSize === 0) setTab('contactes');
+  }, [asksFlow, selectionSize, setTab]);
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
@@ -193,6 +239,24 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             : 'La prise de contact est fermée. Réactivez la mission pour gérer ses séquences.'}
           withAction={fullscreen}
         />
+      </div>
+    );
+  } else if (asksFlow) {
+    body = (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <SectionErrorBoundary fallbackTitle="Le panneau Contacter n'a pas pu s'afficher">
+          <ContactFlow
+            missionId={project.id}
+            job={job}
+            candidates={flow.candidates}
+            candidatesStatus={flow.status}
+            overflow={flow.overflow}
+            onRetryCandidates={flow.refetch}
+            onEnrolled={onEnrolled}
+            onOpenCandidate={openCandidate}
+            onLeave={onLeave}
+          />
+        </SectionErrorBoundary>
       </div>
     );
   } else if (sequencesV2) {
@@ -306,7 +370,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
         </Button>
       </div>
       {body}
-      {!isArchived && (
+      {!isArchived && !asksFlow && (
         <div className="sticky bottom-0 mt-auto flex shrink-0 items-start gap-2 border-t border-border bg-background px-5 py-3.5 text-xs text-muted-foreground">
           <Info className="mt-px h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
           <span>Pour contacter des candidats, cochez-les dans la liste puis « Contacter ».</span>

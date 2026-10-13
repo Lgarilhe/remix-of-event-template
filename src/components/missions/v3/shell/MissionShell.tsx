@@ -19,6 +19,7 @@ import { MissionHeader } from './MissionHeader';
 import { MissionStateBanner } from './MissionStateBanner';
 import { MissionTabs } from './MissionTabs';
 import { PanelHost } from './PanelHost';
+import { MissionSelectionProvider } from './missionSelection';
 import { SourcingPanelSlotProvider } from './sourcingPanelSlot';
 import { useSourcingPanelSlot } from './sourcingPanelContext';
 import { SourcingScreen } from './SourcingScreen';
@@ -43,7 +44,9 @@ function useInert(refs: readonly RefObject<HTMLElement>[], inert: boolean): void
 export function MissionShell() {
   return (
     <SourcingPanelSlotProvider>
-      <MissionShellFrame />
+      <MissionSelectionProvider>
+        <MissionShellFrame />
+      </MissionSelectionProvider>
     </SourcingPanelSlotProvider>
   );
 }

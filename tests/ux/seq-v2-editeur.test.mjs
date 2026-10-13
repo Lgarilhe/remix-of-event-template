@@ -1178,8 +1178,13 @@ test('enregistrement par useSequenceSave seulement : aucune écriture de sequenc
       reads.push(`${rel} : ${chain.join('.')}`);
     }
   }
-  // Seule lecture : « Copier une séquence » (/sequences/nouvelle?depart=copie:<id>), rien d'écrit avant « Enregistrer ».
-  assert.deepEqual(reads, ['src/components/sequences/SequenceCreatePage.tsx : from.select.eq.order']);
+  // Deux lectures, aucune écriture : « Copier une séquence » (/sequences/nouvelle?depart=copie:<id>), rien d'écrit avant
+  // « Enregistrer » ; et, depuis le lot 5f-2c, les étapes de la séquence choisie dans le panneau Contacter (lignes brutes
+  // que enrollCandidates attend, lecture seule : l'inscription passe par enrollCandidates).
+  assert.deepEqual(reads, [
+    'src/components/sequences/SequenceCreatePage.tsx : from.select.eq.order',
+    'src/components/sequences/contact/useSequenceSteps.ts : from.select.eq.order',
+  ]);
   assert.match(read('src/components/sequences/SequenceCreatePage.tsx'), /supabase\.from\('sequence_steps'\)\.select\('\*'\)\.eq\('sequence_id', start\.id\)/);
   // L'écriture des étapes : save_sequence_steps, appelée par useSequenceSave, utilisée par la page et la création.
   assert.match(read('src/hooks/useSequenceSave.ts'), /await supabase\.rpc\('save_sequence_steps', \{/);

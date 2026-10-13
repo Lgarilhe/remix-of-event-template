@@ -180,6 +180,12 @@ jobs:
       # ses contrôles de comportement se sauteraient sans bruit.
       - name: Lot 5f-2b tests (contactés et pastille)
         run: node --test tests/ux/lot5f2b-contactes.test.mjs
+      # Refonte mission, lot 5f-2c : panneau Contacter (classement des candidats,
+      # jauge, séquence choisie d'avance, sélection au-dessus de l'écran, composants).
+      # Sous Node 22 : les modules purs sont lus nativement et les composants
+      # empaquetés avec esbuild (npm ci), qui se sauteraient sans bruit ailleurs.
+      - name: Lot 5f-2c tests (panneau Contacter)
+        run: node --test tests/ux/lot5f2c-libs.test.mjs tests/ux/lot5f2c-plomberie.test.mjs tests/ux/lot5f2c-ecran.test.mjs tests/ux/lot5f2c-composants.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié

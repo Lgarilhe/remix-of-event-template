@@ -23,6 +23,7 @@ import type { ActionIntent, RowSignals } from '@/lib/missionNextAction';
 import { SETTINGS_PATHS } from '@/lib/settingsRoutes';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
 import { useMissionV3 } from '../MissionV3Context';
+import { useMissionSelection } from '../shell/missionSelectionContext';
 import {
   parseStageFilter,
   sameStageFilter,
@@ -128,13 +129,15 @@ export function PipelineScreen(): JSX.Element | null {
   );
 
   // ------------------------------------------------------------ sélection
-  const [selection, setSelection] = useState<Map<string, MissionCandidateRow>>(() => new Map());
+  // La sélection vit au-dessus de l'écran (lot 5f-2c) : le panneau Contacter la lit et elle
+  // survit au changement d'écran tant que ce panneau est ouvert.
+  const { selection, setSelection } = useMissionSelection();
   // Note visible sous la barre d'outils : plafond ou échec de « Contacter les N » (vidée avec la sélection).
   const [selectionNote, setSelectionNote] = useState<string | null>(null);
   const clearSelection = useCallback(() => {
-    setSelection(new Map());
+    setSelection((prev) => (prev.size === 0 ? prev : new Map()));
     setSelectionNote(null);
-  }, []);
+  }, [setSelection]);
   const toggleRow = useCallback((row: MissionCandidateRow, checked: boolean) => {
     setSelection((prev) => {
       const next = new Map(prev);
@@ -142,7 +145,7 @@ export function PipelineScreen(): JSX.Element | null {
       else next.delete(row.id);
       return next;
     });
-  }, []);
+  }, [setSelection]);
   const toggleAll = useCallback((rows: readonly MissionCandidateRow[], checked: boolean) => {
     setSelection((prev) => {
       const next = new Map(prev);
@@ -152,10 +155,26 @@ export function PipelineScreen(): JSX.Element | null {
       }
       return next;
     });
-  }, []);
+  }, [setSelection]);
+  // Panneau Contacter ouvert : état lu à jour par une ref (le nettoyage au démontage ne voit pas le rendu courant).
+  const contactPanelOpen = useRef(false);
+  contactPanelOpen.current = location.panel === 'contact';
+  // Un changement de filtre d'étape ou de vue vide la sélection. Le simple montage de l'écran (retour de
+  // Sourcing ou de Cadrage) ne la vide pas quand le panneau Contacter est ouvert : c'est lui qui la lit.
+  const lastScope = useRef<{ filterParam: string | null; view: PipelineViewMode } | null>(null);
   useEffect(() => {
-    clearSelection();
+    const before = lastScope.current;
+    lastScope.current = { filterParam, view };
+    const changed = before !== null && (before.filterParam !== filterParam || before.view !== view);
+    if (changed || (before === null && !contactPanelOpen.current)) clearSelection();
   }, [filterParam, view, clearSelection]);
+  // Écran quitté, panneau Contacter fermé : la sélection est perdue, comme avant.
+  useEffect(
+    () => () => {
+      if (!contactPanelOpen.current) clearSelection();
+    },
+    [clearSelection],
+  );
   const selectedIds = useMemo(() => new Set(selection.keys()), [selection]);
   const selectedRows = useMemo(() => [...selection.values()], [selection]);
 
@@ -227,7 +246,7 @@ export function PipelineScreen(): JSX.Element | null {
 
   // « Contacter les N » (rang 7) : liste filtrée sur Retenu, retenus cochés, puis
   // le focus va au « Contacter » de la barre d'actions, qui est le geste qui
-  // inscrit la sélection (le panneau de contact ne reçoit aucune sélection). La
+  // ouvre le panneau Contacter sur la sélection (ce raccourci ne l'ouvre pas lui-même). La
   // sélection est posée après le changement de filtre, qui la vide. Les retenus
   // ne sont lus qu'à la demande, jusqu'à RETAINED_SELECTION_MAX.
   const [contactRequest, setContactRequest] = useState(false);
@@ -277,7 +296,7 @@ export function PipelineScreen(): JSX.Element | null {
         : null,
     );
     setFocusContact(picked.length > 0);
-  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained]);
+  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained, setSelection]);
   // La barre d'actions apparaît avec la sélection : le focus va à « Contacter », sans ouvrir de panneau.
   // « Contacter » est grisé tant que le compte LinkedIn n'est pas lu : on attend qu'il s'active
   // (au plus 4 s), au lieu d'abandonner à la première image.

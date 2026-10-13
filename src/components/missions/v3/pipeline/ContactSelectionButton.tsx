@@ -3,6 +3,11 @@
 // les lignes sans profil LinkedIn sont laissées de côté, et le dit. Dans la
 // barre d'actions, bouton plein clair (maquette) : le style du bouton partagé
 // est surchargé ici, sans toucher au composant.
+//
+// Lot 5f-2c, interrupteur des séquences allumé : « Contacter » ouvre le panneau
+// Prise de contact en mode Contacter, sur la sélection (les lignes sans profil
+// LinkedIn y sont rangées « à compléter », plus écartées ici). Éteint : le menu
+// « Séquence » d'avant, inchangé.
 
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -11,13 +16,15 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SequenceEnrollButton, type SequenceEnrollJob } from '@/components/outreach/SequenceEnrollButton';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
-import type { ATSCandidate } from '@/hooks/useATSData';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { atsCandidateToProfile } from '@/lib/atsCandidateToProfile';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
-import { GENERAL_STAGE_LABEL } from '@/lib/stageDisplay';
+import { useMissionV3 } from '../MissionV3Context';
+import { useMissionSelection } from '../shell/missionSelectionContext';
 import type { MissionCandidateRow } from '../types';
+import { rowToAtsCandidate } from './useContactCandidates';
 
 /** Poste transmis à l'inscription : le poste synthétique de la mission (« project:{id} »). */
 export function missionEnrollJob(project: SourcingProject): SequenceEnrollJob {
@@ -28,32 +35,6 @@ export function missionEnrollJob(project: SourcingProject): SequenceEnrollJob {
     skills: [...(jd.skills_must_have ?? []), ...(jd.skills_should_have ?? [])],
     description: [jd.mission_description, jd.context].filter(Boolean).join('\n\n') || undefined,
     location: jd.location || undefined,
-  };
-}
-
-/** Ligne de la mission vers le candidat attendu par l'adaptateur de profil. */
-function rowToAtsCandidate(row: MissionCandidateRow, project: SourcingProject): ATSCandidate {
-  return {
-    id: row.id,
-    candidateId: row.candidateId,
-    name: row.name ?? '',
-    email: null,
-    phone: null,
-    linkedin: row.linkedinUrl,
-    headline: row.headline,
-    expertise: [],
-    stage: GENERAL_STAGE_LABEL[row.stage],
-    entity: null,
-    source: 'local',
-    sourceId: row.id,
-    jobId: row.jobId,
-    jobTitle: project.job_details?.title ?? project.name,
-    lastActivity: row.updatedAt,
-    createdAt: row.createdAt ?? '',
-    score: row.score,
-    recommendation: row.recommendation,
-    tags: row.tags,
-    linkedinProfileData: null,
   };
 }
 
@@ -83,6 +64,9 @@ interface ContactSelectionButtonProps {
 
 export function ContactSelectionButton({ rows, project, disabled, onSuccess }: ContactSelectionButtonProps) {
   const { selectedAccount, accountsLoading } = useFilteredLinkedInAccounts();
+  const sequencesV2 = useSequencesBeta();
+  const { openContactFlow } = useMissionV3();
+  const { selection, setSelection } = useMissionSelection();
   const withLinkedIn = useMemo(() => rows.filter((row) => !!row.linkedinUrl), [rows]);
   const profiles = useMemo(
     () => withLinkedIn.map((row) => atsCandidateToProfile(rowToAtsCandidate(row, project))),
@@ -91,12 +75,30 @@ export function ContactSelectionButton({ rows, project, disabled, onSuccess }: C
   const job = useMemo(() => missionEnrollJob(project), [project]);
   const missing = missingLinkedInText(rows.length - withLinkedIn.length);
 
+  // Interrupteur allumé : le panneau lit la sélection du Pipeline. Depuis la barre elle est déjà
+  // celle des lignes reçues ; depuis la fiche d'un Retenu, elle devient ce candidat seul.
+  const openFlow = () => {
+    const same = rows.length === selection.size && rows.every((row) => selection.has(row.id));
+    if (!same) setSelection(new Map(rows.map((row) => [row.id, row] as const)));
+    openContactFlow();
+  };
+
+  // Allumé, un candidat sans profil LinkedIn ne bloque rien ici : le panneau le range « à compléter ».
+  const nothingToContact = sequencesV2 ? rows.length === 0 : profiles.length === 0;
+
   let control: ReactNode;
   if (accountsLoading) {
     control = <Skeleton className="h-8 w-24" aria-label="Chargement des comptes LinkedIn" />;
-  } else if (disabled || !selectedAccount || profiles.length === 0) {
+  } else if (disabled || !selectedAccount || nothingToContact) {
     control = (
       <Button variant="primary" size="sm" disabled>
+        <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
+        Contacter
+      </Button>
+    );
+  } else if (sequencesV2) {
+    control = (
+      <Button type="button" variant="primary" size="sm" className="max-sm:min-h-11" onClick={openFlow}>
         <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Contacter
       </Button>
@@ -116,7 +118,7 @@ export function ContactSelectionButton({ rows, project, disabled, onSuccess }: C
   }
 
   const noAccount = !accountsLoading && !disabled && !selectedAccount;
-  const note = noAccount ? 'Reliez votre compte LinkedIn pour contacter.' : missing;
+  const note = noAccount ? 'Reliez votre compte LinkedIn pour contacter.' : sequencesV2 ? null : missing;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
