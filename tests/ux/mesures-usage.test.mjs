@@ -279,7 +279,7 @@ test('geste — candidats inscrits : nombre réellement inscrits, par écran', (
     const file = 'src/components/outreach/EnrollmentPreviewModal.tsx';
     const { call } = callOf(file, 'Candidates Enrolled', 'preparation');
     assert.match(call.text, /count: results\.success/);
-    assert.match(code(read(file)), /if \(results\.success > 0\) \{\s*trackUsage\('Candidates Enrolled', \{ surface: 'preparation', count: results\.success \}\);/);
+    assert.match(code(read(file)), /if \(results\.success > 0\) \{[^}]*?trackUsage\('Candidates Enrolled', \{ surface: 'preparation', count: results\.success \}\);/);
   }
   {
     const file = 'src/components/outreach/SequenceEnrollModal.tsx';

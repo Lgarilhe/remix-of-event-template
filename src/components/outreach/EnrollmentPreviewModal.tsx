@@ -696,9 +696,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       discardSessionPreviews(outcome.enrolledIds);
       setEnrollResults(results);
       if (results.success > 0) {
+        void invalidateMissionContacted(queryClient);
         // Mesure d'usage : candidats réellement inscrits (nombre seulement).
         trackUsage('Candidates Enrolled', { surface: 'preparation', count: results.success });
-        void invalidateMissionContacted(queryClient);
         toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });
