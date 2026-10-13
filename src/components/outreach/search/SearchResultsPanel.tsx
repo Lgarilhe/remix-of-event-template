@@ -144,6 +144,8 @@ interface SearchResultsPanelProps {
   layout?: 'default' | 'mission-v3';
   group?: SourcingResultGroup;
   onGroupChange?: (group: SourcingResultGroup) => void;
+  searchScopeKey?: string;
+  searchSuccessKey?: number;
   chipsDirty?: boolean;
   onRerun?: () => void;
   onSetSelection?: (ids: string[]) => void;
@@ -229,6 +231,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   layout = 'default',
   group,
   onGroupChange,
+  searchScopeKey,
+  searchSuccessKey,
   chipsDirty = false,
   onRerun,
   onSetSelection,
@@ -592,6 +596,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           onViewChange={setV3View}
           group={group}
           onGroupChange={onGroupChange}
+          searchScopeKey={searchScopeKey}
+          searchSuccessKey={searchSuccessKey}
           renderCompact={({ profiles, allSelected, onToggleSelectAll }) => (
             <CompactResultsTable
               profiles={profiles}

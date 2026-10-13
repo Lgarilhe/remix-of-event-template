@@ -7,7 +7,7 @@ import { buildScoringInputVersionKey } from '../../src/lib/sourcingScoringContex
 interface SearchReply {
   count?: number;
   offset?: number;
-  total?: number;
+  total?: number | null;
   cursor?: string | null;
   error?: string;
   delayMs?: number;
@@ -79,7 +79,7 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
       if (body.action === 'search') data = { success: true, results: options.empty ? [] : profiles, total: options.empty ? 0 : options.profileCount ?? 50, cursor: options.empty || body.cursor || options.profileCount ? null : 'page-two' };
       if (body.action === 'search' && reply) data = reply.error
         ? { success: false, error: reply.error }
-        : { success: true, results: profiles, total: reply.total ?? 75, cursor: reply.cursor ?? null };
+        : { success: true, results: profiles, total: reply.total === undefined ? 75 : reply.total, cursor: reply.cursor ?? null };
       if (body.action === 'get_parameters') data = { success: true, items: [] };
       if (body.action === 'get_profile') data = { success: true, profile: profiles.find(profile => profile.id === body.profile_id) ?? profiles[0] };
       const functionName = url.pathname.split('/').at(-1);
@@ -132,6 +132,12 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
   async function launch(page: Page) {
     await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
     await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+  }
+  const feedback = (page: Page) => page.getByTestId('sourcing-search-feedback');
+  const feedbackSummary = (page: Page) => page.getByTestId('sourcing-search-summary');
+  async function relaunch(page: Page) {
+    await page.getByRole('button', { name: 'Nouvelle recherche', exact: true }).click();
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
   }
   test('Claire — filtres préparés, fenêtre fermée, retour sans nouvelle configuration', async ({ page }) => {
     const api = await open(page, { configure: true, state: { orgType: 'enterprise' } });
@@ -359,7 +365,7 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
     await next.click();
     await expect(page.getByText('Profil A 51', { exact: true })).toBeVisible();
     await expect(next).toHaveCount(0);
-    await expect(page.getByText(/^75 profils chargés\.$/).first()).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveText(/75 profils chargés sur 75 résultats annoncés/);
     expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'suite-a', 'suite-b']);
   });
   test('Théo — zéro profil après filtre local garde un accès à la suite LinkedIn', async ({ page }) => {
@@ -498,6 +504,197 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
     await expect(page.getByText(/Tous les profils de cette recherche sont chargés/)).toHaveCount(0);
     await expect(page.getByText(/25 profils chargés sur 400/).first()).toBeVisible();
     expect(api.searches()).toHaveLength(1);
+  });
+  test('Claire — première recherche lente montre son activité avant les premiers profils', async ({ page }) => {
+    const api = await open(page, { configure: true, state: { orgType: 'enterprise' }, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a', delayMs: 1200 },
+    ] });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(feedback(page)).toContainText('Recherche en cours');
+    await expect(page.getByRole('status', { name: 'État de la recherche', exact: true })).toContainText('Recherche en cours');
+    await expect(page.getByTestId('sourcing-search-skeleton')).toBeVisible();
+    await expect(page.getByText('Profil A 01', { exact: true })).toHaveCount(0);
+    await expect(feedback(page).getByTestId('sourcing-search-motion')).toBeVisible();
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('sourcing-search-skeleton')).toHaveCount(0);
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 75 résultats annoncés/);
+    await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveText('75');
+    expect(api.searches()).toHaveLength(1);
+    await test.info().attach('desktop-feedback-completed', { body: await page.screenshot(), contentType: 'image/png' });
+  });
+  test('Guillaume — relancer garde l’ancienne liste pendant la recherche puis actualise le total 75 vers 128', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a' },
+      { count: 25, offset: 25, total: 128, cursor: 'suite-b', delayMs: 1200 },
+    ] });
+    await launch(page);
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 75 résultats annoncés/);
+    await relaunch(page);
+    await expect(feedback(page)).toContainText('Recherche en cours');
+    await expect(feedback(page)).toContainText('Résultats précédents affichés pendant la recherche');
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveCount(0);
+    await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveCount(0);
+    await expect(page.getByText('Profil A 26', { exact: true })).toHaveCount(0);
+    await test.info().attach('desktop-feedback-searching', { body: await page.screenshot(), contentType: 'image/png' });
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil A 01', { exact: true })).toHaveCount(0);
+    await expect(feedback(page)).toContainText('Résultats mis à jour');
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 128 résultats annoncés/);
+    await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveText('128');
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, null]);
+  });
+  test('Guillaume — une relance identique annonce un nouvel état même si le total reste 75', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a' }, { count: 25, total: 75, cursor: 'suite-a', delayMs: 800 },
+    ] });
+    await launch(page);
+    await expect(feedback(page)).toContainText('Résultats mis à jour');
+    await relaunch(page);
+    await expect(feedback(page)).toContainText('Recherche en cours');
+    await expect(feedback(page)).not.toContainText('Résultats mis à jour');
+    await expect(feedback(page)).toContainText('Résultats mis à jour');
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 75 résultats annoncés/);
+    expect(api.searches()).toHaveLength(2);
+    expect(api.searches()[0]).toEqual(api.searches()[1]);
+  });
+  test('Théo — relance échouée garde le total et les profils précédents sans annoncer une réussite', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a' }, { error: 'Recherche de test temporairement indisponible', delayMs: 800 },
+    ] });
+    await launch(page);
+    await relaunch(page);
+    await expect(feedback(page)).toContainText('Recherche en cours');
+    await expect(page.getByText('Recherche de test temporairement indisponible', { exact: true })).toBeVisible();
+    await expect(feedback(page)).not.toContainText('Recherche en cours');
+    await expect(feedback(page)).not.toContainText('Résultats mis à jour');
+    await expect(feedback(page)).toContainText('Recherche non actualisée');
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 75 résultats annoncés/);
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    expect(api.searches()).toHaveLength(2);
+  });
+  test('Claire — zéro résultat annonce zéro et garde une recherche lisible', async ({ page }) => {
+    const api = await open(page, { configure: true, state: { orgType: 'enterprise' }, searchReplies: [
+      { count: 0, total: 0, cursor: null, delayMs: 500 },
+    ] });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Aucun profil trouvé', { exact: true })).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveText(/0 profil(?:s)? chargé(?:s)? sur 0 résultat(?:s)? annoncé(?:s)?/);
+    await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveText('0');
+    await expect(page.getByRole('button', { name: 'Voir la suite', exact: true })).toHaveCount(0);
+    expect(api.searches()).toHaveLength(1);
+  });
+  test('Théo — total inconnu reste non communiqué sans inventer un résultat annoncé', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: null, cursor: null },
+    ] });
+    await launch(page);
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés.*Total non communiqué/i);
+    await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveCount(0);
+    expect(api.searches()).toHaveLength(1);
+  });
+  test('Théo — résultat partiel appliqué annonce sa mise à jour et permet de reprendre la suite', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a' },
+      { count: 5, offset: 25, total: 128, cursor: 'suite-partielle', delayMs: 500 },
+      { error: 'Tour de test suivant indisponible' },
+      { count: 25, offset: 30, total: 128, cursor: null },
+    ] });
+    await launch(page);
+    await relaunch(page);
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(page.getByText('Tour de test suivant indisponible', { exact: true })).toBeVisible();
+    await expect(feedback(page)).toContainText('Résultats mis à jour');
+    await expect(feedback(page)).not.toContainText('Recherche terminée');
+    await expect(feedbackSummary(page)).toHaveText(/5 profils chargés sur 128 résultats annoncés/);
+    await expect(page.getByText('Profil A 01', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Voir la suite', exact: true }).click();
+    await expect(page.getByText('Profil A 31', { exact: true })).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveText(/30 profils chargés sur 128 résultats annoncés/);
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, null, 'suite-partielle', 'suite-partielle']);
+  });
+  test('Guillaume — charger la suite utilise son propre feedback et conserve le total annoncé', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a' }, { count: 25, offset: 25, total: 75, cursor: 'suite-b', delayMs: 800 },
+    ] });
+    await launch(page);
+    await page.getByRole('button', { name: 'Voir la suite', exact: true }).click();
+    await expect(feedback(page)).toContainText('Chargement de la suite');
+    await expect(feedback(page)).not.toContainText('Recherche en cours');
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 75 résultats annoncés/);
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveText(/50 profils chargés sur 75 résultats annoncés/);
+    await expect(feedback(page)).not.toContainText('Résultats mis à jour');
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'suite-a']);
+  });
+  test('Guillaume — revenir au sourcing restaure le compteur sans rejouer une nouvelle recherche', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, total: 128, cursor: 'suite-a' },
+    ] });
+    await launch(page);
+    await expect(feedback(page)).toContainText('Résultats mis à jour');
+    for (let index = 0; index < 2; index++) {
+      await leaveAndReturn(page);
+      await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 128 résultats annoncés/);
+      await expect(feedback(page)).not.toContainText('Recherche en cours');
+      await expect(feedback(page)).not.toContainText('Résultats mis à jour');
+      await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveText('128');
+      expect(api.searches()).toHaveLength(1);
+    }
+    await page.getByRole('button', { name: 'Pipeline', exact: true }).click();
+    await patch(page, { projectId: 'mission-b' });
+    await page.getByRole('button', { name: 'Sourcing', exact: true }).click();
+    await expect(page.getByText('Profil A 01', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Pipeline', exact: true }).click();
+    await patch(page, { projectId: 'mission-a' });
+    await page.getByRole('button', { name: 'Sourcing', exact: true }).click();
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 128 résultats annoncés/);
+    await expect(feedback(page)).not.toContainText('Recherche en cours');
+    await expect(feedback(page)).not.toContainText('Résultats mis à jour');
+    expect(api.searches()).toHaveLength(1);
+  });
+  test('Sophie — mouvement réduit garde immédiatement le total final accessible', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const api = await open(page, { configure: true, state: { orgType: 'freelance' }, searchReplies: [
+      { count: 25, total: 128, cursor: 'suite-a', delayMs: 800 },
+    ] });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(feedback(page)).toContainText('Recherche en cours');
+    const motion = feedback(page).getByTestId('sourcing-search-motion');
+    expect(await motion.locator('span').evaluate(element => getComputedStyle(element).transform)).toBe('none');
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 128 résultats annoncés/);
+    expect(await feedback(page).getByTestId('sourcing-announced-count').innerText()).toBe('128');
+    expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+    expect(api.searches()).toHaveLength(1);
+  });
+  for (const width of [390, 320]) test(`Sophie — feedback de relance et animation lisibles mobile ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 568 });
+    const api = await open(page, { configure: true, state: { orgType: 'freelance', collaborator: true }, searchReplies: [
+      { count: 25, total: 75, cursor: 'suite-a' }, { count: 25, offset: 25, total: 128, cursor: 'suite-b', delayMs: 1200 },
+    ] });
+    await launch(page);
+    await relaunch(page);
+    await expect(feedback(page)).toContainText('Recherche en cours');
+    const newSearch = page.getByRole('button', { name: 'Nouvelle recherche', exact: true });
+    await expect(newSearch).toHaveAttribute('aria-disabled', 'true');
+    await expect(newSearch).toBeFocused();
+    await newSearch.press('Enter');
+    await expect(panel(page)).toHaveCount(0);
+    expect(api.searches()).toHaveLength(2);
+    const busyBounds = await feedback(page).boundingBox();
+    expect(busyBounds!.width).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await test.info().attach(`mobile-feedback-searching-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(feedbackSummary(page)).toHaveText(/25 profils chargés sur 128 résultats annoncés/);
+    await expect(feedback(page).getByTestId('sourcing-announced-count')).toHaveText('128');
+    await expect(newSearch).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map(item => ({ id: item.id, targets: item.nodes.map(node => node.target) }))).toEqual([]);
+    expect(api.searches()).toHaveLength(2);
+    await test.info().attach(`mobile-feedback-completed-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
   });
   for (const width of [390, 320]) test(`Sophie — suite visible sans défiler et accessible mobile ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 568 });

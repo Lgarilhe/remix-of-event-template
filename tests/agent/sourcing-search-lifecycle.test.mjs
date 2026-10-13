@@ -94,7 +94,7 @@ function modules(overrides = {}, globals = {}) {
 }
 
 function searchHarness() {
-  const react = scheduler(), pending = [], requests = [], discovered = [], messages = [], quotas = [], invalidations = [], newSearchResults = [];
+  const react = scheduler(), pending = [], requests = [], discovered = [], messages = [], quotas = [], invalidations = [], newSearchResults = [], completedScopes = [];
   const fetch = options => {
     const task = deferred(); pending.push(task); requests.push(plain(options.body)); return task.promise;
   };
@@ -117,7 +117,10 @@ function searchHarness() {
   const setters = Object.fromEntries(Object.keys(state).map(key => ['set' + key[0].toUpperCase() + key.slice(1), value => {
     state[key] = typeof value === 'function' ? value(state[key]) : value;
   }]));
-  setters.onNewSearchResults = () => newSearchResults.push(plain(state.results));
+  setters.onNewSearchResults = scopeKey => {
+    newSearchResults.push(plain(state.results));
+    completedScopes.push(scopeKey);
+  };
   const filters = { ...plain(INITIAL_FILTERS), api: 'recruiter', keywords: 'Python' };
   const filtersRef = { current: filters };
   let context = { organizationId: 'org-a', userId: 'user-a', selectedAccount: 'account-a',
@@ -132,7 +135,7 @@ function searchHarness() {
   const render = () => { actions = useLinkedInSearchActions({ ...context, ...state }, setters); };
   const refresh = () => react.render(render);
   refresh();
-  return { state, requests, pending, messages, discovered, quotas, invalidations, newSearchResults, buildSearchParams,
+  return { state, requests, pending, messages, discovered, quotas, invalidations, newSearchResults, completedScopes, buildSearchParams,
     get actions() { return actions; },
     refresh,
     change(patch) {
@@ -293,6 +296,24 @@ test('an accepted empty search notifies its result group, while validation and f
   await empty;
   assert.equal(h.newSearchResults.length, 1);
   assert.deepEqual(h.newSearchResults[0], []);
+});
+
+test('new-search completions identify their exact account, source and brief, including a repeated search', async () => {
+  const h = searchHarness();
+  for (const patch of [{}, {}, { selectedAccount: 'account-b' }, { searchSource: 'database' }, {
+    selectedJob: { id: 'job-a', title: 'Data Engineer', skills: ['SQL'] },
+  }]) {
+    h.change(patch);
+    const expectedScope = h.actions.searchScopeKey;
+    const pending = h.actions.handleSearch();
+    h.pending.at(-1).resolve(page('accepted'));
+    await pending;
+    assert.equal(h.completedScopes.at(-1), expectedScope);
+    assert.equal(h.state.executedSearch.scopeKey, expectedScope);
+  }
+  assert.equal(h.completedScopes.length, 5);
+  assert.equal(h.completedScopes[0], h.completedScopes[1], 'a same-context relaunch emits a new completion');
+  assert.equal(new Set(h.completedScopes).size, 4);
 });
 
 test('a next-page click explains a reached LinkedIn quota without losing profiles or its cursor', async () => {

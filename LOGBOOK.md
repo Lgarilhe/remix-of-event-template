@@ -32,6 +32,25 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — BUG — Recherche visible pendant l’attente et à réception des résultats
+
+**Contexte** : relancer une recherche conservait les anciens profils sans indication assez claire de l’attente ni de l’arrivée d’une nouvelle réponse. Le compteur ne distinguait pas une actualisation des résultats d’une reprise du cache.
+**Fait** : feedback V3 stable pendant le premier chargement, la relance et un résultat vide. Un rail indéterminé annonce « Recherche en cours » et identifie les anciens profils encore affichés. Chaque première page réellement acceptée fournit un signal lié au contexte complet ; à réception, « Résultats mis à jour » accompagne un compteur animé pendant 500 ms. Une valeur inconnue reste non communiquée et zéro reste zéro. La pagination possède son annonce propre ; les retours depuis le cache et les changements A→B→A ne rejouent pas de réussite. Les anciennes valeurs restent conservées quand la recherche n’est pas actualisée. Une annonce accessible utilise les valeurs finales, sans suivre chaque image de l’animation ; le mouvement réduit affiche ces valeurs immédiatement.
+**Focus** : la fermeture des filtres après une relance pouvait perdre sa cible parce que « Nouvelle recherche » devenait désactivé. Ce bouton conserve désormais le focus avec `aria-disabled` pendant l’attente ; son activation est bloquée tant que la recherche est en cours.
+**Validation** : build final réussi ; onze diagnostics TypeScript hérités exactement identiques au socle, lint sans aggravation et quinze compteurs design inchangés. Trente et un fichiers de tests agents passent, dont 39 cas de cycle de recherche et de provenance des réponses. Gardes UX concernés réussis. Couverture locale de 42 parcours : 40 réussis avant le dernier correctif de focus, puis quatre parcours mobiles rejoués sur le code final, dont les deux nouveaux qui échouaient sur le focus. La suite complète est prévue dans la CI de publication.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Trente notes, sélection et groupes conservés ; relance identique, suite distincte et retour au cache | PASS |
+| Claire | Activité visible immédiatement, nouveau total 75→128, zéro résultat explicite | PASS |
+| Théo | Réponse en échec ou partielle, total inconnu, réessai et provenance mission/compte/source/contexte | PASS |
+| Sophie | 320/390 px, mouvement réduit, focus pendant et après attente, activation bloquée, aucun débordement ni violation axe | PASS |
+
+**Limites** : transports et modèle simulés ; aucun sourcing réel, contact candidat ou écriture en production pour les tests. Changements de présentation et signal de réponse acceptée seulement ; taille des lots, scores et contrats serveur conservés.
+**Refs** : branche `codex/sourcing-search-feedback-20261013` ; `SourcingSearchFeedback.tsx`, `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-search-lifecycle.test.mjs`.
+
+---
+
 ## 2026-10-13 — BUG — Accès visible à la suite des résultats de sourcing
 
 **Contexte** : « Voir la suite » était placé au bas du défilement et seulement dans À trier. Une page entièrement retirée par les filtres locaux masquait l’action malgré un curseur restant ; une nouvelle recherche pouvait garder Retenus ou Écartés. Le contrôle préalable du quota ignorait aussi le clic sans message. Cinq parcours sur le code initial reproduisent les défauts de visibilité et de groupe ; le test du quota échoue également avant correction.

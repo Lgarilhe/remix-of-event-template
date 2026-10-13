@@ -64,7 +64,7 @@ interface SearchSetters {
   setTotal: (v: number | null) => void;
   setHasSearched: (v: boolean) => void;
   setExecutedSearch: (v: ExecutedSourcingSearch | null) => void;
-  onNewSearchResults?: () => void;
+  onNewSearchResults?: (scopeKey: string) => void;
 }
 
 /** Optional augmentation : injecte des IDs LinkedIn pré-résolus (annuaire
@@ -1076,7 +1076,7 @@ export function useLinkedInSearchActions(
       } else {
         setResults(scoredBatch);
         setHasSearched(true);
-        onNewSearchResults?.();
+        onNewSearchResults?.(execution.scopeKey);
       }
 
     } catch (error: any) {
@@ -1094,7 +1094,7 @@ export function useLinkedInSearchActions(
         } else {
           setResults(allCollected);
           setHasSearched(true);
-          onNewSearchResults?.();
+          onNewSearchResults?.(execution.scopeKey);
         }
       }
 
@@ -1205,5 +1205,6 @@ export function useLinkedInSearchActions(
     handleSearch,
     handleLoadMore,
     searchNeedsRerun,
+    searchScopeKey: scopeKey,
   };
 }
