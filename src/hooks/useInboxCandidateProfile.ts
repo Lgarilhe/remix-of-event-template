@@ -14,6 +14,34 @@ export interface CandidateProfileIdentity {
   aliases?: string[];
 }
 
+type ProfileErrorKind = 'session' | 'access' | 'quota' | 'not-found' | 'unavailable' | 'stored';
+const PROFILE_ERRORS: Record<ProfileErrorKind, string> = {
+  session: 'Votre session a expiré. Reconnectez-vous pour consulter ce profil.',
+  access: 'Votre compte ne permet pas de consulter ce profil LinkedIn. Vérifiez votre connexion dans les paramètres.',
+  quota: 'La limite de consultation des profils LinkedIn est atteinte. Réessayez plus tard.',
+  'not-found': 'Ce profil est introuvable sur LinkedIn. Vérifiez le lien du candidat.',
+  unavailable: 'LinkedIn ne répond pas pour le moment. Réessayez dans quelques instants.',
+  stored: 'Le profil enregistré est temporairement indisponible. Réessayez dans quelques instants.',
+};
+
+export class InboxCandidateProfileError extends Error {
+  constructor(public readonly kind: ProfileErrorKind, public readonly httpStatus?: number) {
+    super(PROFILE_ERRORS[kind]);
+    this.name = 'InboxCandidateProfileError';
+  }
+}
+
+function profileError(data: { error?: string; errorType?: string }, httpStatus?: number) {
+  // Seule une absence de profil explicitement identifiée par le serveur
+  // autorise une recherche par son URL publique, jamais un 502 générique.
+  const notFound = httpStatus === 404 && data.errorType === 'PROFILE_NOT_FOUND';
+  const kind: ProfileErrorKind = httpStatus === 401 ? 'session'
+    : httpStatus === 403 ? 'access'
+    : httpStatus === 429 ? 'quota'
+    : notFound ? 'not-found' : 'unavailable';
+  return new InboxCandidateProfileError(kind, httpStatus);
+}
+
 export async function fetchInboxCandidateProfile(organizationId: string, ids: string[], profileUrl: string | null, name: string, accountId: string | null, refresh = false) {
   const slug = candidateLinkedInSlug(profileUrl);
   if (!refresh) {
@@ -30,13 +58,20 @@ export async function fetchInboxCandidateProfile(organizationId: string, ids: st
     };
     const stored = rows.sort((a, b) => richness(b.linkedin_profile_data) - richness(a.linkedin_profile_data)).find(row => row.linkedin_profile_data);
     if (stored) return normalizeCandidateProfile(stored.linkedin_profile_data, ids[0] || stored.candidate_id, name);
-    if (results.some(result => result.error) && !accountId) throw new Error('Le profil enregistré est temporairement indisponible.');
+    if (results.some(result => result.error) && !accountId) throw new InboxCandidateProfileError('stored');
   }
   if (!accountId || (!slug && !ids.length)) return null;
-  const { data } = await invokeUnipile({ body: { action: 'get_profile', organization_id: organizationId, account_id: accountId, profile_id: slug || ids[0], ...(slug ? { profile_url: profileUrl } : {}) } });
-  if (!data.success || !data.profile) throw new Error('Le profil LinkedIn est temporairement indisponible.');
-  emitQuotaAction('profileVisits', 1, accountId);
-  return normalizeCandidateProfile(data.profile, ids[0] || slug!, name);
+  const targets = [...new Set([ids[0], slug].filter((id): id is string => !!id))];
+  for (const [index, target] of targets.entries()) {
+    const { data, httpStatus } = await invokeUnipile({ body: { action: 'get_profile', organization_id: organizationId, account_id: accountId, profile_id: target, ...(slug ? { profile_url: profileUrl } : {}) } });
+    if (data.success && data.profile) {
+      emitQuotaAction('profileVisits', 1, accountId);
+      return normalizeCandidateProfile(data.profile, ids[0] || slug!, name);
+    }
+    const error = profileError(data, httpStatus);
+    if (error.kind !== 'not-found' || index === targets.length - 1) throw error;
+  }
+  return null;
 }
 
 /** Cache isolé par personne connectée, organisation, candidat et compte personnel. */
@@ -45,7 +80,9 @@ export function useInboxCandidateProfile({ profileId, profileUrl = null, profile
   const { organizationId } = useOrganization();
   const accountId = useMyLinkedInAccountId();
   const queryClient = useQueryClient();
-  const ids = [...new Set([profileId, ...aliases].filter((id): id is string => !!id))].sort();
+  // L'identifiant du profil est prioritaire ; les alias servent à retrouver
+  // les instantanés, sans remplacer cette identité par ordre alphabétique.
+  const ids = [...new Set([profileId, ...aliases].filter((id): id is string => !!id))];
   const queryKey = ['inbox-candidate-profile', user?.id, organizationId, accountId, ids.join('|'), profileUrl];
   const query = useQuery({ queryKey, queryFn: () => fetchInboxCandidateProfile(organizationId!, ids, profileUrl, profileName, accountId), enabled: isReady && !!user && !!organizationId && (!!ids.length || !!profileUrl), staleTime: 5 * 60_000, retry: false });
   const refresh = useMutation({
