@@ -209,8 +209,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
   const [resultGroup, setResultGroup] = useState<SourcingResultGroup>('to_sort');
-  const onNewSearchResults = useCallback(() => {
-    if (isV3) setResultGroup('to_sort');
+  const [searchCompletion, setSearchCompletion] = useState<{ scopeKey: string; revision: number } | null>(null);
+  const onNewSearchResults = useCallback((scopeKey: string) => {
+    if (!isV3) return;
+    setResultGroup('to_sort');
+    setSearchCompletion(previous => ({
+      scopeKey,
+      revision: previous?.scopeKey === scopeKey ? previous.revision + 1 : 1,
+    }));
   }, [isV3]);
   const { organizationId, orgType } = useOrganization();
   const { user } = useAuthReady();
@@ -391,7 +397,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [pedigreeAug, restrictMode]);
 
   // Search actions hook
-  const { handleSearch, handleLoadMore, searchNeedsRerun } = useLinkedInSearchActions(
+  const { handleSearch, handleLoadMore, searchNeedsRerun, searchScopeKey: searchFeedbackScopeKey } = useLinkedInSearchActions(
     {
       organizationId,
       userId: user?.id ?? null,
@@ -431,6 +437,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onNewSearchResults,
     }
   );
+  useLayoutEffect(() => {
+    setSearchCompletion(previous => previous?.scopeKey === searchFeedbackScopeKey ? previous : null);
+  }, [searchFeedbackScopeKey]);
   const { setResults: setSearchResults, setCursor: setSearchCursor, setTotal: setSearchTotal,
     setHasSearched: setSearchHasSearched, setExecutedSearch: setSearchExecution } = search;
 
@@ -1790,6 +1799,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
             layout: 'mission-v3' as const,
             group: resultGroup,
             onGroupChange: setResultGroup,
+            searchScopeKey: searchFeedbackScopeKey,
+            searchSuccessKey: searchCompletion?.scopeKey === searchFeedbackScopeKey ? searchCompletion.revision : 0,
             chipsDirty,
             onRerun: rerunFromChips,
             onSetSelection: (ids: string[]) => search.setSelectedProfiles(new Set(ids)),

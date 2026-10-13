@@ -590,7 +590,9 @@ test('S-13d : écran de départ, bouton plein monochrome, consigne lisible ; « 
   assert.match(results, /aria-disabled=\{loadingMore \|\| undefined\}/);
   assert.match(results, /disabled=\{loading && !loadingMore\}/);
   assert.doesNotMatch(results, /loadingMore \? \(\s*<span aria-hidden="true" className="inline-flex items-center gap-1\.5 px-2">/);
-  assert.match(results, /<span role="status" className="sr-only">\{loadAnnouncement\}<\/span>/);
+  assert.match(results, /loadingMore=\{loadingMore\}/);
+  const feedback = code(`${V3_DIR}/SourcingSearchFeedback.tsx`);
+  assert.match(feedback, /role="status" aria-label="État de la recherche" aria-live="polite" aria-atomic="true"/);
 });
 
 test('S-13e : liste Tri, la ligne du nom ne se coupe plus, titre sous le nom jusqu\'à xl, action de retour en icône sur téléphone', () => {
