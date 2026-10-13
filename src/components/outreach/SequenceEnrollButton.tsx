@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,15 @@ import { UpgradePrompt } from '@/components/ui/UpgradePrompt';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { SEQUENCES_PLAN_REQUIRED_MESSAGE } from './enrollment-preview/enrollmentHelpers';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
+import { profilesToFlowCandidates } from '@/components/sequences/contact/flowCandidates';
+import type { FlowCandidate } from '@/components/sequences/contact/types';
+
+// La feuille du flux d'inscription ne se charge qu'à l'ouverture : elle reste hors des lots
+// de la messagerie, du Pipeline et de la recherche.
+const ContactFlowSheet = lazy(() =>
+  import('@/components/sequences/contact/ContactFlowSheet').then((m) => ({ default: m.ContactFlowSheet })),
+);
 
 interface SequenceOption {
   id: string;
@@ -58,7 +67,12 @@ interface SequenceEnrollButtonProps {
   selectedProfiles: LinkedInProfile[];
   accountId: string;
   selectedJob?: SequenceEnrollJob | null;
-  onSuccess?: () => void;
+  /**
+   * Après une inscription. Interrupteur des séquences allumé : les identifiants des profils
+   * traités (un tableau vide quand la fenêtre de relecture a seulement retenu des candidats).
+   * Ancien flux : appelé sans argument.
+   */
+  onSuccess?: (enrolledProfileIds?: readonly string[]) => void;
   onCreateSequence?: () => void;
   /** Libellé du bouton ; « Séquence » par défaut. */
   triggerLabel?: string;
@@ -73,7 +87,9 @@ function missionIdOf(job: SequenceEnrollJob | null | undefined): string | null {
   return job?.id?.startsWith('project:') ? job.id.slice('project:'.length) : null;
 }
 
-export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
+// Ancien flux (interrupteur des séquences éteint, secours jusqu'au lot 5j) : le menu « Séquence »
+// puis la fenêtre SequenceEnrollModal, inchangés.
+const LegacySequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   selectedProfiles,
   accountId,
   selectedJob,
@@ -363,4 +379,67 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
       )}
     </>
   );
+};
+
+/**
+ * Interrupteur des séquences allumé (lot 5f-2d) : le même bouton ouvre le flux d'inscription du
+ * panneau Contacter dans une feuille latérale, au lieu du menu. Les profils sont figés à
+ * l'ouverture : une sélection qui change pendant que la feuille est ouverte ne modifie pas la
+ * liste montrée, et la feuille reste rendue même si la sélection tombe à vide. Le plan et le
+ * compte d'envoi sont jugés par le flux lui-même.
+ */
+const ContactFlowEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
+  selectedProfiles,
+  accountId,
+  selectedJob,
+  onSuccess,
+  triggerLabel = 'Séquence',
+  quiet = false,
+  className,
+}) => {
+  const [frozen, setFrozen] = useState<{ candidates: FlowCandidate[]; overflow: number } | null>(null);
+  const missionId = missionIdOf(selectedJob);
+
+  return (
+    <>
+      {selectedProfiles.length > 0 && (
+        <Button
+          variant={quiet ? 'ghost' : 'outline'}
+          size="sm"
+          title="Inscrire dans une séquence"
+          className={cn('shrink-0', quiet && 'max-sm:min-h-11', className)}
+          onClick={() => setFrozen(profilesToFlowCandidates(selectedProfiles))}
+        >
+          <GitBranch aria-hidden="true" />
+          {triggerLabel}
+        </Button>
+      )}
+      {frozen && (
+        // La feuille est rendue dans un portail, mais ses clics et ses touches remontent par l'arbre React
+        // jusqu'à la carte du résultat, qui ouvrirait alors la fiche : ils s'arrêtent ici.
+        <span className="contents" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+          <Suspense fallback={null}>
+            <ContactFlowSheet
+              open
+              onOpenChange={(open) => {
+                if (!open) setFrozen(null);
+              }}
+              missionId={missionId}
+              job={selectedJob ?? null}
+              candidates={frozen.candidates}
+              overflow={frozen.overflow}
+              accountId={accountId}
+              onEnrolled={(handledIds) => onSuccess?.(handledIds)}
+              onChanged={() => onSuccess?.([])}
+            />
+          </Suspense>
+        </span>
+      )}
+    </>
+  );
+};
+
+export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = (props) => {
+  const sequencesV2 = useSequencesBeta();
+  return sequencesV2 ? <ContactFlowEnrollButton {...props} /> : <LegacySequenceEnrollButton {...props} />;
 };

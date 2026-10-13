@@ -259,7 +259,7 @@ export type ActionIntent =
   | { type: 'open_row'; rowId: string; tab: 'echanges' | null }
   /** Réponse sans ligne dans le Pipeline : ouvrir la conversation de la messagerie. */
   | { type: 'open_conversation'; chatId: string }
-  /** Filtrer sur Retenu, cocher les retenus et placer le focus sur « Contacter » de la barre d'actions (le panneau de contact ne reçoit pas de sélection). */
+  /** Filtrer sur Retenu, cocher les retenus, puis ouvrir le panneau Contacter sur eux (lot 5f-2d) ; interrupteur des séquences éteint : placer le focus sur « Contacter » de la barre d'actions. */
   | { type: 'contact_retained' }
   /** Ouvrir la section À trier de la liste (effacer d'abord la vue et le filtre d'étape). */
   | { type: 'open_to_sort' }

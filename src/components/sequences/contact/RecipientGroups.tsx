@@ -24,8 +24,8 @@ interface RecipientGroupsProps<T extends FlowCandidate> {
   /** Catégories de dérogation choisies. */
   overrides: ReadonlySet<ContactOverride>;
   onToggleOverride: (override: ContactOverride) => void;
-  /** Ouvre la fiche d'un candidat (lien LinkedIn à compléter). */
-  onOpenCandidate: (rowId: string) => void;
+  /** Ouvre la fiche d'un candidat avec ligne (lien LinkedIn à compléter). Absent, ou candidat sans ligne : pas de bouton. */
+  onOpenCandidate?: (rowId: string) => void;
   /**
    * Faux pour une séquence à message rédigé par l'IA : l'inscription passe par « Relire les
    * messages », dont la fenêtre propose ses propres dérogations. Aucun bouton ici, une phrase le dit.
@@ -286,7 +286,7 @@ export function RecipientGroups<T extends FlowCandidate>({
                 source={entry.source}
                 note={null}
                 reason={entry.label}
-                action={entry.reason === 'no_linkedin' ? (
+                action={entry.reason === 'no_linkedin' && onOpenCandidate && entry.source.rowId ? (
                   <Button
                     type="button"
                     variant="outline"

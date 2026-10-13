@@ -59,6 +59,14 @@ const OUTREACH_PARAM = 'outreach';
 /** Lot 5f-2c : « contacter=1 » met le panneau en mode Contacter (voir MissionWorkspaceV3). */
 const CONTACT_PARAM = 'contacter';
 
+/**
+ * Lot 5f-2d : `?sequence=<id>`, séquence demandée par la page de cette séquence (« Inscrire des candidats »).
+ * Paramètre local de la mission, comme `contacter` : hors de V3_PARAM et des paramètres de panneau. Il
+ * n'ouvre rien à lui seul (le Pipeline l'annonce), il est transmis à ContactFlow en mode Contacter, et
+ * retiré dès que ce mode est quitté (choix d'un onglet, « Voir les contactés », fin d'inscription).
+ */
+const SEQUENCE_PARAM = 'sequence';
+
 /** Pas de lien de conversation connu (liste lue sans eux). */
 const NO_CHATS: ReadonlyMap<string, string> = new Map();
 
@@ -85,6 +93,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   const asksInvitations = outreachParam === 'invitations';
   // Mode Contacter : interrupteur allumé, mission en cours, adresse en `?contacter=1`.
   const asksFlow = sequencesV2 && !isArchived && new URLSearchParams(location.search).get(CONTACT_PARAM) === '1';
+  const preferredSequenceId = new URLSearchParams(location.search).get(SEQUENCE_PARAM) || null;
   // Choix de la personne ou de l'adresse (?outreach=contactes|sequences). Sans lui,
   // interrupteur allumé : « Contactés » s'ouvre s'il a une ligne, sinon « Séquences ».
   const [chosen, setChosen] = useState<ContactTab | null>(() => {
@@ -120,7 +129,8 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
       setChosen(next);
       const current = locationRef.current;
       const params = new URLSearchParams(current.search);
-      // Choisir un onglet quitte le mode Contacter.
+      // Choisir un onglet quitte le mode Contacter, et avec lui la séquence demandée.
+      params.delete(SEQUENCE_PARAM);
       params.delete(CONTACT_PARAM);
       if (!sequencesV2 && next === 'sequences') params.delete(OUTREACH_PARAM);
       else params.set(OUTREACH_PARAM, next);
@@ -277,6 +287,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             onEnrolled={onEnrolled}
             onOpenCandidate={openCandidate}
             onLeave={onLeave}
+            preferredSequenceId={preferredSequenceId}
           />
         </SectionErrorBoundary>
       </div>

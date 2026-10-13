@@ -63,7 +63,8 @@ export function useContactSequences(missionId: string | null): {
   const query = useQuery({
     queryKey: [CONTACT_SEQUENCES_KEY, organizationId, missionId],
     queryFn: readSequences,
-    enabled: !!organizationId && !!missionId,
+    // Hors mission (missionId nul) la liste est la même : toutes les séquences actives que la RLS rend lisibles.
+    enabled: !!organizationId,
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

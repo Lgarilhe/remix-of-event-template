@@ -48,6 +48,7 @@ import { HistoryPopover } from './enrollment-preview/HistoryPopover';
 import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
 import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -259,6 +260,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   onSuccess,
 }) => {
   const { organizationId, isAdmin } = useOrganization();
+  const sequencesV2 = useSequencesBeta();
   const queryClient = useQueryClient();
   const steps = useMemo(() => mapSteps(sequence.steps), [sequence.steps]);
   const isSingle = profiles.length === 1;
@@ -1588,7 +1590,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                       className="max-md:h-11"
                     >
                       {!isShortlisting && <ListChecks aria-hidden="true" />}
-                      Présélectionner sans message
+                      {sequencesV2 ? 'Retenir sans contacter' : 'Présélectionner sans message'}
                     </Button>
                   )}
                   <Button

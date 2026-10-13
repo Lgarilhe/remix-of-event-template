@@ -57,6 +57,11 @@ import { useContactBadge } from './useContactBadge';
 const EMPTY_ROWS: readonly MissionCandidateRow[] = [];
 
 const RETAINED_FILTER: StageFilter = { stage: 'retained', stepId: null };
+/**
+ * Lot 5f-2d : `?sequence=<id>` arrive de la page d'une séquence (« Inscrire des candidats »). Paramètre local de
+ * la mission, comme `contacter` : l'écran ne fait que l'annoncer, le panneau Contacter le lit (ContactPanel).
+ */
+const SEQUENCE_PARAM = 'sequence';
 /** « Contacter les N » sélectionne les retenus par pages de 50, jusqu'à ce plafond (dit à l'écran quand il coupe). */
 const RETAINED_SELECTION_MAX = 400;
 
@@ -254,10 +259,13 @@ export function PipelineScreen(): JSX.Element | null {
   }, [sortRequest, filterParam, view]);
 
   // « Contacter les N » (rang 7) : liste filtrée sur Retenu, retenus cochés, puis
-  // le focus va au « Contacter » de la barre d'actions, qui est le geste qui
-  // ouvre le panneau Contacter sur la sélection (ce raccourci ne l'ouvre pas lui-même). La
-  // sélection est posée après le changement de filtre, qui la vide. Les retenus
+  // le panneau Contacter s'ouvre sur cette sélection (lot 5f-2d, interrupteur des
+  // séquences allumé). Éteint : l'ancien geste, le focus va au « Contacter » de la
+  // barre d'actions, qui ouvrait le menu « Séquence ». La sélection est posée après le
+  // changement de filtre, qui la vide, et avant l'ouverture du panneau : sans elle, il
+  // s'ouvrirait sur « Contactés » (garde de rechargement de ContactPanel). Les retenus
   // ne sont lus qu'à la demande, jusqu'à RETAINED_SELECTION_MAX.
+  const { openContactFlow } = ctx;
   const [contactRequest, setContactRequest] = useState(false);
   const [focusContact, setFocusContact] = useState(false);
   const retainedQuery = useMissionCandidateRows(project.id, RETAINED_FILTER, {
@@ -304,9 +312,10 @@ export function PipelineScreen(): JSX.Element | null {
         ? `${picked.length.toLocaleString('fr-FR')} retenus sur ${retainedTotal.toLocaleString('fr-FR')} sont cochés : une sélection groupée est limitée à ${RETAINED_SELECTION_MAX.toLocaleString('fr-FR')}.`
         : null,
     );
-    setFocusContact(picked.length > 0);
-  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained, setSelection]);
-  // La barre d'actions apparaît avec la sélection : le focus va à « Contacter », sans ouvrir de panneau.
+    if (sequencesV2 && picked.length > 0) openContactFlow();
+    else setFocusContact(picked.length > 0);
+  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained, setSelection, sequencesV2, openContactFlow]);
+  // Interrupteur éteint : la barre d'actions apparaît avec la sélection, le focus va à « Contacter », sans ouvrir de panneau.
   // « Contacter » est grisé tant que le compte LinkedIn n'est pas lu : on attend qu'il s'active
   // (au plus 4 s), au lieu d'abandonner à la première image.
   useEffect(() => {
@@ -340,6 +349,13 @@ export function PipelineScreen(): JSX.Element | null {
       window.clearTimeout(timer);
     };
   }, [focusContact, selection.size]);
+
+  // Lot 5f-2d : arrivé de la page d'une séquence, rien n'est encore coché. Une ligne le dit, dans l'emplacement
+  // de la note de sélection (qui garde la priorité) ; elle disparaît dès qu'une case est cochée.
+  const sequenceHint =
+    sequencesV2 && !ctx.isArchived && !!searchParams.get(SEQUENCE_PARAM) && selection.size === 0
+      ? 'Cochez les candidats à inscrire, puis « Contacter » : la séquence demandée sera proposée d\'avance.'
+      : null;
 
   const activeRowId = location.panel === 'fiche' ? location.candidateRowId : null;
   const goToSourcing = useCallback(() => ctx.goToScreen('sourcing'), [ctx]);
@@ -428,9 +444,9 @@ export function PipelineScreen(): JSX.Element | null {
         />
       )}
 
-      {selectionNote && (
+      {(selectionNote ?? sequenceHint) && (
         <p role="status" className="text-xs text-muted-foreground">
-          {selectionNote}
+          {selectionNote ?? sequenceHint}
         </p>
       )}
 

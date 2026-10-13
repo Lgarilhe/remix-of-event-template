@@ -35,8 +35,12 @@ interface SequencePickerProps {
   status: 'loading' | 'error' | 'ready';
   onRetry: () => void;
   onSelect: (sequenceId: string) => void;
-  /** Identifiant de la mission (uuid nu). */
-  missionId: string;
+  /**
+   * Identifiant de la mission (uuid nu), ou null hors mission (lot 5f-2d) : alors aucune porte « Rédiger
+   * une séquence pour cette mission » (la rédaction par l'IA part du poste de la mission), les séquences
+   * sont toutes celles de l'organisation.
+   */
+  missionId: string | null;
 }
 
 const TOUCH = 'max-lg:min-h-11';
@@ -44,6 +48,7 @@ const TOUCH = 'max-lg:min-h-11';
 const DRAFT_DOOR_LABEL = 'Rédiger une séquence pour cette mission';
 const NEW_TAB_HINT = "S'ouvre dans un nouvel onglet. Au retour, la liste se met à jour.";
 const NO_READY_SEQUENCE = "Cette mission n'a pas de séquence prête à l'emploi.";
+const NO_READY_SEQUENCE_ORG = "Aucune séquence prête à l'emploi dans votre organisation.";
 const LOAD_ERROR = "Les séquences n'ont pas pu être chargées.";
 const PICK_PLACEHOLDER = 'Choisir une séquence';
 
@@ -75,6 +80,7 @@ export function SequencePicker({ menu, selectedId, status, onRetry, onSelect, mi
   const labelId = useId();
   const valueId = useId();
   const { loading: readinessLoading, described, cadrageHref } = useMissionDraftReadiness(missionId);
+  const noMission = missionId === null;
   const canDraft = !readinessLoading && described;
   const draftHref = newSequencePath({ kind: 'ia' }, missionId);
 
@@ -99,6 +105,15 @@ export function SequencePicker({ menu, selectedId, status, onRetry, onSelect, mi
   }
 
   const all = [...menu.mission, ...menu.others];
+
+  // Hors mission (lot 5f-2d), sans séquence utilisable : une phrase, aucune porte (la rédaction par l'IA part du poste d'une mission).
+  if (all.length === 0 && noMission) {
+    return (
+      <div className="space-y-2" data-sequence-picker="empty">
+        <p className="text-sm text-foreground">{NO_READY_SEQUENCE_ORG}</p>
+      </div>
+    );
+  }
 
   // Aucune séquence utilisable : la porte tient la place du menu.
   if (all.length === 0) {
@@ -166,36 +181,40 @@ export function SequencePicker({ menu, selectedId, status, onRetry, onSelect, mi
           {menu.mission.length > 0 && menu.others.length > 0 && <DropdownMenuSeparator />}
           {menu.others.length > 0 && (
             <>
-              <DropdownMenuLabel>Autres séquences de l'organisation</DropdownMenuLabel>
+              <DropdownMenuLabel>{noMission ? "Séquences de l'organisation" : "Autres séquences de l'organisation"}</DropdownMenuLabel>
               {menu.others.map((sequence) => (
                 <SequenceItem key={sequence.id} sequence={sequence} selected={sequence.id === selectedId} onSelect={onSelect} />
               ))}
             </>
           )}
-          <DropdownMenuSeparator />
-          {canDraft ? (
+          {!noMission && (
             <>
-              <DropdownMenuItem asChild className={TOUCH}>
-                <a href={draftHref} target="_blank" rel="noreferrer">
-                  <Sparkles className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
-                  {DRAFT_DOOR_LABEL}
-                </a>
-              </DropdownMenuItem>
-              <p className="px-2 pb-1.5 text-xs text-muted-foreground">{NEW_TAB_HINT}</p>
-            </>
-          ) : (
-            <>
-              <DropdownMenuItem disabled className={TOUCH}>
-                <Sparkles className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
-                {DRAFT_DOOR_LABEL}
-              </DropdownMenuItem>
-              {!readinessLoading && (
+              <DropdownMenuSeparator />
+              {canDraft ? (
                 <>
-                  <p className="px-2 pb-1 text-xs text-muted-foreground">{AI_DRAFT_NOT_DESCRIBED}</p>
-                  {cadrageHref && (
-                    <DropdownMenuItem asChild className={TOUCH}>
-                      <Link to={cadrageHref}>Décrire le poste</Link>
-                    </DropdownMenuItem>
+                  <DropdownMenuItem asChild className={TOUCH}>
+                    <a href={draftHref} target="_blank" rel="noreferrer">
+                      <Sparkles className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
+                      {DRAFT_DOOR_LABEL}
+                    </a>
+                  </DropdownMenuItem>
+                  <p className="px-2 pb-1.5 text-xs text-muted-foreground">{NEW_TAB_HINT}</p>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem disabled className={TOUCH}>
+                    <Sparkles className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
+                    {DRAFT_DOOR_LABEL}
+                  </DropdownMenuItem>
+                  {!readinessLoading && (
+                    <>
+                      <p className="px-2 pb-1 text-xs text-muted-foreground">{AI_DRAFT_NOT_DESCRIBED}</p>
+                      {cadrageHref && (
+                        <DropdownMenuItem asChild className={TOUCH}>
+                          <Link to={cadrageHref}>Décrire le poste</Link>
+                        </DropdownMenuItem>
+                      )}
+                    </>
                   )}
                 </>
               )}

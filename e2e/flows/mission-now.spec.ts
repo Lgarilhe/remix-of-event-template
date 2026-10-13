@@ -6,7 +6,9 @@
  *
  *  1. mission neuve, poste décrit, aucun profil : « Chercher des profils » (rang 10) ;
  *  2. poste vide : « Décrire le poste » (rang 11) vers Cadrage ;
- *  3. retenus pas contactés : « Contacter les N » (envoi permis) ou « Voir les retenus » (formule gratuite) ;
+ *  3. retenus pas contactés : « Contacter les N » (envoi permis) ouvre le panneau Contacter sur les retenus cochés
+ *     (lot 5f-2d ; interrupteur des séquences éteint : focus sur « Contacter » de la barre) ou « Voir les retenus »
+ *     (formule gratuite) ;
  *  4. profils notés à trier : « Trier les N » ouvre À trier ;
  *  5. réponse non traitée sur votre compte : « Répondre » ouvre Échanges ; réponse d'un collègue : jamais un bouton ;
  *  6. entretien sans nouvelles depuis plus de 5 jours : phrase neutre, « Ouvrir la fiche » ou « Relancer … » ;
@@ -212,9 +214,12 @@ const panel = (page: Page) => page.getByTestId('mission-panel');
 const toSortList = (page: Page) => page.getByTestId('to-sort-list');
 const todoTab = (page: Page) => page.getByRole('tab', { name: /^À traiter/ });
 
-/** Ouvre le Pipeline de la mission et attend que la carte ait fini de se lire. */
-async function openPipeline(page: Page, ws: Workspace) {
-  await page.goto(missionUrl(ws), { waitUntil: 'domcontentloaded' });
+/**
+ * Ouvre le Pipeline de la mission et attend que la carte ait fini de se lire. `rest` : suite de l'adresse
+ * (ex. `?sequences-v2=0`, secours qui éteint l'interrupteur des séquences ; la page retire ce paramètre).
+ */
+async function openPipeline(page: Page, ws: Workspace, rest = '') {
+  await page.goto(missionUrl(ws, rest), { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('mission-v3')).toBeVisible({ timeout: 30_000 });
   await expect(nowCard(page)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('now-card-loading')).toHaveCount(0, { timeout: 30_000 });
@@ -328,7 +333,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
 
   // ═══ 3 : retenus pas contactés ════════════════════════════════════════════
 
-  test('3a. retenus pas contactés, envoi permis : « Contacter les N » coche les retenus et filtre la liste', async ({ browser }) => {
+  test('3a. retenus pas contactés, envoi permis : « Contacter les N » coche les retenus et ouvre le panneau Contacter', async ({ browser }) => {
     const ws = await workspace('E2E now 3a');
     await candidate(ws, 'Rita Retenue', 'retained');
     await candidate(ws, 'Remi Retenu', 'retained');
@@ -347,6 +352,42 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await expect(listRows(page)).toHaveCount(3, { timeout: 30_000 });
 
     await button.click();
+    // Interrupteur des séquences allumé (défaut) : liste filtrée sur Retenu, retenus cochés, puis le panneau Contacter
+    // s'ouvre dessus (lot 5f-2d). La sélection est posée avant l'ouverture : sans elle, le panneau s'ouvrirait sur « Contactés ».
+    await expect(page).toHaveURL(/[?&]panneau=contact(&|$)/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/[?&]contacter=1(&|$)/);
+    await expect(page).toHaveURL(/[?&]etape=retained(&|$)/);
+    await expect(panel(page)).toHaveAttribute('data-panel', 'contact');
+    await expect(page.locator('[data-contact-flow]')).toBeVisible({ timeout: 30_000 });
+    await expect(panel(page).getByRole('heading', { name: 'Contacter 2 candidats' })).toBeVisible();
+    // Les deux retenus, et eux seuls : le contacté n'est ni dans la liste filtrée ni dans le panneau.
+    await expect(panel(page)).toContainText('Rita Retenue');
+    await expect(panel(page)).toContainText('Remi Retenu');
+    await expect(panel(page)).not.toContainText('Carl Contacte');
+    await expect(listRows(page)).toHaveCount(2, { timeout: 30_000 });
+    await expect(listRows(page).filter({ hasText: 'Carl Contacte' })).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: 'Sélectionner Rita Retenue', exact: true })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Sélectionner Remi Retenu', exact: true })).toBeChecked();
+    await expect(page.getByRole('toolbar', { name: 'Actions sur la sélection' })).toContainText('2 candidats sélectionnés');
+  });
+
+  test('3a-bis. retenus pas contactés, interrupteur des séquences éteint : « Contacter les N » garde son focus sur « Contacter » de la barre', async ({ browser }) => {
+    const ws = await workspace('E2E now 3a bis');
+    await candidate(ws, 'Rita Retenue', 'retained');
+    await candidate(ws, 'Remi Retenu', 'retained');
+    await candidate(ws, 'Carl Contacte', 'contacted');
+    const page = await openAs(browser, ws);
+    // Secours ?sequences-v2=0 : la page applique l'interrupteur éteint, puis retire le paramètre de l'adresse.
+    await openPipeline(page, ws, '?sequences-v2=0');
+    await expect(page).not.toHaveURL(/sequences-v2/, { timeout: 30_000 });
+    const card = nowCard(page);
+
+    await expect(card).toContainText('2 candidats retenus attendent un premier message.');
+    const button = card.getByRole('button', { name: 'Contacter les 2', exact: true });
+    await expect(button).toBeVisible();
+    await expect(listRows(page)).toHaveCount(3, { timeout: 30_000 });
+
+    await button.click();
     await expect(page).toHaveURL(/[?&]etape=retained(&|$)/);
     await expect(listRows(page)).toHaveCount(2, { timeout: 30_000 });
     await expect(listRows(page).filter({ hasText: 'Carl Contacte' })).toHaveCount(0);
@@ -356,10 +397,10 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     const bar = page.getByRole('toolbar', { name: 'Actions sur la sélection' });
     await expect(bar).toBeVisible();
     await expect(bar).toContainText('2 candidats sélectionnés');
-    // Décision 3 : « sélectionne les retenus et ouvre le panneau de contact existant ». Comportement réel du code
-    // (PipelineScreen, commentaire de contactRetained) : aucun panneau, le focus doit aller au « Contacter » de la
-    // barre d'actions. TROUVAILLE : le focus ne s'y pose jamais, voir le rapport (le « Contacter » est encore grisé
-    // quand la demande de focus s'exécute, et la demande est alors abandonnée). Ce scénario reste rouge.
+    // Ancien geste : aucun panneau (PipelineScreen, commentaire de l'effet des retenus). PipelineScreen attend que
+    // le « Contacter » de la barre soit actif (observateur, 4 s au plus) puis lui donne le focus.
+    await expect(page).not.toHaveURL(/panneau=contact|contacter=1/);
+    await expect(panel(page)).toHaveCount(0);
     const contactInBar = bar.getByRole('button', { name: /^Contacter/ }).first();
     await expect(contactInBar).toBeFocused({ timeout: 10_000 });
   });

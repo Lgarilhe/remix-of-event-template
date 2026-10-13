@@ -124,7 +124,7 @@ interface SearchResultsPanelProps {
   onProfileTreated: (id: string) => void;
   onArchive: (profile: LinkedInProfile) => Promise<void>;
   onMessageSent: () => void;
-  onSequenceEnrollSuccess: () => void;
+  onSequenceEnrollSuccess: (enrolledIds?: readonly string[]) => void;
   // Refine
   onRefineSearch: (direction: 'expand' | 'narrow') => void;
   refineLoading: boolean;

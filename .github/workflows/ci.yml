@@ -324,6 +324,8 @@ jobs:
       # empaquetés avec esbuild (npm ci), qui se sauteraient sans bruit ailleurs.
       - name: Lot 5f-2c tests (panneau Contacter)
         run: node --test tests/ux/lot5f2c-libs.test.mjs tests/ux/lot5f2c-plomberie.test.mjs tests/ux/lot5f2c-ecran.test.mjs tests/ux/lot5f2c-composants.test.mjs
+      - name: Lot 5f-2d tests (autres entrées de ContactFlow)
+        run: node --test tests/ux/lot5f2d-generalisation.test.mjs tests/ux/lot5f2d-entrees.test.mjs tests/ux/lot5f2d-messagerie.test.mjs tests/ux/lot5f2d-seq-maintenant.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié
