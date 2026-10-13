@@ -32,6 +32,14 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — BUG — Espace d’entretien prêt depuis le rendez-vous
+
+**Contexte** : le rendez-vous ouvrait encore la scorecard dans la fiche latérale, sans l’espace d’entretien complet ni l’assistant prêt. Le choix audio ne tenait pas compte du service de visioconférence du rendez-vous.
+**Fait** : les accès à la grille et à l’assistant rejoignent la page d’entretien existante avec la mission et la séance exactes. L’assistant s’ouvre à côté de la grille préparée ; le microphone reste soumis au démarrage explicite. Le lieu du rendez-vous vérifié sert à proposer un réglage pour Teams, Meet, Zoom, un appel téléphonique ou un entretien sur place, adapté aux capacités du navigateur et modifiable par la personne.
+**Validation** : parcours de la vraie page, choix audio, permissions et affichage mobile vérifiés avant fusion ; les résultats détaillés sont joints à la PR. Aucune migration, préparation IA supplémentaire ni enregistrement automatique ajouté.
+
+---
+
 ## 2026-10-13 — SHIP — Bascule v2, préparation : limites de débit et habillage de la page de connexion (application « Konekt app / Production »)
 
 **Contexte** : préparation de la bascule (guide `docs/unipile-v2-bascule.md`, parties 3.4 et 4.1), faite dans le tableau de bord du prestataire par le propriétaire avec un assistant de navigation. Aucune clé créée ni supprimée.

@@ -107,18 +107,18 @@ test('EV-5 — heure d\'une ligne', () => {
   assert.equal(formatUpcomingTime('pas une date', NOW), '');
 });
 
-test('EV-6 — adresses : la fiche ouvre sa grille préparée, avec la mission et l’entretien', () => {
+test('EV-6 — le rendez-vous ouvre l’espace en grand, la fiche reste distincte', () => {
   const links = interviewLinks({ id: 'q1', candidate_profile_id: 'cand 1', project_id: 'p-1' });
   assert.equal(links.qualification, '/qualification/q1');
-  assert.equal(links.candidate, '/pipeline?candidate=cand%201&tab=evaluation&prepareInterview=1&mission=p-1&session=q1');
-  assert.equal(links.scorecard, links.candidate);
-  assert.equal(links.coaching, `${links.scorecard}&coaching=1`);
+  assert.equal(links.candidate, '/pipeline?candidate=cand%201&tab=evaluation&mission=p-1&session=q1');
+  assert.equal(links.scorecard, '/pipeline/scorecard/cand%201?mission=p-1&session=q1&coaching=1');
+  assert.equal(links.coaching, links.scorecard);
 });
 
 test('EV-7 — adresses sans mission, puis sans candidat', () => {
   const noMission = interviewLinks({ id: 'q1', candidate_profile_id: 'c1', project_id: null });
-  assert.equal(noMission.scorecard, '/pipeline?candidate=c1&tab=evaluation&prepareInterview=1&session=q1');
-  assert.equal(noMission.coaching, `${noMission.scorecard}&coaching=1`);
+  assert.equal(noMission.scorecard, '/pipeline/scorecard/c1?session=q1&coaching=1');
+  assert.equal(noMission.coaching, noMission.scorecard);
   const noCandidate = interviewLinks({ id: 'q2', candidate_profile_id: null, project_id: 'p-1' });
   assert.deepEqual(noCandidate, { qualification: '/qualification/q2', candidate: null, scorecard: null, coaching: null });
 });

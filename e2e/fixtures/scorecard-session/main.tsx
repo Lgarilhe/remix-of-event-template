@@ -15,12 +15,14 @@ const candidate: ATSCandidate = {
 
 export function App() {
   const [session, setSession] = useState('session-first');
+  const coaching = new URLSearchParams(location.search).get('case') === 'ready-assistant';
   return <main className="mx-auto max-w-3xl p-4">
     <h1>Évaluation de Camille</h1>
     <button onClick={() => setSession('session-second')}>Ouvrir le deuxième entretien</button>
     <output aria-label="Entretien actif">{session}</output>
     <ScorecardTab candidate={candidate} enrichedProfile={null}
-      qualificationSessionId={session} autoGenerate autoOpenFirst />
+      qualificationSessionId={session} autoGenerate autoOpenFirst autoStartCoaching={coaching}
+      meetingLocation="https://teams.microsoft.com/l/meetup-join/fixture" />
   </main>;
 }
 

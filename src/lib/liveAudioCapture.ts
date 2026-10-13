@@ -156,12 +156,13 @@ export function turnPiece(
 
 const CAPTURE_MODE_KEY = 'konekt.live-capture-mode';
 
-/** Dernier choix de la personne, « visio ou appel » à défaut. */
-export function readCaptureMode(): CaptureMode {
+/** Dernier choix explicite, ou réglage conseillé pour le rendez-vous. Ne l'enregistre pas. */
+export function readCaptureMode(fallback: CaptureMode = 'meeting'): CaptureMode {
   try {
-    return localStorage.getItem(CAPTURE_MODE_KEY) === 'mic' ? 'mic' : 'meeting';
+    const stored = localStorage.getItem(CAPTURE_MODE_KEY);
+    return stored === 'mic' || stored === 'meeting' ? stored : fallback;
   } catch {
-    return 'meeting';
+    return fallback;
   }
 }
 

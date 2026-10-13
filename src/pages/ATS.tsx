@@ -15,7 +15,7 @@
  * au retour sur l'onglet (useATSData, refetchOnWindowFocus).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { BarChart3, Bell, Columns3, History, Rows3, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
@@ -67,6 +67,22 @@ type CandidateLinkResult = {
 };
 
 export default function ATS() {
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const candidateId = params.get('candidate');
+  const sessionId = params.get('session');
+  // Les anciens liens de préparation rejoignent le même espace que l'agenda.
+  // La page d'arrivée vérifie l'entretien avant toute lecture de grille.
+  if (candidateId && sessionId && (params.get('prepareInterview') === '1' || params.get('coaching') === '1')) {
+    const target = new URLSearchParams({ session: sessionId, coaching: '1' });
+    const mission = params.get('mission');
+    if (mission) target.set('mission', mission);
+    return <Navigate replace to={`/pipeline/scorecard/${encodeURIComponent(candidateId)}?${target}`} state={{ directInterviewLink: location.key === 'default' }} />;
+  }
+  return <Pipeline />;
+}
+
+function Pipeline() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeView, _setActiveView] = useState<PipelineView>(() => parseView(searchParams.get('view')));
 

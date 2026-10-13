@@ -100,7 +100,7 @@ interface JobSidebarDetails {
 export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
   const [searchParams] = useSearchParams();
-  const autoCoaching = searchParams.get('coaching') === '1';
+  const autoCoaching = searchParams.get('coaching') === '1' || !!searchParams.get('session');
   // Mission de la fiche d'où l'on vient (?mission=) : un candidat présent dans
   // deux missions garde le poste, les étapes et la grille de celle-ci.
   const missionParam = missionIdOfJob(searchParams.get('mission')) ?? null;
@@ -124,6 +124,7 @@ export default function ScorecardFullPage() {
   const [quickEval, setQuickEval] = useState<ScorecardSummary | null>(null);
   const [recording, setRecording] = useState(false);
   const [qualificationSessionId, setQualificationSessionId] = useState<string | null>(null);
+  const [meetingLocation, setMeetingLocation] = useState<string | null>(null);
 
   const [jobDetails, setJobDetails] = useState<JobSidebarDetails | null>(null);
 
@@ -137,13 +138,15 @@ export default function ScorecardFullPage() {
     const load = async () => {
       setLoadState('loading');
       setQualificationSessionId(null);
+      setMeetingLocation(null);
+      let verifiedMeetingLocation: string | null = null;
       let requestedMission = missionParam;
       if (sessionParam) {
         // Le lien calendrier porte l'événement réel : une date ou un nom ne
         // suffit pas à rattacher la transcription au bon entretien.
         const { data: event, error: eventError } = await supabase
           .from('qualification_sessions')
-          .select(QUALIFICATION_CANDIDATE_FIELDS)
+          .select(`${QUALIFICATION_CANDIDATE_FIELDS}, event_location`)
           .eq('id', sessionParam)
           .eq('candidate_profile_id', candidateId)
           .eq('organization_id', organizationId)
@@ -157,6 +160,7 @@ export default function ScorecardFullPage() {
           setLoadState('not_found');
           return;
         }
+        verifiedMeetingLocation = event.event_location;
         const unassigned = candidateFromUnassignedInterview(event);
         if (unassigned) {
           // Le plein écran conserve le rendez-vous sans mission, y compris si
@@ -171,6 +175,7 @@ export default function ScorecardFullPage() {
           unassigned.linkedinProfileData = profile?.linkedin_profile_data ?? null;
           setCandidate(unassigned);
           setQualificationSessionId(sessionParam);
+          setMeetingLocation(verifiedMeetingLocation);
           setJobDetails(null);
           setLoadState('ready');
           return;
@@ -299,6 +304,7 @@ export default function ScorecardFullPage() {
       if (cancelled) return;
       setCandidate(c);
       setQualificationSessionId(sessionParam);
+      setMeetingLocation(verifiedMeetingLocation);
       setJobDetails(job);
       setLoadState('ready');
     };
@@ -371,9 +377,10 @@ export default function ScorecardFullPage() {
 
   const goBack = useCallback(() => {
     // Ouverte dans un nouvel onglet ou par un lien direct : pas de page précédente dans l'application.
-    if (location.key !== 'default') navigate(-1);
+    if (location.state?.directInterviewLink) navigate('/pipeline', { replace: true });
+    else if (location.key !== 'default') navigate(-1);
     else navigate('/pipeline');
-  }, [location.key, navigate]);
+  }, [location.key, location.state, navigate]);
 
   // Bouton « Voir le profil » de l'assistant d'entretien : le panneau du candidat s'affiche.
   const showProfile = useCallback(() => {
@@ -781,6 +788,7 @@ export default function ScorecardFullPage() {
               onActiveEvaluationChange={setQuickEval}
               onRecordingChange={setRecording}
               qualificationSessionId={qualificationSessionId}
+              meetingLocation={meetingLocation}
             />
           </div>
         </main>
